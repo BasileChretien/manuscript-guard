@@ -4,9 +4,10 @@ column of P values, in a paper written outside manuscript-guard.
 The reader declares the design; nothing here guesses it. Each table the audit reads as rows
 of cells is read as `check` reads one (`gates.baseline`): a Markdown pipe or grid table, a
 .docx's table, and a LaTeX file's tables through its reader, each with its caption
-(`text.captioned`). One whose caption holds the word "baseline" and whose header row has a P
-header is a warning, `baseline-p-values`, which `--strict` does not count. A PDF's tables are
-read as lines of text, with no cells, so none of them is read, and the report says so.
+(`text.captioned`). One whose caption names a table of baseline characteristics and whose
+header row has a P header is a warning, `baseline-p-values`, which `--strict` does not count.
+A PDF's tables are read as lines of text, with no cells, so none of them is read, and the
+report says so.
 """
 
 from __future__ import annotations

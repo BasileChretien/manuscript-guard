@@ -18909,7 +18909,8 @@ def test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_
         assert all(code == "baseline-p-values" and severity == "warn"
                    for _path, _line, code, severity, _said in told), told  # fmt: skip
         said = sorted(([path, line] for path, line, *_rest in told), key=json.dumps)
-        assert said == [[path, line] for path, line, _headers in found[kind]], given[kind]
+        expected = sorted(([path, line] for path, line, _headers in found[kind]), key=json.dumps)
+        assert said == expected, given[kind]
         for path, line, headers in found[kind]:
             (message,) = [m for p, n, _c, _s, m in told if [p, n] == [path, line]]
             shown = message.split("column of P values (", 1)[1].split("), and the study", 1)[0]
@@ -18932,7 +18933,13 @@ def _printed(header: str, kind: str) -> str:
 def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import baseline
 
-    patch.setattr(baseline, "_BASELINE", re.compile("baseline", re.IGNORECASE))
+    patch.setattr(baseline, "_NAMES", baseline._names(start=""))
+
+
+def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.I))
 
 
 def _a_p_header_by_containment(patch: pytest.MonkeyPatch) -> None:
@@ -25122,6 +25129,10 @@ BROKEN = {
     ),
     "a caption's baseline is read inside another word": (
         _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a caption that holds the word baseline names a table of baseline characteristics": (
+        _baseline_anywhere_names_the_table,
         test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
     ),
     "a P header is any header that holds one": (

@@ -6,8 +6,9 @@ table by what its caption says it is and what its columns are headed (G8's basel
   from its top border: its header is the rows above its `+===+` line, each column's text
   joined across its lines. A grid table with no such line has no header, and neither is read
   in a fenced block or a comment. A simple or multiline table is not read (DESIGN.md, Known
-  gaps). Its caption is pandoc's, `Table: ...` or `: ...`, in the paragraph after the table
-  or before it, or a legend typed before or after it as Word's is, "Table 1. ...".
+  gaps). Its caption is pandoc's, `Table: ...` or `: ...`, as pandoc 3.9 gives it: the
+  tables in order, each takes the one before it that no table above took, else the one after
+  it. Without one, a legend typed before or after it as Word's is, "Table 1. ...".
 - A LaTeX table, a `tabular` or another of the environments the reader reads
   (`text.latex.tables`), has the caption of the `table` float it stands in, or a
   `longtable`'s own; its header is its first row.
@@ -38,10 +39,12 @@ class Captioned:
 
 #: Pandoc's caption of a table, "Table: ..." or ": ...", which opens its paragraph.
 _PANDOC = re.compile(r"[ ]{0,3}(?:[Tt]able)?:[ \t]+(?=\S)")
-#: A legend typed as one, "Table 1. ...", "**Table S2:** ...", "eTable 3 - ...".
+#: A legend typed as one, "Table 1. ...", "**Table S2:** ...", "eTable 3 - ...", and with a
+#: space and a capital after its number, as BMC and Springer set it: "Table 1 Baseline ...".
+#: "Table 1 shows ..." goes on a sentence.
 _LEGEND = re.compile(
-    r"[ \t]*[*_]*(?:Supplementary[ \t]+|e|S)?Table[ \t]+[A-Za-z]?\d+[A-Za-z]?[*_]*[ \t]*"
-    "[.:|\N{EN DASH}\N{EM DASH}-]"
+    r"[ \t]*[*_]*(?:Supplementary[ \t]+|e|S)?Table[ \t]+[A-Za-z]?\d+[A-Za-z]?[*_]*"
+    "(?:[ \t]*[.:|\N{EN DASH}\N{EM DASH}-]|[ \t]+(?=[A-Z]))"
 )
 #: A grid table's line, and the line under its header.
 _GRID_LINE = re.compile(r"[+|]")
@@ -49,19 +52,19 @@ _GRID_HEADER_RULE = re.compile(r"\+(?:[=:]+\+)+[ \t]*$")
 
 
 def markdown_captioned(text: str) -> list[Captioned]:
-    """Each pipe and grid table of a Markdown text, in the order they stand."""
+    """Each pipe and grid table of a Markdown text, in the order they stand, each with the
+    caption no table before it took."""
     lines = [line.rstrip("\r") for line in text.split("\n")]
     shown = [line.rstrip("\r") for line in kept_breaks(text, mask(text)).split("\n")]
-    found: list[tuple[int, Captioned]] = []
-    for table in markdown_tables(text):
-        first, last = table[0][0].line, table[-1][0].line
-        headers = tuple(cell.text.strip() for cell in table[0])
-        found.append((first, Captioned(_caption(lines, shown, first, last), headers, first)))
-    for first, last, headers in _grid_tables(lines, shown):
-        # Its header row's first line is the one under its top border.
-        caption = _caption(lines, shown, first, last)
-        found.append((first, Captioned(caption, headers, first + 1)))
-    return [captioned for _first, captioned in sorted(found, key=lambda one: one[0])]
+    # Each table's first and last lines, its header, and its header row's line: a grid
+    # table's is the one under its top border.
+    tables = [(table[0][0].line, table[-1][0].line, tuple(cell.text.strip() for cell in table[0]),
+               table[0][0].line) for table in markdown_tables(text)]  # fmt: skip
+    tables += [(first, last, headers, first + 1)
+               for first, last, headers in _grid_tables(lines, shown)]
+    taken: set[int] = set()
+    return [Captioned(_caption(lines, shown, first, last, taken), headers, line)
+            for first, last, headers, line in sorted(tables)]
 
 
 def _grid_tables(lines: list[str], shown: list[str]) -> list[tuple[int, int, tuple[str, ...]]]:
@@ -101,17 +104,17 @@ def _grid_header(lines: list[str], top: int, rule: int) -> tuple[str, ...]:
     return tuple(" ".join(parts) for parts in columns)
 
 
-def _caption(lines: list[str], shown: list[str], first: int, last: int) -> str:
-    """The caption of the table on lines `first` to `last` (from 1): pandoc's after it, then
-    pandoc's or a legend before it, then a legend after it; "" where there is none. Pandoc's
-    caption between two tables is the one's above it."""
-    after, _beyond = _paragraph(lines, shown, last + 1, 1)
-    before, beyond = _paragraph(lines, shown, first - 1, -1)
-    if before and _PANDOC.match(before[0]) and _table_above(shown, beyond):
-        before = []
-    for paragraph, shapes in ((after, (_PANDOC,)), (before, (_PANDOC, _LEGEND)),
-                              (after, (_LEGEND,))):  # fmt: skip
-        if paragraph and any(shape.match(paragraph[0]) for shape in shapes):
+def _caption(lines: list[str], shown: list[str], first: int, last: int, taken: set[int]) -> str:
+    """The caption of the table on lines `first` to `last` (from 1), as pandoc 3.9 gives one,
+    the tables read in order: pandoc's before it where no table before took it, else pandoc's
+    after it; else a legend before it, then one after it. "" where there is none. Each caption
+    taken is added to `taken`, by its first line, and goes to no other table."""
+    before, at_before = _paragraph(lines, shown, first - 1, -1)
+    after, at_after = _paragraph(lines, shown, last + 1, 1)
+    for paragraph, at, shape in ((before, at_before, _PANDOC), (after, at_after, _PANDOC),
+                                 (before, at_before, _LEGEND), (after, at_after, _LEGEND)):
+        if paragraph and at not in taken and shape.match(paragraph[0]):
+            taken.add(at)
             return _said(paragraph)
     return ""
 
@@ -119,7 +122,7 @@ def _caption(lines: list[str], shown: list[str], first: int, last: int) -> str:
 def _paragraph(lines: list[str], shown: list[str], start: int, step: int
                ) -> tuple[list[str], int]:  # fmt: skip
     """The paragraph next to a table, from line `start` (from 1) on in the direction of
-    `step`, past one blank line at most, its lines in their order, and the line past it;
+    `step`, past one blank line at most: its lines in their order, and the line it starts on;
     [] where a table's line or the end of the text comes first."""
     at = start
     if 1 <= at <= len(lines) and not shown[at - 1].strip():
@@ -130,14 +133,8 @@ def _paragraph(lines: list[str], shown: list[str], start: int, step: int
             break
         taken.append(lines[at - 1])
         at += step
-    return (taken if step > 0 else taken[::-1]), at
-
-
-def _table_above(shown: list[str], at: int) -> bool:
-    """Whether a table's line stands at line `at` (from 1), or past one blank line above."""
-    if 1 <= at <= len(shown) and not shown[at - 1].strip():
-        at -= 1
-    return 1 <= at <= len(shown) and _GRID_LINE.match(shown[at - 1].lstrip()) is not None
+    opens = at + 1 if step < 0 else at - len(taken)
+    return (taken if step > 0 else taken[::-1]), opens
 
 
 def _said(paragraph: list[str]) -> str:

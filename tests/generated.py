@@ -13004,14 +13004,23 @@ BASELINE_DECOYS = ("Ptype", "Group P", "P Value", "P for trend", "Pvalue", "PCR"
 BASELINE_WORDS = ("baseline", "Baseline", "BASELINE", "*baseline*", "_Baseline_")
 BASELINE_LATEX_WORDS = ("baseline", "Baseline", "\\textbf{Baseline}", "\\emph{baseline}")
 BASELINE_CAPTIONS = ("{w} characteristics of the participants", "Characteristics at {w}",
-                     "Participants at {w}, by group", "Demographic and clinical data at {w}")
-#: Captions where the word is inside another word, or names the time a change is measured
-#: from; and captions of tables that are not of baseline characteristics.
-BASELINE_INSIDE = ("Post{w} events by group", "Non{w} visits", "Pre{w} screening")
+                     "{w} demographic and clinical characteristics",
+                     "Demographics of the groups at {w}", "{w} patient features",
+                     "Characteristics of the participants at randomisation",
+                     "{w} characteristics and change from {w}")  # fmt: skip
+#: Captions where the word is inside another word; and captions of tables of outcomes, which
+#: hold the word in another sense (round 1 of #657), or do not hold it.
+BASELINE_INSIDE = ("Post{w} characteristics by group", "Non{w} demographics",
+                   "Pre{w} characteristics")  # fmt: skip
 BASELINE_CHANGES = ("Change from {w} in the score", "Mean change since {w}",
-                    "{W}-adjusted means at 12 weeks")  # fmt: skip
-BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary and secondary outcomes",
-                     "Adverse events by group")  # fmt: skip
+                    "{W}-adjusted means at 12 weeks", "Post-{w} adverse events",
+                    "Change from {w} in characteristics")  # fmt: skip
+BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary outcome at {w} and 12 weeks",
+                     "Primary outcome by {w} risk",
+                     "Outcomes at 12 weeks, adjusted for age, sex and {w} score",
+                     "Outcomes adjusting for {w} values", "Participants at {w}, by group")
+#: How a legend is set after its number: a stop, a colon, or a space before a capital.
+BASELINE_LEGENDS = ("Table S{n}. ", "Table S{n}: ", "**Table S{n}** ", "Table S{n} ")
 #: The designs whose guidelines do not include CONSORT, `other`, and none named.
 BASELINE_NOT_TRIALS = ("cohort", "case-control", "self-controlled", "disproportionality",
                        "systematic-review", "prediction-model", "other", None)  # fmt: skip
@@ -13026,11 +13035,13 @@ def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
 
     Every example holds each kind once: a table of baseline characteristics with a P column
     emitted, typed as a pipe table with pandoc's caption after it, as a grid table with it
-    before, and in the supplement under a legend; and with no warning, an emitted table of
-    outcomes with a P column, one of a change from baseline, one whose caption holds the word
-    inside another, and one of baseline characteristics whose header holds a P and is no P
-    header. In LaTeX, a float in the main text and one in the supplement, and a float of
-    outcomes."""
+    before, beside a table of outcomes with nothing between, their captions both before or
+    both after, and in the supplement under a legend, with a stop or a space after its
+    number; and with no warning, emitted and typed tables of outcomes with a P column whose
+    captions hold the word in another sense, one of a change from baseline, one whose caption
+    holds the word inside another, and one of baseline characteristics whose header holds a
+    P and is no P header. In LaTeX, a float in the main text and one in the supplement, and
+    a float of outcomes."""
     filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6)))
 
     def caption(templates: tuple[str, ...], words: tuple[str, ...] = BASELINE_WORDS) -> str:
@@ -13087,6 +13098,27 @@ def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
         lines += [border, "", filler, ""]
         return found_line
 
+    def pair(lines: list[str]) -> tuple[int, str]:
+        """A table of baseline characteristics and one of outcomes, both with a P column and
+        nothing between them, their captions both before them or both after (round 1 of
+        #657): the line of the first's header, and its P header."""
+        front, p = draw(st.booleans()), p_value()
+        tables = [(headers(p), caption(BASELINE_CAPTIONS), True),
+                  (headers(p_value()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES), False)]
+        if draw(st.booleans()):
+            tables.reverse()
+        found_line = 0
+        for row, said, warned in tables:
+            if front:
+                lines += [f"Table: {said}", ""]
+            found_line = len(lines) + 1 if warned else found_line
+            lines += ["| " + " | ".join(row) + " |", "|" + "---|" * len(row),
+                      "| " + " | ".join(["half"] * len(row)) + " |", ""]
+            if not front:
+                lines += [f"Table: {said}", ""]
+        lines += [filler, ""]
+        return found_line, p
+
     p = p_value()
     line = pipe(main, headers(p), caption(BASELINE_CAPTIONS), "after")
     found_markdown.append(["manuscript/main.md", line, [p]])
@@ -13095,10 +13127,20 @@ def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     found_markdown.append(["manuscript/main.md", line, [p]])
     pipe(main, headers(p_value()), inside(), "after")
     pipe(main, headers(None), caption(BASELINE_CAPTIONS), "after")
+    pipe(main, headers(p_value()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES), "after")
+    line, p = pair(main)
+    found_markdown.append(["manuscript/main.md", line, [p]])
     supplement = ["# Supplementary tables", "", filler, ""]
     p = p_value()
-    line = pipe(supplement, headers(p),
-                f"Table S{draw(st.integers(1, 9))}. {caption(BASELINE_CAPTIONS)}", "before")
+    said, number = caption(BASELINE_CAPTIONS), draw(st.integers(1, 9))
+    legend = draw(st.sampled_from(BASELINE_LEGENDS)).format(n=number)
+    if not legend.rstrip().endswith((".", ":")):
+        # A space after the number opens a legend only before a capital.
+        if said[:1].isalpha():
+            said = said[0].upper() + said[1:]
+        else:
+            legend = BASELINE_LEGENDS[0].format(n=number)
+    line = pipe(supplement, headers(p), legend + said, "before")
     found_markdown.append(["manuscript/supplementary/S1_tables.md", line, [p]])
 
     def float_(lines: list[str], row: list[str], said: str, above: bool) -> int:
@@ -13123,7 +13165,8 @@ def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     line = float_(tex, headers(p), caption(BASELINE_CAPTIONS, BASELINE_LATEX_WORDS),
                   draw(st.booleans()))
     found_latex.append(["manuscript/main.tex", line, [p]])
-    float_(tex, headers(latex_p()), draw(st.sampled_from(BASELINE_OUTCOMES)), True)
+    float_(tex, headers(latex_p()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES + (
+        "Change from~{w} in the score",), BASELINE_LATEX_WORDS), draw(st.booleans()))
     tex.append("\\end{document}")
     supplement_tex = ["\\documentclass{article}", "\\begin{document}", filler]
     p = latex_p()

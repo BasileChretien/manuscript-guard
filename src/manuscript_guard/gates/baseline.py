@@ -11,17 +11,20 @@ large it is.
 
 So where the paper's `study_type` is one whose guidelines include CONSORT
 (`data/study_types.yaml`, read here, no design named in this file), a table whose caption
-holds the word "baseline" and whose header row has a P header (`P_HEADERS`) is a warning,
+names a table of baseline characteristics and whose header row has a P header (`P_HEADERS`)
+is a warning,
 `baseline-p-values`, at every stage. The tables read are those the analysis emits (`em.table`,
 and those the build writes from a model's card) and those the manuscript types, in the main
 text and in the supplement alike (`text.captioned`): Markdown pipe and grid tables, and a
 LaTeX manuscript's tables through its reader. Nothing stands the warning down.
 
-The word is read whole, case folded: "postbaseline" names no baseline, and nor does
-"from baseline", "since baseline", "baseline-adjusted" or "adjusted for baseline", which a
-table of a trial's outcomes is captioned with ("Change from baseline in HbA1c"). Another
-wording, "characteristics of participants at randomisation", is not read (DESIGN.md, Known
-gaps). `audit --design trial` reads a paper's tables by the same rule (`auditing/baseline`).
+A caption is read for what it names, strictly, case folded (`_NAMES`): "baseline" before
+characteristics, demographics or features, perhaps with an adjective or two between, or
+characteristics or demographics "at baseline" or "at randomisation". A table of outcomes says
+the word otherwise ("Change from baseline in HbA1c", "Primary outcome by baseline risk"), and
+names none; nor does "postbaseline". Any other wording of a table of baseline characteristics
+is missed (DESIGN.md, Known gaps). `audit --design trial` reads a paper's tables by the same
+rule (`auditing/baseline`).
 """
 
 from __future__ import annotations
@@ -55,16 +58,39 @@ _NOTE = re.compile(rf"[ \t]?(?:\^[^\s^]{{0,3}}\^?|[{re.escape(NOTE_MARKS)}]{{1,3
 #: The P in italics or in maths, as Markdown types it: `*P*`, `_p_`, `**P**`, `$p$`.
 _STYLED_P = re.compile(r"\A(?:(?P<mark>\*{1,2}|_{1,2})(?P<p>[Pp])(?P=mark)|\$(?P<math>[Pp])\$)")
 
-#: The word, whole: no letter or digit on either side.
-_BASELINE = re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.IGNORECASE)
-#: Where the word names the time a change is measured from, as a table of outcomes does, the
-#: word perhaps in italics or bold.
-_FROM_BASELINE = re.compile(
-    r"(?<![^\W_])(?:from|since)\s+[*_]{0,2}baseline(?![^\W_])"
-    r"|(?<![^\W_])baseline[*_]{0,2}[\s-]+adjusted"
-    r"|(?<![^\W_])adjusted\s+for\s+[*_]{0,2}baseline(?![^\W_])",
-    re.IGNORECASE,
-)
+#: The words a caption names a table of baseline characteristics in, and nothing else: "baseline"
+#: before one of `NAMED`, with at most `_BETWEEN` of `ADJECTIVES` or "and" between ("baseline
+#: demographic and clinical characteristics", CONSORT's own); or one of `NAMED_AT` with "at"
+#: and one of `AT` after it in the caption ("Characteristics of the participants at baseline").
+BASELINE = "baseline"
+NAMED = ("characteristics", "demographics", "features")
+ADJECTIVES = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+              "patients'", "participants'")  # fmt: skip
+NAMED_AT = ("characteristics", "demographics")
+AT = ("baseline", "randomisation", "randomization")
+_BETWEEN = 3
+#: Between two words: spaces, a comma, Markdown's emphasis marks, and LaTeX's tie, braces
+#: and a command that opens a group, "at \emph{baseline}".
+_GAP = r"(?:[\s,~{}*_]|\\[A-Za-z]+\{)+"
+#: A word whole: no letter or digit on either side.
+_START, _END = r"(?<![^\W_])", r"(?![^\W_])"
+
+
+def _one_of(words: tuple[str, ...]) -> str:
+    return "(?:" + "|".join(re.escape(word) for word in words) + ")"
+
+
+def _names(start: str = _START) -> re.Pattern[str]:
+    """The pattern of a caption that names a table of baseline characteristics, built from the
+    words above; `start` is what may not stand before its first word."""
+    before = (rf"{start}{BASELINE}{_END}"
+              rf"(?:{_GAP}(?:{_one_of(ADJECTIVES)}|and){_END}){{0,{_BETWEEN}}}"
+              rf"{_GAP}{_one_of(NAMED)}{_END}")  # fmt: skip
+    after = rf"{start}{_one_of(NAMED_AT)}{_END}.*?{_START}at{_GAP}{_one_of(AT)}{_END}"
+    return re.compile(f"{before}|{after}", re.IGNORECASE | re.DOTALL)
+
+
+_NAMES = _names()
 
 #: The documents a manuscript's tables are read in: the main text's, then the supplement's.
 _DOCUMENTS = (False, True)
@@ -97,13 +123,8 @@ def p_columns(headers: Iterable[str]) -> tuple[str, ...]:
 
 
 def names_baseline(caption: str | None) -> bool:
-    """Whether a caption holds the word "baseline", but for the time a change is measured
-    from."""
-    if not caption:
-        return False
-    measured = [(one.start(), one.end()) for one in _FROM_BASELINE.finditer(caption)]
-    return any(not any(start <= word.start() < end for start, end in measured)
-               for word in _BASELINE.finditer(caption))  # fmt: skip
+    """Whether a caption names a table of baseline characteristics (`_NAMES`)."""
+    return bool(caption) and _NAMES.search(caption) is not None
 
 
 def consort_designs() -> frozenset[str]:

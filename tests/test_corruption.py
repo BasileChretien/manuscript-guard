@@ -3646,6 +3646,97 @@ def test_what_is_no_trials_baseline_table_with_p_values_passes(
     assert _baseline_said(project) == []
 
 
+#: Captions of a trial's tables of outcomes that hold the word and name no table of baseline
+#: characteristics (round 1 of #657).
+_OUTCOMES_NAMING_BASELINE = (
+    "Primary outcome at baseline and 12 weeks",
+    "Primary outcome by baseline risk",
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline score",
+    "Outcomes adjusting for baseline values",
+    "Post-baseline adverse events",
+)
+
+
+@pytest.mark.parametrize("caption", _OUTCOMES_NAMING_BASELINE)
+def test_a_trials_table_of_outcomes_whose_caption_names_baseline_passes(
+    project: Path, caption: str
+) -> None:
+    _paper_field(project, "study_type", "trial")
+    _emit_baseline(project, caption, "P")
+    main = main_md(project)
+    with main.open("a", encoding="utf-8") as typed:
+        typed.write(f"\n\n| Outcome | Drug | Placebo | P |\n|---|---|---|---|\n"
+                    f"| Death | few | more | low |\n\nTable: {caption}\n")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_latex_table_of_a_change_from_baseline_passes(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    entry = _as_latex(project)
+    entry.write_text(entry.read_text(encoding="utf-8").replace("\\end{document}", (
+        "\\begin{table}\n\\caption{Change from~baseline in the score}\n\\begin{tabular}{llll}\n"
+        "Outcome & Drug & Placebo & P \\\\\nScore & less & more & low \\\\\n\\end{tabular}\n"
+        "\\end{table}\n\\end{document}")), encoding="utf-8")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -> None:
+    """"Baseline" before characteristics, demographics or features, an adjective or two
+    between; or characteristics or demographics, then "at baseline" or "at randomisation"."""
+    from manuscript_guard.gates.baseline import names_baseline
+
+    named = ("Baseline demographic and clinical characteristics of each group",
+             "Baseline characteristics and change from baseline",
+             "Table 1. Baseline characteristics of the randomised participants",
+             "Characteristics of the participants at baseline",
+             "Demographics at randomization", "Baseline patient features",
+             "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
+             "Characteristics at~baseline", "Characteristics at \\emph{baseline}")  # fmt: skip
+    not_named = (*_OUTCOMES_NAMING_BASELINE, "Change from~baseline in the score",
+                 "Postbaseline characteristics", "Baseline", "Outcomes at 12 weeks",
+                 "Participants at baseline, by group", "Change from baseline in characteristics")
+    assert [caption for caption in named if not names_baseline(caption)] == []
+    assert [caption for caption in not_named if names_baseline(caption)] == []
+
+
+_PIPE_P = "| A | Drug | P value |\n|---|---|---|\n| x | y | z |\n"
+
+
+def test_pandoc_s_captions_go_to_the_tables_as_pandoc_gives_them() -> None:
+    """Pandoc 3.9 reads a table's caption before it where no table took that one, else the
+    one after it: in either order with nothing between, each table its own (round 1 of
+    #657)."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    def captions(text: str) -> list[str]:
+        return [table.caption for table in markdown_captioned(text)]
+
+    assert captions(f"Table: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes at 12 "
+                    f"weeks\n\n{_PIPE_P}") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes "
+                    "at 12 weeks\n") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\nSome prose.\n\n{_PIPE_P}") == [
+        "Baseline characteristics", ""]
+
+
+@pytest.mark.parametrize(
+    ("legend", "caption"),
+    [("Table 1 Baseline characteristics", "Table 1 Baseline characteristics"),
+     ("**Table 1** Baseline characteristics", "**Table 1** Baseline characteristics"),
+     ("Table 1. Baseline characteristics", "Table 1. Baseline characteristics"),
+     ("Table 1 shows the baseline characteristics.", "")],
+)  # fmt: skip
+def test_a_legend_typed_with_no_stop_after_its_number_is_a_caption(
+    legend: str, caption: str
+) -> None:
+    """BMC's and Springer's "Table 1 Baseline characteristics": a capital after the number
+    opens a legend as a stop does; a small letter goes on a sentence."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    (table,) = markdown_captioned(f"Some prose.\n\n{legend}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == caption
+
+
 def test_the_designs_that_take_consort_are_read_from_the_data_file() -> None:
     from manuscript_guard.gates.baseline import consort_designs
     from manuscript_guard.gates.design import study_types

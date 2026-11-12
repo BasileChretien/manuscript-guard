@@ -104,10 +104,13 @@ manuscript-guard audit paper.docx --design trial
 
 Each table the audit reads as rows of cells is read with its caption: a .docx's table, a
 Markdown pipe or grid table, and a LaTeX `tabular` with its float's caption. One whose caption
-holds the word "baseline" (not "from baseline", "since baseline", "baseline-adjusted" or
-"adjusted for baseline", which caption a table of outcomes) and whose header row has a column
-headed P, P value or P-value, either case and perhaps with a note mark, is a warning,
-`baseline-p-values`, which `--strict` does not count. The report counts the tables read and
+names a table of baseline characteristics ("Baseline characteristics", "baseline demographic
+and clinical characteristics", "Characteristics of the participants at randomisation") and
+whose header row has a column headed P, P value or P-value, either case and perhaps with a
+note mark, is a warning,
+`baseline-p-values`, which `--strict` does not count. A caption that says "baseline" in another
+sense, "Change from baseline" or "Primary outcome by baseline risk", names a table of
+outcomes, and is not read as one of baseline characteristics. The report counts the tables read and
 those captioned as of baseline characteristics. A PDF's tables are lines of text, not cells,
 and are not read for this; the report says so.
 

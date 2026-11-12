@@ -169,6 +169,7 @@ from generated import (
     printings,
     profile_tables,
     proofs,
+    prose_share_papers,
     published_texts,
     quotations,
     quoted_references,
@@ -6627,6 +6628,99 @@ def _an_atom_closed_up_is_not_its_share(patch: pytest.MonkeyPatch) -> None:
     real = abstract._off_its_counts
     patch.setattr(abstract, "_off_its_counts", lambda atom, parts, written: (
         (None, parts) if len(parts) != 1 else real(atom, parts, written)))  # fmt: skip
+
+
+def _written_shares_found(text: str, suffix: str) -> list[list[Any]]:
+    """Where `audit` says a paper's share is off its counts, as `prose_share_papers` says it:
+    each finding's line, and "Abstract", the heading its message names, or "table"."""
+    from manuscript_guard.audit import audit
+
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        found = []
+        for said in audit([paper], None).disagreements:
+            named = re.match(r"in (?:the )?(?P<title>[^,]+), n \(%\)", said.message)
+            found.append([said.line, "table" if named is None else named["title"]])
+        return sorted(found)
+
+
+@holds(30, prose_share_papers())
+def test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it(
+    drawn: tuple[str, list, str, list],
+) -> None:
+    """Basile, 2026-11-13, after #664: a share a sentence writes beside both its counts, "12
+    of 40 patients (50%)", in any section and in a footnote, is held to them as the
+    Abstract's is, and one off them is said once, by the heading it is under, in each shape
+    the reader takes; one they give says nothing, nor does a season, a date, a share over
+    100, a range written with a slash, "Grade 3/4 neutropenia (12%)" (round 1 of #668), or a
+    share the reader does not take. A table's share is said once, as the table
+    reader says it; and the Abstract's is the Abstract's, unless no Results heading lets the
+    Abstract against Results compare, when it is said as any other section's. In Markdown
+    and in LaTeX."""
+    markdown, in_markdown, latex, in_latex = drawn
+    for text, expected, suffix in ((markdown, in_markdown, ".md"), (latex, in_latex, ".tex")):
+        assert _written_shares_found(text, suffix) == expected, text
+    alone = markdown.replace("## Results", "## Data")
+    assert _written_shares_found(alone, ".md") == sorted(
+        [line, "Data" if where == "Results" else where] for line, where in in_markdown), alone
+
+
+def _a_share_in_a_sentence_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """As at #664: only the Abstract's shares were held to their counts."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: [])
+
+
+def _a_share_in_a_table_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        report, [dataclasses.replace(source, table_lines=frozenset()) for source in sources],
+        pieces))  # fmt: skip
+
+
+def _compared_as(patch: pytest.MonkeyPatch, compared: bool) -> None:
+    """`_written_shares` told the Abstract against Results compared, or did not, whatever
+    it did."""
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        dataclasses.replace(report, abstract=dataclasses.replace(report.abstract,
+                                                                 compared=compared)),
+        sources, pieces))  # fmt: skip
+
+
+def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    _compared_as(patch, False)
+
+
+def _the_abstract_s_share_is_never_read_as_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    _compared_as(patch, True)
+
+
+def _a_range_after_its_word_is_a_share(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #668: "Grade 1/3 trials (40%)" was 1 of 3, not 40."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_named_range", lambda text, match: False)
+
+
+def _two_numbers_in_a_row_are_a_share(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_consecutive", lambda text, match: False)
+
+
+def _a_share_names_no_heading(patch: pytest.MonkeyPatch) -> None:
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        report, [dataclasses.replace(source, part=None) for source in sources], pieces))
 
 
 def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
@@ -25136,6 +25230,42 @@ BROKEN = {
     "an Abstract's year and the next are a count and its denominator": (
         _a_year_and_the_next_are_a_share,
         test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a share in a sentence is not held to its counts": (
+        _a_share_in_a_sentence_is_not_read,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a table's share is read again as a sentence's": (
+        _a_share_in_a_table_is_read_as_written,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "the Abstract's share is read again as a sentence's": (
+        _the_abstract_s_share_is_read_again,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "the Abstract's share is not read as a sentence's where the Abstract is not compared": (
+        _the_abstract_s_share_is_never_read_as_a_section_s,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's share off its counts names no heading": (
+        _a_share_names_no_heading,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a slash gives a sentence's share no denominator": (
+        _a_slash_gives_no_denominator,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's range after a grade or a phase is a share": (
+        _a_range_after_its_word_is_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's two numbers in a row with a slash are a share": (
+        _two_numbers_in_a_row_are_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's count over its denominator is a share": (
+        _a_count_over_its_denominator_is_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
     ),
     "an Abstract's share closed up against its counts is not its share": (
         _an_atom_closed_up_is_not_its_share,

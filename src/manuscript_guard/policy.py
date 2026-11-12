@@ -267,6 +267,11 @@ BINDS_AT = {
     "checklist-item-missing": INTERNAL_REVIEW,
     "checklist-item-unanswered": INTERNAL_REVIEW,
     "checklist-non-reason": INTERNAL_REVIEW,
+    # An answer with no quote of the sentence that addresses it, or one not under the heading
+    # it names: G5 notes it while drafting, warns from internal review and fails it at
+    # submission (`gates/reporting.py` reads the stage; Basile, 2026-11-12).
+    "checklist-quote-missing": SUBMISSION,
+    "checklist-quote-not-found": SUBMISSION,
     "methods-drift": INTERNAL_REVIEW,
     # The same reading kept pair by pair: a step and the text pointing at it.
     "method-pair-unread": INTERNAL_REVIEW,

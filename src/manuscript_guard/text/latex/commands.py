@@ -410,8 +410,8 @@ CITEPROC = frozenset({"citeproc", "citeproctext"})
 #: nothing (2026-10-23).
 REFERENCE_MACHINERY = frozenset({"expandafter", "csname"})
 
-#: Why a command is refused, by the command. Past a refusal the rest of the file is read as
-#: prose, so that nothing the reader did not understand is hidden.
+#: Why a command is refused, by the command. Past a refusal nothing more of the file is read,
+#: so that nothing the reader did not understand becomes a finding (2026-11-11).
 _CATEGORY = "it changes how characters are read"
 #: The commands refused as `_CATEGORY` says.
 CATEGORY = frozenset({"catcode", "csname", "expandafter", "uccode", "lccode", "mathcode",

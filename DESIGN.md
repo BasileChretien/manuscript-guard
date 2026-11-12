@@ -284,7 +284,7 @@ All deterministic, all runnable in CI without Claude.
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
-| G5 | Reporting checklist | a checklist item is unaddressed |
+| G5 | Reporting checklist | a checklist item is unaddressed, or its quote is not under the heading it names |
 | G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
@@ -1538,17 +1538,41 @@ and `authorNP` forms, `\nocitemeta`, and chicago's `\citeN`, `\citeANP`, `\short
 citation's note (round 1 of #442: a rule that read only a name's start and end let
 `\shortciteNP` and `\mycitep` pass unread, their keys hidden from G7).
 
+A command the reader reads that the preamble defines again, in the entry file, a file input
+from the preamble or the author's package, `\def\eqref#1{...}`, `\renewcommand\section{...}`,
+`\def\addcontentsline#1#2#3{}`, is read where it is defined, as a definition of delimited
+parameters is, and each use refused where it prints, since what it prints there is the
+author's definition and not what the reader reads it as; the tree tells every file of it.
+Written in the body, the definition is refused where it stands, as before (Basile, 2026-11-11,
+"Read more, and be honest", after ICLR's `math_commands.tex`, `iclr2021_conference.sty` and
+arxiv.sty were refused at the definition in 3 of 20 preprints of the corpus run, and the rest
+of each file read as typed). An `\expandafter` in the preamble, outside any definition's body,
+that only redefines a command, Scientific WorkPlace's
+`\expandafter\def\expandafter\normalsize\expandafter{\normalsize ...}`, is passed over, with
+the `\expandafter`s before the command's name and before its body, and the `\def` read as any
+is; one that builds the name, `\expandafter\def\csname x\endcsname`, is refused. Two
+redefinitions are read as before, their uses not refused (Basile, 2026-11-12, "Yes, read
+them"): a sectioning command, `\part` to `\subparagraph`, whose whole body is one
+`\@startsection{<its own name>}{..}{..}{..}{..}{..}`, with nothing else but spaces and
+comments, no parameter and `@` a letter, a restyle of the heading that is read as the
+heading it was (arxiv.sty, style.sty); and a cross-reference of the reader's, but a range,
+defined with one parameter as plain words, a tie or a space and one `\ref{#1}` or
+`\eqref{#1}` of another name, in parentheses or not, read as the cross-reference it is
+(ICLR's `math_commands.tex`). The words it prints beside the number are read once, at the
+definition (Known gaps).
+
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
-  but `\abstract`, which the reader read as an unknown command before it opened a section and
+- a definition in the body, of any command the reader reads, `\mg` among them, but
+  `\abstract`, which the reader read as an unknown command before it opened a section and
   which an author restyles, pandoc's `\citeproc` and `\citeproctext`, which its template
   defines, `\providecommand` of one, and a package's command where no package that gives it
   is loaded (above);
-- a use of a command defined with delimited parameters, where it prints (above), and a use
-  that what its parameter text holds does not follow;
+- a use, where it prints, of a command the preamble defines again or defines with delimited
+  parameters (above), and a use that what its parameter text holds does not follow;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
-  active, but in a reference list's header (above);
+  active, but in a reference list's header and a preamble's `\expandafter` that only
+  redefines (above);
 - in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
   branches are its arguments and are both read, and those of a reference list's header.
 
@@ -1563,12 +1587,27 @@ Refused:
   reads the same in each encoding inputenc knows. A file of ASCII that sets one is accepted
   and the tree refuses it there where another of its files is not ASCII, since TeX reads
   every file of the tree in that encoding (2026-10-23: a paper's `latin9` was refused in a
-  file of ASCII).
+  file of ASCII). A project's files are read as UTF-8, as the submission folder writes them,
+  so this holds for `check` and the build. `audit` reads the files of a paper whose tree,
+  the entry and the files it reaches, declares one of latin1, latin9, cp1252 or ansinew where
+  the reader reads it, and no other that decodes otherwise, in that encoding; a tree that
+  declares none is UTF-8, whatever another file of the folder declares (round 2 of #637), so that the gates read the characters TeX prints, and
+  writes each declaration as UTF-8's at the same length, `[utf8  ]`, every offset kept
+  (`text/latex/encodings.py`; Basile, 2026-11-11). Any other encoding is refused there as
+  here.
 
 **Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
 does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
-closed twice. Past a refusal the rest of the file is read as prose, so that nothing the reader did
-not understand is hidden.
+closed twice. Past a refusal nothing more of the file is read: the rest is blanked, its line
+breaks kept, and nothing the reader found past it is kept, a heading, a citation, a binding or
+an input, which a construct left open, refused where it opens, would otherwise keep (round 1
+of #637); so no comment or source the reader did not understand becomes a finding, and
+`audit` says the file was not read past that line, in its notes and in its summary's line for
+G6 and G14 (Basile, 2026-11-11: read as prose, a template's commented-out text was G6's
+findings, and the summary said "nothing reported"). `bind` still names each number typed
+past it, and offers none. A refusal the tree makes, an `\input` it cannot follow, a file that
+inputs itself or an encoding refused for another file, leaves the file read past it, and
+`audit` and BUILD's hint say so (round 1 of #637).
 
 ### Bindings
 
@@ -1780,7 +1819,7 @@ The result is compiled and packed by the code above, and checked three times:
 
 - `babel` with a language whose shorthands make a character active is not refused yet (step
   2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
-- Only the first refusal of a file is reported: past it the file is read as prose, and the
+- Only the first refusal of a file is reported: past it nothing of the file is read, and the
   next is found once the first is put right.
 - A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
   the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
@@ -1802,8 +1841,9 @@ The result is compiled and packed by the code above, and checked three times:
   (round 1 of #385).
 - A command whose body uses one defined with delimited parameters, or one let to it, is not
   refused where it is used, though LaTeX prints that use there: only the delimited
-  command's own uses are. One defined again without delimited parameters is still
-  refused where it prints (2026-10-23).
+  command's own uses are. The same holds of a command the preamble defines again: a use of
+  it inside another definition's body is not refused where that one prints (2026-10-23;
+  2026-11-11).
 - A note let to the endnotes package's, `\let\footnote=\endnote`, is read where it is
   typed, under the heading in force there, though LaTeX prints the notes together at the
   end of the document (2026-10-23).
@@ -1994,8 +2034,11 @@ The result is compiled and packed by the code above, and checked three times:
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
   in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
   step 5).
-- `sync-bib` refuses a LaTeX manuscript the reader refuses anywhere, since the keys after the
-  refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
+- `sync-bib` and `lookup` refuse a LaTeX manuscript the reader refuses anywhere, since the
+  keys after the refusal are not read (round 1 of step 5; `lookup` since round 1 of #626,
+  where it looked up the keys before the refusal). Either refuses on a refusal after the last
+  citation too, where no key is lost, and on one in the supplement's document, which hides
+  only the supplement's keys after it. Accepted.
 - `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
   `\bibliography{}` names elsewhere (step 5).
 - G4 counts an inline formula as one word and a displayed one as none; Markdown's count reads
@@ -2044,8 +2087,10 @@ The result is compiled and packed by the code above, and checked three times:
   body, `24 pt` with a space, `24PT` and `24truept` are numbers. A length in points a
   definition prints as text where it is used, `\newcommand{\font}{12pt}`, passes as layout
   (2026-10-23; round 1 of #443).
-- Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
-  fails on the refusal already (round 1 of step 7).
+- Past a refusal G14 and G6 read nothing more of a LaTeX file, its comments no more than its
+  prose, and what the file says there is not checked; `check` fails on the refusal already,
+  and `audit` says the file was not read past that line (round 1 of step 7; Basile,
+  2026-11-11).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
   which is then not read (round 1 of step 7).
 - G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
@@ -2053,8 +2098,8 @@ The result is compiled and packed by the code above, and checked three times:
   read as the reader reads it, without a definition's body, so a package or a definition
   named for a note does not; nor do `\author`, `\date` or a comment in the preamble, which
   the reader blanks, though Markdown's front matter is read as typed. Past `\end{document}`
-  nothing is read. A phrase G6 reports is not read in a comment, but past a refusal, where
-  the file is read as typed (rounds 1 and 2 of step 7b).
+  nothing is read, nor past a refusal. A phrase G6 reports is not read in a comment (rounds 1
+  and 2 of step 7b).
 - In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
   a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
   (round 1 of step 7b).
@@ -2068,8 +2113,8 @@ The result is compiled and packed by the code above, and checked three times:
   line (round 4).
 - G8 reads a LaTeX document's printed view, so a supplementary file nothing inputs reports
   nothing, where Markdown counts every supplementary file; G0 warns of the file
-  (`tex-not-input`). Past a refusal G8's recomputation reads the file as typed, a comment's
-  P value with it (round 1 of step 8).
+  (`tex-not-input`). Past a refusal G8's recomputation reads nothing of the file (round 1 of
+  step 8; 2026-11-11).
 - G8 keeps a line break inside a `\mg`, between the command and its brace, as a line of the
   view, beside the value it puts in: before it where nothing but spaces or a comment follows
   on its line, else after it. A binding split so and alone on its line, or two in a row, still
@@ -2122,6 +2167,11 @@ The result is compiled and packed by the code above, and checked three times:
 - The reader does not refuse a bare `^` or `_` outside maths, which LaTeX stops on: `check`
   reads the paper, and the build names the error at its line (step 9's agreement test passes
   such a file over).
+- A typed table inside maths is read as prose only where it is one of the typed tables
+  (`tabular`, `tabular*`, `tabularx`, `tabulary`, `longtable`; `_sets_text` in
+  `text/latex/mask.py`). A `minipage`, a `tblr`, a `NiceTabular` or an `xltabular` inside an
+  equation is read as maths, so a cell's `$x$` there is refused as "maths is opened inside
+  maths", though TeX sets the cell as text (#620). Accepted.
 - MiKTeX does not honour `openin_any`: under it a manuscript can `\input` a file outside the
   copy, by a path that climbs out of it, and print it. TeX Live refuses that path. A manuscript
   that names a file of its own outside its folders, `\includegraphics{../figures/x}` typed by
@@ -4703,6 +4753,49 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+### An answer quotes the sentence that addresses it
+
+`where: Methods` satisfied every item of every checklist, since every paper has a Methods. In
+the IICARus randomised trial (Hair, Macleod and Sena, Res Integr Peer Rev 2019;4:12,
+doi:10.1186/s41073-019-0069-3), asking authors to complete an ARRIVE checklist changed
+nothing: of 1,689 PLOS ONE manuscripts randomised, none of those accepted for publication
+(762) met the checklist in full, in either arm. The checklist file is not the reporting; the
+sentence is. SciScore finds such sentences with a classifier.
+Here a person, or an agent the author checks, names the sentence in `quote:`, and G5 checks
+that it is there (`gates/checklist_quotes.py`).
+
+- **Where.** Under each heading `where` names, matched as G5 already matched one (a heading
+  in `where` or `where` in a heading, whatever case), that heading's section with its
+  subsections, in the main text or the supplement, each read as the build prints it: its
+  files joined in `printed_order`, `main.md` first and the rest by name, so that a section
+  carries on into the next file (round 1 of #651). Where `where` names a table or a figure
+  ("Table 1", "Figure S2", "eTable 1", read whole by G2's pointer pattern), in that display's
+  caption too: a legend typed as a paragraph that opens with its pointer, and the caption of
+  a table the analysis emits with one, placed once by its binding in a document whose tables
+  the build numbers (`display_numbers`), under that number. A `where` that names a display
+  with one of these captions is a place, and `checklist-location-unknown` is not said of it;
+  a table emitted with no caption, placed twice, or in a document that also places a table
+  by hand or sends its tables as files has none, and is still said to be no heading.
+- **How.** As a review finding's quote is found in the manuscript (`anchoring.py`), which is
+  as G7 finds a passage in a work's source (`words_in`): typography, white space and case
+  folded, whole words, pieces in order around `...`, Markdown's marks of emphasis and code
+  out of both sides. No second folding was written. Each section is read twice, as written
+  and as the build prints it (each value binding its display, an anchor nothing, through
+  `figure_alt.printed_alt`), and a quote matches one reading whole: an author copies either
+  from the source or from the .docx, and a quote half of each is copied from neither.
+  Comments and front matter print nothing and are read as nothing. A quote holds four words
+  or more (`QUOTE_WORDS`), or it is no quote.
+- **Strictness (Basile, 2026-11-12).** An answered item with no quote, a quote under four
+  words (`checklist-quote-missing`), and a quote not under its heading
+  (`checklist-quote-not-found`) are notes while drafting, warnings from internal review and
+  failures at submission. The not-found message names the headings searched, the quote's
+  first words and, where the words stand under another heading, that one, since `where` is
+  then wrong. An item excluded with `not_applicable` quotes nothing. `checklist` writes
+  `quote: ''` beside each new item's `where` and keeps what is written.
+- **LaTeX.** The two documents as they print in Markdown (`printed_document`, the quoting
+  view), whose headings G5 already read; their captions are not read for a `where` that
+  names a display (Known gaps).
+
 **What the Data availability statement says is the journal's rule, not the tool's.** G4 found
 the statement's heading and read nothing under it. Publishers differ on what it must hold:
 Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
@@ -5050,12 +5143,30 @@ letters: the short form closing a bracket after a semicolon or a comma, its long
 before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
 form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
-form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
-definition where an equals sign or a number follows the short form, or a colon, a comma
-or an opening bracket and a number, past spaces and no-break spaces: "higher in older
-people – OR, 1.52", "– OR: 1.52" and "– OR (95% CI 1.1–2.0) 1.52" give the odds ratio's
-value, and "Basic Payment Scheme – BPS, which pays farmers" defines. A bracket is read
-otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
+form before the dash, "Basic Payment Scheme – BPS". A dash defines only where the short
+form ends its clause: where a stop, a semicolon, a closing bracket of either kind, a table
+cell's bar, a comma or a colon and a word, a closing spaced dash or a hard line break
+follow it, or the end of its paragraph or of the text does, past spaces and no-break
+spaces, past a closing quote or emphasis mark, "**… – BPS**.", and past a citation, which
+is no more words of the sentence: a bracket the mask has blanked, `[@key]`, one of
+numbers, commas and dashes, "[12]", a superscript number, "^3^", and LaTeX's
+`~\cite{key}`, which its view blanks. A list item's line ends the clause where the line
+ends, so a list written long form first, "- Basic Payment Scheme – BPS" over "- Common
+Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. A hard
+line break is a backslash or two spaces before the line's end, as pandoc reads them, and as
+LaTeX's view leaves `\\`. "Basic Payment Scheme – BPS, which pays farmers", "… – BPS:
+farmers received it", "… – BPS [@ec2013]." and "… – BPS – replaced the SPS" define. A
+statistic after a dash goes on past its short form, and defines nothing, whatever follows:
+"higher in older people – OR 1.52", "– OR: 1.52", "– OR [95% CI 1.1–2.0] 1.52", "– OR ≈
+1.52" and "– OR of 1.52" give the odds ratio's value, and "– RDP (2014–2020)" is not read.
+This replaced, on the author's decision of 2026-11-12, the list of statistic shapes #623
+had gathered, which each new shape got past. A single line break inside a paragraph,
+hard-wrapped text, is read as a space: "– OR" with "1.52" on the next line defines nothing,
+and "– BPS" with "which pays" on the next line has a word after it and no comma, so defines
+nothing. A stop before a digit is a decimal point, "– OR .52", and ends nothing. The
+definitions this misses, and the statistics it still reads as one, are in Known gaps. A
+bracket is read otherwise, as before: "the signal detection
+ratio (SDR, 2.4)" defines. A hyphen with
 no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
@@ -10078,8 +10189,8 @@ contradiction read of a header n (`over-header-n`); fewer is missing data. Over 
 than (k + 1) / 2 for k categories, rounded down (`within_rounding`), is no contradiction:
 rounding each of k weighted counts to a whole number moves it by half a count at most, and
 rounding the weighted n once moves it by half a count too, so the printed counts can add up
-to (k + 1) / 2 over the printed n, and both are whole. Three counts of 11.5 print 36
-against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
+to (k + 1) / 2 over the printed n, and both are whole. Rounded half to even, as R and
+Python round, three counts of 11.5 print 36 against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
 (`over_header_n_rounding`). Basile, 2026-11-11, after a 22-country survey in the corpus of
 52 real preprints whose weighted, rounded tables gave 24 failures, each one to three over.
 
@@ -10622,6 +10733,17 @@ read nothing is not run, whatever note its section prints, and a section that li
 something for a reader, a rule to check by hand or the references by an author, is to look
 at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
 `tests/test_report_pdf.py`.
+
+**A report to move around in** (the author, 2026-11-12: "make the pdf really interactive",
+once the page showed it). Under the summary, *In this report* lists each note (what was not
+read, how the headings were read), each paper's words with each kind of finding and its
+count under them, and each other section, each line a link to where it stands with the page
+it prints; each paper's words have a place of their own, as two under one took the first's
+(round 1 of #646). Each kind's heading links back to the contents, and the title over every
+page after the first links back to the summary. The pages a contents gives are only known once the
+report is drawn, so it is drawn twice: the numbers stand in a column of their own width, so
+the second drawing is laid out as the first, and the test reads each printed page against
+the bookmark of the kind it names.
 
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
@@ -16061,6 +16183,63 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
+- **A LaTeX paper is read only to its first use of a command its template defines again,
+  but in two exact forms.** The reader accepts a known command's redefinition in the
+  preamble, a file input from it or the author's package, and refuses each use where it
+  prints (Basile, 2026-11-11). Two forms are read as before (Basile, 2026-11-12, "Yes, read
+  them"): a sectioning command whose whole body is LaTeX's own
+  `\@startsection{<its name>}` and five more groups, with no parameter and `@` a letter
+  where it is written, arxiv.sty's and style.sty's `\renewcommand\section`; and a
+  cross-reference of one parameter, `\eqref` or another the reader reads as one, whose body
+  is plain words, a tie or a space, and one `\ref{#1}` or `\eqref{#1}` of another name,
+  in parentheses or not, ICLR's `\def\eqref#1{equation~\ref{#1}}`. The words such a body
+  prints beside the number, "equation", are not read where it is used, as no macro's body
+  is (above). Anything else, a font switch round `\@startsection`, a parameter, another
+  section's name, a second command in the body, is refused at its first use, and nothing of
+  the file past it is read, nor a file it inputs past there, which `audit` names as not
+  followed rather than as input by no file; `audit` says so.
+  Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
+  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
+  - A `\subimport{chapters/}{intro}` past a stop is followed without its folder, so what
+    chapters/intro.tex inputs, `\input{methods}`, is looked for at the manuscript's root,
+    and given the advice for a file nothing inputs (check of #637). Accepted.
+  - A file input past the stops of two trees is named with the first stopped tree only,
+    where each that inputs it could be (check of #637). Accepted.
+  - A file reached past a stop that stops in turn has the inputs past its own stop left
+    unfollowed, and they are given the advice for a file nothing inputs (check of #637).
+    Accepted.
+- **A part placed by `\subfile` that defines a known command again in its own preamble has
+  its uses refused.** The part's reading reads its own preamble, so a part that repeats
+  main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
+  is not read, though the document that places it passes over that preamble and prints the
+  part under main's definitions (round 1 of #637). Main refused it at the definition instead.
+  Accepted.
+- **`audit` reads a LaTeX paper's tree in one declared encoding, and writes its declarations
+  as UTF-8's.** A tree, the entry and the files it reaches, that declares latin1, latin9,
+  cp1252 or ansinew where the reader reads it is read in it, each file of it, and a file that
+  names none, in a tree that declares one, is read in it as TeX reads it; a tree that declares
+  none is UTF-8 beside a stray draft that declares one (round 2 of #637); a tree that declares
+  two encodings that decode otherwise, or another encoding, is read as UTF-8 and the
+  declaration refused where its file is not ASCII. A
+  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A project's files
+  are UTF-8 only, as the build writes them.
+  Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`
+  and `tests/test_audit_reading_said.py::test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding`.
+  - Past a stop the file is read again with no state, as if it began there, so text TeX
+    does not run is read as live: a refused `\begin{minted}` that holds a declaration, an
+    `\iffalse` with no `\fi`, a placed part whose preamble stops. A declaration there
+    counts, so a UTF-8 tree that declares nothing is read as Latin-1 where a refused
+    `minted` holds `[latin1]`, and an input there is named as not followed (check of #637).
+    Accepted.
+  - A declaration past a stop counts even where the preamble declares another: `[latin1]`
+    in the preamble and `\inputencoding{utf8}` in the body past a stop are two, and the file
+    is read as UTF-8, where TeX reads its preamble as Latin-1 (check of #637). Accepted.
+- **A file two audited trees input, in two encodings, is read once, as the first decodes it.**
+  `audit` reads a file the trees of two entries input once, so where the two trees declare
+  encodings that decode otherwise, the report quotes it as the first tree decoded it, which
+  the second's reader would see as mojibake (round 3 of #637). TeX fails on one of the two
+  trees, so the folder is not consistent to begin with. Accepted.
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
   looked at, or that a `ok` was not a row of clicks. The record is a person's word written down
@@ -16514,6 +16693,18 @@ been sorted yet.
     `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`,
     `tests/test_corruption.py::test_a_p_value_under_one_comparator_in_two_forms_passes` and
     `tests/test_corruption.py::test_a_p_value_under_another_comparator_or_bound_fails`.
+  - A bound behind a comparator is compared exactly, and a number without one within its
+    rounding, but no test tells the two apart: "<0.0012" declared the same as "<0.001" fails
+    and would pass if bounds were compared within a rounding, and no case holds it. Nor
+    does a test hold that "<=" and "≤" are one comparator (`_COMPARATOR`). Accepted.
+  - The finding's hint says two displays "may differ by a leading zero, trailing zeros or a
+    rounding, and by nothing else, a comparator and its bound included", which can be read
+    as letting a bound be rounded; a bound may differ in form only. Accepted.
+  - `shown_in` reads "<10⁻⁶" as 10 with the unit "⁻⁶", as a superscript is an exponent
+    only after "× 10": a GWAS bound typed so, declared the same as "<1e-6", fails as
+    another unit, where "<1 × 10⁻⁶" passes. Accepted.
+  - `_same_form` is held by the cases of `tests/test_corruption.py` only, with no
+    generated input and no BROKEN case. Accepted.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
@@ -18088,6 +18279,18 @@ Open, recorded as each change landed:
   reports a number written in the Methods where it could have let it through, and G15
   reads no model's name. `methods-not-found` is said only where the project has analysis
   code, since a case report or a narrative review has no Methods.
+  - A subsection titled "Method", "Methodology" or "Materials and method" alone under
+    "Results and discussion" is still a Methods to `methods_sections`, so to G4, G7, G8, G9
+    and the audit: `NOT_METHODS_SECTIONS` rules out only a title that is a Results-type
+    name and nothing more, "Results" or "3. Discussion", and "Results and discussion" is
+    not one. Under "Results" such a subsection is no Methods (round 1 of #624). Accepted.
+  - The audit looks for an Abstract's identifier among the words of the Methods and the
+    Results stripped of stops, brackets, emphasis, quotes, a possessive and a colon
+    (`_words` in `auditing/abstract.py`, #624). The generated papers print it with a stop,
+    brackets or a comma only, and no BROKEN case strips one shape alone, so "*rs75015950*",
+    "rs75015950's" and "chr15:1234" are held only by the cases of
+    `tests/test_audit.py::test_an_identifier_is_found_in_emphasis_quotes_a_possessive_or_before_a_colon`.
+    Accepted.
 - **A body under an abstract heading of a higher level is the abstract's.** With
   `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
   finds none of the required sections, and the word count has the whole body as abstract,
@@ -20422,6 +20625,16 @@ Open, recorded as each change landed:
   leaves the claim beside it vague. Pinned by
   `tests/test_writing.py::test_a_place_and_a_year_in_brackets_are_taken_for_a_citation`
   and `tests/test_writing.py::test_a_range_in_brackets_is_taken_for_a_numbered_citation`.
+  - An organisation of two words and a year, "(Statistics Canada, 2022)" or "(Ministry of
+    Health, 2020)", "of" not counted, is no citation, so a claim beside it is reported
+    vague, as before #621. Two words were let go so that no work reads two ways (round 1
+    of #621). Accepted.
+  - The short months are looked for among every word of the bracket, so a surname that is
+    one, "(Jun and Smith, 2019)", "(Smith and Mar, 2019)", makes it no citation, and the
+    claim beside it is reported vague. Accepted.
+  - "(Dec. 2019)" is no citation because its stop matches no name, not because of the
+    short months: it never reaches `_SHORT_MONTHS`, so it holds nothing of that list.
+    Accepted.
 - **A label is read only beside its binding, and only what is written.** A level or a
   spread's label written in another sentence, or before another binding of the sentence,
   is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A
@@ -20957,8 +21170,49 @@ Open, recorded as each change landed:
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work. Accepted.
-- **A completed checklist proves an item was answered, not answered well.** `where: Methods`
-  is checked against the manuscript's headings and nothing more. Accepted.
+- **A completed checklist proves the words are there, not that they are adequate.** An
+  item's `quote:` is held to the manuscript's words under the heading `where` names; whether
+  the sentence does what the item asks is the author's judgement and the reporting-guideline
+  reader's, not G5's. A part of a sentence of four words or more is a quote, so "the
+  denominator is unknown" answers an item on limitations as well as a paragraph would.
+  Accepted.
+- **One sentence may be quoted for two items.** Nothing holds a quote to one item: a
+  sentence that gives the period and the selection of the records answers two items, and
+  one that gives neither can be quoted for both as easily.
+  Pinned by `tests/test_compliance.py::test_one_sentence_may_be_quoted_for_two_items`.
+- **`where` names a heading by containment, so "Methods" names "Supplementary methods".** As
+  G5 has matched `where` to a heading from the start, a heading in `where` or `where` in a
+  heading, whatever case: a quote under the supplement's methods answers `where: Methods`,
+  and a not-found finding lists both headings as searched.
+  Pinned by `tests/test_compliance.py::test_a_quote_under_another_heading_says_which`.
+- **A quote copied across a printed citation, or a printed cross-reference, is not found.**
+  The build prints `[@key]` as "(1)" or "(Smith, 2020)" and `{{ref.table.x}}` as "Table 1";
+  a quote is read against the source as written and against it with each value binding's
+  display, and neither reading prints those. Quote the words either side with `...` between
+  them, or copy the citation as the Markdown writes it.
+  Pinned by `tests/test_compliance.py::test_a_quote_copied_across_a_printed_citation_is_not_found`.
+- **A caption is read for a `where` that names a display only in Markdown, and only where it
+  is numbered.** A legend typed as a paragraph that opens with its pointer is read, and so is
+  the caption of a table the analysis emits with one, placed once by its binding in a
+  document that places no table by hand and sends none as a file, under the number the build
+  gives it. A table emitted with no caption, placed twice or in such a document has none read,
+  and `where` naming it is `checklist-location-unknown`. A table typed by hand with a `Table:`
+  caption line and no pointer is no numbered display's, and a LaTeX manuscript's `\caption`
+  is read only as text under its heading: on a LaTeX manuscript `where: Table 1` names no
+  caption, and a quote of it is not found there. Accepted.
+- **A legend typed as "Figure 1." in a supplementary file is filed as the main text's Figure
+  1.** A typed legend is numbered by its pointer alone, and "Figure 1." says nothing of the
+  supplement, so `where: Figure 1` can be met by the supplement's legend of its own first
+  figure. Accepted.
+- **The printed reading keeps pandoc's escapes and footnote marks.** Only value bindings are
+  replaced by their displays, so `\$`, `\*` and a footnote's `[^1]` stay as written, and a
+  quote copied from the .docx across one of them, where Word shows "$", "*" or a superscript
+  number, is not found. Accepted.
+- **A heading inside an HTML comment or the front matter counts for `where`, and the quote
+  reader does not see it.** The headings `where` is held to are read from the files as they
+  are written, comments and front matter included, while the quote is looked for in what
+  prints: `where` naming such a heading raises no `checklist-location-unknown`, and the
+  finding on its quote says the `where` "names no heading and no caption". Accepted.
 - **Word counts will not match a journal's own counter exactly.** The rule is stated so a
   disagreement is visible; where a journal counts differently there is no way to configure
   it yet. Accepted.
@@ -22234,10 +22488,18 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
-- **A reporting checklist's `where:` can only point at a manuscript heading.** RECORD's added
-  items are answered in supplementary tables, appendices and registry records, so the items
-  the extension exists for are the ones that report `checklist-location-unknown`. It is a
-  warning, which is the only reason it is tolerable.
+- **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
+  or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
+  tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
+  display is a place where G5 reads a caption for it, in a Markdown manuscript only: a legend
+  typed as a paragraph that opens with the display's pointer, or the caption of a table the
+  analysis emits with one, placed once by its binding in a document that places no table by
+  hand and sends none as a file. A table emitted with no caption, placed twice, or in such a
+  document has no caption read, and neither has an appendix outside the manuscript or a
+  registry record, so those items report `checklist-location-unknown`, and their quote
+  `checklist-quote-not-found`. The first is a warning, which is the only reason it is
+  tolerable; the second fails at submission, so such an item is answered under the heading
+  that cites the table or the record, with the sentence that does.
   Pinned by `tests/test_compliance.py::test_pointing_at_a_section_that_does_not_exist_warns`.
 - **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
   the conventional thresholds are. A corrected threshold goes in the project's own
@@ -22639,6 +22901,23 @@ Open, recorded as each change landed:
     after a semicolon or a comma, "(i.e. time to task failure; TTF)"; one in its middle,
     "(as before, TTF, i.e. time to task failure)", defines nothing.
     Pinned by `tests/test_language.py::test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule`.
+  - A definition with a dash is read only where the short form ends its clause (see "A
+    definition is read by its shape"), so one with more words after it and no comma,
+    "Basic Payment Scheme – BPS was introduced", defines nothing, and BPS is then reported
+    as undefined. So does one before a citation that leaves words, a locator or a prefix,
+    "– BPS [@ec2013, p. 3]." and "– BPS [see @ec2013].", and LaTeX's
+    `~\citep[p.~3]{ec2013}`, whose locator its view prints; and one ending a line of
+    hard-wrapped prose with one space before the line's end, which is no hard line break.
+    Each of these defined before 2026-11-12. Accepted, as the author decided, so that a
+    statistic after a dash in any shape is not read as a second definition.
+    Pinned by `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`
+    and `tests/test_language.py::test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break`.
+  - A statistic after a dash whose short form is followed by a comma and a letter, or by a
+    semicolon, is read as a definition, since these end the clause: after "odds ratio (OR)",
+    "higher in older people – OR, p < 0.001" and "– OR; 95% CI 1.1–2.0" are a second
+    definition of OR, `abbreviation-redefined`, as they were before 2026-11-12.
+    Accepted, as the endings are the author's decision (round 1 of #643).
+    Pinned by `tests/test_language.py::test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:
@@ -24154,6 +24433,51 @@ Open, recorded as each change landed:
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+- **`init --from` reads a typed reference entry in two of APA's shapes only.** A journal
+  article, `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.` with a DOI
+  or an address after it or not, and a book, `Lee, C. (2018). *Title*. Publisher.`, are
+  written to `references.bib`; a chapter, an edition, a report with a number, a group as
+  author, a name with "Jr.", 21 authors and an ellipsis, "n.d." or a day after the year, an
+  article with no volume, italics inside a title, a quotation mark or a brace in a field,
+  and every other style's entry, Vancouver's and Harvard's among them, are not, and each is
+  listed with why; its citations stay typed. Pinned by
+  `tests/test_typed_references.py::test_an_entry_not_read_exactly_is_not_read_and_says_why`.
+- **A title or a publisher ending in an abbreviation of one word loses its stop.** APA ends
+  the title with a stop, and the stop of "Dr." or "Inc." at its end is that one: the field is
+  written "Dr" or "Inc". An abbreviation with two stops or more, "U.S." or "Ph.D.", is seen
+  at the end of an article's title and of a book's publisher, and the entry is not read.
+  Accepted.
+- **`init --from` reads no numbered reference list.** A list whose entries open with "[3]"
+  or "3." is left as typed, with its citations, "[3]" or a superscript, and `init` says so.
+  Pinned by `tests/test_typed_references.py::test_a_numbered_list_is_left_as_typed`.
+- **A typed citation is made a key by its authors and its year alone.** It names an entry
+  where its names are all the entry's in one of APA's forms and its year is the entry's,
+  letter and all; two entries alike, a year without the list's letter, a name more before
+  the names in the sentence ("Brown and Lee (2018)"), a page or a second year in the
+  brackets ("Smith, 2020, p. 4", "Smith (2020, 2021)"), a possessive ("Smith's (2020)"), a
+  particle typed in capitals that citeproc prints in lower case ("Van der Berg (2014)") and
+  a group with any such part stay typed. An entry not read keeps typed every citation that
+  shares its year and one of its names, which may keep one that names another work. Pinned
+  by `tests/test_properties.py::test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry`,
+  `tests/test_typed_references.py::test_a_citation_that_names_none_or_two_stays_as_typed_and_is_listed`
+  and `tests/test_typed_references.py::test_an_entry_not_read_that_may_be_the_work_keeps_its_citation_typed`.
+- **A word in capitals before a year in brackets is listed as a citation left typed.** "Data
+  from the UK Biobank (2020)" is listed by `init --from` as a citation that names no entry:
+  no rule tells a work the reference list lacks from a name that is no citation's, and a
+  citation not listed would be one the author never hears of. Accepted.
+- **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
+  file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
+  not hold is gone; the file's header says to import it into Zotero first. An entry no
+  citation was made a key of is `reference-uncited` to G7, whose hint is to run `sync-bib`.
+  Accepted.
+- **G2 reads no number in a typed reference list up to where the list is taken to end.** A
+  list under a heading or a title in bold that names one ends at the next heading, at a
+  caption, a table or a title of back matter, at a footnote's definition, at a caption
+  numbered with a letter ("Table A1.") and at a section's name alone by the closed list,
+  its number escaped or not ("3\. Conclusion") (`text.reference_lists.reference_lists`); a
+  paragraph of the paper's own after the list with none of these before it, a "Footnotes"
+  title not on that list among them, is read as an entry, and its numbers are let through.
+  Pinned by `tests/test_corruption.py::test_a_paragraph_after_a_typed_list_with_nothing_to_end_it_is_read_as_an_entry`.
 - **G7 names a cited work as the manuscript cites it only where it read the citation.** A
   finding about a use of a key names it `\citep{key}` in LaTeX, by the command the use was
   read in, and `@key` in Markdown. A quotation's finding is read in the printed view, where the
@@ -24211,6 +24535,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   English title by its opening word, as they did before these languages were added, so
   "References and notes" is the list to them, and so is "Bibliography of the trials
   searched"; the audit and the recycling check take neither.
+  - `Section.is_references` does not take a footnote's mark off a title before it reads the
+    title's end, so "# Reference list[^1]" is not the list to G4's count and G14, where
+    the recycling check takes the mark off and reads it as the list; "# References[^1]",
+    read by its opening word, is the list to both. No regression of #623. Accepted.
 - **An interleukin is a term, and other names with digits are not.** The shipped terms hold
   the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
   "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
@@ -25865,6 +26193,51 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+  - The bound is reached only under rounding half to even, as R and Python round: 11.5
+    prints 12 and an n of 34.5 prints 34. Rounded half up, as Excel, SAS and Stata round,
+    the n of 34.5 prints 35: the n is never printed a full half count low, and the counts
+    come to less than (k + 1) / 2 over it. For an odd number k of categories that bound is
+    whole, so a table exactly (k + 1) / 2 over, three categories two over, holds a real
+    error, and it is said as a note. Accepted.
+  - The capitals rule takes a marker by TABLE or FIGURE, not FIG: "[INSERT FIG IV]" fails
+    as a slot, where "[INSERT FIGURE IV]" and "[Insert Fig.4 here]" pass. Accepted.
+  - A Roman number takes no letter after it, as an Arabic one does: "[Insert Table 4a
+    here]" passes and "[Insert Table IVa here]" fails as a slot. Accepted.
+  - X and XX are left out of the Roman numbers, since a template writes a number still to
+    fill as X, so an IEEE paper's tenth table's marker, "[Insert Table X here]", fails as a
+    slot. Pinned by
+    `tests/test_corruption.py::test_a_placeholder_in_the_manuscript_fails[[Insert Table X here]]`.
+- **The audit's one finding on short forms left undefined, and its list.** The author's
+  decision of 2026-11-11, after the corpus of 52 real preprints, in which 354 of the 427
+  `abbreviation-undefined` warnings judges read were false (`auditing.undefined`). The
+  audit says those of one paper in one finding, at the first use of the first form, and
+  passes over the forms on a list of what journals' style guides say needs no definition.
+  Pinned by
+  `tests/test_audit_undefined.py::test_the_short_forms_left_undefined_are_one_finding_at_the_first_use`.
+  - The list of forms journals' style guides say need no definition,
+    `data/journal_abbreviations.yaml`, is the same for every paper audited, of any field: a
+    form on it is passed over in a paper where it means something else. The forms whose
+    second meaning in another field is common are left out, and the file says which; one
+    not known for a second meaning is passed over in any paper. It is the list of three
+    sources read on 2026-11-12, and stays as they were then. Accepted.
+  - Where every form the paper leaves undefined is on the list, there is no finding of
+    forms left undefined: a note, which nothing counts, says how many were passed over,
+    which, and by which list (round 1 of #640). Pinned by
+    `tests/test_audit_undefined.py::test_a_paper_whose_forms_are_all_on_the_list_has_a_note_of_them`.
+  - The forms are in G14's reading order, the order its warnings come in: the Abstract's,
+    then the main text's, then the supplement's, each part in the order of each form's
+    first use as G14 reads the files. A form used first in the Abstract, or first in an
+    acknowledgement and later in the text, is ranked by that first use, though its warning
+    stands at its first use in the main text. Pinned by
+    `tests/test_audit_undefined.py::test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files`,
+    `tests/test_audit_undefined.py::test_a_form_used_first_in_the_acknowledgements_ranks_by_that_use`.
+  - The page, the PDF and the copy with comments show the one finding, its message naming
+    every form; each form's place is in `--json` and `--details` only, and the copy's
+    comment stands on the first use of the first form alone. Accepted.
+  - The forms are read from G14's message for one form; a warning whose message is
+    another's is left as a warning of its own. Pinned by
+    `tests/test_audit_undefined.py::test_the_finding_reads_what_g14_writes_of_one_form_in_each_part`.
+  - `check` reads no such list, and a project cannot ask it to. Accepted.
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later
@@ -25928,6 +26301,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A value whose display carries a comparator of its own, "<0.001", is held to it by the
     emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
     typed from its source rather than emitted. Accepted.
+  - A plural compared with a threshold fails a true sentence: "all ps <
+    {{results.alpha_bonf}}" with ps below a corrected alpha of 0.008333 printed "0.0083"
+    fails, as the value is above the number printed. Basile chose the trade-off: fail
+    plurals, warn singulars (round 2 of #629). Accepted.
+  - After a binding, a sign before a word that opens with a symbol in italics, or a symbol
+    and an index, is read as a singular "<": "{{results.a}} < *p*-value", "< *t*-test" and
+    "< t_1" warn as "{{results.a}} < t" would, where "< p-value" is not read. Accepted.
+  - A sign typed against the statistic after a binding is not read, since a letter right
+    after "<" is taken for an HTML tag's: "{{results.t_min}} <ts" and pandoc's escaped
+    "{{results.t_min}} \<ts" compare nothing, where "\< ts" is read. Accepted.
+  - The tag's guard and the p value written out are pinned before a binding only: the
+    generated inputs put "<p>" and "all p-values >" there, and after a binding only "</p>",
+    which no sign before a symbol could read. So "{{results.a}} <p>" read as a comparison,
+    or "{{results.a}} < p-values" not read, would fail no example. Accepted.
 
 - **A figure placed the ordinary way is reviewed, described and read for its colours, and
   its numbers are not traced.** Basile decided on 2026-11-11, after arXiv 2409.10841, that
@@ -25953,11 +26340,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     it stands, and an imported file's folder is tried before it. Accepted.
   - A file written or linked outside the project, by a path from the root of the disk, one
     that climbs out with `..`, or through a link, is checked where it is, its records kept
-    there, named by its file name alone in what `check` says and in `alt-text.md`, so that no
-    folder of the author's is submitted, and named in a note (`figure-outside-project`). A
+    there, named by its file name alone in the messages of `check` and in `alt-text.md`, so
+    that no folder of the author's is submitted, and named in a note
+    (`figure-outside-project`). The location `check` prints beside a finding, and its
+    `--json`, still give the file's path from the root of the disk. A
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+  - A figure written outside the project is named by its file name alone, so two from
+    different folders with one name are named alike: `alt-text.md` then holds two
+    "## x.svg". Accepted.
+  - In a project opened through a link, a figure written by its real path from the root of
+    the disk is inside the project, where the link leads, and gets no note, though the path
+    is one from the root of the disk and `check` names the figure by its file name alone.
+    Accepted.
+  - `review --record-figure` given a name with a folder that holds no placed file of that
+    name, `other/forest`, reads the emitted `figures/forest` and leaves the folder aside
+    (`_figure_named` falls back to `emitted[:1]`), as before #630. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

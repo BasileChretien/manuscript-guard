@@ -272,6 +272,9 @@ LITERATURE_ROUTES = {
 #: and the test that every code is routed takes them as answered.
 NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        "tex-not-judged", "tex-words-not-read",
+                       # What `audit` passed over for its list of journals' style guides
+                       # (`auditing.undefined`): a note in its own report, never `check`'s.
+                       "abbreviations-passed-over",
                        # What `compare` says of two versions of someone else's paper, to its
                        # editor or referee: facts in its own report, which `check` and `next`
                        # never see and the author has nothing to do about.

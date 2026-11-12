@@ -128,7 +128,11 @@ the reason.
 
 G6 and G14 read the words as `check` does, a .docx through the conversion `init --from`
 makes (skipped with a note without pandoc); ask the author which English the paper is in
-and pass `--english british` or `american`. Neither is counted by `--strict`. The reference
+and pass `--english british` or `american`. Neither is counted by `--strict`. The short
+forms the paper uses and does not define are one finding, which lists them and passes over
+those journals' style guides say need no definition (it says how many, and by which list);
+its remedy is `--known` with the ones the paper's readers take for words or names, which
+you ask the author for, never guess. `--json` gives each form's first use. The reference
 list is counted and its numbered citations held to it; nothing is sent to a registry
 unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
 what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where
@@ -205,7 +209,11 @@ route is:
    pictures in `manuscript/media/`, and the title page in a comment at the top that no gate
    reads. Read what it prints: a table with a list or another table in a cell is left as a
    grid table, and a comment that holds the abstract hides its numbers until it is moved out.
-   Do not convert with `pandoc paper.docx -t markdown`: it writes most Word tables as
+   A typed APA reference list is read into `literature/references.bib`, and each citation
+   typed as text that names exactly one of its entries, by its authors and year, becomes
+   `[@key]`; what it could not read exactly, entries and citations, is listed with the line
+   and why, and stays as typed for the author to cite by hand. A numbered list is left as
+   typed. Do not convert with `pandoc paper.docx -t markdown`: it writes most Word tables as
    multiline tables, which `check` refuses at every stage. A paper written in LaTeX needs no
    conversion: `manuscript-guard init --latex`, then its files go in `manuscript/`, the
    entry file as `main.tex`, loading `mgvalues`.

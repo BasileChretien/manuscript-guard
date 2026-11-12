@@ -226,7 +226,7 @@ def _gate_run(
         # Its own too: the declarations are held to authors.yaml whether or not a journal is
         # chosen, and a journal that asks for them has G4's required statements as well.
         ("G4", lambda: check_disclosures(project, chosen)),
-        ("G8r", lambda: check_reporting(project)),
+        ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(

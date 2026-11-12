@@ -1887,7 +1887,18 @@ _PROJECT_ASKS = (
 
 
 def _said(run) -> list[str]:
-    return [text for finding in run.language for text in (finding.message, finding.hint or "")]
+    """What G14 said, the one finding on the short forms left undefined and the warning on
+    each form it stands for (`auditing.undefined`)."""
+    each = [warning for finding in run.language for _form, warning in getattr(finding, "forms", ())]
+    return [text for finding in (*run.language, *each)
+            for text in (finding.message, finding.hint or "")]  # fmt: skip
+
+
+def _found(run) -> set[tuple[str, str]]:
+    """Each of G14's findings by its code and the word its message opens with, a short form
+    left undefined by its code and the form."""
+    return {(f.code, form) for f in run.language for form, _warning in getattr(f, "forms", ())} | {
+        (f.code, f.message.split()[0]) for f in run.language if not getattr(f, "forms", ())}
 
 
 def test_an_audit_says_its_own_settings_where_a_gate_says_paper_yaml(
@@ -1922,10 +1933,11 @@ def test_known_words_are_neither_undefined_nor_misspelt(tmp_path: Path) -> None:
 
     paper = tmp_path / "paper.md"
     paper.write_text(_PROJECT_ASKS, encoding="utf-8")
-    found = run_gates(paper).language
-    before = {(f.code, f.message.split()[0]) for f in found}
+    run = run_gates(paper)
+    found = run.language
+    before = _found(run)
     known = ("CHU", "behaviour", "hr_adj_main")
-    after = {(f.code, f.message.split()[0]) for f in run_gates(paper, known=known).language}
+    after = _found(run_gates(paper, known=known))
     assert ("abbreviation-undefined", "CHU") in before
     assert ("abbreviation-undefined", "CHU") not in after
     assert ("abbreviation-undefined", "QR") in after
@@ -1943,6 +1955,5 @@ def test_a_known_word_with_a_stop_inside_it_is_matched(tmp_path: Path) -> None:
     paper = tmp_path / "paper.md"
     paper.write_text("# Methods\n\nStudents of L.AS were enrolled. The L.AS track was new.\n",
                      encoding="utf-8")  # fmt: skip
-    said = [(f.code, f.message.split()[0]) for f in run_gates(paper).language]
-    assert ("abbreviation-undefined", "L.AS") in said
+    assert ("abbreviation-undefined", "L.AS") in _found(run_gates(paper))
     assert not run_gates(paper, known=("L.AS",)).language

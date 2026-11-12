@@ -230,9 +230,19 @@ def _placed(project: Project) -> list[tuple[str, bool]]:
 
 
 def _files_of(folder: Path, name: str) -> list[Path]:
-    """The figure's files, one per format it was saved in."""
-    return [folder / f"{name}{suffix}" for suffix in FORMATS
-            if (folder / f"{name}{suffix}").is_file()]  # fmt: skip
+    """The figure's files, one per format it was saved in, in the order of `FORMATS`, by
+    their names as they are: a suffix in capitals, `Chart.PDF`, is the PDF on Linux too
+    (round 1 of #630: it was looked up in lower case and never found there)."""
+    import os
+
+    try:
+        found = [path for path in folder.iterdir()
+                 if os.path.normcase(path.stem) == os.path.normcase(name)
+                 and path.suffix.lower() in FORMATS and path.is_file()]  # fmt: skip
+    except OSError:
+        return []
+    order = list(FORMATS)
+    return sorted(found, key=lambda path: (order.index(path.suffix.lower()), path.name))
 
 
 def _sidecar(path: Path) -> dict:

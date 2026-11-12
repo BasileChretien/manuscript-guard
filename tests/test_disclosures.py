@@ -97,6 +97,180 @@ def test_each_place_a_statement_stands_is_read() -> None:
     assert "funding" not in kinds
 
 
+_ANR = "ANR-20-CE17-0001"
+
+
+def test_an_acknowledgements_section_that_says_none_denies_no_funding() -> None:
+    """Round 1 of #653: "Acknowledgements: None." or BMC's "Not applicable." says nothing
+    of funding; only a place a funding heading or label opens says none."""
+    authors = _authors(ada_funding=[_ANR])
+    for said in ("None.", "Not applicable."):
+        main = f"## Acknowledgements\n\n{said}\n\n## Funding\n\nSupported by {_ANR}.\n"
+        assert _codes(authors, main) == [], said
+        assert _codes(authors, f"**Acknowledgements:** {said}\n\n**Funding:** {_ANR}.\n") == []
+    assert _codes(authors, "## Funding\n\nNone.\n") == ["funding-denied"]
+
+
+def test_a_sentence_about_funders_or_one_kind_of_funding_denies_none() -> None:
+    """Round 1 of #653: the funders' role, and funding of one kind only (external, from
+    industry, commercial), are no denial; a statement that gives the recorded identifier
+    denies nothing either. Without the grant, each is a grant left out."""
+    authors = _authors(ada_funding=[_ANR])
+    for said in ("No funding body had any role in the design.",
+                 "No funding source had a role in the analysis.",
+                 "No funding agency was involved.",
+                 "No external funding was received.",
+                 "No financial support from industry was received.",
+                 "The study received no industry funding.",
+                 "The study was not funded by any commercial entity.",
+                 "This work did not receive any commercial funding."):
+        assert _codes(authors, f"## Funding\n\nSupported by {_ANR}. {said}\n") == [], said
+        assert _codes(authors, f"## Funding\n\n{said}\n") == ["funding-grant-missing"], said
+    assert _codes(authors, f"## Funding\n\n{_ANR}. This work received no funding.\n") == []
+
+
+def test_an_author_with_an_interest_is_named_by_initials_as_the_lancet_writes_them() -> None:
+    """Round 1 of #653: "AE reports ... All other authors declare no competing interests."
+    names Ada Example, and "all other authors" is no collective none."""
+    authors = _authors(ada_competing_interests="Consulting fees from Pharma X.",
+                       blaise_competing_interests="None declared.")
+    main = ("# Declaration of interests\n\nAE reports consulting fees from Pharma X. All "
+            "other authors declare no competing interests.\n")
+    assert _codes(authors, main) == []
+    assert _codes(authors, main.replace("AE", "A.E.")) == []
+    assert _codes(authors, main.replace("AE", "XY")) == ["interests-author-missing"]
+
+
+def test_a_label_alone_in_its_paragraph_heads_the_paragraphs_after_it() -> None:
+    """Round 1 of #653: Word conversions write "**Funding**" alone on its line. What
+    follows, to the next label or heading, is the statement."""
+    credited = _authors(ada_credit=["Conceptualization"], blaise_credit=["Supervision"])
+    for label in ("**Author contributions**", "**Author contributions:**",
+                  "Author contributions:"):
+        main = f"{label}\n\nAE: Conceptualization.\n\nBS: Supervision.\n\n**Funding**\n\nNone.\n"
+        assert _codes(credited, main) == [], label
+    funded = _authors(ada_funding=[_ANR])
+    for label in ("**Funding**", "Funding:", "*Funding*"):
+        assert _codes(funded, f"{label}\n\n{_ANR}.\n\n**Competing interests**\n\nNone.\n") == []
+        assert _codes(funded, f"{label}\n\nGrant 12345.\n\n**Competing interests**\n\n"
+                      f"{_ANR}.\n") == ["funding-grant-missing"], label
+        assert _codes(funded, f"{label}\n\nGrant 12345.\n\n## Results\n\n{_ANR}.\n") == [
+            "funding-grant-missing"], label
+    # A paragraph of emphasis is no label: a sentence in italics is read as prose.
+    kinds = {place.kind for place in places("*Funding was scarce in 2019 for this work.*\n")}
+    assert "funding" not in kinds
+
+
+def test_a_section_holds_only_its_own_statement() -> None:
+    """A heading's section ends at a heading or a label inside it that opens a statement of
+    another kind, so the initials of the contributions statement under it name no one in the
+    competing interests statement, and its "None declared." is the whole statement."""
+    authors = _authors(ada_competing_interests="Fees from Pharma X.",
+                       blaise_competing_interests="None declared.",
+                       ada_credit=["Conceptualization"])
+    for after in ("## Author contributions\n\nAE: Conceptualization.",
+                  "**Author contributions:** AE: Conceptualization.",
+                  "**Author contributions**\n\nAE: Conceptualization."):
+        main = f"# Competing interests\n\nNone declared.\n\n{after}\n"
+        assert _codes(authors, main) == ["interests-none-contradicted"], after
+        main = f"# Competing interests\n\nBlaise Sample: none.\n\n{after}\n"
+        assert _codes(authors, main) == ["interests-author-missing"], after
+
+
+#: Record values that say none, as journals' forms write them, and what each reads as.
+_NONE_FORMS = (
+    "The author has no relevant financial or non-financial interests to disclose.",
+    "The authors have no relevant financial or non-financial interests to disclose.",
+    "No relevant disclosures.", "N/A", "n/a", "Not applicable.",
+    "The authors declare that they have no known competing financial interests or personal "
+    "relationships that could have appeared to influence the work reported in this paper.",
+)  # fmt: skip
+
+
+def test_the_none_forms_of_springer_and_elsevier_are_read_as_none() -> None:
+    """Round 1 of #653: each form is a record of none, and, as the manuscript's whole
+    statement or a sentence of it, a collective none."""
+    for said in _NONE_FORMS:
+        assert is_none_statement(said), said
+    for said in _NONE_FORMS:
+        both_none = _authors(ada_competing_interests=said, blaise_competing_interests=said)
+        assert _codes(both_none, f"## Competing interests\n\n{said}\n") == [], said
+        one_has = _authors(ada_competing_interests="Fees from Pharma X.",
+                           blaise_competing_interests=said)
+        if said.lower().startswith(("the author", "the authors")):
+            assert _codes(one_has, f"## Competing interests\n\n{said}\n") == [
+                "interests-none-contradicted"], said
+
+
+def test_a_numbered_heading_is_read_by_its_words() -> None:
+    """Round 1 of #653: the heading's number is taken off, Arabic or Roman, for every kind."""
+    lead = {"name": "R. Lead", "approval": "IRB 2021-0456"}
+    authors = {**_authors(ada_funding=[_ANR],
+                          ada_competing_interests="Fees from Pharma X.",
+                          blaise_competing_interests="None declared.",
+                          ada_credit=["Conceptualization"]),
+               "roles": {"ethics_lead": lead}}  # fmt: skip
+    for number in ("6.", "6.1", "6.1.", "VI.", "7", "IV"):
+        main = (f"## {number} Declarations\n\nThe IRB approved it (2021-0456).\n\n"
+                f"## {number} Funding\n\n{_ANR}.\n\n"
+                f"## {number} Competing interests\n\nAE: fees from Pharma X.\n\n"
+                f"## {number} Author contributions\n\nAE: Conceptualization.\n")
+        assert _codes(authors, main) == [], number
+        ethics = main.replace("Declarations", "Ethics")
+        assert _codes(authors, ethics) == [], number
+
+
+def test_an_image_credit_is_no_contributions_statement() -> None:
+    """Round 1 of #653: "Image credit:" in a legend is no CRediT statement."""
+    authors = _authors(ada_credit=["Conceptualization"])
+    for legend in ("Image credit: Wellcome Collection.", "Photo credit: the authors.",
+                   "**Image credit:** Wellcome Collection.", "## Credits\n\nWellcome."):
+        assert _codes(authors, f"Figure 1. A map.\n\n{legend}\n") == [], legend
+    for heading in ("CRediT author statement", "CRediT authorship contribution statement",
+                    "CRediT", "Authorship"):
+        assert _codes(authors, f"## {heading}\n\nAE: Conceptualization.\n") == [], heading
+        assert _codes(authors, f"## {heading}\n\nBS wrote it.\n") == [
+            "credit-author-missing", "credit-role-missing"], heading
+
+
+def test_an_authors_yaml_of_the_wrong_shapes_is_read_without_raising() -> None:
+    """Round 1 of #653: the schema reports a malformed file; the check reads what it can."""
+    main = "## Funding\n\nNone.\n\n## Author contributions\n\nAE: Conceptualization.\n"
+    for authors in (
+        {"authors": [{"given": "Ada", "family": "Example"}], "roles": "Sample"},
+        {"authors": [{"given": "Ada", "family": "Example"}], "roles": ["Sample"]},
+        {"authors": [{"given": "Ada", "family": "Example"}],
+         "roles": {"ethics_lead": ["x"]}},
+        {"authors": "Ada Example"},
+        {"authors": ["Ada Example", None, 3]},
+        {"authors": [{"given": "Ada", "family": "Example", "funding": [12345, None, {"a": 1}]}]},
+        {"authors": [{"given": "Ada", "family": "Example", "funding": "ANR"}]},
+        {"authors": [{"given": "Ada", "family": "Example", "credit": "Conceptualization"}]},
+        {"authors": [{"given": "Ada", "family": "Example", "credit": [None, 3]}]},
+        {"authors": [{"given": None, "family": 7, "competing_interests": ["x"]}]},
+        {"authors": [{"given": "", "family": "", "credit": ["Conceptualization"]}]},
+        ["not", "a", "mapping"],
+    ):  # fmt: skip
+        judge(authors, main)
+    # A string `credit` is one role, as a string `funding` is one entry.
+    one = {"authors": [{"given": "Ada", "family": "Example", "credit": "Supervision"}]}
+    assert _codes(one, main) == ["credit-role-missing"]
+
+
+def test_two_authors_of_one_family_name_are_named_together() -> None:
+    """Known gap: a family name names every author who has it, so naming one passes both,
+    for competing interests and for contributions."""
+    authors = {"authors": [
+        {"given": "Ada", "family": "Example", "competing_interests": "Fees from Pharma X.",
+         "credit": ["Conceptualization"]},
+        {"given": "Bea", "family": "Example", "competing_interests": "Fees from Pharma Y.",
+         "credit": ["Supervision"]},
+    ]}  # fmt: skip
+    main = ("## Competing interests\n\nAda Example received fees from Pharma X.\n\n"
+            "## Author contributions\n\nAda Example: Conceptualization, Supervision.\n")
+    assert _codes(authors, main) == []
+
+
 def test_a_statement_under_a_heading_in_another_language_is_not_read() -> None:
     """Known gap: the headings and phrases are English only."""
     authors = _authors(ada_funding=["Wellcome Trust 12345"])

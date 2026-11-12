@@ -83,8 +83,10 @@ _LABEL = re.compile(
     r"^[ \t]*(?:(?P<mark>\*\*|__|\*|_)(?P<marked>[^\n*_:.]{1,60}?)[ \t]*[:.]?(?P=mark)"
     r"[ \t]*[:.]?|(?P<plain>[^\n*_:.#>|]{1,60}?)[ \t]*:)"
 )
-#: A label holds at most this many words: more is a sentence.
+#: A label holds at most this many words: more is a sentence. Alone in its paragraph, fewer:
+#: "Ethics approval and consent to participate" (BMC) is the longest.
 _LABEL_WORDS = 8
+_ALONE_WORDS = 6
 
 
 # ----------------------------------------------------------------------------- folding
@@ -164,10 +166,22 @@ def missing_identifiers(text: str, entry: str) -> list[str]:
 # ------------------------------------------------------------------------------ phrases
 
 
+_FRAGMENT = re.compile(r"\$\{(\w+)\}")
+
+
 @lru_cache(maxsize=1)
 def _data() -> dict:
+    """`data/disclosures.yaml`, each `${name}` in its patterns the fragment of that name."""
     document = yaml.safe_load(DATA.read_text(encoding="utf-8"))
-    return document
+    fragments = {name: str(text).strip() for name, text in
+                 (document.pop("fragments", None) or {}).items()}  # fmt: skip
+
+    def filled(pattern: str) -> str:
+        return _FRAGMENT.sub(lambda found: fragments[found[1]], str(pattern).strip())
+
+    return {key: ({kind: filled(p) for kind, p in value.items()} if isinstance(value, dict)
+                  else [filled(p) for p in value] if isinstance(value, list) else value)
+            for key, value in document.items()}  # fmt: skip
 
 
 @cache
@@ -175,10 +189,18 @@ def _pattern(source: str) -> re.Pattern[str]:
     return re.compile(source)
 
 
+#: A heading's number, taken off before its words are read: "6.", "6.1", "6.1.", "VI.", "7".
+_NUMBER = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?|[IVX]+\.?)\s+")
+
+
 def _heading_kinds(title: str) -> list[str]:
-    folded = fold(re.sub(r"[*_`]", "", title))
+    folded = fold(_NUMBER.sub("", re.sub(r"[*_`]", "", title)))
     return [kind for kind, pattern in _data()["headings"].items()
             if _pattern(pattern).search(folded)]  # fmt: skip
+
+
+def _acknowledgements(title: str) -> bool:
+    return bool(re.search(r"\backnowledge?ments?\b", fold(title)))
 
 
 def _whole(text: str, patterns: Iterable[str]) -> bool:
@@ -215,14 +237,59 @@ def paragraphs(text: str) -> list[str]:
 
 
 def _label(paragraph: str) -> tuple[str, str] | None:
-    """The label a paragraph opens with and what follows it, where it has one."""
+    """The label a paragraph opens with and what follows it, where it has one. A label alone
+    in its paragraph, as a conversion from Word writes "**Funding**", has fewer words: a
+    sentence in italics is no label."""
     found = _LABEL.match(paragraph)
     if found is None:
         return None
     label = (found["marked"] or found["plain"] or "").strip()
-    if not label or len(label.split()) > _LABEL_WORDS:
+    rest = paragraph[found.end():]
+    most = _LABEL_WORDS if rest.strip() else _ALONE_WORDS
+    if not label or len(label.split()) > most or (not rest.strip() and re.search(r"\d", label)):
         return None
-    return label, paragraph[found.end():]
+    return label, rest
+
+
+def _own(enclosed: str, kind: str) -> str:
+    """A section's text up to a heading or a label inside it that opens a statement of
+    another kind: "# Competing interests" over "## Author contributions", or over a
+    paragraph "**Funding:** ...", holds only its own statement."""
+    kept = []
+    for paragraph in paragraphs(enclosed):
+        head = re.match(r"[ \t]*#+[ \t]+(.*)", paragraph)
+        labelled = None if head else _label(paragraph)
+        title = head[1] if head else labelled[0] if labelled else None
+        kinds = _heading_kinds(title) if title else []
+        if kinds and kind not in kinds:
+            break
+        kept.append(paragraph)
+    return "\n\n".join(kept)
+
+
+def _labelled(printed: str) -> Iterator[tuple[str, str]]:
+    """Each label of `printed` with what it heads: the rest of its paragraph, or, where that
+    is blank, the paragraphs after it up to the next heading or label of a statement. "AE:
+    Conceptualization." is a label of no statement, and is read as part of the one above."""
+
+    def heads(paragraph: str) -> bool:
+        labelled = _label(paragraph)
+        return labelled is not None and bool(_heading_kinds(labelled[0]))
+
+    pieces = paragraphs(printed)
+    for index, paragraph in enumerate(pieces):
+        labelled = _label(paragraph)
+        if labelled is None:
+            continue
+        label, rest = labelled
+        if not rest.strip():
+            following = []
+            for later in pieces[index + 1:]:
+                if later.lstrip().startswith("#") or heads(later):
+                    break
+                following.append(later)
+            rest = "\n\n".join(following)
+        yield label, rest
 
 
 def places(text: str, abstract: str | None = None) -> list[Place]:
@@ -241,14 +308,11 @@ def places(text: str, abstract: str | None = None) -> list[Place]:
         if not section.title:
             continue
         for kind in _heading_kinds(section.title):
-            found.append(Place(kind, section.title, section.enclosed))
+            text = section.enclosed if kind == DECLARATIONS else _own(section.enclosed, kind)
+            found.append(Place(kind, section.title, text))
     for section in methods_sections(sections, abstract):
         found.append(Place("methods", section.title, section.enclosed))
-    for paragraph in paragraphs(printed):
-        labelled = _label(paragraph)
-        if labelled is None:
-            continue
-        label, rest = labelled
+    for label, rest in _labelled(printed):
         for kind in _heading_kinds(label):
             found.append(Place(kind, label, rest))
     return found
@@ -285,22 +349,32 @@ def _says_none(found: Iterable[Place], whole: Iterable[str]) -> str | None:
 # ------------------------------------------------------------------------------ authors
 
 
-def _people(authors: dict) -> list[dict]:
+def _people(authors: object) -> list[dict]:
+    """The authors of authors.yaml that are mappings. A file of another shape is the
+    schema's to report (`authors-incomplete`); this check reads what it can of it."""
     listed = authors.get("authors") if isinstance(authors, dict) else None
-    return [a for a in listed or () if isinstance(a, dict)]
+    return [a for a in listed if isinstance(a, dict)] if isinstance(listed, list) else []
+
+
+def _field(author: dict, key: str) -> str:
+    """A text field of an author, or "" where it holds no text."""
+    value = author.get(key)
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _name(author: dict) -> str:
-    return " ".join(str(author.get(part) or "").strip() for part in ("given", "family")).strip()
+    return " ".join(_field(author, part) for part in ("given", "family")).strip()
 
 
 def _initials(author: dict) -> str:
     """The initials `submit` prints for an author (`build.submission._initials`)."""
     from manuscript_guard.build.submission import _initials as printed
 
+    if not _field(author, "given") or not _field(author, "family"):
+        return ""
     try:
         return printed(author)
-    except (IndexError, KeyError, TypeError):
+    except (IndexError, KeyError, TypeError, AttributeError):
         return ""
 
 
@@ -315,8 +389,8 @@ def _texts(value: object) -> list[str]:
 def author_named(author: dict, text: str) -> bool:
     """Whether `text` names `author`: by family name, or by the initials `submit` prints,
     "A.E." or "AE"."""
-    family = str(author.get("family") or "")
-    if family.strip() and _in_words(family, text):
+    family = _field(author, "family")
+    if family and _in_words(family, text):
         return True
     letters = re.findall(r"[^\W\d_]", fold(_initials(author)))
     if not letters:
@@ -335,10 +409,11 @@ def role_named(role: str, text: str) -> bool:
     return bool(wanted) and f" {wanted} " in f" {_role_words(text)} "
 
 
-def _approval(authors: dict) -> str | None:
-    lead = (authors.get("roles") or {}).get("ethics_lead") if isinstance(authors, dict) else None
+def _approval(authors: object) -> str | None:
+    roles = authors.get("roles") if isinstance(authors, dict) else None
+    lead = roles.get("ethics_lead") if isinstance(roles, dict) else None
     approval = lead.get("approval") if isinstance(lead, dict) else None
-    return str(approval).strip() if isinstance(approval, str) and approval.strip() else None
+    return approval.strip() if isinstance(approval, str) and approval.strip() else None
 
 
 def something_to_check(authors: object) -> bool:
@@ -348,7 +423,7 @@ def something_to_check(authors: object) -> bool:
     people = _people(authors)
     return bool(_approval(authors)) or any(
         _texts(a.get("funding")) or _texts(a.get("credit"))
-        or str(a.get("competing_interests") or "").strip() for a in people)  # fmt: skip
+        or _field(a, "competing_interests") for a in people)  # fmt: skip
 
 
 # -------------------------------------------------------------------------------- judge
@@ -390,8 +465,15 @@ def _funding(authors: dict, found: list[Place], _whole_text: str, severity: str,
             "a journal that collects funding on its form has it from the declarations "
             "`submit` writes")  # fmt: skip
         return
-    denial = (_saying(stated, _data()["no_funding"])
-              or _says_none(stated, _data()["none_funding"]))  # fmt: skip
+    statement = "\n\n".join(place.text for place in stated)
+    # "None" says none only where a funding heading or label opens it: under the
+    # Acknowledgements it says there is no one to thank. And a statement that gives a grant
+    # authors.yaml records denies nothing, whatever else a sentence of it says.
+    headed = [place for place in stated if not _acknowledgements(place.title)]
+    granted = any(identifiers(entry) and not missing_identifiers(statement, entry)
+                  for _author, entry in entries)  # fmt: skip
+    denial = None if granted else (_saying(stated, _data()["no_funding"])
+                                   or _says_none(headed, _data()["none_funding"]))  # fmt: skip
     if denial is not None:
         yield _finding(
             FUNDING_DENIED, severity, path,
@@ -401,7 +483,6 @@ def _funding(authors: dict, found: list[Place], _whole_text: str, severity: str,
             "work had no funding, the record is what is wrong: take the entries out of "
             "`funding` in authors.yaml", denial)  # fmt: skip
         return
-    statement = "\n\n".join(place.text for place in stated)
     for author, entry in entries:
         if entry_named(statement, entry):
             continue
@@ -418,7 +499,7 @@ def _funding(authors: dict, found: list[Place], _whole_text: str, severity: str,
 def _interests(authors: dict, found: list[Place], _whole_text: str, severity: str,
                path: Path | None) -> Iterator[Finding]:  # fmt: skip
     people = _people(authors)
-    recorded = {id(a): str(a.get("competing_interests") or "").strip() for a in people}
+    recorded = {id(a): _field(a, "competing_interests") for a in people}
     if not any(recorded.values()):
         return
     for author in people:
@@ -456,13 +537,16 @@ def _interests(authors: dict, found: list[Place], _whole_text: str, severity: st
         return
     statement = "\n\n".join(place.text for place in stated)
     for author in declared:
-        if _in_words(str(author.get("family") or ""), statement):
+        if author_named(author, statement):
             continue
+        initials = _initials(author)
         yield _finding(
             INTERESTS_AUTHOR_MISSING, severity, path,
             f"the competing interests statement does not name {_name(author)}, whose "
             "interests authors.yaml records",
-            f"name {author.get('family')} in the statement with what authors.yaml records: "
+            f"name {_field(author, 'family')}"
+            + (f" or {initials}" if initials else "")
+            + " in the statement with what authors.yaml records: "
             f"\"{recorded[id(author)]}\"; if the record is wrong, correct "
             "`competing_interests` in authors.yaml")  # fmt: skip
 

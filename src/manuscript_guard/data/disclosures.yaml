@@ -6,18 +6,36 @@ schema: manuscript-guard/disclosures/1
 # Every pattern is matched, with `re.search`, in text folded as the check folds it: accents
 # taken off, upper and lower case one, every dash a hyphen, every quotation mark a straight
 # one, and each run of white space, a line break among them, one space. So ` ` in a pattern
-# is one space, `-` stands for any dash, and a pattern is written in lower case.
+# is one space, `-` stands for any dash, and a pattern is written in lower case. `${name}`
+# stands for a fragment below.
 #
 # English only. A statement under a heading in another language is not found (Known gaps).
 
+fragments:
+  # What an author may have none of: "competing interests", "conflicts of interest", "known
+  # competing financial interests or personal relationships that could have appeared to
+  # influence the work" (Elsevier), "relevant financial or non-financial interests"
+  # (Springer Nature). Not "other competing interests", which leaves out those named.
+  interest: >-
+    (?:(?:known|potential|relevant|actual|perceived) )*(?:(?:competing|conflicting|financial|non-financial|personal)(?: or non-financial| and non-financial| or personal)? )*(?:interests?|conflicts? of interests?)(?: or personal relationships\b.*)?
+  # Who may say it, and how.
+  verb: '(?:declares?|reports?|has|have|states?|discloses?)'
+  # What follows a phrase about funding that says nothing of whether there was any: the
+  # funders ("no funding body had any role"), and funding from one kind of funder only ("no
+  # financial support from industry").
+  not_funders: >-
+    (?! (?:bod(?:y|ies)|sources?|agenc(?:y|ies)|organi[sz]ations?|from (?:any |the )?(?:industry|commercial|external|for-profit|pharmaceutical))\b)
+
 # What a heading, or the label a paragraph opens with ("**Funding:** ..."), is called for
-# each kind of statement. A heading is read by its title, its number taken off; a label by
-# the words before its colon or full stop at the start of a paragraph.
+# each kind of statement. A heading is read by its title, its number taken off ("6.",
+# "6.1", "VI."); a label by the words before its colon or full stop at the start of a
+# paragraph, or by the whole of an emphasised paragraph ("**Funding**").
 headings:
   # TEMPLATE.yaml's funding statement (`funding|financial support|grant`), with the forms
   # journals print: "Sources of funding" and "Funding/Support" (JAMA), "Role of the funding
   # source" (The Lancet), "Financial disclosure" (PLOS), "Grant support". Funding often
-  # stands in the Acknowledgements, so they are read as a funding statement too.
+  # stands in the Acknowledgements, so they are read as a funding statement too, though
+  # never as one that says there was none ("Acknowledgements: Not applicable.", BMC).
   funding: '\bfunding\b|\bfunded\b|\bfinancial (?:support|disclosures?)\b|\bgrants?\b|\backnowledge?ments?\b'
   # TEMPLATE.yaml's (`competing interest|conflict of interest|declaration of interest`),
   # with "Declaration of competing interest" (Elsevier), "Conflict of interest disclosures"
@@ -27,26 +45,31 @@ headings:
   # consent to participate" (BMC) and "Ethics statement".
   ethics: '\bethic(?:s|al)\b|\binstitutional review\b|\birb\b'
   # "Author contributions", "Authors' contributions" (BMC), "Contributors" (The Lancet, the
-  # BMJ), "CRediT authorship contribution statement" (Elsevier), "CRediT author statement".
-  contributions: '\bauthor(?:ship|s''|''s|s)? contributions?\b|\bcontribut(?:ors?|orship|ions? of the authors)\b|\bcredit\b'
+  # BMJ), "CRediT authorship contribution statement" (Elsevier), "CRediT author statement",
+  # "Authorship", and "CRediT" alone. Not "Image credit" or "Photo credit".
+  contributions: '\bauthor(?:ship|s''|''s|s)? contributions?\b|\bcontribut(?:ors?|orship|ions? of the authors)\b|^credit$|\bcredit author(?:ship)?(?: contribution)? statement\b|^authorship(?: statements?)?$'
   # A section that holds the others under its own headings or labels: "Declarations"
   # (Springer Nature, BMC), "Statements and declarations". Its parts are read by their own
   # headings and labels; it is named here so that the Ethics in it are read (`ethics`).
   declarations: '^(?:statements? and )?declarations?(?: and statements?)?$|^ethics declarations$'
 
 # A funding statement that says the work had none. Read in each place the funding statement
-# is in; a place that says only "None" or "Not applicable" says it too (`none`).
+# is in; a place a funding heading or label opens that says only "None" or "Not applicable"
+# says it too (`none_funding`). No denial is read where the statement gives a grant
+# identifier authors.yaml records.
 no_funding:
   # "This work received no funding", "received no specific funding", "has received no grant".
-  - '\breceived? no (?:specific |external |financial |dedicated |direct )*(?:funding|grants?|financial support)\b'
+  # Not "no external funding" or "no industry funding": funding of one kind only.
+  - '\breceived? no (?:specific |financial |dedicated |direct )*(?:funding|grants?|financial support)\b${not_funders}'
   # "No funding was received", "There was no funding", "No funding." The funders' role ("the
-  # funders had no role") is not this: it says nothing of whether there were funders.
-  - '\bno (?:specific |external |financial |dedicated |direct )*(?:funding|financial support)\b'
+  # funders had no role", "no funding body had any role") is not this.
+  - '\bno (?:specific |financial |dedicated |direct )*(?:funding|financial support)\b${not_funders}'
   # Elsevier's form: "This research did not receive any specific grant from funding agencies
   # in the public, commercial, or not-for-profit sectors."
-  - '\bdid not receive any (?:specific |external |financial )*(?:funding|grants?|financial support)\b'
-  - '\b(?:was|were) not (?:funded|supported by any)\b'
-  - '\bwithout (?:any )?(?:specific |external |financial )*(?:funding|financial support)\b'
+  - '\bdid not receive any (?:specific |financial )*(?:funding|grants?|financial support)\b${not_funders}'
+  # "was not funded", but not "was not funded by any commercial entity".
+  - '\b(?:was|were) not (?:funded|supported by any)\b(?! (?:by )?(?:any )?(?:commercial|industry|industrial|pharmaceutical|for-profit|external)\b)'
+  - '\bwithout (?:any )?(?:specific |financial )*(?:funding|financial support)\b${not_funders}'
 
 # An ethics statement that says no approval was needed. Read in the whole of the main text
 # and the supplement, since a paper says it where it says it ("no ethical approval was
@@ -58,23 +81,29 @@ no_approval:
   - '\bexempt(?:ed)? from (?:ethic(?:s|al)|irb|institutional review board)(?: committee)? (?:approval|review)\b'
 
 # A statement of none, as a whole: what an author's `competing_interests` holds when it
-# declares none ("None declared.", the form `init` writes), and what a statement of the
-# manuscript holds when it says none for everyone. Matched against the whole field or the
-# whole place, with its closing stop taken off, from start to end.
+# declares none ("None declared.", the form `init` writes; Springer Nature's "The author has
+# no relevant financial or non-financial interests to disclose."; Elsevier's "The authors
+# declare that they have no known competing financial interests or personal relationships
+# that could have appeared to influence the work reported in this paper."; "N/A"), and
+# what a statement of the manuscript holds when it says none for everyone. Matched against
+# the whole field or the whole place, with its closing stop taken off, from start to end.
 none:
   - '(?:none|nil)(?: (?:declared|to declare|to disclose|reported|known))?'
   - 'nothing to (?:declare|disclose|report)'
-  - '(?:there (?:are|is) )?no (?:known |potential |relevant |financial )*(?:competing|conflicts? of|conflicting) interests?(?: (?:to (?:declare|disclose|report)|(?:were|was|are|is) (?:declared|reported)|declared|reported))?'
-  - '(?:i|we|the authors?|all authors) (?:declares?|reports?|has|have|states?|discloses?)(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no (?:known |potential |relevant |financial )*(?:competing|conflicts? of|conflicting) interests?)(?: to (?:declare|disclose|report))?'
+  - 'n/?a|not applicable'
+  - 'no (?:relevant |financial )*disclosures?'
+  - '(?:there (?:are|is) )?no ${interest}(?: (?:to (?:declare|disclose|report)|(?:were|was|are|is) (?:declared|reported)|declared|reported))?'
+  - '(?:i|we|the authors?|all authors|all the authors) ${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|no (?:relevant )?disclosures?)(?: to (?:declare|disclose|report))?'
 
-# Funding said to be none, as a whole place: "Funding: None." or "Not applicable".
+# Funding said to be none, as a whole place a funding heading or label opens: "Funding:
+# None." or "Not applicable".
 none_funding:
-  - '(?:none|nil|not applicable)(?: (?:declared|received|to declare))?'
+  - '(?:none|nil|not applicable|n/?a)(?: (?:declared|received|to declare))?'
 
 # A sentence that says no author has an interest, wherever it stands in a statement that
 # says more: "The authors declare no competing interests." Its subject is "the authors", "all
-# authors" or "the author", so "the other authors" and "the remaining authors", which say it
-# of some of them after those the statement names, are not read.
+# authors" or "the author", so "the other authors", "all other authors" and "the remaining
+# authors", which say it of some of them after those the statement names, are not read.
 collective_none:
-  - '\b(?:the authors|all authors|all the authors|the author)[ ](?:declares?|reports?|has|have|states?|discloses?)(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no (?:known |potential |relevant |financial )*(?:competing|conflicts? of|conflicting) interests?)'
-  - '\bthere (?:are|is|were|was) no (?:known |potential |relevant |financial )*(?:competing|conflicts? of|conflicting) interests?'
+  - '\b(?:the authors|all authors|all the authors|the author)[ ]${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|no (?:relevant )?disclosures?)'
+  - '\bthere (?:are|is|were|was) no ${interest}'

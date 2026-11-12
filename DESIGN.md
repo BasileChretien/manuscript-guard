@@ -7710,10 +7710,18 @@ come from, starting from the patterns of the journal template's required stateme
   (competing) interests, Duality of interest, Disclosures;
 - ethics: a heading with "ethics", "ethical", "institutional review" or "IRB", a
   Declarations section, and the Methods, by the test G9 reads them by;
-- author contributions: Author(s') contributions, Contributors, CRediT author statement.
+- author contributions: Author(s') contributions, Contributors, CRediT author statement,
+  CRediT authorship contribution statement, Authorship, and "CRediT" alone; not "Image
+  credit" or "Photo credit".
 
-A Declarations section's parts are read by their own headings and labels. Comments and
-fenced listings are blanked first, as G4 reads every required statement. A LaTeX
+A heading is read by its words, its number taken off ("6.", "6.1", "VI."). A label alone
+in its paragraph, as a conversion from Word writes "**Funding**", heads the paragraphs
+after it, up to the next heading or label of a statement. A section holds only its own
+statement: it ends at a heading or a label inside it that opens a statement of another
+kind, so "# Competing interests" over "## Author contributions" does not read the
+contributions as interests. A Declarations section's parts are read by their own headings
+and labels. Comments and fenced listings are blanked first, as G4 reads every required
+statement. A LaTeX
 manuscript is read in its printed view, which writes each sectioning command as a heading,
 as G4's `main_text` and the AI-use check read it.
 
@@ -7728,15 +7736,24 @@ as G4's `main_text` and the AI-use check read it.
   found in "R01HL123456". An entry with no such word is found by its words in a row, with
   accents, case, marks and `&` folded. A statement that says the work had none ("received
   no funding", "No funding", Elsevier's "did not receive any specific grant", or "None" as
-  the whole statement) while an author's `funding` is not empty is `funding-denied`, one
-  finding that lists the record, and no grant is then reported apart.
+  the whole of a place a funding heading or label opens) while an author's `funding` is not
+  empty is `funding-denied`, one finding that lists the record, and no grant is then
+  reported apart. Round 1 of #653 narrowed it: "None" under the Acknowledgements says there
+  is no one to thank; the funders ("no funding body had any role") and funding of one kind
+  ("no external funding", "no financial support from industry", "not funded by any
+  commercial entity") deny nothing; and a statement that gives a recorded grant identifier
+  is read as giving it, whatever another sentence of it says.
 - **Competing interests.** A record declares an interest when it is filled and is not a
   statement of none ("None declared.", the form `init` writes; "No competing interests";
-  "Nothing to declare"). Each author whose record declares one is named, by family name,
-  in the statement. A statement that says none for everyone, "None declared." as the whole
-  of it or a sentence such as "The authors declare no competing interests", stands only
-  while every record says none: otherwise it is `interests-none-contradicted`. "The other
-  authors declare no competing interests" says it of some of them, and is not read so. An
+  "Nothing to declare"; "N/A"; Springer Nature's "no relevant financial or non-financial
+  interests to disclose"; Elsevier's "no known competing financial interests or personal
+  relationships that could have appeared to influence the work"). Each author whose record
+  declares one is named in the statement, by family name or by the initials `submit` prints
+  ("AE reports ...", as The Lancet writes it). A statement that says none for everyone,
+  "None declared." as the whole of it or a sentence such as "The authors declare no
+  competing interests", stands only while every record says none: otherwise it is
+  `interests-none-contradicted`. "The other authors" and "All other authors declare no
+  competing interests" say it of some of them, and are not read so. An
   empty field while another author's is filled is `interests-unfilled`: an empty field is
   not a declaration of none, as `submit` already says.
 - **Ethics.** Where `roles.ethics_lead` gives `approval`, the reference is found as a
@@ -7781,7 +7798,9 @@ The reading of statements reads text, so it is held over generated inputs:
 `tests/generated.py` draws papers whose declarations give a grant identifier, a funder in
 words, an author with an interest beside one with none, an approval reference and CRediT
 roles, each written in a typography drawn (dashes, case, accents, line breaks, emphasis,
-initials), under headings and labels drawn, with every near miss in each example: an
+initials, the author with an interest by name or by initials), under headings drawn,
+numbered or not, and labels drawn, opening a paragraph or alone in one, with every near
+miss in each example: an
 identifier with a digit more, a funder with a word changed, a family name changed, a role
 left out, a collective none, a denial of funding. `tests/readings.py` gains the reading and
 `tests/test_properties.py` the property, with broken rules in `BROKEN` that it must catch
@@ -25696,6 +25715,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A declaration given only on the journal's submission form, or in the covering letter, is
     not read; with no statement of its kind in the manuscript, a recorded grant or interest
     is a note. Accepted.
+  - A grant identifier written with a comma between its runs of digits ("Grant 12,345") is
+    not found, in the record or in the text: a comma is no separator, since it separates
+    numbers in a list. Accepted.
+  - Two authors with one family name are both named where either is, for competing
+    interests and for contributions.
+    Pinned by `tests/test_disclosures.py::test_two_authors_of_one_family_name_are_named_together`.
   - A paper in no project has no authors.yaml, so `audit` does not run the check. Accepted.
 - **The plan's Software section is held to the names a script writes, not to what runs.**
   (`gates/software.py`, "The plan names the software for the data".) Accepted.

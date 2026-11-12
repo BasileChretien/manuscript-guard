@@ -31675,7 +31675,7 @@ def _disclosure_findings(root: Path, stage: str | None = None) -> list[tuple[str
                   if f.gate == GATE and f.code.startswith(ours))  # fmt: skip
 
 
-def _recorded(root: Path, family: str, **fields: object) -> None:
+def _disclosures_recorded(root: Path, family: str, **fields: object) -> None:
     """`fields` set on the author of authors.yaml called `family`; `roles` on the file."""
     path = root / "authors.yaml"
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -31708,7 +31708,7 @@ def test_the_example_s_declarations_agree_with_its_authors_yaml(project: Path) -
 def test_a_funding_statement_that_denies_a_recorded_grant_is_caught(project: Path) -> None:
     """The example says it received no funding; authors.yaml now lists a grant. A warning
     while drafting, a failure at submission; the grant given passes."""
-    _recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
     assert _disclosure_findings(project, "drafting") == [("funding-denied", "warn")]
     assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
     _replaced(main_md(project), "This work received no funding.",
@@ -31719,8 +31719,8 @@ def test_a_funding_statement_that_denies_a_recorded_grant_is_caught(project: Pat
 def test_a_grant_the_funding_statement_leaves_out_is_caught(project: Path) -> None:
     """A grant identifier with a digit more is another grant; a funder with no identifier is
     found by its words, with its accents and case folded."""
-    _recorded(project, "Example", funding=[_GRANT])
-    _recorded(project, "Sample",
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Sample",
               funding=["Fondation pour la Recherche M\N{LATIN SMALL LETTER E WITH ACUTE}dicale"])
     _replaced(main_md(project), "This work received no funding.",
               "Supported by grant ANR-20-CE17-00012 and the FONDATION POUR LA RECHERCHE MEDICALE.")
@@ -31728,7 +31728,7 @@ def test_a_grant_the_funding_statement_leaves_out_is_caught(project: Path) -> No
 
 
 def test_no_funding_statement_with_a_grant_recorded_is_a_note(project: Path) -> None:
-    _recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
     _replaced(main_md(project), "# Funding\n\nThis work received no funding.\n\n", "")
     assert _disclosure_findings(project, "submission") == [("funding-not-stated", "info")]
 
@@ -31736,7 +31736,7 @@ def test_no_funding_statement_with_a_grant_recorded_is_a_note(project: Path) -> 
 def test_none_declared_while_an_author_records_an_interest_is_caught(project: Path) -> None:
     """The example's "None declared." stands for every author only while every record says
     none. Naming the author with the interest passes."""
-    _recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
     assert _disclosure_findings(project, "drafting") == [("interests-none-contradicted", "warn")]
     _replaced(main_md(project), "# Competing interests\n\nNone declared.",
               "# Competing interests\n\nBlaise SAMPLE received consulting fees from Pharma X. "
@@ -31745,7 +31745,7 @@ def test_none_declared_while_an_author_records_an_interest_is_caught(project: Pa
 
 
 def test_an_author_with_an_interest_the_statement_does_not_name_is_caught(project: Path) -> None:
-    _recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
     _replaced(main_md(project), "# Competing interests\n\nNone declared.",
               "# Competing interests\n\nAda Example received consulting fees from Pharma X.")
     assert _disclosure_findings(project, "submission") == [("interests-author-missing", "fail")]
@@ -31754,7 +31754,7 @@ def test_an_author_with_an_interest_the_statement_does_not_name_is_caught(projec
 def test_an_empty_competing_interests_field_is_caught(project: Path) -> None:
     """An empty field is not a declaration of none, so the manuscript's "None declared." is
     not backed by the record."""
-    _recorded(project, "Sample", competing_interests="")
+    _disclosures_recorded(project, "Sample", competing_interests="")
     assert _disclosure_findings(project, "drafting") == [("interests-unfilled", "warn")]
 
 
@@ -31762,7 +31762,7 @@ def test_an_ethics_approval_the_manuscript_does_not_give_is_caught(project: Path
     """The example says no ethical approval was required, in its Data availability; the
     ethics lead records one. Given in the Methods instead, it passes."""
     lead = {"author": "Sample", "approval": "CPP Ouest III 2021-A00123-36"}
-    _recorded(project, "Sample", roles={"ethics_lead": lead})
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": lead})
     assert _disclosure_findings(project, "drafting") == [("ethics-approval-denied", "warn")]
     _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
               "required.", "")
@@ -31773,7 +31773,7 @@ def test_an_ethics_approval_the_manuscript_does_not_give_is_caught(project: Path
 
 
 def test_an_ethics_approval_given_in_the_supplement_s_methods_passes(project: Path) -> None:
-    _recorded(project, "Sample", roles={"ethics_lead": {"name": "R. Lead",
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": {"name": "R. Lead",
                                                         "approval": "IRB #2021-0456"}})
     _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
               "required.", "")
@@ -31806,7 +31806,7 @@ def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Pa
     shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
                     project / "manuscript")  # fmt: skip
     assert _disclosure_findings(project, "submission") == []
-    _recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
     assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
 
 

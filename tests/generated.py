@@ -6797,14 +6797,22 @@ def _role_typed(draw: st.DrawFn, role: str) -> str:
 
 
 def _headed(draw: st.DrawFn, kind: str, body: str) -> str:
-    """`body` under a heading or a label of `kind`, drawn."""
+    """`body` under a heading of `kind`, numbered or not, or a label: one that opens the
+    paragraph, or one alone in a paragraph of its own, as a conversion from Word writes it
+    (round 1 of #653)."""
     title = draw(st.sampled_from(DECLARED_HEADINGS[kind]))
-    shape = draw(st.sampled_from(("heading", "heading", "label", "plain label")))
+    shape = draw(st.sampled_from(("heading", "heading", "label", "plain label", "alone",
+                                  "plain alone")))  # fmt: skip
     if shape == "heading" or title == "Methods":
         # The Methods are read by their heading, as G9 reads them, and by no label.
-        return f"{'#' * draw(st.integers(1, 3))} {title}\n\n{body}"
+        number = draw(st.sampled_from(("", "", "6. ", "6.1 ", "VI. ")))
+        return f"{'#' * draw(st.integers(1, 3))} {number}{title}\n\n{body}"
     if shape == "label":
         return f"**{title}:** {body}"
+    if shape == "alone":
+        return f"**{title}**\n\n{body}"
+    if shape == "plain alone":
+        return f"{title}:\n\n{body}"
     return f"{title}: {body}"
 
 
@@ -6832,7 +6840,9 @@ def declaration_papers(
         ],
         "roles": {"ethics_lead": {"author": "Sample", "approval": approval}},
     }  # fmt: skip
-    a_name = "Ada " + _typed(draw, family)
+    # The author with an interest, by name or, as The Lancet writes it, by initials.
+    a_name = draw(st.sampled_from(("Ada " + _typed(draw, family),
+                                   _initials_typed(draw, "Ada", family))))  # fmt: skip
     b_initials = _initials_typed(draw, "Blaise", "Sample")
     roles = [_role_typed(draw, role) for role in DECLARED_ROLES]
     approval_dash = draw(st.sampled_from(DECLARED_DASHES))

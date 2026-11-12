@@ -16737,6 +16737,21 @@ def test_an_n_percent_cell_in_a_binary_row_is_passed_over(
     assert "1 spread in these rows held to nothing: " in shown
 
 
+@pytest.mark.parametrize(("top", "row", "said"), [
+    ("Characteristic, n (%) or mean (SD)", "| Male sex | 0.19 (0.35) |", (0, 1)),
+    ("Characteristic", "| Pregnant | 0.6 (7.8) |", (1, 0))])  # fmt: skip
+def test_binary_cells_go_by_their_headers(tmp_path: Path, top: str, row: str, said: tuple) -> None:
+    """Known gaps: "n (%) or mean (SD)" over a proportion passes it over, with its reason;
+    "0.6 (7.8)" under no header naming a percentage is read as a proportion and listed."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    (paper := tmp_path / "p.md").write_text(f"| {top} | Treated (n = 163) |\n|---|---|\n{row}\n")
+    report = audit([paper], [], binary=("male", "pregnant"))
+    assert (len(report.binary_off), len(report.binary_passed_over)) == said
+    shown = render(report, measure_discrimination(set()))
+    assert ("the table's header names a percentage (1)" in shown) is bool(said[1])
+
+
 def test_a_section_row_naming_its_spread_is_not_carried_down() -> None:
     """A limit (DESIGN.md, Known gaps): a section row in the stub column that names its
     spread, "Pain, mean (SE)" over "Week 4" and "Week 8", is not carried down to the rows

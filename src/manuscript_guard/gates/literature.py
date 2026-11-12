@@ -359,11 +359,12 @@ def _binary_mean(key: str, value, detail: dict) -> Report:
         return _quote_finding(key, value, quote, "quote-binary-not-possible",
                               f"in the source, {binary_described(mean, sd, n)}")  # fmt: skip
     return _quote_note(key, value, "quote-binary-not-assessable", "whether it and its SD can "
-                       f"be those of numbers each 0 or 1 is not assessable: {why or _TOO_MANY}")
+                       f"be those of numbers each 0 or 1 is not assessable: {why or _MANY_ONES}")
 
 
 #: Why a test that would try more than 100,000 totals or counts says nothing.
 _TOO_MANY = "more than 100,000 totals would be tried"
+_MANY_ONES = "more than 100,000 counts of ones would be tried"
 
 
 def _spread_unread(sd: str | None, quote: str, detail: str) -> str | None:

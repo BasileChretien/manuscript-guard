@@ -17401,6 +17401,10 @@ Added by the adversarial review, verified and **not** fixed:
     #665: "85 (52.1)", a count and its share, was said to be no mean of numbers each 0 or
     1). An n (%) is held to its denominator already. A proportion in a row and column no
     header calls percentages, typed as a decimal, is read as a mean. Accepted.
+  - A header that names "n (%) or mean (SD)" passes over every proportion under it, with its
+    reason; a percentage under 1 with its SD, "0.6 (7.8)", in a row and column no header
+    calls percentages, is read as a proportion and listed (round 2 of #665). Pinned by
+    `tests/test_corruption.py::test_binary_cells_go_by_their_headers`.
   - A test that would try more than 100,000 totals or counts of ones says nothing, where
     rsprite2 stops at a million (round 1 of #665: G7 took seconds over a million): in
     `audit` the spread is counted as passed over, in the ledger it is

@@ -472,7 +472,7 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
     # And whether a header over each column, and the header's first cell, names a
     # percentage, "n (%)": its cells are no proportions for DEBIT (round 1 of #665).
     percent_over: dict[int, bool] = {}
-    percent_of_all = bool(table and table[0] and "%" in table[0][0].text)
+    percent_of_all = bool(table and table[0] and _PERCENT in table[0][0].text)
     for at, row in enumerate(table):
         placed = list(_columns(row))
         label = row[0].text if row else ""
@@ -580,7 +580,7 @@ def _percent_header(cell: TableCell, column: int, over: dict[int, bool]) -> None
     spans hold percentages: the latest such cell over a column says it. A body cell's
     "12 (40%)" says nothing of the column."""
     for each in range(column, column + max(cell.span, 1)):
-        over[each] = "%" in cell.text
+        over[each] = _PERCENT in cell.text
 
 
 def _not_a_proportion(mean: str, label: str, column: bool, table: bool) -> str | None:

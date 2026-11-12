@@ -506,7 +506,7 @@ def test_a_ledger_sd_of_millions_of_whole_numbers_is_said_quickly(n: int) -> Non
     """Round 1 of #665: G7 holds a ledger SD to its mean by trying each whole total the mean
     allows, a million of them for 3.4 of 10,000,000, in fractions, and again for the SDs
     either side of one that cannot be. Past 100,000 totals the SD is not assessable, at
-    once; just under, every total of an SD of nought is tried and refused, twice."""
+    once; just under, the totals of an SD of nought are skipped in runs, two tried of each."""
     from types import SimpleNamespace
 
     from manuscript_guard.gates.literature import _whole_number_sd

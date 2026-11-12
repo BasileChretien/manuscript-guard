@@ -1,6 +1,6 @@
 ---
 name: reporting-checklist
-description: Retrieve a reporting guideline's official checklist (STROBE, CONSORT, PRISMA, RECORD, SPIRIT, TRIPOD, ARRIVE and others) and record it so the build can check that every item is addressed. Use when check reports checklist-not-retrieved, or when adopting a new guideline.
+description: Retrieve a reporting guideline's official checklist (STROBE, CONSORT, PRISMA, RECORD, SPIRIT, TRIPOD, ARRIVE and others) and record it so the build can check that every item is addressed, each answer quoting the sentence that addresses it. Use when check reports checklist-not-retrieved, checklist-quote-missing or checklist-quote-not-found, or when adopting a new guideline.
 ---
 
 # Retrieving a reporting checklist
@@ -121,6 +121,31 @@ gate wants a reason a reviewer could read: *"no interventions were assigned"*, n
 
 Re-running `checklist` after a guideline revision preserves the answers already given and
 adds only the new items.
+
+## 4. Quote the sentence that addresses each item
+
+A heading alone is satisfied by any manuscript, since every paper has a Methods. So each item
+answered with `where` also carries `quote:`, the sentence (or four words or more of it) that
+addresses the item, and `check` looks for it under that heading, subsections and the
+supplement included, or in the caption of the table or figure `where` names ("Table 1"). A
+missing quote, or one not there, is a warning from internal review and a failure at
+submission (`checklist-quote-missing`, `checklist-quote-not-found`).
+
+For each item, in order:
+
+1. Read the item's text in the profile and the section `where` names.
+2. **Propose the sentence** that addresses the item, copied from the manuscript as it is
+   written, bindings included (`{{results.n_reports}}`), or from the built document with its
+   values. Show it to the author beside the item's text.
+3. **Write it as `quote:` only once the author agrees.** The author decides whether the
+   sentence does what the item asks; the gate only checks that the words are there.
+4. **Never invent a quote**, reword one to fit the item, or quote a sentence that only comes
+   near it. Where no sentence addresses the item, tell the author the item is not addressed
+   yet and what it asks for, and leave `quote:` empty: the warning is then true, and it is the
+   reminder.
+
+Where `check` says a quote stands under another heading, `where` is the part that is wrong:
+point it at that heading, or quote the sentence under `where` that addresses the item.
 
 ## Which guideline for which design
 

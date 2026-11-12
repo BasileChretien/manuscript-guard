@@ -13023,6 +13023,35 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
     assert found == ["CONSORT"], found
 
 
+_UNQUOTED_FUNDING = ("This work received no funding.", "Funding came from nowhere.")
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_g5_fails_at_submission_a_checklist_answer_whose_sentence_is_gone(
+    project: Path, latex: bool
+) -> None:
+    """The sentence a checklist's answer quotes is what the item rests on: the example's
+    answers each stand under their heading, in Markdown and in the LaTeX twin, and with the
+    Funding sentence reworded the answer that quotes it fails at submission, naming the
+    heading searched, and only warns from internal review."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.findings import FAIL, WARN
+
+    entry = _twin(project) if latex else main_md(project)
+
+    def told(stage: str) -> list[tuple[str, str, str]]:
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        return [(f.code, f.severity, f.message) for f in report.findings
+                if f.code.startswith("checklist-quote")]  # fmt: skip
+
+    assert told("submission") == []
+    _replace_once(entry, *_UNQUOTED_FUNDING)
+    said = ("DEMO-OBS 10 (Funding): the quote 'This work received no funding.' is not under "
+            "'Funding'")  # fmt: skip
+    assert told("submission") == [("checklist-quote-not-found", FAIL, said)]
+    assert told("internal-review") == [("checklist-quote-not-found", WARN, said)]
+
+
 _LATEX_QUOTED = (
     "the cohort found that ``incidence {} with age and did not differ meaningfully by sex''"
 )

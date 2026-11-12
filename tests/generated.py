@@ -4806,6 +4806,146 @@ def finding_places(
     return inputs, truth
 
 
+# ----------------------------------------------------- what a checklist's answer quotes
+
+#: Each way an answer to a reporting checklist's item quotes the manuscript (G5,
+#: `gates/checklist_quotes.py`), and what is found of it: "found" under what its `where`
+#: names, "elsewhere" where it stands under another part only, "nowhere", and "missing" where
+#: it is no quote: none, or fewer than four words.
+CHECKLIST_QUOTES = {
+    "copied": "found",
+    "typed": "found",
+    "capitals": "found",
+    "wrapped": "found",
+    "elided": "found",
+    "in a subsection": "found",
+    "in the supplement": "found",
+    "in the next file": "found",
+    "in the next file's subsection": "found",
+    "binding as written": "found",
+    "binding as printed": "found",
+    "in a table's caption": "found",
+    "in a figure's legend": "found",
+    "under another heading": "elsewhere",
+    "the parent's own text": "elsewhere",
+    "another display's caption": "elsewhere",
+    "in a comment": "nowhere",
+    "word changed": "nowhere",
+    "inside a word": "nowhere",
+    "out of order": "nowhere",
+    "half printed, half written": "nowhere",
+    "three words": "missing",
+    "no quote": "missing",
+}
+#: Where a paragraph of `checklist_quotes` holds a word marked up and one set otherwise, and
+#: where the subsection's holds its two bindings.
+_QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
+
+
+@st.composite
+def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, Any]]]:
+    """A manuscript of three files, `main.md` with a section A, its subsection A1 and a
+    section B, `01_more.md`, which the build prints after it, with a paragraph under no
+    heading and a subsection D, both of them B's, and `supplementary/S1.md` with a section C,
+    each heading and paragraph of words of
+    their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
+    one set by the typographer, drawn white space between words, two value bindings in A1's
+    paragraph, a comment and a figure's legend typed under B, and two emitted tables'
+    captions; and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
+    time, each with what G5 finds of it: None for no quote, else whether it stands under what
+    its `where` names and the parts it stands under instead.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed;
+    every word is the manuscript's once, so that a quote is found where it was taken and
+    nowhere else."""
+    counted = iter(range(1, 100_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def paragraph() -> list[str]:
+        words = [word() for _ in range(12)]
+        words[_QUOTED_MARKED] = draw(st.sampled_from(_MARKED_AS)).format(words[_QUOTED_MARKED])
+        words[_QUOTED_SET] = draw(st.sampled_from(_SET_AS)).format(words[_QUOTED_SET])
+        return words
+
+    def joined(words: list[str]) -> str:
+        return "".join(w + draw(st.sampled_from(SOURCE_GAPS)) for w in words[:-1]) + words[-1]
+
+    def title() -> str:
+        return f"{word().capitalize()} {word()}"
+
+    a, a1, b, c, d = title(), title(), title(), title(), title()
+    para_a, para_a1, para_b, para_c = paragraph(), paragraph(), paragraph(), paragraph()
+    para_next, para_d = paragraph(), paragraph()
+    values, shown = {}, {}
+    for at in _QUOTED_BOUND:
+        ref = f"results.{word()}"
+        values[ref] = f"{next(counted)}.{draw(st.integers(10, 99))}"
+        para_a1[at] = f"{{{{{ref}}}}}"
+        shown[para_a1[at]] = values[ref]
+    comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
+    captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
+    files = {
+        # First by path, and printed after `main.md`, as the main text's other files are.
+        "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
+        "main.md": "\n\n".join((
+            f"# {a}", joined(para_a), f"## {a1}", joined(para_a1), f"# {b}", joined(para_b),
+            f"<!-- {' '.join(comment)} -->", f"Figure 1. {' '.join(legend)}.",
+        )) + "\n",
+        "supplementary/S1.md": f"# {c}\n\n{joined(para_c)}\n",
+    }  # fmt: skip
+
+    def printed(words: list[str], keep: str | None = None) -> list[str]:
+        return [shown[w] if w in shown and w != keep else w for w in words]
+
+    def run(words: list[str], low: int = 4, high: int = 8) -> list[str]:
+        size = draw(st.integers(low, high))
+        start = draw(st.integers(0, len(words) - size))
+        return words[start : start + size]
+
+    gap = draw(st.sampled_from((" ... ", " [...] ", " \N{HORIZONTAL ELLIPSIS} ")))
+    found, under_a = [True, []], [False, [repr(a)]]
+    ways: dict[str, tuple[str, str | None, Any]] = {
+        "copied": (a, " ".join(run(para_a)), found),
+        "typed": (a, " ".join(_as_typed(w) for w in para_a[:5]), found),
+        "capitals": (b, " ".join(run(para_b)).upper(), found),
+        "wrapped": (a, "\n    ".join(run(para_a)), found),
+        "elided": (b, " ".join(para_b[:3]) + gap + " ".join(para_b[-3:]), found),
+        "in a subsection": (a, " ".join(para_a1[:5]), found),
+        "in the supplement": (c, " ".join(run(para_c)), found),
+        "in the next file": (b, " ".join(run(para_next)), found),
+        "in the next file's subsection": (b, " ".join(run(para_d)), found),
+        "binding as written": (a1, " ".join(para_a1[5:10]), found),
+        "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
+        "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
+        "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
+        "under another heading": (b, " ".join(para_a[5:10]), under_a),
+        "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
+        "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),
+                                      [False, ["the caption of Table 1"]]),
+        "in a comment": (b, " ".join(run(comment, 4, 6)), [False, []]),
+        "word changed": (a, " ".join([*para_a[4:6], word(), *para_a[7:9]]), [False, []]),
+        # Its first letter left off: the rest stands inside the word, and is no word anywhere.
+        "inside a word": (a, " ".join(para_a[5:10])[1:], [False, []]),
+        "out of order": (b, " ".join(para_b[-3:]) + gap + " ".join(para_b[:3]), [False, []]),
+        "half printed, half written": (
+            a1, " ".join(printed(para_a1[5:10], keep=para_a1[_QUOTED_BOUND[1]])), [False, []]),
+        "three words": (a, " ".join(para_a[5:8]), None),
+        "no quote": (a, None, None),
+    }  # fmt: skip
+    order = draw(st.permutations(sorted(CHECKLIST_QUOTES)))
+    given = {
+        "files": files,
+        "values": values,
+        "captions": [["table", False, n, " ".join(words) + "."]
+                     for n, words in enumerate(captions, 1)],
+        "items": [{"where": ways[kind][0], "quote": ways[kind][1]} for kind in order],
+    }  # fmt: skip
+    return given, [(kind, ways[kind][2]) for kind in order]
+
+
 # ------------------------------------------------------------ passages of cited works
 
 #: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
@@ -13548,6 +13688,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "passage claims": passage_claims().map(lambda drawn: drawn[0]),
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
+    "checklist quotes": checklist_quotes().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(

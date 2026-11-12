@@ -7,7 +7,8 @@ it.
 
 Producing it as a build artefact reverses that. Every item must say either where it is
 addressed or why it does not apply, and "n/a" is not a reason. Where an item points at a
-section, the section has to exist.
+section, the section has to exist, and the item quotes the sentence there that addresses it
+(`checklist_quotes.py`): a heading alone is satisfied by any manuscript.
 
 The item lists themselves are retrieved from each guideline's own site and stored with
 their source. None is written from memory: a checklist whose items are approximately right
@@ -22,7 +23,7 @@ from pathlib import Path
 from manuscript_guard.contracts import ContractError
 from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.contracts.project import PAPER_FILE, Project
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_CHECKLISTS, recipes
 from manuscript_guard.text.masking import mask
@@ -291,7 +292,12 @@ def _printed_manuscript(project: Project) -> str:
     return "\n\n".join(printed_document(folder, supplementary=part) for part in (False, True))
 
 
-def check_reporting(project: Project) -> Report:
+def check_reporting(
+    project: Project, namespace: dict | None = None, results=None, stage: str | None = None
+) -> Report:
+    """G5. `namespace` and `results` give the values a quote may be copied with and the
+    tables whose captions it may stand in, and are loaded here where they are not given;
+    `stage` says how a missing quote, or one not found, is told (`_quote_severity`)."""
     wanted = project.reporting_guidelines
     declared = {str(name).upper() for name in wanted}
     claims = _claimed_in_prose(project, declared).merge(
@@ -303,6 +309,7 @@ def check_reporting(project: Project) -> Report:
     report = claims.merge(_superseded(project, wanted))
     complete = 0
     known_headings = {h.lower() for h in headings(_printed_manuscript(project))}
+    quoting = _Quoting(project, namespace, results, stage)
 
     for name in wanted:
         path = checklist_path(project, name)
@@ -324,7 +331,7 @@ def check_reporting(project: Project) -> Report:
         if not schema_report.ok or not isinstance(document, dict):
             continue
 
-        item_report, done = _check_completion(project, name, document, known_headings)
+        item_report, done = _check_completion(project, name, document, known_headings, quoting)
         report = report.merge(item_report)
         complete += int(done)
 
@@ -332,7 +339,8 @@ def check_reporting(project: Project) -> Report:
 
 
 def _check_completion(
-    project: Project, name: str, checklist: dict, known_headings: set[str]
+    project: Project, name: str, checklist: dict, known_headings: set[str],
+    quoting: _Quoting | None = None,
 ) -> tuple[Report, bool]:
     path = completion_path(project, name)
     items = checklist["items"]
@@ -411,7 +419,10 @@ def _check_completion(
             )
             continue
 
-        if where and not _points_somewhere_real(where, known_headings):
+        if where and not (
+            _points_somewhere_real(where, known_headings)
+            or (quoting is not None and quoting.manuscript.names_display(where))
+        ):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -422,6 +433,10 @@ def _check_completion(
                     hint="headings: " + (", ".join(sorted(known_headings)) or "none"),
                 )
             )
+
+        # An item excluded with a reason quotes nothing.
+        if where and not reason and quoting is not None:
+            report = report.with_findings(*_quote_findings(label, entry, where, quoting, path))
 
     unknown = sorted(set(answered) - {i["id"] for i in items})
     for extra in unknown:
@@ -437,6 +452,85 @@ def _check_completion(
         )
 
     return report, outstanding == 0
+
+
+class _Quoting:
+    """What G5 holds an item's `quote` to: the manuscript, read once and only when an item
+    is answered (`checklist_quotes.of_project`), and the stage, which says how it is told."""
+
+    def __init__(self, project: Project, namespace: dict | None, results, stage: str | None):
+        from manuscript_guard.policy import DRAFTING
+
+        self._project, self._namespace, self._results = project, namespace, results
+        self.stage = stage or DRAFTING
+        self._manuscript = None
+
+    @property
+    def manuscript(self):
+        if self._manuscript is None:
+            from manuscript_guard.gates.checklist_quotes import of_project
+
+            self._manuscript = of_project(self._project, self._namespace, self._results)
+        return self._manuscript
+
+
+def _quote_severity(stage: str) -> str:
+    """A missing quote, or one not found, is a note while the paper is drafted, a warning
+    from internal review and a failure at submission (Basile, 2026-11-12)."""
+    from manuscript_guard.policy import INTERNAL_REVIEW, SUBMISSION, stage_index
+
+    if stage_index(stage) < stage_index(INTERNAL_REVIEW):
+        return INFO
+    return FAIL if stage == SUBMISSION else WARN
+
+
+#: How many of a quote's first words a finding shows.
+_SHOWN_WORDS = 8
+
+
+def _first_words(quote: str) -> str:
+    said = quote.split()
+    return " ".join(said[:_SHOWN_WORDS]) + (" ..." if len(said) > _SHOWN_WORDS else "")
+
+
+def _quote_findings(label: str, entry: dict, where: str, quoting: _Quoting, path: Path
+                    ) -> list[Finding]:  # fmt: skip
+    """What G5 says of an answered item's quote: nothing where it stands under what `where`
+    names; `checklist-quote-missing` where there is none, or one too short to show anything;
+    `checklist-quote-not-found` where it is not there, with where it stands instead."""
+    from manuscript_guard.anchoring import words
+    from manuscript_guard.gates import checklist_quotes
+
+    severity = _quote_severity(quoting.stage)
+    quote = str(entry.get("quote") or "").strip()
+    placed = quoting.manuscript.judged(quote, where)
+    if placed is None:
+        fewest, counted = checklist_quotes.QUOTE_WORDS, words(quote)
+        said = "quotes nothing there"
+        if quote:
+            said = (f"quotes {quote!r}, {counted} word{'' if counted == 1 else 's'}: fewer "
+                    f"than {fewest} are found in any paper")  # fmt: skip
+        return [Finding(
+            gate=GATE, code="checklist-quote-missing", severity=severity, path=path,
+            message=f"{label} says it is addressed under {where!r} and {said}",
+            hint=f"copy into `quote:` the sentence under {where!r} that addresses the item, "
+            f"or {fewest} words of it or more; a heading alone is satisfied by any manuscript",
+        )]  # fmt: skip
+    if placed.under:
+        return []
+    searched = (" or ".join(placed.searched) if placed.searched
+                else f"{where!r}, which names no heading and no caption")  # fmt: skip
+    message = f"{label}: the quote {_first_words(quote)!r} is not under {searched}"
+    if placed.elsewhere:
+        message += f"; it stands under {' and '.join(placed.elsewhere)}"
+        hint = (f"point `where` at {placed.elsewhere[0]}, where the sentence is, or quote "
+                f"the sentence under {where!r} that addresses the item")  # fmt: skip
+    else:
+        hint = ("copy the sentence as the manuscript has it, its bindings as written or the "
+                "values the build prints, with `...` for words left out; where no sentence "
+                "addresses the item, it is not addressed yet")  # fmt: skip
+    return [Finding(gate=GATE, code="checklist-quote-not-found", severity=severity, path=path,
+                    message=message, context=quote[:140], hint=hint)]  # fmt: skip
 
 
 def _points_somewhere_real(where: str, known_headings: set[str]) -> bool:
@@ -466,7 +560,7 @@ def scaffold_completion(project: Project, name: str) -> tuple[Path, int, int]:
             items.append(existing[item["id"]])
         else:
             added += 1
-            items.append({"id": item["id"], "where": "", "note": item["topic"]})
+            items.append({"id": item["id"], "where": "", "quote": "", "note": item["topic"]})
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

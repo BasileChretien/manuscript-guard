@@ -366,6 +366,8 @@ structural:
     rejects:
       # Only what follows "RRID:" is an identifier: a measurement beside one is a number.
       - {text: "The antibody was diluted 1:500 (RRID:AB_2298772).", atom: "1:500"}
+      - {text: "The antibody (RRID:AB_2298772) diluted 1:500 was used.", atom: "1:500"}
+      - {text: "Prism (RRID:SCR_002798.Version 2) on 12 mice was used.", atom: "12"}
       - {text: "We used 12 mice (RRID:IMSR_JAX:000664) in each arm.", atom: "12"}
       - {text: "The ratio was 0.0005 in frogs (RRID:NXR_0.0005).", atom: "0.0005"}
       - {text: "Each animal received 2.5 mg (RRID:AB_2298772) once.", atom: "2.5"}

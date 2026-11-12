@@ -11777,13 +11777,14 @@ def test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14(
     expected = [("abbreviation-undefined", "HPLC"), ("code-name-in-prose", "dose_mg")]
     assert RRID_BESIDE == ("HPLC", "dose_mg")
     read = [_file(0, MAIN, markdown, [], False)]
-    assert _hidden_in(read, spans_md) == [], markdown
+    assert _hidden_in(read, spans_md) == [] and "Version" in read[0].printed, markdown
     assert _g14_of_rrids(read, Path(".")) == expected, markdown
     folder = Path(tempfile.mkdtemp(prefix="mg-rrid-"))
     try:
         (folder / "main.tex").write_text(latex, encoding="utf-8", newline="")
         read = _latex_read(folder, None)
         assert _hidden_in(read, spans_tex) == [], latex
+        assert any("Version" in one.printed for one in read), latex
         assert _g14_of_rrids(read, folder) == expected, latex
     finally:
         shutil.rmtree(folder, ignore_errors=True)
@@ -11815,6 +11816,16 @@ def _g14_reads_no_latex_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None
 
 def _g14_reads_no_escaped_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
     _g14_rrid_changed(patch, r"\\?[_:]", r"[_:]")
+
+
+def _a_word_of_any_length_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, "{4,}", "+")
+    _rrid_rule_changed(patch, "{4,}", "+")
+
+
+def _a_dot_before_a_letter_joins_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, r"\.(?=[0-9])", r"\.")
+    _rrid_rule_changed(patch, r"\.(?=[0-9])", r"\.")
 
 
 def _rrid_rule_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
@@ -25720,6 +25731,14 @@ BROKEN = {
     ),
     "G14 reads no escaped underscore in an RRID": (
         _g14_reads_no_escaped_underscore_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a word of any length after a hyphen ends an RRID for G2 and G14": (
+        _a_word_of_any_length_ends_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a dot before a letter joins an RRID for G2 and G14": (
+        _a_dot_before_a_letter_joins_an_rrid,
         test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
     ),
     "no line break is read after an RRID's colon": (

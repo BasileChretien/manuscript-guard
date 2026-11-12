@@ -32701,7 +32701,8 @@ def test_a_number_typed_against_an_rrid_is_read_into_it() -> None:
     classifier = Classifier.load()
     for typed, atom in (("RRID:AB_123.4 mg", "RRID:AB_123.4"),
                         ("RRID:CVCL_0030-1", "RRID:CVCL_0030-1"),
-                        ("RRID:AB_2298772:500", "RRID:AB_2298772:500")):  # fmt: skip
+                        ("RRID:AB_2298772:500", "RRID:AB_2298772:500"),
+                        ("RRID:CVCL_0030-derived-12", "RRID:CVCL_0030-derived-12")):  # fmt: skip
         text = f"The antibody {typed} was used.\n"
         [found] = find_atoms(text, mask(text))
         assert found.text == atom

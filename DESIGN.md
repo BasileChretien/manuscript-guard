@@ -26841,7 +26841,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the code. Accepted.
   - A number typed straight after an RRID, with a dot, a hyphen or a colon and no space, is
     read into its accession, and G2 calls it structural with the rest: "RRID:AB_123.4 mg",
-    "RRID:CVCL_0030-1", "RRID:AB_2298772:500". Pinned by
+    "RRID:CVCL_0030-1", "RRID:AB_2298772:500", and after a word of four small letters or more
+    and a `-` or a `:`, "RRID:CVCL_0030-derived-12". "RRID:SCR_002798.v9" leaves the 9 out of
+    what G2 covers, so G2 reports it, as main does. Pinned by
     `tests/test_corruption.py::test_a_number_typed_against_an_rrid_is_read_into_it`.
 
 Closed since, and why each mattered (an open gap goes above this line):

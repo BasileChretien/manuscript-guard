@@ -4457,6 +4457,8 @@ NAMED_RESOURCES = {
     "RRID:IMSR_JAX:000664": "RRID:IMSR_JAX:000664", "RRID:NXR_0.0005": "RRID:NXR_0.0005",
     "RRID:SAMN12345678": "RRID:SAMN12345678", "RRID:MMRRC_000231-UNC": "RRID:MMRRC_000231-UNC",
     "RRID:CVCL_0372-derived": "RRID:CVCL_0372-derived",
+    "RRID:mmrrc_000231-unc": "RRID:mmrrc_000231-unc",
+    "(RRID:SCR_002798.Version)": "RRID:SCR_002798.Version",  # bracketed: "Version 12" is one
     "(RRID:Addgene_12345)": "RRID:Addgene_12345",
     "\nRRID:ZFIN_ZDB-GENO-960809-7": "RRID:ZFIN_ZDB-GENO-960809-7",
 }  # fmt: skip
@@ -14428,7 +14430,7 @@ def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
 #: side or an underscore, so a part left unread is an abbreviation or a name from the code.
 RRID_JOINED = (
     "ZFIN_ZDB-GENO-960809-7", "MMRRC_000231-UNC", "MGI:3840442", "IMSR_JAX:000664",
-    "NXR_0.0005", "CVCL_0030", "SAMN12345678",
+    "NXR_0.0005", "CVCL_0030", "SAMN12345678", "mmrrc_000231-unc", "SCR_002798.Version",
 )  # fmt: skip
 #: What stands between "RRID:" and the accession: nothing, a space, a line break.
 RRID_JOINED_GAPS = ("", " ", "\n")
@@ -14464,10 +14466,11 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
         else:
             markdown += f"RRID:{gap}"
             latex += f"RRID:{gap}"
-            read_md.append([len(markdown), len(markdown) + len(typed)])
+            kept = len(typed.removesuffix(".Version"))  # the word after the stop is no part
+            read_md.append([len(markdown), len(markdown) + kept])
             markdown += typed
             written = typed.replace("\\_", "_").replace("_", "\\_")
-            read_tex.append([len(latex), len(latex) + len(written)])
+            read_tex.append([len(latex), len(latex) + len(written.removesuffix(".Version"))])
             latex += written
         markdown += draw(st.sampled_from((" ", ", ", "; ", ") ")))
         latex += " "

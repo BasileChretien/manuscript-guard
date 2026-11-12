@@ -688,22 +688,38 @@ def typed_titles(document: DocxText) -> list[tuple[int, str]]:
             if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
 
 
-def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...]:
+def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | None:
     """Each line of `typed_titles`, by 0-based line, with its level (`section_levels`): the
-    headings `from_word.typed_headings` makes of the same paragraphs, each at level 1 where
-    the levels cannot be read exactly, as it makes them (round 2 of #641: a "Results" typed
-    twice left a paper placed by its bold titles unplaced). Empty where the document has a
-    heading style or no such line."""
-    from manuscript_guard.text.section_names import section_levels
-
-    lines = document.body.split("\n")
+    headings `from_word.typed_headings` makes of the same paragraphs. Where they cannot be
+    placed exactly, those wholly in bold alone, where they can be, as a title in bold alone
+    was read before a typed one was (round 2 of #641: a "Results" typed twice left a paper
+    its bold titles placed unplaced). Empty where the document has a heading style or no
+    such line; None where neither can be placed, as a PDF's lines then are not
+    (`auditing.pdf.UNPLACED`): placed at one level, a structured abstract's own "Results"
+    would be the paper's, and the Abstract compared with itself."""
     found = typed_titles(document)
     if not found:
         return ()
+    bold = [(at, title) for at, title in found if at in document.bold]
+    for titles in (found, bold):
+        levels = _levels(document.body.split("\n"), titles)
+        if levels is not None:
+            return levels
+    return None
+
+
+def _levels(lines: list[str], found: list[tuple[int, str]]
+            ) -> tuple[tuple[int, int], ...] | None:  # fmt: skip
+    from manuscript_guard.text.section_names import section_levels
+
+    if not found:
+        return None
     ends = [at for at, _title in found[1:]] + [len(lines)]
     worded = [any(lines[k].strip() for k in range(at + 1, end))
               for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
-    levels = section_levels([title for _at, title in found], worded) or (1,) * len(found)
+    levels = section_levels([title for _at, title in found], worded)
+    if levels is None:
+        return None
     return tuple((at, level) for (at, _title), level in zip(found, levels, strict=True))
 
 

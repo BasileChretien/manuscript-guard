@@ -1736,15 +1736,17 @@ def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None
     assert [lines[at] for at, _level in typed_heading_levels(document)] == [
         "ABSTRACT", "METHODS", "Results"]
     # Round 2 of #641: a second "RESULTS" in the Discussion, a section's name typed twice,
-    # left the paper placed in no section; each title is at level 1, as `init --from` makes
-    # them, and the Abstract is compared.
+    # left the paper placed in no section; its titles in bold are placed, as they were
+    # before a typed title was read, and the Abstract is compared.
     twice = (bold("Abstract") + para("Of 412 patients, 77 had it.") + bold("Introduction")
              + para("Drugs cause harm.") + bold("Methods") + para("We read 412 records.")
              + bold("Results") + para("Of 412 patients, 77 had it.") + bold("Discussion")
              + para("RESULTS") + para("A second study agreed.") + bold("References")
              + para("1. Doe J. A title. BMJ. 2020;1:2."))  # fmt: skip
     document = read_docx_text(make_docx(tmp_path / "twice.docx", twice))
-    assert [level for _at, level in typed_heading_levels(document)] == [1] * 7
+    lines = document.body.split("\n")
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "Abstract", "Introduction", "Methods", "Results", "Discussion", "References"]
     report = audit([tmp_path / "twice.docx"], [])
     assert report.abstract is not None and report.abstract.compared
     assert report.abstract.not_found == []
@@ -1773,17 +1775,24 @@ def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_headi
     assert typed_heading_levels(document) == ()
 
 
-def test_bold_titles_that_cannot_be_nested_are_placed_at_one_level(tmp_path: Path) -> None:
+def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
     """A structured abstract's parts in bold straight under its Abstract, with no
     Introduction after them and none of their names again: which Results are the paper's is
-    not read, so every title is at level 1, as `init --from` makes them (round 2 of #641:
-    the paper was placed in no section, and the two readers differed)."""
+    not read, and that is said, as for a PDF. Placed at one level, the Abstract's own
+    "Results" would be the paper's, and the Abstract compared with itself. So too where its
+    parts are typed in plain capitals (round 2 of #641)."""
     body = (bold("Abstract") + bold("Background") + para("Drugs cause harm.") + bold("Results")
             + para("Of 412 patients, 77 had it.") + bold("Discussion") + para("It was so."))
     report = audit([make_docx(tmp_path / "paper.docx", body)], [])
     (said,) = report.headings
-    assert "could not be placed" not in said and "were read as its headings" in said
-    assert report.abstract is not None and report.abstract.compared
+    assert "could not be placed" in said and "its lines were placed in no section" in said
+    typed = (para("ABSTRACT") + para("BACKGROUND") + para("Drugs cause harm.")
+             + para("RESULTS") + para("Of 412 patients, 77 had it.") + para("DISCUSSION")
+             + para("It was so."))  # fmt: skip
+    report = audit([make_docx(tmp_path / "typed.docx", typed)], [])
+    (said,) = report.headings
+    assert "could not be placed" in said
+    assert not (report.abstract and report.abstract.compared)
 
 
 def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> None:

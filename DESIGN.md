@@ -24033,10 +24033,11 @@ Open, recorded as each change landed:
   - A paper that uses a heading style anywhere is read by its styles alone, its typed
     titles text. Where the titles cannot be placed, a structured abstract's parts with no
     Introduction after them, the order of its parts never starting again and no title it
-    cannot hold among them, or a name typed twice, `init --from` and the audit make each a
-    heading of level 1, so the Abstract ends at its first part (round 2 of #641: the audit
-    placed nothing, and a paper its bold titles had placed was left unplaced by a second
-    "RESULTS" typed in its Discussion). The title page is set
+    cannot hold among them, the audit places nothing and says so, and `init --from` makes
+    each a heading of level 1, so the Abstract ends at its first part. Where the titles
+    typed in no bold make them so, a name typed twice, the audit places those in bold alone
+    where it can (round 2 of #641: a second "RESULTS" typed in a Discussion left a paper its
+    bold titles had placed unplaced). The title page is set
     aside only above a first heading that opens a paper, its Abstract or its Introduction: a
     short paper whose first typed title is its "References" keeps its text where every gate
     reads it. A heading is written with the title's own words, its number kept. Accepted.

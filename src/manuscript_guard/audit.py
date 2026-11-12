@@ -963,14 +963,23 @@ def _headings_said(path: Path, document, headed: bool) -> str | None:
     if document.heading_levels:
         return None
     styles = "give its section titles Word's heading styles"
-    titles = [title for _at, title in typed_titles(document)]
+    titles = typed_titles(document)
     if not titles:
         return (f"{path.name}: no paragraph is in a heading style, and none on a line of its "
                 f"own names a section, {_ONE_TEXT}; {styles}")
+    levels = typed_heading_levels(document)
+    if levels is not None:
+        placed = {at for at, _level in levels}
+        titles = [(at, title) for at, title in titles if at in placed]
     one = len(titles) == 1
-    named = (f"the paragraph that names a section alone ({titles[0]})" if one else
+    named = (f"the paragraph that names a section alone ({titles[0][1]})" if one else
              f"the {len(titles)} paragraphs that name a section alone "
-             f"({', '.join(titles)})")  # fmt: skip
+             f"({', '.join(title for _at, title in titles)})")  # fmt: skip
+    if levels is None:
+        from manuscript_guard.auditing.pdf import UNPLACED
+
+        return (f"{path.name}: no paragraph is in a heading style, and {named} could not be "
+                f"placed: {UNPLACED}; its lines were placed in no section; {styles}")
     read = "was read as a heading" if one else "were read as its headings"
     return (f"{path.name}: no paragraph is in a heading style, so {named} {read}, in bold "
             f"or not, as `init --from` makes them; a title that names no section is read as "

@@ -249,8 +249,8 @@ def test_a_label_alone_stops_at_the_next_label_alone() -> None:
     whatever it names."""
     authors = _authors(ada_competing_interests="Fees from Pharma X.",
                        blaise_competing_interests="None declared.")
-    # A plain line ending in a colon ends nothing (round 3 of #653): only an emphasised one.
-    for after in ("**References**", "**Data availability**", "*References*"):
+    # A plain line ending in a colon is a lead-in only first after the label (round 4).
+    for after in ("**References**", "**Data availability**", "*References*", "References:"):
         main = (f"**Competing interests**\n\nNone declared.\n\n{after}\n\n1. Example A, "
                 "Sample B. A study. J Ex. 2020;1:1-2.\n")
         assert _codes(authors, main) == ["interests-none-contradicted"], after

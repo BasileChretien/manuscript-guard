@@ -7870,8 +7870,8 @@ come from, starting from the patterns of the journal template's required stateme
 A heading is read by its words, its number taken off ("6.", "6.1", "VI."). A label alone
 in its paragraph, as a conversion from Word writes "**Funding**", heads the paragraphs
 after it, up to the next heading, the next label of a statement, or the next label alone
-of whatever kind in emphasis ("**References**"); a plain lead-in line ending in a colon
-("The authors contributed as follows:") ends nothing. A section holds only its own statement: it ends at a
+of whatever kind ("**References**", "References:"); a plain lead-in line, the first after
+the label, that names no statement ("The authors contributed as follows:"), ends nothing. A section holds only its own statement: it ends at a
 heading or a label inside it that opens a statement of another kind, so "# Competing
 interests" over "## Author contributions" does not read the contributions as interests.
 A CRediT role written first ("Funding acquisition: AE.", as PLOS writes them) and an item
@@ -26215,6 +26215,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (Elsevier)") is not read as a contributions statement. Accepted.
   - Elsevier's sentence of none with an exception added to it ("..., except AE, who reports
     fees from Pharma X.") is read whole as a statement of none. Accepted.
+  - A numbered list of statements ("1. Funding: ...") is not read as labels. Accepted.
+  - A record such as "No financial interests or personal relationships, except fees from
+    Pharma X." reads as none, through the tail of the record's broad form. Accepted.
   - A declaration given only on the journal's submission form, or in the covering letter, is
     not read; with no statement of its kind in the manuscript, a recorded grant or interest
     is a note. Accepted.

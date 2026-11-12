@@ -285,12 +285,12 @@ def _labelled(printed: str) -> Iterator[tuple[str, str]]:
     alone in its paragraph of whatever kind ("**References**"). "AE: Conceptualization." is a
     label of no statement, and is read as part of the one above."""
 
-    def ends(paragraph: str) -> bool:
-        # A plain line ending in a colon, "The authors contributed as follows:", is a lead-in
-        # and ends nothing; an emphasised label alone does (round 3 of #653).
+    def ends(paragraph: str, first: bool) -> bool:
+        # A plain line ending in a colon first after the label, "The authors contributed as
+        # follows:", is a lead-in and ends nothing; a label alone anywhere else does.
         labelled = _label(paragraph)
         alone = (labelled is not None and not labelled[1].strip()
-                 and paragraph.lstrip()[:1] in ("*", "_"))  # fmt: skip
+                 and (not first or paragraph.lstrip()[:1] in ("*", "_")))  # fmt: skip
         return alone or (labelled is not None and bool(_label_kinds(labelled[0])))
 
     pieces = paragraphs(printed)
@@ -302,7 +302,7 @@ def _labelled(printed: str) -> Iterator[tuple[str, str]]:
         if not rest.strip():
             following = []
             for later in pieces[index + 1:]:
-                if later.lstrip().startswith("#") or ends(later):
+                if later.lstrip().startswith("#") or ends(later, not following):
                     break
                 following.append(later)
             rest = "\n\n".join(following)

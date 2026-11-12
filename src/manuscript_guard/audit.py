@@ -122,12 +122,14 @@ class Candidate:
 @dataclass
 class Disagreement:
     """A test statistic whose P, as the paper prints it, does not follow from it, or an
-    estimate whose interval, or the P beside it, does not fit it."""
+    estimate whose interval, or the P beside it, does not fit it; or a mean and its SD that
+    show skewed data, `code` saying which (`auditing.skew`)."""
 
     source: Path
     line: int
     message: str
     context: str
+    code: str = "does-not-fit"
 
 
 @dataclass
@@ -165,6 +167,13 @@ class AuditReport:
     #: Each label --whole-numbers gave under which no mean was read: no table row's label
     #: holds it, or no cell of those rows is a mean under a column that names its n.
     whole_numbers_unfound: list[str] = field(default_factory=list)
+    #: The rows --non-negative named (`audit(non_negative=...)`), whose means and SDs are of
+    #: a variable that cannot be negative; how many were read in them, each named row not
+    #: read and why, and each label under which nothing was (`auditing.skew`).
+    non_negative: tuple[str, ...] = ()
+    spreads_read: int = 0
+    non_negative_unread: list[Disagreement] = field(default_factory=list)
+    non_negative_unfound: list[str] = field(default_factory=list)
     #: Whether outputs were given. Without them no number is compared, and `uncompared`
     #: counts the numbers that would have been.
     compared: bool = True
@@ -174,6 +183,9 @@ class AuditReport:
     #: What was asked of the registries (`auditing.references.Looked`), with --lookup;
     #: None where nothing was to be.
     lookups: list | None = None
+    #: Each entry with no DOI and no PMID, sorted, and what Crossref's search by its title
+    #: found (`auditing.by_title.Searched`), with --lookup; None without it.
+    titles: list | None = None
     #: G6 and G14 on each paper (`auditing.gates.GateRun`).
     gates: list = field(default_factory=list)
     #: Each LaTeX entry's tree as it was read (`auditing.latex.Tree`).
@@ -1282,6 +1294,7 @@ def audit(
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
+    non_negative: tuple[str, ...] = (),
     passed_over: list[Path] | None = None,
     found_tex: list[Path] | None = None,
     minimum: int | None = None,
@@ -1309,6 +1322,7 @@ def audit(
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
+        non_negative=non_negative, non_negative_unfound=list(non_negative),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
         compared=backing is not None, minimum=minimum,
     )  # fmt: skip
@@ -1352,6 +1366,14 @@ def audit(
     from manuscript_guard.auditing.abstract import against_results
 
     report.abstract = against_results(pieces)
+    # A share of the Abstract its counts beside it do not give is a number that does not fit
+    # the ones beside it, listed with the rest, by paper in the order read and by line.
+    report.read["shares"] = report.read.get("shares", 0) + report.abstract.shares
+    if report.abstract.arithmetic:
+        order = {path: at for at, path in enumerate(report.papers)}
+        report.disagreements = sorted(
+            [*report.disagreements, *report.abstract.arithmetic],
+            key=lambda d: (order.get(d.source, len(order)), d.line))  # fmt: skip
     from manuscript_guard.auditing import baseline, causal
 
     if design in causal.DESIGNS or cited:
@@ -1507,6 +1529,11 @@ def _read_numbers(
     found = _disagreements(path, hidden, list(source.tables), report.read)
     if report.whole_numbers:
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
+                       key=lambda d: d.line)  # fmt: skip
+    if report.non_negative:
+        from manuscript_guard.auditing.skew import non_negative_means
+
+        found = sorted(found + non_negative_means(report, path, list(source.tables), text),
                        key=lambda d: d.line)  # fmt: skip
     report.disagreements += found
     _margins(report, path, list(source.tables))

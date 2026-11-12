@@ -658,8 +658,45 @@ DEFINING = (
      "CPS"),
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
+    # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
+    # dash bullet's list is read by the same list rule).
+    ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
+     "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
+    # Round 2 of #643: an item over a nested list, and one after an item with a continuation
+    # line.
+    ("- the Rural Payments Agency \N{EN DASH} RPA\n  - the Rural Payments Service",
+     "\N{EN DASH} RPA", "RPA"),
+    ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+     "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
+    # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
+    # lead-in line, the next item of the same kind; and a binding that prints no
+    # value, an anchor and a pointer.
+    ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
+     "Tree Fund", "\N{EN DASH} THS", "THS"),
+    ("the schemes were:\n- the Farm Investment Fund \N{EN DASH} FIF\n- the Farm Equipment Fund",
+     "\N{EN DASH} FIF", "FIF"),
+    # Round 2 of #662: under a lead-in line, other markers, a next item opening with a digit,
+    # one of another kind after a colon, none, and a block quote.
+    ("the schemes were:\n* the Small Farms Scheme \N{EN DASH} SFS\n* the Small Farms Fund",
+     "\N{EN DASH} SFS", "SFS"),
+    ("the schemes were:\n1. the Basic Farm Payment \N{EN DASH} BFP\n2. the Farm Fund",
+     "\N{EN DASH} BFP", "BFP"),
+    ("the schemes were:\n1) the Clean Air Grant \N{EN DASH} CAG\n2) the Air Fund",
+     "\N{EN DASH} CAG", "CAG"),
+    ("the schemes were:\n- the Water Quality Grant \N{EN DASH} WQG\n- 2015 reform of the WQG",
+     "\N{EN DASH} WQG", "WQG"),
+    ("the payments were:\n- the Hedgerow Planting Grant \N{EN DASH} HPG\n* the Hedge Fund",
+     "\N{EN DASH} HPG", "HPG"),
+    ("the payments were\n* the Peat Restoration Grant \N{EN DASH} PRG\n* the Peat Fund",
+     "\N{EN DASH} PRG", "PRG"),
+    ("> the schemes were:\n> - the Moorland Payment \N{EN DASH} MP\n> - the Moor Fund",
+     "\N{EN DASH} MP", "MP"),
+    ("farmers were paid under the Delinked Payment Scheme \N{EN DASH} DPS {{method.payments}}.",
+     "\N{EN DASH} DPS", "DPS"),
+    ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
+     "\N{EN DASH} LSS", "LSS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -718,6 +755,27 @@ NOT_DEFINING = (
     ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
     ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
+    # Round 2 of #643: a value bound to the results where the number would be, after a
+    # space, a colon, a comma and a closing dash, and before the line's end; a number after
+    # a closing dash; a list item that goes on into its continuation, indented or not; and a
+    # prose line in a paragraph's middle that opens as a list item would.
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR {{lit.cohort.or}}.", "OR {{lit", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} {{results.or}} in all",
+     "OR \N{EN DASH} {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}\nin all",
+     "OR {{results.or}}\n", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} 1.52 in all",
+     "OR \N{EN DASH} 1.52", "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all", "OR\n  1.52",
+     "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
+    ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
+     "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -9177,7 +9235,14 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: method", under a Results titled "Results and discussion", which no Methods may stand
 #: under (round 1 of #624). And a number reported only under a section of another name
 #: (`OTHER_SECTIONS`), which is found, one only in the Introduction and one only in the
-#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints).
+#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints). And a
+#: percentage beside both its counts in each shape of `SHARE_SHAPES`, which they give; one
+#: to a place or two, one they give rounded up, and one they do not give, each in a shape
+#: drawn, and one typed closed up against its counts they do not give, "164/250(75%)"; and
+#: (the author, 2026-11-11) one beside a count with no denominator, after counts the
+#: sentence gives first, "Of 250 patients, 164 (66%)", one with no "%" and one with a
+#: decimal comma, none of them found. And what reads as a share and is none
+#: (`NO_SHARE_SHAPES`), its percentage reported, so found (round 1 of #664).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9185,7 +9250,43 @@ ABSTRACT_KINDS = (
     "estimate closed up", "identifier", "identifier by its number", "under a method",
     "other section", "introduction", "conclusion", "references", "note", "statement",
     "summary", "related work", "over the methods", "title page",
+    "share out of", "share of", "share slash", "share after words", "share goes on",
+    "share first", "share first of", "share first n", "share thousands", "share decimal",
+    "share rounded up", "share off", "share closed up", "share without a denominator",
+    "share after its counts", "share without a sign", "share with a decimal comma",
+    "share season", "share season and year", "share count over", "share over a hundred",
 )  # fmt: skip
+#: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
+#: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
+SHARE_SHAPES = {
+    "share out of": "{k} out of {n} ({p}%)", "share of": "{k} of {n} ({p}%)",
+    "share slash": "{k}/{n} ({p}%)", "share after words": "{k} of {n} {words} ({p}%)",
+    "share goes on": "{k} of {n} ({p}%, as planned)", "share first": "{p}% ({k}/{n})",
+    "share first of": "{p}% ({k} of {n})", "share first n": "{p}% (n = {k}/{n})",
+    "share thousands": "{k:,} of {n:,} ({p}%)",
+}  # fmt: skip
+#: What reads as a percentage beside its counts and is none, `{y}` a year, `{d}` a day over
+#: twelve and `{m}` a month, `{k}` and `{n}` a count and its denominator, `{p}` the
+#: percentage, and the first tenth each draws its percentage from: a year and the next
+#: shortened, a count over its denominator as well; a year and the next in full; a day and
+#: its month, a count over its denominator; and a share over 100.
+NO_SHARE_SHAPES = {
+    "share season": ("{p}% ({y}/{yy:02d})", 301), "share season and year": (
+        "in the {y}/{next} season ({p}%)", 401),
+    "share count over": ("on {d}/{m} ({p}%)", 501), "share over a hundred": (
+        "{k} of {n} ({p}%)", 1011),
+}  # fmt: skip
+#: The shapes in which a percentage has no counts the reader takes, and the first tenth
+#: each draws its percentage from: a count with no denominator, counts the sentence gives
+#: before its share, a share with no "%", and a decimal comma, `{a}` and `{b}` either side.
+SHARE_UNREAD = {
+    "share without a denominator": ("n = {k} ({p}%)", 101),
+    "share after its counts": ("of {n} patients, {k} ({p}%)", 601),
+    "share without a sign": ("{k} of {n} ({p})", 701),
+    "share with a decimal comma": ("{k} of {n} ({a},{b}%)", 211),
+}  # fmt: skip
+#: The words that may stand between a count's denominator and its share.
+SHARE_WORDS = ("patients", "adults in all", "of the women")
 #: Where each of the kinds a number of the Abstract is not found in stands, and what it
 #: starts at: in the reference list, in a footnote's definition under the Results, in a
 #: statement of the back matter, in a summary of the paper beside its Abstract, in a section
@@ -9238,6 +9339,48 @@ def _tenths(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
+def _abstract_share(draw: st.DrawFn, kind: str) -> tuple[str, str, str, list[str]]:
+    """A percentage of `abstract_papers` beside its counts, of one of the share kinds of
+    `ABSTRACT_KINDS`: how it is written, the number looked for as printed, what the
+    Abstract against Results makes of it ("counts", "off", "exact" or "not found"), and
+    what the Results report: its counts, and the percentage of what is no share. Each
+    kind's denominators are apart from the others', and so are the tenths of a percentage
+    that is not read beside its counts, none of which a number where the paper reports is
+    or rounds to."""
+    first = ABSTRACT_KINDS.index("share out of")
+    n = 3000 + 100 * (ABSTRACT_KINDS.index(kind) - first) + draw(st.integers(0, 99))
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    if kind == "share rounded up":
+        # The first digit dropped is over a half: the share cut short is off its counts.
+        while 2 * (100 * k % n) <= n:
+            k += 1
+    counts = [f"Of the {n} in all, {k} were seen."]
+    if kind in NO_SHARE_SHAPES or kind in SHARE_UNREAD:
+        shape, base = {**NO_SHARE_SHAPES, **SHARE_UNREAD}[kind]
+        tenths = base + draw(st.integers(0, 88))
+        tenths += tenths % 10 == 0
+        p = Decimal(tenths) / 10
+        y, d = draw(st.integers(2000, 2030)), draw(st.integers(13, 28))
+        written = shape.format(p=p, k=k, n=n, y=y, yy=(y + 1) % 100, next=y + 1, d=d,
+                               m=draw(st.integers(1, 12)), a=tenths // 10, b=tenths % 10)
+        if kind in NO_SHARE_SHAPES:
+            return written, f"{p}%", "exact", [*counts, f"It was {p}% then."]
+        shown = {"share without a sign": f"{p}",
+                 "share with a decimal comma": f"{tenths // 10},{tenths % 10}%"}.get(
+            kind, f"{p}%")  # fmt: skip
+        return written, shown, "not found", counts
+    places = draw(st.integers(1, 2)) if kind == "share decimal" else 0
+    p = (Decimal(100 * k) / n).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    if kind in ("share off", "share closed up"):
+        p += draw(st.integers(2, 9)) * draw(st.sampled_from((1, -1)))
+    if kind == "share closed up":
+        # Read as one atom, its counts and its share: "164/250(75%".
+        return f"{k}/{n}({p}%)", f"{k}/{n}({p}%", "off", counts
+    shape = kind if kind in SHARE_SHAPES else draw(st.sampled_from(sorted(SHARE_SHAPES)))
+    written = SHARE_SHAPES[shape].format(k=k, n=n, p=p, words=draw(st.sampled_from(SHARE_WORDS)))
+    return written, f"{p}%", "off" if kind == "share off" else "counts", counts
+
+
 def _test_printed(kind: str, df: int, statistic: Decimal, sign: str, p: str) -> str:
     written = {"t": f"t({df})", "F": f"F(2, {df})", "chi2": f"chi2({df % 9 + 1})"}[kind]
     return f"{written} = {statistic}, P {sign} {p}"
@@ -9250,7 +9393,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     order drawn, each on a line of its own; and what the Abstract against Results finds: the
     line and kind of each conflict, `interval` or `test`, and for each number planted to be
     looked for, its line, its text and whether it is found as printed, as a rounding or not
-    at all."""
+    at all, or, for a percentage beside both its counts, whether they give it ("counts") or
+    not ("off")."""
     abstract: list[tuple[str, str]] = []
     methods: list[str] = []
     results: list[str] = []
@@ -9309,6 +9453,11 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 printed = _test_printed(test, df, statistic, sign, given)
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        elif kind.startswith("share"):
+            written, shown, state, reported = _abstract_share(draw, kind)
+            results += reported
+            looked.append((kind, shown, state))
+            abstract.append((kind, f"Then {written} were seen here."))
         elif kind == "ordinal":
             place = draw(st.integers(2, 9))
             rank = f"{place}{ {2: 'nd', 3: 'rd'}.get(place, 'th') }" + draw(
@@ -10200,6 +10349,264 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     # The labels as an auditor would type them: in lower case, one of them the label of
     # the rows inside whose words it stands.
     return "\n".join(lines), [label.lower() for label in labels], expected
+
+
+# ------------------------------------------------ a table's means and SDs of a measure
+
+#: Rows of a variable that cannot be negative, as an auditor names them: no word of one is a
+#: word of another, so that each row is named by its own label alone.
+NON_NEGATIVE_LABELS = (
+    "Weight", "Ferritin", "Creatinine", "Viral load", "Length of stay", "Bilirubin",
+    "Lactate", "Troponin", "Albumin", "Glucose", "Platelets", "Insulin", "Sodium",
+    "Potassium", "Urea", "Calcium",
+)  # fmt: skip
+#: The kinds of row the first table of `spread_tables` holds one of: a mean less than twice
+#: its SD, one more than twice, one exactly twice, one negative, a whole-number mean with a
+#: decimal SD, a row whose label names a standard error, one whose label names a category,
+#: one whose label names a change, one that names a time to a change, one that names a
+#: number ("No. of"), one of counts and their shares whose label names neither, one of
+#: medians and ranges, a row nobody names, and a row whose label holds a named one inside a
+#: word.
+SPREAD_ROWS = ("skewed", "fine", "twice", "negative", "whole", "se", "category", "change",
+               "time to", "number of", "counts", "median", "unnamed", "inside")  # fmt: skip
+#: How a label names a change, `{label}` the measure's.
+CHANGE_NAMES = ("Change in {lower}", "{label} change from baseline", "{label}, difference",
+                "\N{GREEK CAPITAL LETTER DELTA} {lower}", "{label} delta",
+                "{label} from baseline to week 12", "Rate of change in {lower}",
+                "Mean of differences in {lower}")  # fmt: skip
+#: How a label names a time to a change, which is no change: "to" before it, or one word
+#: before it.
+TIME_TO_NAMES = ("Time to change in {lower}, days", "Time to treatment change, {lower}",
+                 "Days to change of {lower} therapy")  # fmt: skip
+#: How a label names a category, `{label}` the measure's.
+CATEGORY_NAMES = ("{label} >= 100", "{label} \N{GREATER-THAN OR EQUAL TO} 100",
+                  "{label} > 100", "{label} < 50", "{label} <= 50",
+                  "{label} \N{LESS-THAN OR EQUAL TO} 50", "{label}, n (%)", "{label}, %",
+                  "{label} recorded, yes", "{label} recorded, no",
+                  "{label} recorded, n/N")  # fmt: skip
+#: Where the first table says its cells are n (%): a caption above it, one below it, or its
+#: header's first cell.
+SAID_N_PERCENT = ("above", "below", "header")
+#: How the caption of a table after the last one opens, which says n (%) of that table only.
+NEXT_CAPTIONS = ("Table 4. Values are n (%).", "Supplementary Table 4. Values are n (%).",
+                 "**Table 4** Values are n (%).", "Table S4. Values are n (%).",
+                 "Table 5. Values are n (%).", "Table 5: Values are n (%).")  # fmt: skip
+#: How a cell prints a mean and its SD, the SD at `{sd}`; the first three in brackets.
+SPREAD_SHAPES = (" ({sd})", "({sd})", " ( {sd} )", " \N{PLUS-MINUS SIGN} {sd}",
+                 "\N{PLUS-MINUS SIGN}{sd}", " +/- {sd}")  # fmt: skip
+#: How a label names a standard error.
+SE_NAMES = ("mean (SE)", "mean (SEM)", "mean \N{PLUS-MINUS SIGN} SE", "mean (s.e.)",
+            "mean (standard error)", "mean (Standard Error)")  # fmt: skip
+#: A mean and SD as the reading finds them: the cell's line, the mean as printed with an
+#: ASCII minus, the SD as printed, and whether the mean is less than twice the SD.
+Spreaded = tuple[int, str, str, bool]
+
+
+def _one_dp(units: int) -> str:
+    """`units` tenths, printed to one place with an ASCII minus: 52 is "5.2"."""
+    return str(Decimal(units).scaleb(-1))
+
+
+@st.composite
+def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list[list]]:
+    """A paper with a table of two arms that says its cells are n (%), in a place of
+    `SAID_N_PERCENT` drawn, a row of each kind of `SPREAD_ROWS` in an order drawn, each
+    mean and SD printed in a shape of `SPREAD_SHAPES`; then a table that says n (%) in its
+    first cell, whose header names a standard error over its first arm, a mean (SD) over its
+    second and a bare "%" over its third, with a row whose label names nothing and one whose
+    label names a mean (SD), whole-number means under the mean (SD) and the "%"; a table
+    that says nothing of n (%), whose row is a whole number and a decimal in brackets, and
+    after it the caption of another table, saying n (%), opened in a way of `NEXT_CAPTIONS`;
+    and a mean and SD in a sentence, which is not read. With the labels an auditor names, in
+    lower case, one of them in no row; each mean and SD the reading finds (`Spreaded`), in
+    order; and each named row passed over, as its line and why, in order."""
+    from manuscript_guard.stats.skew import (
+        CATEGORY,
+        CHANGE,
+        MAYBE_COUNT,
+        SE_HEADER,
+        SE_LABEL,
+    )
+
+    labels = list(draw(st.permutations(NON_NEGATIVE_LABELS)))
+    named_kinds = [kind for kind in SPREAD_ROWS if kind not in ("unnamed", "inside")]
+    named = dict(zip([*named_kinds, "header", "header mean", "plain", "absent"], labels,
+                     strict=True))  # fmt: skip
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Spreaded] = []
+    passed: list[list] = []
+
+    def cell(mean: int, sd: int) -> str:
+        printed = _one_dp(mean).replace("-", "\N{MINUS SIGN}") if mean < 0 else _one_dp(mean)
+        return printed + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
+
+    def whole(mean: int, sd: int) -> str:
+        """A whole-number mean and a decimal SD, as a count and its share may print."""
+        return f"{mean}" + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
+
+    def share() -> str:
+        """A count and its share of 100 or less, whole or decimal: "5 (12)", "6 (14.6)"."""
+        if draw(st.booleans()):
+            return f"{draw(st.integers(0, 40))} ({draw(st.integers(0, 100))})"
+        return f"{draw(st.integers(0, 40))} ({_one_dp(draw(st.integers(0, 1000)))})"
+
+    def pair(kind: str) -> tuple[int, int]:
+        sd = draw(st.integers(1, 99))
+        if kind in ("skewed", "se", "change", "unnamed", "inside", "time to", "number of"):
+            return draw(st.integers(0, 2 * sd - 1)), sd
+        if kind == "fine":
+            return draw(st.integers(2 * sd + 1, 2 * sd + 300)), sd
+        if kind == "twice":
+            return 2 * sd, sd
+        return -draw(st.integers(1, 99)), sd  # negative
+
+    def a_whole_mean() -> tuple[int, int]:
+        """A whole-number mean and an SD in tenths of 100 or less."""
+        return draw(st.integers(0, 60)), draw(st.integers(1, 999))
+
+    def row(label: str, cells: list[str]) -> None:
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+
+    def read(pairs: list[tuple[int, int]]) -> None:
+        expected.extend((len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd)
+                        for mean, sd in pairs)  # fmt: skip
+
+    def read_whole(mean: int, sd: int) -> None:
+        expected.append((len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd))
+
+    def mean_label(label: str) -> str:
+        # A footnote marker after the label's words, or one that ends it, as `mean_tables`.
+        marker, last = draw(st.sampled_from((("", False), *MARKERS)))
+        return f"{label}, mean (SD){marker}" if last else f"{label}{marker}, mean (SD)"
+
+    said_where = draw(st.sampled_from(SAID_N_PERCENT))
+    if said_where == "above":
+        lines[-1:] = ["", "Table 1. Values are n (%) or mean (SD).", ""]
+    first = "Characteristic, n (%) or mean (SD)" if said_where == "header" else "Characteristic"
+    lines += [f"| {first} | Treated (n = 40) | Control (n = 41) |", "|---|---|---|"]
+    for kind in draw(st.permutations(SPREAD_ROWS)):
+        name, lower = named.get(kind, ""), named.get(kind, "").lower()
+        if kind == "median":
+            sds = [draw(st.integers(1, 99)) for _arm in range(2)]
+            row(f"{name}, median (IQR)",
+                [f"{_one_dp(sd)} ({_one_dp(sd)}-{_one_dp(3 * sd)})" for sd in sds])
+        elif kind in ("category", "counts"):
+            shape = (draw(st.sampled_from(CATEGORY_NAMES)) if kind == "category"
+                     else "{label} above the limit")  # fmt: skip
+            row(shape.format(label=name), [share(), share()])
+            passed.append([len(lines), CATEGORY if kind == "category" else MAYBE_COUNT])
+        elif kind == "whole":
+            means = [a_whole_mean() for _arm in range(2)]
+            row(mean_label(name), [whole(mean, sd) for mean, sd in means])
+            for mean, sd in means:
+                read_whole(mean, sd)
+        else:
+            pairs = [pair(kind) for _arm in range(2)]
+            cells = [cell(mean, sd) for mean, sd in pairs]
+            if kind == "unnamed":
+                row(draw(st.sampled_from(MEASURES)), cells)
+            elif kind == "inside":
+                row(f"Pro{named['skewed'].lower()}", cells)
+            elif kind == "se":
+                row(f"{name}, {draw(st.sampled_from(SE_NAMES))}", cells)
+                passed.append([len(lines), SE_LABEL])
+            elif kind == "change":
+                row(draw(st.sampled_from(CHANGE_NAMES)).format(label=name, lower=lower), cells)
+                passed.append([len(lines), CHANGE])
+            elif kind == "time to":
+                # No change, and no mean named: in a table of n (%), read for its points.
+                row(draw(st.sampled_from(TIME_TO_NAMES)).format(lower=lower), cells)
+                read(pairs)
+            elif kind == "number of":
+                row(f"No. of {lower} tests", cells)
+                read(pairs)
+            else:
+                row(mean_label(name), cells)
+                read(pairs)
+    if said_where == "below":
+        lines += ["", "Values are n (%) or mean (SD)."]
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    # A table that says n (%) in its first cell, its header naming an SE over the first arm,
+    # a mean (SD) over the second and a bare "%" over the third. A row whose label names
+    # nothing loses its first cell to the SE and its third, a whole number, as possibly a
+    # count; its second, a whole-number mean under the mean (SD), is read. One whose label
+    # names a mean (SD) loses only its first.
+    lines += ["| Characteristic, n (%) | Treated, mean (SE) | Control, mean (SD) | Missing, % |",
+              "|---|---|---|---|"]  # fmt: skip
+    se_pair, (mean, sd) = pair("skewed"), a_whole_mean()
+    row(named["header"], [cell(*se_pair), whole(mean, sd), share()])
+    passed += [[len(lines), SE_HEADER], [len(lines), MAYBE_COUNT]]
+    read_whole(mean, sd)
+    se_pair, pairs, (mean, sd) = pair("skewed"), [pair("skewed")], a_whole_mean()
+    row(mean_label(named["header mean"]), [cell(*se_pair), cell(*pairs[0]), whole(mean, sd)])
+    passed.append([len(lines), SE_HEADER])
+    read(pairs)
+    read_whole(mean, sd)
+    # A table that says nothing of n (%): a whole number and a decimal is read. The caption
+    # after it is another table's, and says nothing of this one.
+    lines += ["", draw(sentence).capitalize() + ".", "", "| Characteristic | Cases |",
+              "|---|---|"]  # fmt: skip
+    mean, sd = a_whole_mean()
+    row(named["plain"], [whole(mean, sd)])
+    read_whole(mean, sd)
+    lines += ["", draw(st.sampled_from(NEXT_CAPTIONS))]
+    mean, sd = pair("skewed")
+    lines += ["", f"{draw(sentence).capitalize()} {named['skewed']} {cell(mean, sd)} "
+              f"{draw(sentence)}.", ""]  # fmt: skip
+    return "\n".join(lines), [label.lower() for label in labels], expected, passed
+
+
+#: The kinds of mean `floored_means` holds one of each: less than twice its SD above a floor
+#: that is not zero, though more than twice above zero; exactly twice above the floor; more
+#: than twice; less than twice above a floor of zero; one with a standard error and no SD;
+#: one skewed with a reason given, and one with a blank reason; one whose variable has no
+#: floor, one whose floor is text, a date's "20200101"; and one that names no variable.
+FLOORED = ("above zero only", "twice", "above", "zero floor", "se", "reason", "blank",
+           "no floor", "text floor", "no variable")  # fmt: skip
+
+
+@st.composite
+def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], list[list]]:
+    """Results values, by key, as a fragment holds them: a mean of each kind of `FLOORED`, in
+    an order drawn, with its SD or SE; the floor of each variable, by name, as the data
+    dictionary gives it, None where it gives none; and each mean and SD G15 holds to a floor,
+    as their keys, the floor and whether it warns, in the order of the SDs' keys."""
+    values: dict[str, dict] = {}
+    floors: dict[str, Any] = {}
+    expected: list[list] = []
+    for at, kind in enumerate(draw(st.permutations(FLOORED))):
+        sd = draw(st.integers(1, 99))
+        floor = draw(st.integers(1, 500)) if kind not in ("zero floor",) else 0
+        if kind == "above zero only":
+            mean = draw(st.integers(2 * sd, 2 * sd + floor - 1))
+        elif kind == "twice":
+            mean = floor + 2 * sd
+        elif kind == "above":
+            mean = floor + 2 * sd + draw(st.integers(1, 300))
+        else:
+            mean = floor + draw(st.integers(0, 2 * sd - 1))
+        name, key = f"v{at}", f"v{at}.mean"
+        spec: dict[str, Any] = {"value": mean / 10, "display": _one_dp(mean)}
+        if kind != "no variable":
+            spec["variable"] = name
+        if kind == "reason":
+            spec["skewed_ok"] = draw(st.sampled_from(("as registered", "pooled later: means")))
+        if kind == "blank":
+            spec["skewed_ok"] = draw(st.sampled_from(("", " ", "\t")))
+        values[key] = spec
+        # A floor as YAML gives one: a whole number, or a decimal in tenths.
+        floors[name] = None if kind == "no floor" else "20200101" if kind == "text floor" else (
+            floor // 10 if floor % 10 == 0 else floor / 10)
+        spread = "se" if kind == "se" else "sd"
+        values[f"v{at}.{spread}"] = {"value": sd / 10, "display": _one_dp(sd), "spread": spread,
+                                     "of": key}  # fmt: skip
+        if kind in ("se", "no floor", "text floor", "no variable"):
+            continue
+        warned = kind in ("zero floor", "blank", "above zero only")
+        expected.append([f"v{at}.sd", key, floors[name], warned])
+    expected.sort(key=lambda one: one[0])
+    return values, floors, expected
 
 
 # ------------------------------------------------- a number an earlier output printed
@@ -12358,6 +12765,152 @@ def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
     lines = [(shape.format(**fill), True) for shape in AUDIT_ENTRIES.values()]
     lines += [(shape.format(**fill), False) for shape in AUDIT_LOOKALIKES]
     return draw(st.permutations(lines))
+
+
+#: An entry with no DOI and no PMID of each kind the audit sorts one into
+#: (`auditing.by_title.sort`), as `{shape}`, with the kind it is: an article in three styles,
+#: one that also gives its address, a book in two, a chapter, a web page with its access
+#: date, a legal text by its opening word, an official text by its journal, and a bare
+#: address; and (round 1 of #650) an article with its authors' given names first, as
+#: BibTeX's plain style prints it, and a book whose title holds a web page's or a law's words.
+#: `{a}` is the first author's family name and `{t}` the title, or `{w}` for that book, whose
+#: author's name opens with a law's word and a hyphen.
+UNIDENTIFIED_ENTRIES = {
+    "an article": ("{a} {i}, {b} {j}. {t}. {journal}. {year};{vol}({issue}):{page}-{end}.",
+                   "article"),
+    "an article with its given names first": (
+        "{d}. {e}. {a} and {k}. {b}. {t}. {long}, {vol}({issue}):{page}-{end}, {year}.",
+        "article",
+    ),
+    "a book whose title holds a page's or a law's words": (
+        "Ley-Cooper {i}. {w}. {place}: {publisher}; {year}.", "book"),
+    # Round 2 of #650: a law's name among a title's words is a book's, a title that is a law's
+    # name is a law's, and a publication of law is a law's, a book's marks after it or not.
+    # By a body, as a law is, so that only where the law's name stands tells them apart.
+    "a book whose title holds a law's name among its words": (
+        "{country}. The {law_name} explained. {place}: {publisher}; {year}.", "book"),
+    "a law whose title is its name, with a book's marks": (
+        "{country}. {law_name}. {place}: {office}; {year}.", "legal text"),
+    "a publication of law, with a book's marks": (
+        "Commission notice on reports. {gazette}. {place}: {office}; {year}.", "legal text"),
+    # Round 3: a person's book whose title ends with a law's name is a book.
+    "a person's book whose title ends with a law's name": (
+        "{a} {i}. A practical guide to the {law_name}. {place}: {publisher}; {year}.", "book"),
+    "a publication of law and its year": ("Commission notice on records. {gazette}. {year}.",
+                                          "legal text"),
+    "an article in APA style": (
+        "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
+        "article",
+    ),
+    "an article with dotted initials": ("{a} {d}. {e}. {t}. {journal}. {year};{vol}:{page}.",
+                                        "article"),
+    "an article that also gives its address": (
+        "{a} {i}. {t}. {journal}. {year};{vol}:{page}-{end}. https://example.org/{vol}",
+        "article",
+    ),
+    "a book": ("{a} {i}. {t}. {place}: {publisher}; {year}.", "book"),
+    "a book printed in a city of the United States": ("{a} {i}. {t}. {city}. {year}", "book"),
+    "a chapter": (
+        "{a} {i}. {t}. In: {b} {j}, editor. Handbook of reports. {place}: {publisher}; {year}. "
+        "p. {page}-{end}.",
+        "chapter",
+    ),
+    "a web page with its access date": (
+        "{site}. Reports and records. {place}: {publisher}; {year}. Accessed {day} Aug {later}. "
+        "https://example.org/{vol}",
+        "web page",
+    ),
+    "a legal text by its opening word": (
+        "{law} du {day} décembre {year} relatif à la formation. https://www.example.gouv.fr/{vol}",
+        "legal text",
+    ),
+    "an official text by its journal": (
+        "Commission notice on reports. {gazette}. C {vol}, {day}.",
+        "legal text",
+    ),
+    "a bare address": ("https://example.org/{site_path}/{vol}", "web page"),
+}
+#: Titles an article or a book is cited by: one with a colon, one with accents, one with a
+#: question mark, one with "U.S.", whose stop ends no title, and one with an apostrophe.
+UNIDENTIFIED_TITLES = (
+    "Ghosts in the classroom: passive disengagement and its implications for teachers",
+    "Barriers to student active learning in higher education",
+    "Les élèves décrocheurs à l'école primaire",
+    "Is hepatic injury under-reported? A review of spontaneous reports",
+    "Renal events after exposure in the U.S. population",
+    "Children's falls in older adults' homes",
+)
+#: First authors' family names: with a stroke and an accent, which fold, with particles,
+#: and with an apostrophe.
+UNIDENTIFIED_FAMILIES = ("Børte", "Østergaard", "van der Berg", "O'Brien", "Dupont", "Ross",
+                         "Lillejord")  # fmt: skip
+#: Titles of books with a word a web page's or a law's mark is made of.
+UNIDENTIFIED_BOOK_TITLES = ("How patients accessed care", "Care available at home",
+                            "The Data Protection Act 2018 explained",
+                            "Records retrieved from the archive")  # fmt: skip
+
+
+@st.composite
+def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, str | None,
+                                                        int | None]]:  # fmt: skip
+    """Each of `UNIDENTIFIED_ENTRIES`, in an order drawn, each `(text, kind, title, first
+    author, year)`, the last three for an article, a book or a chapter only. Every kind in
+    every example; each title and each family name drawn for one of the eleven articles,
+    books and chapters, and each of the three law's names and publications of law for one
+    of the three shapes with one, so that every one stands in every example, and a book's
+    title with a page's or a law's words drawn for the book that has one."""
+    titles = draw(st.permutations(UNIDENTIFIED_TITLES))
+    families = draw(st.permutations(UNIDENTIFIED_FAMILIES))
+    laws = draw(st.permutations(("Data Protection Act {year}", "Public Law {n}-{vol}",
+                                 "Patient Protection and Affordable Care Act of {year}")))
+    gazettes = draw(st.permutations(("Official Journal of the European Union",
+                                     "Federal Register", "Journal officiel")))  # fmt: skip
+    drawn = []
+    # Counted over the shapes that name `{a}`, `{t}`, `{law_name}` and `{gazette}`, so that
+    # each family name, title, law's name and publication stands in one of them at least.
+    named = titled = lawed = gazetted = 0
+    for shape, kind in UNIDENTIFIED_ENTRIES.values():
+        year = draw(st.integers(1970, 2024))
+        fill = {
+            "a": families[named % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
+            "t": titles[titled % len(titles)],
+            "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+            "d": draw(st.sampled_from("JKMH")), "e": draw(st.sampled_from("ABL")),
+            "k": draw(st.sampled_from("JKMH")),
+            "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+            "long": draw(st.sampled_from(_LONG_JOURNALS)),
+            "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+            "publisher": draw(st.sampled_from(("Example Press", "Example Agency",
+                                               "Sample House"))),  # fmt: skip
+            "city": draw(st.sampled_from(("Englewood Cliffs, NJ", "Boston, MA", "Chicago, IL"))),
+            "site": draw(st.sampled_from(("Accueil | Moodle.org", "Example Agency", "Factsheet"))),
+            "site_path": draw(st.sampled_from(("pi/ses", "resources", "accueil"))),
+            "law": draw(st.sampled_from(("Arrêté", "Décret", "Ordonnance"))),
+            "year": year, "later": draw(st.integers(2000, 2025)),
+            "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
+            "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
+            "day": draw(st.integers(1, 28)), "w": draw(st.sampled_from(UNIDENTIFIED_BOOK_TITLES)),
+            "country": draw(st.sampled_from(("United Kingdom", "US Congress", "Ireland"))),
+            "office": draw(st.sampled_from(("The Stationery Office", "Publications Office",
+                                            "US Government Printing Office"))),
+            "gazette": gazettes[gazetted % len(gazettes)],
+        }  # fmt: skip
+        fill["law_name"] = laws[lawed % len(laws)].format(year=year, vol=fill["vol"],
+                                                          n=draw(st.integers(90, 120)))
+        searched = kind in ("article", "book", "chapter")
+        named += searched and "{a}" in shape
+        titled += searched and "{t}" in shape
+        lawed += "{law_name}" in shape
+        gazetted += "{gazette}" in shape
+        title = (fill["w"] if "{w}" in shape else f"The {fill['law_name']} explained"
+                 if "{law_name} explained" in shape else f"A practical guide to the "
+                 f"{fill['law_name']}" if "guide to the" in shape else fill["t"])  # fmt: skip
+        # That book's author, whose name opens with a law's word and a hyphen.
+        family = ("Ley-Cooper" if shape.startswith("Ley-Cooper") else fill["country"]
+                  if shape.startswith("{country}") else fill["a"])  # fmt: skip
+        drawn.append((shape.format(**fill), kind, title if searched else None,
+                      family if searched else None, year if searched else None))  # fmt: skip
+    return draw(st.permutations(drawn))
 
 
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
@@ -14955,8 +15508,15 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
+    "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
+    "means and SDs never negative": spread_tables().map(
+        lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
+    "means held to a floor": floored_means().map(
+        lambda drawn: {"values": drawn[0], "floors": drawn[1]}
     ),
     "printed value": printings(),
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),

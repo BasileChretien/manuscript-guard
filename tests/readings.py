@@ -1825,7 +1825,8 @@ def _flows() -> Reading:
 def _abstract_against_results() -> Reading:
     """What `audit` says of a Markdown paper's Abstract against what it and its supplement
     report: whether they were compared, each conflict, each number not found and each found
-    only as a rounding, by line, and what a match is worth there."""
+    only as a rounding, each percentage its counts beside it give and each they do not, with
+    the arithmetic finding of each, by line, and what a match is worth there."""
     from manuscript_guard.audit import audit
     from manuscript_guard.auditing.abstract import against_results  # noqa: F401 - newer than it
 
@@ -1842,6 +1843,13 @@ def _abstract_against_results() -> Reading:
                 "conflicts": [[d.source.name, d.line, d.message] for d in found.conflicts],
                 "not found": [[c.source.name, c.line, c.text] for c in found.not_found],
                 "rounded": [[c.source.name, c.line, c.text] for c in found.rounded],
+                # Newer than the reading: a base without them reads none.
+                "from counts": [[c.source.name, c.line, c.text]
+                                for c in getattr(found, "from_counts", [])],
+                "off counts": [[c.source.name, c.line, c.text]
+                               for c in getattr(found, "off_counts", [])],
+                "arithmetic": [[d.source.name, d.line, d.message]
+                               for d in getattr(found, "arithmetic", [])],
                 "worth": None if worth is None else [worth.small_integers,
                                                      worth.medium_integers, worth.two_decimals],
             }  # fmt: skip
@@ -1944,6 +1952,49 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("means and SDs never negative")
+def _means_and_sds_never_negative() -> Reading:
+    """Each mean and SD in a pipe table's rows the auditor names as never negative, as
+    printed, and whether the mean is less than twice the SD; and each named row passed
+    over, with why."""
+    from manuscript_guard.stats.skew import caption_of, table_spreads
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(given: dict[str, Any]) -> dict[str, list]:
+        labels = tuple(given["labels"])
+        found: list = []
+        passed: list = []
+        lines = given["text"].split("\n")
+        for table in markdown_tables(given["text"]):
+            spreads, rows = table_spreads(table, labels, caption_of(lines, table))
+            found += [[s.line, s.printed, s.mean, s.sd, s.label, s.skewed] for s in spreads]
+            passed += [[row.line, row.label, row.why] for row in rows]
+        return {"found": found, "passed": passed}
+
+    return read
+
+
+@reading("means held to a floor")
+def _means_held_to_a_floor() -> Reading:
+    """Each mean that names its variable and each SD of it, as G15 holds them to the floor
+    the data dictionary gives the variable: their keys, the floor, and whether it warns."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.summaries import floor, held
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        values = {
+            key: Value(key=key, value=spec["value"], display=spec["display"], origin=RESULTS,
+                       of=spec.get("of"), spread=spec.get("spread"),
+                       variable=spec.get("variable"), skewed_ok=spec.get("skewed_ok"))
+            for key, spec in given["values"].items()
+        }  # fmt: skip
+        floors = given["floors"]
+        return [[one.sd.key, one.mean.key, one.floor, one.warned]
+                for one in held(values, lambda name: floor(floors.get(name)))]  # fmt: skip
+
+    return read
+
+
 @reading("latex tables")
 def _latex_tables() -> Reading:
     """Each table a LaTeX file's author typed, as `audit` reads it: rows of cells, each with
@@ -1974,6 +2025,24 @@ def _reference_census() -> Reading:
             "problems": [[p.code, p.line, p.message] for p in census.problems],
             "note": census.note,
         }  # fmt: skip
+
+    return read
+
+
+@reading("reference sorting")
+def _reference_sorting() -> Reading:
+    """What the audit makes of each entry with no DOI and no PMID: its kind and why, and of
+    an article, a book or a chapter what it is looked up by in Crossref, its title, first
+    author, year and the longer titles it may be (`auditing.by_title`)."""
+    from manuscript_guard.auditing.by_title import cited, sort
+
+    def read(entries: list[str]) -> list[Any]:
+        found = []
+        for text in entries:
+            kind, said = sort(text), cited(text)
+            found.append([kind.kind, kind.why] + ([said.title, said.family, said.year,
+                                                    list(said.titles)] if said else [None]))
+        return found
 
     return read
 

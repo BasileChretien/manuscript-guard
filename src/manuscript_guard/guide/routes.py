@@ -85,6 +85,8 @@ ROUTES: dict[str, Route] = {
     **_all("results-binding", ("harvest",), "harvested-output-"),
     **_all("results-binding", _VERIFY, "harvest-declared"),
     **_all("results-binding", None, "receipt-"),
+    # A mean (SD) of skewed data: the script emits a median and IQR, or the reason.
+    **_all("results-binding", None, "mean-sd-skewed"),
     **_all("results-binding", None, "input-at-site", who="author"),
     # A run on the vault and its release are the person's, at a terminal (docs/vault.md).
     **_all("results-binding", None, "vault-", who="author"),

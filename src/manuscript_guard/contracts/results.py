@@ -270,6 +270,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 family=spec.get("family"),
                 spread=spec.get("spread"),
                 count=spec.get("count"),
+                variable=spec.get("variable"),
+                skewed_ok=spec.get("skewed_ok"),
             )
 
         for key, spec in document.get("tables", {}).items():

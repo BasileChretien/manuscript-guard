@@ -327,9 +327,17 @@ def test_a_dash_defines_where_its_short_form_ends_the_clause(project: Path, endi
     [(" [95% CI 1.1\N{EN DASH}2.0] 1.52", set()), (" \N{ALMOST EQUAL TO} 1.52", set()),
      (" of 1.52", set()), ("\n1.52", set()), (" .52", set()), (": 1.52", set()),
      (" [2] 1.52", set()),
-     # A limit written down in DESIGN.md's Known gaps (round 1 of #643): a comma and a
-     # letter, and a semicolon, end the clause, so these are read as a second definition.
+     # Round 2 of #643: a value bound to the results where the number would be, after a
+     # space, a colon, a comma, a closing dash or a line break, the binding blanked to two
+     # spaces before the line's end; and a number after a closing dash.
+     (" {{results.or}}", set()), (": {{results.or}}", set()), (", {{results.or}}", set()),
+     (" \N{EN DASH} {{results.or}}", set()), ("\n{{results.or}}", set()),
+     (" {{results.or}}\n", set()), (" \N{EN DASH} 1.52", set()),
+     # A limit written down in DESIGN.md's Known gaps (rounds 1 and 2 of #643): a comma or
+     # a colon and a letter, and a semicolon, end the clause, so these are read as a second
+     # definition.
      (", p < 0.001", {"abbreviation-redefined", "abbreviation-unused"}),
+     (": p < 0.001", {"abbreviation-redefined", "abbreviation-unused"}),
      ("; 95% CI 1.1\N{EN DASH}2.0", {"abbreviation-redefined", "abbreviation-unused"})],
 )  # fmt: skip
 def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
@@ -351,7 +359,8 @@ def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
      "the Basic Payment Scheme \N{EN DASH} BPS \nwas introduced in 2015.",
      # A citation with words in it, a locator or a prefix, is words of the sentence.
      "the Basic Payment Scheme \N{EN DASH} BPS [@ec2013, p. 3].",
-     "the Basic Payment Scheme \N{EN DASH} BPS [see @ec2013]."],
+     "the Basic Payment Scheme \N{EN DASH} BPS [see @ec2013].",
+     "> - A\n> # Note\n> some prose\n> 2020) the Basic Payment Scheme \N{EN DASH} BPS\n> - y"],
 )  # fmt: skip
 def test_a_dash_definition_that_does_not_end_its_clause_defines_nothing(written_as: str) -> None:
     """A limit written down in DESIGN.md's Known gaps: a short form after a dash with more
@@ -409,6 +418,118 @@ def test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break
                for _at, short, _long in read.definitions}  # fmt: skip
     assert {"BPS", "CAP", "SAPS", "YFS"} <= defined, defined
     assert "LFA" not in defined
+
+
+@pytest.mark.parametrize(
+    ("bound", "longs"),
+    [(" \\mg{results.or}", ["odds ratio"]),
+     # Round 1 of #662: a tie before the binding is a space, and an anchor prints nothing,
+     # so the definition after it stands.
+     ("~\\mg{results.or}", ["odds ratio"])],
+)  # fmt: skip
+def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(
+    tmp_path: Path, bound: str, longs: list[str]
+) -> None:
+    """Round 2 of #643: `\\mg{results.or}` after the short form is blanked as a binding is,
+    and gives the odds ratio's value, as a number would."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "The odds ratio (OR) was computed. The risk was higher in older people -- OR"
+        f"{bound}. It held.\n\\end{{document}}\n",
+        encoding="utf-8",
+    )
+    read = [long for read in _latex_read(tmp_path, None)
+            for _at, short, long in read.definitions if short == "OR"]  # fmt: skip
+    assert read == longs, read
+
+
+def test_an_anchor_after_a_dash_s_short_form_leaves_its_definition_standing(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #662: `\\mg{method.odds}` prints nothing, so it is no value, and the short
+    form before it ends its clause at the stop."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n"
+        "Farmers were paid under the Basic Payment Scheme -- BPS \\mg{method.payments}. It "
+        "held.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert "BPS" in [short for read in _latex_read(tmp_path, None)
+                     for _at, short, _long in read.definitions]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("written_as", "short"),
+    [
+        # A lazy continuation, unindented, in an item above.
+        ("- the Farming Fund\nstill paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+         "Woodland Fund", "WGS"),
+        # A list straight under a lead-in line: the next item is of the same kind, or the
+        # list opens under a line ending in a colon.
+        ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- Common Agricultural "
+         "Policy \N{EN DASH} CAP", "BPS"),
+        # Round 2 of #662: the same with another marker, a next item opening with a digit,
+        # and in a block quote; and an item long past the lookback.
+        *((f"The schemes were:\n{one} Basic Payment Scheme \N{EN DASH} BPS\n{two} Common "
+           "Agricultural Policy \N{EN DASH} CAP", "BPS")
+          for one, two in (("*", "*"), ("1.", "2."), ("1)", "2)"))),
+        ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- 2015 reform of the CAP",
+         "BPS"),
+        ("> The schemes were:\n> - Basic Payment Scheme \N{EN DASH} BPS\n> - Common "
+         "Agricultural Policy \N{EN DASH} CAP", "BPS"),
+        ("1. the Farming Fund\n" + "still paid\n" * 250 + "2. the Woodland Grant Scheme "
+         "\N{EN DASH} WGS\n* the Woodland Fund", "WGS"),
+        ("Rates peaked in:\n2020) in older people \N{EN DASH} OR\n- 1.52 in all.", "OR"),  # a gap
+        # A binding that prints no value: an anchor, and a pointer.
+        ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
+         "{{method.payments}}.", "BPS"),
+        ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
+         "{{ref.table.payments}}.", "BPS"),
+    ],
+)
+def test_a_dash_defines_under_a_lazy_line_a_lead_in_or_before_a_binding_of_no_value(
+    written_as: str, short: str
+) -> None:
+    """Round 1 of #662: each of these defined before #662, and must still."""
+    read = _file(0, Path("main.md"), f"# Methods\n\n{written_as}\n", [], False)
+    assert short in [found for _at, found, _long in read.definitions]
+
+
+def test_a_closing_dash_before_a_bracket_defines_nothing() -> None:
+    """A limit written down in DESIGN.md's Known gaps (round 1 of #662): after a closing dash
+    a word is asked for, as after a comma, so a bracket there ends no clause."""
+    read = _file(0, Path("main.md"), "# Methods\n\nThe Basic Payment Scheme \N{EN DASH} BPS "
+                 "\N{EN DASH} (2015 onwards) replaced it.\n", [], False)  # fmt: skip
+    assert "BPS" not in [short for _at, short, _long in read.definitions]
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    [
+        # A list item hard-wrapped, its next line indented or not.
+        "- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all.",
+        "- the risk was higher in older people \N{EN DASH} OR\n1.52 in all.",
+        # A line in the middle of a paragraph that opens as a list item would.
+        "Rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all.",
+        "Rates rose in group\n3. in older people \N{EN DASH} OR\n- 1.52 in all.",
+        ">  Rates rose until\n> 2020) in older people \N{EN DASH} OR\n> - 1.52",
+    ],
+)
+def test_a_list_item_goes_on_past_its_line_into_its_continuation(written_as: str) -> None:
+    """Round 2 of #643: a list item ends where its line ends only when the next line is no
+    continuation of it, and a prose line that opens "2020) " or "3. " is no list item."""
+    read = _file(0, Path("main.md"), f"# Results\n\n{written_as}\n", [], False)
+    assert "OR" not in [short for _at, short, _long in read.definitions]
+
+
+def test_a_nested_or_continued_list_item_still_ends_at_its_line() -> None:
+    """The items around a nested list, and an item after one with a continuation line,
+    end where their lines do."""
+    text = ("- the Basic Payment Scheme \N{EN DASH} BPS\n  - the Single Area Payment "
+            "\N{EN DASH} SAP\n- the Common Agricultural Policy \N{EN DASH} CAP\n  still paid\n"
+            "- the Young Farmer Scheme \N{EN DASH} YFS\n- the Area Payment")  # fmt: skip
+    read = _file(0, Path("main.md"), f"# Methods\n\n{text}\n", [], False)
+    assert [short for _at, short, _long in read.definitions] == ["BPS", "SAP", "YFS"]
 
 
 def test_a_dash_short_form_with_words_after_it_is_reported_undefined(project: Path) -> None:

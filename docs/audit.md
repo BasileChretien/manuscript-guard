@@ -69,7 +69,7 @@ section in full and every finding with its place, its context and its hint, as o
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
 | Numbers in the outputs | each number against the outputs, and what a match is worth there | a number in no output |
-| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
+| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n, a mean and its SD in a row named never negative | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
 | Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
@@ -141,6 +141,18 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
+journal article, a book or a chapter; a web page or a legal or official text, listed as "no
+DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
+journal); or not sorted, to check by hand. With `--lookup`, each article, book and chapter is
+looked up in Crossref by its title, its first author and its year, and a work is taken only
+when it is a near-exact match: the same title once case, punctuation and accents are folded,
+the same first author's family name, and the same year where the entry gives one. A work taken
+is shown as "found by its title: DOI …", and that DOI is then looked up for a retraction, a
+withdrawal or an expression of concern like the others. Where Crossref has no such work, or
+two of them, the entry is said to be checked by hand. A title of fewer than three searched
+words is not looked up. Without `--lookup` the entries are sorted and listed, and nothing is
+asked.
 `--lookup --dry-run` lists what would be sent and sends nothing; `--lookup-cache DIR` keeps
 each answer in `DIR` and reads it from there the next time. Without `--lookup-cache` nothing
 is kept.
@@ -208,7 +220,9 @@ in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share
 up to 100, and a share of its categories' own total, where they do, are not listed: a
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
-read in Markdown, and every table in a .docx.
+read in Markdown, and every table in a .docx. A share the Abstract writes in a sentence
+beside both its counts is held to them the same way (see the Abstract against Results); one
+in a sentence anywhere else is not read.
 
 **Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the
@@ -306,7 +320,15 @@ rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart.
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
 not found there is listed, its finding saying where it was looked for, and
-not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
+not counted by `--strict`. A percentage the Abstract writes beside both its counts, "164
+out of 250 (66%)", "164 of 250 (66%)", "164/250 (65.6%)", "164 of 250 patients (66%)",
+"66% (164/250)" or "66% (n = 164/250)", is held to them as a table's n (%) is to its
+denominator, half a unit in its last printed place allowed, and is not looked for: one its
+counts give is counted as given by them, and one they do not give, "164 out of 250 (75%)",
+is listed under Arithmetic with the other numbers that do not fit the ones beside them, not
+counted by `--strict`. The counts are looked for as any number is. A count with no
+denominator beside it, "n = 164 (66%)", gives no share, and its percentage is looked for.
+The Methods are a heading that holds "methods", or whose whole
 title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
 "materials" ("Materials and method"); "Performance of the proposed method" and
 "Methodological notes" are not. The section ends with what a match
@@ -338,6 +360,43 @@ A mean of several items per person is read as a mean of one number each, so a me
 right for its items can be listed: name only rows of one number per person, or quote the
 value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28, items:
 3}`).
+
+For a variable that cannot be negative, a mean less than twice its SD shows that the data
+are skewed, and the mean (SD) describes them badly; a median and an interquartile range
+would serve (Altman and Bland, BMJ 1996;313:1200). Nothing in a paper says a variable
+cannot be negative, so this too is read only in the rows you name: `--non-negative weight
+"length of stay"`, which may be given more than once, reads each table row whose label holds
+one of those, at word edges and in any case, and each cell printed as a mean and its SD,
+"12.3 (4.5)", "12.3 ± 4.5" or "12.3 +/- 4.5". A mean less than twice its SD is listed with
+the other disagreements, with the mean, the SD and the floor of 0; exactly twice is not.
+Neither is counted by `--strict`. Some rows and cells under a label you name are not means
+and SDs of that measure. What can be said exactly decides, and what is unsure is said as
+not read. In this order, a label's HTML tags taken off:
+
+1. a label that names a standard error (SE, SEM, s.e., "standard error"), or a header of
+   the table's first row over the cell that names one, is not read: an SE gives the SD only
+   with the n;
+2. a label that names a change or a difference ("change", "difference", "from baseline",
+   "delta", Δ) is not read, since a change can be negative; a time to one, "days to
+   treatment change", is read;
+3. a label that names a mean or an SD ("mean", "SD", "± SD"), or the cell's own header in
+   the first row, is read as a mean and its SD, whatever the caption says;
+4. a label that names a category holds counts, and is not read: a comparator such as ≥
+   or <, "n (%)", "%", "yes", "n/N", or "no" with neither a point nor "of" after it ("No.
+   of days" is a number);
+5. in a table that says n (%) ("n (%)", "N (%)", "No. (%)" or "n/N (%)" in its caption, the
+   paragraph just above or below it, which ends at the next table's caption, or in its
+   first row; a bare "%" header, "Missing, %", says nothing), a cell whose first number has
+   a point is read, since a count is whole, and one whose first number is whole may be a
+   count, and is not read;
+6. anything else is read.
+
+A label under which nothing was read is said. Means in sentences are not read, nor an SE
+named only in a caption, a note or a second header row. In a table that says n (%), a
+whole-number mean in a row whose label names no mean is not read, and is said; a mean of a
+percentage whose label says only "%", "Body fat, %", is taken for a category. A variable
+with another floor, a score of 1 to 7, is held to 0 here; `check` holds a project's means to the floor its data
+dictionary gives.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.

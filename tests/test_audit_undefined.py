@@ -119,7 +119,69 @@ def test_a_paper_whose_forms_are_all_on_the_list_has_a_note_of_them(
         "need no definition"), note["message"]  # fmt: skip
     assert note["passed_over"] == ["HIV", "MRI", "EEG"] and note["forms"] == []
     main(["audit", str(paper)])
-    assert "Short forms passed over, being on the list (G14, 3)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Short forms passed over, being on the list (G14, 3)" in out
+    # A note, counted nowhere as something to look at (round 2 of #640, finding 1).
+    assert "findings to look at" not in out and "3 findings in" not in out, out
+
+
+def test_the_note_on_forms_passed_over_counts_for_nothing(tmp_path: Path) -> None:
+    """Beside a G6 kind of two, the note ranks last, and the summary's tile stands as it
+    would without it (round 2 of #640, finding 1)."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing.gates import GateRun
+    from manuscript_guard.auditing.summary import CLEAR, LOOK, counted, grouped, standings
+    from manuscript_guard.findings import WARN, Finding
+
+    warnings = [Finding("G14", undefined.CODE, f"{form} is used once in the main text as G14 "
+                        "reads it, and not defined there", WARN, line=at)
+                for at, form in enumerate(PASSED, 3)]  # fmt: skip
+    (note,) = undefined.one_finding(warnings)
+    phrasing = [Finding("G6", "ai-phrasing", "a phrase", WARN, line=at) for at in (1, 2)]
+    lines = grouped([note, *phrasing], lambda path, line: f"line {line}")
+    titles = [line.strip() for line in lines if line.startswith("  ") and "(G" in line]
+    assert titles == ["Phrasing to look at (G6, 2)",
+                      "Short forms passed over, being on the list (G14, 3)"], titles
+    assert counted([note]) == 0 and counted([note, *phrasing]) == 2
+    alone = AuditReport(gates=[GateRun(tmp_path / "a.md", language=[note])])
+    assert standings(alone)["Writing and language"] == CLEAR
+    beside = AuditReport(gates=[GateRun(tmp_path / "a.md", writing=phrasing, language=[note])])
+    assert standings(beside)["Writing and language"] == LOOK
+
+
+def test_details_and_the_referee_draft_count_the_forms(tmp_path: Path, capsys) -> None:
+    """`--details` and the referee draft's row count the forms, as the summary does (round 2
+    of #640, finding 2)."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing.draft import _checks_of_audit
+    from manuscript_guard.auditing.gates import run_gates
+
+    paper = written(tmp_path)
+    main(["audit", str(paper), "--details"])
+    assert "paper.md: 0 from G6, 5 from G14" in capsys.readouterr().out
+    report = AuditReport(gates=[run_gates(paper)])
+    rows = {name: found for name, _said, found in _checks_of_audit(report, [])}
+    assert rows["Language (G14) on paper.md"] == 5, rows
+
+
+#: An Abstract that defines QTR, read apart; the Acknowledgements, which use it first,
+#: before the Methods, which use ABC and then QTR (round 2 of #640, finding 3).
+THANKED = ("# Abstract\n\nThe quick test result (QTR) was high.\n\n"
+           "# Acknowledgements\n\nThe QTR team helped.\n\n"
+           "# Methods\n\nThe ABC was used.\n\nThe QTR was read.\n")  # fmt: skip
+
+
+def test_a_form_used_first_in_the_acknowledgements_ranks_by_that_use(
+    tmp_path: Path, capsys
+) -> None:
+    """G14 ranks a form by its first use, one in the Acknowledgements too, which is no use a
+    reader is owed the definition at: QTR comes before ABC, though its warning, and so the
+    finding, stands at its use in the Methods, after ABC's (DESIGN.md, Known gaps)."""
+    report = _json(written(tmp_path, THANKED), capsys)
+    (found,) = [f for f in report["findings"] if f["code"] == undefined.CODE]
+    assert [form["form"] for form in found["forms"]] == ["QTR", "ABC"], found
+    assert [form["line"] for form in found["forms"]] == [13, 11]
+    assert found["line"] == 13
 
 
 #: A LaTeX paper whose main file inputs its Methods and then its Discussion, from files

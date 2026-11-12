@@ -1022,13 +1022,15 @@ def _small_cells(report, show) -> list[str]:
 
 
 def _gates(report, root: Path | None, show: _Show) -> list[str]:
+    from manuscript_guard.auditing.summary import counted
+
     lines: list[str] = []
     for run in report.gates:
         if run.note:
             lines.append(f"  {run.note}")
             continue
         lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
-                     f"{len(run.language)} from G14"
+                     f"{counted(run.language)} from G14"
                      + ("; lines are those of the text pandoc converts it to, as `init "
                         "--from` writes it" if run.converted and run.places is None
                         else ""))  # fmt: skip

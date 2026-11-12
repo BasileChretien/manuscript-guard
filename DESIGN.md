@@ -25684,7 +25684,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     first use as G14 reads the files. A form used first in the Abstract, or first in an
     acknowledgement and later in the text, is ranked by that first use, though its warning
     stands at its first use in the main text. Pinned by
-    `tests/test_audit_undefined.py::test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files`.
+    `tests/test_audit_undefined.py::test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files`,
+    `tests/test_audit_undefined.py::test_a_form_used_first_in_the_acknowledgements_ranks_by_that_use`.
   - The page, the PDF and the copy with comments show the one finding, its message naming
     every form; each form's place is in `--json` and `--details` only, and the copy's
     comment stands on the first use of the first form alone. Accepted.

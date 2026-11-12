@@ -63,8 +63,8 @@ class Undefined(Finding):
     @property
     def counted(self) -> int:
         """How many short forms it lists: each once, though G14 reads the abstract apart;
-        for the note on forms passed over (`PASSED`), how many it passed over."""
-        return len({form for form, _warning in self.forms}) or len(self.passed_over)
+        none for the note on forms passed over (`PASSED`), which asks nothing."""
+        return len({form for form, _warning in self.forms})
 
     def as_dict(self) -> dict:
         out = {key: value for key, value in super().as_dict().items()

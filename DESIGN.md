@@ -15982,6 +15982,11 @@ been sorted yet.
   are UTF-8 only, as the build writes them.
   Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`
   and `tests/test_audit_reading_said.py::test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding`.
+- **A file two audited trees input, in two encodings, is read once, as the first decodes it.**
+  `audit` reads a file the trees of two entries input once, so where the two trees declare
+  encodings that decode otherwise, the report quotes it as the first tree decoded it, which
+  the second's reader would see as mojibake (round 3 of #637). TeX fails on one of the two
+  trees, so the folder is not consistent to begin with. Accepted.
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
   looked at, or that a `ok` was not a row of clicks. The record is a person's word written down

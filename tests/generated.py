@@ -1534,7 +1534,8 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
 #: A small LaTeX manuscript and what the reader owes it: its files, the author's packages,
 #: each refusal by file and offset, the spans it blanks, and the comments it records.
 #: A manuscript, its packages, the refusals, the stretches hidden and the comments; and, as a
-#: sixth, "audited" for one read as `audit` reads a folder (`text.latex.encodings`).
+#: sixth, for one read as `audit` reads a folder (`auditing.latex.read_latex`), the codec
+#: each file is written in where it is not UTF-8.
 LatexCase = tuple  # fmt: skip
 #: Commands of a package that LaTeX does not give, with the packages that give each,
 #: written out apart from the reader (2026-10-23).
@@ -1711,23 +1712,38 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     # As `audit` reads a folder that declares the encoding: in it, its declarations written
     # as UTF-8's, and nothing refused (Basile, 2026-11-11). A project's files are UTF-8, as
     # the submission folder writes them, and are refused as above.
-    cases.append(({"main.tex": main, "part.tex": accented}, {}, [], [], [], "audited"))
-    cases.append(({"main.tex": alone}, {}, [], [], [], "audited"))
+    codec = {"latin1": "latin_1", "latin9": "iso8859_15"}.get(encoding, "cp1252")
+    cases.append(({"main.tex": main, "part.tex": accented}, {}, [], [], [],
+                  {"main.tex": codec, "part.tex": codec}))  # fmt: skip
+    cases.append(({"main.tex": alone}, {}, [], [], [], {"main.tex": codec}))
+    # One past where the reader stops counts, as TeX reads it: the title before it is read
+    # in it (round 3 of #637: "Étude" read as "?tude").
+    titled = head + "\\title{\N{LATIN CAPITAL LETTER E WITH ACUTE}tude}\n\\catcode`\\@=11\n"
+    cases.append(({"main.tex": titled + sets + begin + accented + end}, {},
+                  [("main.tex", len(titled) - len("\\catcode`\\@=11\n"))], [], [],
+                  {"main.tex": codec}))  # fmt: skip
+    # One in a comment or in what TeX does not print, in a file the tree reaches, counts
+    # for nothing: the tree is UTF-8 (round 3 of #637).
+    unread = (f"% {sets}\\iffalse\n{sets}\\fi\n" if "inputencoding" not in sets else
+              f"\\begin{{comment}}\n{sets}\\end{{comment}}\n% {sets}")  # fmt: skip
+    cases.append(({"main.tex": head + begin + "\\input{part}\n" + end,
+                   "part.tex": unread + accented}, {}, [], [], [], {}))  # fmt: skip
     # A folder that declares UTF-8 beside it declares two, and is read as UTF-8: the file
     # that declares the other is refused where it is not ASCII (round 1 of #637).
     utf8 = head + "\\usepackage[utf8]{inputenc}\n" + begin + accented + "\\input{part}\n" + end
     mixed = sets + accented
     cases.append(({"main.tex": utf8, "part.tex": mixed}, {}, [("part.tex", 0)], [], [],
-                  "audited"))  # fmt: skip
+                  {"part.tex": codec}))  # fmt: skip
     # A stray draft beside a paper that declares nothing decides nothing: the paper's tree
     # is UTF-8, and the draft, which nothing inputs, refused where it is not ASCII (round 2
     # of #637).
     undeclared = head + begin + accented + end
     cases.append(({"main.tex": undeclared, "draft.tex": mixed}, {}, [("draft.tex", 0)], [], [],
-                  "audited"))  # fmt: skip
+                  {"draft.tex": codec}))  # fmt: skip
     # And one encoding the audit does not read a folder in, refused there too.
     other = alone.replace(encoding, "latin2")
-    cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [], "audited"))
+    cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [],
+                  {"main.tex": "iso8859_2"}))  # fmt: skip
 
     # A construct left open, refused where it opens: nothing found past it is kept, its
     # heading, its citation and its input (round 1 of #637).

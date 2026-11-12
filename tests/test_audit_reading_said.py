@@ -238,3 +238,44 @@ def test_a_file_nothing_inputs_beside_a_stopped_paper_keeps_its_advice(tmp_path:
     (stray,) = [one for one in said if "stray.tex" in one]
     assert "paper.tex was not read past line 3" in methods, methods
     assert "no entry inputs it" in stray and "not read past" not in stray, stray
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    ["!!input{sections}", "!!import{./}{sections}", "!!subimport{./}{sections}"],
+)
+def test_a_file_input_past_a_stop_through_another_is_said_not_followed(
+    tmp_path: Path, inputs: str
+) -> None:
+    """Final check of round 2 of #637, findings 1 and 2: the "not followed" note went only to
+    a file typed as an input in the stopped file itself, in braces, and to one in a comment.
+    It goes to each file the inputs past the stop reach, as the reader records an input, an
+    import and a braceless `\\input` in the preamble, and not to one in a comment."""
+    (tmp_path / "sections.tex").write_text("\\input{methods}\n", encoding="utf-8")
+    for name in ("methods", "macros", "stray"):
+        (tmp_path / f"{name}.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(("!!documentclass{article}\n!!catcode`!!@=11\n!!input macros\n"
+                      "!!begin{document}\n% !!input{stray}\n" + inputs + "\n!!end{document}\n"
+                      ).replace("!!", chr(92)), encoding="utf-8")  # fmt: skip
+    found = sorted(tmp_path.glob("*.tex"))
+    said = audit([paper], None, found_tex=found).passed_over
+    for name in ("sections.tex", "methods.tex", "macros.tex"):
+        (note,) = [one for one in said if one.split(": ")[0].endswith("/" + name)]
+        assert "paper.tex was not read past line 2" in note, note
+    (stray,) = [one for one in said if one.split(": ")[0].endswith("/stray.tex")]
+    assert "no entry inputs it" in stray, stray
+
+
+def test_a_declaration_past_a_stop_still_decodes_the_file(tmp_path: Path) -> None:
+    """Final check of round 2 of #637, finding 3: a declaration past where the reader
+    stopped did not count, so the title of a Latin-1 file before it read "?tude". TeX applies
+    it whether the reader reads past the stop or not."""
+    from manuscript_guard.auditing.latex import read_latex
+
+    paper = tmp_path / "paper.tex"
+    paper.write_bytes(("\\documentclass{article}\n\\title{\N{LATIN CAPITAL LETTER E WITH ACUTE}"
+                       "tude}\n\\catcode`\\@=11\n\\usepackage[latin1]{inputenc}\n"
+                       "\\begin{document}\nx\n\\end{document}\n").encode("latin_1"))
+    (tree,) = read_latex([paper]).trees
+    assert "\N{LATIN CAPITAL LETTER E WITH ACUTE}tude" in dict(tree.files)[paper].text

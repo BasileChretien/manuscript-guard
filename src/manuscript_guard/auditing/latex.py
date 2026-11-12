@@ -24,13 +24,14 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard.text.latex.mask import NUL, Refusal
+from manuscript_guard.text.latex.mask import NUL, Refusal, read
 from manuscript_guard.text.latex.structure import (
     SECOND_DOCUMENT,
     Document,
     Source,
+    _target,
+    read_past_stop,
     read_tree,
-    resolve,
 )
 from manuscript_guard.text.latex.tables import latex_tables
 from manuscript_guard.text.latex.views import bindings, markdown_view
@@ -111,6 +112,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     classed: set[Path] = set()
     folders: dict[Path, tuple[dict, dict, dict, frozenset, str | None]] = {}
     decoded: dict[tuple[Path, str], tuple[dict, dict, dict, frozenset, str | None]] = {}
+    unfollowed: dict[Path, list[str]] = {}
     for entry in entries:
         folder = entry.parent
         if folder not in folders:
@@ -146,6 +148,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 for start, end in source.reading.references
             ]
         read.trees.append(Tree(entry, folder, document, tuple(mine), named))
+        unfollowed = {**_unfollowed(document, files, name, folder), **unfollowed}
         classed.update(folder / path for path in document.classes)
         # A refusal counts only in a file the entry reads. One that holds a document of its
         # own is an entry, or passed over, and so is one nothing inputs: refused there, each
@@ -179,7 +182,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             # In an entry's folder it is named already, as what could not be read there.
             if not any(folder in path.parents for folder in folders):
                 read.passed_over.append(said)
-        elif stopped_in := _inputs_past(path, read.trees):
+        elif stopped_in := unfollowed.get(path):
             # The file that inputs it may do so past where its reading stopped (round 1 of
             # #637: the advice was to input it, which the paper did).
             read.passed_over.append(
@@ -195,29 +198,27 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     return read
 
 
-#: An input typed in braces, as the reader finds one: an `\\input`, `\\include` or `\\subfile`.
-_TYPED_INPUT = re.compile(r"\\(?:input|include|subfile)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
-
-
-def _inputs_past(path: Path, trees: list[Tree]) -> list[str]:
-    """Where each file a tree stopped in inputs `path` past the line it stopped on, found by
-    its shape, as the reader does not read there (round 2 of #637: a file nothing inputs was
-    said to be input past a stop)."""
-    said = []
-    for tree in trees:
-        files = {source.path: source.text for _path, source in tree.files}
-        for where, refusal in tree.document.refusals:
-            if where not in files or (where, refusal) not in _stops(tree.document):
-                continue
-            if tree.folder not in path.parents:
-                continue
-            entry = tree.entry.relative_to(tree.folder).as_posix()
-            known = {path.relative_to(tree.folder).as_posix(): ""}
-            for found in _TYPED_INPUT.finditer(files[where], refusal.offset):
-                if resolve(entry, found[1], known)[0] is not None:
-                    line = files[where].count("\n", 0, refusal.offset) + 1
-                    said.append(f"{where} was not read past line {line}")
-    return list(dict.fromkeys(said))
+def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> dict:
+    """Each file the inputs past where a file of `document` stopped reach, through the files
+    they input, by its path, with where that file stopped: the inputs as the reader records
+    them, a braceless `\\input` and an `\\import` among them, not one in a comment (round 3
+    of #637: typed inputs in the stopped file alone were looked for)."""
+    reached = {source.path for source in document.sources if not source.loose}
+    said: dict[Path, list[str]] = {}
+    for source in document.sources:
+        if source.loose or not source.reading.refusals:
+            continue
+        line = source.text.count("\n", 0, source.reading.refusals[0].offset) + 1
+        pending = [put for past in read_past_stop(source) for put in past.inputs]
+        while pending:
+            put = pending.pop()
+            target = _target(entry, put, "", files)[0]
+            if target is not None and target not in reached:
+                reached.add(target)
+                said[folder / target] = [f"{source.path} was not read past line {line}"]
+                pending += read(files[target], body=put.body,
+                                environments=put.environments).inputs  # fmt: skip
+    return said
 
 
 def _stops(document: Document) -> set[tuple[str, Refusal]]:

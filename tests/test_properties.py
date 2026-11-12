@@ -1089,12 +1089,11 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
     known command the preamble defines again is read, and refused where it prints; and a
     folder read as `audit` reads one is read in the encoding it declares (2026-11-11)."""
     for files, packages, refused, hidden, comments, *audited in drawn:
-        neutral = {path: latex_encodings.as_utf8(text) for path, text in files.items()}
-        if audited and latex_encodings.in_tree(latex_structure.read_tree(
-                neutral, packages=packages), {**files, **packages}):  # fmt: skip
-            # The audit's files, read in the one encoding their tree declares, say UTF-8.
-            files = neutral
-        document = latex_structure.read_tree(files, packages=packages)
+        if audited:
+            # Written in the codecs drawn and read as `audit` reads a folder (round 3 of #637).
+            document = _audited(files, packages, audited[0])
+        else:
+            document = latex_structure.read_tree(files, packages=packages)
         found = [(path, refusal.offset) for path, refusal in document.refusals]
         assert found == refused, (found, refused, files, packages)
         readings = {source.path: source.reading for source in document.sources}
@@ -1113,6 +1112,26 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
                          *(c.offset for c in source.reading.cited),
                          *(put.offset for put in source.reading.inputs)]  # fmt: skip
                 assert all(at < refusal.offset for at in found), (source.path, found, files)
+
+
+def _audited(files: dict[str, str], packages: dict[str, str], codecs: dict[str, str]):
+    """The document `audit` reads of `files` and `packages` written in `codecs`, UTF-8 where
+    none is named, the text of each file it reads checked to be the one written, up to where
+    the file is refused: in its tree's encoding, so in the one it was written in."""
+    from manuscript_guard.auditing.latex import read_latex
+
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch)
+        for path, text in {**files, **packages}.items():
+            (folder / path).write_bytes(text.encode(codecs.get(path, "utf-8")))
+        (tree,) = read_latex([folder / "main.tex"]).trees
+    for _path, source in tree.files:
+        cut = min([refusal.offset for where, refusal in tree.document.refusals
+                   if where == source.path], default=len(source.text))  # fmt: skip
+        written = {**files, **packages}[source.path]
+        written = latex_encodings.as_utf8(written) if tree.encoding else written
+        assert source.text[:cut] == written[:cut], (source.path, source.text, codecs)
+    return tree.document
 
 
 def _a_citation_s_name_begins_or_ends_with_cite(patch: pytest.MonkeyPatch) -> None:
@@ -1263,6 +1282,12 @@ def _every_heading_and_reference_redefined_is_read_as_before(
 
 def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_before", lambda reading, at: reading)
+
+
+def _a_declaration_unread_counts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree", lambda document, originals: latex_encodings
+                  .declared(originals[source.path] for source in document.sources
+                            if not source.loose and source.path in originals))  # fmt: skip
 
 
 def _the_encoding_is_the_folder_s(patch: pytest.MonkeyPatch) -> None:
@@ -20825,6 +20850,10 @@ BROKEN = {
     ),
     "in LaTeX, what the reader found past a refusal is kept": (
         _what_is_found_past_a_refusal_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited tree counts a declaration in a comment or unprinted": (
+        _a_declaration_unread_counts,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, an audited folder's encoding is decided for the folder": (

@@ -59,17 +59,21 @@ def declared(texts: Iterable[str]) -> str | None:
 def in_tree(document, originals: dict[str, str]) -> str | None:
     """`declared` of the files `document` reads, the entry and those it reaches, their
     `originals` given by path, as read before each declaration was written as UTF-8's: only
-    where the reader reads them, not in a comment, an `\\iffalse` block or past a refusal
-    (round 2 of #637: decided for the folder, a stray Latin-1 draft beside a paper that
-    declares nothing had the paper misread)."""
+    where TeX reads them, not in a comment or an `\\iffalse` block (round 2 of #637:
+    decided for the folder, a stray Latin-1 draft beside a paper that declares nothing had
+    the paper misread)."""
+    from manuscript_guard.text.latex.structure import read_past_stop
+
     texts = []
     for source in document.sources:
         if source.loose or source.path not in originals:
             continue
-        reading, text = source.reading, list(originals[source.path])
-        past = [(refusal.offset, len(text)) for refusal in reading.refusals]
-        for start, end in [*reading.comments, *reading.unprinted, *past]:
-            text[start:end] = " " * (end - start)
+        # Past a stop too, which TeX reads (round 3 of #637: "Étude" before a stop read as
+        # "?tude"), but not in a comment or what TeX does not print there either.
+        text = list(originals[source.path])
+        for reading in (source.reading, *read_past_stop(source)):
+            for start, end in [*reading.comments, *reading.unprinted]:
+                text[start:end] = " " * (end - start)
         texts.append("".join(text))
     return declared(texts)
 

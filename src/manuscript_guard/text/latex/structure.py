@@ -334,6 +334,19 @@ class _Told:
                     loaded=self.loaded, **given)  # fmt: skip
 
 
+def read_past_stop(source: Source) -> list[Reading]:
+    """What the reader finds past each place it stopped in `source`, read on from the next
+    line at the file's own offsets, where TeX goes on: the inputs and the comments there
+    (round 3 of #637). No gate reads it; it says what is not followed and what TeX
+    declares."""
+    readings, reading, text, at = [], source.reading, source.text, -1
+    while reading.refusals and (at := text.find("\n", max(reading.refusals[0].offset,
+                                                          at + 1))) >= 0:  # fmt: skip
+        reading = read(" " * at + text[at:], body=0 <= reading.body_start <= at)
+        readings.append(reading)
+    return readings
+
+
 def _encoded(document: Document) -> Document:
     """`document` with an input encoding other than UTF-8 that a file of its tree sets, which
     the reader accepts since that file is ASCII, refused where another file of the tree is

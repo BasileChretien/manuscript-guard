@@ -47,11 +47,12 @@ the paper spaces it, an interval joined and a per cent sign set as most are, a s
 between a number and its unit, and an abbreviation defined and not used again written out.
 Only the characters that change are deleted and inserted, in the formatting of the text
 around them. Every other finding is a comment, as `--commented` writes it, and so is a
-finding one of whose places has no change written: words the document holds in more than
-one place (its footnotes and endnotes counted), words in a field, a link, a footnote or an
-endnote, words whose own text holds a mark Word does not print (a link, emphasis that
-begins or ends inside them) or a quotation mark the converted text writes straight, and
-words two corrections change differently. The corrections are worked out only for this
+finding one of whose corrections is left out, unless it changes nothing the document prints:
+words the document holds in more than one place (its footnotes and endnotes counted), words
+in a field, a link, a footnote or an endnote, words whose own text holds a mark Word does
+not print (a link, emphasis that begins or ends inside them), a quotation mark the
+converted text writes straight or a line's end, and words two corrections change
+differently. The corrections are worked out only for this
 copy: an audit without `--tracked` does not read them. The audit says how many corrections
 are tracked changes, how many could not be placed, and how many findings are comments.
 Before it keeps the copy it reads it with its own changes accepted and with its own changes

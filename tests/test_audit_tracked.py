@@ -300,6 +300,17 @@ def test_a_correction_whose_words_a_footnote_holds_too_is_left_out(tmp_path: Pat
     assert "a footnote or an endnote" in result.untracked[0][1]
 
 
+def test_a_correction_in_a_note_of_two_paragraphs_is_left_out(tmp_path: Path) -> None:
+    """Not put on the body's quotation of its words (round 2 of #666)."""
+    from manuscript_guard.auditing.gates import as_tracked
+
+    text = "Body.[^1]\n\n[^1]: First part.\n\n    See the colour chart.\n"
+    corrections = as_tracked(_edits(text, ("spelling-variant", "colour", "color")))
+    body = para("They wrote “See the colour chart.” then.")
+    _source, _target, result = written(tmp_path, body, corrections)
+    assert result.tracked == 0 and "in a note" in result.untracked[0][1]
+
+
 def test_every_revision_of_the_copy_has_an_id_of_its_own(tmp_path: Path) -> None:
     """A run whose formatting change Word recorded (`w:rPrChange`) is split where a change
     begins and ends, and copied for the text put in: neither copy keeps its id (round 1 of

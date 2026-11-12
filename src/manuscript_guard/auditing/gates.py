@@ -319,6 +319,10 @@ _LINE_MARK = re.compile(r"(?:#{1,6}|[-+]|\d{1,9}[.)])[ \t]+")
 #: en dash, which pandoc's two hyphens already are: no change to place, and none the audit
 #: counts as not placed.
 NOTHING_PRINTED = "it changes nothing the document prints"
+#: A note's definition in the converted text, "[^1]: ..." and the lines indented under it,
+#: where no change is written: its words may stand in the body too (round 2 of #666).
+_NOTE = re.compile(r"^\[\^[^\]\n]+\]:.*(?:\n(?:[ \t]*\n)*(?: {4}|\t).*)*", re.MULTILINE)
+_IN_A_NOTE = "it is in a note, where nothing is written"
 #: How many characters of its paragraph each side of a correction find it in the document.
 _AROUND = 40
 
@@ -340,7 +344,8 @@ def as_tracked(edits: list) -> list[Tracked]:
         text = texts[one.path]
         start, end = one.offset, one.offset + len(one.old)
         old, new = _printed(one.old, exact=True), _printed(one.new, exact=True)
-        why = _why_left_out(one.old, one.new, old, new)
+        why = _why_left_out(one.old, one.new, old, new) or next(
+            (_IN_A_NOTE for note in _NOTE.finditer(text) if note.start() <= start < note.end()), "")
         if why:
             out.append(Tracked(one.codes, one.old, one.new, line=one.line, left_out=why))
             continue

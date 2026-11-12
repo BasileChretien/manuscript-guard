@@ -2431,44 +2431,66 @@ def _cited_refused(target: Path, given: list[Path]) -> str:
     return ""
 
 
-def _commented_refused(target: Path, given: list[Path], paper: Path) -> str:
-    """Why `--commented` cannot write to `target`, or "": a paper named first that is no
-    .docx, a target that is not one, a file already there, which may be the author's own
-    copy, a folder that is not there, or a file the audit reads."""
+#: What each copy of the .docx is written with, as its refusal says it.
+_COPIES = {"--commented": "its findings as comments",
+           "--tracked": "its corrections as tracked changes and its other findings as comments"}
+
+
+def _commented_refused(target: Path, given: list[Path], paper: Path,
+                       flag: str = "--commented") -> str:  # fmt: skip
+    """Why `--commented` or `--tracked` (`flag`) cannot write to `target`, or "": a paper
+    named first that is no .docx, a target that is not one, a file already there, which may
+    be the author's own copy, a folder that is not there, or a file the audit reads."""
     if paper.is_dir() or paper.suffix.lower() != ".docx":
-        return (f"--commented copies the .docx named first with its findings as comments, and "
+        return (f"{flag} copies the .docx named first with {_COPIES[flag]}, and "
                 f"{paper.name} is not one")  # fmt: skip
     if target.suffix.lower() != ".docx":
-        return f"--commented writes a Word document (.docx): {target.name} is not one"
+        return f"{flag} writes a Word document (.docx): {target.name} is not one"
     if target.exists():
-        return (f"--commented {target}: the file is there already, and may be a copy you have "
+        return (f"{flag} {target}: the file is there already, and may be a copy you have "
                 "worked on; name another, or move it away")  # fmt: skip
     if not target.parent.is_dir():
-        return f"--commented {target}: its folder does not exist"
+        return f"{flag} {target}: its folder does not exist"
     if any(target.resolve() == path.resolve() for path in given):
-        return f"--commented {target}: that is a file the audit reads"
+        return f"{flag} {target}: that is a file the audit reads"
     return ""
 
 
-def _write_commented(report, args: argparse.Namespace) -> bool:
+def _write_commented(report, args: argparse.Namespace, *, tracked: bool = False) -> bool:
     """The copy of the .docx named first with each finding as a Word comment at its place,
-    written to the file `--commented` names (`auditing.commented`); False, said on stderr,
-    where it could not be written."""
+    written to the file `--commented` names (`auditing.commented`); or, `tracked`, to the
+    one `--tracked` names, with each correction G14 is sure of as a tracked change
+    (`auditing.tracked_copy`). False, said on stderr, where it could not be written."""
     from datetime import datetime, timezone
 
     from manuscript_guard.auditing.commented import CommentedError, notes_of, write
+    from manuscript_guard.auditing.gates import NOTHING_PRINTED
     from manuscript_guard.safexml import UnsafeDocument
 
     paper = args.paper[0]
+    flag, target = ("--tracked", args.tracked) if tracked else ("--commented", args.commented)
+    corrections = None
+    if tracked:
+        runs = [run for run in report.gates if Path(run.paper).resolve() == paper.resolve()]
+        corrections = [one for run in runs for one in run.corrections]
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
-        written = write(paper, args.commented, notes_of(report, paper), date=date)
+        written = write(paper, target, notes_of(report, paper), date=date,
+                        corrections=corrections)  # fmt: skip
     except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
-        print(f"manuscript-guard audit: --commented {args.commented} could not be written: "
-              f"{exc}", file=sys.stderr)  # fmt: skip
+        print(f"manuscript-guard audit: {flag} {target} could not be written: {exc}",
+              file=sys.stderr)  # fmt: skip
         return False
     listed = len(written.listed)
-    print(f"manuscript-guard audit: wrote {args.commented}, a copy of {paper.name} with "
+    changes = ""
+    if tracked:
+        # Not those that change nothing the document prints: there was nothing to place.
+        left = sum(why != NOTHING_PRINTED for _one, why in written.untracked)
+        changes = (f"{written.tracked} correction{'s' if written.tracked != 1 else ''} as "
+                   "tracked changes, "
+                   + (f"{left} that could not be placed left to the comments, " if left
+                      else ""))  # fmt: skip
+    print(f"manuscript-guard audit: wrote {target}, a copy of {paper.name} with {changes}"
           f"{written.placed} finding{'s' if written.placed != 1 else ''} as comments at their "
           f"places" + (f" and {listed} with no place listed in a comment on its first "
                        "paragraph" if listed else ""), file=sys.stderr)  # fmt: skip
@@ -2604,8 +2626,8 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
-                 "pdf", "lookup", "whole_numbers", "minimum_cell_count", "english", "known",
-                 "submission_residue", "non_negative")
+                 "tracked", "pdf", "lookup", "whole_numbers", "minimum_cell_count", "english",
+                 "known", "submission_residue", "non_negative")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -2630,7 +2652,8 @@ AUDITED: Callable[[object, object], None] | None = None
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "known", "submission_residue", "lookup",
                 "dry_run", "whole_numbers", "non_negative", "minimum_cell_count", "journal",
-                "authors", "design", "cited", "commented", "pdf", "package", "strict")  # fmt: skip
+                "authors", "design", "cited", "commented", "tracked", "pdf", "package",
+                "strict")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
@@ -2676,7 +2699,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
                                   "a paper: name one before --package")  # fmt: skip
     given = [*args.paper, *(args.against or []), *(args.figures or []),
              *(path for path in (args.journal, args.authors, args.package, args.cited,
-                                 args.commented, args.pdf) if path)]  # fmt: skip
+                                 args.commented, args.tracked, args.pdf) if path)]  # fmt: skip
     refused = _draft_refused(args, given, "audit")
     if refused is not None:
         return refused
@@ -2795,6 +2818,13 @@ def _audit(args: argparse.Namespace, package) -> int:
         refused = _commented_refused(args.commented, given, args.paper[0])
         if refused:
             return _audit_refused(args, f"manuscript-guard audit: {refused}")
+    if args.tracked is not None:
+        refused = _commented_refused(args.tracked, given, args.paper[0], "--tracked")
+        if not refused and args.commented is not None and (
+                args.tracked.resolve() == args.commented.resolve()):  # fmt: skip
+            refused = f"--tracked {args.tracked}: that is the file --commented writes"
+        if refused:
+            return _audit_refused(args, f"manuscript-guard audit: {refused}")
     if args.pdf is not None:
         refused = _pdf_refused(args.pdf, given)
         if refused:
@@ -2856,7 +2886,10 @@ def _audit(args: argparse.Namespace, package) -> int:
     read = set(report.papers)
     step("words")
     report.gates = [
-        *(run_gates(path, english=english, residue=args.submission_residue, known=known)
+        # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
+        *(run_gates(path, english=english, residue=args.submission_residue, known=known,
+                    corrected=args.tracked is not None
+                    and Path(path).resolve() == args.paper[0].resolve())
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
                     known=known)
@@ -2879,6 +2912,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.cited is not None and not _write_cited(report, args):
         return 2
     if args.commented is not None and not _write_commented(report, args):
+        return 2
+    if args.tracked is not None and not _write_commented(report, args, tracked=True):
         return 2
     discrimination = measure_discrimination(report.backing_values) if against else None
     if args.pdf is not None and not _write_pdf(report, discrimination, args):
@@ -7059,6 +7094,15 @@ def build_parser() -> argparse.ArgumentParser:
         "yet) with each finding as a Word comment at its place, anchored on the number or the "
         "words it is about; those with no place are listed in a comment on its first "
         "paragraph, and nothing of its text changes",
+    )
+    audit.add_argument(
+        "--tracked",
+        type=Path,
+        metavar="FILE",
+        help="also write a copy of the .docx named first to FILE (.docx, which must not exist "
+        "yet) with each correction G14 is sure of (spelling to the chosen English, notation "
+        "spacing, intervals, abbreviations written out) as a Word tracked change to accept or "
+        "reject, and every other finding as a comment, as --commented writes them",
     )
     audit.add_argument(
         "--package",

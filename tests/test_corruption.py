@@ -11856,6 +11856,10 @@ def test_the_r_emitter_s_mean_and_sd_are_read_by_the_same_check(project: Path) -
     script = project / "analysis" / "02_skew.R"
     for reason, said in (("NULL", ["mean-sd-skewed"]), ('"as the trial registered it"', [])):
         script.write_text(
+            # As test_r_emitter's scripts do: a runner with R but not jsonlite or digest
+            # (CI's windows-latest) exits 3, which _run_r skips.
+            'if (!requireNamespace("jsonlite", quietly = TRUE) || '
+            '!requireNamespace("digest", quietly = TRUE)) quit(status = 3)\n'
             "source('" + EMIT_R.as_posix() + "')\n"
             "em <- mg_emitter('" + script.as_posix() + "')\n"
             "em$value('crp.mean', 5, digits = 1, quoted = FALSE, variable = 'crp', "
@@ -33622,6 +33626,37 @@ def test_an_outage_records_nothing_and_leaves_the_rrid_not_looked_up(project: Pa
     assert written == [] and len(late) == 1
     assert not record_path(loaded, "RRID:AB_2298772").exists()
     assert _rrid_findings(project, "submission") == [("rrid-not-looked-up", "warn", "main.md")]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_correction_the_tracked_copy_cannot_place_stays_a_comment(
+    tmp_path: Path, capsys
+) -> None:
+    """`audit --tracked`: the same sentence twice, its British word corrected at both places.
+    Neither place can be told from the other in the document, so no change is written: the
+    finding is a comment over its word, and the copy reads as the paper."""
+    from generated import word_package
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.docxtext import word_comments
+    from manuscript_guard.safexml import parse_xml
+    from manuscript_guard.tracked import W, _chars
+
+    sentence = "<w:p><w:r><w:t>The colour of the cohort was noted.</w:t></w:r></w:p>"
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        for name, part in word_package(sentence * 2).items():
+            archive.writestr(name, part)
+    target = tmp_path / "tracked.docx"
+    assert main(["audit", str(paper), "--english", "american", "--tracked", str(target)]) == 0
+    assert "0 corrections as tracked changes, 2 that could not be placed" in capsys.readouterr().err
+    with zipfile.ZipFile(target) as archive:
+        document = archive.read("word/document.xml")
+    assert b"<w:del " not in document and b"<w:ins " not in document
+    root = parse_xml(document, what="document")
+    assert [_chars(one)[0] for one in root.iter(W + "p")] == [
+        "The colour of the cohort was noted."] * 2
+    assert any("'colour'" in one.text for one in word_comments(target))
 
 
 #: A title page as a Word paper converted by pandoc opens with one, put between the

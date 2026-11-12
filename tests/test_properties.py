@@ -1932,7 +1932,9 @@ def test_the_title_page_is_not_read_for_abbreviations(
 ) -> None:
     """A title page's capitals, its authors' names, units and institutions, are reported
     nowhere, and what it spells out defines nothing, wherever it ends: at an Abstract, at
-    another first section, at a letter's salutation. A paper with no title page, opening on a
+    another first section, run in from its label or not, at a letter's salutation, where
+    prose begins, and at a list of abbreviations, which is read; and whatever its one line
+    only a title page holds is. A paper with no title page, opening on a
     heading or on a title alone, is read whole, and so is one whose opening names a
     university in a sentence (Basile, 2026-11-12)."""
     nothing = language_gate._Known(frozenset(), frozenset())
@@ -1988,6 +1990,22 @@ def _an_affiliation_s_pieces_may_be_any_length(patch: pytest.MonkeyPatch) -> Non
     from manuscript_guard.text import title_page
 
     patch.setattr(title_page, "_PIECE_WORDS", 1000)
+
+
+def _title_page_pattern_matches_nothing(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    def broken(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import title_page
+
+        patch.setattr(title_page, name, re.compile(r"(?!)"))
+
+    return broken
+
+
+def _a_list_of_abbreviations_is_the_title_page_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_OPENING_NAMES",
+                  title_page._OPENING_NAMES - title_page._GLOSSARY_NAMES)  # fmt: skip
 
 
 def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:
@@ -21925,6 +21943,30 @@ BROKEN = {
     ),
     "a title's institution is an affiliation": (
         _a_title_s_institution_is_an_affiliation,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a run-in label opens no paper": (
+        _title_page_pattern_matches_nothing("_RUN_IN"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a degree after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_DEGREES"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's mark after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_MARKED"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an e-mail address is no line of a title page": (
+        _title_page_pattern_matches_nothing("_EMAIL"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an ORCID iD is no line of a title page": (
+        _title_page_pattern_matches_nothing("_ORCID"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a list of abbreviations is the title page's": (
+        _a_list_of_abbreviations_is_the_title_page_s,
         test_the_title_page_is_not_read_for_abbreviations,
     ),
     "every statement's capitals are initials": (

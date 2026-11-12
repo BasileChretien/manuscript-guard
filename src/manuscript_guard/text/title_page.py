@@ -55,8 +55,10 @@ MOST_WORDS = 600
 #: The most lines and words of a first paragraph read as the title where it reads as prose.
 TITLE_LINES = 3
 TITLE_WORDS = 40
-#: A paragraph of more lines than this, opening the text, is read line by line: the lines of
-#: a PDF stand in one paragraph, and so do those of a title page typed a line to each.
+#: A paragraph of more lines than this, opening the text, is read line by line, where none
+#: of its lines holds a sentence: the lines of a PDF stand in one paragraph, and so do those
+#: of a title page typed a line to each. A paragraph of prose wrapped over several lines is
+#: one block, whose lines are read together.
 SPLIT_LINES = 3
 
 SIGNAL = "signal"
@@ -67,25 +69,38 @@ PROSE = "prose"
 
 #: The names a paper's own text opens on, of `SECTION_NAMES`: an abstract, the parts of a
 #: structured one, and the Introduction. With the names that open a letter, a summary box
-#: or a structured abstract's first part and are no heading `SECTION_NAMES` reads alone.
+#: or a structured abstract's first part and are no heading `SECTION_NAMES` reads alone; an
+#: abstract's name in French, Spanish, Portuguese, German and Italian; and a list of
+#: abbreviations, which a journal may ask for on the title page itself (Pediatrics,
+#: "Abbreviations: Food and Drug Administration (FDA); ..."): it defines, and is read.
 _OPENING_NAMES = frozenset({
     "abstract", "structured abstract", "summary", "introduction", *ABSTRACT_PARTS,
     "main text", "letter", "research letter", "letter to the editor", "highlights",
     "key points", "research in context", "plain language summary", "lay summary",
     "simple summary", "graphical abstract", "objective", "objectives", "aim", "aims",
     "purpose", "importance", "context", "rationale",
+    "résumé", "resumen", "resumo", "zusammenfassung", "riassunto",
 })  # fmt: skip
+_GLOSSARY_NAMES = frozenset({
+    "abbreviations", "list of abbreviations", "abbreviations used", "acronyms",
+    "list of acronyms", "glossary", "abréviations", "liste des abréviations",
+})  # fmt: skip
+_OPENING_NAMES = _OPENING_NAMES | _GLOSSARY_NAMES
 
 #: A label only a title page holds, at the paragraph's start in bold or not, with a colon
 #: after it or the paragraph ending on it: "Corresponding author:", "**Running title**",
 #: "Word count: 3,412", "Keywords: ...", "E-mail: ...". "Corresponding author" and
-#: "Correspondence" are read with anything after them, "Correspondence to Dr ...".
+#: "Correspondence" are read with anything after them, "Correspondence to Dr ...", and so
+#: are their French, "Correspondance", "Auteur correspondant"; "Mots-clés", "Palabras
+#: clave" and "Schlüsselwörter" are keywords.
 _LABEL = re.compile(
     r"[*_\s]*(?:"
-    r"(?:\*?corresponding\s+authors?|correspondence|address\s+(?:for\s+)?correspondence)\b"
+    r"(?:\*?corresponding\s+authors?|correspondence|address\s+(?:for\s+)?correspondence"
+    r"|correspondance|auteurs?\s+correspondants?)\b"
     r"|(?:(?:short|running)\s+(?:title|head)|title\s+page"
     r"|(?:abstract\s+|main\s+text\s+|total\s+|text\s+)?word\s+counts?"
-    r"|key\s*-?\s*words?|e-?mails?(?:\s+address(?:es)?)?|tel(?:ephone)?|phone|fax"
+    r"|key\s*-?\s*words?|mots[\s-]+cl[ée]s|palabras\s+clave|schl[üu]sselw[öo]rter"
+    r"|parole\s+chiave|e-?mails?(?:\s+address(?:es)?)?|tel(?:ephone)?|phone|fax"
     r"|orcid(?:\s+i[dD]s?)?|affiliations?|authors?(?:\s+(?:names?|list|information|details))?"
     r"|(?:number|no\.?)\s+of\s+(?:tables|figures|references|words)"
     r"|article\s+type|type\s+of\s+(?:article|manuscript|paper)|manuscript\s+type"
@@ -97,10 +112,12 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _ORCID = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b|\borcid\b", re.IGNORECASE)
 #: What names an institution in an affiliation, in the languages papers are most often
 #: written in: "Department of Pharmacology", "Université de Caen", "INSERM U1237",
-#: "UMR-S 1237", "Centre hospitalier universitaire", "Graduate School of Medicine".
+#: "UMR-S 1237", "Centre hospitalier universitaire", "Graduate School of Medicine",
+#: "Département", "Departamento", "Dipartimento", "Abteilung", "Service de Pharmacologie".
 _INSTITUTION = re.compile(
     r"(?<![\w-])(?:"
-    r"departments?|dept\.?|facult(?:y|ies|é|e|ad|ade|à)|universit(?:y|ies|é|à|ät|at|ad|ade|eit)"
+    r"departments?|dept\.?|d[ée]partements?|departamentos?|dipartimento|abteilung"
+    r"|servic(?:e|io)\s+de|facult(?:y|ies|é|e|ad|ade|à)|universit(?:y|ies|é|à|ät|at|ad|ade|eit)"
     r"|univ\.|institut(?:e|es|o|s)?|istituto|hospitals?|hôpital|hôpitaux|hospitali(?:er|ère)"
     r"|klinik(?:um)?|clinics?|clinique|cl[ií]nica|schools?|[ée]cole|colleges?|coll[eè]ge"
     r"|laborator(?:y|ies)|laboratoire|labs?|cent(?:re|er|res|ers|ro|rum)|zentrum|units?|unité"
@@ -130,11 +147,14 @@ _NOTE = re.compile(
 )
 _NOTE_WORDS = 30
 #: A letter's salutation: "Dear Editor,", "Dear Sir or Madam,", "Dear Dr Smith,", "To the
-#: Editor:", "Sir,", and what opens a letter to nobody in particular.
+#: Editor:", "Sir,", and what opens a letter to nobody in particular; in French, "Madame,
+#: Monsieur,", "Cher collègue,", in Spanish, "Estimado editor:", in German, "Sehr geehrte".
 _SALUTATION = re.compile(
     r"[*_\s]*(?:dear\s+(?:editors?|sirs?|madam|colleagues?|dr\b|prof|professor|mr\b|mrs\b"
     r"|ms\b)|dear\s+[^\n,:]{1,60}[,:]\s*$|to\s+the\s+editors?\b|sirs?\s*[,:\N{EM DASH}]"
-    r"|madam\s*[,:]|to\s+whom\s+it\s+may\s+concern)",
+    r"|madam\s*[,:]|to\s+whom\s+it\s+may\s+concern"
+    r"|madame,?\s+monsieur\s*[,:]|monsieur\s*[,:]|madame\s*[,:]|ch[eè]re?s?\s+[^\n,:]{1,60}[,:]"
+    r"|estimad[oa]s?\s+[^\n,:]{1,60}[,:]|sehr\s+geehrte)",
     re.IGNORECASE,
 )
 #: The words a sentence is made of and an affiliation or a list of names is not: pronouns,
@@ -244,7 +264,8 @@ def _blocks(seen: str, headings: Sequence[Heading]) -> Iterator[_Block]:
         nonlocal first
         if not paragraph:
             return
-        if first and len(paragraph) > SPLIT_LINES:
+        if first and len(paragraph) > SPLIT_LINES and not any(
+                _a_sentence(_words(line), line) for _start, line in paragraph):  # fmt: skip
             yield from (_Block(start, line) for start, line in paragraph)
         else:
             yield _Block(paragraph[0][0], "\n".join(line for _start, line in paragraph))

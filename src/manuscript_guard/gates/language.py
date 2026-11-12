@@ -783,6 +783,17 @@ def _on_the_title_page(file: _File, offset: int) -> bool:
     return offset < file.title_page
 
 
+def _on_title_pages(files: list[_File]) -> frozenset[str]:
+    """The words the files' title pages hold, whole and by their parts: where one is a short
+    form the text defines and never uses, its hint says that the title page's use was not
+    counted."""
+    found: set[str] = set()
+    for file in files:
+        for word in _WORD.finditer(file.prose, 0, file.title_page):
+            found.update((word.group(0), *_JOINS.split(word.group(0))))
+    return frozenset(found)
+
+
 def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
     """`_within` for spans in order and none inside another, by halving."""
     at = bisect_right(spans, (offset, float("inf"))) - 1
@@ -1639,6 +1650,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
     findings: list[Finding] = []
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
+    title_paged = _on_title_pages(files)
     headless = _headless(files)
     if headless is not None and _says_headless(stage):
         findings.append(headless)
@@ -1721,8 +1733,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         f"{short} is defined and not used again in the {scope.name} as G14 "
                         "reads it",
                         f"write '{first.long}' out and drop the short form, unless a table "
-                        "or a figure uses it: those are not read here",
-                    )
+                        "or a figure uses it: those are not read here"
+                        + ("; the title page uses it, and is not read for abbreviations"
+                           if short in title_paged else ""),
+                    )  # fmt: skip
                 )
 
         for short, uses in scope.used.items():

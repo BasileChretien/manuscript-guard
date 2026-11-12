@@ -5176,7 +5176,9 @@ those; Known gaps says where one is read as a contributions statement.
 defined). Its departments, units and institutions need no defining, and nothing on it is a
 use or a definition of the paper's short forms: "Institut national de la santé et de la
 recherche médicale (INSERM)" in an affiliation does not define the INSERM of the Methods, and
-an entry of the list of abbreviations the title page alone uses is unused. Everything from
+an entry of the list of abbreviations the title page alone uses is unused, and so is a short
+form the text defines and uses nowhere else, whose hint says that the title page uses it and
+is not read for abbreviations (round 1 of #654). Everything from
 the end of the title page on is read as before. The other readings of G14, the spelling, the
 terms and the notation, still read it.
 
@@ -5187,18 +5189,24 @@ front matter and a comment `init --from` set aside, and each block is one of fiv
 
 - a line only a title page holds: an affiliation, a paragraph naming a department, a
   faculty, a university, an institute, a hospital, a school, a laboratory, a centre, a unit,
-  Inserm, CNRS or UMR, in English, French, German, Spanish or Italian, in pieces between its
+  a service, Inserm, CNRS or UMR, in English, French ("Département", "Service de"), German
+  ("Abteilung"), Spanish ("Departamento") or Italian ("Dipartimento"), in pieces between its
   commas of ten words at most, the small words of names aside; an e-mail address; an ORCID
   iD; authors with a degree after a name ("Jane Doe, MD") or the mark of an affiliation
   ("MARTIN\\*^1^", "Doe1,2" as a PDF prints it); or a label, "Corresponding author",
-  "Correspondence", "Running title", "Word count", "Keywords", "E-mail", "Affiliations";
+  "Correspondence", "Running title", "Word count", "Keywords", "E-mail", "Affiliations", and
+  in French "Correspondance", "Auteur correspondant", "Mots-clés";
 - a line that may stand on one and says nothing either way: names with no mark, a date,
   "Received: ...", a note under a mark ("\\*These authors contributed equally");
 - the paper's opening: a heading, a paragraph alone or a run-in label that names a section
   a paper opens on, the Abstract (or the journal's name for it), Summary, Introduction,
   Background, Methods and its variants, Results, Discussion, Conclusions, Main text, Letter,
-  Highlights, Key points, Objectives and the like; or a letter's salutation, "Dear Editor,",
-  "To the Editor:", "Sir,", "Dear Sir or Madam,";
+  Highlights, Key points, Objectives and the like, an abstract's name in French, Spanish,
+  Portuguese, German or Italian ("Résumé", "Resumen", "Zusammenfassung"), and a list of
+  abbreviations, which a journal may ask for on the title page itself ("Abbreviations: Food
+  and Drug Administration (FDA); ...", as Pediatrics has it) and which is read, its entries
+  definitions as ever (round 1 of #654); or a letter's salutation, "Dear Editor,", "To the
+  Editor:", "Sir,", "Dear Sir or Madam,", "Madame, Monsieur,";
 - another heading: one of the back matter, "References", "Funding", or one that names no
   section, past the first block;
 - prose: a paragraph with a word a sentence is made of and a title page is not, "we",
@@ -5211,7 +5219,10 @@ title page where it holds a line only a title page holds, one where the paper's 
 it and two where anything else does, and 600 words at most, as `init --from` sets aside. The
 first block is the title: a heading, or a paragraph of three lines and 40 words at most, one
 sentence at most and no stop at its end, which may read as prose, and whose institution,
-"Burnout among nurses of a university hospital", is no affiliation. So a paper that opens
+"Burnout among nurses of a university hospital", is no affiliation. A first paragraph of more
+than three lines is read a line at a time, as a PDF's lines and a title page typed a line to
+each stand in one paragraph, but only where none of its lines holds a sentence: an opening
+paragraph of prose wrapped over lines is one block. So a paper that opens
 on its Introduction has no title page, nor one whose title alone stands above it, nor one
 whose opening prose names a university ("We taught pharmacology at the University of Rouen
 (UR), France"): those are read whole. Where nothing marks a title page there is none; a
@@ -25837,11 +25848,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A title that ends in a stop, holds two sentences, or runs over three lines or 40 words
     is no title, and a paper that opens on one has no title page; so has a PDF whose first
     line, or first line of its title in sentence case, reads as prose, its lines standing in
-    one paragraph before the first heading. Accepted.
+    one paragraph before the first heading, and one whose first paragraph holds a sentence
+    on any line, which is then read as one block. Accepted.
   - A title page with one line only a title page holds is found only where the paper's
     opening ends it: ended by prose, by a heading of the back matter or by the end of the
     file, it needs two, and is otherwise read. Pinned by
-    `tests/test_language.py::test_a_title_page_ends_where_running_prose_begins`.
+    `tests/test_language.py::test_one_line_of_a_title_page_before_prose_is_read`.
+  - A list of abbreviations whose first entry stands on its label's line, "**Abbreviations:**
+    FDA: Food and Drug Administration", or whose entries run on with commas, "Abbreviations:
+    FDA, Food and Drug Administration; WHO, ...", is no glossary of entries to G14, on the
+    title page or elsewhere: that entry, or every one, defines nothing. The title page reads
+    it as the rest of the paper does. Pinned by
+    `tests/test_language.py::test_a_list_on_the_title_page_is_read_as_with_no_title_page`.
+  - The other languages are read by a few words each: an abstract's name, a salutation, a
+    label and an institution's word in French, Spanish, German and Italian, and a sentence's
+    words only in English and a few of French. A title page in another language is read as
+    before. Accepted.
   - A line of the title page that reads as prose ends the title page there, and what
     follows it is read: an affiliation with "a" or "we" in it, a funding line "Funding: This
     work was ...". Accepted.

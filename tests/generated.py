@@ -872,6 +872,25 @@ TITLE_PAGE_LINES = (
 #: A title page of a single line that only a title page holds, after names with no mark.
 TITLE_PAGE_NAMES = "Ana Martin, Paul Girard and Lea Roux"
 TITLE_PAGE_ONE_AFFILIATION = "Department of Pharmacology, CHU de Rouen, UNICAEN, Rouen, France"
+#: Each line a title page may hold as its only one that a title page alone holds, after
+#: names in capitals with no mark: the authors with their degrees, with their marks, an
+#: e-mail address alone and an ORCID iD alone.
+TITLE_PAGE_ONE_LINE = {
+    "degrees": ("Ana MARTIN, PharmD, MSc; Paul GIRARD, MD, PhD",),
+    "marked": ("Ana MARTIN^1^, Paul GIRARD^2^",),
+    "email": ("Ana MARTIN and Paul GIRARD", "ana.martin@example.org"),
+    "orcid": ("Ana MARTIN and Paul GIRARD", "0000-0002-1825-0097"),
+}
+#: A first section run in from its label, after a title page of one affiliation.
+RUN_IN_OPENINGS = ("**Background:** ", "Background: ", "__Introduction.__ ")
+#: A list of abbreviations on the title page, which ends it and is read: in one paragraph,
+#: Pediatrics' form, and under a label in bold with an entry to a paragraph. (An entry on
+#: the label's own line is no entry to G14's glossary, title page or not: DESIGN.md, Known
+#: gaps.)
+TITLE_PAGE_LISTS = (
+    "Abbreviations: Food and Drug Administration (FDA); World Health Organization (WHO)",
+    "**Abbreviations:**\n\nFDA: Food and Drug Administration\n\nWHO: World Health Organization",
+)
 #: The headings an abstract opens under, and a line that is only its name, in bold or not,
 #: and its name run in before its text.
 ABSTRACT_OPENINGS = ("# Abstract", "## ABSTRACT", "**Abstract**", "Abstract", "# Summary",
@@ -905,7 +924,10 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     an Abstract drawn among its forms; `section`, a title page of one affiliation ending at
     another first section; `letter`, one ending at a salutation, with no heading at all;
     `prose`, a letter with no salutation, whose title page of two lines only a title page
-    holds ends where its prose begins;
+    holds ends where its prose begins; `degrees`, `marked`, `email` and `orcid`, title pages
+    whose one such line is the authors with their degrees, with their marks, an e-mail
+    address alone and an ORCID iD alone; `run-in`, one ending at a section run in from its
+    label; `listed`, one ending at a list of abbreviations, which is read;
     `headed` and `alone`, papers with no title page, one opening on its Introduction, and one
     on a title alone; and `mentions-0`, `mentions-1` and `sentence`, papers whose opening
     names a university in a sentence. One of each in every example, and the same line ends
@@ -953,6 +975,24 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
               body("We read with interest the report on the NIH survey.",
                    "the CHU paid for the survey")),
         sorted(("abbreviation-undefined", short) for short in ("CHU", "NIH", *said)),
+    )
+    # A title page whose only line a title page alone holds is each of those that may be,
+    # ending at the Introduction; one of an affiliation ending at a section run in from its
+    # label; and one whose list of abbreviations ends it, which is read and defines.
+    for name, lines_of in TITLE_PAGE_ONE_LINE.items():
+        found[name] = (paper(title, *lines_of, "# Introduction",
+                             body("the CHU paid for the survey")),
+                       [("abbreviation-undefined", "CHU")])  # fmt: skip
+    found["run-in"] = (
+        paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+              draw(st.sampled_from(RUN_IN_OPENINGS)) + "the NIH paid for the survey"),
+        [("abbreviation-undefined", "NIH")],
+    )
+    found["listed"] = (
+        paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+              draw(st.sampled_from(TITLE_PAGE_LISTS)), "# Introduction",
+              body("the FDA and the WHO paid for the survey", "the CHU read the reports")),
+        [("abbreviation-undefined", "CHU")],
     )
     # A letter that opens with no salutation: its title page of two lines only a title page
     # holds ends where its prose begins.

@@ -2036,6 +2036,98 @@ def test_a_title_page_ends_where_running_prose_begins(project: Path) -> None:
     assert _named(written(project, text)) == {"NIH"}
 
 
+def test_one_line_of_a_title_page_before_prose_is_read(project: Path) -> None:
+    """Where prose ends it, one line only a title page holds is not enough: the opening is
+    read whole, its CHU reported (DESIGN.md, Known gaps)."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN\n\n"
+        "Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
+        "We read the report on the NIH survey with interest.\n"
+    )
+    assert {"CHU", "MARTIN", "NIH"} <= _named(written(project, text))
+
+
+LISTS_ON_THE_TITLE_PAGE = [
+    "Abbreviations: Food and Drug Administration (FDA); World Health Organization (WHO)",
+    "**Abbreviations:**\n\nFDA: Food and Drug Administration\n\nWHO: World Health Organization",
+    "**Abbreviations:** FDA: Food and Drug Administration\n\nWHO: World Health Organization",
+    "Abbreviations: FDA, Food and Drug Administration; WHO, World Health Organization",
+]
+
+
+@pytest.mark.parametrize("listed", LISTS_ON_THE_TITLE_PAGE[:2])
+def test_a_list_of_abbreviations_on_the_title_page_is_read(project: Path, listed: str) -> None:
+    """A journal may ask for the list on the title page (Pediatrics): it ends the title page
+    and defines its entries, as it did before the title page was set aside (round 1 of
+    #654)."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN\n\n"
+        "Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
+        f"{listed}\n\n# Introduction\n\nThe FDA and the WHO paid for it.\n"
+    )
+    report = written(project, text)
+    assert _named(report) == set(), found(report)
+
+
+@pytest.mark.parametrize("listed", LISTS_ON_THE_TITLE_PAGE)
+def test_a_list_on_the_title_page_is_read_as_with_no_title_page(listed: str) -> None:
+    """Whatever G14 makes of a list of abbreviations, it makes the same of one on the title
+    page: an entry on the label's own line is no entry in either (DESIGN.md, Known gaps)."""
+    from manuscript_guard.gates.language import _file, _judge, _Known
+
+    nothing = _Known(frozenset(), frozenset())
+    opening = ("Pharmacology exam success\n\nAna MARTIN\n\n"
+               "Department of Pharmacology, CHU de Rouen, Rouen, France\n\n")  # fmt: skip
+    text = f"{opening}{listed}\n\n# Introduction\n\nThe FDA and the WHO paid for it.\n"
+
+    def read(opens: bool) -> list[tuple[str, str]]:
+        report = _judge([_file(0, Path("main.md"), text, [], False, opens=opens)], nothing,
+                        Path("."))  # fmt: skip
+        return sorted((f.code, f.message.split()[0]) for f in report.findings
+                      if f.message.split()[0] in ("FDA", "WHO"))  # fmt: skip
+
+    assert read(True) == read(False)
+
+
+def test_a_short_form_only_the_title_page_uses_again_is_said_so(project: Path) -> None:
+    """Defined in the text and used again only on the title page, a short form is unused,
+    and its hint says the title page's use was not counted (round 1 of #654)."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN\n\n"
+        "Department of Pharmacology, CHU de Rouen, Rouen, France\n\n# Introduction\n\n"
+        "The Centre Hospitalier Universitaire (CHU) paid for it.\n\n"
+        "The Food and Drug Administration (FDA) approved it.\n"
+    )
+    hints = {f.message.split()[0]: f.hint for f in written(project, text).findings}
+    assert hints.keys() == {"CHU", "FDA"}
+    assert "the title page uses it" in hints["CHU"]
+    assert "title page" not in hints["FDA"]
+
+
+def test_a_french_letter_s_title_page_is_not_read(project: Path) -> None:
+    """A letter in French: its service and department, its salutation (round 1 of #654)."""
+    text = (
+        "Succès à l'examen de pharmacologie\n\nAna MARTIN et Paul GIRARD\n\n"
+        "Service de Pharmacologie, Département de Pharmacologie, Caen, France\n\n"
+        "Madame, Monsieur,\n\nNous avons lu le rapport du CHU avec intérêt.\n"
+    )
+    assert _named(written(project, text)) == {"CHU"}
+
+
+def test_prose_wrapped_over_lines_is_read_as_one_paragraph(project: Path) -> None:
+    """An opening paragraph wrapped over several lines is one block: read a line at a time,
+    its lines that name a department and a faculty were a title page's, and hid its CHU
+    (round 1 of #654)."""
+    text = (
+        "Teaching pharmacology to second-year students\n"
+        "at the Department of Pharmacology, CHU de Rouen,\n"
+        "and the Faculty of Medicine, Université de Rouen,\n"
+        "was reviewed in 2021 and we found that it\n"
+        "was less used than the faculty.\n\n# Introduction\n\nNothing.\n"
+    )
+    assert _named(written(project, text)) == {"CHU"}
+
+
 def test_nothing_on_the_title_page_defines_or_uses(project: Path) -> None:
     """INSERM spelt out on the title page does not define the text's INSERM, and the
     title page's UNICAEN is no use of the text's definition."""

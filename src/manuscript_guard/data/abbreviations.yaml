@@ -40,6 +40,9 @@ known:
   - URL
   - PDF
 
+  # The identifier a Methods section cites a resource by, as it cites a work by its DOI
+  - RRID
+
   # Ordinary English
   - OK
 

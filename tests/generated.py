@@ -4502,8 +4502,24 @@ DECLARED_TERMS = ("CO2",)
 SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
 NOT_NAMES = (
     "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
-    *SUNK_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL, "1:500",
 )  # fmt: skip
+#: RRIDs, whose digits are an identifier's (structural): one of each form, with a space, a
+#: line break or nothing after the colon, an underscore escaped as Markdown escapes it, dotted,
+#: of one part, hyphenated more than once, with a word of small letters after it, typed
+#: straight after a bracket, and opening a line (round 1 of #663). Each as typed, and the atom
+#: it is read as: the classifier's atom of "RRID: CVCL_0030" is the accession alone.
+NAMED_RESOURCES = {
+    "RRID:AB_2298772": "RRID:AB_2298772", "RRID: CVCL_0030": "CVCL_0030",
+    "RRID:\nAB_2400000": "AB_2400000", "RRID:AB\\_2500000": "RRID:AB\\_2500000",
+    "RRID:IMSR_JAX:000664": "RRID:IMSR_JAX:000664", "RRID:NXR_0.0005": "RRID:NXR_0.0005",
+    "RRID:SAMN12345678": "RRID:SAMN12345678", "RRID:MMRRC_000231-UNC": "RRID:MMRRC_000231-UNC",
+    "RRID:CVCL_0372-derived": "RRID:CVCL_0372-derived",
+    "RRID:mmrrc_000231-unc": "RRID:mmrrc_000231-unc",
+    "(RRID:SCR_002798.Version)": "RRID:SCR_002798.Version",  # bracketed: "Version 12" is one
+    "(RRID:Addgene_12345)": "RRID:Addgene_12345",
+    "\nRRID:ZFIN_ZDB-GENO-960809-7": "RRID:ZFIN_ZDB-GENO-960809-7",
+}  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -4511,10 +4527,11 @@ _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "a
 
 @st.composite
 def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
-    """Every address, interleukin and number above in a sentence, in an order drawn, with
-    words and a separator drawn between them; and what each is: "address", "name" or
-    "number"."""
+    """Every address, interleukin, RRID and number above in a sentence, in an order drawn,
+    with words and a separator drawn between them; and what each is, by its atom:
+    "address", "identifier", "name" or "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
+    planted += [(text, "identifier") for text in NAMED_RESOURCES]
     planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
@@ -4524,7 +4541,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
     # An atom is cut before the `~` that closes its last subscript.
-    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
+    return text.strip() + "\n", {NAMED_RESOURCES.get(piece, piece).removesuffix("~"): kind
+                                 for piece, kind in planted}  # fmt: skip
 
 
 # -------------------------------------------------------------------------- quotations
@@ -15433,6 +15451,61 @@ def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, 
         markdown[names[part][0]] = "\n".join(md_lines) + "\n"
         latex[names[part][1]] = "\n".join(tex_lines) + "\n"
     return markdown, latex, read_md, read_tex
+
+
+# ------------------------------------------------------------- RRIDs as G14 reads them
+
+#: An accession for each way G14's reading of an RRID joins its parts (`gates/language.py`,
+#: `_RRID`): hyphens, colons, a dot, an underscore and one part. Each holds capitals side by
+#: side or an underscore, so a part left unread is an abbreviation or a name from the code.
+RRID_JOINED = (
+    "ZFIN_ZDB-GENO-960809-7", "MMRRC_000231-UNC", "MGI:3840442", "IMSR_JAX:000664",
+    "NXR_0.0005", "CVCL_0030", "SAMN12345678", "mmrrc_000231-unc", "SCR_002798.Version",
+)  # fmt: skip
+#: What stands between "RRID:" and the accession: nothing, a space, a line break.
+RRID_JOINED_GAPS = ("", " ", "\n")
+#: A short form never defined, and a name written as code, which G14 still reads beside them.
+RRID_BESIDE = ("HPLC", "dose_mg")
+
+
+@st.composite
+def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
+    """A Methods paragraph typing every accession of `RRID_JOINED`, each gap among them, one
+    accession with its underscore escaped as Markdown escapes it, and the forms of
+    `RRID_BESIDE`, in Markdown and as its LaTeX twin, every `_` there `\\_`:
+    `(markdown, latex, markdown spans, latex spans)`, each span an accession's start and
+    end in its file."""
+    accessions = draw(st.permutations([*RRID_JOINED, "AB\\_2298772"]))
+    first = draw(st.permutations(list(RRID_JOINED_GAPS)))
+    gaps = first + [draw(st.sampled_from(RRID_JOINED_GAPS))
+                    for _more in range(len(accessions) - len(first))]  # fmt: skip
+    gaps = draw(st.permutations(gaps))
+    pieces = [("rrid", accession, gap) for accession, gap in zip(accessions, gaps, strict=True)]
+    pieces += [("beside", form, "") for form in RRID_BESIDE]
+    word = st.sampled_from(FILLER)
+    markdown, latex = "# Methods\n\n", "\\documentclass{article}\n\\begin{document}\n"
+    read_md: list = []
+    read_tex: list = []
+    for kind, typed, gap in draw(st.permutations(pieces)):
+        said = " ".join(draw(st.lists(word, min_size=1, max_size=3))) + " "
+        markdown += said
+        latex += said
+        if kind == "beside":
+            markdown += typed
+            latex += typed.replace("_", "\\_")
+        else:
+            markdown += f"RRID:{gap}"
+            latex += f"RRID:{gap}"
+            kept = len(typed.removesuffix(".Version"))  # the word after the stop is no part
+            read_md.append([len(markdown), len(markdown) + kept])
+            markdown += typed
+            written = typed.replace("\\_", "_").replace("_", "\\_")
+            read_tex.append([len(latex), len(latex) + len(written.removesuffix(".Version"))])
+            latex += written
+        markdown += draw(st.sampled_from((" ", ", ", "; ", ") ")))
+        latex += " "
+    return markdown + "were counted.\n", latex + "were counted.\n\\end{document}\n", read_md, \
+        read_tex  # fmt: skip
 
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {

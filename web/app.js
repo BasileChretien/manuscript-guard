@@ -545,9 +545,13 @@ $("probe").addEventListener("click", async () => {
     } catch { resolve(); }
   });
   const fromWorker = await ask("probe");
+  // Chrome reports a frame from another origin refused by that origin alone,
+  // "https://example.com", not by its address.
+  const refused = (url) => pageRefused.some((report) => report.url
+    && (report.url.startsWith(url)
+      || (report.rule === "frame-src" && report.url === new URL(url).origin)));
   const tried = Object.fromEntries(Object.entries(ATTEMPTS).map(([what, url]) => [what,
-    pageRefused.some((report) => report.url && report.url.startsWith(url))
-      ? "refused by the rules" : "NOT refused by the rules"]));
+    refused(url) ? "refused by the rules" : "NOT refused by the rules"]));
   Object.assign(tried, fromWorker.tried);
   window.mgProbe = { tried, refused: [...pageRefused, ...fromWorker.refused] };
   const held = Object.values(tried).every((how) => how === "refused by the rules");

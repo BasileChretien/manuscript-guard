@@ -248,6 +248,8 @@ try {
     (each) => each.rule === "frame-src" && /^blob:/.test(each.url || "")));
   if (lateFrames.length) fail(`the policy refused a PDF's frame: ${JSON.stringify(lateFrames)}`);
 
+  // The button stands under the question "Is my paper uploaded?", which a reader opens first.
+  await page.$eval("#probe", (button) => { button.closest("details").open = true; });
   await page.click("#probe");
   const probe = await page.waitForFunction("window.mgProbe").then((handle) => handle.jsonValue());
   for (const [what, how] of Object.entries(probe.tried)) {

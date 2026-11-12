@@ -3,8 +3,9 @@
 Each refusal of the LaTeX reader is a finding at its file and line: a group, an environment,
 maths, a `\\verb` or an `\\iffalse` left open (`tex-unbalanced`), and what the reader does not
 read exactly, an `\\input` it cannot follow among them (`tex-refused`). Both fail at every
-stage: past a refusal nothing more of the file is read, so no gate checks what it prints
-there. A `.tex` file that no `\\input` the reader follows names is a warning
+stage: past a refusal of the reader nothing more of the file is read, so no gate checks what
+it prints there; past one the tree makes, an `\\input` it cannot follow or an encoding, the
+file is read on. A `.tex` file that no `\\input` the reader follows names is a warning
 (`tex-not-input`): it is read as loose body under no heading. That is a file nothing inputs,
 and also one input past a refusal or from inside a definition, which LaTeX may still print.
 A `.tex` file that holds a document of its own, its own `\\begin{document}`, beside a
@@ -28,6 +29,9 @@ _HINTS = {
     SECOND_DOCUMENT: f"if it is the supplement, make it manuscript/{SUPPLEMENT_ENTRY}; if it is "
     "not, move it out of manuscript/ or into a folder whose name starts with '_'",
 }
+#: A refusal the tree makes, an input it cannot follow or an encoding, past which the file
+#: is still read (round 1 of #637: the hint said it was not).
+_TREE_HINT = "write it so that it can be read, or take it out; the rest of the file is read"
 
 
 def check_latex(project) -> Report:
@@ -41,6 +45,8 @@ def check_latex(project) -> Report:
     for supplementary in (False, True) if has_supplement else (False,):
         document = read_document(folder, supplementary=supplementary)
         texts = {source.path: source.text for source in document.sources}
+        stops = {(source.path, refusal) for source in document.sources
+                 for refusal in source.reading.refusals}  # fmt: skip
         for path, refusal in document.refusals:
             # A document of its own is no source of this one, and is read here for its line.
             text = texts.get(path) or (folder / path).read_text(encoding="utf-8",
@@ -52,7 +58,9 @@ def check_latex(project) -> Report:
                     message=f"manuscript/{path}: {refusal.message}",
                     path=folder / path,
                     line=text.count("\n", 0, refusal.offset) + 1,
-                    hint=_HINTS.get(refusal.code),
+                    # One the tree makes, an input it cannot follow, leaves the file read.
+                    hint=_TREE_HINT if refusal.code == "tex-refused"
+                    and (path, refusal) not in stops else _HINTS.get(refusal.code),
                 )
             )
         entry = SUPPLEMENT_ENTRY if supplementary else "main.tex"

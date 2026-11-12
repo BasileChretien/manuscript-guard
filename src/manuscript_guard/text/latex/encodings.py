@@ -39,8 +39,10 @@ def _declarations(text: str) -> Iterable[tuple[re.Match[str], int, int]]:
 
 def declared(texts: Iterable[str]) -> str | None:
     """The name of the one encoding of `CODECS` that the files declare, or None where they
-    declare none, or declare two that decode otherwise. `texts` may be read with any
-    encoding that keeps ASCII, Latin-1 for one: a declaration is ASCII."""
+    declare none, or declare another beside it that decodes otherwise: UTF-8, ASCII or any
+    other inputenc knows (round 1 of #637: a paper's `[utf8]` was not counted, and an old
+    draft's `[latin1]` beside it had the folder read as Latin-1). `texts` may be read with
+    any encoding that keeps ASCII, Latin-1 for one: a declaration is ASCII."""
     codecs: set[str] = set()
     names: list[str] = []
     for text in texts:
@@ -48,9 +50,14 @@ def declared(texts: Iterable[str]) -> str | None:
             for option in text[start:end].split(","):
                 name = option.strip()
                 if name in CODECS:
-                    codecs.add(CODECS[name])
                     names.append(name)
-    return names[0] if len(codecs) == 1 else None
+                if name:
+                    codecs.add(CODECS.get(name, _OTHERS.get(name, name)))
+    return names[0] if names and len(codecs) == 1 else None
+
+
+#: The encodings inputenc knows that decode as UTF-8 does, by their names there.
+_OTHERS = {"utf8": "utf_8", "utf8x": "utf_8"}
 
 
 def as_utf8(text: str) -> str:

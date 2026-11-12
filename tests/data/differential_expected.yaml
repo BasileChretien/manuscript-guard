@@ -298,3 +298,15 @@ expected:
       command refused where it prints; past any refusal the rest of the file is blanked, not
       read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex pointers
+    why: >-
+      a construct left open, `{` or `$` among the inputs, is refused where it opens, at the
+      end of the run, and nothing the reader found past it is kept now, a cross-reference or
+      a listing among it, where it was kept though the text past it was not read (round 1
+      of #637, finding 4)
+  - reading: latex listed
+    why: >-
+      a construct left open, `{` or `$` among the inputs, is refused where it opens, at the
+      end of the run, and nothing the reader found past it is kept now, a cross-reference or
+      a listing among it, where it was kept though the text past it was not read (round 1
+      of #637, finding 4)

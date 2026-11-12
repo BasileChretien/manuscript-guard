@@ -1550,7 +1550,16 @@ of each file read as typed). An `\expandafter` in the preamble, outside any defi
 that only redefines a command, Scientific WorkPlace's
 `\expandafter\def\expandafter\normalsize\expandafter{\normalsize ...}`, is passed over, with
 the `\expandafter`s before the command's name and before its body, and the `\def` read as any
-is; one that builds the name, `\expandafter\def\csname x\endcsname`, is refused.
+is; one that builds the name, `\expandafter\def\csname x\endcsname`, is refused. Two
+redefinitions are read as before, their uses not refused (Basile, 2026-11-12, "Yes, read
+them"): a sectioning command, `\part` to `\subparagraph`, whose whole body is one
+`\@startsection{<its own name>}{..}{..}{..}{..}{..}`, with nothing else but spaces and
+comments, no parameter and `@` a letter, a restyle of the heading that is read as the
+heading it was (arxiv.sty, style.sty); and a cross-reference of the reader's, but a range,
+defined with one parameter as plain words, a tie or a space and one `\ref{#1}` or
+`\eqref{#1}` of another name, in parentheses or not, read as the cross-reference it is
+(ICLR's `math_commands.tex`). The words it prints beside the number are read once, at the
+definition (Known gaps).
 
 Refused:
 - a definition in the body, of any command the reader reads, `\mg` among them, but
@@ -1589,11 +1598,15 @@ Refused:
 **Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
 does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
 closed twice. Past a refusal nothing more of the file is read: the rest is blanked, its line
-breaks kept, so that no comment or source the reader did not understand becomes a finding, and
+breaks kept, and nothing the reader found past it is kept, a heading, a citation, a binding or
+an input, which a construct left open, refused where it opens, would otherwise keep (round 1
+of #637); so no comment or source the reader did not understand becomes a finding, and
 `audit` says the file was not read past that line, in its notes and in its summary's line for
 G6 and G14 (Basile, 2026-11-11: read as prose, a template's commented-out text was G6's
 findings, and the summary said "nothing reported"). `bind` still names each number typed
-past it, and offers none.
+past it, and offers none. A refusal the tree makes, an `\input` it cannot follow, a file that
+inputs itself or an encoding refused for another file, leaves the file read past it, and
+`audit` and BUILD's hint say so (round 1 of #637).
 
 ### Bindings
 
@@ -15933,22 +15946,38 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
-- **A LaTeX paper is read only to its first use of a command its template defines again.**
-  The reader accepts a known command's redefinition in the preamble, a file input from it or
-  the author's package, and refuses each use where it prints (Basile, 2026-11-11). A template
-  that restyles a command the body uses throughout, arxiv.sty's and style.sty's
-  `\renewcommand\section{\@startsection{section}...}`, which is how LaTeX's own classes define
-  `\section`, or ICLR's `math_commands.tex`, whose `\eqref` a paper cites its equations with,
-  then stops the reading at the first heading or the first `\eqref`, and nothing of the file
-  past it is read; `audit` says so. Whether a redefinition through `\@startsection`, or of a
-  cross-reference to another cross-reference, may be read as before is not decided.
-  Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`.
+- **A LaTeX paper is read only to its first use of a command its template defines again,
+  but in two exact forms.** The reader accepts a known command's redefinition in the
+  preamble, a file input from it or the author's package, and refuses each use where it
+  prints (Basile, 2026-11-11). Two forms are read as before (Basile, 2026-11-12, "Yes, read
+  them"): a sectioning command whose whole body is LaTeX's own
+  `\@startsection{<its name>}` and five more groups, with no parameter and `@` a letter
+  where it is written, arxiv.sty's and style.sty's `\renewcommand\section`; and a
+  cross-reference of one parameter, `\eqref` or another the reader reads as one, whose body
+  is plain words, a tie or a space, and one `\ref{#1}` or `\eqref{#1}` of another name,
+  in parentheses or not, ICLR's `\def\eqref#1{equation~\ref{#1}}`. The words such a body
+  prints beside the number, "equation", are not read where it is used, as no macro's body
+  is (above). Anything else, a font switch round `\@startsection`, a parameter, another
+  section's name, a second command in the body, is refused at its first use, and nothing of
+  the file past it is read, nor a file it inputs past there, which `audit` names as not
+  followed rather than as input by no file; `audit` says so.
+  Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
+  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
+- **A part placed by `\subfile` that defines a known command again in its own preamble has
+  its uses refused.** The part's reading reads its own preamble, so a part that repeats
+  main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
+  is not read, though the document that places it passes over that preamble and prints the
+  part under main's definitions (round 1 of #637). Main refused it at the definition instead.
+  Accepted.
 - **`audit` reads a LaTeX folder in one declared encoding, and writes its declarations as
   UTF-8's.** A folder whose files declare latin1, latin9, cp1252 or ansinew is read in it,
   each file of it, and a file that names none, in a tree that declares one, is read in it as
   TeX reads it; a folder that declares two encodings that decode otherwise, or another
   encoding, is read as UTF-8 and the declaration refused where its file is not ASCII. A
-  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A project's files
+  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A folder whose
+  paper declares `[utf8]` beside an old draft's `[latin1]` declares two, and is read as
+  UTF-8 (round 1 of #637: it was read as Latin-1). A project's files
   are UTF-8 only, as the build writes them.
   Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`.
 - **A co-author round records answers, and nothing more.** `checker status` says who answered

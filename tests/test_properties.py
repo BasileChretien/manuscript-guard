@@ -1089,8 +1089,8 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
     known command the preamble defines again is read, and refused where it prints; and a
     folder read as `audit` reads one is read in the encoding it declares (2026-11-11)."""
     for files, packages, refused, hidden, comments, *audited in drawn:
-        if audited:
-            # The audit's files, read in the encoding they declare, say UTF-8 instead.
+        if audited and latex_encodings.declared([*files.values(), *packages.values()]):
+            # The audit's files, read in the one encoding they declare, say UTF-8 instead.
             files = {path: latex_encodings.as_utf8(text) for path, text in files.items()}
         document = latex_structure.read_tree(files, packages=packages)
         found = [(path, refusal.offset) for path, refusal in document.refusals]
@@ -1106,6 +1106,11 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
             for refusal in source.reading.refusals:
                 unread = source.reading.masked[refusal.offset :]
                 assert set(unread) <= {NUL, "\n"}, (source.path, unread, files)
+                # Nor is anything kept that the reader found past it (round 1 of #637).
+                found = [*(h.start for h in source.reading.headings),
+                         *(c.offset for c in source.reading.cited),
+                         *(put.offset for put in source.reading.inputs)]  # fmt: skip
+                assert all(at < refusal.offset for at in found), (source.path, found, files)
 
 
 def _a_citation_s_name_begins_or_ends_with_cite(patch: pytest.MonkeyPatch) -> None:
@@ -1242,6 +1247,24 @@ def _every_expandafter_in_a_preamble_is_passed_over(patch: pytest.MonkeyPatch) -
 
 def _a_declared_encoding_is_kept_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_encodings, "as_utf8", lambda text: text)
+
+
+def _no_redefinition_is_read_as_before(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: False)
+
+
+def _every_heading_and_reference_redefined_is_read_as_before(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: True)
+
+
+def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_before", lambda reading, at: reading)
+
+
+def _a_utf8_declaration_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "_OTHERS", {"utf8": "latin_1", "utf8x": "latin_1"})
 
 
 def _past_a_refusal_the_file_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
@@ -20713,6 +20736,22 @@ BROKEN = {
     ),
     "in LaTeX, past a refusal the file is read as typed": (
         _past_a_refusal_the_file_is_read_as_typed,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a restyled heading or a reference defined as another is refused where used": (
+        _no_redefinition_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every heading or reference defined again is read as before": (
+        _every_heading_and_reference_redefined_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, what the reader found past a refusal is kept": (
+        _what_is_found_past_a_refusal_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's UTF-8 declaration is not counted": (
+        _a_utf8_declaration_is_not_counted,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, past a refusal the mask keeps the file as typed": (

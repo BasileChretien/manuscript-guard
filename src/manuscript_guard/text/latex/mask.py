@@ -20,7 +20,7 @@ typed, its comments and commands were G6's and G14's findings).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from manuscript_guard.text.latex import pictures
 from manuscript_guard.text.latex.commands import (
@@ -443,6 +443,46 @@ def _key_list(keys: str) -> str:
     return re.sub(r"(?<!\\)%[^\n]*", lambda found: " " * len(found.group(0)), keys)
 
 
+#: A brace group, with groups one deep inside it: `{\\normalfont\\large\\bfseries}`.
+_GROUP = r"\{(?:[^{}]|\{[^{}]*\})*\}"
+#: A sectioning command restyled the way LaTeX's classes define it, its whole body one
+#: `\\@startsection` of its own name and five more groups (Basile, 2026-11-12: arxiv.sty's
+#: and style.sty's `\\renewcommand\\section{\\@startsection{section}{1}{\\z@}...}`).
+_RESTYLED_HEADING = re.compile(r"\s*\\@startsection\s*\{(?P<name>[a-z]+)\}(?:\s*"
+                               + _GROUP + r"){5}\s*")  # fmt: skip
+#: A cross-reference defined again as another of its own argument, with plain words, a tie
+#: or a space beside it and parentheses round it or not (Basile, 2026-11-12: ICLR's
+#: `\\def\\eqref#1{equation~\\ref{#1}}`).
+_REFERENCE_AGAIN = re.compile(r"[A-Za-z.,:; ~]*(?P<open>\()?\s*\\(?P<inner>ref|eqref)\s*"
+                              r"\{#1\}\s*(?(open)\))[A-Za-z.,:; ~]*")  # fmt: skip
+#: A comment in a definition, to its line's end and the line break with it.
+_DEFINITION_COMMENT = re.compile(r"(?<!\\)%[^\n]*\n?")
+
+
+def _read_as_before(name: str, head: str, body: str) -> bool:
+    """Whether a known command the preamble defines again is read as the reader reads it,
+    its uses not refused: one of the two exact forms of Basile's answer of 2026-11-12. A
+    sectioning command whose whole body is LaTeX's `\\@startsection` of its own name, with no
+    parameter, prints the heading it did, restyled. A cross-reference of one parameter whose
+    body is another cross-reference of it, among plain words, prints the number it did; the
+    words the body prints beside it, "equation", are read once, at the definition, as any
+    macro's are (DESIGN.md, Known gaps). `head` is what stands from the name to the body's
+    brace, and `body` what the braces hold. Anything else, a font switch round the
+    `\\@startsection` or a second command, is not, and is refused where it is used."""
+    head = re.sub(r"\s+", "", _DEFINITION_COMMENT.sub("", head))
+    body = _DEFINITION_COMMENT.sub("", body)
+    named = re.escape(name)
+    if name in LEVELS:
+        restyled = _RESTYLED_HEADING.fullmatch(body)
+        return (re.fullmatch(r"\{?\\" + named + r"\}?", head) is not None
+                and restyled is not None and restyled["name"] == name)  # fmt: skip
+    if name in POINTERS and name not in RANGES:
+        again = _REFERENCE_AGAIN.fullmatch(body)
+        return (re.fullmatch(r"\{?\\" + named + r"\}?(?:\[1\]|#1)", head) is not None
+                and again is not None and again["inner"] != name)  # fmt: skip
+    return False
+
+
 def _redefined_said(name: str) -> str:
     """Why a use of a command whose uses are refused where they print is not read: the
     preamble defines again one the reader knows (2026-11-11), or it takes delimited
@@ -459,6 +499,32 @@ def _unread(text: str) -> str:
     kept, so that a finding past it names no line and no gate reads source as prose (round
     of 2026-11-11: read as typed, a template's comments were G6's findings)."""
     return re.sub(r"[^\r\n]", NUL, text)
+
+
+def _before(reading: Reading, at: int) -> Reading:
+    """`reading` with only what its run found before `at`, a refusal's offset: one of a
+    construct left open is found at the run's end and placed where it opened, and what was
+    found past it, a heading, a citation, an input, was kept and read by G7 and the sections
+    though no text past it is (round 1 of #637)."""
+    def spans(found: tuple) -> tuple:
+        return tuple(one for one in found if one[0] < at)
+
+    return replace(
+        reading,
+        inputs=tuple(put for put in reading.inputs if put.offset < at),
+        headings=tuple(heading for heading in reading.headings if heading.start < at),
+        abstracts=spans(reading.abstracts), packages=spans(reading.packages),
+        bindings=tuple(found for found in reading.bindings if found.start < at),
+        suspects=spans(reading.suspects), tables=spans(reading.tables),
+        listings=tuple(listing for listing in reading.listings if listing.start < at),
+        cited=tuple(cited for cited in reading.cited if cited.offset < at),
+        maths=spans(reading.maths), floats=spans(reading.floats), code=spans(reading.code),
+        figures=spans(reading.figures), references=spans(reading.references),
+        bodies=spans(reading.bodies), pointers=spans(reading.pointers),
+        comments=spans(reading.comments), unprinted=spans(reading.unprinted),
+        graphics=spans(reading.graphics),
+        encodings=tuple(where for where in reading.encodings if where < at),
+    )
 
 
 def _comment_end(text: str, at: int) -> int:
@@ -608,6 +674,11 @@ class _Reader:
         #: names, each use of which is refused where it would print; and those defined here.
         self.delimited = set(delimited)
         self.defined_delimited: list[str] = []
+        #: What the other files of the tree define so, which nothing here takes back.
+        self.told_delimited = frozenset(delimited)
+        #: A known command the preamble defines again, and where its name stands, until its
+        #: body opens and is read for the forms read as before (`_read_as_before`).
+        self.restyling: tuple[str, int] | None = None
         #: The front matter's commands the author defines, here and in the files `own` names,
         #: read as unknown commands are; and those defined here (round 1, part 2).
         self.own = set(own)
@@ -676,9 +747,11 @@ class _Reader:
                  tuple(self.encodings))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
-        # Past the refusal nothing is read, its line breaks kept (`_unread`).
+        # Past the refusal nothing is read, its line breaks kept (`_unread`), and nothing the
+        # run found there is kept (`_before`).
         at = self.refused.offset
-        return Reading(masked[:at] + _unread(self.text[at:]), (self.refused,), *found)
+        return _before(Reading(masked[:at] + _unread(self.text[at:]), (self.refused,), *found),
+                       at)  # fmt: skip
 
     def _refuse(self, code: str, at: int, message: str) -> None:
         if self.refused is None:
@@ -803,7 +876,7 @@ class _Reader:
         if here != "{":
             self.pending = ()
             # A definition whose body is not there defines nothing a later body is of.
-            self.defining = ""
+            self.defining, self.restyling = "", None
             return False
         if kind == "r":
             end = self._group_end(at)
@@ -828,6 +901,7 @@ class _Reader:
         parameter = spec == "d" and self.defining in PARAMETERS
         if spec == "d":
             self.defining = ""
+            self._restyled(at)
         if role == BLANK or spec in "bc":
             chosen = BLANK
         elif spec == "d":
@@ -1178,6 +1252,25 @@ class _Reader:
             return False
         return name in REFERENCE_MACHINERY or (name in CATEGORY and self.definitions > 0)
 
+    def _restyled(self, at: int) -> None:
+        """Read the body that opens at `at` of a known command the preamble defines again:
+        where it is one of the two forms read as before (`_read_as_before`), its uses are
+        not refused, unless another file of the tree defines it otherwise."""
+        if self.restyling is None:
+            return
+        (name, start), self.restyling = self.restyling, None
+        end = self._group_end(at)
+        if end < 0 or name in self.told_delimited:
+            return
+        # `\@startsection` is one command only where `@` is a letter: in a package, or past
+        # `\makeatletter`.
+        if name in LEVELS and self.letters is not _LETTERS_AT:
+            return
+        if _read_as_before(name, self.text[start:at], self.text[at + 1 : end - 1]):
+            self.delimited.discard(name)
+            if name in self.defined_delimited:
+                self.defined_delimited.remove(name)
+
     def _expands_a_definition(self, name: str, end: int) -> bool:
         """Whether an `\\expandafter` only redefines a command in the preamble, outside any
         definition's body, and is passed over: Scientific WorkPlace's
@@ -1497,7 +1590,8 @@ class _Reader:
                                               | _READ_APART))  # fmt: skip
         if not alias:
             self._defines(defined, start)
-        self.defining = ""
+        # A command let to another has no body of its own, read as before or not.
+        self.defining, self.restyling = "", None
         stop = target_end if alias else name_end
         self._blank(start, stop)
         self.pos = stop
@@ -1534,6 +1628,8 @@ class _Reader:
             self.delimited.add(name)
             if name not in self.defined_delimited:
                 self.defined_delimited.append(name)
+            # Its body may be one of the two forms read as before (`_open`).
+            self.restyling = (name, at) if name in LEVELS or name in POINTERS else None
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "

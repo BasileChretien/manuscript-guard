@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard.text.latex.mask import NUL
+from manuscript_guard.text.latex.mask import NUL, Refusal
 from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, Document, Source, read_tree
 from manuscript_guard.text.latex.tables import latex_tables
 from manuscript_guard.text.latex.views import bindings, markdown_view
@@ -134,14 +134,19 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
         # own is an entry, or passed over, and so is one nothing inputs: refused there, each
         # was said not to be read though it was, or failed --strict as passed over.
         texts = {source.path: source.text for source in document.sources if not source.loose}
+        stops = _stops(document)
         for where, refusal in document.refusals:
             if where not in texts or refusal.code == SECOND_DOCUMENT:
                 continue
             text = texts[where]
             line = text.count("\n", 0, refusal.offset) + 1
+            # One the tree makes, an input it cannot follow or an encoding, leaves the file
+            # read past it (round 1 of #637: it was said not to be).
             read.unreadable.append(
                 f"{where}: not read past line {line}, which is not read as LaTeX, so no check "
                 f"read what follows it in the file: {refusal.message}"
+                if (where, refusal) in stops else
+                f"{where}, line {line}: {refusal.message}; the rest of the file was read"
             )
     for path in sorted({*found, *(p for folder in folders for p in folder.rglob("*.tex"))}):
         if path in seen or path in entries:
@@ -155,12 +160,29 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             # In an entry's folder it is named already, as what could not be read there.
             if not any(folder in path.parents for folder in folders):
                 read.passed_over.append(said)
+        elif stopped_in := [f"{where} was not read past line {line}" for tree in read.trees
+                            if tree.folder in path.parents
+                            for where, line in stopped([tree])]:  # fmt: skip
+            # The file that inputs it may do so past where its reading stopped (round 1 of
+            # #637: the advice was to input it, which the paper did).
+            read.passed_over.append(
+                f"{path.as_posix()}: no file the audit read inputs it, so it was not read; "
+                f"{', and '.join(dict.fromkeys(stopped_in))}, and what a file inputs past "
+                "where it stopped is not followed"
+            )
         else:
             read.passed_over.append(
                 f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
                 "\\input it from the paper's main file"
             )
     return read
+
+
+def _stops(document: Document) -> set[tuple[str, Refusal]]:
+    """Each refusal of `document` at which its file's reading stopped, with the file's path:
+    not one the tree makes, which leaves the file read past it."""
+    return {(source.path, refusal) for source in document.sources
+            for refusal in source.reading.refusals}  # fmt: skip
 
 
 def stopped(trees: list[Tree]) -> list[tuple[str, int]]:
@@ -170,8 +192,9 @@ def stopped(trees: list[Tree]) -> list[tuple[str, int]]:
     said: list[tuple[str, int]] = []
     for tree in trees:
         texts = {source.path: source.text for _path, source in tree.files}
+        stops = _stops(tree.document)
         for where, refusal in tree.document.refusals:
-            if where not in texts or refusal.code == SECOND_DOCUMENT:
+            if where not in texts or (where, refusal) not in stops:
                 continue
             one = (where, texts[where].count("\n", 0, refusal.offset) + 1)
             if one not in said:

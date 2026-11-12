@@ -1633,6 +1633,46 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
         quiet = main[:at] + main[main.index(".\n\\input", at) + 1 :]
         cases.append(({**files, "main.tex": quiet}, packages,
                       [("part.tex", part.index("\\" + known))], [], []))  # fmt: skip
+    # The two forms read as before (Basile, 2026-11-12): a heading restyled through LaTeX's
+    # own `\@startsection`, in the author's package or past `\makeatletter`, and a
+    # cross-reference defined as another of its argument; and each with one thing more,
+    # refused where it is used.
+    level = draw(st.sampled_from(("section", "subsection", "paragraph")))
+    groups = draw(st.sampled_from(("{1}{\\z@}{-1ex}{1ex}{\\bfseries}",
+                                   "{2}{0pt}%\n  {-2.0ex \\@plus -0.5ex}{1.5ex}%\n"
+                                   "  {\\normalfont\\large\\bfseries}")))  # fmt: skip
+    definer = draw(st.sampled_from((f"\\renewcommand{{\\{level}}}", f"\\renewcommand\\{level}",
+                                    f"\\def\\{level}")))  # fmt: skip
+    restyled = f"{definer}{{\\@startsection{{{level}}}{groups}}}\n"
+    reference = draw(st.sampled_from(("equation~", "Eq.~", "", "eq. ")))
+    parens = draw(st.booleans())
+    inner = draw(st.sampled_from(("ref", "eqref")))
+    referred = f"\\{inner}{{#1}}"
+    again = draw(st.sampled_from(("\\def\\autoref#1", "\\renewcommand{\\autoref}[1]")))
+    cross = f"{again}{{{reference}{f'({referred})' if parens else referred}}}\n"
+    uses = f"\\{level}{{{words()}}}\n{words()} \\autoref{{e1}} {words()}.\n"
+    for where in ("package", "preamble"):
+        preamble = ("\\usepackage{mine}\n" if where == "package" else
+                    "\\makeatletter\n" + restyled + "\\makeatother\n")  # fmt: skip
+        main = head + preamble + "\\input{refs}\n" + begin + uses + "\\input{part}\n" + end
+        files = {"main.tex": main, "refs.tex": cross, "part.tex": uses}
+        packages = {"mine.sty": restyled} if where == "package" else {}
+        cases.append((files, packages, [], [], []))
+    # One thing more in each: a font switch round `\@startsection`, a parameter, another
+    # name; and a second command in the cross-reference's body.
+    spoilt = draw(st.sampled_from((restyled.replace("{\\@start", "{\\bfseries\\@start"),
+                                   restyled.replace(definer, definer + "[1]")
+                                   if definer.startswith("\\renew") else
+                                   restyled.replace(definer, definer + "#1"),
+                                   restyled.replace(f"{{{level}}}", "{chapter}"))))  # fmt: skip
+    main = head + "\\usepackage{mine}\n" + begin + uses + end
+    cases.append(({"main.tex": main}, {"mine.sty": spoilt},
+                  [("main.tex", main.index("\\" + level, len(head + begin)))], [], []))  # fmt: skip
+    worse = cross.replace(referred, f"\\textbf{{{referred}}}")
+    main = head + "\\input{refs}\n" + begin + words() + " \\autoref{e1}.\n" + end
+    cases.append(({"main.tex": main, "refs.tex": worse}, {},
+                  [("main.tex", main.index("\\autoref"))], [], []))  # fmt: skip
+
     main = head + begin + words() + "\n"
     # Refused where the command's name stands, or at its braces, `{\url}`.
     braced = f"{{\\{known}}}" in defined
@@ -1673,9 +1713,25 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     # the submission folder writes them, and are refused as above.
     cases.append(({"main.tex": main, "part.tex": accented}, {}, [], [], [], "audited"))
     cases.append(({"main.tex": alone}, {}, [], [], [], "audited"))
+    # A folder that declares UTF-8 beside it declares two, and is read as UTF-8: the file
+    # that declares the other is refused where it is not ASCII (round 1 of #637).
+    utf8 = head + "\\usepackage[utf8]{inputenc}\n" + begin + accented + "\\input{part}\n" + end
+    mixed = sets + accented
+    cases.append(({"main.tex": utf8, "part.tex": mixed}, {}, [("part.tex", 0)], [], [],
+                  "audited"))  # fmt: skip
     # And one encoding the audit does not read a folder in, refused there too.
     other = alone.replace(encoding, "latin2")
     cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [], "audited"))
+
+    # A construct left open, refused where it opens: nothing found past it is kept, its
+    # heading, its citation and its input (round 1 of #637).
+    opened = draw(st.sampled_from(("\\begin{figure}\n", "\\begin{itemize}\n", "{\\bfseries ")))
+    main = head + begin + words() + ".\n"
+    at = len(main)
+    main += (opened + f"\\section{{{words()}}}\n{words()} \\cite{{k}}.\n\\input{{part}}\n"
+             + end)  # fmt: skip
+    cases.append(({"main.tex": main, "part.tex": words() + ".\n"}, {}, [("main.tex", at)], [],
+                  []))  # fmt: skip
 
     # A Scientific WorkPlace preamble adds to a command through `\expandafter`, which is
     # passed over there; one that builds a name by `\csname`, and one in the body, are not.

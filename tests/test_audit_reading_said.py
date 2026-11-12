@@ -96,3 +96,86 @@ def test_a_pdf_in_which_no_heading_was_read_is_said_to_be_read_as_one_text() -> 
     report = AuditReport()
     _pdf_structure(report, headed)
     assert report.headings == []
+
+
+def test_a_refusal_of_the_tree_says_what_it_is_and_the_file_is_read_past_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 1 of #637, finding 1: an `\\input` the tree cannot follow is refused for the
+    tree, not where the reader stopped, and the file is read past it; the report said no
+    check read what followed it, though its numbers were compared. It says what it is."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+                     "Of 4100 reports.\n\\input{absent}\n\n"
+                     "Then 77 died.\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,k\n4100,77\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert sorted(c.text for c in report.matched) == ["4100", "77"]
+    (said,) = report.unreadable
+    assert "not read past" not in said and "line 5" in said and "absent" in said, said
+    assert "the rest of the file was read" in said, said
+    assert main(["audit", str(paper)]) == 0
+    assert "not read past" not in capsys.readouterr().out
+
+
+def test_a_folder_that_declares_utf8_and_latin1_is_read_as_utf8(tmp_path: Path) -> None:
+    """Round 1 of #637, finding 2: a `[utf8]` declaration was not counted, so a folder whose
+    paper declares it and whose old draft declares `[latin1]` was read as Latin-1 whole, the
+    paper's letters misread. Two declarations that decode otherwise are read as UTF-8."""
+    from manuscript_guard.text.latex.encodings import declared
+
+    assert declared(["\\usepackage[utf8]{inputenc}", "\\usepackage[latin1]{inputenc}"]) is None
+    assert declared(["\\usepackage[ascii]{inputenc}", "\\inputencoding{latin9}"]) is None
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n"
+                     f"\\begin{{document}}\nThe caf{_E_ACUTE} cohort.\n\\end{{document}}\n",
+                     encoding="utf-8")  # fmt: skip
+    (tmp_path / "draft.tex").write_bytes(("\\documentclass{article}\n"
+                                          "\\usepackage[latin1]{inputenc}\n\\begin{document}\n"
+                                          f"Caf{_E_ACUTE}.\n\\end{{document}}\n"
+                                          ).encode("latin_1"))  # fmt: skip
+    report = audit([paper], None)
+    texts = {source.path: source.text for tree in report.trees
+             for _path, source in tree.files}  # fmt: skip
+    assert f"caf{_E_ACUTE}" in texts["paper.tex"], texts["paper.tex"]
+    assert report.unreadable == []
+
+
+def test_a_file_input_past_where_the_reader_stopped_is_said_so(tmp_path: Path) -> None:
+    """Round 1 of #637, finding 3: a file the paper inputs past where its reading stopped
+    was said to be input by no entry, with the advice to `\\input` it, which the paper does.
+    It is said not to be followed, past that line."""
+    # A font switch round `\@startsection`, which is not read as before.
+    (tmp_path / "arxiv.sty").write_text(
+        "\\renewcommand\\section{\\bf\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{}}\n",
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "methods.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\usepackage{arxiv}\n\\begin{document}\n"
+                     "\\section{Introduction}\nWords.\n\\input{methods}\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], None, found_tex=[tmp_path / "methods.tex"])
+    (said,) = [one for one in report.passed_over if "methods.tex" in one]
+    assert "paper.tex was not read past line 4" in said and "\\input it" not in said, said
+
+
+def test_the_authors_check_and_the_placed_pictures_read_the_tree_s_encoding(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #637, finding 5: in a folder read as Latin-1, the authors' check read the
+    files again as UTF-8 and said the paper could not be read, and the pictures it places
+    were passed over in silence."""
+    from manuscript_guard.auditing.journal import _placed_pictures, _places
+    from manuscript_guard.auditing.latex import read_latex
+
+    (tmp_path / "fig.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_bytes(("\\documentclass{article}\n\\usepackage[latin1]{inputenc}\n"
+                       "\\begin{document}\nRen\N{LATIN SMALL LETTER E WITH ACUTE}e Martin wrote "
+                       "it.\n\\includegraphics{fig}\n\\end{document}\n").encode("latin_1"))
+    (tree,) = read_latex([paper]).trees
+    assert _placed_pictures(tree) == [tmp_path / "fig.pdf"]
+    places = _places(paper, tree)
+    assert not isinstance(places, str), places
+    assert any(f"Ren{_E_ACUTE}e Martin" in text for _where, text in places), places

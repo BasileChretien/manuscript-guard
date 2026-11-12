@@ -751,16 +751,16 @@ _BODY = "\\begin{document}\nOf 4100 reports, 12 were fatal. % TODO: the 2019 dat
 @pytest.mark.parametrize(
     ("defined", "name", "file"),
     [
-        # ICLR's own math_commands.tex, input from the preamble.
-        ("\\def\\eqref#1{equation~\\ref{#1}}\n", "eqref", "math_commands.tex"),
+        # A cross-reference whose body holds another command beside the one it refers by.
+        ("\\def\\eqref#1{\\textbf{\\ref{#1}}}\n", "eqref", "math_commands.tex"),
         # iclr2021_conference.sty.
         ("\\def\\addcontentsline#1#2#3{}\n", "addcontentsline", "iclr.sty"),
-        # style.sty and the arXiv template's arxiv.sty.
-        ("\\renewcommand\\section{\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{\\bfseries}}\n",
+        # A font switch round arxiv.sty's `\@startsection`.
+        ("\\renewcommand\\section{\\bfseries\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{}}\n",
          "section", "arxiv.sty"),
         ("\\renewcommand{\\section}[1]{\\textbf{#1}}\n", "section", "main.tex"),
     ],
-    ids=["iclr-math-commands", "iclr-sty", "arxiv-sty", "preamble"],
+    ids=["eqref-in-bold", "iclr-sty", "font-round-startsection", "preamble"],
 )
 def test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used(
     defined: str, name: str, file: str
@@ -793,6 +793,71 @@ def test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_us
     # Written in the body, the definition is refused where it stands.
     inside = _HEAD + "\\begin{document}\n" + defined.replace("\\@", "\\") + "x\n\\end{document}"
     assert [r.code for r in read(inside).refusals] == ["tex-refused"]
+
+
+_ARXIV_SECTION = ("\\renewcommand{\\section}{%\n  \\@startsection{section}{1}{\\z@}%\n"
+                  "    {-2.0ex \\@plus -0.5ex \\@minus -.2ex}%\n    {1.5ex \\@plus 0.3ex}%\n"
+                  "    {\\normalfont\\large\\bfseries}%\n}\n")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("defined", "file"),
+    [
+        # arxiv.sty's and style.sty's restyled heading, in the author's package, and in the
+        # preamble past `\makeatletter`.
+        (_ARXIV_SECTION, "arxiv.sty"),
+        ("\\makeatletter\n\\def\\section{\\@startsection {section}{1}{\\z@}{-1ex}{1ex}"
+         "{\\bfseries}}\n\\makeatother\n", "main.tex"),
+        # ICLR's math_commands.tex, input from the preamble, and parentheses round it.
+        ("\\def\\eqref#1{equation~\\ref{#1}}\n", "math_commands.tex"),
+        ("\\renewcommand{\\eqref}[1]{Eq.~(\\ref{#1})}\n", "main.tex"),
+    ],
+    ids=["arxiv-sty", "def-in-preamble", "iclr-math-commands", "in-parentheses"],
+)
+def test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read(
+    defined: str, file: str
+) -> None:
+    """Basile, 2026-11-12 ("Yes, read them"): a sectioning command whose whole body is
+    LaTeX's own `\\@startsection` of its name, and a cross-reference defined as another of its
+    argument among plain words, are read as before: the heading is a heading, the reference
+    a cross-reference, and nothing is refused (corpus run of 2026-11-11: arxiv.sty's
+    `\\section` and ICLR's `\\eqref`)."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    preamble = {"main.tex": defined, "math_commands.tex": "\\input{math_commands}\n",
+                "arxiv.sty": "\\usepackage{arxiv}\n"}[file]
+    files = {"main.tex": _HEAD + preamble + _BODY + "\\section{Results}\nAs \\eqref{e1} "
+             "shows, 77 died.\n\\end{document}\n"}  # fmt: skip
+    packages = {file: defined} if file.endswith(".sty") else {}
+    if file == "math_commands.tex":
+        files[file] = defined
+    document = read_tree(files, packages=packages)
+    assert document.refusals == ()
+    reading = document.sources[0].reading
+    assert [heading.title for heading in reading.headings] == ["Results"]
+    assert len(reading.pointers) == 1 and "77 died." in reading.masked
+    # Without `\makeatletter`, `\@startsection` is no command, and the use is refused.
+    plain = files["main.tex"].replace("\\makeatletter\n", "")
+    if file == "main.tex" and "startsection" in defined:
+        refused = read_tree({"main.tex": plain}).refusals
+        assert [refusal.code for _path, refusal in refused] == ["tex-refused"]
+
+
+def test_nothing_found_past_an_unclosed_construct_is_kept() -> None:
+    """Round 1 of #637, finding 4: a construct left open is refused where it opens, found at
+    the end of the run, and the text past it blanked; but the headings, citations, bindings
+    and inputs the run found past it were kept, so G7 and the sections read on. Nothing
+    found past the refusal is kept."""
+    text = (_HEAD + "\\begin{document}\n\\section{Methods}\nOf 4100 \\cite{a}.\n"
+            "\\begin{figure}\n\\caption{One}\n\\section{Results}\nSo \\cite{x} and "
+            "\\mg{results.k} \\ref{t}.\n\\input{more}\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    ((code, at),) = [(r.code, r.offset) for r in reading.refusals]
+    assert (code, at) == ("tex-unbalanced", text.index("\\begin{figure}"))
+    assert [found.key for found in reading.cited] == ["a"]
+    assert [heading.title for heading in reading.headings] == ["Methods"]
+    assert reading.bindings == () and reading.inputs == () and reading.pointers == ()
+    assert reading.floats == () and reading.figures == ()
 
 
 def test_scientific_workplace_s_preamble_expandafter_is_passed_over() -> None:

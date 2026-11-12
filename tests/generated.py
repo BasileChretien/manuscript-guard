@@ -8106,7 +8106,7 @@ ABSTRACT_KINDS = (
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
     "estimate closed up", "identifier", "identifier by its number", "under a method",
     "other section", "introduction", "conclusion", "references", "note", "statement",
-    "summary", "related work", "over the methods",
+    "summary", "related work", "over the methods", "title page",
 )  # fmt: skip
 #: Where each of the kinds a number of the Abstract is not found in stands, and what it
 #: starts at: in the reference list, in a footnote's definition under the Results, in a
@@ -8114,7 +8114,8 @@ ABSTRACT_KINDS = (
 #: that holds the Introduction's material, all not found; and directly under a heading over
 #: a Methods subsection, which is found (round 1 of #641).
 ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summary": 2400,
-                      "related work": 2500, "over the methods": 2600}  # fmt: skip
+                      "related work": 2500, "over the methods": 2600,
+                      "title page": 2700}  # fmt: skip
 #: Titles of a summary of the paper, of a section of the Introduction's material, and of a
 #: statement, as `abstract_papers` draws them.
 PAPER_SUMMARY_TITLES = ("Author summary", "Significance", "Highlights",
@@ -8334,6 +8335,13 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 expected["looked"].append([line, shown, state])
     # The subsection closes the Results, so that what they report stands over it.
     results.append(subsection)
+    # The title page, a section of its own before the Abstract (round 2 of #641).
+    front = ("Correspondence", after["title page"])
+    lines[2:2] = [f"## {front[0]}", "", *(one for said in front[1] for one in (said, ""))]
+    expected["looked"] = [[line + 2 + 2 * len(front[1]), shown, state]
+                          for line, shown, state in expected["looked"]]  # fmt: skip
+    expected["conflicts"] = [[line + 2 + 2 * len(front[1]), kind]
+                             for line, kind in expected["conflicts"]]  # fmt: skip
     parts = ((draw(st.sampled_from(PAPER_SUMMARY_TITLES)), after["summary"]),
              ("Introduction", introduction),
              (draw(st.sampled_from(INTRODUCTION_MATERIAL_TITLES)), after["related work"]),
@@ -8351,18 +8359,19 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
-    latex, in_latex = _abstract_latex(abstract, looked, parts)
+    latex, in_latex = _abstract_latex(abstract, looked, parts, front)
     supplement_tex = "\n".join([BACKSLASH + "documentclass{article}", BACKSLASH +
                                 "begin{document}", *supplement, BACKSLASH + "end{document}"])
     return ("\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected,
             latex, supplement_tex + "\n", in_latex)  # fmt: skip
 
 
-def _abstract_latex(abstract: list, looked: list,
-                    parts: tuple[tuple[str, list], ...]) -> tuple[str, dict[str, list]]:
+def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list], ...],
+                    front: tuple[str, list]) -> tuple[str, dict[str, list]]:
     """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
     `\\end{abstract}`, its table a `tabular`, and what is found in it, by its lines."""
     lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}",
+             f"{BACKSLASH}section{{{front[0]}}}", "", *front[1], "",
              BACKSLASH + "begin{abstract}"]  # fmt: skip
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for index, (kind, said) in enumerate(abstract):
@@ -12725,6 +12734,13 @@ TYPED_PARAGRAPHS = {
                          "</w:numPr></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>", False),
     "with a note's mark": ('<w:p><w:r><w:t>{}</w:t></w:r><w:r><w:footnoteReference w:id="1"/>'
                            "</w:r></w:p>", False),
+    # pandoc 3.9.0.2 reads one indented from the left more than it hangs as a block quote,
+    # and one beside a picture as an image beside words (round 2 of #641).
+    "indented from the left": ('<w:p><w:pPr><w:ind w:left="720"/></w:pPr><w:r><w:t>{}</w:t>'
+                               "</w:r></w:p>", False),
+    "hanging as far as indented": ('<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>'
+                                   "<w:r><w:t>{}</w:t></w:r></w:p>", True),
+    "beside a picture": ("<w:p><w:r><w:drawing/></w:r><w:r><w:t>{}</w:t></w:r></w:p>", False),
 }  # fmt: skip
 #: The styles the paragraphs above name.
 TYPED_PARAGRAPH_STYLES = BOLD_PARAGRAPH_STYLES + (

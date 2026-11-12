@@ -55,6 +55,7 @@ from manuscript_guard.text.section_names import (
     names_introduction_material,
     names_paper_summary,
     names_results,
+    plain,
 )
 from manuscript_guard.text.sections import Section
 from manuscript_guard.text.tokens import Atom
@@ -142,6 +143,16 @@ def _reports_nothing(section: Section, walk) -> bool:
             or (names_discussion(title) and not names_results(title)))  # fmt: skip
 
 
+#: The Introduction by its whole title, which a heading over it is the paper's title for:
+#: not "Background characteristics" under "Participants" (round 2 of #641).
+_OPENING = re.compile(r"(?:introduction|background|rationale)\W*", re.IGNORECASE)
+
+
+def _title_page_ends(sections: list[Section]) -> int | None:
+    """The line the title page ends on, the first heading that names the Abstract."""
+    return next((s.line for s in sections if names_abstract(s.title)), None)
+
+
 def _over_the_paper(sections: list[Section]) -> set[int]:
     """The headings that are the paper's title written as a heading over it: those over the
     Abstract or the Introduction. Not one over the Methods alone, as G8 reads it too: the
@@ -151,7 +162,7 @@ def _over_the_paper(sections: list[Section]) -> set[int]:
         for later in sections[index + 1 :]:
             if later.level <= section.level:
                 break
-            if names_abstract(later.title) or names_introduction(later.title):
+            if names_abstract(later.title) or _OPENING.fullmatch(plain(later.title)):
                 found.add(id(section))
                 break
     return found
@@ -168,7 +179,7 @@ def _searched(sections: list[Section], place: Callable[[int], object], walk,
     from manuscript_guard.gates.reported import REPORTED
 
     titles = _over_the_paper(sections)
-    opened = next((s.line for s in sections if names_abstract(s.title)), None)
+    opened = _title_page_ends(sections)
     starts, searched = [0], [False]
     chain: list[Section] = []
     for section in sections:

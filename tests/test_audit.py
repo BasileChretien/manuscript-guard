@@ -1735,6 +1735,19 @@ def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None
     lines = document.body.split("\n")
     assert [lines[at] for at, _level in typed_heading_levels(document)] == [
         "ABSTRACT", "METHODS", "Results"]
+    # Round 2 of #641: a second "RESULTS" in the Discussion, a section's name typed twice,
+    # left the paper placed in no section; each title is at level 1, as `init --from` makes
+    # them, and the Abstract is compared.
+    twice = (bold("Abstract") + para("Of 412 patients, 77 had it.") + bold("Introduction")
+             + para("Drugs cause harm.") + bold("Methods") + para("We read 412 records.")
+             + bold("Results") + para("Of 412 patients, 77 had it.") + bold("Discussion")
+             + para("RESULTS") + para("A second study agreed.") + bold("References")
+             + para("1. Doe J. A title. BMJ. 2020;1:2."))  # fmt: skip
+    document = read_docx_text(make_docx(tmp_path / "twice.docx", twice))
+    assert [level for _at, level in typed_heading_levels(document)] == [1] * 7
+    report = audit([tmp_path / "twice.docx"], [])
+    assert report.abstract is not None and report.abstract.compared
+    assert report.abstract.not_found == []
 
 
 def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_heading(
@@ -1760,15 +1773,17 @@ def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_headi
     assert typed_heading_levels(document) == ()
 
 
-def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
+def test_bold_titles_that_cannot_be_nested_are_placed_at_one_level(tmp_path: Path) -> None:
     """A structured abstract's parts in bold straight under its Abstract, with no
     Introduction after them and none of their names again: which Results are the paper's is
-    not read, and that is said, as for a PDF."""
+    not read, so every title is at level 1, as `init --from` makes them (round 2 of #641:
+    the paper was placed in no section, and the two readers differed)."""
     body = (bold("Abstract") + bold("Background") + para("Drugs cause harm.") + bold("Results")
             + para("Of 412 patients, 77 had it.") + bold("Discussion") + para("It was so."))
     report = audit([make_docx(tmp_path / "paper.docx", body)], [])
     (said,) = report.headings
-    assert "could not be placed" in said and "its lines were placed in no section" in said
+    assert "could not be placed" not in said and "were read as its headings" in said
+    assert report.abstract is not None and report.abstract.compared
 
 
 def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> None:
@@ -1950,11 +1965,13 @@ def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys)
     report = json.loads(capsys.readouterr().out)
     (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
     assert found["message"] == ("41.7 in the Abstract is not found in the tables or any "
-                                "section but the Introduction, the Discussion, a "
-                                "conclusion, a summary and the back matter")  # fmt: skip
+                                "part of the paper but the Introduction and its material, "
+                                "the Discussion with its limitations, a conclusion, a summary "
+                                "of the paper, the title page, the back matter and the "
+                                "notes")  # fmt: skip
     main(["audit", str(paper)])
-    assert ("NOT FOUND IN THE TABLES OR ANY SECTION BUT THE INTRODUCTION, THE DISCUSSION, A "
-            "CONCLUSION, A SUMMARY AND THE BACK MATTER") in capsys.readouterr().out
+    assert ("NOT FOUND IN THE TABLES OR ANY PART OF THE PAPER BUT THE INTRODUCTION AND ITS "
+            "MATERIAL") in capsys.readouterr().out
 
 
 def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argument(
@@ -1993,6 +2010,12 @@ def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argu
      "It was 17.8%.\n"),
     ("related work", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## Related work\n\n"
      "Smith found 18.7%.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("prior work", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## 2. Prior work\n\n"
+     "Smith found 18.7%.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("key findings", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## Key findings\n\n"
+     "It was 18.7%.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("what this study adds", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n"
+     "## What this study adds\n\nIt was 18.7%.\n\n## Results\n\nIt was 17.8%.\n"),
     ("a statement", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## Results\n\nIt was "
      "17.8%.\n\n## Funding\n\nGrant 18.7% of it.\n"),
     ("a footnote under a statement", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n"
@@ -2025,6 +2048,25 @@ def test_text_over_a_methods_subsection_is_searched(tmp_path: Path) -> None:
     read = audit([path], []).abstract
     assert read is not None and read.compared
     assert read.not_found == [] and [c.text for c in read.found] == ["1,284"]
+    # Round 2 of #641: a subsection that opens with "Background" is no Introduction, and the
+    # section over it no title over the paper.
+    path.write_text("# A study\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n## Participants"
+                    "\n\nWe enrolled 1,284 adults.\n\n### Background characteristics\n\nThey "
+                    "were old.\n\n## Results\n\nIt was so.\n", encoding="utf-8")  # fmt: skip
+    read = audit([path], []).abstract
+    assert read.not_found == [] and [c.text for c in read.found] == ["1,284"]
+
+
+def test_a_latex_footnote_under_the_results_is_searched(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a LaTeX paper's footnote is printed in its
+    sentence, and a number only a footnote under the Results gives is found."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\nWe "
+                     "followed 45 patients.\n\\end{abstract}\n\\section{Results}\nWe followed "
+                     "54 patients.\\footnote{Smith J. Lancet 2019;12:45-67.}\n"
+                     "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared and read.not_found == []
 
 
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not

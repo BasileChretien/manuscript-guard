@@ -688,11 +688,12 @@ def typed_titles(document: DocxText) -> list[tuple[int, str]]:
             if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
 
 
-def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | None:
+def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...]:
     """Each line of `typed_titles`, by 0-based line, with its level (`section_levels`): the
-    headings `from_word.typed_headings` makes of the same paragraphs. Empty where the
-    document has a heading style or no such line; None where the lines cannot be placed
-    exactly, as a PDF's then are not (`auditing.pdf.UNPLACED`)."""
+    headings `from_word.typed_headings` makes of the same paragraphs, each at level 1 where
+    the levels cannot be read exactly, as it makes them (round 2 of #641: a "Results" typed
+    twice left a paper placed by its bold titles unplaced). Empty where the document has a
+    heading style or no such line."""
     from manuscript_guard.text.section_names import section_levels
 
     lines = document.body.split("\n")
@@ -702,9 +703,7 @@ def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | No
     ends = [at for at, _title in found[1:]] + [len(lines)]
     worded = [any(lines[k].strip() for k in range(at + 1, end))
               for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
-    levels = section_levels([title for _at, title in found], worded)
-    if levels is None:
-        return None
+    levels = section_levels([title for _at, title in found], worded) or (1,) * len(found)
     return tuple((at, level) for (at, _title), level in zip(found, levels, strict=True))
 
 

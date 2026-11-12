@@ -148,7 +148,7 @@ def names_introduction(title: str) -> bool:
 #: small letters: what other papers found, which the audit's Abstract against Results does
 #: not search, as it does not search the Introduction (round 1 of #641). A closed list.
 INTRODUCTION_MATERIAL = frozenset({
-    "related work", "literature review", "theoretical framework", "hypotheses",
+    "related work", "prior work", "literature review", "theoretical framework", "hypotheses",
 })  # fmt: skip
 #: Summaries of the paper beside its Abstract, whole titles in small letters, which restate
 #: its numbers: PLOS's "Author summary", PNAS's "Significance", a plain-language or lay
@@ -158,7 +158,8 @@ INTRODUCTION_MATERIAL = frozenset({
 PAPER_SUMMARIES = frozenset({
     "author summary", "significance", "significance statement", "plain language summary",
     "plain-language summary", "lay summary", "graphical abstract", "highlights",
-    "key points", "key messages", "research in context",
+    "key points", "key messages", "key findings", "what this study adds",
+    "research in context",
     "resumen", "resumo", "résumé", "zusammenfassung", "riassunto", "özet", "abstrak",
 })  # fmt: skip
 

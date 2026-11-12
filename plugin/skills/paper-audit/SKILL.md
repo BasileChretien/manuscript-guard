@@ -155,9 +155,10 @@ as a nested list that does not add up, with notes on what it read as overlapping
 read. A breakdown mid-flow and a step that lists no exclusion are notes too. A broken list
 under no name for a flow, a list of subgroups say, is a note only; when
 the author's flow sits under such a heading, say so, since `--strict` passed it. Abstract against Results lists each conflict, each number of the Abstract not found
-in the tables or any section but the Introduction, the Discussion, a conclusion, a summary
-and the back matter, which may be a stale value or one the paper never reports (or one
-only those give, or a note, which are not searched), and
+in the tables or any part of the paper but the Introduction and its material, the
+Discussion with its limitations, a conclusion, a summary of the paper, the title page, the
+back matter and the notes, which may be a stale value or one the paper never reports (or
+one only those give, which are not searched), and
 those matched only as a rounding, and ends with its own chance-match rate; where it says
 "not compared" the paper has no Abstract or no Results heading it could find. Small cells lists
 each count held back ("<5") that a total gives away, with the count it can only be: a

@@ -24008,8 +24008,10 @@ Open, recorded as each change landed:
   - A paper that uses a heading style anywhere is read by its styles alone, its typed
     titles text. Where the titles cannot be placed, a structured abstract's parts with no
     Introduction after them, the order of its parts never starting again and no title it
-    cannot hold among them, the audit places nothing and says so, and `init --from` makes
-    each a heading of level 1, so the Abstract ends at its first part. The title page is set
+    cannot hold among them, or a name typed twice, `init --from` and the audit make each a
+    heading of level 1, so the Abstract ends at its first part (round 2 of #641: the audit
+    placed nothing, and a paper its bold titles had placed was left unplaced by a second
+    "RESULTS" typed in its Discussion). The title page is set
     aside only above a first heading that opens a paper, its Abstract or its Introduction: a
     short paper whose first typed title is its "References" keeps its text where every gate
     reads it. A heading is written with the title's own words, its number kept. Accepted.
@@ -24395,12 +24397,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "Participants" or an appendix were said not found; round 1 of #641). A summary and the
     Introduction's material under another name are known by closed lists of whole titles
     (`text.section_names.PAPER_SUMMARIES`, `INTRODUCTION_MATERIAL`): a "Summary box", a
-    "Previous studies" or a "What this paper adds" is searched, and an Abstract's number it
+    "Previous studies" or a "What this paper adds to the field" is searched, and an Abstract's number it
     repeats is found there. Accepted.
   - A note is not searched where the audit knows it for one: a footnote's definition in
     Markdown, and a .docx's footnotes and endnotes, read after its body. A LaTeX paper's
     `\footnote` is printed in its sentence and searched with it, under the Results or the
-    Methods. Pinned by `tests/test_corruption.py::test_an_abstract_number_only_a_footnote_gives_is_not_found`.
+    Methods. Pinned by `tests/test_corruption.py::test_an_abstract_number_only_a_footnote_gives_is_not_found`,
+    `tests/test_audit.py::test_a_latex_footnote_under_the_results_is_searched`.
+  - A section of the Introduction's material is not searched wherever it stands, so a
+    "Hypotheses" after the Methods, whose numbers may be the study's own, is not, as at the
+    base it was not. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of

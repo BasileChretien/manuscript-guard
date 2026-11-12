@@ -6047,6 +6047,12 @@ def _the_back_matter_is_searched(patch: pytest.MonkeyPatch) -> None:
         or (names_discussion(section.title) and not names_results(section.title))))
 
 
+def _the_title_page_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_title_page_ends", lambda sections: None)
+
+
 def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
@@ -18990,6 +18996,12 @@ def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]
     assert sorted(lines[at] for at in document.typed) == typed
 
 
+def _an_indented_paragraph_is_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_quoted", lambda paragraph: False)
+
+
 def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import docx as docx_module
 
@@ -19629,6 +19641,10 @@ BROKEN = {
     "a title also underlined is none": (
         _a_title_also_underlined_is_none,
         test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "an indented paragraph is typed": (
+        _an_indented_paragraph_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
     ),
     "a paragraph in a caption style is typed": (
         _a_caption_is_typed,
@@ -22729,6 +22745,10 @@ BROKEN = {
     ),
     "the statements and a summary of the paper are searched for an Abstract's number": (
         _the_back_matter_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the title page is searched for an Abstract's number": (
+        _the_title_page_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a note is searched for an Abstract's number": (

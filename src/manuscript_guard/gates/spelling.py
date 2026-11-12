@@ -40,6 +40,10 @@ any paper.
 without its contributions, acknowledgements, funding and competing-interests sections:
 the role names there are CRediT's ("Conceptualization"), and a funder's sentence is the
 funder's.
+
+**A word with one spelling in the paper's English is an edit, at every place**
+(`spelling_edits`), for the audit's copy in Track Changes: not where the list gives two, nor
+where the paper's English is in doubt.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.vocabulary import Passage, context, own_words
 from manuscript_guard.text.masking import NUL
@@ -202,6 +207,93 @@ def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, boo
     return (BRITISH if first in _KINDS[BRITISH] else AMERICAN), True
 
 
+def _not_as_declared(declared: bool, different: int, other: int, own: int) -> bool:
+    """Is the paper mostly in the other English than it declares, so that the likelier
+    mistake is the declaration: `different` words of the other's, used `other` times, to
+    `own` of its own?"""
+    return declared and different >= MANY and other > own
+
+
+def spelling_edits(
+    passages: Iterable[Passage], variant: str | None, accepted: Iterable[str]
+) -> list[Edit]:
+    """Each word `spelling-variant` reports respelt in the paper's English, at every place
+    it stands, where the list gives one spelling for it: "colour" becomes "color", and
+    "Colour" opening a sentence "Color". Not a word inside a quotation set inline, which is
+    somebody else's or a title's. Nothing where the paper's English is in doubt: a
+    paper mostly in the other English than it declares, whose declaration is likelier
+    wrong, or one that declares none and has as many words in each."""
+    declared = variant is not None
+    if declared and (not isinstance(variant, str) or variant not in _NAMES):
+        return []
+    words, _with_ize = _variants()
+    kept = {word.lower() for word in accepted if isinstance(word, str)}
+    spelt = _spellings(passages, kept)
+    if not declared:
+        taken = _majority(spelt)
+        if taken is None or taken[1]:
+            return []
+        variant = taken[0]
+    others = _KINDS[AMERICAN if variant == BRITISH else BRITISH]
+    theirs = [(passage, start, key) for _place, passage, start, key, kind in spelt
+              if kind in others]  # fmt: skip
+    own = sum(1 for *_, kind in spelt if kind and kind not in others)
+    if _not_as_declared(declared, len({key for *_, key in theirs}), len(theirs), own):
+        return []
+    edits = []
+    for passage, start, key in theirs:
+        spelt = _one_spelling(words[key][1])
+        if spelt is None or _in_a_quotation(passage.text, start):
+            continue
+        end = start + len(key)
+        edits.append(Edit("spelling-variant", passage, start, end,
+                          _cased(passage.text[start:end], spelt), (start, end)))  # fmt: skip
+    return edits
+
+
+#: The double marks a quotation is opened and closed with inline, curly.
+_OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+#: A single mark that may open a quotation, at the start of what follows it, and one that
+#: may close one, at the end of what stands before it: an apostrophe inside a word, "don't",
+#: "the study's", is neither. One after a plural, "the patients' records", may close, and
+#: one opening a word, "'tis", may open, as may one after a bracket, a mark of emphasis or
+#: a dash, "('tumor color')" (rounds 3 and 4 of #636).
+_SINGLE_OPENS = re.compile(r"(?<![\w'\N{RIGHT SINGLE QUOTATION MARK}])"
+                           r"['\N{LEFT SINGLE QUOTATION MARK}](?=\S)")
+_SINGLE_CLOSES = re.compile(r"(?<=\S)['\N{RIGHT SINGLE QUOTATION MARK}](?!\w)")
+
+
+def _in_a_quotation(text: str, start: int) -> bool:
+    """Is the word at `start` inside a quotation its paragraph sets inline: opened with
+    double marks and not closed before it, `as "Colour vision in tumour cells" reported`, or
+    between a single mark that may open one before it and one that may close one after it,
+    `as 'Does tumor color matter?' asked`? Its words are somebody else's, or a title's, and
+    an edit keeps them; the finding still counts them (rounds 1 to 3 of #636). Single marks
+    are read loosely, as holding an edit back costs only the edit."""
+    opened = text.rfind("\n\n", 0, start) + 1
+    ended = text.find("\n\n", start)
+    ended = len(text) if ended < 0 else ended
+    before = text[opened:start]
+    if before.count('"') % 2 == 1 or before.count(_OPENS) > before.count(_CLOSES):
+        return True
+    # Read to the paragraph's end: a mark that opens looks at what follows it.
+    opens = any(found.start() < start for found in _SINGLE_OPENS.finditer(text, opened, ended))
+    return opens and _SINGLE_CLOSES.search(text, start, ended) is not None
+
+
+def _one_spelling(instead: str) -> str | None:
+    """The one spelling the list gives in the paper's English, or None where it gives two,
+    "anaesthetise/anaesthetize", which is the author's to choose."""
+    forms = instead.split("/")
+    return forms[0] if len(forms) == 1 else None
+
+
+def _cased(typed: str, spelt: str) -> str:
+    """`spelt` with the capital `typed` opens with: a word is read in lower case, or with a
+    capital where a sentence starts."""
+    return spelt if typed.islower() else spelt[:1].upper() + spelt[1:]
+
+
 def judge_spelling(
     passages: Iterable[Passage], variant: str | None, accepted: Iterable[str], paper: Path
 ) -> Report:
@@ -266,7 +358,7 @@ def judge_spelling(
 
     # Declaring none, the paper's English is the one most of its words are in, so the
     # other's are never the more: no setting to be told of.
-    if declared and len(times) >= MANY and other > own:
+    if _not_as_declared(declared, len(times), other, own):
         listed = _most_used(times, LISTED)
         respell = ", ".join(
             f"{word} ({words[word][1].replace('/', ' or ')}, {_times(times[word])})"

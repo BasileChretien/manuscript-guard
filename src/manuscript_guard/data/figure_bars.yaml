@@ -6,11 +6,13 @@ schema: manuscript-guard/figure-bars/1
 # doi:10.1371/journal.pbio.1002128). G3 reads a figure's script for them:
 #
 #   means    a bar whose height the plot computes as the mean of each group. With no points
-#            in the script, a warning (`figure-bars-of-means`).
+#            in the script, a warning (`figure-bars-of-means`); a note where the call
+#            computes no interval, since a table of one row a group then draws its values.
 #   given    a bar drawn from the values the script was given. With error bars on it and no
 #            points in the script, a note (`figure-bars-with-errors`): it may be a proportion
 #            and its interval, which is right.
-#   errors   a layer that draws error bars, for a `given` bar in the same script.
+#   errors   a layer that draws error bars, for a `given` bar of the same plot: the one `+`
+#            chain, a ggplot() or plotnine expression, the bar is a layer of.
 #   points   a layer that draws a point for each observation. One anywhere in the script
 #            stands both findings down.
 #
@@ -25,7 +27,8 @@ schema: manuscript-guard/figure-bars/1
 #   unless    arguments that, given one of these values, make it not this kind;
 #   summary   for `means`, the arguments that name what the bar shows. Left out, it is the
 #             mean; given, it is a mean only when its value is one of `means` below;
-#   errors    for `given`, arguments of the call itself that draw error bars on its bars.
+#   errors    for `given`, arguments of the call itself that draw error bars on its bars;
+#   alone     for `means`, arguments that, given one of these values, compute no interval.
 # Values are compared without their quotation marks.
 
 means: [mean, nanmean, average, mean_se, mean_cl_boot, mean_cl_normal, mean_sdl]
@@ -37,6 +40,7 @@ python:
       draws a bar at the mean of each group by default (estimator="mean")
     read: seaborn.barplot reference page (seaborn 0.13.2), 2026-11-12
     summary: [estimator]
+    alone: {errorbar: [None], ci: [None]}
   - draws: means
     names: [catplot]
     what: >-
@@ -44,18 +48,20 @@ python:
     read: seaborn.catplot reference page (seaborn 0.13.2), 2026-11-12
     when: {kind: [bar]}
     summary: [estimator]
+    alone: {errorbar: [None], ci: [None]}
   - draws: means
     names: [stat_summary, stat_summary_bin]
     what: >-
-      draws a bar at the bootstrapped mean of each group with geom="bar"
-      (fun_data="mean_cl_boot")
+      draws a bar at the mean of each group with geom="bar", with a bootstrapped interval by
+      default
     read: plotnine.stat_summary reference page (plotnine 0.15.9), 2026-11-12
     when: {geom: [bar, col]}
     summary: [fun_data, fun_y]
   - draws: means
     names: [geom_bar]
     what: >-
-      draws a bar at the bootstrapped mean of each group with stat="summary"
+      draws a bar at the mean of each group with stat="summary", with a bootstrapped interval
+      by default
     read: plotnine.geom_bar and plotnine.stat_summary reference pages (plotnine 0.15.9), 2026-11-12
     when: {stat: [summary]}
     summary: [fun_data, fun_y]

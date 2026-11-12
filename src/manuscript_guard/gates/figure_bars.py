@@ -9,10 +9,17 @@ So a figure's script is read for the calls in `data/figure_bars.yaml`:
 
 - a bar the plot computes as the mean of each group (`sns.barplot`, `stat_summary(geom =
   "bar")`, `geom_bar(stat = "summary")`), with no layer in the script that draws the points
-  of the data, is a warning (`figure-bars-of-means`);
+  of the data, is a warning (`figure-bars-of-means`). Where the call computes no interval
+  (`errorbar=None`), nothing shows that a group holds more than one row, and a table of one
+  row a group draws the values it holds: a note, under the same code;
 - a bar drawn from values the script was given, with error bars on it (`ax.bar(x, m,
-  yerr=s)`, `geom_col()` and `geom_errorbar()`) and no points, is a note
-  (`figure-bars-with-errors`): the bar may be a proportion and its interval, which is right.
+  yerr=s)`, or `geom_col()` and `geom_errorbar()` as layers of one plot) and no points, is a
+  note (`figure-bars-with-errors`): the bar may be a proportion and its interval, which is
+  right.
+
+A layer of error bars is on a bar only where both are layers of one plot: the one `+` chain,
+a ggplot() or plotnine expression, the bar stands in. A chain ends at a line break outside
+brackets (or inside braces) after anything but `+`, and at `,`, `;`, `=`, `<-` and `->`.
 
 A bar of counts with no error bars says nothing. A reason in the figure's `<name>.guard.yaml`
 under `allow_bars` stands both findings down.
@@ -25,7 +32,7 @@ script's tokens, so a call made through a function of the script's own is not se
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -33,7 +40,7 @@ import yaml
 
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.figure_estimates import NOT_GIVEN, Call, calls_in, named
-from manuscript_guard.text.code import lex
+from manuscript_guard.text.code import Token, lex
 
 GATE = "G3"
 DATA = Path(__file__).parent.parent / "data" / "figure_bars.yaml"
@@ -54,6 +61,7 @@ class Drawing:
     unless: dict[str, tuple[str, ...]]
     summary: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    alone: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def drawn_by(self, call: Call) -> bool:
         if not named(call.name, self.names):
@@ -70,6 +78,7 @@ class Bar:
     call: Call
     rule: Drawing
     code: str
+    severity: str = WARN
 
 
 @lru_cache(maxsize=1)
@@ -88,6 +97,8 @@ def rules() -> tuple[tuple[str, ...], dict[str, tuple[Drawing, ...]]]:
                         for key, values in (entry.get("unless") or {}).items()},
                 summary=tuple(entry.get("summary", ())),
                 errors=tuple(entry.get("errors", ())),
+                alone={key: tuple(map(str, values))
+                       for key, values in (entry.get("alone") or {}).items()},
             )
             for entry in document[language]
         )  # fmt: skip
@@ -112,24 +123,71 @@ def _with_errors(call: Call, rule: Drawing) -> bool:
     return any(call.arguments.get(name) not in NOT_GIVEN for name in rule.errors)
 
 
+def _computes_an_interval(call: Call, rule: Drawing) -> bool:
+    return not any(value_of(call, name) in values for name, values in rule.alone.items())
+
+
+#: What ends a `+` chain at the level of brackets it stands at.
+_ENDS = frozenset((",", ";", "=", "<-", "<<-", "->", "->>"))
+_OPENS = frozenset("([{")
+_CLOSES = frozenset(")]}")
+#: What a line break that follows it does not end a chain after.
+_CONTINUES = ("+",)
+#: The brackets inside which a line break ends a chain: none, and braces.
+_BREAKS_IN = ("", "{")
+
+
+def chains_in(tokens: list[Token], text: str) -> dict[int, int]:
+    """The `+` chain each code token stands in, by where the token starts: a number for each
+    expression of terms joined by `+` at one level of brackets. A chain ends at `,`, `;`, an
+    assignment, and a line break outside brackets or inside braces that does not follow `+`;
+    a bracket opens chains of its own inside it."""
+    code = [token for token in tokens if token.kind not in ("comment", "docstring")]
+    count = 0
+    levels = [("", 0)]  # each open bracket and the chain at its level
+    chain: dict[int, int] = {}
+    previous: Token | None = None
+    for token in code:
+        bracket = levels[-1][0]
+        if (previous is not None and bracket in _BREAKS_IN
+                and "\n" in text[previous.end : token.start]
+                and not (previous.kind == "code" and previous.text in _CONTINUES)):  # fmt: skip
+            count += 1
+            levels[-1] = (bracket, count)
+        chain[token.start] = levels[-1][1]
+        if token.kind == "code" and token.text in _ENDS:
+            count += 1
+            levels[-1] = (bracket, count)
+        elif token.kind == "code" and token.text in _OPENS:
+            count += 1
+            levels.append((token.text, count))
+        elif token.kind == "code" and token.text in _CLOSES and len(levels) > 1:
+            levels.pop()
+        previous = token
+    return chain
+
+
 def bars_in(text: str, language: str) -> list[Bar]:
     """Each bar in a script that is a finding: a bar of means, or a bar of given values with
     error bars on it; none where any call in the script draws the points of the data."""
     means, drawings = rules()
+    tokens = lex(text, language)
+    chain = chains_in(tokens, text)
     drawn: list[tuple[Call, Drawing]] = []
-    for call in calls_in(lex(text, language)):
+    for call in calls_in(tokens):
         rule = next((rule for rule in drawings[language] if rule.drawn_by(call)), None)
         if rule is not None:
             drawn.append((call, rule))
     if any(rule.draws == "points" for _call, rule in drawn):
         return []
-    layered = any(rule.draws == "errors" for _call, rule in drawn)
+    layered = {chain[call.start] for call, rule in drawn if rule.draws == "errors"}
     found = []
     for call, rule in drawn:
         if rule.draws == "means" and _shows_a_mean(call, rule, means):
-            found.append(Bar(call, rule, "figure-bars-of-means"))
-        elif rule.draws == "given" and (layered or _with_errors(call, rule)):
-            found.append(Bar(call, rule, "figure-bars-with-errors"))
+            severity = WARN if _computes_an_interval(call, rule) else INFO
+            found.append(Bar(call, rule, "figure-bars-of-means", severity))
+        elif rule.draws == "given" and (chain[call.start] in layered or _with_errors(call, rule)):
+            found.append(Bar(call, rule, "figure-bars-with-errors", INFO))
     return found
 
 
@@ -143,6 +201,19 @@ def reason_in(sidecar: Path) -> str | None:
     if not isinstance(said, str):
         return None
     return said.strip() or None
+
+
+def _said(bar: Bar, means: bool) -> str:
+    """What a finding says the bar is, after the call's name."""
+    if not means:
+        return (f"{bar.rule.what}, with error bars on it, and the script draws no point of "
+                "the data")  # fmt: skip
+    if bar.severity == INFO:
+        return ("draws a bar at the mean of each group, or the value itself where the table "
+                "has one row per group, and computes no interval; the script draws no point of "
+                "the data")  # fmt: skip
+    return (f"{bar.rule.what}, and the script draws no point of the data: many data sets give "
+            "the same bar")  # fmt: skip
 
 
 def check_figure_bars(script: Path, text: str, language: str) -> Report:
@@ -160,11 +231,8 @@ def check_figure_bars(script: Path, text: str, language: str) -> Report:
             Finding(
                 gate=GATE,
                 code=bar.code,
-                severity=WARN if means else INFO,
-                message=f"{bar.call.name}(...) {bar.rule.what}, "
-                + ("and the script draws no point of the data: many data sets give the "
-                   "same bar" if means else
-                   "with error bars on it, and the script draws no point of the data"),
+                severity=bar.severity,
+                message=f"{bar.call.name}(...) {_said(bar, means)}",
                 path=script,
                 line=line,
                 context=lines[line - 1].strip()[:160] if line <= len(lines) else "",

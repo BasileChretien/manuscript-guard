@@ -794,10 +794,20 @@ _MEANS, _ERRORS = "figure-bars-of-means", "figure-bars-with-errors"
 @pytest.mark.parametrize(
     ("added", "said"),
     [
-        ('sns.barplot(data=frame, x="arm", y="reports", errorbar=None)',
-         [(_MEANS, "warn", "sns.barplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports")', [(_MEANS, "warn", "sns.barplot")]),
         ('sns.barplot(data=frame, x="arm", y="reports", estimator=np.mean)',
          [(_MEANS, "warn", "sns.barplot")]),
+        # Round 1 of #648: with no interval computed, nothing shows that a group holds more
+        # than one row, and a table of one row a group draws the values given: a note.
+        ('sns.barplot(data=counts, x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.barplot")]),
+        ('sns.barplot(data=counts, x="drug", y="n", ci=None)', [(_MEANS, "info", "sns.barplot")]),
+        ('sns.catplot(data=counts, kind="bar", x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.catplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar="sd")',
+         [(_MEANS, "warn", "sns.barplot")]),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=lambda v: v.mean())', []),
         ('sns.barplot(data=frame, x="arm", y="reports")\n'
          'sns.stripplot(data=frame, x="arm", y="reports", jitter=False)', []),
         ('sns.barplot(data=frame, x="arm", y="reports")\nsns.swarmplot(data=frame, x="arm")', []),
@@ -838,6 +848,8 @@ def test_bars_of_means_with_no_points_are_said(project: Path, added: str, said: 
         ('ggplot(d, aes(arm, y)) + stat_summary(fun = mean, geom = "col")',
          [(_MEANS, "warn", "stat_summary")]),
         ('ggplot(d, aes(arm, y)) + stat_summary(fun = "median", geom = "bar")', []),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = function(x) mean(x), geom = "bar")', []),
         ('ggplot(d, aes(arm, y)) + stat_summary(geom = "pointrange")', []),
         ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar") + geom_jitter(width = 0.1)', []),
         ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary", fun = "mean")',
@@ -866,6 +878,72 @@ def test_an_r_figure_of_bars_of_means_with_no_points_is_said(
     path = tmp_path / "bars.R"
     path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
     assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+@pytest.mark.parametrize(
+    ("name", "script", "said"),
+    [
+        # Round 1 of #648: an interval drawn on another plot puts no error bar on a bar.
+        ("bars.R", "p1 <- ggplot(res, aes(ror, drug)) + geom_pointrange(aes(xmin = lo, xmax = hi))"
+         "\np2 <- ggplot(counts, aes(drug, n)) + geom_col()", []),
+        ("bars.R", "p1 <- ggplot(counts, aes(drug, n)) + geom_col()\n"
+         "p2 <- ggplot(res, aes(ror, drug)) + geom_errorbar(aes(xmin = lo, xmax = hi))", []),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) +\n  geom_col() + # the bars\n"
+         "  geom_errorbar(aes(ymin = lo, ymax = hi))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "print(ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar())",
+         [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) + geom_col(); q <- ggplot(r) + geom_errorbar()",
+         []),
+        ("bars.py", "p1 = ggplot(res, aes('ror', 'drug')) + geom_pointrange(aes(xmin='lo'))\n"
+         "p2 = ggplot(counts, aes('drug', 'n')) + geom_col()", []),
+        ("bars.py", "p = (ggplot(s, aes('arm', 'mean'))\n     + geom_col()\n"
+         "     + geom_errorbar(aes(ymin='lo', ymax='hi')))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.py", "plots = [ggplot(s) + geom_col(), ggplot(r) + geom_errorbar()]", []),
+    ],
+)
+def test_an_error_layer_counts_for_the_bars_of_its_own_plot(
+    tmp_path: Path, name: str, script: str, said: list
+) -> None:
+    """A layer of error bars is on a bar only where it is a layer of the same plot: one `+`
+    chain, the one ggplot() or plotnine expression the bar is a layer of."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / name
+    path.write_text(script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+def test_an_error_layer_added_to_the_plot_later_is_not_read(tmp_path: Path) -> None:
+    """Known gaps: a layer added to the plot in a statement of its own, `p <- p +
+    geom_errorbar()`, is another chain, so the bar it is drawn on is not said."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("p2 <- ggplot(s, aes(arm, mean)) + geom_col()\n"
+                    "p2 <- p2 + geom_errorbar(aes(ymin = lo, ymax = hi))\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _bars_said(check_figure_source(path, Classifier.load())) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ['stat_summary(geom="bar", fun_y=np.mean)', 'stat_summary(geom="col")',
+     'geom_bar(stat="summary", fun_y=np.mean)', 'geom_bar(stat="summary")'],
+)  # fmt: skip
+def test_a_plotnine_bar_of_means_is_said_to_be_the_mean(tmp_path: Path, call: str) -> None:
+    """Round 1 of #648: with mean_cl_boot the bar is the plain mean and only the interval is
+    bootstrapped, and a call that gives fun_y uses no fun_data at all."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.py"
+    path.write_text(f"p = ggplot(d, aes('arm', 'y')) + {call}\n", encoding="utf-8")
+    (said,) = [f.message for f in check_figure_source(path, Classifier.load()).findings
+               if f.code == _MEANS]  # fmt: skip
+    assert "a bar at the mean of each group" in said, said
+    assert "bootstrapped mean" not in said and "mean_cl_boot" not in said, said
 
 
 @pytest.mark.parametrize(

@@ -633,10 +633,14 @@ finds such bars in a published PDF; a figure's script says how they were drawn. 
 (`geom_errorbar` and its kin), and a layer of points (`geom_point`, `geom_jitter`,
 `geom_dotplot`, `geom_beeswarm`, `geom_quasirandom`, `geom_sina`, `sns.stripplot`,
 `sns.swarmplot`, `ax.scatter`). A bar of means, with no points anywhere in the script, is a
-warning (`figure-bars-of-means`). A bar of given values with error bars on it, by its own
-`yerr=` or `xerr=` or a layer of error bars in the script, and no points, is a note
-(`figure-bars-with-errors`): it may be a proportion and its interval, which is right
-(Basile, 2026-11-12). A bar of counts with no error bars says nothing. It is a module of its
+warning (`figure-bars-of-means`). Where the call computes no interval (seaborn's
+`errorbar=None`, or `ci=None`), nothing in the script shows that a group holds more than one
+row, and a table of one row a group draws the values it holds, so it is a note under the
+same code. A bar of given values with error bars on it, by its own `yerr=` or `xerr=` or a
+layer of error bars of the same plot, and no points, is a note (`figure-bars-with-errors`):
+it may be a proportion and its interval, which is right (Basile, 2026-11-12). The same plot
+is the one `+` chain, a ggplot() or plotnine expression, the bar is a layer of: an interval
+drawn on another plot in the script puts no error bar on the bar (round 1 of #648). A bar of counts with no error bars says nothing. It is a module of its
 own because it judges the script as a whole, where an estimate is a finding by itself, and a
 reason in the figure's guard file under `allow_bars` stands both down: one sentence, since
 the finding is about the figure and not one call.
@@ -17447,7 +17451,15 @@ Added by the adversarial review, verified and **not** fixed:
     `estimator=lambda v: v.mean()`, is not read as a mean, and a bar of medians or of
     another summary (`fun = median`) is not reported though it hides the spread as a mean
     does. Pinned by
-    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said`.
+    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said` and
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said`.
+  - A mean the means list in `data/figure_bars.yaml` does not name (`statistics.fmean`, for
+    one) is not read as a mean, so its bar is not reported. Accepted.
+  - A layer of error bars added to the plot in a statement of its own (`p2 <- p2 +
+    geom_errorbar()`) stands in another `+` chain, so the bar it is drawn on is not said.
+    Pinned by `tests/test_corruption.py::test_an_error_layer_added_to_the_plot_later_is_not_read`.
+  - The hint names R and Python layers together, whatever the script's language, and a
+    jitter it suggests, unseeded, draws a `figure-estimates` warning of its own. Accepted.
   - A layer of points anywhere in the script stands down every bar in it, even one on
     another panel or of other data, and a point at each mean (`geom_point(stat =
     "summary")`) does not. Pinned by

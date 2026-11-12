@@ -2875,7 +2875,10 @@ def _audit(args: argparse.Namespace, package) -> int:
     read = set(report.papers)
     step("words")
     report.gates = [
-        *(run_gates(path, english=english, residue=args.submission_residue, known=known)
+        # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
+        *(run_gates(path, english=english, residue=args.submission_residue, known=known,
+                    corrected=args.tracked is not None
+                    and Path(path).resolve() == args.paper[0].resolve())
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
                     known=known)

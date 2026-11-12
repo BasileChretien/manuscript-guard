@@ -306,6 +306,29 @@ def test_the_audit_writes_one_copy_with_corrections_tracked_and_findings_comment
     assert paper.read_bytes() == given
 
 
+@needs_pandoc
+def test_an_audit_without_a_tracked_copy_works_out_no_corrections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """G14's corrections are worked out only where the copy is asked for (Basile,
+    2026-11-12: "only when asked"): `audit` and `audit --commented` never read them."""
+    from manuscript_guard.gates import language
+
+    def asked(project):
+        raise AssertionError("the corrections were worked out")
+
+    monkeypatch.setattr(language, "language_edits", asked)
+    paper = docx(tmp_path / "paper.docx", para("The behaviour of the cohort was noted."))
+    assert main(["audit", str(paper), "--english", "american"]) == 0
+    assert main(["audit", str(paper), "--english", "american",
+                 "--commented", str(tmp_path / "commented.docx")]) == 0  # fmt: skip
+    assert "corrections" not in capsys.readouterr().err
+    # Asked for, they are read: the raise is recorded as a crash under DEBUG, and raised.
+    with pytest.raises(AssertionError, match="worked out"):
+        main(["audit", str(paper), "--english", "american",
+              "--tracked", str(tmp_path / "tracked.docx")])  # fmt: skip
+
+
 @pytest.mark.parametrize(("target", "paper", "extra", "said"), [
     ("there.docx", "paper.docx", [], "the file is there already"),
     ("tracked.md", "paper.docx", [], "writes a Word document (.docx)"),

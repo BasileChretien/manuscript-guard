@@ -108,7 +108,8 @@ class GateRun:
     #: For a converted .docx, where each line of the converted text stands in the document,
     #: "Methods, paragraph 3" (`auditing.paragraphs`).
     places: object = None
-    #: For a .docx, each correction G14 is sure of, for the copy in Track Changes.
+    #: For a .docx whose copy in Track Changes is asked for (`--tracked`), each correction
+    #: G14 is sure of; empty otherwise.
     corrections: list[Tracked] = field(default_factory=list)
 
 
@@ -237,8 +238,11 @@ def run_gates(
     english: str | None = None,
     residue: bool = False,
     known: tuple[str, ...] = (),
+    corrected: bool = False,
 ) -> GateRun:
-    """G6 and G14 on `paper`, its LaTeX tree given where it is one."""
+    """G6 and G14 on `paper`, its LaTeX tree given where it is one; and, `corrected`, G14's
+    corrections of a .docx for the copy `--tracked` writes, which are worked out only where
+    that copy is asked for (Basile, 2026-11-12: "only when asked")."""
     from manuscript_guard.gates.language import check_language
     from manuscript_guard.gates.writing import check_writing
 
@@ -266,8 +270,8 @@ def run_gates(
         # The short forms used and not defined in one finding (`auditing.undefined`), made
         # from G14's warnings in the order it gave them, its reading order, then sorted.
         said = one_finding([put_back(f) for f in language.findings])
-        # Only a .docx is copied with its corrections in Track Changes.
-        corrections = _corrections(project) if staged.converted else []
+        # Only a .docx is copied with its corrections in Track Changes, and only where asked.
+        corrections = _corrections(project) if corrected and staged.converted else []
         return GateRun(
             paper,
             writing=[put_back(f) for f in writing.sorted().findings],

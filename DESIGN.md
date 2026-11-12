@@ -10924,7 +10924,9 @@ with five broken rules; on the author's paper Word opens the copy with 49 commen
 FILE.docx` writes one copy of the .docx in which each correction G14 is sure of
 (`gates.language.language_edits` through `corrections.corrections`) is a Word tracked change
 by "manuscript-guard", and every other finding a comment as `--commented` writes it
-(`auditing.tracked_copy`, inside `auditing.commented.write`). The edits are of the Markdown
+(`auditing.tracked_copy`, inside `auditing.commented.write`). They are worked out only where
+the copy is asked for (`run_gates(corrected=True)`, Basile, 2026-11-12: "only when asked"), so
+an audit without `--tracked` reads G14 once, as before. The edits are of the Markdown
 pandoc converts the document to, so each is first given as the document prints it
 (`gates.as_tracked`): pandoc's escapes taken off, its two and three hyphens and three dots
 put back as the en dash, em dash and ellipsis it writes them for (its `smart` extension,

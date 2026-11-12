@@ -49,8 +49,9 @@ Only the characters that change are deleted and inserted, in the formatting of t
 around them. Every other finding is a comment, as `--commented` writes it, and so is a
 finding one of whose corrections could not be placed: one whose words the document holds
 in more than one place, or in a field, a link or a footnote, or over a word in italics or a
-quotation mark. The audit says how many corrections are tracked changes and how many
-findings are comments. Before it keeps the copy it reads it with every change accepted and
+quotation mark. The corrections are worked out only for this copy: an audit without
+`--tracked` does not read them. The audit says how many corrections are tracked changes and
+how many findings are comments. Before it keeps the copy it reads it with every change accepted and
 with every change rejected, and writes none where either is not the paper as it should
 be. FILE must not exist yet, and may not be the file `--commented` writes.
 

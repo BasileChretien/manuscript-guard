@@ -1585,6 +1585,49 @@ def _software() -> Reading:
     return software
 
 
+@reading("baseline tables")
+def _baseline_tables() -> Reading:
+    """What G8 says of the tables of a paper of the design given, by `study_type`: those it
+    emits, each with its key, caption and columns, and those its manuscript files type, by
+    their paths under `manuscript/` (`gates/baseline.py`). Each warning as its file from the
+    project's folder, its line, and its message."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.gates.baseline import judge_baseline
+
+    def baseline(given: dict[str, Any]) -> list[list[Any]]:
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            manuscript = folder / "manuscript"
+            for name, text in given["files"].items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8", newline="")
+            tables = {one["key"]: SimpleNamespace(
+                caption=one["caption"], columns=tuple(one["columns"]),
+                source=Path("results") / f"{one['key']}.json") for one in given["emitted"]}
+            report = judge_baseline(manuscript, given["study_type"], tables)
+            return [[_within(f.path, folder), f.line, f.code, f.severity, f.message]
+                    for f in report.findings]
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return baseline
+
+
+def _within(path: Path, folder: Path) -> str:
+    """A path from `folder`, whichever way the temporary folder's name was spelt, or as it is
+    where it is relative already."""
+    if not path.is_absolute():
+        return path.as_posix()
+    for base, under in ((folder, path), (folder.resolve(), path.resolve())):
+        try:
+            return under.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return path.as_posix()
+
+
 @reading("software in the methods")
 def _software_in_the_methods() -> Reading:
     """What G12 says of the Methods against the packages a plan's Software section names and

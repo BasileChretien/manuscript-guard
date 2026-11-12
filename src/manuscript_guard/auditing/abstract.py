@@ -2,10 +2,10 @@
 paper reports, and each interval and test the Abstract gives held to its counterpart there.
 
 An abstract summarises: every number in it should be reported in the paper too. Where the
-paper reports is every section but the Abstract, the Introduction, the Discussion and a
-conclusion (`placed`), the Methods and the Results as G8 reads them (`gates.reported.Walk`)
-among them; every table of every file; and the whole of a file with no Abstract, which is a
-supplement. A line
+paper reports is every section but the Abstract, the Introduction, the Discussion, a
+conclusion, a summary of the paper and the back matter, and no note (`placed`), the Methods
+and the Results as G8 reads them (`gates.reported.Walk`) among them; every table of every
+file; and the whole of a file with no Abstract, which is a supplement. A line
 is placed under the headings over it, a Markdown paper's (`split_sections`), a Word
 document's heading styles (`DocxText.headings`), a LaTeX document's printed view, its places
 read back to the `.tex` lines (`printed`, `place_line`, `place_lines`). Each file is placed
@@ -15,7 +15,7 @@ supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abst
 heading, or none a Results heading, nothing is compared, and the report says so.
 
 * **Not found.** A number of the Abstract the classifier leaves unexplained, not found in
-  the tables or any section but the Introduction, the Discussion and a conclusion, is said.
+  the tables or any section that reports (`placed`), is said.
   A rounding of one is a match, "53%" for "53.3%" (the author, 2026-10-28), and counted
   apart: the Abstract's number is one the
   reported number rounds to at its places. A part with letters in it and no number read in
@@ -52,6 +52,8 @@ from manuscript_guard.text.section_names import (
     names_conclusion,
     names_discussion,
     names_introduction,
+    names_introduction_material,
+    names_paper_summary,
     names_results,
 )
 from manuscript_guard.text.sections import Section
@@ -101,43 +103,72 @@ def in_abstract(place: object) -> bool:
     return isinstance(place, str) and names_abstract(place)
 
 
-def placed(sections: list[Section]) -> tuple[Callable[[int], object], bool, bool]:
-    """Where each line of one document stands, given its headings, and whether it has an
-    Abstract and a Results heading outside it. Each file is placed alone, unlike G8, which
-    carries the headings of a paper's files from one into the next: a file with no Abstract
-    is a supplement, reported whole, and so is a Discussion written in a file of its own
-    (round 2 of #472, DESIGN.md, "Known gaps").
+def placed(sections: list[Section], notes: frozenset[int] = frozenset()
+           ) -> tuple[Callable[[int], object], bool, bool]:  # fmt: skip
+    """Where each line of one document stands, given its headings and the lines of its
+    notes, and whether it has an Abstract and a Results heading outside it. Each file is
+    placed alone, unlike G8, which carries the headings of a paper's files from one into
+    the next: a file with no Abstract is a supplement, reported whole, and so is a
+    Discussion written in a file of its own (round 2 of #472, DESIGN.md, "Known gaps").
 
     A line is REPORTED, searched for the Abstract's numbers, as G8 reads the Methods and the
-    Results (`gates.reported.Walk`), and under any other section too but the Introduction,
-    the Discussion and a conclusion (`_argued_or_opening`): a paper that reports a number
-    under "Participants", "Study design" or an appendix had it said not found (Basile,
-    2026-11-11, after 52 real preprints). Not above the first heading, nor under the
-    paper's title written as a heading alone, which name no section."""
+    Results (`gates.reported.Walk`), and under any other section too that reports
+    (`_searched`): a paper that reports a number under "Participants", "Study design" or an
+    appendix had it said not found (Basile, 2026-11-11, after 52 real preprints)."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
     walk = Walk()
     place = walk.placing(sections)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     results = any(place(s.line) is REPORTED for s in sections if names_results(s.title))
-    return _searched(sections, place, walk.titles), abstract, results
+    return _searched(sections, place, walk, notes), abstract, results
 
 
-def _argued_or_opening(title: str) -> bool:
-    """Whether a heading names the Introduction, the Discussion or a conclusion, where an
-    Abstract's number is not looked for: "1. Background", "General discussion", "Discussion
-    and conclusions", "Summary". Not "Results and discussion", which reports."""
-    return (names_introduction(title) or names_conclusion(title)
+def _reports_nothing(section: Section, walk) -> bool:
+    """Whether a heading names a part of the paper whose numbers are not the paper's own
+    report, where an Abstract's number is not looked for: the Introduction, and the
+    sections that hold its material under another name, "Related work", "Literature
+    review" (`names_introduction_material`); the Discussion, not "Results and discussion",
+    which reports; a conclusion; a summary of the paper, "Author summary", "Highlights", an
+    Abstract in another language (`names_paper_summary`); and what G8 reads as reporting
+    nothing or as summarising (`Walk.elsewhere`, `Walk.summaries`): the abstract, a
+    "Limitations" or an "Interpretation" of its own, the statements and the reference list
+    (round 1 of #641: a number in a footnote under "References" or in a "Funding" was found,
+    and so was one an "Author summary" repeats)."""
+    title = section.title
+    return (id(section) in walk.elsewhere or id(section) in walk.summaries
+            or names_introduction(title) or names_introduction_material(title)
+            or names_conclusion(title) or names_paper_summary(title)
             or (names_discussion(title) and not names_results(title)))  # fmt: skip
 
 
-def _searched(sections: list[Section], place: Callable[[int], object],
-              titles: set[int]) -> Callable[[int], object]:  # fmt: skip
+def _over_the_paper(sections: list[Section]) -> set[int]:
+    """The headings that are the paper's title written as a heading over it: those over the
+    Abstract or the Introduction. Not one over the Methods alone, as G8 reads it too: the
+    text under "Study design" before its "Statistical methods" reports (round 1 of #641)."""
+    found = set()
+    for index, section in enumerate(sections):
+        for later in sections[index + 1 :]:
+            if later.level <= section.level:
+                break
+            if names_abstract(later.title) or names_introduction(later.title):
+                found.add(id(section))
+                break
+    return found
+
+
+def _searched(sections: list[Section], place: Callable[[int], object], walk,
+              notes: frozenset[int]) -> Callable[[int], object]:  # fmt: skip
     """`place`, with REPORTED for each line it places in neither the Abstract nor where the
     paper reports that stands under a heading naming a section, the paper's title apart
-    (`titles`), none of which names the Introduction, the Discussion or a conclusion."""
+    (`_over_the_paper`), none of which reports nothing (`_reports_nothing`). Never a note's
+    line, which a .docx's notes after its body and a Markdown footnote's are, whatever stands
+    over it: citations are written there. Nor a line of the title page, above the first
+    heading that names the Abstract."""
     from manuscript_guard.gates.reported import REPORTED
 
+    titles = _over_the_paper(sections)
+    opened = next((s.line for s in sections if names_abstract(s.title)), None)
     starts, searched = [0], [False]
     chain: list[Section] = []
     for section in sections:
@@ -146,11 +177,15 @@ def _searched(sections: list[Section], place: Callable[[int], object],
         chain.append(section)
         named = [one for one in chain if id(one) not in titles]
         starts.append(section.line)
-        searched.append(bool(named) and not any(_argued_or_opening(one.title) for one in named))
+        searched.append(bool(named) and not any(_reports_nothing(one, walk) for one in named))
 
     def where(line: int) -> object:
+        if line in notes:
+            return None
         found = place(line)
         if found is REPORTED or in_abstract(found):
+            return found
+        if opened is not None and line < opened:
             return found
         return REPORTED if searched[bisect_right(starts, line) - 1] else found
 
@@ -366,8 +401,8 @@ def _kept(hidden: str, keep: Callable[[int], bool]) -> str:
 
 def where(piece: Piece, line: int) -> str:
     """What a line of a file is: "reported" in a table, anywhere in a file whose document has
-    no Abstract, and under any section but the Introduction, the Discussion and a conclusion
-    (`placed`); "abstract" in the Abstract; else ""."""
+    no Abstract, and under any section that reports (`placed`); "abstract" in the Abstract;
+    else ""."""
     from manuscript_guard.gates.reported import REPORTED
 
     if line in piece.tables or not piece.abstract:

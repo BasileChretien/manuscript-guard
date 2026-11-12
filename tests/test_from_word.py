@@ -724,11 +724,29 @@ def test_a_structured_abstract_titled_in_bold_is_the_abstracts(tmp_path: Path) -
         "# Methods", "# Results"]  # fmt: skip
 
 
+#: A picture as pandoc writes one in a paragraph, its file `media/pic.png` (`_package`).
+PICTURE = (
+    '<w:r><w:drawing><wp:inline><wp:extent cx="12700" cy="12700"/><wp:docPr id="10" '
+    'name="Picture"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/'
+    'drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="11" name="Picture"/>'
+    '<pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rPic"/><a:stretch>'
+    '<a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/>'
+    '<a:ext cx="12700" cy="12700"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+    '</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
+)
+
+
 def _package(path: Path, body: str, styles: str) -> Path:
-    """A .docx of `body` and `styles` with the parts pandoc needs to find them."""
+    """A .docx of `body` and `styles` with the parts pandoc needs to find them, and the
+    picture `PICTURE` points to."""
     import zipfile
 
-    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    w = " ".join(f'xmlns:{prefix}="{space}"' for prefix, space in (
+        ("w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main"),
+        ("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
+        ("a", "http://schemas.openxmlformats.org/drawingml/2006/main"),
+        ("pic", "http://schemas.openxmlformats.org/drawingml/2006/picture"),
+        ("wp", "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing")))
     relations = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     package = "http://schemas.openxmlformats.org/package/2006/relationships"
     main = "application/vnd.openxmlformats-officedocument.wordprocessingml"
@@ -737,6 +755,7 @@ def _package(path: Path, body: str, styles: str) -> Path:
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
             'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+            '<Default Extension="png" ContentType="image/png"/>'
             f'<Override PartName="/word/document.xml" ContentType="{main}.document.main+xml"/>'
             f'<Override PartName="/word/styles.xml" ContentType="{main}.styles+xml"/></Types>'))
         archive.writestr("_rels/.rels", (
@@ -744,7 +763,9 @@ def _package(path: Path, body: str, styles: str) -> Path:
             f'Type="{relations}/officeDocument" Target="word/document.xml"/></Relationships>'))
         archive.writestr("word/_rels/document.xml.rels", (
             f'<Relationships xmlns="{package}"><Relationship Id="r1" '
-            f'Type="{relations}/styles" Target="styles.xml"/></Relationships>'))
+            f'Type="{relations}/styles" Target="styles.xml"/><Relationship Id="rPic" '
+            f'Type="{relations}/image" Target="media/pic.png"/></Relationships>'))
+        archive.writestr("word/media/pic.png", png())
         archive.writestr("word/document.xml",
                          f"<w:document {w}><w:body>{body}</w:body></w:document>")
         archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
@@ -756,8 +777,10 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
     """The audit reads a .docx itself, and `init --from` through pandoc: a title typed alone
     on its line is a heading to both, in bold by its run, by its character style or by none,
     in plain capitals, numbered as typed, in a bold paragraph style or with bold turned off;
-    and one half in bold with other words, in a table's cell, in a link or in a caption
-    beside a table, "Table Caption" as pandoc writes one or Word's "caption", to neither.
+    with its first line indented or hanging as far as it is indented; and one half in bold
+    with other words, in a table's cell, in a link, in a caption beside a table, "Table
+    Caption" as pandoc writes one or Word's "caption", indented from the left, which pandoc
+    reads as a block quote, or beside a picture, to neither.
     Read otherwise, the audit's sections and G14's would be different ones; this test found
     pandoc reads no style's base, and sets a caption beside a table as the table's by the
     style's name, not its id."""
@@ -778,13 +801,23 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
         "Word's caption after a table": (
             table + '<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>{}</w:t></w:r>'
             "</w:p>", False),
+        # pandoc 3.9.0.2 reads a paragraph indented from the left more than it hangs as a
+        # block quote, and one holding a picture as an image beside words.
+        "indented from the left": (plain.replace("<w:p>", '<w:p><w:pPr><w:ind w:left="720"/>'
+                                                 "</w:pPr>"), False),
+        "hanging as far as indented": (plain.replace(
+            "<w:p>", '<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>'), True),
+        "first line indented": (plain.replace(
+            "<w:p>", '<w:p><w:pPr><w:ind w:firstLine="720"/></w:pPr>'), True),
+        "with a picture": (plain.replace("<w:p>", "<w:p>" + PICTURE), False),
     }  # fmt: skip
     styles = BOLD_PARAGRAPH_STYLES + (
         '<w:style w:type="paragraph" w:styleId="TC"><w:name w:val="Table Caption"/></w:style>'
         '<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/></w:style>')
     names = ("Abstract", "Introduction", "Methods", "Results", "Discussion", "Conclusions",
              "Funding", "References", "Acknowledgements", "Limitations", "Abbreviations",
-             "Appendix", "Declarations")  # fmt: skip
+             "Appendix", "Declarations", "Ethics", "Tables", "Figures",
+             "Supplementary material")  # fmt: skip
     typed = [(shape, heading, name.upper() if kind == "plain capitals" else name)
              for (kind, (shape, heading)), name in zip(shapes.items(), names, strict=True)]
     body = "".join(f"{shape.format(name)}<w:p><w:r><w:t>Words {at}.</w:t></w:r></w:p>"

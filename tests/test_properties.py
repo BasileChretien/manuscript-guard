@@ -6020,15 +6020,64 @@ def _an_abstract_number_is_looked_for_in_the_methods_and_results_alone(
     """As before 2026-11-11: a section of another name was not searched."""
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "_searched", lambda sections, place, titles: place)
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: place)
 
 
 def _the_opening_and_the_conclusion_are_searched(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
     from manuscript_guard.text.section_names import names_discussion, names_results
 
-    patch.setattr(abstract, "_argued_or_opening",
-                  lambda title: names_discussion(title) and not names_results(title))
+    patch.setattr(abstract, "_reports_nothing", lambda section, walk: (
+        names_discussion(section.title) and not names_results(section.title)))  # fmt: skip
+
+
+def _the_back_matter_is_searched(patch: pytest.MonkeyPatch) -> None:
+    """As at ef730f07f (round 1 of #641): every section but the Introduction, the Discussion
+    and a conclusion was searched, the statements and a summary of the paper among them."""
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import (
+        names_conclusion,
+        names_discussion,
+        names_introduction,
+        names_results,
+    )
+
+    patch.setattr(abstract, "_reports_nothing", lambda section, walk: (
+        names_introduction(section.title) or names_conclusion(section.title)
+        or (names_discussion(section.title) and not names_results(section.title))))
+
+
+def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._searched
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
+        sections, place, walk, frozenset()))  # fmt: skip
+
+
+def _a_summary_of_the_paper_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "names_paper_summary", lambda title: False)
+
+
+def _introduction_material_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "names_introduction_material", lambda title: False)
+
+
+def _a_heading_over_the_methods_is_the_paper_s_title(patch: pytest.MonkeyPatch) -> None:
+    """As at ef730f07f (round 1 of #641): G8's titles, a heading over the Methods among them."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._searched
+
+    def searched(sections, place, walk, notes):
+        patch.setattr(abstract, "_over_the_paper", lambda found: set(walk.titles))
+        return real(sections, place, walk, notes)
+
+    patch.setattr(abstract, "_searched", searched)
 
 
 def _numbers_agree_only_as_printed(patch: pytest.MonkeyPatch) -> None:
@@ -22606,6 +22655,26 @@ BROKEN = {
     ),
     "an Abstract's number is looked for in the Methods and the Results alone": (
         _an_abstract_number_is_looked_for_in_the_methods_and_results_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the statements and a summary of the paper are searched for an Abstract's number": (
+        _the_back_matter_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a note is searched for an Abstract's number": (
+        _a_note_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a summary of the paper is searched for an Abstract's number": (
+        _a_summary_of_the_paper_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "related work is searched for an Abstract's number": (
+        _introduction_material_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a heading over the Methods is no section for an Abstract's number": (
+        _a_heading_over_the_methods_is_the_paper_s_title,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "the Introduction and a conclusion are searched for an Abstract's number": (

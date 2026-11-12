@@ -63,8 +63,8 @@ ABSTRACT = "Abstract against Results"
 #: found says and the heading over them: "found nowhere the paper reports" said more than
 #: was searched, as the main text's Introduction and Discussion are not. Every other section
 #: is searched (Basile, 2026-11-11), so a number under "Participants" is found.
-ABSTRACT_SEARCHED = ("the tables or any section but the Introduction, the Discussion and a "
-                     "conclusion")
+ABSTRACT_SEARCHED = ("the tables or any section but the Introduction, the Discussion, a "
+                     "conclusion, a summary and the back matter")
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -967,8 +967,8 @@ def _abstract(read, show) -> list[str]:
         return [f"  Not compared: {read.why_not}."]
     lines = [f"{read.numbers} number(s) in the Abstract, conventions and references set "
              f"aside, looked for where the paper reports its results (every section but the "
-             f"Introduction, the Discussion and a conclusion, its tables, a file with no "
-             f"Abstract): {read.matched} found, "
+             f"Introduction, the Discussion, a conclusion, a summary and the back matter, its "
+             f"tables, a file with no Abstract): {read.matched} found, "
              f"{len(read.rounded)} found only as a rounding, {len(read.not_found)} not found."]
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "

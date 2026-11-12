@@ -1950,11 +1950,11 @@ def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys)
     report = json.loads(capsys.readouterr().out)
     (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
     assert found["message"] == ("41.7 in the Abstract is not found in the tables or any "
-                                "section but the Introduction, the Discussion and a "
-                                "conclusion")  # fmt: skip
+                                "section but the Introduction, the Discussion, a "
+                                "conclusion, a summary and the back matter")  # fmt: skip
     main(["audit", str(paper)])
-    assert ("NOT FOUND IN THE TABLES OR ANY SECTION BUT THE INTRODUCTION, THE DISCUSSION AND A "
-            "CONCLUSION") in capsys.readouterr().out
+    assert ("NOT FOUND IN THE TABLES OR ANY SECTION BUT THE INTRODUCTION, THE DISCUSSION, A "
+            "CONCLUSION, A SUMMARY AND THE BACK MATTER") in capsys.readouterr().out
 
 
 def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argument(
@@ -1981,6 +1981,50 @@ def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argu
     assert read is not None and read.compared
     assert sorted(c.text for c in read.found) == ["41.7", "52.3", "63.9", "74.1"]
     assert sorted(c.text for c in read.not_found) == ["17.4", "28.8", "85.6", "96.2"]
+
+
+@pytest.mark.parametrize(("kind", "paper"), [
+    ("a summary of the paper", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n"
+     "## Author summary\n\nIt was 18.7% here.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("an Abstract in another language", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n"
+     "## Resumen\n\nFue 18.7% aquí.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("the title page under a title beside the Abstract", "# A study of 18.7% of things\n\n"
+     "Anne Example, 18.7 Main Street.\n\n# Abstract\n\nIt was 18.7% here.\n\n# Results\n\n"
+     "It was 17.8%.\n"),
+    ("related work", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## Related work\n\n"
+     "Smith found 18.7%.\n\n## Results\n\nIt was 17.8%.\n"),
+    ("a statement", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n## Results\n\nIt was "
+     "17.8%.\n\n## Funding\n\nGrant 18.7% of it.\n"),
+    ("a footnote under a statement", "# A study\n\n## Abstract\n\nIt was 18.7% here.\n\n"
+     "## Results\n\nIt was 17.8%.[^1]\n\n## Acknowledgements\n\nWe thank them.\n\n"
+     "[^1]: Smith J. A title of 18.7% of it. Lancet 2019;12:45-67.\n\n## References\n\n"
+     "Doe J. BMJ. 2020;1:2.\n"),
+])
+def test_an_abstract_number_is_not_found_where_the_paper_does_not_report(
+    tmp_path: Path, kind: str, paper: str
+) -> None:
+    """Round 1 of #641: searched wider, the Abstract against Results took a number repeated
+    in a summary of the paper, an Abstract in another language, the title page, a section
+    of the Introduction's material, a statement or a note for one the paper reports, and a
+    stale 18.7% in the Abstract beside the Results' 17.8% was said found."""
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    read = audit([path], []).abstract
+    assert read is not None and read.compared
+    assert [c.text for c in read.not_found] == ["18.7%"], kind
+
+
+def test_text_over_a_methods_subsection_is_searched(tmp_path: Path) -> None:
+    """Round 1 of #641: a "Study design" with its own words and then a "Statistical
+    methods" under it was taken for the paper's title written over it, as G8 takes a heading
+    over the Methods, and its words were not searched."""
+    path = tmp_path / "paper.md"
+    path.write_text("# A study\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n## Study design\n\n"
+                    "We enrolled 1,284 adults.\n\n### Statistical methods\n\nWe fitted a model.\n\n"
+                    "## Results\n\nIt was so.\n", encoding="utf-8")  # fmt: skip
+    read = audit([path], []).abstract
+    assert read is not None and read.compared
+    assert read.not_found == [] and [c.text for c in read.found] == ["1,284"]
 
 
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not

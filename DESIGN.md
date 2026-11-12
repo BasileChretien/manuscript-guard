@@ -10010,10 +10010,19 @@ Results text can share a line with the `\section` after it, round 1 of #472). Ea
 is placed by its own headings: round 1 carried a split paper's headings from one file into
 the next, as G8 does, and took a file for a supplement by its name, which guessed, so round
 2 put it back (see Known gaps). Where the paper reports is
-every section but the Abstract, the Introduction, the Discussion and a conclusion, the
-Methods and the Results as G8 reads them among them (Basile, 2026-11-11: a "Participants"
-or an appendix was not searched, and its numbers were said not found), every table of every
-file, and the whole of a file whose document has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
+every section but the Abstract, the Introduction and the sections that hold its material under
+another name ("Related work", "Literature review", "Theoretical framework",
+"Hypotheses"), the Discussion, a conclusion, a summary of the paper ("Author summary",
+"Highlights", an Abstract in another language), the statements, the reference list and
+a "Limitations" or an "Interpretation" of its own, the Methods and the Results as G8 reads them among
+them (Basile, 2026-11-11: a "Participants" or an appendix was not searched, and its numbers
+were said not found; round 1 of #641 left out the summaries, the material of the
+Introduction, the back matter and the notes, which a wider search took for reports), every
+table of every file, and the whole of a file whose document has no Abstract, a supplement.
+A note is never searched, nor the title page above the Abstract's heading. The names of the
+Introduction's material and of a summary are closed lists
+(`text.section_names.INTRODUCTION_MATERIAL`, `PAPER_SUMMARIES`), read by the audit's
+Abstract against Results alone: G7 and G8 do not read "Related work" as the Introduction. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
 printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
 a space was left out of is read, as no other number with letters in it is: one typed
@@ -23986,7 +23995,10 @@ Open, recorded as each change landed:
     is none, as pandoc reads the link or the note in it, nor is one in a text box to the
     audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
     to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
-    test, so there the two readers may differ). Accepted.
+    test, so there the two readers may differ). A paragraph indented from the left by its
+    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
+    and so is one that holds a picture; an indent its style gives it is not read by the
+    audit, and what pandoc makes of it is not held by a test. Accepted.
   - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
     Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a
     table as the table's caption. One that stands beside no table or picture is a paragraph
@@ -24378,13 +24390,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A table's lines are where the paper reports wherever the table stands, a table in the
     Abstract included. A Word document's footnotes are placed under the body's last heading.
   - Every section is where the paper reports but the Abstract, the Introduction, the
-    Discussion and a conclusion, each with what stands under it (Basile, 2026-11-11, after
-    52 real preprints whose numbers under "Participants" or an appendix were said not
-    found). So a box that summarises, "Key points", "Highlights", "Research in context",
-    the statements and the back matter, a "Limitations" of its own, and a heading over the
-    title page that is not the paper's title over its Abstract, are searched, and an
-    Abstract's number they repeat is found there; the reference list is cut before any
-    section is read. What stands above the first heading is not searched. Accepted.
+    Discussion, a conclusion, a summary of the paper and the back matter, each with what
+    stands under it (Basile, 2026-11-11, after 52 real preprints whose numbers under
+    "Participants" or an appendix were said not found; round 1 of #641). A summary and the
+    Introduction's material under another name are known by closed lists of whole titles
+    (`text.section_names.PAPER_SUMMARIES`, `INTRODUCTION_MATERIAL`): a "Summary box", a
+    "Previous studies" or a "What this paper adds" is searched, and an Abstract's number it
+    repeats is found there. Accepted.
+  - A note is not searched where the audit knows it for one: a footnote's definition in
+    Markdown, and a .docx's footnotes and endnotes, read after its body. A LaTeX paper's
+    `\footnote` is printed in its sentence and searched with it, under the Results or the
+    Methods. Pinned by `tests/test_corruption.py::test_an_abstract_number_only_a_footnote_gives_is_not_found`.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of
@@ -25750,8 +25766,10 @@ Closed since, and why each mattered (an open gap goes above this line):
   prints counts the headings it made, where it said "headings: 0" after making 14
   (PsyArXiv fyxeq_v2). And an Abstract's number was looked for in the Methods, the Results
   and the tables alone, so one under "Participants", "Study design" or an appendix was not
-  found; every section is searched now but the Introduction, the Discussion and a
-  conclusion, and the finding says so. See "A Word paper's typed titles are headings only by
+  found; every section is searched now but the Introduction and its material, the
+  Discussion, a conclusion, a summary of the paper and the back matter, and no note (round 1
+  of #641: searched wider at first, a footnote's citation and an "Author summary" counted as
+  reports), and the finding says so. See "A Word paper's typed titles are headings only by
   a closed list of names" and "The Abstract is held to the Results by weak membership".
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading

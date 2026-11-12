@@ -690,6 +690,21 @@ def strip_bibliography(
     return _blank(text, bibliography_spans(text, headings, cells))
 
 
+def footnote_lines(text: str) -> frozenset[int]:
+    """The 1-based lines of a Markdown text's footnote definitions, "[^1]: ...", each with
+    the blank and indented lines that go on with it, as `_blank` keeps them."""
+    found: set[int] = set()
+    in_note = False
+    for number, line in enumerate(text.split("\n"), 1):
+        if _FOOTNOTE.match(line):
+            in_note = True
+        elif not (in_note and (not line.strip() or line.startswith(("    ", "\t")))):
+            in_note = False
+        if in_note:
+            found.add(number)
+    return frozenset(found)
+
+
 def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     """`text` with the lines in `spans` emptied, except the footnote definitions among them."""
     lines = text.split("\n")
@@ -982,6 +997,7 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         lines = frozenset(cell.line for table in tables for row in table for cell in row)
         lists = markdown_lists(text, hidden)
         boxed = 0
+        notes = footnote_lines(text)
     else:
         body = document.body.split("\n")
         # A document with no heading style is placed by its typed titles, where they name
@@ -991,7 +1007,10 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         lines = frozenset(at + 1 for at in document.cells)
         lists = docx_lists(body, dict(document.levels), {at + 1: level for at, level in levels})
         boxed = boxed_counts(document.boxed)
-    place, abstract, results = placed(sections) if sections else (None, False, False)
+        # The notes, read after the body, under its last heading (`read_paper`).
+        last = document.body.count("\n") + 1
+        notes = frozenset(range(last + 1, text.count("\n") + 2)) if document.notes else frozenset()
+    place, abstract, results = placed(sections, notes) if sections else (None, False, False)
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(

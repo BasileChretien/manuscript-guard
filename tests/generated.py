@@ -45,7 +45,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
@@ -8105,8 +8105,31 @@ ABSTRACT_KINDS = (
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
     "estimate closed up", "identifier", "identifier by its number", "under a method",
-    "other section", "introduction", "conclusion",
+    "other section", "introduction", "conclusion", "references", "note", "statement",
+    "summary", "related work", "over the methods",
 )  # fmt: skip
+#: Where each of the kinds a number of the Abstract is not found in stands, and what it
+#: starts at: in the reference list, in a footnote's definition under the Results, in a
+#: statement of the back matter, in a summary of the paper beside its Abstract, in a section
+#: that holds the Introduction's material, all not found; and directly under a heading over
+#: a Methods subsection, which is found (round 1 of #641).
+ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summary": 2400,
+                      "related work": 2500, "over the methods": 2600}  # fmt: skip
+#: Titles of a summary of the paper, of a section of the Introduction's material, and of a
+#: statement, as `abstract_papers` draws them.
+PAPER_SUMMARY_TITLES = ("Author summary", "Significance", "Highlights",
+                        "Plain language summary", "Resumen")  # fmt: skip
+INTRODUCTION_MATERIAL_TITLES = ("Related work", "Literature review", "Theoretical framework",
+                                "Hypotheses")  # fmt: skip
+STATEMENT_TITLES = ("Funding", "Acknowledgements", "Data availability")
+
+
+class Apart(NamedTuple):
+    """A part of a paper of `abstract_papers` written one way in Markdown and another in
+    LaTeX: a footnote."""
+
+    markdown: str
+    latex: str
 #: Titles of a section that names no part the Abstract against Results knows, under which a
 #: real paper reports: an Abstract's number there is found.
 OTHER_SECTIONS = ("Participants", "Study design", "Data analysis and results", "Appendix",
@@ -8156,6 +8179,7 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     supplement: list[str] = []
     introduction: list[str] = []
     elsewhere: list[str] = []
+    after: dict[str, list] = {kind: [] for kind in ABSTRACT_ELSEWHERE}
     conclusions: list[str] = []
     looked: list[tuple[str, str, str]] = []
     for kind in draw(st.permutations(ABSTRACT_KINDS)):
@@ -8243,6 +8267,21 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
              "conclusion": conclusions}[kind].append(f"It was {shown} then.")
             looked.append((kind, shown, "exact" if kind == "other section" else "not found"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ABSTRACT_ELSEWHERE:
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + ABSTRACT_ELSEWHERE[kind])
+            if kind == "note":
+                # Under the Results in Markdown, where only its being a note keeps it unread;
+                # in LaTeX a note is printed in its sentence, here the Discussion's.
+                results.append(Apart(f"It was so.[^n1]\n\n[^n1]: It was {shown} then.", ""))
+                discussion.append(Apart("", f"It was so.{BACKSLASH}footnote{{It was {shown} "
+                                            "then.}"))  # fmt: skip
+            elif kind == "references":
+                after[kind].append(f"Doe J. A title. BMJ. 2020;1:{shown}.")
+            else:
+                after[kind].append(f"It was {shown} then.")
+            looked.append((kind, shown, "exact" if kind == "over the methods" else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8295,12 +8334,19 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 expected["looked"].append([line, shown, state])
     # The subsection closes the Results, so that what they report stands over it.
     results.append(subsection)
-    parts = (("Introduction", introduction), ("Methods", methods),
-             (draw(st.sampled_from(OTHER_SECTIONS)), elsewhere),
+    parts = ((draw(st.sampled_from(PAPER_SUMMARY_TITLES)), after["summary"]),
+             ("Introduction", introduction),
+             (draw(st.sampled_from(INTRODUCTION_MATERIAL_TITLES)), after["related work"]),
+             ("Design and setting", [*after["over the methods"],
+                                     ("Statistical methods", "It was so.")]),
+             ("Methods", methods), (draw(st.sampled_from(OTHER_SECTIONS)), elsewhere),
              ("Results and discussion", results), ("Discussion", discussion),
-             ("Conclusions", conclusions))  # fmt: skip
+             ("Conclusions", conclusions),
+             (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
+             ("References", after["references"]))  # fmt: skip
     for heading, part in parts:
-        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+        part = [said.markdown if isinstance(said, Apart) else
+                f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
                 for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
@@ -8331,9 +8377,16 @@ def _abstract_latex(abstract: list, looked: list,
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
     for heading, part in parts:
+        if heading == "References":
+            lines += ["", BACKSLASH + "begin{thebibliography}{9}",
+                      *(f"{BACKSLASH}bibitem{{r{at}}} {said}" for at, said in enumerate(part)),
+                      BACKSLASH + "end{thebibliography}"]  # fmt: skip
+            continue
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if isinstance(said, tuple):
+            if isinstance(said, Apart):
+                lines += [said.latex, ""]
+            elif isinstance(said, tuple):
                 lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
             elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()

@@ -21,8 +21,8 @@ from manuscript_guard.comparing.versions import Unreadable, markdown_version, re
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 #: What a number of the Abstract not found says of it: where it was looked for.
-NOT_FOUND = ("not found in the tables or any section but the Introduction, the Discussion and a "
-             "conclusion")
+NOT_FOUND = ("not found in the tables or any section but the Introduction, the Discussion, a "
+             "conclusion, a summary and the back matter")
 
 
 def tex(text: str) -> str:

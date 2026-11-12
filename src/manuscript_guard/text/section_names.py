@@ -144,6 +144,41 @@ def names_introduction(title: str) -> bool:
     return bool(INTRODUCTION_TITLE.match(plain(title)))
 
 
+#: Sections that hold the Introduction's material under a name of their own, whole titles in
+#: small letters: what other papers found, which the audit's Abstract against Results does
+#: not search, as it does not search the Introduction (round 1 of #641). A closed list.
+INTRODUCTION_MATERIAL = frozenset({
+    "related work", "literature review", "theoretical framework", "hypotheses",
+})  # fmt: skip
+#: Summaries of the paper beside its Abstract, whole titles in small letters, which restate
+#: its numbers: PLOS's "Author summary", PNAS's "Significance", a plain-language or lay
+#: summary, a graphical abstract's text, a box of highlights or key points, The Lancet's
+#: "Research in context", and the Abstract in the languages `REFERENCE_TITLES_ELSEWHERE`
+#: names (round 1 of #641). A closed list.
+PAPER_SUMMARIES = frozenset({
+    "author summary", "significance", "significance statement", "plain language summary",
+    "plain-language summary", "lay summary", "graphical abstract", "highlights",
+    "key points", "key messages", "research in context",
+    "resumen", "resumo", "résumé", "zusammenfassung", "riassunto", "özet", "abstrak",
+})  # fmt: skip
+
+
+def _whole(title: str) -> str:
+    return " ".join(plain(title).rstrip(" .:").casefold().split())
+
+
+def names_introduction_material(title: str) -> bool:
+    """Whether a heading's whole title, numbered, marked or not, is one of
+    `INTRODUCTION_MATERIAL`: "Related work", "2. Literature review"."""
+    return _whole(title) in INTRODUCTION_MATERIAL
+
+
+def names_paper_summary(title: str) -> bool:
+    """Whether a heading's whole title, numbered, marked or not, is one of `PAPER_SUMMARIES`:
+    "Author summary", "Highlights", "Resumen"."""
+    return _whole(title) in PAPER_SUMMARIES
+
+
 def names_statement(title: str) -> bool:
     """Whether a heading's whole title names one or several of the statements a journal asks
     for, or a list of the back matter: "Funding", "Acknowledgements", "Author contributions",
@@ -372,6 +407,8 @@ __all__ = [
     "names_conclusion",
     "names_discussion",
     "names_introduction",
+    "names_introduction_material",
+    "names_paper_summary",
     "names_methods",
     "names_results",
     "names_statement",

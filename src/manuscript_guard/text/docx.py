@@ -128,11 +128,13 @@ class DocxText:
     #: typed is now, in bold or not (`typed`, Basile, 2026-11-11).
     bold: frozenset[int] = frozenset()
     #: Each 0-based line of `body` whose paragraph is outside a table and a text box, in no
-    #: heading style, not in Word's caption style, not numbered by Word, and holds words and
-    #: no link or note's mark, bold or not: a line a section's title can be typed as in a
-    #: document with no heading style (`typed_heading_levels`), as `init --from` reads a
-    #: top-level paragraph of words (`from_word.typed_headings`). pandoc sets a caption beside
-    #: a table as the table's, and a list's item and a cell are no paragraph of the text.
+    #: heading style, not in Word's caption style, not numbered by Word, not indented as
+    #: pandoc quotes a paragraph (`_quoted`), and holds words and no link, picture or note's
+    #: mark, bold or not: a line a section's title can be typed as in a document with no
+    #: heading style (`typed_heading_levels`), as `init --from` reads a top-level paragraph of
+    #: words (`from_word.typed_headings`). pandoc sets a caption beside a table as the
+    #: table's, an indented paragraph in a block quote and a picture's paragraph as an image
+    #: beside words, and a list's item and a cell are no paragraph of the text.
     typed: frozenset[int] = frozenset()
 
     @property
@@ -282,6 +284,32 @@ def _paragraph_style(paragraph: ET.Element) -> str | None:
     """The id of the style a paragraph is in, or None for the default."""
     style = paragraph.find(f"{W}pPr/{W}pStyle")
     return style.get(W + "val", "") if style is not None else None
+
+
+def _twips(value: str | None) -> int:
+    try:
+        return int(value) if value is not None else 0
+    except ValueError:
+        return 0
+
+
+def _quoted(paragraph: ET.Element) -> bool:
+    """Whether pandoc reads a paragraph as a block quote: indented from the left, by its own
+    `w:ind`, more than it hangs (3.9.0.2: `w:left` or `w:start` 720 is a quote, and so is 720
+    hanging 360; 720 hanging 720, a first line indented and a negative indent are not)."""
+    indent = paragraph.find(f"{W}pPr/{W}ind")
+    if indent is None:
+        return False
+    left = indent.get(W + "left", indent.get(W + "start"))
+    return _twips(left) - _twips(indent.get(W + "hanging")) > 0
+
+
+#: What holds a picture in a paragraph, whose words pandoc reads beside an image: no title's.
+_PICTURES = (W + "drawing", W + "pict", W + "object")
+
+
+def _pictured(paragraph: ET.Element) -> bool:
+    return any(node.tag in _PICTURES for node in paragraph.iter())
 
 
 def _on(toggle: ET.Element) -> bool:
@@ -559,10 +587,13 @@ def _part_text(
     # (`_line_start`); and all in bold.
     styled = {id(line): _paragraph_style(owner) for owner, line in lines.items()
               if owner not in joins}  # fmt: skip
+    quoted = {id(line) for owner, line in lines.items() if owner not in joins and _quoted(owner)}
+    pictured = {id(line) for owner, line in lines.items() if _pictured(owner)}
     for owner, line in lines.items():
         if line[0] != "\n" or _inside(owner, parents, W + "txbxContent"):
             continue
-        typed = worded.get(id(line)) and styled.get(id(line)) not in captions
+        typed = (worded.get(id(line)) and styled.get(id(line)) not in captions
+                 and id(line) not in quoted | pictured)  # fmt: skip
         line[0] = ("\n" + (_TYPED_MARK if typed else "")
                    + (_BOLD_MARK if weights.get(id(line)) else ""))  # fmt: skip
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)

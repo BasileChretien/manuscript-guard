@@ -270,13 +270,19 @@ give two counts or more are noted. The shape is all that is read, so a nested li
 subgroups in that shape is read as a flow too.
 
 **Abstract against Results.** Each number of the Abstract that the conventions do not
-explain is looked for where the paper reports: every section but the Abstract, the
-Introduction, the Discussion and a conclusion, so the Methods and the Results and also a
-"Participants", a "Study design" or an appendix; every table of every file; and the whole
-of a file with no Abstract, a supplement. A line stands under the headings over it:
-Markdown's, a .docx's heading styles or its typed titles, a LaTeX document's as it prints
-them. A heading over the whole paper, its title, names no section, and nor does the text
-above the first heading. A number reported to more places counts as matched as a
+explain is looked for where the paper reports: every section but the Abstract, the Introduction and the sections that hold its material under
+another name ("Related work", "Literature review", "Theoretical framework",
+"Hypotheses"), the Discussion, a conclusion, a summary of the paper ("Author summary",
+"Highlights", an Abstract in another language), the statements, the reference list and
+a "Limitations" or an "Interpretation" of its own,
+so the Methods and the Results and also a "Participants", a "Study design" or an appendix;
+every table of every file; and the whole of a file with no Abstract, a supplement. A
+footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
+page, above the Abstract's heading, nor the text above the first heading. A line stands
+under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a
+LaTeX document's as it prints them. A heading over the Abstract or the Introduction, the
+paper's title, names no section; one over a Methods subsection does, and the words under
+it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
@@ -345,7 +351,8 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
   "Declarations", is made a heading, and the title page before the first is set aside as
   above; the audit reads the .docx's sections the same way, and says so in the report. A
   sentence that opens with "Results", a list's item, a table's cell and a caption beside a
-  table are not titles. The names are a closed list, the one a PDF's lines are read by: a
+  table, an indented paragraph and one beside a picture are not titles. The names are a
+  closed list, the one a PDF's lines are read by: a
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a
   reading that rests on no list. With neither, nothing is set aside, and the report says
   the paper was read as one text. What `init` prints counts the headings it made.

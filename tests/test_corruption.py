@@ -2430,6 +2430,38 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
     assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
 
 
+def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
+    """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
+    and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as
+    found in a footnote's citation, "Lancet 2019;12:45-67". A note is never where the paper
+    reports."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+    def para(text: str, style: str = "") -> str:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{styled}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    body = (para("Abstract", "Heading1") + para("We followed 45 patients.")
+            + para("Methods", "Heading1") + para("We read the records.")
+            + para("Results", "Heading1")
+            + '<w:p><w:r><w:t>We followed 54 patients.</w:t></w:r><w:r>'
+              '<w:footnoteReference w:id="1"/></w:r></w:p>'
+            + para("References", "Heading1") + para("Doe J. A title. BMJ. 2020;1:2."))
+    notes = (f"<w:footnotes {namespace}><w:footnote w:id=\"1\"><w:p><w:r><w:t>Smith J. "
+             "Lancet 2019;12:45-67.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    path = tmp_path / "paper.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                              "</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/footnotes.xml", notes)
+    read = audit([path], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["45"]
+
+
 def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
     tmp_path: Path,
 ) -> None:

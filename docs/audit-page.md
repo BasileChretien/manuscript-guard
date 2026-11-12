@@ -43,7 +43,8 @@ which shows a PDF in a page of its own, gets "Open the report" instead. For a .d
 "Download your paper with the findings as Word comments" saves a copy of it with each finding
 as a comment at its place, written from the same audit, as `audit --commented` writes it; it
 is made in the browser like the rest. The text the command line prints is still made, and CI
-holds it to the command line's word for word, but the page does not show it.
+holds it to the command line's word for word; the page shows it only where the PDF could not be
+made, as the report, with "Download the report as text".
 "English of the paper" is `--english`, and "Words to leave alone", split at spaces and
 commas, is `--known`: names, initials and the field's terms G14 then neither asks to be
 defined, reports the spelling of, nor reads as names from code.
@@ -64,8 +65,8 @@ Three ways, from the simplest:
    its [Content-Security-Policy](https://developer.mozilla.org/docs/Web/HTTP/Guides/CSP), which
    the browser enforces. It lets the page send requests only to the address it was loaded
    from and to the five registries the lookups ask (Crossref, OpenAlex, DataCite, doi.org,
-   PubMed), to show no frame but the PDF it made itself (a `blob:` address of the browser's
-   own), to start no worker from a file, and to send no form. The page's *Test the rules*
+   PubMed), to show no frame but a `blob:` address of the browser's own, which the page uses
+   only for the PDF it made itself, to start no worker from a file, and to send no form. The page's *Test the rules*
    button tries eight requests the rules forbid, from the page and from the checker, a frame
    from another site among them, and shows each one refused.
 3. **Compare the files.** The page lists every file it loads with its SHA-256 in

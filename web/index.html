@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- What this page may do, enforced by the browser. It may load code and data only from
      where it is served ('self'), and send a request only there and to the five registries
-     named, which it does only when the reader ticks the box. The one frame it may show is a
-     blob: address, the PDF of the report it made itself; it may not start a worker from a
-     file, send a form, or load a frame, an image or a style from elsewhere. Checked by
+     named, which it does only when the reader ticks the box. It may show no frame but a
+     blob: address, which it uses only for the PDF of the report it made itself; it may not
+     start a worker from a file, send a form, or load a frame, an image or a style from
+     elsewhere. Checked by
      web/test/ in Chrome and Firefox; docs/audit-page.md says what it cannot stop. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Check your paper · manuscript-guard</title>
@@ -140,6 +141,12 @@
     </div>
     <p id="pdfnote" class="pdfnote" hidden>This browser shows a PDF in a page of its own.
       <button id="openpdf" type="button" hidden>Open the report</button></p>
+    <!-- Where the PDF could not be made: the report as the command line prints it, which is
+         then the only report there is (round 1 of #644). -->
+    <div id="astext" class="astext" hidden>
+      <button id="save" type="button" class="quiet">Download the report as text</button>
+      <pre id="report"></pre>
+    </div>
   </section>
 
   <section class="faq" aria-labelledby="faqhead">

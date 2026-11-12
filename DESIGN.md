@@ -10094,8 +10094,9 @@ it lists the steps and the time left: the audit says each step as it starts
 (`auditing.progress`: read, numbers, words, each lookup counted, report), the worker passes
 each to the page and adds the PDF and the copy, and the page times the steps done against how
 long each usually takes. The report is the PDF, shown in the page by the browser's own viewer
-from a `blob:` address, the one frame the policy allows (`frame-src blob:`); the text report
-is no longer shown, though CI still holds it to the command line's. Only a phone, whose
+from a `blob:` address, the one kind of frame the policy allows (`frame-src blob:`); the text
+report is shown only where the PDF could not be made, as the report there is then, and CI
+still holds it to the command line's. Only a phone, whose
 browser shows a PDF in a page of its own, opens it there. Where to find every place of every
 finding is the PDF now, so the report names no box for it (`summary.DETAILS`).
 
@@ -25794,6 +25795,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+- **The audit page's report is an untagged PDF** (round 1 of #644). The page shows the report
+  as the PDF `audit --pdf` writes, and the writer marks no structure in it (no tags, no
+  `MarkInfo`): a screen reader reads its text in the browser's viewer, in the order it is
+  drawn, with no headings or lists to move by. The page itself is plain HTML, its steps and
+  messages spoken, and the time left is not, as a count read aloud each second would drown
+  the rest. The text report, which a screen reader reads well, is shown only where the PDF
+  could not be made. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

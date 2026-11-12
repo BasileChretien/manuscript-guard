@@ -180,12 +180,20 @@ try {
         && (browserName !== "chrome" || held === "application/pdf"))) {
       fail(`${one.name}: the PDF made is not shown in the page (${after.shown ? `${after.address}, ${held}` : "no frame"})`);
     }
+    // The frame was not refused by the page's policy, which a browser reports as it refuses
+    // (round 1 of #644): in Firefox, whose viewer puppeteer cannot reach, this is what holds.
+    const framesRefused = await page.evaluate(
+      () => window.mgRefused.filter((each) => each.rule === "frame-src"));
+    if (framesRefused.length) {
+      fail(`${one.name}: the policy refused the PDF's frame: ${JSON.stringify(framesRefused)}`);
+    }
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
   }
 
   // A run the page refuses, two outputs of one name, after a report is on screen: it leaves
-  // no report for "Save the report" to save as this one's (round 2 of #527).
+  // no report or PDF on screen as this one's (round 2 of #527), and no step shown as under way
+  // (round 1 of #644).
   const one = cases.find((each) => (each.against || []).length);
   if (status.startsWith("Ready") && one) {
     const twice = [one.against[0], one.against[0]];
@@ -193,7 +201,9 @@ try {
     const left = await page.evaluate(() => ({
       hidden: document.getElementById("result").hidden,
       report: document.getElementById("pdfview").getAttribute("src") || "",
+      spinning: Boolean(document.querySelector("#steps li.now")),
     }));
+    if (left.spinning) fail("a refused run left a step shown as under way");
     if (!/two of the files chosen are named/.test(refused.error || "")) {
       fail(`two outputs named ${twice[0]}: not refused (${refused.error || "it ran"})`);
     }
@@ -203,6 +213,24 @@ try {
   } else if (status.startsWith("Ready")) {
     // Not passed over without a word (round 1 of #535).
     fail("no case has an output: the refused run was not tried");
+  }
+
+  // A run whose PDF could not be made shows the report as the command line prints it, the
+  // only report there then is, and says so (round 1 of #644).
+  if (status.startsWith("Ready")) {
+    const fallback = await page.evaluate(() => {
+      window.mgShowReport({ out: "The report as text.\n", err: "", ms: 1000, view: null,
+        pdf: { error: "it could not be written" }, commented: null }, "paper.md");
+      return { shown: !document.getElementById("astext").hidden,
+        text: document.getElementById("report").textContent,
+        said: document.getElementById("done").textContent,
+        frame: !document.getElementById("pdfbox").hidden };
+    });
+    if (!fallback.shown || fallback.text !== "The report as text.\n" || fallback.frame
+        || !/report is below as text/.test(fallback.said)) {
+      fail(`a run with no PDF shows no report: ${JSON.stringify(fallback)}`);
+    }
+    console.log(`no PDF: ${fallback.shown ? "the report shown as text" : "NO REPORT"}`);
   }
 
   await page.click("#probe");

@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const say = (text) => { $("status").textContent = text; };
 // What the browser refused under the page's policy, as it reported it.
 const pageRefused = [];
+window.mgRefused = pageRefused;  // what web/test/browser.mjs reads
 document.addEventListener("securitypolicyviolation", (event) =>
   pageRefused.push({ rule: event.effectiveDirective, url: event.blockedURI }));
 
@@ -244,7 +245,7 @@ function runStarted(name, { lookup, docx }) {
   $("runtext").textContent = `Checking ${name}…`;
   $("eta").textContent = "working out the time left";
   // The steps, where the reader can see them: below the button, under the fold on a laptop.
-  $("running").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  $("running").scrollIntoView({ block: "nearest", behavior: scrolling() });
   running.timer = setInterval(showTimeLeft, 1000);
 }
 
@@ -297,14 +298,21 @@ function showTimeLeft() {
       : `about ${Math.round(left / 60)} min left`;
 }
 
-function runEnded(said) {
+// The check ended: its steps go, and so does the ring of the one under way. Where it failed,
+// the steps' box stays, and its text is set once it is shown, for a screen reader to say it
+// (round 1 of #644).
+function runEnded(said, { failed = false } = {}) {
   clearInterval(running.timer);
   running.now = null;
+  for (const item of $("steps").children) item.classList.remove("now");
   $("runbar").hidden = true;
-  $("running").hidden = true;
-  $("runtext").textContent = said;
   $("eta").textContent = "";
+  $("running").hidden = !failed;
+  $("runtext").textContent = said;
 }
+
+// A smooth scroll, unless the reader asked for less motion.
+const scrolling = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
 
 // Whether the browser shows a PDF inside a page: a desktop browser with its viewer on does;
 // a phone opens it in a page of its own, or saves it.
@@ -349,14 +357,22 @@ function showReport(result, paper) {
   } else if (result.pdf && result.pdf.error) {
     note(`No PDF of the report was made: ${result.pdf.error}`);
   }
+  // With no PDF there would be no report at all: the text the command line prints is shown
+  // in its place, and can be saved (round 1 of #644).
+  const shown = Boolean(pdf);
+  $("astext").hidden = shown;
+  $("report").textContent = shown ? "" : result.out || "";
   $("done").textContent = `${paper} checked in ${(result.ms / 1000).toFixed(1)} s. `
-    + outcome(result.view);
+    + outcome(result.view, shown);
 }
+window.mgShowReport = showReport;  // what web/test/browser.mjs shows a run with no PDF by
 
 // How the checks came out, in a sentence, from where each stands (`summary.standings`, the
 // colours of the PDF's summary): the PDF below says the rest.
-function outcome(view) {
-  if (!view || !view.standing) return "The report is below.";
+function outcome(view, inPdf = true) {
+  const where = inPdf ? "Every finding and its place is in the report below."
+    : "The PDF of the report could not be made here, so the report is below as text.";
+  if (!view || !view.standing) return where;
   const states = Object.values(view.standing);
   const count = (state) => states.filter((each) => each === state).length;
   const checks = (n) => `${n} check${n === 1 ? "" : "s"}`;
@@ -364,14 +380,17 @@ function outcome(view) {
   if (count("look")) said.push(`${checks(count("look"))} found something for you to look at`);
   if (count("counted")) said.push(`${checks(count("counted"))} found something counted as an error`);
   if (count("not run")) said.push(`${checks(count("not run"))} could not run`);
-  return `${said.join(", ")}. Every finding and its place is in the report below.`;
+  return `${said.join(", ")}. ${where}`;
 }
 
 // The last report goes before a check starts, so that a check refused or failed leaves none on
 // screen as this one's (round 2 of #527).
 function clearReport() {
   $("result").hidden = true;
-  for (const id of ["savecommented", "savepdf", "openpdf", "pdfbox", "pdfnote"]) $(id).hidden = true;
+  for (const id of ["savecommented", "savepdf", "openpdf", "pdfbox", "pdfnote", "astext"]) {
+    $(id).hidden = true;
+  }
+  $("report").textContent = "";
   commented = null;
   pdf = null;
   $("pdfview").removeAttribute("src");
@@ -402,15 +421,14 @@ async function check(paper) {
       `This check of ${paper.name} sent requests to:`, result.sent);
     runEnded(`Checked ${paper.name} in ${(result.ms / 1000).toFixed(1)} s: your report is below.`);
     // The report, where the reader's eyes and a keyboard's focus go next.
-    $("reporthead").scrollIntoView({ block: "start", behavior: "smooth" });
+    $("reporthead").scrollIntoView({ block: "start", behavior: scrolling() });
     $("reporthead").focus({ preventScroll: true });
     window.mgLast = result;
   } catch (error) {
     // What the checker said, which says why, and where to read more; no guess at the cause,
     // which may be any file chosen (round 1 of #633).
     runEnded(`The check could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
-      + "line says more: uvx manuscript-guard audit paper.docx");
-    $("running").hidden = false;
+      + "line says more: uvx manuscript-guard audit paper.docx", { failed: true });
     window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;
@@ -427,14 +445,25 @@ $("form").addEventListener("submit", async (event) => {
 // A short paper written for this page, with a few things to find in it, checked as a reader's
 // paper is, so that a first visit sees what a report looks like.
 $("example").addEventListener("click", async () => {
-  const answer = await fetch("example-paper.md");
-  const file = new File([await answer.blob()], "example-paper.md", { type: "text/markdown" });
+  // Not fetched at the start: a reader who turned the network off, as the page invites,
+  // is told why nothing happens (round 1 of #644).
+  let file;
+  try {
+    const answer = await fetch("example-paper.md");
+    if (!answer.ok) throw new Error(`the page answered ${answer.status}`);
+    file = new File([await answer.blob()], "example-paper.md", { type: "text/markdown" });
+  } catch (error) {
+    $("running").hidden = false;
+    $("runtext").textContent = `The example paper could not be loaded (${error.message}): `
+      + "it comes from this page's address, so it needs the network.";
+    return;
+  }
   await check(file);
 });
 
 $("again").addEventListener("click", () => {
   clearReport();
-  $("form").scrollIntoView({ block: "start", behavior: "smooth" });
+  $("form").scrollIntoView({ block: "start", behavior: scrolling() });
   $("paper").focus();
 });
 
@@ -447,6 +476,14 @@ $("savepdf").addEventListener("click", () => {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
   link.download = pdf.name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+$("save").addEventListener("click", () => {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([$("report").textContent], { type: "text/plain" }));
+  link.download = "audit-report.txt";
   link.click();
   URL.revokeObjectURL(link.href);
 });

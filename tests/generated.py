@@ -13308,6 +13308,8 @@ _GAP = {"t": "Space"}
 #: in italics only; one typed plain, in capitals, numbered in capitals (the real-paper
 #: corpus, 2026-11-11); and none of a bold title that names no section, a name in bold
 #: opening a sentence, a plain one opening a sentence, one in a list's item, one in a link.
+#: Each title names its section once, so that they can be placed: a name twice falls back to
+#: the titles in bold (`tests/test_from_word.py::test_a_name_typed_twice_keeps_the_bold_titles`).
 TYPED_BLOCKS = {
     "in bold": ({"t": "Para", "c": [_strong(_str("Methods"))]}, "Methods"),
     "underlined inside": ({"t": "Para", "c": [_strong({"t": "Underline", "c": [
@@ -13328,9 +13330,9 @@ TYPED_BLOCKS = {
     "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]},
                    "Conclusions"),
     "plain": ({"t": "Para", "c": [_str("Introduction")]}, "Introduction"),
-    "in capitals": ({"t": "Para", "c": [_str("ABSTRACT")]}, "ABSTRACT"),
-    "numbered in capitals": ({"t": "Para", "c": [_str("3."), _GAP, _str("RESULTS")]},
-                             "3. RESULTS"),
+    "in capitals": ({"t": "Para", "c": [_str("LIMITATIONS")]}, "LIMITATIONS"),
+    "numbered in capitals": ({"t": "Para", "c": [_str("4."), _GAP, _str("ACKNOWLEDGEMENTS")]},
+                             "4. ACKNOWLEDGEMENTS"),
     "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
                                                       _str("clear.")]}, None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(

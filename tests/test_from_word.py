@@ -914,6 +914,25 @@ def test_a_word_paper_with_typed_titles_has_them_made_headings(tmp_path: Path) -
         "ABSTRACT", "1. INTRODUCTION", "3. RESULTS"]
 
 
+@pytest.mark.parametrize("again", [
+    [{"t": "Str", "c": "ABSTRACT"}],
+    [{"t": "Str", "c": "3."}, {"t": "Space"}, {"t": "Str", "c": "RESULTS"}],
+    [{"t": "Emph", "c": [{"t": "Str", "c": "Methods"}]}],
+], ids=["capitals", "numbered", "italics"])
+def test_a_name_typed_twice_keeps_the_bold_titles(again: list) -> None:
+    """A section's name typed twice, in bold and in another shape, keeps the titles from
+    being placed, and those in bold alone are made headings, as the audit places them."""
+    from generated import TYPED_BLOCKS
+
+    opening = {"t": "Para", "c": [{"t": "Strong", "c": [{"t": "Str", "c": "Introduction"}]}]}
+    titles = [TYPED_BLOCKS[kind][0] for kind in ("in a span", "in bold", "underlined around")]
+    words = {"t": "Para", "c": [{"t": "Str", "c": "Words."}]}
+    blocks = [json.loads(json.dumps(one)) for block in [titles[0], opening, *titles[1:],
+              {"t": "Para", "c": again}] for one in (block, words)]  # fmt: skip
+    assert from_word.typed_headings(blocks)[1] == ("Abstract", "Introduction", "Methods",
+                                                   "Results")  # fmt: skip
+
+
 @needs_pandoc
 def test_titles_in_bold_are_text_where_a_heading_style_is_used(tmp_path: Path) -> None:
     """A document that uses Word's heading styles is read by them alone: a bold line in it is

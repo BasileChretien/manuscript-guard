@@ -11759,7 +11759,7 @@ REFERENCE_FAMILIES = (
      "odegard"),
     ("Smith-Jones", "smithjones"), ("van der Berg", "vanderberg"), ("O'Neil", "oneil"),
     ("Garc\N{LATIN SMALL LETTER I WITH ACUTE}a", "garcia"), ("Notreal", "notreal"),
-    ("Lindqvist", "lindqvist"), ("Moe", "moe"),
+    ("Lindqvist", "lindqvist"), ("Moe", "moe"), ("Quist", "quist"), ("Ruiz", "ruiz"),
 )  # fmt: skip
 #: Co-authors, whose names may be any work's.
 REFERENCE_OTHERS = ("Other", "Second", "Dupont")
@@ -11767,9 +11767,10 @@ REFERENCE_OTHERS = ("Other", "Second", "Dupont")
 #: entries (one first author, one year, no letter), names none, names the first of a work's
 #: two or three authors alone, names in the sentence one co-author more than a work has (round
 #: 1 of #638: "Brown and Lee (2018)" was made "Brown and @lee2018"), a group whose every part
-#: names one entry, and a group one of whose parts names none.
+#: names one entry, a group one of whose parts names none, and two narratives side by side,
+#: "Smith (2019) and Lee (2018)" (round 2 of #638: the "and" was read as a name more).
 CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
-               "a name more", "group", "group with none")  # fmt: skip
+               "a name more", "group", "group with none", "two narratives")  # fmt: skip
 _REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
 
 
@@ -11794,7 +11795,7 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
     in each form APA has; under a prefix or none. Every kind in every example, so that a
     rule broken for one fails under any seed."""
     firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
-    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=10, max_size=10, unique=True)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=12, max_size=12, unique=True)))
     entries: list[str] = []
 
     def work(count: int, year: int, family: tuple[str, str] | None = None,
@@ -11845,6 +11846,13 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
         elif kind == "first author alone":
             names, key = work(draw(st.integers(2, 3)), next(years))
             sentences.append((f"({names[0]}, {key[-4:]})", None))
+        elif kind == "two narratives":
+            said = []
+            for _ in range(2):
+                names, key = work(1, next(years))
+                said.append((f"{names[0]} ({key[-4:]})", f"@{key}"))
+            join = draw(st.sampled_from((" and ", ", ", " & ")))
+            sentences.append((join.join(t for t, _m in said), join.join(m for _t, m in said)))
         elif kind == "a name more":
             names, key = work(draw(st.integers(1, 2)), next(years))
             more = draw(st.sampled_from(REFERENCE_OTHERS))

@@ -1456,8 +1456,11 @@ def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
 @pytest.mark.parametrize(
     "after",
     ["[^mgnote]: We excluded 4321 patients.", "Abstract\n\nWe excluded 4321 patients.",
-     "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients."],
-    ids=["note", "abstract", "appendix in bold", "numbered conclusion"],
+     "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients.",
+     # Round 2 of #638: pandoc's escaped number, and a caption numbered with a letter.
+     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients."],
+    ids=["note", "abstract", "appendix in bold", "numbered conclusion", "escaped number",
+         "lettered caption"],
 )
 def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
     project: Path, title: str, after: str

@@ -208,6 +208,37 @@ def test_a_note_after_the_list_is_no_entry_of_it() -> None:
     assert typed_references.read(text).unread == ()
 
 
+@pytest.mark.parametrize(
+    "after", ["3\\. Conclusion", "Table A1. Counts of 2019.", "Figure A1. Rates of 2019."]
+)
+def test_an_escaped_title_or_a_lettered_caption_ends_the_list(after: str) -> None:
+    """Round 2 of #638: pandoc writes a numbered title paragraph as "3\\. Conclusion", and an
+    appendix numbers its tables and figures with a letter; the list ran on over both."""
+    from manuscript_guard.text.reference_lists import reference_lists
+
+    text = f"# Introduction\n\nText.\n\n# References\n\n{LIST[2]}\n\n{after}\n\nMore of 2019.\n"
+    assert [text[start:end] for start, end in reference_lists(text)] == [
+        f"# References\n\n{LIST[2]}\n\n"
+    ]
+    assert typed_references.read(text).unread == ()
+
+
+def test_a_narrative_citation_after_another_is_read_on_its_own() -> None:
+    """Round 2 of #638: the "and" joining two narrative citations was taken for a name more
+    before the second's."""
+    written = make_citations("As Smith et al. (2019) and Lee (2018) said. Lee (2018), "
+                             "Smith et al. (2019) too.", _keyed(*LIST), [], [])  # fmt: skip
+    assert written.text == "As @smith2019 and @lee2018 said. @lee2018, @smith2019 too.", written
+
+
+def test_a_name_more_on_the_line_before_is_read() -> None:
+    """Round 2 of #638: "As Brown and" over "Lee (2018)" in one paragraph was made "Brown and
+    @lee2018", the words before the line break unread."""
+    text = "As Brown and\nLee (2018) said."
+    written = make_citations(text, _keyed(*LIST), [], [])
+    assert written.text == text and written.left, written
+
+
 def test_a_year_in_brackets_that_is_no_citation_is_not_listed() -> None:
     text = "Data from (March 2020) and (n = 2018) and (in 2019) and Table 2 (2020)."
     assert make_citations(text, _keyed(*LIST), [], []) == (

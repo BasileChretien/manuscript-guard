@@ -43,6 +43,8 @@ _OPENS = re.compile(rf"(?P<head>.+?),? (?P<year>{YEAR})(?![\w])")
 _ALONE = re.compile(YEAR)
 #: A year in the sentence's brackets with a page or a second year after it: "2020, p. 4".
 _YEAR_FIRST = re.compile(rf"{YEAR}[,;] .+")
+#: The end of a citation's year in brackets, as a word before a joining "and" or comma ends.
+_CITED_BEFORE = re.compile(rf"{YEAR}\)[,;]?$")
 #: The words before a name in brackets that are the citation's prefix: "see", "e.g.,".
 _PREFIX = re.compile(r"[a-z][a-z.]*,?(?: [a-z][a-z.]*,?)*")
 #: The ways APA joins the last of three names or more to the others.
@@ -98,9 +100,9 @@ def make_citations(text: str, keyed: Iterable[tuple[str, Entry]], unread: Iterab
         line = text.count("\n", 0, found.start()) + 1
         inside = found.group("inside")
         if _ALONE.fullmatch(inside.strip()):
-            made = _narrative(text, found, by_year, unknown, at)
+            made = _narrative(text, found, by_year, unknown)
         elif _YEAR_FIRST.fullmatch(inside.strip()):
-            made = _narrative(text, found, by_year, unknown, at, more=True)
+            made = _narrative(text, found, by_year, unknown, more=True)
         else:
             made = _bracketed(inside, by_year, unknown)
         if made is None:
@@ -190,11 +192,17 @@ def _names_alone(before: str) -> bool:
     """Whether the words before a citation's names in the sentence leave them all its names:
     they end with no "and", "&" or comma, nor with a word in capitals that does not open the
     sentence. "Brown and Lee (2018)", "Brown, Lee (2018)" and "Professor Lee (2018)" are not
-    the work of Lee alone (round 1 of #638: the first was made "Brown and @lee2018")."""
+    the work of Lee alone (round 1 of #638: the first was made "Brown and @lee2018"). An "and"
+    or a comma after another citation's year, "Smith (2019) and Lee (2018)", joins two
+    citations, and leaves each its names (round 2)."""
     words = before.split()
     if not words:
         return True
     last = words[-1]
+    if _CITED_BEFORE.search(last) or (
+        last in ("and", "&") and len(words) > 1 and _CITED_BEFORE.search(words[-2])
+    ):
+        return True
     if last in ("and", "&") or last.endswith((",", ";")):
         return False
     opens = len(words) == 1 or words[-2].endswith((".", "!", "?", ":"))
@@ -222,12 +230,14 @@ def _bracketed(inside: str, by_year, unknown) -> tuple[None, str, int] | str | N
     return None, f"[{'; '.join(cited)}]", len(cited)
 
 
-def _narrative(text: str, found: re.Match, by_year, unknown, at: int, *, more: bool = False):
+def _narrative(text: str, found: re.Match, by_year, unknown, *, more: bool = False):
     """"Smith et al. (2019)" made `@smith2019`: `(start, written, 1)`, why it is not, or None
     where the words before the bracket are no names. With `more`, the brackets hold a page
-    or a second year after the year, and the citation is listed."""
-    line_start = text.rfind("\n", 0, found.start()) + 1
-    before = text[max(line_start, at) : found.start()]
+    or a second year after the year, and the citation is listed. The words before it are
+    read back to the paragraph's start, across a line's break inside it (round 2 of #638:
+    "As Brown and" over "Lee (2018)" was made "Brown and @lee2018")."""
+    paragraph = text.rfind("\n\n", 0, found.start())
+    before = text[paragraph + 2 if paragraph >= 0 else 0 : found.start()]
     if not before[-1:].isspace():
         return None
     stem = before.rstrip()

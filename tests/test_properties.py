@@ -10060,6 +10060,10 @@ def _the_names_need_not_be_all_the_citation_s(patch: pytest.MonkeyPatch) -> None
     patch.setattr(made_citations, "_names_alone", lambda before: True)
 
 
+def _a_citation_s_bracket_is_no_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_CITED_BEFORE", re.compile(r"(?!)"))
+
+
 def _the_first_author_names_a_work(patch: pytest.MonkeyPatch) -> None:
     named = made_citations.renderings
     patch.setattr(made_citations, "renderings",
@@ -20436,6 +20440,10 @@ BROKEN = {
     ),
     "a narrative citation naming a co-author more than its work has is made its key": (
         _the_names_need_not_be_all_the_citation_s,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming no co-author more after another is left typed": (
+        _a_citation_s_bracket_is_no_name,
         test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
     ),
     "a typed citation naming a work's first author alone is made its key": (

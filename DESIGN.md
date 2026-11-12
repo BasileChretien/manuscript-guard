@@ -24037,8 +24037,9 @@ Open, recorded as each change landed:
   Accepted.
 - **G2 reads no number in a typed reference list up to where the list is taken to end.** A
   list under a heading or a title in bold that names one ends at the next heading, at a
-  caption, a table or a title of back matter, at a footnote's definition and at a
-  section's name alone by the closed list (`text.reference_lists.reference_lists`); a
+  caption, a table or a title of back matter, at a footnote's definition, at a caption
+  numbered with a letter ("Table A1.") and at a section's name alone by the closed list,
+  its number escaped or not ("3\. Conclusion") (`text.reference_lists.reference_lists`); a
   paragraph of the paper's own after the list with none of these before it, a "Footnotes"
   title not on that list among them, is read as an entry, and its numbers are let through.
   Pinned by `tests/test_corruption.py::test_a_paragraph_after_a_typed_list_with_nothing_to_end_it_is_read_as_an_entry`.

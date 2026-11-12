@@ -357,8 +357,10 @@ _BOMS = (
 )
 
 
-def read_text(path: Path) -> str:
-    """A paper's or an output's text, in the encoding its byte-order mark names, else UTF-8.
+def read_text(path: Path, encoding: str | None = None) -> str:
+    """A paper's or an output's text, in the encoding its byte-order mark names, else in
+    `encoding` where it is given, a LaTeX folder's declared one (`text.latex.encodings`), else
+    UTF-8.
 
     Windows writes these marks: PowerShell 5.1's `Out-File -Encoding utf8` a UTF-8 one, and
     its `>` and default `Out-File` UTF-16. Read as UTF-8, a UTF-8 mark stopped a .json
@@ -371,8 +373,8 @@ def read_text(path: Path) -> str:
     data = path.read_bytes()
     if is_compound_file(data):
         raise UnreadableText(compound_file_said(path.name))
-    encoding = next((name for bom, name in _BOMS if data.startswith(bom)), None)
-    if encoding is None and b"\x00" in data:
+    marked = next((name for bom, name in _BOMS if data.startswith(bom)), None)
+    if marked is None and b"\x00" in data:
         raise UnreadableText(
             f"{path.name}: NUL bytes and no byte-order mark, so not read; if it is UTF-16, "
             f"save it as UTF-8"
@@ -380,7 +382,7 @@ def read_text(path: Path) -> str:
     # Decoding bytes skips the newline translation `read_text` did, and a setext underline
     # followed by "\r" is not an underline: a CRLF paper lost the heading that ends its
     # reference list.
-    text = data.decode(encoding or "utf-8", errors="replace")
+    text = data.decode(marked or encoding or "utf-8", errors="replace")
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -916,6 +918,14 @@ def _pdf_structure(report: AuditReport, pdf) -> dict:
     from manuscript_guard.text.sections import Section
 
     heading_lines = frozenset(line for line, _title in pdf.headings)
+    if not pdf.headings:
+        # Said as a .docx with no heading is (`_headings_said`): with none read, it places
+        # none, and is read as one text (Basile, 2026-11-11, after 2509.01351's small
+        # capitals were said nothing of).
+        report.headings.append(
+            f"{pdf.path.name}: no line of it holds a section's name alone, the only lines a "
+            f"PDF's headings are read from, {_ONE_TEXT}; audit its source, the .docx, .tex "
+            "or Markdown file, to have its sections read")
     levels = pdf.placed
     if levels is None:
         report.not_audited.append(f"{pdf.path.name}: its lines were placed in no section: "

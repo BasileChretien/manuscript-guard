@@ -18,7 +18,7 @@ import yaml
 
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
-from manuscript_guard.gates.language import _definitions, _hidden, _long_form
+from manuscript_guard.gates.language import _definitions, _file, _hidden, _latex_read, _long_form
 from manuscript_guard.policy import DRAFTING, STAGES
 
 
@@ -257,7 +257,7 @@ def test_a_short_form_after_a_spaced_dash_is_defined(project: Path, dash: str) -
     report = written(
         project,
         f"# Methods\n\nFarmers received the Basic Income Support for Sustainability{dash}"
-        "BISS from the state. The BISS was paid.\n",
+        "BISS, from the state. The BISS was paid.\n",
     )
     assert not report.findings, found(report)
 
@@ -289,6 +289,135 @@ def test_a_short_form_after_a_dash_and_a_comma_before_words_is_defined(project: 
         "farmers. The BPS was paid.\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "ending",
+    [". It pays farmers.", "; it pays farmers.", ") to pay farmers.", "] to pay farmers.",
+     ", which pays farmers.", ",\nwhich pays farmers.", "**. It pays farmers.",
+     "\N{RIGHT DOUBLE QUOTATION MARK}, which pays farmers.", "\n\nIt pays farmers.", "",
+     # Round 1 of #643: a citation passed over, a colon and a word, a closing spaced dash,
+     # and a hard line break, a backslash or two spaces.
+     " [@smith2020]. It pays farmers.", " [@smith2020; @jones2021]. It pays farmers.",
+     " [12]. It pays farmers.", " [1, 3\N{EN DASH}5]; it pays farmers.", "^3^. It pays farmers.",
+     ": farmers received it.", " \N{EN DASH} which pays farmers \N{EN DASH} began.",
+     "\\\nIt pays farmers.", "  \nIt pays farmers."],
+)  # fmt: skip
+def test_a_dash_defines_where_its_short_form_ends_the_clause(project: Path, ending: str) -> None:
+    """The author's decision of 2026-11-12: a dash defines where the short form is followed
+    by a stop, a semicolon, a closing bracket, a comma or a colon and a word, a closing dash,
+    a hard line break, or the end of its paragraph, a closing quote or emphasis mark and a
+    citation between them allowed."""
+    opening = {")": "(", "]": "[", "*": "**", "\N{RIGHT DOUBLE QUOTATION MARK}":
+               "\N{LEFT DOUBLE QUOTATION MARK}"}.get(ending[:1], "")  # fmt: skip
+    report = written(
+        project,
+        f"# Methods\n\nFarmers joined {opening}the Basic Payment Scheme \N{EN DASH} BPS"
+        f"{ending}\n\n# Results\n\nThe BPS was paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("value", "reported"),
+    # The final check of #623 (an agricultural-policy preprint of the real-paper corpus
+    # led there): an interval in square brackets before the value, "≈", "of", and the
+    # value on the next line of the paragraph; a decimal point, a colon and a number, and a
+    # bracket of numbers before a number.
+    [(" [95% CI 1.1\N{EN DASH}2.0] 1.52", set()), (" \N{ALMOST EQUAL TO} 1.52", set()),
+     (" of 1.52", set()), ("\n1.52", set()), (" .52", set()), (": 1.52", set()),
+     (" [2] 1.52", set()),
+     # A limit written down in DESIGN.md's Known gaps (round 1 of #643): a comma and a
+     # letter, and a semicolon, end the clause, so these are read as a second definition.
+     (", p < 0.001", {"abbreviation-redefined", "abbreviation-unused"}),
+     ("; 95% CI 1.1\N{EN DASH}2.0", {"abbreviation-redefined", "abbreviation-unused"})],
+)  # fmt: skip
+def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
+    project: Path, value: str, reported: set[str]
+) -> None:
+    configured(project, language={"known_abbreviations": ["CI"]})
+    report = written(
+        project,
+        "# Results\n\nThe odds ratio (OR) was computed. The risk was higher in older people "
+        "\N{EN DASH} OR" + value + " in all.\n",
+    )
+    assert codes(report) == reported, found(report)
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    ["the Basic Payment Scheme \N{EN DASH} BPS was introduced in 2015.",
+     "the Basic Payment Scheme \N{EN DASH} BPS\nwas introduced in 2015.",
+     "the Basic Payment Scheme \N{EN DASH} BPS \nwas introduced in 2015.",
+     # A citation with words in it, a locator or a prefix, is words of the sentence.
+     "the Basic Payment Scheme \N{EN DASH} BPS [@ec2013, p. 3].",
+     "the Basic Payment Scheme \N{EN DASH} BPS [see @ec2013]."],
+)  # fmt: skip
+def test_a_dash_definition_that_does_not_end_its_clause_defines_nothing(written_as: str) -> None:
+    """A limit written down in DESIGN.md's Known gaps: a short form after a dash with more
+    after it than the end of its clause is not read as defined there."""
+    read = _file(0, Path("main.md"), f"# Methods\n\n{written_as}\n", [], False)
+    assert "BPS" not in [short for _at, short, _long in read.definitions]
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    ["the Basic Payment Scheme \N{EN DASH} BPS",
+     "| Scheme | n |\n|---|---|\n| the Basic Payment Scheme \N{EN DASH} BPS | 3 |",
+     "- the Basic Payment Scheme \N{EN DASH} BPS\n- the Common Agricultural Policy",
+     "1. the Basic Payment Scheme \N{EN DASH} BPS\n2. the Common Agricultural Policy",
+     "> - the Basic Payment Scheme \N{EN DASH} BPS\n> - the Common Agricultural Policy",
+     "- the Basic Payment Scheme \N{EN DASH} BPS [@ec2013]\n- the Common Agricultural Policy"],
+)  # fmt: skip
+def test_a_dash_defines_at_the_end_of_the_text_a_cell_or_a_list_item(written_as: str) -> None:
+    """Round 1 of #643: the end of the text, a table cell's bar and the end of a list item's
+    line each end the clause, as the end of a paragraph does."""
+    read = _file(0, Path("main.md"), written_as, [], False)
+    assert "BPS" in [short for _at, short, _long in read.definitions]
+
+
+@pytest.mark.parametrize("heading", ["# Methods", "# Abbreviations"])
+def test_a_list_written_long_form_first_defines_each_entry(project: Path, heading: str) -> None:
+    """Round 1 of #643: in a tight list every item but the last is followed by the next
+    item's line, and none of them defined, outside a glossary's heading or under one."""
+    report = written(
+        project,
+        f"{heading}\n\n- Basic Payment Scheme \N{EN DASH} BPS\n- Common Agricultural Policy "
+        "\N{EN DASH} CAP\n- Single Area Payment Scheme \N{EN DASH} SAPS\n\n# Results\n\n"
+        "The BPS, the CAP and the SAPS were paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #643: LaTeX's `~\\cite{}` is blanked, `\\item` opens a list item's line and
+    `\\\\` is left as two spaces before the line's end. A citation with a locator leaves its
+    words, a limit written down in DESIGN.md's Known gaps."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n"
+        "the Basic Payment Scheme -- BPS~\\cite{ec2013}. It pays.\n\n"
+        "\\begin{itemize}\n\\item the Common Agricultural Policy -- CAP\n"
+        "\\item the Single Area Payment Scheme -- SAPS\n\\end{itemize}\n\n"
+        "the Young Farmer Scheme -- YFS\\\\\nIt pays.\n\n"
+        "the Less Favoured Area -- LFA~\\citep[p.~3]{ec2013}. It pays.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    defined = {short for read in _latex_read(tmp_path, None)
+               for _at, short, _long in read.definitions}  # fmt: skip
+    assert {"BPS", "CAP", "SAPS", "YFS"} <= defined, defined
+    assert "LFA" not in defined
+
+
+def test_a_dash_short_form_with_words_after_it_is_reported_undefined(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe Basic Payment Scheme \N{EN DASH} BPS was introduced. The BPS "
+        "was paid.\n",
+    )
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
 
 
 @pytest.mark.parametrize(

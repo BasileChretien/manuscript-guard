@@ -769,6 +769,27 @@ def _typed_citations() -> Reading:
     return typed
 
 
+@reading("typed references")
+def _typed_references() -> Reading:
+    from manuscript_guard.typed_references import read
+
+    def typed(text: str) -> dict[str, Any]:
+        """What `init --from` makes of a paper's typed reference list and citations: the
+        text with each citation that names one entry made its key, each entry read with its
+        key and line, each not read with why, and each citation left as typed with why."""
+        made = read(text)
+        return {
+            "text": made.text,
+            "entries": [[key, entry.line] for key, entry in made.entries],
+            "unread": [[entry.line, entry.why] for entry in made.unread],
+            "converted": made.converted,
+            "left": [[one.line, one.shown, one.why] for one in made.left],
+            "said": made.said,
+        }
+
+    return typed
+
+
 @reading("pointers")
 def _pointers() -> Reading:
     from manuscript_guard.contracts import load_project
@@ -1927,6 +1948,27 @@ def _abbreviations() -> Reading:
 
     _file("")
     return abbreviations
+
+
+@reading("audit abbreviations")
+def _audit_abbreviations() -> Reading:
+    """G14's findings on a paper as the audit gives them: the short forms used and not
+    defined in one finding, with each form's warning and the forms the list of journals'
+    style guides passes over (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import one_finding
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    def audited(text: str) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        found = _judge([_file(text)], _Known(exact, lowered), Path("."))
+        return [{"code": f.code, "line": f.line, "message": f.message, "hint": f.hint,
+                 "forms": [[form, warning.line, warning.message]
+                           for form, warning in getattr(f, "forms", ())],
+                 "passed_over": list(getattr(f, "passed_over", ()))}
+                for f in one_finding(list(found.findings))]  # fmt: skip
+
+    _file("")
+    return audited
 
 
 @reading("prose quotations")

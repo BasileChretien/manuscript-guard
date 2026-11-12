@@ -98,13 +98,16 @@ class Item:
     #: What says where its line stands, where that is not its path's: a converted .docx's
     #: text, which G6, G14 and G4 read (`auditing.paragraphs`).
     placer: object = None
+    #: What `--json` gives beside it: for the short forms used and not defined, each form
+    #: with G14's warning on it and its place (`auditing.undefined.listed`).
+    listed: dict | None = None
 
     def as_dict(self) -> dict:
         return {
             "section": self.section, "gate": self.gate, "code": self.code,
             "severity": self.severity, "counted": self.counted, "message": self.message,
             "path": None if self.path is None else str(self.path), "line": self.line,
-            "context": self.context, "hint": self.hint,
+            "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
 
 
@@ -394,9 +397,11 @@ def _abstract_items(read) -> list[Item]:
 
 
 def _from_finding(section: str, finding: Finding, placer: object = None) -> Item:
+    from manuscript_guard.auditing.undefined import listed
+
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint,
-                placer)  # fmt: skip
+                placer, listed(finding) or None)  # fmt: skip
 
 
 def failed(report) -> bool:
@@ -566,7 +571,12 @@ def _shown(root: Path | None, placers: dict | None = None) -> _Show:
 def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) -> dict:
     """A finding as JSON, its line given as a page and a line where it is a PDF's
     (`auditing.pdf.Place`), as a section and a paragraph where it is a .docx's
-    (`auditing.paragraphs.Paragraph`)."""
+    (`auditing.paragraphs.Paragraph`). Each short form a finding lists, the same, at its
+    own line (`auditing.undefined.listed`)."""
+    if item_dict.get("forms"):
+        item_dict = {**item_dict, "forms": [
+            placed(form, path if form["path"] is None else Path(form["path"]), form["line"],
+                   placers) for form in item_dict["forms"]]}  # fmt: skip
     placer = placers.get(path) if path is not None else None
     place = placer.place(line) if placer is not None else None
     return item_dict if place is None else {**item_dict, **place.as_dict()}
@@ -613,7 +623,7 @@ def _anything_in_references(report) -> bool:
 
 def _grouped_gates(report, show: _Show) -> list[str]:
     """G6 and G14 on each paper, their findings grouped by kind (`auditing.summary`)."""
-    from manuscript_guard.auditing.summary import grouped, kinds_of
+    from manuscript_guard.auditing.summary import counted, grouped, kinds_of
 
     lines: list[str] = []
     for run in report.gates:
@@ -625,7 +635,9 @@ def _grouped_gates(report, show: _Show) -> list[str]:
             continue
         converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
                      "writes it" if run.converted and run.places is None else "")  # fmt: skip
-        lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
+        # The short forms left undefined counted as their kind's line counts them.
+        many = counted(found)
+        lines.append(f"  {show(run.paper)}: {many} finding{'s' if many != 1 else ''}"
                      f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
                      f"{converted}")  # fmt: skip
         lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
@@ -1010,19 +1022,37 @@ def _small_cells(report, show) -> list[str]:
 
 
 def _gates(report, root: Path | None, show: _Show) -> list[str]:
+    from manuscript_guard.auditing.summary import counted
+
     lines: list[str] = []
     for run in report.gates:
         if run.note:
             lines.append(f"  {run.note}")
             continue
         lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
-                     f"{len(run.language)} from G14"
+                     f"{counted(run.language)} from G14"
                      + ("; lines are those of the text pandoc converts it to, as `init "
                         "--from` writes it" if run.converted and run.places is None
                         else ""))  # fmt: skip
         found = (*run.writing, *run.language)
         if found:
             lines.append(_rendered(found, root, show.within(run.paper, run.places)))
+        lines += _each_form(run, show.within(run.paper, run.places))
+    return lines
+
+
+def _each_form(run, show: _Show) -> list[str]:
+    """Where each short form the paper uses and does not define is first used, and what G14
+    said of it, which the one finding on them stands for (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import Undefined
+
+    lines: list[str] = []
+    at = _placing(run.paper, show)
+    for finding in run.language:
+        if isinstance(finding, Undefined) and finding.forms:
+            lines.append("  Each short form used and not defined, where it is first used:")
+            lines += [f"    {at(warning.path, warning.line)}: {warning.message}"
+                      for _form, warning in finding.forms]  # fmt: skip
     return lines
 
 

@@ -326,8 +326,10 @@ def _places(paper: Path, tree) -> list[tuple[str, str]] | str:
 
     try:
         if tree is not None:
-            files = [path for path, _source in tree.files]
-            return latex_places(list(dict.fromkeys([*files, *_placed_pictures(tree)])))
+            # The files as the tree read them, in the encoding its folder declares (round 1 of
+            # #637: read again as UTF-8, a Latin-1 paper "could not be read").
+            texts = {path: source.text for path, source in tree.files}
+            return latex_places(list(dict.fromkeys([*texts, *_placed_pictures(tree)])), texts)
         if paper.suffix.lower() != ".docx":
             return [("the text", read_paper(paper)[0])]
         return [*docx_places(paper, body=False), ("the text", _docx_text(paper)),
@@ -363,15 +365,11 @@ def _placed_pictures(tree) -> list[Path]:
     `\\includesvg`, found from the entry's folder as LaTeX finds them: a name as written, and
     with `.pdf` and `.svg` after it, a name with a dot in it among them (round 2 of #478);
     not every picture in the folder, where a compiled copy of the paper may be."""
-    from manuscript_guard.contracts._schema import ContractError, read_text
-
     found: list[Path] = []
-    for path, _source in tree.files:
-        try:
-            text = read_text(path)
-        except (ContractError, OSError):
-            continue  # a file the tree read once and cannot now: its own reading says so
-        written = "\n".join(_COMMENT.sub("", line) for line in text.split("\n"))
+    for path, source in tree.files:
+        # As the tree read it, in the encoding its folder declares (round 1 of #637: read
+        # again as UTF-8, a Latin-1 paper's pictures were passed over in silence).
+        written = "\n".join(_COMMENT.sub("", line) for line in source.text.split("\n"))
         for match in _GRAPHIC.finditer(written):
             name = match[1].strip().strip('"')
             for folder in dict.fromkeys((tree.folder, path.parent)):

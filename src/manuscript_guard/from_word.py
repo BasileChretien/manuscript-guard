@@ -67,7 +67,9 @@ ZIP = b"PK\x03\x04"
 #: above it, as APA style writes one, comes to more, and is left in the text.
 TITLE_PAGE_WORDS = 600
 #: Where the pictures go, from the project's root. Not `figures/`: that folder holds what an
-#: analysis rendered, and every file in it is checked as such.
+#: analysis rendered, and G3 traces the numbers of every file in it. A picture here is
+#: reviewed, described and read for its colours as any figure the paper places is
+#: (`gates/placed_figures.py`).
 MEDIA = "manuscript/media"
 #: Simple and multiline tables off, so that a table of single-line cells is written as a pipe
 #: table and any other as a grid table. With pandoc's default line of 72 columns, a table of

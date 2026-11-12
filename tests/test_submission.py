@@ -582,7 +582,7 @@ def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:
     table = next(p for p in pack.files if p.name == "checklist-DEMO-OBS.md")
     text = table.read_text(encoding="utf-8")
     assert "| Item | Recommendation | Addressed in | Not applicable because |" in text
-    assert "| Abstract |" in text, text
+    assert '| Abstract: "' in text, text  # the heading, then the sentence it quotes
     assert any(p.name == "checklist-DEMO-OBS.yaml" for p in pack.files), "the record is still sent"
 
 
@@ -600,6 +600,31 @@ def test_an_unanswered_checklist_item_still_appears_in_the_table(project: Path) 
     projekt, _ = load_project(project)
     rows = checklist_table(projekt, completion).splitlines()
     assert any(row.startswith(f"| {dropped} |") for row in rows), rows[-4:]
+
+
+def test_the_table_quotes_the_sentence_each_item_is_addressed_by(project: Path) -> None:
+    """An item's `quote` (G5, #651) is printed beside its heading, each binding filled in as
+    the build prints it: an editor reads the words, not `{{results.x}}`. An item with no
+    quote keeps its heading alone."""
+    from manuscript_guard.build.submission import checklist_table
+    from manuscript_guard.gates.revision import displays
+
+    completion = project / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(completion.read_text(encoding="utf-8"))
+    bound = next(item for item in document["items"] if "{{" in str(item.get("quote") or ""))
+    plain = next(item for item in document["items"] if item.get("quote") and item is not bound)
+    plain.pop("quote")
+    completion.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    projekt, _ = load_project(project)
+    rows = {row.split(" | ")[0].lstrip("| "): row for row in
+            checklist_table(projekt, completion).splitlines() if row.startswith("| ")}
+    printed = " ".join(bound["quote"].split())
+    for ref, display in displays(projekt).items():
+        printed = printed.replace("{{" + ref + "}}", display)
+    assert f'{bound["where"]}: "{printed}"' in rows[str(bound["id"])]
+    assert "{{" not in rows[str(bound["id"])]
+    assert f'| {plain["where"]} |' in rows[str(plain["id"])]
 
 
 def test_a_scale_is_not_sent_as_a_completed_reporting_checklist(project: Path) -> None:

@@ -402,12 +402,13 @@ def checklist_table(project: Project, completion: Path) -> str:
     answered = {str(entry.get("id")): entry for entry in answers.get("items", [])}
     ids = [str(item["id"]) for item in items] or sorted(answered)
     text_of = {str(item["id"]): _published_text(item, is_scale) for item in items}
+    addressed = _addressed_in(project, answered)
 
     for identifier in ids:
         entry = answered.get(identifier, {})
         lines.append(
             f"| {_escape_cell(identifier)} | {_escape_cell(text_of.get(identifier, ''))} "
-            f"| {_escape_cell(entry.get('where', ''))} "
+            f"| {_escape_cell(addressed.get(identifier, ''))} "
             f"| {_escape_cell(entry.get('not_applicable', ''))} |"
         )
 
@@ -417,10 +418,31 @@ def checklist_table(project: Project, completion: Path) -> str:
         lines.append(
             f"| {_escape_cell(identifier)} | *not in the published "
             f"{'scale' if is_scale else 'checklist'}* "
-            f"| {_escape_cell(entry.get('where', ''))} "
+            f"| {_escape_cell(addressed.get(identifier, ''))} "
             f"| {_escape_cell(entry.get('not_applicable', ''))} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _addressed_in(project: Project, answered: dict[str, dict]) -> dict[str, str]:
+    """Where each item is addressed, as the table prints it: its `where`, and the sentence its
+    `quote` gives, each binding filled in as the build prints it, so that an editor reads the
+    words the manuscript has and not `{{results.x}}`. An item with no quote is its `where`."""
+    quoted = {key: str(entry.get("quote") or "").strip() for key, entry in answered.items()}
+    rendered: dict[str, str] = {}
+    if any("{{" in quote for quote in quoted.values()):
+        from manuscript_guard.gates.revision import displays
+
+        rendered = displays(project)
+    from manuscript_guard.text.placeholders import substitute
+
+    out = {}
+    for key, entry in answered.items():
+        where = str(entry.get("where") or "").strip()
+        quote = " ".join(substitute(quoted[key], rendered).split()) if quoted[key] else ""
+        said = f'"{quote}"' if quote else ""
+        out[key] = f"{where}: {said}" if where and said else where or said
+    return out
 
 
 def supplement_for(project: Project, document: Path) -> Path:

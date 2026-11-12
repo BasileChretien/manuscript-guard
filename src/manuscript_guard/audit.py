@@ -1274,6 +1274,9 @@ def audit(
     `design` is the study's design the reader declares, whose causal words are read
     (`auditing.causal`); `cited` asks for each citation beside its sentence
     (`auditing.cited`)."""
+    from manuscript_guard.auditing.progress import step
+
+    step("read")
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -1292,6 +1295,7 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources = _read_sources(report, papers, found_tex or [])
+    step("numbers")
     read = len(sources)
     for path in figures or []:
         text = read_figure(path)

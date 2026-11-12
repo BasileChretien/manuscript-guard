@@ -33,7 +33,7 @@ import subprocess
 import sys
 import tempfile
 from bisect import bisect_left
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from decimal import Decimal
 from functools import cache, partial
@@ -15264,6 +15264,207 @@ def _a_seed_given_as_nothing_is_taken_for_one(patch: pytest.MonkeyPatch) -> None
     patch.setattr(figure_estimates, "NOT_GIVEN", (None,))
 
 
+# ------------------------------------------------------------- bars of means and no points
+
+#: A summary that is no mean, in each language's spelling of an argument's value.
+_NOT_MEANS = ("median", "sum", "len", "max")
+
+
+def _quoted(draw: st.DrawFn, value: str) -> str:
+    """`value` bare, or in either quotation mark."""
+    return draw(st.sampled_from(("", '"', "'"))).join(("", value, ""))
+
+
+def _drawn_call(draw: st.DrawFn, rule, language: str, *extra: str) -> str:
+    """A call of `rule` with what its `when` asks for, and the arguments `extra`, in an
+    order drawn each time; in Python, a library's function by a name it is called by."""
+    equals = "=" if language == "python" else " = "
+    name = draw(st.sampled_from(rule.names))
+    if language == "python" and not name.startswith(("geom_", "stat_")):
+        name = draw(st.sampled_from(("sns.", "ax.", "plt.", "frame.plot."))) + name
+    given = ["d"]
+    for argument, values in rule.when.items():
+        value = draw(st.sampled_from(values))
+        if value is not None:
+            given.append(f"{argument}{equals}{_quoted(draw, value)}")
+    given.extend(extra)
+    return f"{name}({', '.join(draw(st.permutations(given)))})"
+
+
+@st.composite
+def _bar_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str, str]]]]:
+    """Scripts in each language that draw every kind of bar there is: each bar of means bare,
+    with a mean named as its summary and with another summary, with no interval and with one;
+    each bar of given values with its own error bars, given as nothing, and with none; a
+    point at a summary; a layer of error bars on a plot of its own; and each kind in a
+    comment. Three scripts a language: no points and no layer of error bars on a bar's plot,
+    such a layer, joined to the bar by `+` across lines too, and a layer of points as well.
+    With where each finding stands and how severe it is."""
+    from manuscript_guard.gates.figure_bars import rules
+
+    means, drawings = rules()
+    scripts = []
+    for language in ("python", "r"):
+        equals = "=" if language == "python" else " = "
+        nothing = "None" if language == "python" else "NULL"
+        kinds = {kind: [rule for rule in drawings[language] if rule.draws == kind]
+                 for kind in ("means", "given", "errors", "points")}  # fmt: skip
+        # Each line, its code and severity, and whether only a layer on its plot makes it one.
+        plans: list[tuple[str, str | None, str, bool]] = []
+        means_code, errors_code = "figure-bars-of-means", "figure-bars-with-errors"
+        for rule in kinds["means"]:
+            plans.append((_drawn_call(draw, rule, language), means_code, "warn", False))
+            summary = draw(st.sampled_from(rule.summary))
+            mean = _quoted(draw, draw(st.sampled_from(means)))
+            other = _quoted(draw, draw(st.sampled_from(_NOT_MEANS)))
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{mean}"),
+                          means_code, "warn", False))  # fmt: skip
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{other}"),
+                          None, "", False))  # fmt: skip
+            for argument, values in rule.alone.items():
+                alone = f"{argument}{equals}{values[0]}"
+                plans.append((_drawn_call(draw, rule, language, alone), means_code, "info", False))
+                interval = f"{argument}{equals}{_quoted(draw, 'sd')}"
+                plans.append((_drawn_call(draw, rule, language, interval),
+                              means_code, "warn", False))  # fmt: skip
+        for rule in kinds["given"]:
+            plans.append((_drawn_call(draw, rule, language), errors_code, "info", True))
+            for errors in rule.errors:
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}se"),
+                              errors_code, "info", False))  # fmt: skip
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}{nothing}"),
+                              errors_code, "info", True))  # fmt: skip
+        for rule in kinds["points"]:
+            for argument, values in rule.unless.items():
+                value = _quoted(draw, values[0])
+                plans.append((_drawn_call(draw, rule, language, f"{argument}{equals}{value}"),
+                              None, "", False))  # fmt: skip
+        # Round 1 of #648: a layer of error bars on a plot of its own is on no bar.
+        stray = _drawn_call(draw, draw(st.sampled_from(kinds["errors"])), language)
+        plans.append((f"other {'=' if language == 'python' else '<-'} ggplot(r) + {stray}",
+                      None, "", False))  # fmt: skip
+        commented = draw(st.sampled_from(kinds["means"] + kinds["points"] + kinds["errors"]))
+        plans.append(("# " + _drawn_call(draw, commented, language), None, "", False))
+        for layer, points in ((False, False), (True, False), (True, True)):
+            lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
+            extra = []
+            if points:
+                extra.append((_drawn_call(draw, draw(st.sampled_from(kinds["points"])), language),
+                              None, "", False))  # fmt: skip
+            text, expected = "", []
+            for line, code, severity, needs_layer in draw(st.permutations(plans + extra)):
+                at = 0
+                if layer and needs_layer:
+                    line, at = _on_one_plot(draw, line, kinds["errors"], language)
+                lines.append(draw(st.sampled_from(_FIGURE_FILLER[language])))
+                text = "\n".join(lines) + "\n"
+                if code is not None and not points and (layer or not needs_layer):
+                    expected.append((len(text) + at, code, severity))
+                lines.append(line)
+            scripts.append((language, "\n".join(lines) + "\n", expected))
+    return scripts
+
+
+def _on_one_plot(draw: st.DrawFn, bar: str, layers: list, language: str) -> tuple[str, int]:
+    """`bar` as a layer of one plot with a layer of error bars, in an order drawn, joined by
+    `+` on one line or across lines (in brackets, in Python); and where `bar` stands in it."""
+    errors = _drawn_call(draw, draw(st.sampled_from(layers)), language)
+    terms = ["ggplot(d)", *draw(st.permutations([bar, errors]))]
+    joiner = draw(st.sampled_from((" + ", " +\n  ", "\n  + ") if language == "python"
+                                  else (" + ", " +\n  ", " + # a layer\n  ")))  # fmt: skip
+    opening = "(" if language == "python" else ""
+    line = opening + joiner.join(terms) + (")" if opening else "")
+    return line, line.index(bar)
+
+
+@holds(100, _bar_scripts())
+def test_a_bar_of_means_is_found_where_no_points_are_drawn(
+    scripts: list[tuple[str, str, list[tuple[int, str, str]]]],
+) -> None:
+    """Each bar the plot draws at a mean is found where it stands, in Python and R, whether
+    its summary is left to the default or named as a mean, and not where another summary is
+    named; a warning, and a note where the call computes no interval. Each bar of given
+    values is found where error bars are drawn on it, by its own argument or by a layer of
+    the same plot, joined to it by `+`, and not by a layer of another plot or where that
+    argument is given as nothing. None is found where the script draws the points of the
+    data, and a point at a summary or a call in a comment is none."""
+    from manuscript_guard.gates.figure_bars import bars_in
+
+    for language, text, expected in scripts:
+        found = [(bar.call.start, bar.code, bar.severity) for bar in bars_in(text, language)]
+        assert found == expected, (language, text)
+
+
+def _a_points_layer_stands_nothing_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+    patch.setattr(figure_bars.Drawing, "drawn_by",
+                  lambda rule, call: rule.draws != "points" and drawn_by(rule, call))  # fmt: skip
+
+
+def _a_point_at_a_summary_is_a_point_of_the_data(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+
+    def read(rule, call) -> bool:
+        return drawn_by(dataclasses.replace(rule, unless={}), call)
+
+    patch.setattr(figure_bars.Drawing, "drawn_by", read)
+
+
+def _a_bar_s_summary_is_always_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_shows_a_mean", lambda call, rule, means: True)
+
+
+def _an_argument_s_quotation_marks_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_QUOTES", "")
+
+
+def _a_bar_s_own_error_bars_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_with_errors", lambda call, rule: False)
+
+
+def _a_bar_s_error_bars_given_as_nothing_are_error_bars(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    def given(call, rule) -> bool:
+        return any(name in call.arguments for name in rule.errors)
+
+    patch.setattr(figure_bars, "_with_errors", given)
+
+
+def _a_layer_of_another_plot_is_on_a_bar(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "chains_in", lambda tokens, text: defaultdict(int))
+
+
+def _a_line_break_after_a_plus_ends_a_plot(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_CONTINUES", ())
+
+
+def _a_line_break_in_brackets_ends_a_plot(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_BREAKS_IN", ("", "{", "("))
+
+
+def _a_bar_with_no_interval_is_warned(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_computes_an_interval", lambda call, rule: True)
+
+
 # ------------------------------------------------------------- one work under two keys
 
 
@@ -25006,6 +25207,46 @@ BROKEN = {
     "a seed given as None or NA is taken for a seed": (
         _a_seed_given_as_nothing_is_taken_for_one,
         test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a figure's points layer stands no bar down": (
+        _a_points_layer_stands_nothing_down,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a point a figure puts at a summary is a point of the data": (
+        _a_point_at_a_summary_is_a_point_of_the_data,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's summary is a mean whatever it names": (
+        _a_bar_s_summary_is_always_a_mean,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "an argument's quotation marks are kept when a bar is read": (
+        _an_argument_s_quotation_marks_are_kept,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's own error bars are not read": (
+        _a_bar_s_own_error_bars_are_not_read,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's error bars given as None or NULL are error bars": (
+        _a_bar_s_error_bars_given_as_nothing_are_error_bars,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a layer of error bars on another plot is on a bar": (
+        _a_layer_of_another_plot_is_on_a_bar,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a line break after a plus ends a plot": (
+        _a_line_break_after_a_plus_ends_a_plot,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a line break inside brackets ends a plot": (
+        _a_line_break_in_brackets_ends_a_plot,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar of means with no interval is a warning": (
+        _a_bar_with_no_interval_is_warned,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
     ),
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,

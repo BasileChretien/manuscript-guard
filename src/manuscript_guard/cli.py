@@ -2838,7 +2838,10 @@ def _audit(args: argparse.Namespace, package) -> int:
         return _audit_refused(args, "nothing given could be audited:",
                               *(f"  {item}" for item in (*report.unreadable,
                                                          *report.passed_over)))  # fmt: skip
+    from manuscript_guard.auditing.progress import step
+
     read = set(report.papers)
+    step("words")
     report.gates = [
         *(run_gates(path, english=english, residue=args.submission_residue, known=known)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
@@ -2859,6 +2862,7 @@ def _audit(args: argparse.Namespace, package) -> int:
                 sum(len(census.entries) for census in report.references), reader.authors,
                 str(reader.profile.get("name") or "") or None, args.dry_run,
             )  # fmt: skip
+    step("report")
     if args.cited is not None and not _write_cited(report, args):
         return 2
     if args.commented is not None and not _write_commented(report, args):

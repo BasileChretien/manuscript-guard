@@ -85,6 +85,8 @@ ROUTES: dict[str, Route] = {
     **_all("results-binding", ("harvest",), "harvested-output-"),
     **_all("results-binding", _VERIFY, "harvest-declared"),
     **_all("results-binding", None, "receipt-"),
+    # A mean (SD) of skewed data: the script emits a median and IQR, or the reason.
+    **_all("results-binding", None, "mean-sd-skewed"),
     **_all("results-binding", None, "input-at-site", who="author"),
     # A run on the vault and its release are the person's, at a terminal (docs/vault.md).
     **_all("results-binding", None, "vault-", who="author"),
@@ -105,6 +107,9 @@ ROUTES: dict[str, Route] = {
            "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",
            "entry-unchecked", "rule-unchecked", "manuscript-empty", "p-decision-error",
            "p-inconsistent", "summary-not-reported"),
+    # A trial's table of baseline characteristics with P values: the script that emits it,
+    # or the table typed, drops the column; no command does it.
+    **_all("results-binding", None, "baseline-p-values"),
     # What the results' contract refuses is put right in the script that emits it, so `bind`
     # does nothing for it. The literature's own `duplicate-key` and `no-display` are told
     # apart by the file they name (`route_for`).

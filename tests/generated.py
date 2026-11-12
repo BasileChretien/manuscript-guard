@@ -658,8 +658,45 @@ DEFINING = (
      "CPS"),
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
+    # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
+    # dash bullet's list is read by the same list rule).
+    ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
+     "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
+    # Round 2 of #643: an item over a nested list, and one after an item with a continuation
+    # line.
+    ("- the Rural Payments Agency \N{EN DASH} RPA\n  - the Rural Payments Service",
+     "\N{EN DASH} RPA", "RPA"),
+    ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+     "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
+    # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
+    # lead-in line, the next item of the same kind; and a binding that prints no
+    # value, an anchor and a pointer.
+    ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
+     "Tree Fund", "\N{EN DASH} THS", "THS"),
+    ("the schemes were:\n- the Farm Investment Fund \N{EN DASH} FIF\n- the Farm Equipment Fund",
+     "\N{EN DASH} FIF", "FIF"),
+    # Round 2 of #662: under a lead-in line, other markers, a next item opening with a digit,
+    # one of another kind after a colon, none, and a block quote.
+    ("the schemes were:\n* the Small Farms Scheme \N{EN DASH} SFS\n* the Small Farms Fund",
+     "\N{EN DASH} SFS", "SFS"),
+    ("the schemes were:\n1. the Basic Farm Payment \N{EN DASH} BFP\n2. the Farm Fund",
+     "\N{EN DASH} BFP", "BFP"),
+    ("the schemes were:\n1) the Clean Air Grant \N{EN DASH} CAG\n2) the Air Fund",
+     "\N{EN DASH} CAG", "CAG"),
+    ("the schemes were:\n- the Water Quality Grant \N{EN DASH} WQG\n- 2015 reform of the WQG",
+     "\N{EN DASH} WQG", "WQG"),
+    ("the payments were:\n- the Hedgerow Planting Grant \N{EN DASH} HPG\n* the Hedge Fund",
+     "\N{EN DASH} HPG", "HPG"),
+    ("the payments were\n* the Peat Restoration Grant \N{EN DASH} PRG\n* the Peat Fund",
+     "\N{EN DASH} PRG", "PRG"),
+    ("> the schemes were:\n> - the Moorland Payment \N{EN DASH} MP\n> - the Moor Fund",
+     "\N{EN DASH} MP", "MP"),
+    ("farmers were paid under the Delinked Payment Scheme \N{EN DASH} DPS {{method.payments}}.",
+     "\N{EN DASH} DPS", "DPS"),
+    ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
+     "\N{EN DASH} LSS", "LSS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -718,6 +755,27 @@ NOT_DEFINING = (
     ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
     ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
+    # Round 2 of #643: a value bound to the results where the number would be, after a
+    # space, a colon, a comma and a closing dash, and before the line's end; a number after
+    # a closing dash; a list item that goes on into its continuation, indented or not; and a
+    # prose line in a paragraph's middle that opens as a list item would.
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR {{lit.cohort.or}}.", "OR {{lit", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} {{results.or}} in all",
+     "OR \N{EN DASH} {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}\nin all",
+     "OR {{results.or}}\n", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} 1.52 in all",
+     "OR \N{EN DASH} 1.52", "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all", "OR\n  1.52",
+     "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
+    ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
+     "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -10220,6 +10278,264 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     return "\n".join(lines), [label.lower() for label in labels], expected
 
 
+# ------------------------------------------------ a table's means and SDs of a measure
+
+#: Rows of a variable that cannot be negative, as an auditor names them: no word of one is a
+#: word of another, so that each row is named by its own label alone.
+NON_NEGATIVE_LABELS = (
+    "Weight", "Ferritin", "Creatinine", "Viral load", "Length of stay", "Bilirubin",
+    "Lactate", "Troponin", "Albumin", "Glucose", "Platelets", "Insulin", "Sodium",
+    "Potassium", "Urea", "Calcium",
+)  # fmt: skip
+#: The kinds of row the first table of `spread_tables` holds one of: a mean less than twice
+#: its SD, one more than twice, one exactly twice, one negative, a whole-number mean with a
+#: decimal SD, a row whose label names a standard error, one whose label names a category,
+#: one whose label names a change, one that names a time to a change, one that names a
+#: number ("No. of"), one of counts and their shares whose label names neither, one of
+#: medians and ranges, a row nobody names, and a row whose label holds a named one inside a
+#: word.
+SPREAD_ROWS = ("skewed", "fine", "twice", "negative", "whole", "se", "category", "change",
+               "time to", "number of", "counts", "median", "unnamed", "inside")  # fmt: skip
+#: How a label names a change, `{label}` the measure's.
+CHANGE_NAMES = ("Change in {lower}", "{label} change from baseline", "{label}, difference",
+                "\N{GREEK CAPITAL LETTER DELTA} {lower}", "{label} delta",
+                "{label} from baseline to week 12", "Rate of change in {lower}",
+                "Mean of differences in {lower}")  # fmt: skip
+#: How a label names a time to a change, which is no change: "to" before it, or one word
+#: before it.
+TIME_TO_NAMES = ("Time to change in {lower}, days", "Time to treatment change, {lower}",
+                 "Days to change of {lower} therapy")  # fmt: skip
+#: How a label names a category, `{label}` the measure's.
+CATEGORY_NAMES = ("{label} >= 100", "{label} \N{GREATER-THAN OR EQUAL TO} 100",
+                  "{label} > 100", "{label} < 50", "{label} <= 50",
+                  "{label} \N{LESS-THAN OR EQUAL TO} 50", "{label}, n (%)", "{label}, %",
+                  "{label} recorded, yes", "{label} recorded, no",
+                  "{label} recorded, n/N")  # fmt: skip
+#: Where the first table says its cells are n (%): a caption above it, one below it, or its
+#: header's first cell.
+SAID_N_PERCENT = ("above", "below", "header")
+#: How the caption of a table after the last one opens, which says n (%) of that table only.
+NEXT_CAPTIONS = ("Table 4. Values are n (%).", "Supplementary Table 4. Values are n (%).",
+                 "**Table 4** Values are n (%).", "Table S4. Values are n (%).",
+                 "Table 5. Values are n (%).", "Table 5: Values are n (%).")  # fmt: skip
+#: How a cell prints a mean and its SD, the SD at `{sd}`; the first three in brackets.
+SPREAD_SHAPES = (" ({sd})", "({sd})", " ( {sd} )", " \N{PLUS-MINUS SIGN} {sd}",
+                 "\N{PLUS-MINUS SIGN}{sd}", " +/- {sd}")  # fmt: skip
+#: How a label names a standard error.
+SE_NAMES = ("mean (SE)", "mean (SEM)", "mean \N{PLUS-MINUS SIGN} SE", "mean (s.e.)",
+            "mean (standard error)", "mean (Standard Error)")  # fmt: skip
+#: A mean and SD as the reading finds them: the cell's line, the mean as printed with an
+#: ASCII minus, the SD as printed, and whether the mean is less than twice the SD.
+Spreaded = tuple[int, str, str, bool]
+
+
+def _one_dp(units: int) -> str:
+    """`units` tenths, printed to one place with an ASCII minus: 52 is "5.2"."""
+    return str(Decimal(units).scaleb(-1))
+
+
+@st.composite
+def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list[list]]:
+    """A paper with a table of two arms that says its cells are n (%), in a place of
+    `SAID_N_PERCENT` drawn, a row of each kind of `SPREAD_ROWS` in an order drawn, each
+    mean and SD printed in a shape of `SPREAD_SHAPES`; then a table that says n (%) in its
+    first cell, whose header names a standard error over its first arm, a mean (SD) over its
+    second and a bare "%" over its third, with a row whose label names nothing and one whose
+    label names a mean (SD), whole-number means under the mean (SD) and the "%"; a table
+    that says nothing of n (%), whose row is a whole number and a decimal in brackets, and
+    after it the caption of another table, saying n (%), opened in a way of `NEXT_CAPTIONS`;
+    and a mean and SD in a sentence, which is not read. With the labels an auditor names, in
+    lower case, one of them in no row; each mean and SD the reading finds (`Spreaded`), in
+    order; and each named row passed over, as its line and why, in order."""
+    from manuscript_guard.stats.skew import (
+        CATEGORY,
+        CHANGE,
+        MAYBE_COUNT,
+        SE_HEADER,
+        SE_LABEL,
+    )
+
+    labels = list(draw(st.permutations(NON_NEGATIVE_LABELS)))
+    named_kinds = [kind for kind in SPREAD_ROWS if kind not in ("unnamed", "inside")]
+    named = dict(zip([*named_kinds, "header", "header mean", "plain", "absent"], labels,
+                     strict=True))  # fmt: skip
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Spreaded] = []
+    passed: list[list] = []
+
+    def cell(mean: int, sd: int) -> str:
+        printed = _one_dp(mean).replace("-", "\N{MINUS SIGN}") if mean < 0 else _one_dp(mean)
+        return printed + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
+
+    def whole(mean: int, sd: int) -> str:
+        """A whole-number mean and a decimal SD, as a count and its share may print."""
+        return f"{mean}" + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
+
+    def share() -> str:
+        """A count and its share of 100 or less, whole or decimal: "5 (12)", "6 (14.6)"."""
+        if draw(st.booleans()):
+            return f"{draw(st.integers(0, 40))} ({draw(st.integers(0, 100))})"
+        return f"{draw(st.integers(0, 40))} ({_one_dp(draw(st.integers(0, 1000)))})"
+
+    def pair(kind: str) -> tuple[int, int]:
+        sd = draw(st.integers(1, 99))
+        if kind in ("skewed", "se", "change", "unnamed", "inside", "time to", "number of"):
+            return draw(st.integers(0, 2 * sd - 1)), sd
+        if kind == "fine":
+            return draw(st.integers(2 * sd + 1, 2 * sd + 300)), sd
+        if kind == "twice":
+            return 2 * sd, sd
+        return -draw(st.integers(1, 99)), sd  # negative
+
+    def a_whole_mean() -> tuple[int, int]:
+        """A whole-number mean and an SD in tenths of 100 or less."""
+        return draw(st.integers(0, 60)), draw(st.integers(1, 999))
+
+    def row(label: str, cells: list[str]) -> None:
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+
+    def read(pairs: list[tuple[int, int]]) -> None:
+        expected.extend((len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd)
+                        for mean, sd in pairs)  # fmt: skip
+
+    def read_whole(mean: int, sd: int) -> None:
+        expected.append((len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd))
+
+    def mean_label(label: str) -> str:
+        # A footnote marker after the label's words, or one that ends it, as `mean_tables`.
+        marker, last = draw(st.sampled_from((("", False), *MARKERS)))
+        return f"{label}, mean (SD){marker}" if last else f"{label}{marker}, mean (SD)"
+
+    said_where = draw(st.sampled_from(SAID_N_PERCENT))
+    if said_where == "above":
+        lines[-1:] = ["", "Table 1. Values are n (%) or mean (SD).", ""]
+    first = "Characteristic, n (%) or mean (SD)" if said_where == "header" else "Characteristic"
+    lines += [f"| {first} | Treated (n = 40) | Control (n = 41) |", "|---|---|---|"]
+    for kind in draw(st.permutations(SPREAD_ROWS)):
+        name, lower = named.get(kind, ""), named.get(kind, "").lower()
+        if kind == "median":
+            sds = [draw(st.integers(1, 99)) for _arm in range(2)]
+            row(f"{name}, median (IQR)",
+                [f"{_one_dp(sd)} ({_one_dp(sd)}-{_one_dp(3 * sd)})" for sd in sds])
+        elif kind in ("category", "counts"):
+            shape = (draw(st.sampled_from(CATEGORY_NAMES)) if kind == "category"
+                     else "{label} above the limit")  # fmt: skip
+            row(shape.format(label=name), [share(), share()])
+            passed.append([len(lines), CATEGORY if kind == "category" else MAYBE_COUNT])
+        elif kind == "whole":
+            means = [a_whole_mean() for _arm in range(2)]
+            row(mean_label(name), [whole(mean, sd) for mean, sd in means])
+            for mean, sd in means:
+                read_whole(mean, sd)
+        else:
+            pairs = [pair(kind) for _arm in range(2)]
+            cells = [cell(mean, sd) for mean, sd in pairs]
+            if kind == "unnamed":
+                row(draw(st.sampled_from(MEASURES)), cells)
+            elif kind == "inside":
+                row(f"Pro{named['skewed'].lower()}", cells)
+            elif kind == "se":
+                row(f"{name}, {draw(st.sampled_from(SE_NAMES))}", cells)
+                passed.append([len(lines), SE_LABEL])
+            elif kind == "change":
+                row(draw(st.sampled_from(CHANGE_NAMES)).format(label=name, lower=lower), cells)
+                passed.append([len(lines), CHANGE])
+            elif kind == "time to":
+                # No change, and no mean named: in a table of n (%), read for its points.
+                row(draw(st.sampled_from(TIME_TO_NAMES)).format(lower=lower), cells)
+                read(pairs)
+            elif kind == "number of":
+                row(f"No. of {lower} tests", cells)
+                read(pairs)
+            else:
+                row(mean_label(name), cells)
+                read(pairs)
+    if said_where == "below":
+        lines += ["", "Values are n (%) or mean (SD)."]
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    # A table that says n (%) in its first cell, its header naming an SE over the first arm,
+    # a mean (SD) over the second and a bare "%" over the third. A row whose label names
+    # nothing loses its first cell to the SE and its third, a whole number, as possibly a
+    # count; its second, a whole-number mean under the mean (SD), is read. One whose label
+    # names a mean (SD) loses only its first.
+    lines += ["| Characteristic, n (%) | Treated, mean (SE) | Control, mean (SD) | Missing, % |",
+              "|---|---|---|---|"]  # fmt: skip
+    se_pair, (mean, sd) = pair("skewed"), a_whole_mean()
+    row(named["header"], [cell(*se_pair), whole(mean, sd), share()])
+    passed += [[len(lines), SE_HEADER], [len(lines), MAYBE_COUNT]]
+    read_whole(mean, sd)
+    se_pair, pairs, (mean, sd) = pair("skewed"), [pair("skewed")], a_whole_mean()
+    row(mean_label(named["header mean"]), [cell(*se_pair), cell(*pairs[0]), whole(mean, sd)])
+    passed.append([len(lines), SE_HEADER])
+    read(pairs)
+    read_whole(mean, sd)
+    # A table that says nothing of n (%): a whole number and a decimal is read. The caption
+    # after it is another table's, and says nothing of this one.
+    lines += ["", draw(sentence).capitalize() + ".", "", "| Characteristic | Cases |",
+              "|---|---|"]  # fmt: skip
+    mean, sd = a_whole_mean()
+    row(named["plain"], [whole(mean, sd)])
+    read_whole(mean, sd)
+    lines += ["", draw(st.sampled_from(NEXT_CAPTIONS))]
+    mean, sd = pair("skewed")
+    lines += ["", f"{draw(sentence).capitalize()} {named['skewed']} {cell(mean, sd)} "
+              f"{draw(sentence)}.", ""]  # fmt: skip
+    return "\n".join(lines), [label.lower() for label in labels], expected, passed
+
+
+#: The kinds of mean `floored_means` holds one of each: less than twice its SD above a floor
+#: that is not zero, though more than twice above zero; exactly twice above the floor; more
+#: than twice; less than twice above a floor of zero; one with a standard error and no SD;
+#: one skewed with a reason given, and one with a blank reason; one whose variable has no
+#: floor, one whose floor is text, a date's "20200101"; and one that names no variable.
+FLOORED = ("above zero only", "twice", "above", "zero floor", "se", "reason", "blank",
+           "no floor", "text floor", "no variable")  # fmt: skip
+
+
+@st.composite
+def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], list[list]]:
+    """Results values, by key, as a fragment holds them: a mean of each kind of `FLOORED`, in
+    an order drawn, with its SD or SE; the floor of each variable, by name, as the data
+    dictionary gives it, None where it gives none; and each mean and SD G15 holds to a floor,
+    as their keys, the floor and whether it warns, in the order of the SDs' keys."""
+    values: dict[str, dict] = {}
+    floors: dict[str, Any] = {}
+    expected: list[list] = []
+    for at, kind in enumerate(draw(st.permutations(FLOORED))):
+        sd = draw(st.integers(1, 99))
+        floor = draw(st.integers(1, 500)) if kind not in ("zero floor",) else 0
+        if kind == "above zero only":
+            mean = draw(st.integers(2 * sd, 2 * sd + floor - 1))
+        elif kind == "twice":
+            mean = floor + 2 * sd
+        elif kind == "above":
+            mean = floor + 2 * sd + draw(st.integers(1, 300))
+        else:
+            mean = floor + draw(st.integers(0, 2 * sd - 1))
+        name, key = f"v{at}", f"v{at}.mean"
+        spec: dict[str, Any] = {"value": mean / 10, "display": _one_dp(mean)}
+        if kind != "no variable":
+            spec["variable"] = name
+        if kind == "reason":
+            spec["skewed_ok"] = draw(st.sampled_from(("as registered", "pooled later: means")))
+        if kind == "blank":
+            spec["skewed_ok"] = draw(st.sampled_from(("", " ", "\t")))
+        values[key] = spec
+        # A floor as YAML gives one: a whole number, or a decimal in tenths.
+        floors[name] = None if kind == "no floor" else "20200101" if kind == "text floor" else (
+            floor // 10 if floor % 10 == 0 else floor / 10)
+        spread = "se" if kind == "se" else "sd"
+        values[f"v{at}.{spread}"] = {"value": sd / 10, "display": _one_dp(sd), "spread": spread,
+                                     "of": key}  # fmt: skip
+        if kind in ("se", "no floor", "text floor", "no variable"):
+            continue
+        warned = kind in ("zero floor", "blank", "above zero only")
+        expected.append([f"v{at}.sd", key, floors[name], warned])
+    expected.sort(key=lambda one: one[0])
+    return values, floors, expected
+
+
 # ------------------------------------------------- a number an earlier output printed
 
 #: The ways a paper prints one number that this one prints otherwise: as it is, its
@@ -12378,6 +12694,152 @@ def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(lines))
 
 
+#: An entry with no DOI and no PMID of each kind the audit sorts one into
+#: (`auditing.by_title.sort`), as `{shape}`, with the kind it is: an article in three styles,
+#: one that also gives its address, a book in two, a chapter, a web page with its access
+#: date, a legal text by its opening word, an official text by its journal, and a bare
+#: address; and (round 1 of #650) an article with its authors' given names first, as
+#: BibTeX's plain style prints it, and a book whose title holds a web page's or a law's words.
+#: `{a}` is the first author's family name and `{t}` the title, or `{w}` for that book, whose
+#: author's name opens with a law's word and a hyphen.
+UNIDENTIFIED_ENTRIES = {
+    "an article": ("{a} {i}, {b} {j}. {t}. {journal}. {year};{vol}({issue}):{page}-{end}.",
+                   "article"),
+    "an article with its given names first": (
+        "{d}. {e}. {a} and {k}. {b}. {t}. {long}, {vol}({issue}):{page}-{end}, {year}.",
+        "article",
+    ),
+    "a book whose title holds a page's or a law's words": (
+        "Ley-Cooper {i}. {w}. {place}: {publisher}; {year}.", "book"),
+    # Round 2 of #650: a law's name among a title's words is a book's, a title that is a law's
+    # name is a law's, and a publication of law is a law's, a book's marks after it or not.
+    # By a body, as a law is, so that only where the law's name stands tells them apart.
+    "a book whose title holds a law's name among its words": (
+        "{country}. The {law_name} explained. {place}: {publisher}; {year}.", "book"),
+    "a law whose title is its name, with a book's marks": (
+        "{country}. {law_name}. {place}: {office}; {year}.", "legal text"),
+    "a publication of law, with a book's marks": (
+        "Commission notice on reports. {gazette}. {place}: {office}; {year}.", "legal text"),
+    # Round 3: a person's book whose title ends with a law's name is a book.
+    "a person's book whose title ends with a law's name": (
+        "{a} {i}. A practical guide to the {law_name}. {place}: {publisher}; {year}.", "book"),
+    "a publication of law and its year": ("Commission notice on records. {gazette}. {year}.",
+                                          "legal text"),
+    "an article in APA style": (
+        "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
+        "article",
+    ),
+    "an article with dotted initials": ("{a} {d}. {e}. {t}. {journal}. {year};{vol}:{page}.",
+                                        "article"),
+    "an article that also gives its address": (
+        "{a} {i}. {t}. {journal}. {year};{vol}:{page}-{end}. https://example.org/{vol}",
+        "article",
+    ),
+    "a book": ("{a} {i}. {t}. {place}: {publisher}; {year}.", "book"),
+    "a book printed in a city of the United States": ("{a} {i}. {t}. {city}. {year}", "book"),
+    "a chapter": (
+        "{a} {i}. {t}. In: {b} {j}, editor. Handbook of reports. {place}: {publisher}; {year}. "
+        "p. {page}-{end}.",
+        "chapter",
+    ),
+    "a web page with its access date": (
+        "{site}. Reports and records. {place}: {publisher}; {year}. Accessed {day} Aug {later}. "
+        "https://example.org/{vol}",
+        "web page",
+    ),
+    "a legal text by its opening word": (
+        "{law} du {day} décembre {year} relatif à la formation. https://www.example.gouv.fr/{vol}",
+        "legal text",
+    ),
+    "an official text by its journal": (
+        "Commission notice on reports. {gazette}. C {vol}, {day}.",
+        "legal text",
+    ),
+    "a bare address": ("https://example.org/{site_path}/{vol}", "web page"),
+}
+#: Titles an article or a book is cited by: one with a colon, one with accents, one with a
+#: question mark, one with "U.S.", whose stop ends no title, and one with an apostrophe.
+UNIDENTIFIED_TITLES = (
+    "Ghosts in the classroom: passive disengagement and its implications for teachers",
+    "Barriers to student active learning in higher education",
+    "Les élèves décrocheurs à l'école primaire",
+    "Is hepatic injury under-reported? A review of spontaneous reports",
+    "Renal events after exposure in the U.S. population",
+    "Children's falls in older adults' homes",
+)
+#: First authors' family names: with a stroke and an accent, which fold, with particles,
+#: and with an apostrophe.
+UNIDENTIFIED_FAMILIES = ("Børte", "Østergaard", "van der Berg", "O'Brien", "Dupont", "Ross",
+                         "Lillejord")  # fmt: skip
+#: Titles of books with a word a web page's or a law's mark is made of.
+UNIDENTIFIED_BOOK_TITLES = ("How patients accessed care", "Care available at home",
+                            "The Data Protection Act 2018 explained",
+                            "Records retrieved from the archive")  # fmt: skip
+
+
+@st.composite
+def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, str | None,
+                                                        int | None]]:  # fmt: skip
+    """Each of `UNIDENTIFIED_ENTRIES`, in an order drawn, each `(text, kind, title, first
+    author, year)`, the last three for an article, a book or a chapter only. Every kind in
+    every example; each title and each family name drawn for one of the eleven articles,
+    books and chapters, and each of the three law's names and publications of law for one
+    of the three shapes with one, so that every one stands in every example, and a book's
+    title with a page's or a law's words drawn for the book that has one."""
+    titles = draw(st.permutations(UNIDENTIFIED_TITLES))
+    families = draw(st.permutations(UNIDENTIFIED_FAMILIES))
+    laws = draw(st.permutations(("Data Protection Act {year}", "Public Law {n}-{vol}",
+                                 "Patient Protection and Affordable Care Act of {year}")))
+    gazettes = draw(st.permutations(("Official Journal of the European Union",
+                                     "Federal Register", "Journal officiel")))  # fmt: skip
+    drawn = []
+    # Counted over the shapes that name `{a}`, `{t}`, `{law_name}` and `{gazette}`, so that
+    # each family name, title, law's name and publication stands in one of them at least.
+    named = titled = lawed = gazetted = 0
+    for shape, kind in UNIDENTIFIED_ENTRIES.values():
+        year = draw(st.integers(1970, 2024))
+        fill = {
+            "a": families[named % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
+            "t": titles[titled % len(titles)],
+            "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+            "d": draw(st.sampled_from("JKMH")), "e": draw(st.sampled_from("ABL")),
+            "k": draw(st.sampled_from("JKMH")),
+            "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+            "long": draw(st.sampled_from(_LONG_JOURNALS)),
+            "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+            "publisher": draw(st.sampled_from(("Example Press", "Example Agency",
+                                               "Sample House"))),  # fmt: skip
+            "city": draw(st.sampled_from(("Englewood Cliffs, NJ", "Boston, MA", "Chicago, IL"))),
+            "site": draw(st.sampled_from(("Accueil | Moodle.org", "Example Agency", "Factsheet"))),
+            "site_path": draw(st.sampled_from(("pi/ses", "resources", "accueil"))),
+            "law": draw(st.sampled_from(("Arrêté", "Décret", "Ordonnance"))),
+            "year": year, "later": draw(st.integers(2000, 2025)),
+            "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
+            "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
+            "day": draw(st.integers(1, 28)), "w": draw(st.sampled_from(UNIDENTIFIED_BOOK_TITLES)),
+            "country": draw(st.sampled_from(("United Kingdom", "US Congress", "Ireland"))),
+            "office": draw(st.sampled_from(("The Stationery Office", "Publications Office",
+                                            "US Government Printing Office"))),
+            "gazette": gazettes[gazetted % len(gazettes)],
+        }  # fmt: skip
+        fill["law_name"] = laws[lawed % len(laws)].format(year=year, vol=fill["vol"],
+                                                          n=draw(st.integers(90, 120)))
+        searched = kind in ("article", "book", "chapter")
+        named += searched and "{a}" in shape
+        titled += searched and "{t}" in shape
+        lawed += "{law_name}" in shape
+        gazetted += "{gazette}" in shape
+        title = (fill["w"] if "{w}" in shape else f"The {fill['law_name']} explained"
+                 if "{law_name} explained" in shape else f"A practical guide to the "
+                 f"{fill['law_name']}" if "guide to the" in shape else fill["t"])  # fmt: skip
+        # That book's author, whose name opens with a law's word and a hyphen.
+        family = ("Ley-Cooper" if shape.startswith("Ley-Cooper") else fill["country"]
+                  if shape.startswith("{country}") else fill["a"])  # fmt: skip
+        drawn.append((shape.format(**fill), kind, title if searched else None,
+                      family if searched else None, year if searched else None))  # fmt: skip
+    return draw(st.permutations(drawn))
+
+
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
 #: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
 INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
@@ -13820,6 +14282,235 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# ------------------------------ a trial's table of baseline characteristics with P values, G8
+
+#: The headers of a column of P values, as `gates/baseline.py` lists them, and the marks one
+#: may end in, as Markdown types them; and as a LaTeX file types them, which its reader prints.
+BASELINE_P = ("P", "p", "P value", "p value", "P-value", "p-value")
+BASELINE_MARKS = ("", "*", "\N{DAGGER}", "^a^", "\N{SUPERSCRIPT ONE}", " *")
+BASELINE_LATEX_P = ("P", "p", "P value", "p-value", "$P$", "$p$ value", "P value$^{a}$",
+                    "P$^{*}$", "\\textit{P}", "\\emph{p} value", "P$^\\dagger$")  # fmt: skip
+#: Headers that hold a P and head no column of P values.
+BASELINE_DECOYS = ("Ptype", "Group P", "P Value", "P for trend", "Pvalue", "PCR", "Placebo")
+#: The word as captions write it, and the captions it stands in.
+BASELINE_WORDS = ("baseline", "Baseline", "BASELINE", "*baseline*", "_Baseline_")
+BASELINE_LATEX_WORDS = ("baseline", "Baseline", "\\textbf{Baseline}", "\\emph{baseline}")
+BASELINE_CAPTIONS = ("{w} characteristics of the participants", "Characteristics at {w}",
+                     "{w} demographic and clinical characteristics",
+                     "Demographics of the groups at {w}", "{w} patient demographics",
+                     "Characteristics of the participants at randomisation",
+                     "{w} characteristics and change from {w}",
+                     "{w} demographic and disease characteristics",
+                     "{w} demographic, clinical, and laboratory characteristics",
+                     "{w} socio-demographic characteristics",
+                     "{w} characteristics by treatment group")  # fmt: skip
+#: Captions where the word is inside another word; and captions of tables of outcomes, which
+#: hold the word in another sense (round 1 of #657), or do not hold it.
+BASELINE_INSIDE = ("Post{w} characteristics by group", "Non{w} demographics",
+                   "Pre{w} characteristics")  # fmt: skip
+BASELINE_CHANGES = ("Change from {w} in the score", "Mean change since {w}",
+                    "{W}-adjusted means at 12 weeks", "Post-{w} adverse events",
+                    "Change from {w} in characteristics")  # fmt: skip
+BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary outcome at {w} and 12 weeks",
+                     "Primary outcome by {w} risk",
+                     "Outcomes at 12 weeks, adjusted for age, sex and {w} score",
+                     "Outcomes adjusting for {w} values", "Participants at {w}, by group",
+                     "Primary and secondary outcomes, adjusted for {w} characteristics",
+                     "Subgroup analysis of the primary outcome by {w} characteristics",
+                     "Outcomes according to {w} demographics",
+                     "Events stratified by {w} clinical features",
+                     # Round 3 of #657: words between the qualifier and the phrase, a time
+                     # among the words, and "features".
+                     "Outcomes at 12 weeks, adjusted for age, sex and {w} characteristics",
+                     "Outcomes at 12 weeks, adjusted for prespecified {w} characteristics",
+                     "Outcomes at 12 weeks by selected {w} characteristics",
+                     "Changes between {w} and follow-up in clinical characteristics",
+                     "Comparison of {w} and follow-up characteristics",
+                     "{w} MRI features associated with response",
+                     "Patients with or without {w} high-risk features")  # fmt: skip
+#: One table of outcomes for each of these qualifiers before the phrase, in every example: a
+#: rule that ignores what qualifies the phrase fails each one.
+BASELINE_QUALIFIED = ("Outcomes adjusting for {w} characteristics",
+                      "Outcomes defined by {w} characteristics",
+                      "Outcomes across {w} characteristics",
+                      "Change in the score since {w} characteristics were recorded",
+                      "Outcomes based on {w} characteristics")  # fmt: skip
+#: Captions of tables of baseline characteristics with a word between that no list of
+#: adjectives holds, one in every example: the rule of d621e97 fails each.
+BASELINE_ANY_WORDS = ("{w} demographic and disease characteristics",
+                      "{w} socio-demographic characteristics",
+                      "{w} clinical and laboratory characteristics")  # fmt: skip
+#: How a legend is set after its number: a stop, a colon, or a space before a capital.
+BASELINE_LEGENDS = ("Table S{n}. ", "Table S{n}: ", "**Table S{n}** ", "Table S{n} ")
+#: The designs whose guidelines do not include CONSORT, `other`, and none named.
+BASELINE_NOT_TRIALS = ("cohort", "case-control", "self-controlled", "disproportionality",
+                       "systematic-review", "prediction-model", "other", None)  # fmt: skip
+
+
+@st.composite
+def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The tables a randomised trial's paper emits and types, in Markdown and in LaTeX, in its
+    main text and its supplement; and where G8 warns of a table of baseline characteristics
+    with a column of P values, as `[path, line, headers]`, by format; with a design CONSORT is
+    not the guideline of, for which nothing is said.
+
+    Every example holds each kind once: a table of baseline characteristics with a P column
+    emitted, typed as a pipe table with pandoc's caption after it, as a grid table with it
+    before, beside a table of outcomes with nothing between, their captions both before or
+    both after, and in the supplement under a legend, with a stop or a space after its
+    number; and with no warning, emitted and typed tables of outcomes with a P column whose
+    captions hold the word in another sense, one of a change from baseline, one whose caption
+    holds the word inside another, and one of baseline characteristics whose header holds a
+    P and is no P header. In LaTeX, a float in the main text and one in the supplement, and
+    a float of outcomes."""
+    filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6)))
+
+    def caption(templates: tuple[str, ...], words: tuple[str, ...] = BASELINE_WORDS) -> str:
+        chosen = draw(st.sampled_from(words))
+        return draw(st.sampled_from(templates)).format(w=chosen, W=chosen.capitalize())
+
+    def inside() -> str:
+        return draw(st.sampled_from(BASELINE_INSIDE)).format(w="baseline")
+
+    def headers(p: str | None) -> list[str]:
+        columns = ["Drug", "Placebo"] + draw(st.sampled_from(([], ["Overall"])))
+        at = draw(st.integers(0, len(columns)))
+        columns.insert(at, p if p is not None else draw(st.sampled_from(BASELINE_DECOYS)))
+        return ["Characteristic", *columns]
+
+    def p_value() -> str:
+        return draw(st.sampled_from(BASELINE_P)) + draw(st.sampled_from(BASELINE_MARKS))
+
+    emitted, found_emitted = [], []
+    kinds = [("baseline", BASELINE_CAPTIONS, True), ("words", BASELINE_ANY_WORDS, True),
+             ("outcomes", BASELINE_OUTCOMES, False), ("change", BASELINE_CHANGES, False),
+             *((f"qualified{at}", (template,), False)
+               for at, template in enumerate(BASELINE_QUALIFIED))]  # fmt: skip
+    for kind, templates, warned in kinds:
+        p = p_value()
+        key = f"{kind}_{draw(st.integers(1, 9))}"
+        emitted.append({"key": key, "caption": caption(templates), "columns": headers(p)})
+        if warned:
+            found_emitted.append([f"results/{key}.json", None, [p]])
+
+    main: list[str] = ["# Results", "", filler, ""]
+    found_markdown = list(found_emitted)
+
+    def pipe(lines: list[str], row: list[str], said: str, where: str) -> int:
+        if where == "before":
+            lines += [said, ""]
+        found_line = len(lines) + 1
+        lines += ["| " + " | ".join(row) + " |", "|" + "---|" * len(row),
+                  "| " + " | ".join(["half"] * len(row)) + " |", ""]
+        if where == "after":
+            lines += [f"Table: {said}", ""]
+        lines += [filler, ""]
+        return found_line
+
+    def grid(lines: list[str], row: list[str], said: str) -> int:
+        lines += [f": {said}", ""]
+        widths = [len(cell) + 2 for cell in row]
+        border = "+" + "+".join("-" * width for width in widths) + "+"
+        lines.append(border)
+        found_line = len(lines) + 1
+        lines.append("|" + "|".join(f" {cell}".ljust(width) for cell, width in zip(row, widths,
+                                                                                    strict=True))
+                     + "|")  # fmt: skip
+        lines.append("+" + "+".join("=" * width for width in widths) + "+")
+        lines.append("|" + "|".join(" half".ljust(width) for width in widths) + "|")
+        lines += [border, "", filler, ""]
+        return found_line
+
+    def pair(lines: list[str]) -> tuple[int, str]:
+        """A table of baseline characteristics and one of outcomes, both with a P column and
+        nothing between them, their captions both before them or both after (round 1 of
+        #657): the line of the first's header, and its P header."""
+        front, p = draw(st.booleans()), p_value()
+        tables = [(headers(p), caption(BASELINE_CAPTIONS), True),
+                  (headers(p_value()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES), False)]
+        if draw(st.booleans()):
+            tables.reverse()
+        found_line = 0
+        for row, said, warned in tables:
+            if front:
+                lines += [f"Table: {said}", ""]
+            found_line = len(lines) + 1 if warned else found_line
+            lines += ["| " + " | ".join(row) + " |", "|" + "---|" * len(row),
+                      "| " + " | ".join(["half"] * len(row)) + " |", ""]
+            if not front:
+                lines += [f"Table: {said}", ""]
+        lines += [filler, ""]
+        return found_line, p
+
+    p = p_value()
+    line = pipe(main, headers(p), caption(BASELINE_CAPTIONS), "after")
+    found_markdown.append(["manuscript/main.md", line, [p]])
+    p = p_value()
+    line = grid(main, headers(p), caption(BASELINE_CAPTIONS))
+    found_markdown.append(["manuscript/main.md", line, [p]])
+    pipe(main, headers(p_value()), inside(), "after")
+    pipe(main, headers(None), caption(BASELINE_CAPTIONS), "after")
+    pipe(main, headers(p_value()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES), "after")
+    line, p = pair(main)
+    found_markdown.append(["manuscript/main.md", line, [p]])
+    supplement = ["# Supplementary tables", "", filler, ""]
+    p = p_value()
+    said, number = caption(BASELINE_CAPTIONS), draw(st.integers(1, 9))
+    legend = draw(st.sampled_from(BASELINE_LEGENDS)).format(n=number)
+    if not legend.rstrip().endswith((".", ":")):
+        # A space after the number opens a legend only before a capital.
+        if said[:1].isalpha():
+            said = said[0].upper() + said[1:]
+        else:
+            legend = BASELINE_LEGENDS[0].format(n=number)
+    line = pipe(supplement, headers(p), legend + said, "before")
+    found_markdown.append(["manuscript/supplementary/S1_tables.md", line, [p]])
+
+    def float_(lines: list[str], row: list[str], said: str, above: bool) -> int:
+        lines.append("\\begin{table}" + draw(st.sampled_from(("", "[h]", "[!t]"))))
+        if above:
+            lines.append(f"\\caption{{{said}}}")
+        lines.append("\\begin{tabular}{" + "l" * len(row) + "}")
+        found_line = len(lines) + 1
+        lines += [" & ".join(row) + " \\\\", "\\hline", " & ".join(["half"] * len(row)) + " \\\\",
+                  "\\end{tabular}"]  # fmt: skip
+        if not above:
+            lines.append(f"\\caption{{{said}}}")
+        lines += ["\\end{table}", filler]
+        return found_line
+
+    def latex_p() -> str:
+        return draw(st.sampled_from(BASELINE_LATEX_P))
+
+    found_latex = list(found_emitted)
+    tex = ["\\documentclass{article}", "\\begin{document}", "\\section{Results}", filler]
+    p = latex_p()
+    line = float_(tex, headers(p), caption(BASELINE_CAPTIONS, BASELINE_LATEX_WORDS),
+                  draw(st.booleans()))
+    found_latex.append(["manuscript/main.tex", line, [p]])
+    float_(tex, headers(latex_p()), caption(BASELINE_OUTCOMES + BASELINE_CHANGES + (
+        "Change from~{w} in the score",), BASELINE_LATEX_WORDS), draw(st.booleans()))
+    tex.append("\\end{document}")
+    supplement_tex = ["\\documentclass{article}", "\\begin{document}", filler]
+    p = latex_p()
+    line = float_(supplement_tex, headers(p), caption(BASELINE_CAPTIONS, BASELINE_LATEX_WORDS),
+                  draw(st.booleans()))
+    found_latex.append(["manuscript/supplementary/main.tex", line, [p]])
+    supplement_tex.append("\\end{document}")
+
+    given = {
+        "emitted": emitted,
+        "markdown": {"main.md": "\n".join(main) + "\n",
+                     "supplementary/S1_tables.md": "\n".join(supplement) + "\n"},
+        "latex": {"main.tex": "\n".join(tex) + "\n",
+                  "supplementary/main.tex": "\n".join(supplement_tex) + "\n"},
+        "other": draw(st.sampled_from(BASELINE_NOT_TRIALS)),
+    }  # fmt: skip
+    found = {"markdown": sorted(found_markdown, key=json.dumps),
+             "latex": sorted(found_latex, key=json.dumps)}
+    return given, found
+
+
 # ------------------------------------- the packages used, named and cited in the Methods
 
 #: How a sentence cites, written after the package's name and before its stop: pandoc's,
@@ -14699,8 +15390,15 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
+    "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
+    "means and SDs never negative": spread_tables().map(
+        lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
+    "means held to a floor": floored_means().map(
+        lambda drawn: {"values": drawn[0], "floors": drawn[1]}
     ),
     "printed value": printings(),
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
@@ -14769,5 +15467,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ])
     ),  # fmt: skip
     "software": software_plans().map(lambda drawn: drawn[0]),
+    # Each format of a trial's paper, and the Markdown one under another design.
+    "baseline tables": baseline_papers().flatmap(lambda drawn: st.sampled_from([
+        {"emitted": drawn[0]["emitted"], "files": drawn[0][kind], "study_type": design}
+        for kind, design in (("markdown", "trial"), ("latex", "trial"),
+                             ("markdown", drawn[0]["other"]))])),  # fmt: skip
     "software in the methods": software_methods().map(lambda drawn: drawn[0]),
 }

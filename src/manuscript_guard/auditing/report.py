@@ -22,6 +22,8 @@ What was read and what was not comes first, then a section for each kind of chec
   and with `--authors` each author named where the journal's review is blind.
 * Causal words, with `--design`: each sentence of the Abstract, the Discussion and the
   Conclusion that claims a cause with no hedge, negation or citation (`auditing.causal`).
+* Baseline tables, with `--design trial`: each table captioned as of baseline
+  characteristics that has a column of P values (`auditing.baseline`).
 * Cited sentences, with `--cited`: how many rows the file holds and what was not read
   (`auditing.cited`); the sentences themselves are in the file only.
 * Self-citation, with `--journal` and `--authors` or `--lookup`: the references whose
@@ -139,7 +141,7 @@ def items(report) -> list[Item]:
         for c in report.reference_like
     ]  # fmt: skip
     found += [
-        Item(ARITHMETIC, "audit", "does-not-fit", d.message, WARN, False, d.source, d.line,
+        Item(ARITHMETIC, "audit", d.code, d.message, WARN, False, d.source, d.line,
              d.context)
         for d in report.disagreements
     ]  # fmt: skip
@@ -167,6 +169,7 @@ def items(report) -> list[Item]:
              "mean was read in a row whose label holds it", INFO, False)
         for label in report.whole_numbers_unfound
     ]  # fmt: skip
+    found += _non_negative_items(report)
     found += _flow_items(report)
     found += _abstract_items(report.abstract)
     found += [
@@ -205,10 +208,41 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
         ]  # fmt: skip
+    found += _title_items(report)
     return (found + _journal_items(report.journal) + _document_items(report)
-            + _causal_items(report.causal) + _cited_items(report.cited)
+            + _causal_items(report.causal) + _baseline_items(report.baseline)
+            + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
+
+
+def _title_items(report) -> list[Item]:
+    """What is said of each entry with no DOI and no PMID that a reader is to look at: what
+    a dry run would ask of Crossref, and, with `--lookup` or without it, each one to check by
+    hand, a note with why (`by_title.reason`). The tile counts the same entries (round 1 of
+    #650). One found is said as the DOI it gave is asked about (`by_title.look_up_all`); a
+    web page or a legal text no DOI is expected of is listed in the section only."""
+    from manuscript_guard.auditing import by_title
+
+    looked_up = report.lookups is not None
+    found = []
+    for one in by_title.without_identifier(report):
+        entry, where = one.entry, one.entry.path or one.path
+        why = by_title.reason(one, looked_up)
+        if looked_up and one.asked and not one.came:
+            found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
+                              f"{one.asked}", INFO, False, where, entry.line))  # fmt: skip
+        elif why in by_title.REASONS:
+            found.append(Item(REFERENCES, "G7", by_title.CODES[why],
+                              f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
+                              where, entry.line))  # fmt: skip
+    return found
+
+
+def _non_negative_items(report) -> list[Item]:
+    from manuscript_guard.auditing.skew import items as non_negative
+
+    return non_negative(report, Item, ARITHMETIC)
 
 
 def _printed_items(census) -> list[Item]:
@@ -249,6 +283,12 @@ def _causal_items(read) -> list[Item]:
         *(Item(CAUSAL, "audit", "causal-words-not-read", f"{path.name}: {note}", INFO, False,
                path) for path, note in read.notes),
     ]  # fmt: skip
+
+
+def _baseline_items(read) -> list[Item]:
+    from manuscript_guard.auditing.baseline import items as baseline_items
+
+    return baseline_items(read)
 
 
 def _unplaced(path: Path) -> str:
@@ -439,6 +479,7 @@ def as_json(report, discrimination) -> str:
         "reference_entries": sum(len(c.entries) for c in report.references),
         **_reader_counts(report),
         **_package_counts(report.package),
+        **_baseline_counts(report.baseline),
     }
     worth = None
     if discrimination is not None and report.compared:
@@ -481,6 +522,12 @@ def _package_counts(read) -> dict[str, int]:
     if read is None:
         return {}
     from manuscript_guard.auditing.package import counts
+
+    return counts(read)
+
+
+def _baseline_counts(read) -> dict[str, int]:
+    from manuscript_guard.auditing.baseline import counts
 
     return counts(read)
 
@@ -611,7 +658,7 @@ def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
     return bool(report.sums_off or report.over_n or report.over_n_rounding
                 or report.disagreements or report.whole_numbers or report.flows_read
-                or report.flow_notes)  # fmt: skip
+                or report.flow_notes or report.non_negative)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -745,6 +792,11 @@ def _sections(
     if report.causal is not None:
         out.append((f"{CAUSAL} (--design {report.causal.design}; not counted by --strict)",
                     _causal(report.causal, show)))  # fmt: skip
+    if report.baseline is not None:
+        from manuscript_guard.auditing.baseline import SECTION, lines
+
+        out.append((f"{SECTION} (--design {report.baseline.design}; not counted by --strict)",
+                    lines(report.baseline, show, _listed)))  # fmt: skip
     if report.cited is not None:
         out.append((f"{CITED} (not counted by --strict)", _cited(report.cited, show)))
     if report.self_citation is not None:
@@ -913,8 +965,8 @@ def _arithmetic(report, show) -> list[str]:
         lines.append(
             "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
             "read as two-sided; a ratio and its interval; an interval and its P; an n (%) "
-            "and its denominator; a mean of whole numbers and its n (not counted by "
-            "--strict):"
+            "and its denominator; a mean of whole numbers and its n; a mean and its SD of a "
+            "variable that cannot be negative (not counted by --strict):"
         )
         by_paper: dict[Path, list] = {}
         for item in report.disagreements:
@@ -945,9 +997,17 @@ def _arithmetic(report, show) -> list[str]:
             f"  --whole-numbers {label!r}: no mean was read in a row whose label holds it"
             for label in report.whole_numbers_unfound
         ]
+    lines += _non_negative_lines(report, show, bool(lines))
     flows = _flows(report, show)
     lines += ([""] if lines and flows else []) + flows
     return lines or ["  Nothing read here disagrees with the numbers beside it."]
+
+
+def _non_negative_lines(report, show, after: bool) -> list[str]:
+    from manuscript_guard.auditing.skew import lines
+
+    said = lines(report, show)
+    return ([""] if said and after else []) + said
 
 
 def _flows(report, show) -> list[str]:
@@ -1092,14 +1152,16 @@ def _references(report, show) -> list[str]:
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
         lines += _looked(looked.get(census.path, []), census.path, show)
-        if report.lookups is not None and style != UNTOLD:
-            lines += _unlooked(census, show)
+        if style != UNTOLD:
+            titles = getattr(report, "titles", None)
+            lines += _unlooked(census, show, titles if report.lookups is not None else None)
     if report.lookups is None:
         lines.append(
             "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
             "DataCite and doi.org of one Crossref has no record of, and PubMed of each PMID, "
-            "whether the work was retracted, withdrawn or put under concern, and --lookup "
-            "--dry-run shows what would be sent."
+            "whether the work was retracted, withdrawn or put under concern, and Crossref for "
+            "the title of an article or a book that gives neither, and --lookup --dry-run "
+            "shows what would be sent."
         )
     return lines
 
@@ -1226,19 +1288,29 @@ ENTRY_QUOTED = 90
 _LIST_NUMBER = re.compile(r"^\\?[\[(]?\d{1,4}\\?[\].)]\s+")
 
 
-def _unlooked(census, show) -> list[str]:
-    """Each entry of `census`'s list that was not looked up for having no DOI and no PMID,
-    at its place, by its number and its first words: an entry left out of the look-up is
-    said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
-    or say which ones were not checked and why"). Every one, as the reader asked for each."""
-    from manuscript_guard.auditing.references import BY_PLACE, without_identifier
+def _unlooked(census, show, titles: list | None = None) -> list[str]:
+    """Each entry of `census`'s list with no DOI and no PMID, at its place, by its number and
+    its first words, and under it what it is and what came of it: a web page or a legal text
+    no DOI is expected of, an article or a book found by its title, or one to check by hand
+    (`by_title.said`). An entry no DOI or PMID could be looked up by is said, not passed over
+    (the author's audit, 2026-11-11: "we need to check all references, or say which ones
+    were not checked and why"; his decision of 2026-11-12 to sort them and look up the
+    articles and books by their title). Every one, as the reader asked for each. `titles` is
+    what `--lookup` found (`by_title.look_up_all`); None without it."""
+    from manuscript_guard.auditing import by_title
+    from manuscript_guard.auditing.references import BY_PLACE
 
-    missing = [entry for entry in census.entries if without_identifier(entry)]
-    if not missing:
+    looked_up = titles is not None
+    if looked_up:
+        sorted_ = [one for one in titles if one.path == census.path]
+    else:
+        sorted_ = by_title.unasked(census)
+    if not sorted_:
         return []
-    lines = [f"    not looked up, having no DOI or PMID to look up: "
-             f"{len(missing)} entr{'y' if len(missing) == 1 else 'ies'}"]  # fmt: skip
-    for entry in missing:
+    count = len(sorted_)
+    lines = [f"    with no DOI or PMID given: {count} entr{'y' if count == 1 else 'ies'}"]
+    for one in sorted_:
+        entry = one.entry
         # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
         # every item of a Markdown list, "3\.").
         typed = " ".join(entry.text.split())
@@ -1249,6 +1321,7 @@ def _unlooked(census, show) -> list[str]:
         quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
         lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"
                      + (f": {quoted}" if quoted else ""))  # fmt: skip
+        lines.append(f"        {by_title.said(one, looked_up)}")
     return lines
 
 

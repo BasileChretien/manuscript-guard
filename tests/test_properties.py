@@ -106,6 +106,7 @@ from generated import (
     escaped_backticks,
     figure_captions,
     figures_left_on,
+    floored_means,
     flow_lists,
     generated,
     harvest_cells,
@@ -180,6 +181,7 @@ from generated import (
     signs,
     small_profile_tables,
     sources,
+    spread_tables,
     suggestion_paragraphs,
     supplements,
     tag_paragraphs,
@@ -2434,7 +2436,7 @@ def _the_end_of_the_text_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> Non
 
 def _a_dash_s_clause_is_not_read_past_a_line_break(patch: pytest.MonkeyPatch) -> None:
     """Hard-wrapped text: "- CSS," with "which pays" on the next line defined nothing."""
-    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=3)
+    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=4)
 
 
 def _a_closing_mark_after_a_dash_s_short_form_ends_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -2457,7 +2459,8 @@ def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) ->
 def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
     space, dash = language_gate._DASH_SPACE, language_gate._DASH
-    _clause_ends_with(patch, f"|{space}+{dash}{space}", "")
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"|{space}+{dash}{space}{one_break}{marks}[^\W\d_]", "")
 
 
 def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
@@ -2480,6 +2483,73 @@ def _a_list_item_s_line_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None
     """Round 1 of #643: each item of a list written long form first but the last defined
     nothing."""
     patch.setattr(language_gate, "_LIST_ITEM", re.compile("(?!)"))
+
+
+def _a_bound_value_after_a_dash_s_short_form_is_no_value(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #643: "- OR {{results.or}}." defined OR, the binding blanked by the mask."""
+    patch.setattr(language_gate, "_BOUND", re.compile("(?!)"))
+
+
+def _a_list_item_ends_at_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643's rule: a line with a marker was an item's anywhere, and ended where
+    the line did, its continuation on the next line or not."""
+    marked = language_gate._LIST_ITEM
+
+    def any_marker(typed: str, line: int) -> bool:
+        return bool(marked.match(typed, line))
+
+    patch.setattr(language_gate, "_in_a_list_item", any_marker)
+    patch.setattr(language_gate, "_item_ends", lambda typed, after: True)
+
+
+def _a_closing_dash_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643's rule: "- OR - 1.52 in all" defined OR."""
+    dash, space = language_gate._DASH, language_gate._DASH_SPACE
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"{dash}{space}{one_break}{marks}[^\W\d_]", f"{dash}{space}")
+
+
+def _a_lead_in_line_opens_no_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #662: under "the payments were:", an item followed by one of another kind
+    defined nothing."""
+    patch.setattr(language_gate, "_LEAD_IN", "\N{REPLACEMENT CHARACTER}")
+
+
+def _the_next_item_of_its_kind_makes_no_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #662: under a lead-in line with no colon, "* the Peat Restoration Grant -
+    PRG" over "* the Peat Fund" defined nothing."""
+    patch.setattr(language_gate, "_kind", lambda marker: object())
+
+
+def _any_binding_after_a_dash_s_short_form_is_a_value(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #662: an anchor, `{{method.payments}}`, and a pointer, `{{ref.table.x}}`,
+    cancelled the definition before them."""
+    pattern = language_gate._BOUND.pattern
+    value = language_gate._VALUE_BINDING
+    assert pattern.count(value) == 1, pattern
+    patch.setattr(language_gate, "_BOUND", re.compile(pattern.replace(value, r"[a-z]+\.")))
+
+
+def _a_lazy_line_above_an_item_ends_the_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #662: the walk up a list stopped, an item's no more, at an unindented
+    continuation line of the item above."""
+    marked, ends = language_gate._LIST_ITEM, language_gate._ENDS_AN_ITEM
+
+    def stopped(typed: str, line: int) -> bool:
+        if not marked.match(typed, line):
+            return False
+        at = line
+        while at > 0:
+            above = typed.rfind("\n", 0, at - 1) + 1
+            written = typed[above : at - 1]
+            if not written.strip(" \t\r>") or ends.match(written):
+                return True
+            if not (marked.match(written) or written[:1] in " \t"):
+                return False
+            at = above
+        return True
+
+    patch.setattr(language_gate, "_in_a_list_item", stopped)
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
@@ -7961,6 +8031,143 @@ def _a_mean_with_a_minus_sign_or_a_plus_minus_is_not_read(patch: pytest.MonkeyPa
     ))  # fmt: skip
 
 
+# ------------------------------------------------ a table's means and SDs of a measure
+
+
+@holds(100, spread_tables())
+def test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero(
+    drawn: tuple[str, list[str], list[tuple[Any, ...]], list[list]],
+) -> None:
+    """`audit --non-negative`: in a row whose label holds one the auditor names, at word
+    edges and in any case, each cell printed as a mean and its SD, in brackets or after a
+    plus-minus sign, a minus sign before a negative mean, is read, and said skewed where the
+    mean is less than twice the SD, exactly twice not. A label naming a standard error or a
+    change (not a time to one) is passed over and said, as is a cell under a first-row
+    header naming a standard error. A label naming a mean (SD), or a cell under a header
+    naming one, is read, a whole-number mean in a table saying n (%) too. A label naming a
+    category is passed over. In a table that says n (%), and only there, a cell of a row
+    naming none of these whose first number is whole may be a count, and is passed over;
+    one with a point is read. The paragraph below a table ends at the next table's
+    caption. A row not named, one whose label holds a named one inside a word, a row of
+    medians and a sentence are not read."""
+    from manuscript_guard.stats.skew import caption_of, table_spreads
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, labels, expected, passed = drawn
+    found, rows = [], []
+    for table in markdown_tables(text):
+        spreads, passed_over = table_spreads(table, tuple(labels),
+                                             caption_of(text.split("\n"), table))
+        found += [(s.line, s.mean, s.sd, s.skewed) for s in spreads]
+        rows += [[row.line, row.why] for row in passed_over]
+    assert found == expected, text
+    assert rows == passed, text
+
+
+@holds(100, floored_means())
+def test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable(
+    drawn: tuple[dict[str, dict], dict[str, Any], list[list]],
+) -> None:
+    """G15: each SD of a mean that names its variable is held to the floor the data
+    dictionary gives the variable, and warns where the mean is less than twice the SD above
+    it, exactly twice not, a floor other than zero taken as the distance from it. A reason
+    on the mean stands the warning down; a blank one does not. A standard error, a variable
+    with no floor or with a floor written as text, and a mean that names no variable are not
+    held to one."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.summaries import floor, held
+
+    values, floors, expected = drawn
+    read = {key: Value(key=key, value=spec["value"], display=spec["display"], origin=RESULTS,
+                       of=spec.get("of"), spread=spec.get("spread"),
+                       variable=spec.get("variable"), skewed_ok=spec.get("skewed_ok"))
+            for key, spec in values.items()}  # fmt: skip
+    found = [[one.sd.key, one.mean.key, one.floor, one.warned]
+             for one in held(read, lambda name: floor(floors.get(name)))]  # fmt: skip
+    assert found == expected, values
+
+
+def _a_mean_twice_its_sd_is_skewed(patch: pytest.MonkeyPatch) -> None:
+    from decimal import Decimal
+
+    from manuscript_guard.stats import skew
+
+    def at_most(mean: object, sd: object, floor: object = 0) -> bool | None:
+        parts = [skew._decimal(value) for value in (mean, sd, floor)]
+        if any(part is None for part in parts):
+            return None
+        return parts[0] - parts[2] <= Decimal(skew.TIMES) * parts[1]
+
+    patch.setattr(skew, "skewed", at_most)
+
+
+def _a_floor_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    read = skew.skewed
+    patch.setattr(skew, "skewed", lambda mean, sd, floor=0: read(mean, sd, 0))
+
+
+def _a_never_negative_label_is_matched_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "names", lambda label, text: label.lower() in text.lower())
+
+
+def _an_se_in_a_table_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_SE", re.compile(r"(?!)"))
+
+
+def _a_change_is_read_as_the_measure(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_CHANGE", re.compile(r"(?!)"))
+
+
+def _a_whole_number_under_n_percent_is_read_as_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_may_be_a_count", lambda match: False)
+
+
+def _a_time_to_a_change_is_a_change(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_TO_ONE", re.compile(r"(?!)"))
+
+
+def _the_caption_scan_runs_past_a_caption(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_CAPTION_OPENS", re.compile(r"(?!)"))
+
+
+def _a_cell_s_column_header_is_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_mean_columns", lambda header: set())
+
+
+def _the_table_s_n_percent_overrides_a_label_naming_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "names_a_mean", lambda label: False)
+
+
+def _a_floor_written_as_text_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import summaries
+
+    patch.setattr(summaries, "floor", lambda minimum: minimum)
+
+
+def _an_se_of_a_mean_is_read_as_its_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import summaries
+
+    patch.setattr(summaries, "READ", frozenset({"sd", "se"}))
+
+
 def _a_named_row_s_own_n_is_taken(patch: pytest.MonkeyPatch) -> None:
     """A named row's own n is taken for its means: "Pain score (n = 25)" is held to 25."""
     from dataclasses import replace
@@ -10604,6 +10811,210 @@ def _an_article_online_first_is_no_entry(patch: pytest.MonkeyPatch) -> None:
 
 def _harvard_s_year_needs_its_full_stop(patch: pytest.MonkeyPatch) -> None:
     _without(patch, "_REFERENCE_ENTRY", r"(?:\.|(?=\s+[", r"(?:\.|(?!)(?=\s+[")
+
+
+# --------------------------------- the audit's entries with no DOI or PMID, sorted and matched
+
+from generated import unidentified_entries  # noqa: E402
+
+from manuscript_guard.auditing import by_title as by_title_module  # noqa: E402
+
+
+def _title_read(title: str) -> str:
+    """A title as the entry's first part after its authors reads it: up to a question mark
+    that ends a part, which may end the title or a main title before its subtitle."""
+    cut = re.search(r"[?!](?=\s)", title)
+    return title[: cut.end()] if cut else title
+
+
+@holds(100, unidentified_entries())
+def test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape(
+    drawn: list[tuple[str, str, str | None, str | None, int | None]],
+) -> None:
+    """An article in three styles, one that gives its address too, a book in two, a chapter,
+    a web page with its access date, a legal text by its opening word or by its journal and
+    a bare address are each sorted as what they are (`by_title.sort`); and of an article, a
+    book or a chapter its title, first author and year are read (`by_title.cited`), whatever
+    initials, particles, accents, "U.S." or question mark it holds."""
+    assert [(text, by_title_module.sort(text).kind) for text, *_ in drawn] == [
+        (text, kind) for text, kind, *_ in drawn]  # fmt: skip
+    for text, _kind, title, family, year in drawn:
+        if title is None:
+            continue
+        said = by_title_module.cited(text)
+        assert said is not None, text
+        assert (said.title, said.family, said.year) == (_title_read(title), family, year), text
+        assert title in said.titles, text
+
+
+def _unaccented(text: str) -> str:
+    import unicodedata
+
+    from manuscript_guard.gates.authors import LETTERS
+
+    text = unicodedata.normalize("NFKD", text).translate(LETTERS)
+    text = text.translate({ord("\N{LATIN CAPITAL LETTER O WITH STROKE}"): "O"})
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def _registered(cited: str, family: str, year: int, **changed: Any) -> dict[str, Any]:
+    """Crossref's record of the work whose title is `cited`, as it may print it: the title in
+    capitals, its subtitle apart, its accents off, a curled apostrophe; the family name in
+    title case, unaccented; and an online year before the print one."""
+    main, _colon, subtitle = cited.partition(": ")
+    work = {
+        "doi": "10.5555/registered", "type": "journal-article",
+        "title": _unaccented(main).upper().replace("'", "\N{RIGHT SINGLE QUOTATION MARK}"),
+        "subtitle": _unaccented(subtitle) or None,
+        "authors": [{"family": _unaccented(family).title(), "given": "A"}],
+        "years": {"print": year, "online": year - 1},
+    }  # fmt: skip
+    return {**work, **changed}
+
+
+@holds(100, unidentified_entries())
+def test_a_registered_work_is_taken_for_an_entry_only_when_near_exact(
+    drawn: list[tuple[str, str, str | None, str | None, int | None]],
+) -> None:
+    """Crossref's work is an entry's where its title is the entry's, case, punctuation and
+    accents folded, its first author the entry's first, and one of its years the entry's;
+    not where it is of another year, has another person first, or lacks a word of the title
+    or adds one (`by_title.near_exact`). The first author is the one the entry is read to
+    give, whose given names may come first, and a retracted work's flag before its title,
+    "RETRACTED:", is no part of the title (round 1 of #650)."""
+    for text, _kind, title, family, year in drawn:
+        if title is None:
+            continue
+        said = by_title_module.cited(text)
+        assert by_title_module.near_exact(said, _registered(title, family, year)), text
+        flagged = _registered(title, family, year)
+        flagged["title"] = "RETRACTED: " + flagged["title"]
+        assert by_title_module.near_exact(said, flagged), text
+        others = (
+            {"years": {"print": year + 2, "online": year + 3}},
+            {"authors": [{"family": "Okafor"}, {"family": family}]},
+            {"title": title.rsplit(" ", 1)[0], "subtitle": None},
+            {"title": title + " revisited", "subtitle": None},
+        )
+        for changed in others:
+            work = _registered(title, family, year, **changed)
+            assert not by_title_module.near_exact(said, work), (text, changed)
+
+
+def _no_access_date_makes_a_web_page(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_WEB", tuple(
+        rule for rule in by_title_module._WEB if rule[0] != "it says when it was accessed"))
+
+
+def _a_law_s_opening_word_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_LEGAL_OPENING", re.compile("(?!)"))
+
+
+def _an_official_journal_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_LEGAL_PUBLISHED", re.compile("(?!)"))
+
+
+def _a_title_that_is_a_law_s_name_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_ends_with_law", lambda title: "")
+
+
+def _a_law_s_name_anywhere_in_a_title_makes_a_law(patch: pytest.MonkeyPatch) -> None:
+    def anywhere(title: str) -> str:
+        found = by_title_module._LEGAL_NAMED.search(title)
+        return found.group(1) if found else ""
+
+    patch.setattr(by_title_module, "_ends_with_law", anywhere)
+
+
+def _a_person_s_title_ending_with_a_law_makes_a_law(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_by_a_person", lambda authors: False)
+
+
+def _a_publication_of_law_comes_after_a_book_s_marks(patch: pytest.MonkeyPatch) -> None:
+    """The publication read as the other law's marks are: outside the title first, and only
+    after a book's marks inside it."""
+    published = by_title_module._LEGAL_PUBLISHED
+    patch.setattr(by_title_module, "_LEGAL_PUBLISHED", re.compile("(?!)"))
+    patch.setattr(by_title_module, "_LEGAL_NAMED", re.compile(
+        f"(?:{published.pattern})|(?:{by_title_module._LEGAL_NAMED.pattern})", re.IGNORECASE))
+
+
+def _an_address_makes_a_web_page_first(patch: pytest.MonkeyPatch) -> None:
+    sort = by_title_module.sort
+
+    def first(text: str) -> by_title_module.Sorted:
+        if by_title_module._URL.search(text):
+            return by_title_module.Sorted(by_title_module.WEB)
+        return sort(text)
+
+    patch.setattr(by_title_module, "sort", first)
+
+
+def _no_chapter_is_known(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_CHAPTER", re.compile("(?!)"))
+
+
+def _no_book_is_known(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_BOOK", ())
+
+
+def _an_address_alone_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_URL", re.compile("(?!)"))
+
+
+def _a_stop_after_an_initial_ends_the_authors(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_INITIAL", re.compile("(?!)"))
+
+
+def _a_dotted_abbreviation_ends_a_title(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_abbreviated", lambda before: False)
+
+
+def _accents_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "fold",
+                  lambda text: " ".join(re.findall(r"[^\W_]+", text.casefold())))
+
+
+def _the_year_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_year", lambda said, work: True)
+
+
+def _the_first_author_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_first_author", lambda said, work: True)
+
+
+def _the_first_author_is_the_entry_s_opening(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it was before round 1 of #650: the family name is held to the first words
+    of the whole entry, which a given name first never matches."""
+
+    def opening(said: by_title_module.Cited, work: dict[str, Any]) -> bool:
+        people = [p for p in work.get("authors") or [] if isinstance(p, dict)]
+        family = by_title_module.fold(people[0].get("family", "")) if people else ""
+        return bool(family) and (said.opening == family
+                                 or said.opening.startswith(family + " "))  # fmt: skip
+
+    patch.setattr(by_title_module, "_same_first_author", opening)
+
+
+def _a_title_s_words_sort_it_before_a_book_s_marks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_outside_title", lambda text: text)
+
+
+def _a_hyphenated_name_opens_a_law(patch: pytest.MonkeyPatch) -> None:
+    pattern = by_title_module._LEGAL_OPENING
+    assert pattern.pattern.count("(?![\\w-])") == 1
+    patch.setattr(by_title_module, "_LEGAL_OPENING", re.compile(
+        pattern.pattern.replace("(?![\\w-])", "(?!\\w)"), pattern.flags))
+
+
+def _a_retracted_work_s_flag_stays_in_its_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "_FLAG", re.compile("(?!)"))
+
+
+def _the_title_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_title", lambda said, work: True)
 
 
 @holds(100, glued_intervals())
@@ -19828,6 +20239,98 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
 
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import baseline_papers  # noqa: E402
+
+
+@holds(30, baseline_papers())
+def test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does(
+    planted: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """In a randomised trial, each table captioned as of baseline characteristics with a P
+    header warns, emitted or typed, in Markdown or LaTeX, in the main text or the
+    supplement, at its header row's line, naming its P header; a table of outcomes, of a
+    change from baseline, with the word inside another or with a header that holds a P and is
+    none warns of nothing. Of a paper of another design, or of none, nothing is said."""
+    given, found = planted
+    read = READINGS["baseline tables"]()
+    for kind in ("markdown", "latex"):
+        paper = {"emitted": given["emitted"], "files": given[kind]}
+        answered = answer(read, {**paper, "study_type": "trial"})
+        assert "raised" not in answered, answered
+        told = answered["answer"]
+        assert all(code == "baseline-p-values" and severity == "warn"
+                   for _path, _line, code, severity, _said in told), told  # fmt: skip
+        said = sorted(([path, line] for path, line, *_rest in told), key=json.dumps)
+        expected = sorted(([path, line] for path, line, _headers in found[kind]), key=json.dumps)
+        assert said == expected, given[kind]
+        for path, line, headers in found[kind]:
+            (message,) = [m for p, n, _c, _s, m in told if [p, n] == [path, line]]
+            shown = message.split("column of P values (", 1)[1].split("), and the study", 1)[0]
+            assert shown == " and ".join(repr(_printed(h, kind)) for h in headers), message
+        other = answer(read, {**paper, "study_type": given["other"]})
+        assert other == {"answer": []}, given["other"]
+
+
+def _printed(header: str, kind: str) -> str:
+    """A header as the finding names it: as typed in Markdown, as the LaTeX reader prints it."""
+    if kind == "markdown":
+        return header
+    for written, shown in (("$^{a}$", "^a"), ("$^{*}$", "^*"), ("$^\\dagger$", "^"),
+                           ("\\textit{P}", "P"), ("\\emph{p}", "p"), ("$P$", "P"),
+                           ("$p$", "p")):  # fmt: skip
+        header = header.replace(written, shown)
+    return header
+
+
+def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", baseline._names(start=""))
+
+
+def _qualifying_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_QUALIFIED", re.compile(r"(?!)"))
+
+
+def _only_the_old_adjectives_between(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    adjectives = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+                  "patients'", "participants'")  # fmt: skip
+    patch.setattr(baseline, "_NAMES",
+                  baseline._names(word=baseline._one_of(adjectives) + baseline._END))
+
+
+def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.I))
+
+
+def _a_p_header_by_containment(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "p_header",
+                  lambda header: any(p in header for p in baseline.P_HEADERS))  # fmt: skip
+
+
+def _the_supplement_unread(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_DOCUMENTS", (False,))
+
+
+def _any_design_a_trial(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "applies", lambda study_type: True)
+
+
 # ------------------------------------------- the plan's Software section and the loads, G12
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -23177,6 +23680,34 @@ BROKEN = {
         _a_list_item_s_line_ends_no_dash_s_clause,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "a bound value after a dash's short form is no value": (
+        _a_bound_value_after_a_dash_s_short_form_is_no_value,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a list item ends at its first line, a dash's clause with it": (
+        _a_list_item_ends_at_its_first_line,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing dash ends a dash's clause before anything": (
+        _a_closing_dash_ends_a_dash_s_clause_before_anything,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a lead-in line opens no list, a dash's clause with it": (
+        _a_lead_in_line_opens_no_list,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "the next item of its kind makes no list, a dash's clause with it": (
+        _the_next_item_of_its_kind_makes_no_list,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "any binding after a dash's short form is a value": (
+        _any_binding_after_a_dash_s_short_form_is_a_value,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a lazy line above an item ends the list, a dash's clause with it": (
+        _a_lazy_line_above_an_item_ends_the_list,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
     "pandoc's smart dashes are no dashes": (
         _pandoc_s_smart_dashes_are_no_dashes,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
@@ -23848,6 +24379,58 @@ BROKEN = {
     "a named label is matched inside a word": (
         _a_named_label_is_matched_inside_a_word,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a mean exactly twice its SD is skewed, in a table": (
+        _a_mean_twice_its_sd_is_skewed,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a mean exactly twice its SD above its floor is skewed": (
+        _a_mean_twice_its_sd_is_skewed,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a mean is held to zero, not to its variable's floor": (
+        _a_floor_is_not_read,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a never-negative label is matched inside a word": (
+        _a_never_negative_label_is_matched_inside_a_word,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "an SE in a table is read as an SD": (
+        _an_se_in_a_table_is_read_as_an_sd,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "an SE of a mean is read as its SD": (
+        _an_se_of_a_mean_is_read_as_its_sd,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a change in a named measure is read as the measure": (
+        _a_change_is_read_as_the_measure,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a whole number under n (%) is read as a mean and its SD": (
+        _a_whole_number_under_n_percent_is_read_as_a_mean,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the 'to' exception is dropped: a time to a change is a change": (
+        _a_time_to_a_change_is_a_change,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the scan below a table runs past the next table's caption": (
+        _the_caption_scan_runs_past_a_caption,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a cell's column header naming a mean (SD) is ignored": (
+        _a_cell_s_column_header_is_ignored,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the table's n (%) overrides a label naming mean (SD)": (
+        _the_table_s_n_percent_overrides_a_label_naming_a_mean,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a floor written as text is read as a number": (
+        _a_floor_written_as_text_is_read,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
     ),
     "a footnote marker on a row of means is not seen": (
         _a_mean_s_footnote_marker_is_not_seen,
@@ -26466,6 +27049,118 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an access date makes no web page": (
+        _no_access_date_makes_a_web_page,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a law's opening word makes no legal text": (
+        _a_law_s_opening_word_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an official journal makes no legal text": (
+        _an_official_journal_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an address makes a web page whatever else the entry gives": (
+        _an_address_makes_a_web_page_first,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a chapter in a book is known by nothing": (
+        _no_chapter_is_known,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a book is known by nothing": (
+        _no_book_is_known,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an address alone makes no web page": (
+        _an_address_alone_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a stop after an initial ends the authors": (
+        _a_stop_after_an_initial_ends_the_authors,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a dotted abbreviation ends a title": (
+        _a_dotted_abbreviation_ends_a_title,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "accents are not folded when a title is matched": (
+        _accents_are_not_folded,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the year is not compared when a title is matched": (
+        _the_year_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the first author is not compared when a title is matched": (
+        _the_first_author_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the title is not compared when a title is matched": (
+        _the_title_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the first author is held to the entry's opening when a title is matched": (
+        _the_first_author_is_the_entry_s_opening,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "a retracted work's flag stays in its title when a title is matched": (
+        _a_retracted_work_s_flag_stays_in_its_title,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "a title's words sort an entry before a book's marks": (
+        _a_title_s_words_sort_it_before_a_book_s_marks,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a hyphenated name opens a law": (
+        _a_hyphenated_name_opens_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a title that is a law's name makes no legal text": (
+        _a_title_that_is_a_law_s_name_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a law's name anywhere in a title makes a legal text": (
+        _a_law_s_name_anywhere_in_a_title_makes_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a person's title that ends with a law's name makes a legal text": (
+        _a_person_s_title_ending_with_a_law_makes_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a publication of law comes after a book's marks": (
+        _a_publication_of_law_comes_after_a_book_s_marks,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a caption's baseline is read inside another word": (
+        _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "what qualifies an outcome is not read before a caption's baseline": (
+        _qualifying_ignored,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "only the listed adjectives stand between baseline and characteristics": (
+        _only_the_old_adjectives_between,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a caption that holds the word baseline names a table of baseline characteristics": (
+        _baseline_anywhere_names_the_table,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a P header is any header that holds one": (
+        _a_p_header_by_containment,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "the supplement's tables are not read for P values at baseline": (
+        _the_supplement_unread,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a baseline table's P values warn whatever the study's design": (
+        _any_design_a_trial,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
     ),
     "a package's name is found inside a longer word": (
         _a_package_s_name_is_found_inside_a_word,

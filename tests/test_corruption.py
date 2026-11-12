@@ -3817,6 +3817,278 @@ def test_a_latex_paper_s_unheaded_opening_reports_where_it_has_no_results(
     assert said("\\section{Introduction}\n") == ["results.ror.point"]
 
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+#: A table typed in Markdown with a column of P values, its caption pandoc's after it. Its
+#: cells hold words, so that G2 says nothing of them.
+_TYPED_BASELINE = (
+    "\n\n| Characteristic | Drug | Placebo | {header} |\n|---|---|---|---|\n"
+    "| Female | half | half | low |\n\nTable: {caption}\n"
+)
+
+
+def _baseline_said(root: Path) -> list[tuple[str, int | None]]:
+    """Where G8 warns of a table of baseline characteristics with P values: each file, from
+    the project's folder, and line."""
+    from manuscript_guard.gates.baseline import CODE, check_baseline
+
+    project, _report = load_project(root)
+    results = load_namespace(project)[1]
+    found = check_baseline(project, results).findings
+    assert all(f.code == CODE and f.severity == "warn" for f in found), found
+    return [(f.path.relative_to(root).as_posix(), f.line) for f in found]
+
+
+def _emit_baseline(root: Path, caption: str, header: str = "P value") -> None:
+    """The example's table of reports by group, emitted with `caption` and a column headed
+    `header` whose cells are empty."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    table = document["tables"]["baseline"]
+    table["caption"] = caption
+    table["columns"].append(header)
+    table["align"].append("right")
+    for row in table["rows"]:
+        row.append("")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _type_into(path: Path, caption: str, header: str = "P value") -> None:
+    with path.open("a", encoding="utf-8") as typed:
+        typed.write(_TYPED_BASELINE.format(caption=caption, header=header))
+
+
+def test_an_emitted_baseline_table_with_p_values_in_a_trial_warns_at_every_stage(
+    project: Path,
+) -> None:
+    """CONSORT 2010 (item 15) and 2025 (item 25): a test of a baseline difference in a
+    randomised trial tests what the randomisation made true. A warning, never a failure."""
+    from manuscript_guard.cli import _run_gates
+
+    _paper_field(project, "study_type", "trial")
+    _emit_baseline(project, "Baseline characteristics of the reports, by group.")
+    assert _baseline_said(project) == [("results/01_disproportionality.json", None)]
+    for stage in ("drafting", "submission"):
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        (found,) = [f for f in report.findings if f.code == "baseline-p-values"]
+        assert found.severity == "warn" and found not in report.failures, stage
+        assert "item 15" in found.message and "item 25" in found.message, found.message
+        assert "'P value'" in found.message and "randomised trial" in found.message
+        assert found.hint.startswith("emit the table without the P column")
+        assert "prognostic covariates" in found.hint
+
+
+@pytest.mark.parametrize("header", ["P", "p-value", "*P*", "P value^a^", "P\N{DAGGER}"])
+def test_a_typed_baseline_table_with_p_values_in_a_trial_warns(
+    project: Path, header: str
+) -> None:
+    _paper_field(project, "study_type", "trial")
+    main = main_md(project)
+    _type_into(main, "Baseline characteristics of the participants", header)
+    line = main.read_text(encoding="utf-8").split("\n").index(
+        f"| Characteristic | Drug | Placebo | {header} |") + 1
+    assert _baseline_said(project) == [("manuscript/main.md", line)]
+
+
+def test_a_baseline_table_with_p_values_in_the_supplement_warns(project: Path) -> None:
+    """The supplement is read as the main text is, a grid table as a pipe table is."""
+    _paper_field(project, "study_type", "trial")
+    (project / "manuscript" / "supplementary" / "S3_baseline.md").write_text(
+        "# Baseline\n\n: Characteristics at BASELINE\n\n"
+        "+---------+---------+---------+\n| Item    | Drug    | p       |\n"
+        "+=========+=========+=========+\n| Female  | half    | low     |\n"
+        "+---------+---------+---------+\n",
+        encoding="utf-8",
+    )
+    assert _baseline_said(project) == [("manuscript/supplementary/S3_baseline.md", 6)]
+
+
+def test_a_latex_baseline_table_with_p_values_in_a_trial_warns(project: Path) -> None:
+    """The LaTeX twin: a `tabular` in a `table` float, its caption the float's, in the main
+    text and in the supplement."""
+    _paper_field(project, "study_type", "trial")
+    entry = _as_latex(project)
+    float_ = ("\\begin{table}\n\\caption{Baseline characteristics}\n\\begin{tabular}{lll}\n"
+              "Item & Drug & $p$ \\\\\n\\hline\nFemale & half & low \\\\\n\\end{tabular}\n"
+              "\\end{table}\n")
+    entry.write_text(entry.read_text(encoding="utf-8").replace(
+        "\\end{document}", float_ + "\\end{document}"), encoding="utf-8")
+    supplement = project / "manuscript" / "supplementary" / "main.tex"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("\\documentclass{article}\n\\begin{document}\n" + float_
+                          + "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    assert _baseline_said(project) == [("manuscript/main.tex", 7),
+                                       ("manuscript/supplementary/main.tex", 6)]
+
+
+@pytest.mark.parametrize(
+    ("study_type", "caption", "header"),
+    [
+        # The same table in a cohort study, and in a paper that names no design.
+        ("cohort", "Baseline characteristics of the participants", "P value"),
+        (None, "Baseline characteristics of the participants", "P value"),
+        # A trial's table of outcomes, of a change from baseline, of what follows it.
+        ("trial", "Outcomes at 12 weeks", "P value"),
+        ("trial", "Change from baseline in the score at 12 weeks", "P value"),
+        ("trial", "Postbaseline events", "P value"),
+        # A header that holds a P and is none.
+        ("trial", "Baseline characteristics of the participants", "Ptype"),
+        ("trial", "Baseline characteristics of the participants", "P Value"),
+    ],
+)  # fmt: skip
+def test_what_is_no_trials_baseline_table_with_p_values_passes(
+    project: Path, study_type: str | None, caption: str, header: str
+) -> None:
+    if study_type is not None:
+        _paper_field(project, "study_type", study_type)
+    _emit_baseline(project, caption, header)
+    _type_into(main_md(project), caption, header)
+    assert _baseline_said(project) == []
+
+
+#: Captions of a trial's tables of outcomes that hold the word and name no table of baseline
+#: characteristics (round 1 of #657).
+_OUTCOMES_NAMING_BASELINE = (
+    "Primary outcome at baseline and 12 weeks",
+    "Primary outcome by baseline risk",
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline score",
+    "Outcomes adjusting for baseline values",
+    "Post-baseline adverse events",
+    # The phrase after what qualifies an outcome (round 2 of #657).
+    "Primary and secondary outcomes, adjusted for baseline characteristics",
+    "Subgroup analysis of the primary outcome by baseline characteristics",
+    # Words between the qualifier and the phrase, a time inside it, and "features"
+    # (round 3 of #657).
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline characteristics",
+    "Outcomes at 12 weeks, adjusted for prespecified baseline characteristics",
+    "Outcomes at 12 weeks by selected baseline characteristics",
+    "Outcomes based on baseline characteristics",
+    "Changes between baseline and follow-up in clinical characteristics",
+    "Comparison of baseline and follow-up characteristics",
+    "Baseline MRI features associated with response",
+    "Patients with or without baseline high-risk features",
+    "Comparison of baseline and follow up characteristics",
+    "Baseline and six-month characteristics",
+)
+
+
+@pytest.mark.parametrize("caption", _OUTCOMES_NAMING_BASELINE)
+def test_a_trials_table_of_outcomes_whose_caption_names_baseline_passes(
+    project: Path, caption: str
+) -> None:
+    _paper_field(project, "study_type", "trial")
+    _emit_baseline(project, caption, "P")
+    main = main_md(project)
+    with main.open("a", encoding="utf-8") as typed:
+        typed.write(f"\n\n| Outcome | Drug | Placebo | P |\n|---|---|---|---|\n"
+                    f"| Death | few | more | low |\n\nTable: {caption}\n")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_latex_table_of_a_change_from_baseline_passes(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    entry = _as_latex(project)
+    entry.write_text(entry.read_text(encoding="utf-8").replace("\\end{document}", (
+        "\\begin{table}\n\\caption{Change from~baseline in the score}\n\\begin{tabular}{llll}\n"
+        "Outcome & Drug & Placebo & P \\\\\nScore & less & more & low \\\\\n\\end{tabular}\n"
+        "\\end{table}\n\\end{document}")), encoding="utf-8")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -> None:
+    """"Baseline" before characteristics or demographics, up to three words between and no
+    time among them, not after what qualifies an outcome; or characteristics or demographics,
+    then "at baseline" or "at randomisation"."""
+    from manuscript_guard.gates.baseline import names_baseline
+
+    named = ("Baseline demographic and clinical characteristics of each group",
+             "Baseline characteristics and change from baseline",
+             "Table 1. Baseline characteristics of the randomised participants",
+             "Characteristics of the participants at baseline",
+             "Demographics at randomization", "Baseline patient demographics",
+             # A qualifier before a colon cuts nothing after it (round 3 of #657).
+             "Table 1. By arm: baseline characteristics", "Baseline post-stroke characteristics",
+             "Balance across arms in baseline characteristics", "Table 1. Participants by "
+             "arm, baseline characteristics", "Comparison across treatment arms of baseline "
+             "characteristics",
+             "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
+             "Characteristics at~baseline", "Characteristics at \\emph{baseline}",
+             # Any words, up to three, between (round 2 of #657).
+             "Baseline demographic and disease characteristics",
+             "Baseline demographic, clinical, and laboratory characteristics",
+             "Baseline clinical and laboratory characteristics",
+             "Baseline socio-demographic characteristics",
+             f"Baseline patients{chr(0x2019)} characteristics",
+             "Baseline characteristics by treatment group")  # fmt: skip
+    not_named = (*_OUTCOMES_NAMING_BASELINE, "Change from~baseline in the score",
+                 "Postbaseline characteristics", "Baseline", "Outcomes at 12 weeks",
+                 "Participants at baseline, by group", "Change from baseline in characteristics")
+    assert [caption for caption in named if not names_baseline(caption)] == []
+    assert [caption for caption in not_named if names_baseline(caption)] == []
+
+
+_PIPE_P = "| A | Drug | P value |\n|---|---|---|\n| x | y | z |\n"
+
+
+def test_pandoc_s_captions_go_to_the_tables_as_pandoc_gives_them() -> None:
+    """Pandoc 3.9 reads a table's caption before it where no table took that one, else the
+    one after it: in either order with nothing between, each table its own (round 1 of
+    #657)."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    def captions(text: str) -> list[str]:
+        return [table.caption for table in markdown_captioned(text)]
+
+    assert captions(f"Table: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes at 12 "
+                    f"weeks\n\n{_PIPE_P}") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes "
+                    "at 12 weeks\n") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\nSome prose.\n\n{_PIPE_P}") == [
+        "Baseline characteristics", ""]
+
+
+@pytest.mark.parametrize(
+    ("legend", "caption"),
+    [("Table 1 Baseline characteristics", "Table 1 Baseline characteristics"),
+     ("**Table 1** Baseline characteristics", "**Table 1** Baseline characteristics"),
+     ("Table 1. Baseline characteristics", "Table 1. Baseline characteristics"),
+     ("Table 1 shows the baseline characteristics.", "")],
+)  # fmt: skip
+def test_a_legend_typed_with_no_stop_after_its_number_is_a_caption(
+    legend: str, caption: str
+) -> None:
+    """BMC's and Springer's "Table 1 Baseline characteristics": a capital after the number
+    opens a legend as a stop does; a small letter goes on a sentence."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    (table,) = markdown_captioned(f"Some prose.\n\n{legend}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == caption
+
+
+def test_a_paragraph_that_opens_with_a_table_s_number_and_a_capital_is_its_legend() -> None:
+    """Known gaps: "Table 1 In the intervention group ..." beside a table is read as its
+    legend, as "Table 1 Baseline characteristics" is: the two are set alike."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    prose = "Table 1 In the intervention group, more were women."
+    (table,) = markdown_captioned(f"{prose}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == prose
+
+
+def test_the_designs_that_take_consort_are_read_from_the_data_file() -> None:
+    from manuscript_guard.gates.baseline import consort_designs
+    from manuscript_guard.gates.design import study_types
+
+    assert consort_designs() == {name for name, kind in study_types().items()
+                                 if "CONSORT" in kind["guidelines"]}  # fmt: skip
+    assert consort_designs() == {"trial"}
+
+
+def test_the_example_is_no_trial_and_has_no_baseline_table_with_p_values(project: Path) -> None:
+    assert _baseline_said(project) == []
+
+
 # --------------------------------------- an earlier output of the same data, and this paper
 #
 # The example stands beside a copy of itself as the abstract it was first presented in. Each
@@ -11341,6 +11613,207 @@ def test_the_poisson_hint_says_what_r_can_do(project: Path) -> None:
     assert "sandwich::vcovHC" in hints[0]
 
 
+# ------------------------------------------------- G15: a mean and its SD of skewed data
+
+
+def _with_floor(root: Path, name: str, floor: object) -> None:
+    """The example's dictionary with an entry for `name` whose floor is `floor`."""
+    entry = (f"  - name: {name}\n    label: {name.upper()}\n    definition: A measure that "
+             f"cannot fall below its floor.\n    type: continuous\n"
+             f"    range: {{min: {floor}}}\n")  # fmt: skip
+    _dictionary_edited(root, "rules:", entry + "rules:")
+
+
+def _mean_and_sd(root: Path, mean: object, sd: object, **on_mean: object) -> None:
+    """The example's fragment with a mean, `crp.mean`, its fields `on_mean`, and an SD of it,
+    `crp.sd`: neither quoted, so that G2 asks nothing of them."""
+    spread = on_mean.pop("spread", "sd")
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["crp.mean"] = {"value": mean, "display": str(mean), "quoted": False,
+                                      **on_mean}  # fmt: skip
+    document["values"]["crp.sd"] = {"value": sd, "display": str(sd), "quoted": False,
+                                    "spread": spread, "of": "crp.mean"}  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _skew_said(root: Path) -> list:
+    from manuscript_guard.gates.summaries import check_summaries
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert report.ok, report.findings
+    return list(check_summaries(project, results).findings)
+
+
+@pytest.mark.parametrize(
+    ("mean", "sd", "floor", "said"),
+    [
+        (5, 4, 0, 1),        # Altman and Bland's case: 5 is less than 8
+        (9, 4, 0, 0),        # 9 is more than 8
+        (8, 4, 0, 0),        # exactly twice is not less
+        (7.9, 4, 0, 1),
+        (15, 3, 10, 1),      # 5 above the floor is less than 6
+        (15, 3, 0, 0),       # the same numbers above 0 are not skewed
+        (16, 3, 10, 0),      # 6 above the floor is exactly twice
+        (12.5, 1.25, 10, 0),
+        (2.0, 0.6, 0.5, 0),  # a floor that is not whole: 1.5 above it, twice 0.6 is 1.2
+        (1.5, 0.6, 0.5, 1),  # 1.0 above it
+    ],
+)
+def test_a_mean_less_than_twice_its_sd_above_its_floor_is_a_warning(
+    project: Path, mean: float, sd: float, floor: float, said: int
+) -> None:
+    """A mean of a variable that cannot fall below its floor, less than twice its SD above
+    it, shows skewed data (Altman and Bland, BMJ 1996;313:1200), and passed."""
+    _with_floor(project, "crp", floor)
+    _mean_and_sd(project, mean, sd, variable="crp")
+    found = _skew_said(project)
+    warned = [("G15", "mean-sd-skewed", "warn")]
+    assert [(f.gate, f.code, f.severity) for f in found] == warned * said
+
+
+@pytest.mark.parametrize(
+    ("floor", "mean", "sd", "source"),
+    [
+        # Altman and Bland's rule is for a variable that cannot be negative: a floor of 0.
+        (0, 5, 4, "Altman and Bland, BMJ 1996;313:1200"),
+        (0.0, 5, 4, "Altman and Bland, BMJ 1996;313:1200"),
+        # From another floor the check is the Cochrane Handbook's (round 1 of #660).
+        (10, 15, 3, "Cochrane Handbook for Systematic Reviews of Interventions, version "
+                    "6.5.1, section 10.5.3"),
+    ],
+)
+def test_the_skew_warning_gives_the_mean_the_sd_the_floor_and_the_source(
+    project: Path, floor: object, mean: int, sd: int, source: str
+) -> None:
+    _with_floor(project, "crp", floor)
+    _mean_and_sd(project, mean, sd, variable="crp")
+    (finding,) = _skew_said(project)
+    assert finding.message == (
+        f"crp.mean (crp, floor {floor} in the data dictionary) and its SD crp.sd: the mean "
+        f"{mean} is less than twice the SD {sd} above the floor {floor}, so the data are "
+        f"skewed and the mean (SD) describes them badly ({source})"
+    )
+    assert "median and an interquartile range" in finding.hint and "skewed_ok" in finding.hint
+    assert finding.path == project / "results" / "01_disproportionality.json"
+
+
+def test_a_floor_written_as_text_is_no_floor(project: Path) -> None:
+    """Round 1 of #660: a date's range, "20200101" (an ISO 8601 date the dictionary reads),
+    was read as the number 20200101, and a mean of 5 was held to it."""
+    _dictionary_edited(project, "rules:", "  - name: crp\n    label: CRP\n    definition: "
+                       "A date.\n    type: date\n    range: {min: \"20200101\"}\nrules:")
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
+
+
+@pytest.mark.parametrize(
+    ("reason", "said"),
+    [("reported as the trial registered it; medians in Table S2", 0), ("", 1), ("   ", 1)],
+    ids=["a sentence", "empty", "blank"],
+)
+def test_a_reason_on_the_mean_stands_the_skew_warning_down(
+    project: Path, reason: str, said: int
+) -> None:
+    """`skewed_ok` stands the warning down with a sentence; an empty or a blank one, which no
+    emitter writes but a fragment can hold, stands nothing down."""
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", skewed_ok=reason)
+    assert [f.code for f in _skew_said(project)] == ["mean-sd-skewed"] * said
+
+
+@pytest.mark.parametrize("reason", [3, ["a reason"], True])
+def test_a_reason_that_is_no_sentence_stands_nothing_down(project: Path, reason) -> None:
+    """A number or a list as `skewed_ok` is refused by the schema: the fragment does not
+    load, which G0 reports, and so nothing in it is stood down; nor would it be read as a
+    reason (`stands_down`)."""
+    from manuscript_guard.gates.summaries import stands_down
+
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", skewed_ok=reason)
+    project_, _ = load_project(project)
+    _namespace, results, _literature, report = load_namespace(project_)
+    assert "schema-violation" in codes(report) and "crp.mean" not in results.values
+    assert not stands_down(reason) and not stands_down("") and stands_down("a reason")
+
+
+def test_an_se_is_not_read_as_an_sd(project: Path) -> None:
+    """A standard error gives the SD only with the n, which the value does not carry
+    (DESIGN.md, Known gaps)."""
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", spread="se")
+    assert _skew_said(project) == []
+
+
+def test_a_mean_whose_variable_has_no_floor_is_not_held_to_one(project: Path) -> None:
+    """An entry with no `range.min`, or no dictionary at all, gives no floor, and the mean
+    is held to none (DESIGN.md, Known gaps)."""
+    _dictionary_edited(project, "rules:", "  - name: crp\n    label: CRP\n    definition: "
+                       "A concentration.\n    type: continuous\n    range: {max: 900}\nrules:")
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
+    (project / "design" / "data_dictionary.yaml").unlink()
+    assert _skew_said(project) == []
+
+
+def test_a_variable_the_dictionary_has_no_entry_for_is_not_in_dictionary(project: Path) -> None:
+    """A mean that names a variable the dictionary does not have: G16's `not-in-dictionary`,
+    naming the value, and G15 holds it to no floor."""
+    from manuscript_guard.gates.data_quality import check_data_quality
+
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
+    for stage in ("analysis", "submission"):
+        assert _g16(project, stage) == [("not-in-dictionary", "warn")]
+    project_, _ = load_project(project)
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
+    assert finding.message == ("crp is named by value crp.mean in "
+                               "results/01_disproportionality.json and has no entry in the "
+                               "data dictionary")  # fmt: skip
+
+
+@pytest.mark.parametrize("stage", ["design", "drafting", "submission"])
+def test_the_skew_warning_is_a_warning_at_every_stage(project: Path, stage: str) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp")
+    report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+    assert [(f.gate, f.severity) for f in report.findings if f.code == "mean-sd-skewed"] == [
+        ("G15", "warn")]
+
+
+def test_the_r_emitter_s_mean_and_sd_are_read_by_the_same_check(project: Path) -> None:
+    """What the R emitter writes for a mean that names its variable, and its SD, is held to
+    the floor as the Python emitter's is; and its reason stands the warning down."""
+    from test_r_emitter import EMIT_R, RSCRIPT, _run_r
+
+    if RSCRIPT is None:
+        pytest.skip("R is not installed")
+    _with_floor(project, "crp", 0)
+    script = project / "analysis" / "02_skew.R"
+    for reason, said in (("NULL", ["mean-sd-skewed"]), ('"as the trial registered it"', [])):
+        script.write_text(
+            "source('" + EMIT_R.as_posix() + "')\n"
+            "em <- mg_emitter('" + script.as_posix() + "')\n"
+            "em$value('crp.mean', 5, digits = 1, quoted = FALSE, variable = 'crp', "
+            f"skewed_ok = {reason})\n"
+            "em$value('crp.sd', 4, digits = 1, quoted = FALSE, spread = 'sd', of = 'crp.mean')\n"
+            "em$write()\n",
+            encoding="utf-8",
+        )
+        out = _run_r(script, project)
+        assert out.returncode == 0, out.stderr
+        found = _skew_said(project)
+        assert [f.code for f in found] == said
+        if said:
+            assert found[0].path.name == "02_skew.json"
+            assert "the mean 5.0 is less than twice the SD 4.0 above the floor 0" in (
+                found[0].message)
+
+
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
     """Item 14: a model fitted on several rows a patient, with ordinary standard errors,
     passed."""
@@ -12181,6 +12654,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_figure_colours",
     # G1's and G12's of held-out data: the plan, the results and design/first_reads.yaml.
     "check_held_out", "check_held_out_reads",
+    # G15's of a mean and its SD: the results and design/data_dictionary.yaml.
+    "check_summaries",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
@@ -12216,6 +12691,9 @@ _READS_LATEX = (
     # It reads each figure a document places, `\includegraphics` through `\graphicspath`
     # as a Markdown image is (#630).
     "check_placed",
+    # It reads each table of each document with its float's caption, a `tabular` as a pipe
+    # table is (`text/captioned.py`).
+    "check_baseline",
     # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
     # citation command is written as pandoc's.
     "check_software_cited",
@@ -16768,6 +17246,303 @@ def test_audit_whole_numbers_on_the_command_line(
     shown = capsys.readouterr().out
     assert "line 5: 3.47 cannot be the mean of 28 whole numbers" in shown
     assert "2 read in the rows named" in shown
+
+
+_NEVER_NEGATIVE = (
+    "# Results\n\n"
+    "| Characteristic | Treated (n = 40) | Control (n = 41) |\n"
+    "|---|---|---|\n"
+    "| CRP, mg/L, mean (SD) | 5.0 (4.0) | 9.0 (4.0) |\n"
+    "| Length of stay, days | 8.0 +/- 4.0 | 3.1 \N{PLUS-MINUS SIGN} 2.2 |\n"
+    "| Ferritin, mean (SE) | 2.0 (1.5) | 3.0 (2.0) |\n"
+    "| Age, years | 5.0 (4.0) | 4.0 (3.0) |\n"
+)
+
+
+def test_an_audited_mean_less_than_twice_its_sd_in_a_named_row_is_said(tmp_path: Path) -> None:
+    """`audit --non-negative` names the rows of a variable that cannot be negative, and each
+    mean (SD) there less than twice its SD is listed with the numbers that do not fit, a
+    warning `--strict` does not count: 5.0 (4.0) is, 9.0 (4.0) and 8.0 +/- 4.0 are not. A row
+    that gives an SE is not read, and is said; a row not named is not read; and a label that
+    names no row is said."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+    from manuscript_guard.auditing.report import failed, items
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    named = ("crp", "length of stay", "ferritin", "weight")
+    report = audit([paper], [], non_negative=named)
+    assert [(d.line, d.code, d.message) for d in report.disagreements] == [
+        (5, "mean-sd-skewed", "5.0 (4.0): the mean 5.0 is less than twice the SD 4.0 above "
+            "the floor 0, so the data are skewed and the mean (SD) describes them badly "
+            "(Altman and Bland, BMJ 1996;313:1200)"),
+        (6, "mean-sd-skewed", "3.1 \N{PLUS-MINUS SIGN} 2.2: the mean 3.1 is less than twice "
+            "the SD 2.2 above the floor 0, so the data are skewed and the mean (SD) describes "
+            "them badly (Altman and Bland, BMJ 1996;313:1200)"),
+    ]  # fmt: skip
+    assert report.spreads_read == 4
+    assert [(d.line, d.message) for d in report.non_negative_unread] == [
+        (7, "--non-negative row 'Ferritin, mean (SE)': not read, as its label names a "
+            "standard error, and an SE is not an SD"),
+    ]  # fmt: skip
+    assert report.non_negative_unfound == ["weight"]
+    said = [(i.code, i.severity, i.counted) for i in items(report) if i.section == "Arithmetic"]
+    assert said == [("mean-sd-skewed", "warn", False)] * 2 + [
+        ("non-negative-unread", "info", False), ("non-negative-unfound", "info", False)]
+    # Given no outputs, nothing else is counted either: --strict passes.
+    assert not failed(audit([paper], None, non_negative=named))
+    shown = render(report, measure_discrimination(set()))
+    assert "a mean and its SD of a variable that cannot be negative" in shown
+    assert ("Means and SDs of variables that cannot be negative (--non-negative): 4 read in "
+            "the rows named, 2 with a mean less than twice its SD.") in shown
+    assert "--non-negative 'weight': no mean (SD) was read in a row whose label holds it" in shown
+
+
+def _never_negative_said(tmp_path: Path, text: str, *labels: str) -> tuple[list, list]:
+    """What `audit --non-negative` lists of a paper: each skewed cell's line and printing,
+    and each named row not read, as its line and message."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None, non_negative=labels)
+    skewed = [(d.line, d.message.split(":")[0]) for d in report.disagreements
+              if d.code == "mean-sd-skewed"]  # fmt: skip
+    return skewed, [(d.line, d.message) for d in report.non_negative_unread]
+
+
+_SKEW_COUNTED = "in a table of counts and their shares, it may be a count"
+_SKEW_CATEGORY = "its label names a category, so its cells are counts and their shares"
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["Values are n (%) or mean (SD).", "No. (%)", "Number (%)", "No (%)", "n, %", "Patients (%)"],
+)
+def test_counts_and_their_shares_under_a_caption_saying_n_percent_are_not_read(
+    tmp_path: Path, said: str
+) -> None:
+    """Round 1 of #660: under a caption saying n (%), "5 (12.5)", a whole count and a share
+    of 100 or less, was read as a mean of 5 and an SD of 12.5, and listed as skewed. Round 2:
+    a share printed whole, "5 (12)", is one too; and a label that names a category, a
+    comparator, says so before the caption does."""
+    text = (f"Table 1. {said}\n\n| Characteristic | Treated | Control |\n|---|---|---|\n"
+            "| Weight, kg, mean (SD) | 72.1 (12.3) | 70.4 (11.9) |\n"
+            "| Weight >= 100 kg | 5 (12.5) | 6 (14.6) |\n"
+            "| Weight above the limit | 5 (12) | 6 (15) |\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == []
+    assert unread == [
+        (6, f"--non-negative row 'Weight >= 100 kg': not read, as {_SKEW_CATEGORY}"),
+        (7, f"--non-negative row 'Weight above the limit': not read, as {_SKEW_COUNTED}"),
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Weight >= 100 kg", "Weight \N{GREATER-THAN OR EQUAL TO} 100 kg", "Weight > 100 kg",
+     "Weight < 50 kg", "Weight <= 50 kg", "Weight \N{LESS-THAN OR EQUAL TO} 50 kg",
+     "Weight, n (%)", "Weight, %", "Weight loss, yes", "Weight recorded, no",
+     "Weight recorded, n/N", "Weight <LLN or >ULN"],
+)
+def test_a_label_that_names_a_category_holds_counts(tmp_path: Path, label: str) -> None:
+    """Round 2 of #660: a label that names a category holds counts, whatever the table says,
+    and whole shares as well as decimal ones."""
+    text = f"| Characteristic | Treated, mean (SD) |\n|---|---|\n| {label} | 5 (12) |\n"
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == []
+    assert unread == [(3, f"--non-negative row {label!r}: not read, as {_SKEW_CATEGORY}")]
+
+
+@pytest.mark.parametrize(
+    ("header", "caption"),
+    [("| Characteristic | All patients, n (%) |", ""),
+     ("| Characteristic | All patients |", "Table 1. Values are n (%) or mean (SD).\n\n"),
+     ("| Characteristic, n (%) | All patients |", "")],
+    ids=["header", "caption", "first cell"],
+)
+def test_a_label_that_names_a_mean_is_read_whatever_the_table_says(
+    tmp_path: Path, header: str, caption: str
+) -> None:
+    """Round 2 of #660: a row whose label names a mean (SD) is a mean and its SD, whatever
+    the caption or a header says: "4.1 (6.3)" under "n (%)", and "5 (7.2)", a whole mean,
+    under a caption saying n (%), were passed over as counts."""
+    text = (f"{caption}{header}\n|---|---|\n"
+            "| Length of stay, days, mean (SD) | 4.1 (6.3) |\n"
+            "| Length of stay, days, mean \N{PLUS-MINUS SIGN} SD | 5 (7.2) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "length of stay")
+    first = 3 + caption.count("\n")
+    assert skewed == [(first, "4.1 (6.3)"), (first + 1, "5 (7.2)")]
+    assert unread == []
+
+
+@pytest.mark.parametrize("cells", ["5 (7.2)", "4 (9)", "4 \N{PLUS-MINUS SIGN} 9.5"])
+def test_a_whole_number_mean_unmarked_in_a_table_of_counts_is_passed_over(
+    tmp_path: Path, cells: str
+) -> None:
+    """A Known gap (rounds 2 and 3 of #660): in a table that says n (%), a row whose label
+    names neither a mean nor a category, and whose first number is whole, may be a count:
+    it is not read, and is said so, whatever its SD. A mean printed with a point is read,
+    since a count is whole."""
+    text = ("Table 1. Values are n (%).\n\n| Characteristic | Treated, mean (SD) or n (%) |\n"
+            f"|---|---|\n| Length of stay, days | {cells} |\n| Weight, kg | 7.1 (12.3) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "length of stay", "weight")
+    assert skewed == [(6, "7.1 (12.3)")]
+    assert unread == [
+        (5, f"--non-negative row 'Length of stay, days': not read, as {_SKEW_COUNTED}")]
+
+
+def test_a_mean_of_a_percentage_unmarked_is_passed_over_as_a_category(tmp_path: Path) -> None:
+    """A Known gap (round 3 of #660): "Body fat, %" reported as a mean (SD), with no word
+    saying so, is taken for a category, its "%" for a share's."""
+    text = "| Characteristic | Treated |\n|---|---|\n| Body fat, % | 25.1 (6.2) |\n"
+    skewed, unread = _never_negative_said(tmp_path, text, "body fat")
+    assert skewed == []
+    assert unread == [(3, f"--non-negative row 'Body fat, %': not read, as {_SKEW_CATEGORY}")]
+
+
+def test_a_column_header_naming_a_mean_is_read_whatever_the_caption_says(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #660: the cell's own column header naming a mean (SD) says what it holds;
+    a bare "%" header, "Missing, %", says nothing of the table's other cells."""
+    text = ("Table 1. Values are n (%) or mean (SD).\n\n| Variable | Mean (SD) | Missing, % |\n"
+            "|---|---|---|\n| Length of stay, days | 5 (7.2) | 4 |\n\n"
+            "| Variable | Mean (SD) | Missing, % |\n|---|---|---|\n"
+            "| Weight, kg | 7 (14.2) | 2 |\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "length of stay", "weight")
+    assert skewed == [(5, "5 (7.2)"), (9, "7 (14.2)")] and unread == []
+
+
+@pytest.mark.parametrize(
+    ("label", "name"),
+    [("No. of days in hospital", "days in hospital"), ("Prior lines, no.", "prior lines"),
+     ("Number of visits, no. of patients", "visits")],
+)
+def test_no_followed_by_a_point_or_of_is_no_category(
+    tmp_path: Path, label: str, name: str
+) -> None:
+    """Round 3 of #660: "No." and "no. of" abbreviate "number", and name no category."""
+    text = f"| Characteristic | Treated |\n|---|---|\n| {label} | 4.2 (9.1) |\n"
+    skewed, unread = _never_negative_said(tmp_path, text, name)
+    assert skewed == [(3, "4.2 (9.1)")] and unread == []
+
+
+def test_a_label_s_html_tags_are_no_comparator(tmp_path: Path) -> None:
+    """Round 3 of #660: a label marked up in HTML, "Weight<sup>a</sup>", holds a "<" that
+    named a comparator, and the row was taken for a category."""
+    text = ("| Characteristic | Treated |\n|---|---|\n| Weight<sup>a</sup>, kg | 7.1 (12.3) |\n"
+            "| Weight < 50 kg | 5 (12) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == [(3, "7.1 (12.3)")]
+    assert unread == [(4, f"--non-negative row 'Weight < 50 kg': not read, as {_SKEW_CATEGORY}")]
+
+
+@pytest.mark.parametrize(
+    "opens",
+    ["Table: Values are n (%).", ": Values are n (%).", "Supplementary Table 2. Values are n (%).",
+     "Table 2. Values are n (%)."],
+)
+def test_the_scan_below_a_table_stops_at_any_caption(tmp_path: Path, opens: str) -> None:
+    """Round 3 of #660: pandoc's caption lines, "Table: ..." and ": ...", and "Supplementary
+    Table 2" open another table's caption, and the scan below a table read on into them."""
+    text = (f"| Characteristic | Treated |\n|---|---|\n| Weight, kg | 7 (12.5) |\n\n{opens}\n\n"
+            "| Characteristic | Treated |\n|---|---|\n| Ferritin, ng/mL | 6 (12.5) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == ([] if opens.startswith(("Table:", ":")) else [(3, "7 (12.5)")])
+
+
+def test_a_table_s_caption_is_its_own_and_not_the_next_one_s(tmp_path: Path) -> None:
+    """Round 2 of #660: the paragraph read below a table ran on to the next table's caption,
+    "Table 2. Values are n (%).", and the first table's means were taken for counts."""
+    text = ("Table 1. Values are mean (SD).\n\n| Characteristic | Treated |\n|---|---|\n"
+            "| Weight, kg | 7 (12.5) |\n\nTable 2. Values are n (%).\n\n"
+            "| Characteristic | Treated |\n|---|---|\n| Weight above the limit | 5 (12.5) |\n"
+            "\n**Table 3** Values are mean (SD).\n\n| Characteristic | Treated |\n|---|---|\n"
+            "| Ferritin, ng/mL | 6 (12.5) |\n\nTable S4. Values are n (%).\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "weight", "ferritin")
+    assert skewed == [(5, "7 (12.5)"), (17, "6 (12.5)")]
+    assert unread == [(11, f"--non-negative row 'Weight above the limit': not read, as "
+                           f"{_SKEW_COUNTED}")]
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Weight change from baseline, kg", "Change in weight, kg", "Weight, difference",
+     "\N{GREEK CAPITAL LETTER DELTA} weight, kg", "Weight delta, kg",
+     "Weight, change from baseline to week 12",
+     # Round 3: "from baseline to" a week is a change, as are a rate of change and a mean
+     # of differences.
+     "Weight loss from baseline to week 12, kg", "Rate of change in weight",
+     "Mean of differences in weight, kg"],
+)
+def test_a_change_in_a_named_measure_is_not_read(tmp_path: Path, label: str) -> None:
+    """Round 1 of #660: a change can be negative, so a row of changes in the measure the
+    auditor names is not held to a floor of 0, and is said as not read."""
+    text = (f"| Characteristic | Treated | Control |\n|---|---|---|\n"
+            f"| {label} | \N{MINUS SIGN}1.2 (3.0) | 0.4 (2.9) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == []
+    assert unread == [(3, f"--non-negative row {label!r}: not read, as its label may name a "
+                          "change or a difference, which can be negative")]
+
+
+@pytest.mark.parametrize(
+    "label", ["Time to change of therapy, days", "Days to treatment change"],
+)
+def test_a_time_to_a_change_is_no_change(tmp_path: Path, label: str) -> None:
+    """Round 2 of #660: a time to a change cannot be negative, and is read."""
+    text = (f"| Characteristic | Treated |\n|---|---|\n| {label}, mean (SD) | 3.0 (2.0) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "days", "time")
+    assert skewed == [(3, "3.0 (2.0)")] and unread == []
+
+
+def test_a_mean_of_a_percentage_is_read_as_one(tmp_path: Path) -> None:
+    """Round 1 of #660: a mean (SD) row whose label holds the unit "%" was said to hold
+    counts and their shares. Round 2: it is a mean, and is read."""
+    text = ("| Characteristic | Treated |\n|---|---|\n| HbA1c, %, mean (SD) | 7.1 (4.0) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "hba1c")
+    assert skewed == [(3, "7.1 (4.0)")] and unread == []
+
+
+def test_an_audit_without_non_negative_reads_no_mean_and_sd(tmp_path: Path) -> None:
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    report = audit([paper], [])
+    assert report.disagreements == [] and report.spreads_read == 0
+    assert "cannot be negative" not in render(report, measure_discrimination(set()))
+
+
+def test_an_se_named_only_in_a_caption_is_not_seen(tmp_path: Path) -> None:
+    """A Known gap: an SE is seen where the row's label or the header over the cell names
+    it, not in a caption or a note, and the cell is then read as a mean and its SD."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("Table 1. Values are mean (SE).\n\n| | Treated |\n|---|---|\n"
+                     "| CRP | 2.0 (1.5) |\n| Weight | 7.0 [4.0] |\n", encoding="utf-8")
+    report = audit([paper], [], non_negative=("crp", "weight"))
+    assert [d.line for d in report.disagreements] == [5]
+    # A bracket that is not round is no SD: the cell is not read, and its label is said.
+    assert report.spreads_read == 1 and report.non_negative_unfound == ["weight"]
+
+
+def test_audit_non_negative_on_the_command_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The flag may be given more than once, and each gives one label or more."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict", "--non-negative", "crp",
+                 "--non-negative", "length of stay", "weight"]) == 0  # fmt: skip
+    shown = capsys.readouterr().out
+    assert "line 5: 5.0 (4.0): the mean 5.0 is less than twice the SD 4.0" in shown
+    assert "4 read in the rows named, 2 with a mean less than twice its SD" in shown
+    assert "--non-negative 'weight': no mean (SD) was read" in shown
 
 
 def _cell(text: str, *, span: int = 1) -> str:
@@ -28366,6 +29141,22 @@ def test_a_dash_definition_before_a_citation_or_in_a_list_is_read(
     )
     assert added != mended
     main_md(project).write_text(added, encoding="utf-8")
+    assert language_findings(project) == []
+
+
+def test_a_bound_value_after_a_dash_is_no_second_definition(project: Path) -> None:
+    """Round 2 of #643: the mask blanks a binding, so "older patients - ROR
+    {{results.ror.point}}." read as the short form ending its clause, a second definition of
+    ROR. A bound value stands where a number would, and a number goes on past the short
+    form."""
+    mended = with_ror_defined(project)
+    bound = mended.replace(
+        "The reporting odds ratio observed here",
+        "The odds were higher in reports from older patients \N{EN DASH} ROR "
+        "{{results.ror.point}}. The reporting odds ratio observed here",
+    )
+    assert bound != mended
+    main_md(project).write_text(bound, encoding="utf-8")
     assert language_findings(project) == []
 
 

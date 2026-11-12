@@ -71,6 +71,7 @@ from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
@@ -163,24 +164,53 @@ _CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
           rf"|\^[\d,\-\N{{EN DASH}}]+\^))*")  # fmt: skip
 # What follows a short form that ends its clause, a closing mark and a citation between
 # them allowed: a stop, a semicolon, a closing bracket of either kind or a table cell's bar,
-# a comma or a colon and a word, a closing spaced dash, a hard line break (a backslash or
-# two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\` is left), or
-# the end of the paragraph or of the text. A single line break inside a paragraph is read
-# as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS [@ec2013]." and
-# "the Scheme - BPS - replaced it" define; a statistic goes on past its short form, "older
-# people - OR [95% CI ...] 1.52", "- OR of 1.52", "- OR, 1.52", and defines nothing. A stop
-# before a digit is a decimal point. What this misses is in DESIGN.md's Known gaps.
+# a comma or a colon and a word, a closing spaced dash and a word, a hard line break (a
+# backslash or two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\`
+# is left), or the end of the paragraph or of the text. A single line break inside a
+# paragraph is read as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS
+# [@ec2013]." and "the Scheme - BPS - replaced it" define; a statistic goes on past its
+# short form, "older people - OR [95% CI ...] 1.52", "- OR of 1.52", "- OR, 1.52", "- OR -
+# 1.52", and defines nothing. A stop before a digit is a decimal point. What this misses is
+# in DESIGN.md's Known gaps.
 _CLAUSE_ENDS = re.compile(
     rf"{_MARKS}{_CITED}"
     rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]|]|[,:]{_ONE_BREAK}{_MARKS}[^\W\d_])"
-    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}"
+    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}{_ONE_BREAK}{_MARKS}[^\W\d_]"
     rf"|(?:{_DASH_SPACE}*\\| {{2,}})\r?\n"
     rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z)))"
+)
+#: A binding that prints a value, as typed: a namespace of `VALUE_NAMESPACES`, `{{results.or}}`
+#: or `{{lit.key}}`, and LaTeX's `\mg{results.or}`, its optional argument allowed. An anchor,
+#: `{{method.step}}`, prints nothing, and a pointer, `{{ref.table.key}}`, prints "Table 2":
+#: neither is a value.
+_VALUE_BINDING = "(?:" + "|".join(VALUE_NAMESPACES) + r")\."
+#: Spaces as typed, a LaTeX tie among them, which the mask reads as a space, on one line and
+#: across at most one line break.
+_TYPED_GAP = r"[ \t\r~\N{NO-BREAK SPACE}]*"
+_TYPED_BREAK = rf"{_TYPED_GAP}(?:\n{_TYPED_GAP})?"
+#: A value bound to the results after the short form, after spaces, a colon, a comma or a
+#: closing dash. The mask blanks it, and a binding is where a number would be, so the short
+#: form gives a statistic: "- OR {{results.or}}." defines nothing, as "- OR 1.52." does not
+#: (round 2 of #643).
+_BOUND = re.compile(
+    rf"{_MARKS}(?:{_TYPED_GAP}(?:[:,]|{_DASH}))?{_TYPED_BREAK}"
+    rf"(?:\{{\{{\s*|\\mg(?![A-Za-z])\s*(?:\[[^\]\n]*\]\s*)?\{{\s*){_VALUE_BINDING}"
 )
 #: The end of a line, after a closing mark and a citation: where a list item's ends.
 _LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
 #: A list item's line as typed, in a block quote or not: "- ", "* ", "1. ", "2) ", `\item`.
 _LIST_ITEM = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]|\\item(?![A-Za-z]))")
+#: A Markdown list item's marker, by its kind: a bullet, or a number's delimiter.
+_MARKER = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?P<bullet>[-*+])|\d{1,9}(?P<delimiter>[.)]))[ \t]")
+#: A block quote's `>` at a line's start, each with all the spaces after it; or nothing.
+_QUOTE = re.compile(r"(?:[ \t]*>[ \t]*)*")
+#: How a lead-in line a list stands under ends: "The schemes were:".
+_LEAD_IN = ":"
+#: What opens a line that ends the item above it: a heading, LaTeX's next `\item` or the
+#: list's `\end{...}`. (A list item's line and a blank line do too.)
+_ENDS_AN_ITEM = re.compile(r"[ \t]{0,3}#|[ \t]*\\(?:item|end)(?![A-Za-z])")
+#: How far back a list is looked for above a line with a marker, in lines.
+_LIST_LOOKBACK = 200
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -989,12 +1019,76 @@ def _dashed(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
 
 
 def _ends_its_clause(prose: str, typed: str, dash: re.Match[str]) -> bool:
-    """Does the short form `dash` found end its clause (`_CLAUSE_ENDS`), or the line of a
-    list item, which ends where its line does?"""
+    """Does the short form `dash` found end its clause (`_CLAUSE_ENDS`), or a list item,
+    which ends where its line does when the next line is no continuation of it? A value
+    bound to the results after it ends nothing (`_BOUND`)."""
+    if _BOUND.match(typed, dash.end()):
+        return False
     if _CLAUSE_ENDS.match(prose, dash.end()):
         return True
     line = typed.rfind("\n", 0, dash.start()) + 1
-    return bool(_LIST_ITEM.match(typed, line) and _LINE_ENDS.match(prose, dash.end()))
+    ending = _LINE_ENDS.match(prose, dash.end())
+    return bool(ending and _in_a_list_item(typed, line) and _item_ends(typed, ending.end()))
+
+
+def _in_a_list_item(typed: str, line: int) -> bool:
+    """Is the line starting at `line` a list item's: opened by a marker, with the next line
+    an item of the same kind, or in a list that opens its block, with a marker or indented,
+    or opens under a lead-in line ending in a colon? The lines between are the items above
+    it, their indented lines and their lazy continuations, unindented, as `_item_ends` reads
+    them. Each line is read through a block quote's `>`. A line in the middle of a paragraph
+    that opens "2020) " or "3. " is no list item. `\\item` is one wherever it stands."""
+    listed = _LIST_ITEM.match(typed, line)
+    if listed is None:
+        return False
+    if "\\item" in listed.group(0):
+        return True
+    marked = _MARKER.match(typed, line)
+    below = _MARKER.match(_line_at(typed, len(_line_at(typed, line)) + line + 1))
+    if marked is not None and below is not None and _kind(below) == _kind(marked):
+        return True
+    at = line
+    for _step in range(_LIST_LOOKBACK):
+        here = _line_at(typed, at)
+        if at == 0:
+            return _opens_a_list(here)
+        above = typed.rfind("\n", 0, at - 1) + 1
+        written = typed[_QUOTE.match(typed, above).end() : at - 1]
+        if not written.strip(" \t\r") or _ENDS_AN_ITEM.match(written):
+            return _opens_a_list(here)
+        if written.rstrip(" \t\r").endswith(_LEAD_IN) and _MARKER.match(here):
+            return True
+        at = above
+    return True
+
+
+def _line_at(typed: str, start: int) -> str:
+    """The line of `typed` that starts at `start`, without its line break."""
+    stop = typed.find("\n", start)
+    return typed[start:] if stop < 0 else typed[start:stop]
+
+
+def _kind(marker: re.Match[str]) -> str:
+    """The kind of a list item's marker: its bullet, or a number's delimiter."""
+    return marker["bullet"] or marker["delimiter"]
+
+
+def _opens_a_list(written: str) -> bool:
+    """Does the line `written`, the first of its block, open a list: a marker's or indented,
+    read through a block quote's `>`?"""
+    unquoted = written[_QUOTE.match(written).end() :]
+    return bool(_MARKER.match(written)) or unquoted[:1] in (" ", "\t")
+
+
+def _item_ends(typed: str, after: int) -> bool:
+    """Does the list item end at the line break before `after`: is the next line blank,
+    another item's, a heading or the list's end, and not its own continuation?"""
+    if after >= len(typed):
+        return True
+    stop = typed.find("\n", after)
+    written = typed[after:] if stop < 0 else typed[after:stop]
+    return (not written.strip(" \t\r>") or bool(_LIST_ITEM.match(written))
+            or bool(_ENDS_AN_ITEM.match(written)))  # fmt: skip
 
 
 def _paragraph_before(prose: str, end: int) -> str:

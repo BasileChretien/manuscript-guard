@@ -746,7 +746,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - the name http.server looks for
         self.server.seen.append(self.path)
-        name = self.path.strip("/").split("/")[0]
+        name = self.path.strip("/").split("/")[0].split("?")[0]
         status, data = self.server.answers.get(name, (404, {}))
         payload = json.dumps(data).encode()
         self.send_response(status)
@@ -797,7 +797,10 @@ def registries(monkeypatch: pytest.MonkeyPatch):
     httpd.seen.clear()
     services = lookup.Services(crossref=f"{url}/crossref/", openalex=f"{url}/openalex/doi:",
                                datacite=f"{url}/datacite/", doi_org=f"{url}/doi_org/",
-                               pubmed=f"{url}/pubmed/esummary.fcgi")  # fmt: skip
+                               pubmed=f"{url}/pubmed/esummary.fcgi",
+                               esearch=f"{url}/esearch/esearch.fcgi",
+                               crossref_search=f"{url}/crossref_search",
+                               openalex_search=f"{url}/openalex_search")  # fmt: skip
     monkeypatch.setattr(lookup, "Services", lambda: services)
     monkeypatch.setattr(lookup, "Pacer", lambda: PACER(sleep=lambda seconds: None))
     yield httpd
@@ -863,7 +866,8 @@ def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, 
     """An entry with no DOI and no PMID is not looked up, and the report says which and why,
     in its line and its section, rather than leaving it out of the count (the author's
     audit, 2026-11-11: "we need to check all references, or say which ones were not checked
-    and why"). With nothing looked up, nothing is listed: no entry was."""
+    and why"). Without --lookup they are listed too, sorted, and nothing is asked (the
+    author's decision of 2026-11-12)."""
     found = {"status": "ok", "message-type": "work",
              "message": {"DOI": DOI, "type": "journal-article", "title": ["A cohort"]}}
     registries.answers["crossref"] = (200, found)
@@ -873,14 +877,24 @@ def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, 
     paper.write_text(NUMBERED, encoding="utf-8")
     assert main(["audit", str(paper), "--lookup"]) == 0
     out = capsys.readouterr().out
-    assert ("4 entries read, 1 with a DOI; 2 works looked up, 2 entries not looked up, having "
-            "no DOI or PMID: see below") in out  # fmt: skip
-    assert ("    not looked up, having no DOI or PMID to look up: 2 entries\n"
-            "      line 9: entry 3: Brown L. A note. Drug Saf. 2021;44:1-2.\n"
+    assert ("4 entries read, 1 with a DOI; 2 works looked up; 2 entries to check by hand (its "
+            "title too short to look up, or not read): see below") in out  # fmt: skip
+    short = ("        an article with no DOI given, not looked up by its title, as its title has "
+             "too few words to search for: check it by hand\n")  # fmt: skip
+    assert ("    with no DOI or PMID given: 2 entries\n"
+            "      line 9: entry 3: Brown L. A note. Drug Saf. 2021;44:1-2.\n" + short +
             "      line 10: entry 4: Green M. A review. Pharmacoepidemiol Drug Saf. "
-            "2018;27:3-4.\n") in out  # fmt: skip
+            "2018;27:3-4.\n" + short) in out  # fmt: skip
+    # Titles of two words are searched for by nobody: nothing was asked of Crossref's search.
+    assert not [path for path in registries.seen if path.startswith("/crossref_search")]
+    registries.seen.clear()
     assert main(["audit", str(paper)]) == 0
-    assert "not looked up, having no DOI" not in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert registries.seen == []
+    assert "line 9: entry 3: Brown L. A note." in out
+    assert ("none looked up in the registries (--lookup); of the 2 entries with no DOI or PMID, "
+            "2 entries to check by hand (its title too short to look up, or not read): see "
+            "below") in out  # fmt: skip
     # Every item typed "1.", as Markdown allows: entry 3's text opens "1.", said once.
     paper.write_text(re.sub(r"(?m)^\d\. ", "1. ", NUMBERED), encoding="utf-8")
     assert main(["audit", str(paper), "--lookup"]) == 0

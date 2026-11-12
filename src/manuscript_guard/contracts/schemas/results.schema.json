@@ -496,6 +496,15 @@
           "enum": ["sd", "se"],
           "description": "A dispersion's kind: a standard deviation or a standard error, of the estimate `of` names. G2 warns where the text labels it the other."
         },
+        "variable": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The variable of the data dictionary (design/data_dictionary.yaml) this value is of, by its name there. On a mean, G15 holds the mean and each SD of it (`spread` \"sd\", `of` this key) to the variable's floor, its `range.min`: a mean less than twice the SD above the floor shows skewed data (Altman and Bland, BMJ 1996;313:1200, for a floor of 0; the Cochrane Handbook for Systematic Reviews of Interventions, version 6.5.1, section 10.5.3, for another). G16 warns where the dictionary has no such entry."
+        },
+        "skewed_ok": {
+          "type": "string",
+          "description": "On a mean, the reason it is reported with its SD though the data are skewed: G15's warning is then not given. Only a sentence stands it down; an empty or blank one stands nothing down."
+        },
         "level": {
           "type": "string",
           "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."

@@ -46,9 +46,23 @@ dataset="analysis")`. The dictionary is an input of the run, so editing it makes
 `input-changed` until the script runs again. One that does not read is refused with its
 lines, as `check` refuses it. In R, `check_data` needs the yaml package.
 
+## A mean and its SD, held to the variable's floor
+
+A mean names the variable it is of with `variable="crp"` (R: `variable = "crp"`), the
+entry's `name` in the dictionary. Where the entry gives a `range.min`, each SD of the mean
+(`spread="sd"`, `of` the mean's key) is held to it: a mean less than twice its SD above that
+floor shows skewed data (Altman and Bland, BMJ 1996;313:1200, for a floor of 0; the
+Cochrane Handbook for Systematic Reviews of Interventions, version 6.5.1, section 10.5.3, for another), and G15 warns
+`mean-sd-skewed`. Emit the median and the interquartile range instead; or, where the mean
+(SD) is wanted all the same (the trial registered it, a meta-analysis will pool it), say why
+on the mean with `skewed_ok="as the trial registered it"`. The reason is a sentence: a blank
+one is refused, and it goes with `variable=`. A standard error (`spread="se"`) is not held
+to the floor. A `variable=` the dictionary has no entry for is `not-in-dictionary`.
+
 ## The findings
 
 | Code | Fix |
 |---|---|
 | `quality-not-run` | the project keeps a data dictionary and nothing was checked against it: hand each table to `check_data`. A warning from the analysis stage, a failure at submission |
 | `entry-unchecked`, `rule-unchecked` | no count covers this entry or rule: the table that holds it was not checked, its column has another name, or the variable is derived after the check. A computed rule needs its rows in `computed=`. A warning, a failure at submission |
+| `mean-sd-skewed` | a warning: the mean is less than twice its SD above the floor its variable's entry gives (`range.min`), so the data are skewed. Emit a median and interquartile range, or give the reason on the mean with `skewed_ok=` |

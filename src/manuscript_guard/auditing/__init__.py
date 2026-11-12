@@ -17,6 +17,12 @@ PDF manuscript is read through `pdftotext`, each place in it a page and a line (
 #: hook asks the person before an agent runs it (`hooks._reads_in_confidence`).
 READER_FLAGS = ("--journal", "--authors", "--design", "--cited", "--package", "--report-draft")
 
+#: The designs `audit --design` takes, each read by its own check: an observational study's
+#: causal words (`causal.DESIGNS`) and a randomised trial's tables of baseline
+#: characteristics (`baseline.DESIGNS`). A design added here is added to the check that
+#: reads it; `tests/test_audit_claims.py` holds the two to each other.
+DESIGNS = ("observational", "trial")
+
 #: What the audit says on stderr when a reader flag is given.
 NOTICE = (
     "manuscript-guard: a manuscript sent to you in confidence is read here and nothing is sent "

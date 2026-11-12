@@ -33505,6 +33505,37 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_correction_the_tracked_copy_cannot_place_stays_a_comment(
+    tmp_path: Path, capsys
+) -> None:
+    """`audit --tracked`: the same sentence twice, its British word corrected at both places.
+    Neither place can be told from the other in the document, so no change is written: the
+    finding is a comment over its word, and the copy reads as the paper."""
+    from generated import word_package
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.docxtext import word_comments
+    from manuscript_guard.safexml import parse_xml
+    from manuscript_guard.tracked import W, _chars
+
+    sentence = "<w:p><w:r><w:t>The colour of the cohort was noted.</w:t></w:r></w:p>"
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        for name, part in word_package(sentence * 2).items():
+            archive.writestr(name, part)
+    target = tmp_path / "tracked.docx"
+    assert main(["audit", str(paper), "--english", "american", "--tracked", str(target)]) == 0
+    assert "0 corrections as tracked changes, 2 that could not be placed" in capsys.readouterr().err
+    with zipfile.ZipFile(target) as archive:
+        document = archive.read("word/document.xml")
+    assert b"<w:del " not in document and b"<w:ins " not in document
+    root = parse_xml(document, what="document")
+    assert [_chars(one)[0] for one in root.iter(W + "p")] == [
+        "The colour of the cohort was noted."] * 2
+    assert any("'colour'" in one.text for one in word_comments(target))
+
+
 #: A title page as a Word paper converted by pandoc opens with one, put between the
 #: example's front matter and its Abstract: authors in capitals with their marks and
 #: degrees, French affiliations with their units and institutions, the corresponding author.

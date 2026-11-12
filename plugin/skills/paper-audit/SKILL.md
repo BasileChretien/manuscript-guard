@@ -128,7 +128,11 @@ the reason.
 
 G6 and G14 read the words as `check` does, a .docx through the conversion `init --from`
 makes (skipped with a note without pandoc); ask the author which English the paper is in
-and pass `--english british` or `american`. Neither is counted by `--strict`. The reference
+and pass `--english british` or `american`. Neither is counted by `--strict`. The short
+forms the paper uses and does not define are one finding, which lists them and passes over
+those journals' style guides say need no definition (it says how many, and by which list);
+its remedy is `--known` with the ones the paper's readers take for words or names, which
+you ask the author for, never guess. `--json` gives each form's first use. The reference
 list is counted and its numbered citations held to it; nothing is sent to a registry
 unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
 what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where
@@ -155,8 +159,10 @@ as a nested list that does not add up, with notes on what it read as overlapping
 read. A breakdown mid-flow and a step that lists no exclusion are notes too. A broken list
 under no name for a flow, a list of subgroups say, is a note only; when
 the author's flow sits under such a heading, say so, since `--strict` passed it. Abstract against Results lists each conflict, each number of the Abstract not found
-in the Methods, the Results or the tables, which may be a stale value or one the Results
-never give (or one the Introduction or the Discussion gives, which are not searched), and
+in the tables or any part of the paper but the Introduction and its material, the
+Discussion with its limitations, a conclusion, a summary of the paper, the title page, the
+back matter and the notes, which may be a stale value or one the paper never reports (or
+one only those give, which are not searched), and
 those matched only as a rounding, and ends with its own chance-match rate; where it says
 "not compared" the paper has no Abstract or no Results heading it could find. Small cells lists
 each count held back ("<5") that a total gives away, with the count it can only be: a

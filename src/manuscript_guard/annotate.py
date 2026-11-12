@@ -633,6 +633,7 @@ def figure_sheet(project, results) -> str:
     """
     from manuscript_guard.build.document import relative_to_root
     from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.figure_bars import reason_in as bars_reason
     from manuscript_guard.gates.figures import _declared
     from manuscript_guard.paths import FIGURE_SCRIPT_SUFFIXES
 
@@ -690,6 +691,10 @@ def figure_sheet(project, results) -> str:
             # (round 1 of #288: the sheet left these out).
             (f"| {value} | estimated by the figure's script | {why} |", value)
             for value, why in _declared(declared, "allow_estimates")
+        ] + [
+            # Bars drawn with no points of the data, allowed with the reason (`allow_bars`).
+            (f"| bars | drawn with no points of the data | {why} |", "bars")
+            for why in (bars_reason(declared),) if why
         ]
         if rows:
             out.append(

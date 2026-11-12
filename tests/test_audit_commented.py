@@ -153,7 +153,8 @@ def test_a_number_quoted_bare_that_two_paragraphs_hold_is_listed_with_its_place(
 
 
 @pytest.mark.parametrize(("message", "context", "words"), [
-    ("5 in the Abstract is not found in the Methods, the Results or the tables",
+    ("5 in the Abstract is not found in the tables or any part of the paper but the "
+     "Introduction and its material",
      "Of 5 patients", "5"),
     ("AS is used 8 times in the main text", "the AS group", "AS"),
     ("the P value is written 'p' in italics once", "where p was", "p"),

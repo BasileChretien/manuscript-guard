@@ -240,10 +240,16 @@ def run_gates(
             crashes.record(exc, kind=crashes.GATE, name="G6 and G14")
             return GateRun(paper, note=f"G6 and G14 could not run on {paper.name}: "
                            f"{type(exc).__name__}: {exc}")  # fmt: skip
+        from manuscript_guard.auditing.undefined import one_finding
+        from manuscript_guard.findings import Report
+
+        # The short forms used and not defined in one finding (`auditing.undefined`), made
+        # from G14's warnings in the order it gave them, its reading order, then sorted.
+        said = one_finding([put_back(f) for f in language.findings])
         return GateRun(
             paper,
             writing=[put_back(f) for f in writing.sorted().findings],
-            language=[put_back(f) for f in language.sorted().findings],
+            language=list(Report(tuple(said)).sorted().findings),
             converted=staged.converted,
             places=staged.places,
         )

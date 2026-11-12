@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -29,6 +29,19 @@ For each script, capture what a reader needs to reproduce it:
 - the estimator, and the assumption it rests on
 - every parameter that was chosen rather than estimated
 - software and version
+
+**Name each package the analysis uses, and cite it in the same sentence.** For every item of
+the plan's Software section that a script loads, or the run recorded with `em.software()`,
+write its name in the Methods, in the
+sentence that says what it did, and cite there the reference its authors ask for: in R,
+`citation("dplyr")` prints it; for a Python package, its documentation gives it. Add the
+reference to Zotero; do not make one up. "Models were fitted with statsmodels
+[@seabold2010]" does it; a citation in the next sentence does not count for this one. The
+Methods of the supplement count as well. G12 warns of a package used and not named in the
+Methods (`software-unnamed`) and of one named in no sentence that cites
+(`software-uncited`). An R package is matched with its case, as R loads it; a Python one in
+any case. A package left out on purpose is named in backticks under the plan's Deviations,
+with the reason.
 
 **Numbers in the Methods are bindings like any others.** A cohort size, a study period, a
 count excluded at each step — all of those come from `{{results.…}}`. If a number in the
@@ -214,16 +227,8 @@ Use the name the source has in `design/data_sources.yaml` where the project keep
 
 ## Naming the resources by their RRIDs
 
-Cite an antibody, a cell line, an organism, a plasmid or a tool as its RRID, typed as the
-resolver writes it: `Anti-NeuN (Millipore Cat# MAB377, RRID:AB_2298772)`. Then run
-`manuscript-guard lookup --resources`, which asks the RRID resolver about each one, and
-Cellosaurus about a cell line, and keeps the answers in `literature/rrids/`. An answer that
-did not come is not recorded and is asked again next time (`rrid-not-looked-up`). An RRID
-the resolver does not know (`rrid-unresolved`) is checked with the author against the
-resource's own page, never guessed. A line Cellosaurus marks problematic
-(`cell-line-problematic`) is the author's to answer: say in the Methods how it was
-authenticated, or change the line. Only the RRIDs typed are checked; ask the author for a
-resource's RRID rather than look one up and type it yourself.
+Cite each resource as its RRID and run `manuscript-guard lookup --resources`; read
+[references/rrids.md](references/rrids.md) for its findings.
 
 ## Describing a model
 

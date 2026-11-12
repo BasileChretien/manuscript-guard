@@ -6653,7 +6653,8 @@ def test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it(
     of 40 patients (50%)", in any section and in a footnote, is held to them as the
     Abstract's is, and one off them is said once, by the heading it is under, in each shape
     the reader takes; one they give says nothing, nor does a season, a date, a share over
-    100 or a share the reader does not take. A table's share is said once, as the table
+    100, a range written with a slash, "Grade 3/4 neutropenia (12%)" (round 1 of #668), or a
+    share the reader does not take. A table's share is said once, as the table
     reader says it; and the Abstract's is the Abstract's, unless no Results heading lets the
     Abstract against Results compare, when it is said as any other section's. In Markdown
     and in LaTeX."""
@@ -6699,6 +6700,19 @@ def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
 
 def _the_abstract_s_share_is_never_read_as_a_section_s(patch: pytest.MonkeyPatch) -> None:
     _compared_as(patch, True)
+
+
+def _a_range_after_its_word_is_a_share(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #668: "Grade 1/3 trials (40%)" was 1 of 3, not 40."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_named_range", lambda text, match: False)
+
+
+def _two_numbers_in_a_row_are_a_share(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_consecutive", lambda text, match: False)
 
 
 def _a_share_names_no_heading(patch: pytest.MonkeyPatch) -> None:
@@ -25036,6 +25050,14 @@ BROKEN = {
     ),
     "a slash gives a sentence's share no denominator": (
         _a_slash_gives_no_denominator,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's range after a grade or a phase is a share": (
+        _a_range_after_its_word_is_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's two numbers in a row with a slash are a share": (
+        _two_numbers_in_a_row_are_a_share,
         test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
     ),
     "a sentence's count over its denominator is a share": (

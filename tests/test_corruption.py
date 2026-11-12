@@ -2792,6 +2792,59 @@ def test_a_share_its_counts_do_not_give_in_the_results_is_a_number_that_does_not
                   "12 of 24"]  # fmt: skip
 
 
+def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:
+    """Round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, 75.0%, not 12,
+    under every heading, as were the phases, stages and types of a clinical paper. A range
+    written with a slash after such a word, or of two numbers in a row up to 10, is none."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    for said in ("Grade 3/4 neutropenia (12%) occurred.", "Of phase 1/2 trials (24%), most.",
+                 "Then stage 3/4 disease (40%) was seen.", "Then type 1/2 (9%) was seen.",
+                 "Then grades 2/4 (10%) were seen.", "Then 3/4 of them (12%) were seen."):
+        paper.write_text(f"# Paper\n\n## Methods\n\nWe asked them.\n\n## Results\n\n{said}\n",
+                         encoding="utf-8")  # fmt: skip
+        assert audit([paper], None).disagreements == [], said
+
+
+def test_a_word_paper_s_share_off_its_counts_is_said_once_and_its_table_s_as_a_table_s(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #668: in a .docx, a share off its counts in the body and in a footnote is
+    said once each, with no heading in its words, since its place names its section, and a
+    table cell's once, as the table reader says it."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+    def para(text: str, style: str = "") -> str:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{styled}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def cell(text: str) -> str:
+        return f"<w:tc>{para(text)}</w:tc>"
+
+    table = (f"<w:tbl><w:tr>{cell('Group')}{cell('Value')}</w:tr>"
+             f"<w:tr>{cell('A')}{cell('12/40 (50.0%)')}</w:tr></w:tbl>")  # fmt: skip
+    body = (para("Methods", "Heading1") + para("We asked 40.")
+            + para("Results", "Heading1")
+            + '<w:p><w:r><w:t>Then 12 of 40 patients (50%) had it.</w:t></w:r><w:r>'
+              '<w:footnoteReference w:id="1"/></w:r></w:p>' + table)
+    notes = (f"<w:footnotes {namespace}><w:footnote w:id=\"1\"><w:p><w:r><w:t>Of them, 5 of "
+             "10 (60%) were.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    path = tmp_path / "paper.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                              "</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/footnotes.xml", notes)
+    said = sorted(d.message for d in audit([path], None).disagreements)
+    assert said == ["n (%) 12 of 40 patients (50%): 12 of 40 is 30.0%, not 50; 50% is 12 of 24",
+                    "n (%) 12/40 (50.0%): 12 of 40 is 30.00%, not 50.0; 50.0% is 12 of 24",
+                    "n (%) 5 of 10 (60%): 5 of 10 is 50.0%, not 60"], said
+
+
 def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
     tmp_path: Path,
 ) -> None:

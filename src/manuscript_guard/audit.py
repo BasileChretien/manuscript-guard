@@ -1496,12 +1496,28 @@ def _written_shares(report: AuditReport, sources: list[_Source],
             report.read["shares"] = report.read.get("shares", 0) + 1
             if not shares.off(share):
                 continue
-            title = source.part(share.line).title if source.part is not None else ""
-            said = f"in {title}, " if title else ""
             found.append(Disagreement(source.path, share.line,
-                                      f"{said}{shares.described(share)}",
+                                      f"{_under(report, source, piece, share.line)}"
+                                      f"{shares.described(share)}",
                                       _around(text, at, share)))  # fmt: skip
     return found
+
+
+def _under(report: AuditReport, source: _Source, piece, line: int) -> str:
+    """What a share's finding opens with to say where it stands: "in the Abstract, " in the
+    Abstract, "in Results, " under any other heading, the title in quotes where a comma is
+    in it; nothing under none, nor in a .docx, whose place in the report names its section
+    already, "Results, paragraph 3" (the coordinator's choice on round 1 of #668)."""
+    from manuscript_guard.auditing.abstract import where
+
+    if source.path in report.places:
+        return ""
+    if where(piece, line) == "abstract":
+        return "in the Abstract, "
+    title = source.part(line).title if source.part is not None else ""
+    if not title:
+        return ""
+    return f'in "{title}", ' if "," in title else f"in {title}, "
 
 
 def _piece(source: _Source, atoms: list[Atom]):

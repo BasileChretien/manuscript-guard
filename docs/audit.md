@@ -224,9 +224,15 @@ read in Markdown, and every table in a .docx. A share a sentence writes beside b
 counts, "12 of 40 patients (30%)", in any section or note, is held to them the same way,
 in the shapes and with the rounding the Abstract against Results describes, and one that
 does not fit is listed with the heading it stands under, "in Results, n (%) 12 of 40
-patients (50%): ...". One that fits says nothing. The Abstract's own shares are said in
-the Abstract against Results, where it compares, and a table's are read as a table's, so
-none is said twice.
+patients (50%): ...", or "in the Abstract, "; in a .docx the place given names the
+section, "Results, paragraph 3", and the words name none. A note is named by the heading
+over its definition, the reference list's set apart: a Markdown note defined at the end of
+the file by the last heading before the reference list, and a .docx's notes are placed as
+"the notes". One that fits says nothing. The Abstract's own shares are said in the
+Abstract against Results, where it compares, and a table's are read as a table's, so none
+is said twice. A range written with a slash is no share: after "grade", "stage", "phase",
+"type", "class", "level", "step", "line" or "cycle", "Grade 3/4 neutropenia (12%)", and
+any two numbers in a row up to 10, "3/4", so a real "3/4 (50%)" is not checked.
 
 **Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the

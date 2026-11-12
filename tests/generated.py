@@ -9660,13 +9660,13 @@ def _written_share(draw: st.DrawFn, n: int, shape: str, off: bool) -> str:
 @st.composite
 def prose_share_papers(draw: st.DrawFn) -> tuple[str, str, list, list]:
     """A paper, in Markdown and in LaTeX, that writes shares beside their counts in its
-    Abstract, under each of `PROSE_SECTIONS`, in a footnote under its Results and in a table
-    there; and where `audit` says each share is off its counts, by line, as "Abstract", the
-    title of the heading it is under, or "table", in each. Each section holds a share off its
-    counts and one they give, each in a shape drawn; each shape of `SHARE_SHAPES` is off its
-    counts in a section drawn; and each of `NO_SHARE_SHAPES` and `SHARE_UNREAD` stands in a
-    section drawn, its percentage drawn from anything, and is said of nowhere (Basile,
-    2026-11-13, after #664)."""
+    Abstract, under each of `PROSE_SECTIONS`, in a footnote under a section drawn and in a
+    table under its Results; and where `audit` says each share is off its counts, by line,
+    as "Abstract", the title of the heading it is under, or "table", in each. Each section
+    holds a share off its counts and one they give, each in a shape drawn; each shape of
+    `SHARE_SHAPES` is off its counts in a section drawn; and each of `NO_SHARE_SHAPES`,
+    `SHARE_UNREAD` and `RANGE_SHAPES` stands in a section drawn, its percentage drawn from
+    anything, and is said of nowhere (Basile, 2026-11-13, after #664)."""
     shapes = sorted(SHARE_SHAPES)
     n = iter(range(2000, 9000, 37))
     blocks: dict[str, list[tuple[str, str | None]]] = {"Abstract": []}
@@ -9690,13 +9690,40 @@ def prose_share_papers(draw: st.DrawFn) -> tuple[str, str, list, list]:
                             m=draw(st.integers(1, 12)), a=draw(st.integers(11, 99)),
                             b=draw(st.integers(1, 9)))  # fmt: skip
         blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
+    for shape in RANGE_SHAPES:
+        said = _a_range_written(draw, shape)
+        blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
     order = {section: draw(st.permutations(blocks[section])) for section in blocks}
-    note = _written_share(draw, next(n), draw(st.sampled_from(shapes)), True)
+    note = (_written_share(draw, next(n), draw(st.sampled_from(shapes)), True),
+            draw(st.sampled_from(PROSE_SECTIONS)))  # fmt: skip
+    # A table's share in the one shape the table reader takes with its own denominator,
+    # "k/n (p)": in another, "k of n (p%)", it is read by neither reader (Known gaps).
     cell = _written_share(draw, next(n), "share slash", True)
     return (*_prose_share_markdown(order, note, cell), *_prose_share_latex(order, note, cell))
 
 
-def _prose_share_markdown(order: dict, note: str, cell: str) -> tuple[str, list]:
+#: A range of grades, stages, phases and the like written with a slash beside a percentage,
+#: which is no count and its denominator: `{word}` one of `RANGE_WORDS`, `{a}` a number and
+#: `{a1}` the next, `{a2}` the one after; after its word and of two numbers in a row, after
+#: its word alone, and of two numbers in a row alone (round 1 of #668).
+RANGE_SHAPES = ("{word} {a}/{a1} neutropenia ({p}%)", "{word} {a}/{a2} trials ({p}%)",
+                "{a}/{a1} of them ({p}%)")  # fmt: skip
+RANGE_WORDS = ("Grade", "grades", "stage", "Phase", "type", "class", "level", "step", "line",
+               "cycle")  # fmt: skip
+
+
+def _a_range_written(draw: st.DrawFn, shape: str) -> str:
+    """A range of `RANGE_SHAPES`, its percentage a whole number more than one off the share
+    its two numbers would be, so that read as one, it is off."""
+    a = draw(st.integers(1, 4))
+    over = a + 2 if "{a2}" in shape else a + 1
+    p = draw(st.integers(1, 99))
+    if abs(p - 100 * a / over) <= 1:
+        p = (p + 40) % 100 or 1
+    return shape.format(word=draw(st.sampled_from(RANGE_WORDS)), a=a, a1=a + 1, a2=a + 2, p=p)
+
+
+def _prose_share_markdown(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
     lines, expected = ["# A study", ""], []
     for section, said in order.items():
         lines += [f"## {section}", ""]
@@ -9704,16 +9731,16 @@ def _prose_share_markdown(order: dict, note: str, cell: str) -> tuple[str, list]
             lines += [text, ""]
             if where is not None:
                 expected.append([len(lines) - 1, where])
+        if section == note[1]:
+            lines += ["It was so.[^s1]", "", f"[^s1]: Then {note[0]} were seen.", ""]
+            expected.append([len(lines) - 1, section])
         if section == "Results":
-            lines += ["It was so.[^s1]", "", "| Group | Value |", "|---|---|", f"| A | {cell} |",
-                      ""]  # fmt: skip
+            lines += ["| Group | Value |", "|---|---|", f"| A | {cell} |", ""]
             expected.append([len(lines) - 1, "table"])
-            lines += [f"[^s1]: Then {note} were seen.", ""]
-            expected.append([len(lines) - 1, "Results"])
     return "\n".join(lines) + "\n", sorted(expected)
 
 
-def _prose_share_latex(order: dict, note: str, cell: str) -> tuple[str, list]:
+def _prose_share_latex(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
     def tex(text: str) -> str:
         return text.replace("%", BACKSLASH + "%")
 
@@ -9728,10 +9755,12 @@ def _prose_share_latex(order: dict, note: str, cell: str) -> tuple[str, list]:
                 expected.append([len(lines) - 1, where])
         if section == "Abstract":
             lines += [BACKSLASH + "end{abstract}", ""]
+        if section == note[1]:
+            said = tex(f"Then {note[0]} were seen.")
+            lines += [f"It was so.{BACKSLASH}footnote{{{said}}}", ""]
+            expected.append([len(lines) - 1, section])
         if section == "Results":
-            lines.append(f"It was so.{BACKSLASH}footnote{{{tex(f'Then {note} were seen.')}}}")
-            expected.append([len(lines), "Results"])
-            lines += ["", BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
+            lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
                       f"A & {tex(cell)} " + BACKSLASH * 2]  # fmt: skip
             expected.append([len(lines), "table"])
             lines += [BACKSLASH + "end{tabular}", ""]

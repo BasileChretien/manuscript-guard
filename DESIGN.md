@@ -25881,9 +25881,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A book whose title names a publication of law, "A history of the Federal Register", is
     sorted as a legal text and not looked up, since a publication of law counts wherever it
-    is named; one whose title ends with a law's name, "Commentary on the Data Protection Act
-    2018", is a legal text too. Pinned by
+    is named; one whose title ends with a law's name is a legal text too where no person
+    with initials opens its authors. Pinned by
     `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - A law's name is read in the forms "Act 2018", "Act of 2010" and "Public Law 111-148"
+    only: a chapter number, "2018 c. 12", and an Act named with no year are not read.
+    Accepted.
+  - A title that ends with "act" and a year, "The way we act 2019", is read as a law's name
+    where no person with initials opens its authors. Accepted.
+  - `check`'s search by title takes "RETRACTED ARTICLE:" and "Withdrawn article:" off a
+    registered title as it takes "RETRACTED:" off, so such a title is held to the cited one
+    without them. Accepted.
+  - Where some references give a DOI, the report draft does not say how many titles were
+    sent to Crossref with no answer; the note on each says so. Accepted.
   - A book or an article that says when it was accessed, with no volume and pages, is a web
     page, and is not looked up. Accepted.
 - **An article or a book is looked up by the title read from it, and taken only on a

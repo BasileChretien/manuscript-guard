@@ -182,7 +182,9 @@ def sort(text: str) -> Sorted:
         return found
     said = cited(text)
     law = _ends_with_law(said.title) if said is not None else None
-    if law:
+    # By a state or a body, not by a person: "Smith J. A guide to the Equality Act 2010. ..."
+    # is a book (round 3 of #650).
+    if law and not _by_a_person(text[:_authors_end(text)]):
         return Sorted(LEGAL, f'its title is a law\'s name, "{law}"')
     # A book's marks are read after the authors, whose initials "MA" or "PA" are no state.
     after = _URL.sub(" ", text[_authors_end(text):])
@@ -201,6 +203,14 @@ def _ends_with_law(title: str) -> str:
     """The law's name `title` ends with, "Act of 2010" or "Public Law 111-148", or ""."""
     found = _LAW_AT_END.search(title)
     return found.group(1) if found else ""
+
+
+def _by_a_person(authors: str) -> bool:
+    """Whether the authors open with a person's name and initials: "Smith J", "Smith, J." or
+    "J. Smith"; not "United Kingdom" or "US Congress"."""
+    first = re.split(r"[,;]|\s&\s|\sand\s", authors.strip(), maxsplit=1)[0].split()
+    return bool(_GIVEN_FIRST.match(authors.strip()) or re.match(r"[^,;]+,\s*[A-Z]\.", authors)
+                or (len(first) > 1 and _INITIAL.fullmatch(first[-1].rstrip("."))))
 
 
 def _legal_or_web(text: str) -> Sorted | None:
@@ -359,7 +369,8 @@ def _first_family(authors: str) -> str:
     words = first.split()
     while len(words) > 1 and _INITIAL.fullmatch(words[-1]):
         words.pop()
-    while len(words) > 1 and _INITIAL.fullmatch(words[0]):
+    # A given name first is dotted, "K. L. Ross"; "US Congress" keeps its "US".
+    while len(words) > 1 and re.fullmatch(r"(?:[A-Z]\.-?)+", words[0]):
         words.pop(0)
     family = " ".join(words).strip(" .")
     return "" if not family or _INITIAL.fullmatch(family) else family

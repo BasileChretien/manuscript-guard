@@ -10064,6 +10064,10 @@ def _a_law_s_name_anywhere_in_a_title_makes_a_law(patch: pytest.MonkeyPatch) -> 
     patch.setattr(by_title_module, "_ends_with_law", anywhere)
 
 
+def _a_person_s_title_ending_with_a_law_makes_a_law(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_by_a_person", lambda authors: False)
+
+
 def _a_publication_of_law_comes_after_a_book_s_marks(patch: pytest.MonkeyPatch) -> None:
     """The publication read as the other law's marks are: outside the title first, and only
     after a book's marks inside it."""
@@ -25076,6 +25080,10 @@ BROKEN = {
     ),
     "a law's name anywhere in a title makes a legal text": (
         _a_law_s_name_anywhere_in_a_title_makes_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a person's title that ends with a law's name makes a legal text": (
+        _a_person_s_title_ending_with_a_law_makes_a_law,
         test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
     ),
     "a publication of law comes after a book's marks": (

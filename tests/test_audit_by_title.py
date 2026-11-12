@@ -171,12 +171,14 @@ def test_the_author_s_seven_entries_are_sorted_by_their_shape(tmp_path: Path) ->
      "Office; 2020.", by_title.LEGAL),
     ("US Congress. Public Law 111-148. Washington, DC: US Government Printing Office; 2010.",
      by_title.LEGAL),
-    # And so a book about a publication of law, or whose title ends with a law's name, is
-    # filed as a legal text (DESIGN.md, Known gaps).
+    # And so a book about a publication of law is filed as a legal text (DESIGN.md, Known
+    # gaps); a person's book whose title ends with a law's name is a book (round 3).
     ("Smith J. A history of the Federal Register. London: Example Press; 2019.",
      by_title.LEGAL),
-    ("Smith J. Commentary on the Data Protection Act 2018. London: Example Press; 2019.",
-     by_title.LEGAL),
+    ("Jones R. Blackstone's guide to the Equality Act 2010. Oxford: Oxford University Press; "
+     "2010.", by_title.BOOK),
+    ("Smith J. A practical guide to the Mental Capacity Act 2005. London: Example Press; 2006.",
+     by_title.BOOK),
 ])  # fmt: skip
 def test_each_shape_is_sorted(text: str, kind: str) -> None:
     assert by_title.sort(text).kind == kind

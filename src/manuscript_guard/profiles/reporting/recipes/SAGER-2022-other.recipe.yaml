@@ -1,0 +1,39 @@
+schema: manuscript-guard/recipe/1
+
+# The SAGER guidelines checklist of the EASE Gender Policy Committee (2022), Table 2: other
+# studies, those without human participants, such as studies of animals and cells and the
+# applied sciences. Table 1 of the same file, for studies with human participants, is
+# SAGER-2022-human, whose comments say how the table is read; the same holds here.
+#
+# Item 5d stands whole at the top of page 7, with its number there, above "Results".
+
+meta:
+  name: SAGER-2022-other
+  long_name: "Sex and Gender Equity in Research (SAGER) guidelines checklist: other studies (applied sciences, biological sciences)"
+  version: "2022"
+  applies_to: "Research without human participants, such as studies of animals, cells and tissues, and the applied sciences"
+  source_url: "https://ease.org.uk/communities/gender-policy-committee/the-sager-guidelines/"
+  retrieved_on: 2026-11-12
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    NOT STATED. The checklist PDF states no licence; it names its authors (Van Epps H, Astudillo O, Del Pozo Martín Y, Marsh J, of the EASE Gender Policy Committee) and says it "was originally published as an article in the EASE journal, European Science Editing". The EASE page it is served from states no licence for it, and its footer reads "© European Association of Science Editors 2026 All Rights Reserved" (read 2026-11-12). The article (Van Epps H, et al. Eur Sci Ed 2022;48:e86910, doi:10.3897/ese.2022.e86910) and the SAGER guidelines' paper (Heidari S, et al. Res Integr Peer Rev 2016;1:2, doi:10.1186/s41073-016-0007-6) are each CC BY 4.0 in Crossref, as articles; this recipe reads neither.
+  licence_url: https://ease.org.uk/communities/gender-policy-committee/the-sager-guidelines/
+  download_url: https://ease.org.uk/wp-content/uploads/2023/01/EASE-SAGER-Checklist-2022.pdf
+  sha256: b8a4992f6356243504af3d77fed474ebf9549cf2d7fbb98c73bda193db52605b
+
+document: EASE-SAGER-Checklist-2022.pdf
+format: pdf-rows
+rows: centred-id
+pages: [6, 7]
+columns:
+  section: 0
+  id: 85
+  text: 135
+  blank: 480
+start_after: "topic number page number"
+# The footnote under the table, which Table 2 prints in another case than Table 1's.
+stop_at: "Adapted from SAGER guidelines. Sex and gender equity in research: rationale for the SAGER"
+ignore: ["SAGER Guidelines Checklist"]
+items: 13
+
+text_column: 0

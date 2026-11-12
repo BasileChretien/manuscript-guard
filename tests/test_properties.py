@@ -33,7 +33,7 @@ import subprocess
 import sys
 import tempfile
 from bisect import bisect_left
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from decimal import Decimal
 from functools import cache, partial
@@ -261,6 +261,7 @@ from manuscript_guard.reworded import (
 )
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import cite as latex_cite
+from manuscript_guard.text.latex import encodings as latex_encodings
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import printed as latex_print
 from manuscript_guard.text.latex import structure as latex_structure
@@ -758,7 +759,8 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
     """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
     where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
     a quotation mark, or at an escape's backslash the character it stands for). Past a refusal
-    the text is as it was typed, so that nothing the reader did not understand is hidden."""
+    nothing is read: NUL, the line breaks kept, so that no source the reader did not
+    understand is read as prose (Basile, 2026-11-11)."""
     reading = latex_mask.read(text)
     masked = reading.masked
     assert len(masked) == len(text), text
@@ -772,7 +774,7 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
         allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}, '"': {RIGHT_QUOTE}}.get(was, set())
         assert now in allowed, (at, was, now, text)
     for refusal in reading.refusals:
-        assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
+        assert set(masked[refusal.offset :]) <= {NUL, "\r", "\n"}, (refusal, text)
 
 
 @holds(100, latex_planted())
@@ -1083,9 +1085,15 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
     other than UTF-8 in a tree of ASCII, and a definition with a parameter text and no
     parameter are read, the text after each use passed over; and where the package is
     loaded, a file is not ASCII, or the text does not follow a use, the reader refuses where
-    TeX would read otherwise. A comment between a command and its argument is recorded."""
-    for files, packages, refused, hidden, comments in drawn:
-        document = latex_structure.read_tree(files, packages=packages)
+    TeX would read otherwise. A comment between a command and its argument is recorded. A
+    known command the preamble defines again is read, and refused where it prints; and a
+    folder read as `audit` reads one is read in the encoding it declares (2026-11-11)."""
+    for files, packages, refused, hidden, comments, *audited in drawn:
+        if audited:
+            # Written in the codecs drawn and read as `audit` reads a folder (round 3 of #637).
+            document = _audited(files, packages, audited[0])
+        else:
+            document = latex_structure.read_tree(files, packages=packages)
         found = [(path, refusal.offset) for path, refusal in document.refusals]
         assert found == refused, (found, refused, files, packages)
         readings = {source.path: source.reading for source in document.sources}
@@ -1094,6 +1102,36 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
             assert set(seen) <= {NUL, "\n"}, (path, seen, files)
         for path, start in comments:
             assert start in {at for at, _end in readings[path].comments}, (path, start, files)
+        # Past a refusal of the reader nothing of its file is read (2026-11-11).
+        for source in document.sources:
+            for refusal in source.reading.refusals:
+                unread = source.reading.masked[refusal.offset :]
+                assert set(unread) <= {NUL, "\n"}, (source.path, unread, files)
+                # Nor is anything kept that the reader found past it (round 1 of #637).
+                found = [*(h.start for h in source.reading.headings),
+                         *(c.offset for c in source.reading.cited),
+                         *(put.offset for put in source.reading.inputs)]  # fmt: skip
+                assert all(at < refusal.offset for at in found), (source.path, found, files)
+
+
+def _audited(files: dict[str, str], packages: dict[str, str], codecs: dict[str, str]):
+    """The document `audit` reads of `files` and `packages` written in `codecs`, UTF-8 where
+    none is named, the text of each file it reads checked to be the one written, up to where
+    the file is refused: in its tree's encoding, so in the one it was written in."""
+    from manuscript_guard.auditing.latex import read_latex
+
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch)
+        for path, text in {**files, **packages}.items():
+            (folder / path).write_bytes(text.encode(codecs.get(path, "utf-8")))
+        (tree,) = read_latex([folder / "main.tex"]).trees
+    for _path, source in tree.files:
+        cut = min([refusal.offset for where, refusal in tree.document.refusals
+                   if where == source.path], default=len(source.text))  # fmt: skip
+        written = {**files, **packages}[source.path]
+        written = latex_encodings.as_utf8(written) if tree.encoding else written
+        assert source.text[:cut] == written[:cut], (source.path, source.text, codecs)
+    return tree.document
 
 
 def _a_citation_s_name_begins_or_ends_with_cite(patch: pytest.MonkeyPatch) -> None:
@@ -1180,6 +1218,102 @@ def _every_definer_of_a_known_command_provides(patch: pytest.MonkeyPatch) -> Non
 
 def _a_package_s_command_is_always_the_reader_s(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PACKAGE_COMMANDS", {})
+
+
+def _a_known_command_defined_again_is_refused_at_the_definition(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        body, self.body = self.body, True
+        try:
+            defines(self, name, at)
+        finally:
+            self.body = body
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_known_command_defined_again_is_read_where_it_is_used(patch: pytest.MonkeyPatch) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        defines(self, name, at)
+        if name in latex_mask.COMMANDS:
+            self.delimited.discard(name)
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_known_command_defined_again_is_not_told_the_tree(patch: pytest.MonkeyPatch) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        defines(self, name, at)
+        if name in latex_mask.COMMANDS and name in self.defined_delimited:
+            self.defined_delimited.remove(name)
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_preamble_s_expandafter_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_expands_a_definition", lambda self, name, end: False)
+
+
+def _every_expandafter_in_a_preamble_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_expands_a_definition",
+                  lambda self, name, end: name == "expandafter" and not self.body)  # fmt: skip
+
+
+def _a_declared_encoding_is_kept_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "as_utf8", lambda text: text)
+
+
+def _no_redefinition_is_read_as_before(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: False)
+
+
+def _every_heading_and_reference_redefined_is_read_as_before(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: True)
+
+
+def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_before", lambda reading, at: reading)
+
+
+def _a_declaration_in_unprinted_text_counts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree", lambda document, originals: latex_encodings
+                  .declared(originals[source.path] for source in document.sources
+                            if not source.loose and source.path in originals))  # fmt: skip
+
+
+def _a_declaration_past_a_stop_does_not_count(patch: pytest.MonkeyPatch) -> None:
+    in_tree = latex_encodings.in_tree
+
+    def broken(document, originals: dict[str, str]) -> str | None:
+        cut = {source.path: originals[source.path][: source.reading.refusals[0].offset]
+               for source in document.sources if source.path in originals
+               and source.reading.refusals}  # fmt: skip
+        return in_tree(document, {**originals, **{path: text.ljust(len(originals[path]))
+                                                  for path, text in cut.items()}})
+
+    patch.setattr(latex_encodings, "in_tree", broken)
+
+
+def _the_encoding_is_the_folder_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree",
+                  lambda document, originals: latex_encodings.declared(originals.values()))
+
+
+def _a_utf8_declaration_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "_OTHERS", {"utf8": "latin_1", "utf8x": "latin_1"})
+
+
+def _past_a_refusal_the_file_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_unread", lambda text: text)
 
 
 def _a_package_s_command_is_the_author_s_where_it_is_loaded(patch: pytest.MonkeyPatch) -> None:
@@ -1870,7 +2004,7 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
     it; one followed by a colon defines where its letters are found before the bracket, as
     any short form does, one per word or not; one whose letters are found only inside a
     bracket its long form would open defines nothing, though the words before each hold its
-    letters."""
+    letters. A short form after a spaced dash defines only where it ends its clause."""
     text, planted = drawn
     read = _file(0, Path("main.md"), text, [], False)
     defined = {at: short for at, short, _long in read.definitions}
@@ -2139,13 +2273,7 @@ def _a_bracket_s_last_word_is_spelt_from_before_the_bracket(patch: pytest.Monkey
 
 
 def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_dashed", lambda prose: [])
-
-
-#: What `_DASHED` ends with: no statistic after the short form.
-_DASH_STATISTIC = (
-    r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|(?:[:,(][ \t\N{NO-BREAK SPACE}]*)?\d))"
-)
+    patch.setattr(language_gate, "_dashed", lambda prose, typed=None: [])
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -2155,26 +2283,105 @@ def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) 
     patch.setattr(language_gate, "_DASHED", re.compile(pattern.replace(old, new)))
 
 
-def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
-    _dashed_with(patch, _DASH_STATISTIC, "")
+def _clause_ends_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
+    """`_CLAUSE_ENDS` with `old` written `new`, `count` times, as it must stand there."""
+    pattern = language_gate._CLAUSE_ENDS.pattern
+    assert pattern.count(old) == count, (old, pattern)
+    patch.setattr(language_gate, "_CLAUSE_ENDS", re.compile(pattern.replace(old, new)))
 
 
-def _a_comma_and_a_number_after_a_dash_s_short_form_define(patch: pytest.MonkeyPatch) -> None:
-    """The rule before round 1 of #623: "older people - OR, 1.52" defined OR."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d))")
+def _a_dash_s_short_form_need_not_end_its_clause(patch: pytest.MonkeyPatch) -> None:
+    """Whatever follows: "older people - OR 1.52" defined OR, as before round 1 of #623."""
+    patch.setattr(language_gate, "_ends_its_clause", lambda prose, typed, dash: True)
 
 
-def _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines(
+def _a_dash_s_clause_ends_where_623_said_no_statistic_follows(
     patch: pytest.MonkeyPatch,
 ) -> None:
-    """The rule of round 1 of #623: "- OR: 1.52", "- OR (95% CI ...) 1.52" and a no-break
-    space before the value defined OR."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d|,[ \t]*\d))")
+    """The rule of #623, its list of statistic shapes in place of the clause's end: "- OR
+    [95% CI ...] 1.52", "- OR of 1.52" and "- OR" with the value on the next line defined."""
+    space = language_gate._DASH_SPACE
+    statistic = re.compile(rf"{space}*(?:=|(?:[:,(]{space}*)?\d)")
+    patch.setattr(language_gate, "_ends_its_clause",
+                  lambda prose, typed, dash: not statistic.match(prose, dash.end()))  # fmt: skip
 
 
-def _a_comma_after_a_dash_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    """Too wide: "Area Payment Scheme - APS, which pays farmers" is a definition."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|[:,(]|\d))")
+def _a_comma_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPatch) -> None:
+    """The comma's word dropped: "older people - OR, 1.52" defined OR."""
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"[,:]{one_break}{marks}[^\W\d_]", "[,:]")
+
+
+def _a_comma_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Too narrow: "Area Payment Scheme - APS, which pays farmers" is a definition."""
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"|[,:]{one_break}{marks}[^\W\d_]", "")
+
+
+def _a_colon_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "- SFI: farmers joined it" defined nothing."""
+    _clause_ends_with(patch, "[,:]", ",")
+
+
+def _a_line_break_ends_a_dash_s_paragraph(patch: pytest.MonkeyPatch) -> None:
+    """Hard-wrapped text: "- OR" with "1.52" on the next line defined OR."""
+    _clause_ends_with(patch, rf"(?:\Z|\n{language_gate._LINE_GAP}(?:\n|\Z))", r"(?:\Z|\n)")
+
+
+def _the_end_of_the_text_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: a short form with nothing after it defined nothing."""
+    _clause_ends_with(patch, rf"(?:\Z|\n{language_gate._LINE_GAP}(?:\n|\Z))",
+                      rf"\n{language_gate._LINE_GAP}\n")  # fmt: skip
+
+
+def _a_dash_s_clause_is_not_read_past_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    """Hard-wrapped text: "- CSS," with "which pays" on the next line defined nothing."""
+    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=3)
+
+
+def _a_closing_mark_after_a_dash_s_short_form_ends_nothing(patch: pytest.MonkeyPatch) -> None:
+    """"**... - RIS**." and a closing quote before the comma defined nothing."""
+    marks, cited = language_gate._MARKS, language_gate._CITED
+    _clause_ends_with(patch, f"{marks}{cited}", cited)
+
+
+def _a_decimal_point_ends_a_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """"older people - OR .52" defined OR."""
+    _clause_ends_with(patch, r"\.(?!\d)|", r"\.|")
+
+
+def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "- ELS [@smith2020]." and "- HLS [12]." defined nothing."""
+    marks, cited = language_gate._MARKS, language_gate._CITED
+    _clause_ends_with(patch, f"{marks}{cited}", marks)
+
+
+def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
+    space, dash = language_gate._DASH_SPACE, language_gate._DASH
+    _clause_ends_with(patch, f"|{space}+{dash}{space}", "")
+
+
+def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: a line ending in a backslash or two spaces read on into the next."""
+    _clause_ends_with(patch, rf"|(?:{language_gate._DASH_SPACE}*\\| {{2,}})\r?\n", "")
+
+
+def _one_space_is_a_hard_line_break(patch: pytest.MonkeyPatch) -> None:
+    """Too wide: a single space before the line's end is how hard-wrapped text ends one."""
+    _clause_ends_with(patch, " {2,}", " +")
+
+
+def _a_table_cell_s_bar_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "| the Environmental Stewardship Scheme - ESS | 3 |" defined
+    nothing."""
+    _clause_ends_with(patch, r"[;)\]|]", r"[;)\]]")
+
+
+def _a_list_item_s_line_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: each item of a list written long form first but the last defined
+    nothing."""
+    patch.setattr(language_gate, "_LIST_ITEM", re.compile("(?!)"))
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
@@ -2188,7 +2395,8 @@ def _pandoc_s_smart_dashes_are_no_dashes(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_no_break_space_is_no_space_before_a_dash(patch: pytest.MonkeyPatch) -> None:
-    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=4)
+    _dashed_with(patch, f"]){language_gate._DASH_SPACE}", "])[ \\t]")
+    _dashed_with(patch, f"(?<=\\S){language_gate._DASH_SPACE}", "(?<=\\S)[ \\t]")
 
 
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
@@ -2276,6 +2484,59 @@ def _a_journal_s_ask_is_not_read(patch: pytest.MonkeyPatch) -> None:
         return language_gate._Known(known.exact | language_gate._statistical(), known.lowered)
 
     patch.setattr(language_gate, "_asked", ignored)
+
+
+from generated import JOURNALS_EXEMPT, JOURNALS_SUPPLEMENT, undefined_forms  # noqa: E402
+
+
+@holds(60, undefined_forms())
+def test_the_audit_says_the_short_forms_left_undefined_in_one_finding(
+    drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
+) -> None:
+    """The audit makes G14's warnings on the short forms used and not defined one finding,
+    at the first use of the first form it lists: each form once, the one only the Abstract
+    leaves undefined and the one only the supplement does among them, in the order G14 reads
+    them, file after file in the paper's order, whatever their paths, with the warning on
+    each; the forms on the list of journals' style guides passed over, counted and named in
+    the order of theirs, a form undefined in the Abstract and the main text once. The other
+    findings are G14's as they were."""
+    from manuscript_guard.auditing import undefined
+
+    files, listed, passed = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    read = [_file(order, Path(name), text, [], supplementary)
+            for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
+    found = list(language_gate._judge(read, nothing, Path(".")).findings)
+    audited = undefined.one_finding(found)
+    (one,) = [f for f in audited if f.code == undefined.CODE]
+    assert [form for form, _warning in one.forms] == listed, files
+    assert list(one.passed_over) == passed, files
+    assert one.counted == len(listed) and set(passed) <= set(JOURNALS_EXEMPT)
+    first = one.forms[0][1]
+    assert (one.path, one.line, one.context) == (first.path, first.line, first.context)
+    assert f"'{listed[0]}'" in one.message, one.message
+    assert f"({', '.join(passed[:-1])} and {passed[-1]})" in one.message, one.message
+    assert f"{JOURNALS_SUPPLEMENT} (in the supplement)" in one.message, one.message
+    assert [f for f in audited if f is not one] == [f for f in found if f.code != undefined.CODE]
+
+
+def _the_journals_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "exempt", lambda: frozenset())
+
+
+def _the_short_forms_are_listed_last_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "_ordered", lambda mine: list(reversed(mine)))
+
+
+def _the_short_forms_are_ordered_by_path(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "_ordered", lambda mine: sorted(
+        mine, key=lambda pair: (str(pair[1].path or ""), pair[1].line or 0)))
 
 
 @holds(60, defined_elsewhere())
@@ -5979,7 +6240,9 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     or "rs7012345", is found where the Methods print it, and not where they give its
     number alone (pharm-epi of the real-paper corpus). A number under a subsection of the
     Results and discussion whose title holds "method", "Performance of the proposed method",
-    is found, and the Results over it are still the Results (round 1 of #624). Without an Abstract
+    is found, and the Results over it are still the Results (round 1 of #624). One under a
+    section of another name, "Participants", "Study design", an appendix, is found, and one
+    only in the Introduction or the Conclusions is not (Basile, 2026-11-11). Without an Abstract
     heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
     alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
     #472)."""
@@ -6010,6 +6273,78 @@ def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
         return None
 
     patch.setattr(abstract, "_counterpart_interval", first)
+
+
+def _an_abstract_number_is_looked_for_in_the_methods_and_results_alone(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """As before 2026-11-11: a section of another name was not searched."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: place)
+
+
+def _the_opening_and_the_conclusion_are_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import names_discussion, names_results
+
+    patch.setattr(abstract, "_reports_nothing", lambda section, walk: (
+        names_discussion(section.title) and not names_results(section.title)))  # fmt: skip
+
+
+def _the_back_matter_is_searched(patch: pytest.MonkeyPatch) -> None:
+    """As at ef730f07f (round 1 of #641): every section but the Introduction, the Discussion
+    and a conclusion was searched, the statements and a summary of the paper among them."""
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import (
+        names_conclusion,
+        names_discussion,
+        names_introduction,
+        names_results,
+    )
+
+    patch.setattr(abstract, "_reports_nothing", lambda section, walk: (
+        names_introduction(section.title) or names_conclusion(section.title)
+        or (names_discussion(section.title) and not names_results(section.title))))
+
+
+def _the_title_page_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_title_page_ends", lambda sections: None)
+
+
+def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._searched
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
+        sections, place, walk, frozenset()))  # fmt: skip
+
+
+def _a_summary_of_the_paper_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "names_paper_summary", lambda title: False)
+
+
+def _introduction_material_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "names_introduction_material", lambda title: False)
+
+
+def _a_heading_over_the_methods_is_the_paper_s_title(patch: pytest.MonkeyPatch) -> None:
+    """As at ef730f07f (round 1 of #641): G8's titles, a heading over the Methods among them."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._searched
+
+    def searched(sections, place, walk, notes):
+        patch.setattr(abstract, "_over_the_paper", lambda found: set(walk.titles))
+        return real(sections, place, walk, notes)
+
+    patch.setattr(abstract, "_searched", searched)
 
 
 def _numbers_agree_only_as_printed(patch: pytest.MonkeyPatch) -> None:
@@ -6257,6 +6592,111 @@ def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import spelling
 
     patch.setattr(spelling, "_in_a_quotation", lambda text, start: False)
+
+
+from generated import abbreviations_written_out  # noqa: E402
+
+
+@holds(40, abbreviations_written_out())
+def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
+    drawn: tuple[str, str],
+) -> None:
+    """An abbreviation defined and not used again is written out where it is defined, at
+    every place: its bracket dropped after its long form, round or square, or its long form
+    put in its place, with the capital of a sentence it opens unless its first word keeps its
+    own case; before a citation too. Not one used again, one whose bracket holds more, a
+    funder's among the acknowledgements, one after "an" across whatever stands between, a
+    link's, or an entry of the list of abbreviations (rounds 1 and 2 of #645). Edited, the
+    manuscript is edited no further."""
+    from manuscript_guard.gates import language as language_gate
+
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def edits(read: Any) -> list:
+        return language_gate.abbreviation_edits([read], nothing)
+
+    as_typed, expected = drawn
+    text, edited = _edited(as_typed, edits)
+    assert text == as_typed
+    assert edited == expected, (as_typed, edited)
+    assert _edited(edited, edits)[1] == edited
+
+
+def _an_article_before_a_short_form_is_left_wrong(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_after_an_article", lambda text, at: False)
+
+
+def _a_link_s_brackets_are_a_definition_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: False)
+
+
+def _a_list_of_abbreviations_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_in_a_glossary", lambda file, offset: False)
+
+
+def _an_article_across_a_break_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_AN_ARTICLE", re.compile(r"(?<![\w-])an?[ \t]+\Z", re.IGNORECASE))
+
+
+def _a_long_form_s_own_case_takes_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_takes_a_capital", lambda long: True)
+
+
+def _a_funder_s_sentence_is_written_out_beside_the_text_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_kept", lambda file, mark: language._in_a_glossary(file, mark.offset))
+
+
+def _a_citation_after_a_round_bracket_is_a_link(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: text[end : end + 1] in ("(", "[", "{"))
+
+
+def _a_written_out_abbreviation_takes_no_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "opens_a_sentence", lambda text, start: False)
+
+
+def _an_abbreviation_used_again_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def unused(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            scope.used.clear()
+        return scopes
+
+    patch.setattr(language, "_collect", unused)
+
+
+def _a_funder_s_abbreviation_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def loud(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            for short, marks in scope.defined.items():
+                scope.defined[short] = [dataclasses.replace(mark, quiet=False) for mark in marks]
+        return scopes
+
+    patch.setattr(language, "_collect", loud)
 
 
 def _a_respelt_word_loses_its_capital(patch: pytest.MonkeyPatch) -> None:
@@ -8493,6 +8933,30 @@ def test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_el
             assert listed == wanted, (who, way, given["findings"][int(ident[1:]) - 1])
 
 
+from generated import CHECKLIST_QUOTES, checklist_quotes  # noqa: E402
+
+
+@holds(60, checklist_quotes())
+def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else(
+    drawn: tuple[dict[str, Any], list[tuple[str, Any]]],
+) -> None:
+    """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
+    subsections included, in the main text or the supplement, the section carried on into
+    the next file the build prints (round 1 of #651), or in the caption of the table
+    or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
+    folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
+    out, its bindings as written or each value's display, not half of each. A quote under
+    another heading, under the parent's own text where `where` names a subsection, or in
+    another display's caption is said to stand there; a quote in a comment, with a word
+    changed, inside a word or with its pieces out of order stands nowhere; three words, or
+    none, are no quote."""
+    given, ways = drawn
+    found = READINGS["checklist quotes"]()(given)
+    assert {kind for kind, _expected in ways} == set(CHECKLIST_QUOTES)
+    for (kind, expected), got, item in zip(ways, found, given["items"], strict=True):
+        assert got == expected, (kind, item, got)
+
+
 from generated import finding_places  # noqa: E402
 
 
@@ -10394,6 +10858,65 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         assert read is not None, written
         said = typed_module.hint(read, works, latex=False, otherwise="")
         assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+
+
+from generated import typed_reference_papers  # noqa: E402
+
+from manuscript_guard import typed_references as typed_references_module  # noqa: E402
+from manuscript_guard.typed_references import citations as made_citations  # noqa: E402
+
+
+@holds(60, typed_reference_papers())
+def test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry(
+    drawn: tuple[str, list[tuple[str, str | None]]],
+) -> None:
+    """Decision 5 (the real-paper corpus, PsyArXiv fyxeq_v2 and d8hkq_v1): `init --from`
+    makes each citation typed as text that names exactly one entry of the typed reference
+    list, by all its authors and its year, a pandoc citation of that entry's key: in
+    brackets, under a prefix or none, in the sentence, and a group whose every part does.
+    Nothing is guessed: a citation that names two entries or none stays as typed, and so
+    does a group one of whose parts names none, and each is listed. The list itself is
+    left as typed."""
+    text, cited = drawn
+    made = typed_references_module.read(text)
+    listed = text[text.index("# References") :]
+    assert made.text.endswith(listed), made.text
+    for written, pandoc in cited:
+        if pandoc is None:
+            assert written in made.text, (written, made.text)
+        else:
+            assert pandoc in made.text and written not in made.text, (written, pandoc,
+                                                                      made.text)  # fmt: skip
+    assert len(made.left) == sum(pandoc is None for _t, pandoc in cited), made.left
+    assert made.converted == sum(pandoc.count("@") for _t, pandoc in cited if pandoc)
+
+
+def _two_entries_are_the_first(patch: pytest.MonkeyPatch) -> None:
+    one = made_citations._one
+
+    def first(head, year, by_year, unknown, *, bracketed):
+        return one(head, year, {at: works[:1] for at, works in by_year.items()}, unknown,
+                   bracketed=bracketed)  # fmt: skip
+
+    patch.setattr(made_citations, "_one", first)
+
+
+def _the_names_need_not_be_all_the_citation_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_names_alone", lambda before: True)
+
+
+def _a_citation_s_bracket_is_no_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_CITED_BEFORE", re.compile(r"(?!)"))
+
+
+def _a_citation_s_words_are_read_back_to_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_PARAGRAPH", "\n")
+
+
+def _the_first_author_names_a_work(patch: pytest.MonkeyPatch) -> None:
+    named = made_citations.renderings
+    patch.setattr(made_citations, "renderings",
+                  lambda families: (*named(families), families[0]))  # fmt: skip
 
 
 def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
@@ -15031,6 +15554,207 @@ def _a_seed_given_as_nothing_is_taken_for_one(patch: pytest.MonkeyPatch) -> None
     patch.setattr(figure_estimates, "NOT_GIVEN", (None,))
 
 
+# ------------------------------------------------------------- bars of means and no points
+
+#: A summary that is no mean, in each language's spelling of an argument's value.
+_NOT_MEANS = ("median", "sum", "len", "max")
+
+
+def _quoted(draw: st.DrawFn, value: str) -> str:
+    """`value` bare, or in either quotation mark."""
+    return draw(st.sampled_from(("", '"', "'"))).join(("", value, ""))
+
+
+def _drawn_call(draw: st.DrawFn, rule, language: str, *extra: str) -> str:
+    """A call of `rule` with what its `when` asks for, and the arguments `extra`, in an
+    order drawn each time; in Python, a library's function by a name it is called by."""
+    equals = "=" if language == "python" else " = "
+    name = draw(st.sampled_from(rule.names))
+    if language == "python" and not name.startswith(("geom_", "stat_")):
+        name = draw(st.sampled_from(("sns.", "ax.", "plt.", "frame.plot."))) + name
+    given = ["d"]
+    for argument, values in rule.when.items():
+        value = draw(st.sampled_from(values))
+        if value is not None:
+            given.append(f"{argument}{equals}{_quoted(draw, value)}")
+    given.extend(extra)
+    return f"{name}({', '.join(draw(st.permutations(given)))})"
+
+
+@st.composite
+def _bar_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str, str]]]]:
+    """Scripts in each language that draw every kind of bar there is: each bar of means bare,
+    with a mean named as its summary and with another summary, with no interval and with one;
+    each bar of given values with its own error bars, given as nothing, and with none; a
+    point at a summary; a layer of error bars on a plot of its own; and each kind in a
+    comment. Three scripts a language: no points and no layer of error bars on a bar's plot,
+    such a layer, joined to the bar by `+` across lines too, and a layer of points as well.
+    With where each finding stands and how severe it is."""
+    from manuscript_guard.gates.figure_bars import rules
+
+    means, drawings = rules()
+    scripts = []
+    for language in ("python", "r"):
+        equals = "=" if language == "python" else " = "
+        nothing = "None" if language == "python" else "NULL"
+        kinds = {kind: [rule for rule in drawings[language] if rule.draws == kind]
+                 for kind in ("means", "given", "errors", "points")}  # fmt: skip
+        # Each line, its code and severity, and whether only a layer on its plot makes it one.
+        plans: list[tuple[str, str | None, str, bool]] = []
+        means_code, errors_code = "figure-bars-of-means", "figure-bars-with-errors"
+        for rule in kinds["means"]:
+            plans.append((_drawn_call(draw, rule, language), means_code, "warn", False))
+            summary = draw(st.sampled_from(rule.summary))
+            mean = _quoted(draw, draw(st.sampled_from(means)))
+            other = _quoted(draw, draw(st.sampled_from(_NOT_MEANS)))
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{mean}"),
+                          means_code, "warn", False))  # fmt: skip
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{other}"),
+                          None, "", False))  # fmt: skip
+            for argument, values in rule.alone.items():
+                alone = f"{argument}{equals}{values[0]}"
+                plans.append((_drawn_call(draw, rule, language, alone), means_code, "info", False))
+                interval = f"{argument}{equals}{_quoted(draw, 'sd')}"
+                plans.append((_drawn_call(draw, rule, language, interval),
+                              means_code, "warn", False))  # fmt: skip
+        for rule in kinds["given"]:
+            plans.append((_drawn_call(draw, rule, language), errors_code, "info", True))
+            for errors in rule.errors:
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}se"),
+                              errors_code, "info", False))  # fmt: skip
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}{nothing}"),
+                              errors_code, "info", True))  # fmt: skip
+        for rule in kinds["points"]:
+            for argument, values in rule.unless.items():
+                value = _quoted(draw, values[0])
+                plans.append((_drawn_call(draw, rule, language, f"{argument}{equals}{value}"),
+                              None, "", False))  # fmt: skip
+        # Round 1 of #648: a layer of error bars on a plot of its own is on no bar.
+        stray = _drawn_call(draw, draw(st.sampled_from(kinds["errors"])), language)
+        plans.append((f"other {'=' if language == 'python' else '<-'} ggplot(r) + {stray}",
+                      None, "", False))  # fmt: skip
+        commented = draw(st.sampled_from(kinds["means"] + kinds["points"] + kinds["errors"]))
+        plans.append(("# " + _drawn_call(draw, commented, language), None, "", False))
+        for layer, points in ((False, False), (True, False), (True, True)):
+            lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
+            extra = []
+            if points:
+                extra.append((_drawn_call(draw, draw(st.sampled_from(kinds["points"])), language),
+                              None, "", False))  # fmt: skip
+            text, expected = "", []
+            for line, code, severity, needs_layer in draw(st.permutations(plans + extra)):
+                at = 0
+                if layer and needs_layer:
+                    line, at = _on_one_plot(draw, line, kinds["errors"], language)
+                lines.append(draw(st.sampled_from(_FIGURE_FILLER[language])))
+                text = "\n".join(lines) + "\n"
+                if code is not None and not points and (layer or not needs_layer):
+                    expected.append((len(text) + at, code, severity))
+                lines.append(line)
+            scripts.append((language, "\n".join(lines) + "\n", expected))
+    return scripts
+
+
+def _on_one_plot(draw: st.DrawFn, bar: str, layers: list, language: str) -> tuple[str, int]:
+    """`bar` as a layer of one plot with a layer of error bars, in an order drawn, joined by
+    `+` on one line or across lines (in brackets, in Python); and where `bar` stands in it."""
+    errors = _drawn_call(draw, draw(st.sampled_from(layers)), language)
+    terms = ["ggplot(d)", *draw(st.permutations([bar, errors]))]
+    joiner = draw(st.sampled_from((" + ", " +\n  ", "\n  + ") if language == "python"
+                                  else (" + ", " +\n  ", " + # a layer\n  ")))  # fmt: skip
+    opening = "(" if language == "python" else ""
+    line = opening + joiner.join(terms) + (")" if opening else "")
+    return line, line.index(bar)
+
+
+@holds(100, _bar_scripts())
+def test_a_bar_of_means_is_found_where_no_points_are_drawn(
+    scripts: list[tuple[str, str, list[tuple[int, str, str]]]],
+) -> None:
+    """Each bar the plot draws at a mean is found where it stands, in Python and R, whether
+    its summary is left to the default or named as a mean, and not where another summary is
+    named; a warning, and a note where the call computes no interval. Each bar of given
+    values is found where error bars are drawn on it, by its own argument or by a layer of
+    the same plot, joined to it by `+`, and not by a layer of another plot or where that
+    argument is given as nothing. None is found where the script draws the points of the
+    data, and a point at a summary or a call in a comment is none."""
+    from manuscript_guard.gates.figure_bars import bars_in
+
+    for language, text, expected in scripts:
+        found = [(bar.call.start, bar.code, bar.severity) for bar in bars_in(text, language)]
+        assert found == expected, (language, text)
+
+
+def _a_points_layer_stands_nothing_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+    patch.setattr(figure_bars.Drawing, "drawn_by",
+                  lambda rule, call: rule.draws != "points" and drawn_by(rule, call))  # fmt: skip
+
+
+def _a_point_at_a_summary_is_a_point_of_the_data(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+
+    def read(rule, call) -> bool:
+        return drawn_by(dataclasses.replace(rule, unless={}), call)
+
+    patch.setattr(figure_bars.Drawing, "drawn_by", read)
+
+
+def _a_bar_s_summary_is_always_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_shows_a_mean", lambda call, rule, means: True)
+
+
+def _an_argument_s_quotation_marks_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_QUOTES", "")
+
+
+def _a_bar_s_own_error_bars_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_with_errors", lambda call, rule: False)
+
+
+def _a_bar_s_error_bars_given_as_nothing_are_error_bars(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    def given(call, rule) -> bool:
+        return any(name in call.arguments for name in rule.errors)
+
+    patch.setattr(figure_bars, "_with_errors", given)
+
+
+def _a_layer_of_another_plot_is_on_a_bar(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "chains_in", lambda tokens, text: defaultdict(int))
+
+
+def _a_line_break_after_a_plus_ends_a_plot(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_CONTINUES", ())
+
+
+def _a_line_break_in_brackets_ends_a_plot(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_BREAKS_IN", ("", "{", "("))
+
+
+def _a_bar_with_no_interval_is_warned(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_computes_an_interval", lambda call, rule: True)
+
+
 # ------------------------------------------------------------- one work under two keys
 
 
@@ -18686,6 +19410,80 @@ def _a_point_and_a_hyphen_are_two_versions(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(model_names, "_CUT", re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)|\."))
 
 
+# --------------------------------------------- broken rules of a checklist answer's quote
+
+
+def _a_checklist_quote_is_found_as_characters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+    from manuscript_guard.literature.sources import normalise
+
+    patch.setattr(checklist_quotes, "words_in", lambda text, words: normalise(words).lower()
+                  in normalise(text).lower())  # fmt: skip
+
+
+def _a_checklist_quote_is_folded_for_white_space_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes, quotations
+
+    def spaces_only(text: str) -> str:
+        return " ".join(text.split())
+
+    patch.setattr(checklist_quotes, "normalise", spaces_only)
+    patch.setattr(quotations, "normalise", spaces_only)
+
+
+def _a_heading_s_subsections_are_not_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    split = checklist_quotes.split_sections
+    patch.setattr(checklist_quotes, "split_sections", lambda text: [
+        dataclasses.replace(section, enclosed=section.body) for section in split(text)])
+
+
+def _each_file_is_read_on_its_own_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "documents", lambda files: [
+        checklist_quotes._prepared(text) for text in files.values()])  # fmt: skip
+
+
+def _a_checklist_s_files_are_joined_in_path_order(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "printed_order", lambda paths, *, supplementary: sorted(paths))
+
+
+def _a_checklist_quote_is_read_only_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "printed_alt", lambda raw, namespace: raw)
+
+
+def _a_checklist_quote_is_looked_for_under_every_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes.Manuscript, "_named", lambda self, where: list(self.parts))
+
+
+def _a_comment_is_read_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "blank_comments", lambda text: text)
+
+
+def _a_checklist_quote_of_three_words_is_a_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "QUOTE_WORDS", 1)
+
+
+def _any_table_s_caption_is_the_one_where_names(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    named = checklist_quotes.display_named
+    patch.setattr(checklist_quotes, "display_named", lambda where: None if named(where) is None
+                  else (named(where)[0], False, 1))  # fmt: skip
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -19167,9 +19965,11 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
 # Imported here, not at the top, to keep clear of the import block other branches edit.
 from generated import (  # noqa: E402
     BOLD_PARAGRAPH_STYLES,
-    bold_blocks,
+    TYPED_PARAGRAPH_STYLES,
     bold_paragraphs,
     placed_papers,
+    typed_blocks,
+    typed_paragraphs,
 )
 
 
@@ -19277,18 +20077,55 @@ def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
                   lambda archive, names, what: {**real(archive, names, what), "StrongToo": True})
 
 
-@holds(60, bold_blocks())
-def test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading(
+@holds(40, typed_paragraphs())
+def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]]) -> None:
+    """A paragraph of words outside a table, in no caption style pandoc reads ("caption",
+    "Table Caption", "Image Caption", by name) and not numbered by Word is a line a title can
+    be typed as, in bold or not; one in a table's cell, in a link, in a caption style, Word
+    numbers or with a note's mark is not (`text.docx.DocxText.typed`)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+
+    body, typed = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "paper.docx"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                  f"{body}</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
+                                                f"{TYPED_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+        document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert sorted(lines[at] for at in document.typed) == typed
+
+
+def _an_indented_paragraph_is_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_quoted", lambda paragraph: False)
+
+
+def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_caption_styles", lambda archive, names, what: frozenset())
+
+
+@holds(60, typed_blocks())
+def test_a_paragraph_that_names_a_section_alone_is_made_a_heading(
     drawn: tuple[list[dict], list[str]],
 ) -> None:
-    """In a Word paper with no heading style, a paragraph wholly in bold, also underlined,
-    in a span, numbered or with a colon, whose words name a section is made a heading of its
-    name; a bold title that names none, a bold word opening a sentence, a name in italics,
-    in a list's item or in a link stays text (`from_word.bold_headings`)."""
-    from manuscript_guard.from_word import bold_headings
+    """In a Word paper with no heading style, a paragraph whose words name a section is made
+    a heading of its name, in bold or not, also underlined, in a span, in italics, numbered,
+    with a colon, in capitals, half in bold; a bold title that names none, a word in bold or
+    not opening a sentence, a name in a list's item or in a link stays text
+    (`from_word.typed_headings`; the real-paper corpus, 2026-11-11)."""
+    from manuscript_guard.from_word import typed_headings
 
     blocks, titles = drawn
-    made, named = bold_headings(blocks)
+    made, named = typed_headings(blocks)
     assert list(named) == titles
     assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
 
@@ -19305,18 +20142,25 @@ def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(section_names, "section_name_alone", lambda text: " ".join(text.split()) or None)
 
 
-def _a_paragraph_partly_in_bold_is_a_title(patch: pytest.MonkeyPatch) -> None:
+def _only_a_title_in_bold_is_typed(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-11: a title typed in no bold was text."""
     from manuscript_guard import from_word
 
-    real = from_word._bold_words
-    patch.setattr(from_word, "_bold_words", lambda inlines, bold=False: (
-        None if (found := real(inlines, bold)) is None else [any(found)] * len(found)))
+    real = from_word._words_only
+    patch.setattr(from_word, "_words_only", lambda inlines: real(inlines) and any(
+        node.get("t") == "Strong" for node in inlines))  # fmt: skip
+
+
+def _a_number_before_a_title_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_ALONE_NUMBER", re.compile("(?!)"))
 
 
 def _a_title_also_underlined_is_none(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import from_word
 
-    patch.setattr(from_word, "_LOOKS", {"Emph": None})
+    patch.setattr(from_word, "_LOOKS", {"Strong": None, "Emph": None})
 
 
 from generated import word_paragraphs  # noqa: E402
@@ -19887,17 +20731,29 @@ BROKEN = {
         _a_style_s_base_is_read,
         test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
     ),
-    "any bold title is a section's": (
+    "any typed title is a section's": (
         _any_bold_title_is_a_section_s,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
-    "a paragraph partly in bold is a title": (
-        _a_paragraph_partly_in_bold_is_a_title,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    "only a title in bold is typed": (
+        _only_a_title_in_bold_is_typed,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a number before a typed title is part of it": (
+        _a_number_before_a_title_is_part_of_it,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
     "a title also underlined is none": (
         _a_title_also_underlined_is_none,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "an indented paragraph is typed": (
+        _an_indented_paragraph_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a paragraph in a caption style is typed": (
+        _a_caption_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
     ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,
@@ -19962,6 +20818,46 @@ BROKEN = {
     "a count held beside is read as any from nought": (
         _a_count_held_beside_is_read_as_any,
         test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a checklist answer's quote is found as characters, not as words": (
+        _a_checklist_quote_is_found_as_characters,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is folded for white space only": (
+        _a_checklist_quote_is_folded_for_white_space_only,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a heading's subsections are not under it for a checklist's quote": (
+        _a_heading_s_subsections_are_not_under_it,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "each file is read on its own for a checklist answer's quote": (
+        _each_file_is_read_on_its_own_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the main text's files are joined in path order for a checklist answer's quote": (
+        _a_checklist_s_files_are_joined_in_path_order,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is read only as written": (
+        _a_checklist_quote_is_read_only_as_written,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is looked for under every heading": (
+        _a_checklist_quote_is_looked_for_under_every_heading,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a comment is read for a checklist answer's quote": (
+        _a_comment_is_read_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote of three words is a quote": (
+        _a_checklist_quote_of_three_words_is_a_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "any table's caption is the one a checklist's answer names": (
+        _any_table_s_caption_is_the_one_where_names,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
     ),
     "a finding's quote is found as characters, not as words": (
         _a_quote_is_found_as_characters,
@@ -20760,6 +21656,26 @@ BROKEN = {
         _a_month_is_a_name,
         test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
     ),
+    "a typed citation naming two entries is made the first's key": (
+        _two_entries_are_the_first,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming a co-author more than its work has is made its key": (
+        _the_names_need_not_be_all_the_citation_s,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming no co-author more after another is left typed": (
+        _a_citation_s_bracket_is_no_name,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming a co-author more on the line before is made its key": (
+        _a_citation_s_words_are_read_back_to_its_line,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a typed citation naming a work's first author alone is made its key": (
+        _the_first_author_names_a_work,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
     "a TeX escape in a .bib name is read as its letters": (
         _a_tex_escape_is_read_as_its_letters,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
@@ -21071,6 +21987,66 @@ BROKEN = {
     "in LaTeX, a package's command is the reader's where no package gives it": (
         _a_package_s_command_is_always_the_reader_s,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a known command defined again in the preamble is refused at the definition": (
+        _a_known_command_defined_again_is_refused_at_the_definition,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a known command the preamble defines again is read where it is used": (
+        _a_known_command_defined_again_is_read_where_it_is_used,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a known command defined again is not told the tree": (
+        _a_known_command_defined_again_is_not_told_the_tree,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a preamble's \\expandafter before a \\def is refused": (
+        _a_preamble_s_expandafter_is_refused,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every \\expandafter in a preamble is passed over": (
+        _every_expandafter_in_a_preamble_is_passed_over,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's declared encoding is kept as typed": (
+        _a_declared_encoding_is_kept_as_typed,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, past a refusal the file is read as typed": (
+        _past_a_refusal_the_file_is_read_as_typed,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a restyled heading or a reference defined as another is refused where used": (
+        _no_redefinition_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every heading or reference defined again is read as before": (
+        _every_heading_and_reference_redefined_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, what the reader found past a refusal is kept": (
+        _what_is_found_past_a_refusal_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited tree counts a declaration in unprinted text": (
+        _a_declaration_in_unprinted_text_counts,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a declaration past a stop does not count": (
+        _a_declaration_past_a_stop_does_not_count,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's encoding is decided for the folder": (
+        _the_encoding_is_the_folder_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's UTF-8 declaration is not counted": (
+        _a_utf8_declaration_is_not_counted,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, past a refusal the mask keeps the file as typed": (
+        _past_a_refusal_the_file_is_read_as_typed,
+        test_the_latex_mask_keeps_every_character_in_its_place,
     ),
     "in LaTeX, a package's command is the author's where the package is loaded": (
         _a_package_s_command_is_the_author_s_where_it_is_loaded,
@@ -21924,24 +22900,72 @@ BROKEN = {
         _a_dash_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a number after a dash's short form defines it": (
-        _a_number_after_a_dash_s_short_form_defines_too,
+    "a dash's short form need not end its clause": (
+        _a_dash_s_short_form_need_not_end_its_clause,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a dash with no space defines": (
         _a_dash_needs_no_space,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a comma and a number after a dash's short form define it": (
-        _a_comma_and_a_number_after_a_dash_s_short_form_define,
+    "a dash defines where #623's statistic shapes do not follow": (
+        _a_dash_s_clause_ends_where_623_said_no_statistic_follows,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a colon, a bracket or a no-break space before a dash's value defines": (
-        _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines,
+    "a comma ends a dash's clause before anything": (
+        _a_comma_ends_a_dash_s_clause_before_anything,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a comma after a dash's short form defines nothing": (
-        _a_comma_after_a_dash_s_short_form_defines_nothing,
+    "a comma ends no dash's clause": (
+        _a_comma_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a line break ends a dash's paragraph": (
+        _a_line_break_ends_a_dash_s_paragraph,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a dash's clause is not read past a line break": (
+        _a_dash_s_clause_is_not_read_past_a_line_break,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing mark after a dash's short form ends nothing": (
+        _a_closing_mark_after_a_dash_s_short_form_ends_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a decimal point ends a dash's clause": (
+        _a_decimal_point_ends_a_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon ends no dash's clause": (
+        _a_colon_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "the end of the text ends no dash's clause": (
+        _the_end_of_the_text_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a citation after a dash's short form is words": (
+        _a_citation_after_a_dash_s_short_form_is_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing dash ends no dash's clause": (
+        _a_closing_dash_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a hard line break ends no dash's clause": (
+        _a_hard_line_break_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "one space before a line's end is a hard line break": (
+        _one_space_is_a_hard_line_break,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a table cell's bar ends no dash's clause": (
+        _a_table_cell_s_bar_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a list item's line ends no dash's clause": (
+        _a_list_item_s_line_ends_no_dash_s_clause,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "pandoc's smart dashes are no dashes": (
@@ -22059,6 +23083,18 @@ BROKEN = {
     "a journal's ask for definitions is not read": (
         _a_journal_s_ask_is_not_read,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "the audit reads no list of journals' style guides": (
+        _the_journals_list_is_not_read,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit lists the short forms left undefined last first": (
+        _the_short_forms_are_listed_last_first,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit orders the short forms left undefined by their files' paths": (
+        _the_short_forms_are_ordered_by_path,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
     ),
     "a word with underscores in code is read as a sentence's": (
         _code_is_read_as_prose,
@@ -22988,6 +24024,38 @@ BROKEN = {
         _a_nested_item_is_read_at_the_top,
         test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
     ),
+    "an Abstract's number is looked for in the Methods and the Results alone": (
+        _an_abstract_number_is_looked_for_in_the_methods_and_results_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the statements and a summary of the paper are searched for an Abstract's number": (
+        _the_back_matter_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the title page is searched for an Abstract's number": (
+        _the_title_page_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a note is searched for an Abstract's number": (
+        _a_note_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a summary of the paper is searched for an Abstract's number": (
+        _a_summary_of_the_paper_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "related work is searched for an Abstract's number": (
+        _introduction_material_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a heading over the Methods is no section for an Abstract's number": (
+        _a_heading_over_the_methods_is_the_paper_s_title,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the Introduction and a conclusion are searched for an Abstract's number": (
+        _the_opening_and_the_conclusion_are_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
     "an Abstract's interval has a counterpart where it has two": (
         _a_counterpart_need_not_be_the_only_one,
         test_the_abstract_is_held_to_what_the_paper_reports,
@@ -23075,6 +24143,46 @@ BROKEN = {
     "a word inside a quotation is respelt": (
         _a_word_inside_a_quotation_is_respelt,
         test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "an abbreviation written out after an article that was the short form's": (
+        _an_article_before_a_short_form_is_left_wrong,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a link's brackets are written out as a definition's": (
+        _a_link_s_brackets_are_a_definition_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "the list of abbreviations is written out like the text": (
+        _a_list_of_abbreviations_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an article across a line break or a mark from the short form is not seen": (
+        _an_article_across_a_break_is_not_seen,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a long form's first word that keeps its own case takes a capital": (
+        _a_long_form_s_own_case_takes_a_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's sentence is written out where the text defines the form too": (
+        _a_funder_s_sentence_is_written_out_beside_the_text_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a citation after a round bracket is taken for a link's address": (
+        _a_citation_after_a_round_bracket_is_a_link,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a written-out abbreviation takes no capital where it opens a sentence": (
+        _a_written_out_abbreviation_takes_no_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an abbreviation used again is written out": (
+        _an_abbreviation_used_again_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's abbreviation among the acknowledgements is written out": (
+        _a_funder_s_abbreviation_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
     "a respelt word loses its capital": (
         _a_respelt_word_loses_its_capital,
@@ -24495,6 +25603,46 @@ BROKEN = {
     "a seed given as None or NA is taken for a seed": (
         _a_seed_given_as_nothing_is_taken_for_one,
         test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a figure's points layer stands no bar down": (
+        _a_points_layer_stands_nothing_down,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a point a figure puts at a summary is a point of the data": (
+        _a_point_at_a_summary_is_a_point_of_the_data,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's summary is a mean whatever it names": (
+        _a_bar_s_summary_is_always_a_mean,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "an argument's quotation marks are kept when a bar is read": (
+        _an_argument_s_quotation_marks_are_kept,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's own error bars are not read": (
+        _a_bar_s_own_error_bars_are_not_read,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's error bars given as None or NULL are error bars": (
+        _a_bar_s_error_bars_given_as_nothing_are_error_bars,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a layer of error bars on another plot is on a bar": (
+        _a_layer_of_another_plot_is_on_a_bar,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a line break after a plus ends a plot": (
+        _a_line_break_after_a_plus_ends_a_plot,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a line break inside brackets ends a plot": (
+        _a_line_break_in_brackets_ends_a_plot,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar of means with no interval is a warning": (
+        _a_bar_with_no_interval_is_warned,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
     ),
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,

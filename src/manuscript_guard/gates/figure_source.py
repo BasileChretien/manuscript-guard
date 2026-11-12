@@ -269,11 +269,13 @@ def check_figure_source(script: Path, classifier: Classifier) -> Report:
             )
         )
 
+    from manuscript_guard.gates.figure_bars import check_figure_bars
     from manuscript_guard.gates.figure_estimates import check_figure_estimates
     from manuscript_guard.gates.figures import _declared
 
     allowed = dict(_declared(script.with_name(f"{script.stem}.guard.yaml"), "allow_estimates"))
     report = report.merge(check_figure_estimates(script, text, language, allowed))
+    report = report.merge(check_figure_bars(script, text, language))
     return report.with_counts(
         figure_source_numbers=counts["checked"],
         figure_source_presentation=counts["presentation"],

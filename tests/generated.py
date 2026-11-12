@@ -45,7 +45,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
@@ -577,7 +577,8 @@ def signs() -> st.SearchStrategy[str]:
 #: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
 #: whose nearest letter is inside a bracket the long form would open, found again before
 #: it; a short form closing a bracket after a semicolon or a comma, its long form before
-#: that; and a short form after a spaced dash of each kind, no bracket at all.
+#: that; and a short form after a spaced dash of each kind, no bracket at all, ending its
+#: clause in each way that ends one.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -624,12 +625,52 @@ DEFINING = (
     ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
     # A comma before words, which gives no statistic (round 2 of #623).
     ("the Area Payment Scheme \N{EN DASH} APS, which pays farmers", "\N{EN DASH} APS", "APS"),
+    # The short form ending its clause in each way (the author, 2026-11-12), the end of the
+    # paragraph being the dashes' above: a stop, a semicolon, a closing bracket of each
+    # kind, a comma and a word across a line break, and a closing emphasis mark or quote.
+    ("the Single Farm Payment \N{EN DASH} SFP. It pays farmers", "\N{EN DASH} SFP", "SFP"),
+    ("the Voluntary Coupled Support \N{EN DASH} VCS; it pays farmers", "\N{EN DASH} VCS",
+     "VCS"),
+    ("farmers joined (the Less Favoured Area \N{EN DASH} LFA) in 2015", "\N{EN DASH} LFA",
+     "LFA"),
+    ("farmers joined [the Greening Payment \N{EN DASH} GP] in 2015", "\N{EN DASH} GP", "GP"),
+    ("the Coupled Support Scheme \N{EN DASH} CSS,\nwhich pays farmers", "\N{EN DASH} CSS",
+     "CSS"),
+    ("**the Redistributive Income Support \N{EN DASH} RIS**. It pays farmers",
+     "\N{EN DASH} RIS", "RIS"),
+    ("\N{LEFT DOUBLE QUOTATION MARK}the Complementary Income Support \N{EN DASH} "
+     "CIS\N{RIGHT DOUBLE QUOTATION MARK}, which pays farmers", "\N{EN DASH} CIS", "CIS"),
+    # Round 1 of #643: a citation passed over, blanked by the mask, of numbers and a
+    # superscript one; a colon and a word; a closing spaced dash; a table cell's bar; a hard
+    # line break, a backslash and two spaces, before words with no comma; and a list item's
+    # line, the next item on the next line.
+    ("the Entry Level Scheme \N{EN DASH} ELS [@smith2020]. It pays farmers",
+     "\N{EN DASH} ELS", "ELS"),
+    ("the Higher Level Scheme \N{EN DASH} HLS [12, 14\N{EN DASH}16]. It pays farmers",
+     "\N{EN DASH} HLS", "HLS"),
+    ("the Organic Entry Level \N{EN DASH} OEL^3^. It pays farmers", "\N{EN DASH} OEL", "OEL"),
+    ("the Sustainable Farming Incentive \N{EN DASH} SFI: farmers joined it",
+     "\N{EN DASH} SFI", "SFI"),
+    ("the Single Payment Scheme \N{EN DASH} SPS \N{EN DASH} replaced it", "\N{EN DASH} SPS",
+     "SPS"),
+    ("| the Environmental Stewardship Scheme \N{EN DASH} ESS | 3 |", "\N{EN DASH} ESS", "ESS"),
+    ("the Countryside Premium Scheme \N{EN DASH} CPS\\\nwhich pays farmers", "\N{EN DASH} CPS",
+     "CPS"),
+    ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
+     "HFA"),
+    ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
+     "\N{EN DASH} FTF", "FTF"),
 )  # fmt: skip
+
+#: A dash definition at the very end of the text, which every example of `bracketed` ends
+#: with, its short form followed by nothing (round 1 of #643).
+AT_THE_END = ("the Agri-Environment Scheme \N{EN DASH} AES", "\N{EN DASH} AES", "AES")
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
 #: a statistic, its short form followed by an equals sign or a number, whatever the words
-#: before it are, their initials among them; and a short form whose letters are found only
-#: by going into another bracket, "(12.5%)".
+#: before it are, their initials among them; a short form whose letters are found only
+#: by going into another bracket, "(12.5%)"; and a short form after a dash that does not end
+#: its clause, a statistic's of each shape among them.
 NOT_DEFINING = (
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
@@ -658,6 +699,25 @@ NOT_DEFINING = (
     ("the odds were higher in older people \N{EN DASH} OR\N{NO-BREAK SPACE}1.52",
      "OR\N{NO-BREAK SPACE}1.52", "OR"),
     ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
+    # A dash's short form that does not end its clause (the author, 2026-11-12): the shapes
+    # #623's exceptions missed, an interval in square brackets, a sign and a word before
+    # the value; the value on the next line, after a decimal point, and a year in
+    # brackets; and words on the next line, with no comma.
+    ("the risk was higher in older people \N{EN DASH} OR [95% CI 1.1\N{EN DASH}2.0] 1.52",
+     "OR [95%", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{ALMOST EQUAL TO} 1.52",
+     "OR \N{ALMOST EQUAL TO}", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR of 1.52", "OR of", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR\n1.52", "OR\n1.52", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR .52", "OR .52", "OR"),
+    ("the Rural Development Programme \N{EN DASH} RDP (2014\N{EN DASH}2020)", "RDP (2014",
+     "RDP"),
+    ("the Area Facing Constraints \N{EN DASH} AFC\nwhich pays farmers", "AFC\nwhich", "AFC"),
+    # Round 1 of #643: one space before the line's end is no hard line break; a colon and a
+    # number, and a bracket of numbers before the value, give a statistic.
+    ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
+    ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -748,11 +808,14 @@ def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]
 @st.composite
 def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     """A manuscript with every bracket of `DEFINING` and `NOT_DEFINING`, in an order drawn,
-    and for each where its short form stands, the short form, and whether it is defined
-    there."""
+    ending with `AT_THE_END`, and for each where its short form stands, the short form, and
+    whether it is defined there."""
     planted = draw(st.permutations([*((*each, True) for each in DEFINING),
                                     *((*each, False) for each in NOT_DEFINING)]))  # fmt: skip
     text, starts = _paragraphs(draw, (written for written, *_rest in planted))
+    # The last piece ends the text, with nothing after it.
+    planted, starts = [*planted, (*AT_THE_END, True)], [*starts, len(text)]
+    text += AT_THE_END[0]
     found = []
     for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
         found.append((start + written.rindex(needle) + needle.index(short), short, defines))
@@ -850,6 +913,45 @@ def statistics_used(draw: st.DrawFn) -> tuple[str, list[str]]:
     text, _starts = _paragraphs(draw, (f"the {short} was given" for short in planted))
     named = [draw(st.sampled_from(STATISTICS_EXEMPT)), draw(st.sampled_from(STATISTICS_NOT))]
     return "# Results\n\n" + text, sorted(set(named))
+
+
+#: Short forms the audit's list of journals' style guides holds
+#: (`data/journal_abbreviations.yaml`), and forms of a field, an instrument and an
+#: institution it does not, all reported by G14 when undefined.
+JOURNALS_EXEMPT = ("HIV", "MRI", "EEG", "GABA")
+JOURNALS_NOT = ("SIGNA", "CHUV", "UMCG", "NTNU")
+
+
+#: A form only the supplement uses, and so only the supplement leaves undefined.
+JOURNALS_SUPPLEMENT = "ZPX"
+
+
+@st.composite
+def undefined_forms(draw: st.DrawFn) -> tuple[list[tuple[str, str, bool]], list[str], list[str]]:
+    """A paper of three files using every form of `JOURNALS_EXEMPT` and `JOURNALS_NOT`
+    undefined, each once or more, in an order drawn: its main file, an Abstract whose HR
+    only the main text defines and whose HIV is undefined there too, then the Methods with
+    the first of the forms; a second file, read after it though its path sorts first, with
+    the rest; and a supplement with `JOURNALS_SUPPLEMENT`. Each file is its path, its text
+    and whether it is the supplement's. With the forms the audit lists, in the order G14
+    reads them, HR first, and those it passes over, HIV first, in theirs."""
+    planted = draw(st.permutations([*JOURNALS_EXEMPT, *JOURNALS_NOT]))
+    cut = draw(st.integers(1, len(planted) - 1))
+
+    def used(forms: list[str]) -> str:
+        again = draw(st.permutations([short for short in forms
+                                      for _time in range(draw(st.integers(0, 2)))]))
+        text, _starts = _paragraphs(draw, (f"the {short} was given" for short in [*forms, *again]))
+        return text  # fmt: skip
+
+    main = ("# Abstract\n\nThe HR rose in HIV.\n\n# Methods\n\n" + used(list(planted[:cut]))
+            + "The hazard ratio (HR) was given, and the HR held.\n")  # fmt: skip
+    files = [("main.md", main, False),
+             ("a_results.md", "# Results\n\n" + used(list(planted[cut:])), False),
+             ("s1.md", "# Methods\n\n" + used([JOURNALS_SUPPLEMENT]), True)]  # fmt: skip
+    passed = ["HIV", *(short for short in planted if short in JOURNALS_EXEMPT and short != "HIV")]
+    return (files, ["HR", *(short for short in planted if short in JOURNALS_NOT),
+                    JOURNALS_SUPPLEMENT], passed)  # fmt: skip
 
 
 #: A glossary's entries in each form it is written in, each its own short form: a line with
@@ -1003,6 +1105,13 @@ INITIALS_NAMED = next(
     block for block in NOT_ABBREVIATIONS if "**Author contributions:** EF" in block
 )
 
+#: A glossary a sentence opens, with no heading, as Word papers type one, which every input
+#: of the `abbreviations` reading holds before the contributions statement: drawn as one
+#: block among the pool's, it was in too few of 120 inputs once the dash definitions of
+#: 2026-11-12 added blocks, and a rule that stopped reading it went unnoticed.
+GLOSSARY_OPENED = "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
+                               GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0]))  # fmt: skip
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
@@ -1011,9 +1120,7 @@ ABBREVIATION_BLOCKS = tuple(
         *NOT_ABBREVIATIONS,
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
-        # A glossary a sentence opens, with no heading, as Word papers type one.
-        "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
-                     GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0])),
+        GLOSSARY_OPENED,
     )
 )
 
@@ -1152,6 +1259,11 @@ _LATEX_SIGNS = (
     "\\makeatletter", "\\ifx", "\n", "\r\n", " ", "12", "\\begin{comment}", "\\url{",
 )  # fmt: skip
 _PREAMBLE = "\\documentclass{article}\n\\begin{document}\n"
+#: A preamble that defines a known command again, read, its uses in the body refused where
+#: they print, and adds to one through `\\expandafter`, passed over (2026-11-11).
+_PREAMBLE_DEFINING = ("\\documentclass{article}\n\\renewcommand{\\emph}[1]{\\textit{#1}}\n"
+                      "\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize}\n"
+                      "\\begin{document}\n")  # fmt: skip
 
 
 @st.composite
@@ -1210,7 +1322,7 @@ def latex_texts() -> st.SearchStrategy[str]:
     bare signs once each. Some open with a preamble and `\\begin{document}`."""
     pool = (*_spaced(FILLER) * 2, *_spaced(_NUMBERS), *_LATEX_WHOLE * 3, *_LATEX_SIGNS)
     return st.tuples(
-        st.sampled_from(("", "", _PREAMBLE)), _in_a_row(pool, few=20, many=70)
+        st.sampled_from(("", "", _PREAMBLE, _PREAMBLE_DEFINING)), _in_a_row(pool, few=20, many=70)
     ).map("".join)
 
 
@@ -1528,8 +1640,10 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
 
 #: A small LaTeX manuscript and what the reader owes it: its files, the author's packages,
 #: each refusal by file and offset, the spans it blanks, and the comments it records.
-LatexCase = tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
-                  list[tuple[str, int, int]], list[tuple[str, int]]]  # fmt: skip
+#: A manuscript, its packages, the refusals, the stretches hidden and the comments; and, as a
+#: sixth, for one read as `audit` reads a folder (`auditing.latex.read_latex`), the codec
+#: each file is written in where it is not UTF-8.
+LatexCase = tuple  # fmt: skip
 #: Commands of a package that LaTeX does not give, with the packages that give each,
 #: written out apart from the reader (2026-10-23).
 LATEX_PACKAGE_COMMANDS = {"unit": ("siunitx", "units"), "qty": ("siunitx", "physics"),
@@ -1547,13 +1661,18 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       #442);
     - a conditional in a typed reference list's header, read, and one in its entries, refused;
     - `\\providecommand` of a command the reader knows, in the preamble or the body, which
-      defines nothing; `\\renewcommand` of one, and a `\\def` after a `\\providecommand`,
-      refused at the command;
+      defines nothing; `\\renewcommand`, `\\def` or `\\def` after a `\\providecommand` of one,
+      in the preamble, a file input from it or the author's package, read, and each use
+      refused where it prints, in the entry file and in a file it inputs; in the body,
+      refused at the command (Basile, 2026-11-11);
     - an article's own command named as a package's, read as an unknown one where no file of
-      the tree loads the package, and refused where the same file, the author's package or a
-      file input from the preamble loads it;
+      the tree loads the package, and refused where it prints where the same file, the
+      author's package or a file input from the preamble loads it;
     - an input encoding other than UTF-8, accepted in a tree all of ASCII, and refused where
-      the file that sets it or another file of the tree is not ASCII;
+      the file that sets it or another file of the tree is not ASCII; read as `audit` reads
+      a folder that declares latin1, latin9, cp1252 or ansinew, accepted, and latin2 not;
+    - Scientific WorkPlace's preamble `\\expandafter\\def\\expandafter\\normalsize...`, passed
+      over, and `\\expandafter` that builds a name or stands in the body, refused;
     - a `\\def` with a parameter text and no parameter, in the author's package or the entry
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
@@ -1594,11 +1713,80 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     main = (head + provide + begin + words() + "\n" + end if draw(st.booleans())
             else head + begin + words() + "\n" + provide + end)  # fmt: skip
     cases.append(({"main.tex": main}, {}, [], [], []))
+    # A known command defined again: in the preamble, a file input from it or the author's
+    # package, read, and each use refused where it prints, in the entry file and in a file
+    # it inputs; in the body, refused at the definition (Basile, 2026-11-11).
     definer = draw(st.sampled_from(("renewcommand", "newcommand", "DeclareRobustCommand")))
-    main = head + f"\\{definer}{{\\{known}}}[1]{{#1}}\n" + begin + words() + "\n" + end
-    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("{\\" + known))], [], []))
-    main = head + "\\providecommand{\\x}{1}\\def\\" + known + "{2}\n" + begin + end
-    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("\\" + known))], [], []))
+    defined = draw(st.sampled_from((f"\\{definer}{{\\{known}}}[1]{{#1}}\n",
+                                    f"\\{definer}\\{known}[1]{{#1}}\n",
+                                    f"\\def\\{known}#1{{#1}}\n",
+                                    f"\\providecommand{{\\x}}{{1}}\\def\\{known}{{2}}\n")))
+    main = head + defined + begin + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    for where in ("file", "package", "input"):
+        preamble = {"file": defined, "package": "\\usepackage{mine}\n",
+                    "input": "\\input{commands}\n"}[where]  # fmt: skip
+        main = head + preamble + begin + words() + " "
+        at = len(main)
+        main += f"\\{known}{{{words()}}} {words()}.\n\\input{{part}}\n" + end
+        part = words() + f" \\{known}{{k}}.\n"
+        files = {"main.tex": main, "part.tex": part,
+                 **({"commands.tex": defined} if where == "input" else {})}  # fmt: skip
+        packages = {"mine.sty": defined} if where == "package" else {}
+        # The file past the refusal is input by nothing the reader read, and is refused
+        # where it prints as a loose file.
+        refused = [("main.tex", at), ("part.tex", part.index("\\" + known))]
+        cases.append((files, packages, refused, [], []))
+        # The use in the file the entry inputs, where the entry uses it nowhere.
+        quiet = main[:at] + main[main.index(".\n\\input", at) + 1 :]
+        cases.append(({**files, "main.tex": quiet}, packages,
+                      [("part.tex", part.index("\\" + known))], [], []))  # fmt: skip
+    # The two forms read as before (Basile, 2026-11-12): a heading restyled through LaTeX's
+    # own `\@startsection`, in the author's package or past `\makeatletter`, and a
+    # cross-reference defined as another of its argument; and each with one thing more,
+    # refused where it is used.
+    level = draw(st.sampled_from(("section", "subsection", "paragraph")))
+    groups = draw(st.sampled_from(("{1}{\\z@}{-1ex}{1ex}{\\bfseries}",
+                                   "{2}{0pt}%\n  {-2.0ex \\@plus -0.5ex}{1.5ex}%\n"
+                                   "  {\\normalfont\\large\\bfseries}")))  # fmt: skip
+    definer = draw(st.sampled_from((f"\\renewcommand{{\\{level}}}", f"\\renewcommand\\{level}",
+                                    f"\\def\\{level}")))  # fmt: skip
+    restyled = f"{definer}{{\\@startsection{{{level}}}{groups}}}\n"
+    reference = draw(st.sampled_from(("equation~", "Eq.~", "", "eq. ")))
+    parens = draw(st.booleans())
+    inner = draw(st.sampled_from(("ref", "eqref")))
+    referred = f"\\{inner}{{#1}}"
+    again = draw(st.sampled_from(("\\def\\autoref#1", "\\renewcommand{\\autoref}[1]")))
+    cross = f"{again}{{{reference}{f'({referred})' if parens else referred}}}\n"
+    uses = f"\\{level}{{{words()}}}\n{words()} \\autoref{{e1}} {words()}.\n"
+    for where in ("package", "preamble"):
+        preamble = ("\\usepackage{mine}\n" if where == "package" else
+                    "\\makeatletter\n" + restyled + "\\makeatother\n")  # fmt: skip
+        main = head + preamble + "\\input{refs}\n" + begin + uses + "\\input{part}\n" + end
+        files = {"main.tex": main, "refs.tex": cross, "part.tex": uses}
+        packages = {"mine.sty": restyled} if where == "package" else {}
+        cases.append((files, packages, [], [], []))
+    # One thing more in each: a font switch round `\@startsection`, a parameter, another
+    # name; and a second command in the cross-reference's body.
+    spoilt = draw(st.sampled_from((restyled.replace("{\\@start", "{\\bfseries\\@start"),
+                                   restyled.replace(definer, definer + "[1]")
+                                   if definer.startswith("\\renew") else
+                                   restyled.replace(definer, definer + "#1"),
+                                   restyled.replace(f"{{{level}}}", "{chapter}"))))  # fmt: skip
+    main = head + "\\usepackage{mine}\n" + begin + uses + end
+    cases.append(({"main.tex": main}, {"mine.sty": spoilt},
+                  [("main.tex", main.index("\\" + level, len(head + begin)))], [], []))  # fmt: skip
+    worse = cross.replace(referred, f"\\textbf{{{referred}}}")
+    main = head + "\\input{refs}\n" + begin + words() + " \\autoref{e1}.\n" + end
+    cases.append(({"main.tex": main, "refs.tex": worse}, {},
+                  [("main.tex", main.index("\\autoref"))], [], []))  # fmt: skip
+
+    main = head + begin + words() + "\n"
+    # Refused where the command's name stands, or at its braces, `{\url}`.
+    braced = f"{{\\{known}}}" in defined
+    at = len(main) + (defined.index("{\\" + known) if braced else defined.index("\\" + known, 1))
+    main += defined + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", at)], [], []))
 
     name = draw(st.sampled_from(sorted(LATEX_PACKAGE_COMMANDS)))
     package = draw(st.sampled_from(LATEX_PACKAGE_COMMANDS[name]))
@@ -1613,7 +1801,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
         main = head + preamble + define + begin + used + end
         files = {"main.tex": main, **({"settings.tex": loads} if where == "input" else {})}
         packages = {"macros.sty": loads.replace("usepackage", "RequirePackage")}
-        refused = [("main.tex", main.index("{\\" + name))]
+        # Defined again where a file loads the package, and refused where it prints.
+        refused = [("main.tex", main.index("$\\" + name) + 1)]
         cases.append((files, packages if where == "package" else {}, refused, [], []))
 
     encoding = draw(st.sampled_from(("latin1", "latin9", "ansinew", "cp1252")))
@@ -1627,6 +1816,62 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
                   [("main.tex", main.index(sets))], [], []))  # fmt: skip
     alone = head + sets + begin + accented + end
     cases.append(({"main.tex": alone}, {}, [("main.tex", alone.index(sets))], [], []))
+    # As `audit` reads a folder that declares the encoding: in it, its declarations written
+    # as UTF-8's, and nothing refused (Basile, 2026-11-11). A project's files are UTF-8, as
+    # the submission folder writes them, and are refused as above.
+    codec = {"latin1": "latin_1", "latin9": "iso8859_15"}.get(encoding, "cp1252")
+    cases.append(({"main.tex": main, "part.tex": accented}, {}, [], [], [],
+                  {"main.tex": codec, "part.tex": codec}))  # fmt: skip
+    cases.append(({"main.tex": alone}, {}, [], [], [], {"main.tex": codec}))
+    # One past where the reader stops counts, as TeX reads it: the title before it is read
+    # in it (round 3 of #637: "Étude" read as "?tude").
+    titled = head + "\\title{\N{LATIN CAPITAL LETTER E WITH ACUTE}tude}\n\\catcode`\\@=11\n"
+    cases.append(({"main.tex": titled + sets + begin + accented + end}, {},
+                  [("main.tex", len(titled) - len("\\catcode`\\@=11\n"))], [], [],
+                  {"main.tex": codec}))  # fmt: skip
+    # One in a comment or in what TeX does not print, in a file the tree reaches, counts
+    # for nothing: the tree is UTF-8 (round 3 of #637).
+    unread = (f"% {sets}\\iffalse\n{sets}\\fi\n" if "inputencoding" not in sets else
+              f"\\begin{{comment}}\n{sets}\\end{{comment}}\n% {sets}")  # fmt: skip
+    cases.append(({"main.tex": head + begin + "\\input{part}\n" + end,
+                   "part.tex": unread + accented}, {}, [], [], [], {}))  # fmt: skip
+    # A folder that declares UTF-8 beside it declares two, and is read as UTF-8: the file
+    # that declares the other is refused where it is not ASCII (round 1 of #637).
+    utf8 = head + "\\usepackage[utf8]{inputenc}\n" + begin + accented + "\\input{part}\n" + end
+    mixed = sets + accented
+    cases.append(({"main.tex": utf8, "part.tex": mixed}, {}, [("part.tex", 0)], [], [],
+                  {"part.tex": codec}))  # fmt: skip
+    # A stray draft beside a paper that declares nothing decides nothing: the paper's tree
+    # is UTF-8, and the draft, which nothing inputs, refused where it is not ASCII (round 2
+    # of #637).
+    undeclared = head + begin + accented + end
+    cases.append(({"main.tex": undeclared, "draft.tex": mixed}, {}, [("draft.tex", 0)], [], [],
+                  {"draft.tex": codec}))  # fmt: skip
+    # And one encoding the audit does not read a folder in, refused there too.
+    other = alone.replace(encoding, "latin2")
+    cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [],
+                  {"main.tex": "iso8859_2"}))  # fmt: skip
+
+    # A construct left open, refused where it opens: nothing found past it is kept, its
+    # heading, its citation and its input (round 1 of #637).
+    opened = draw(st.sampled_from(("\\begin{figure}\n", "\\begin{itemize}\n", "{\\bfseries ")))
+    main = head + begin + words() + ".\n"
+    at = len(main)
+    main += (opened + f"\\section{{{words()}}}\n{words()} \\cite{{k}}.\n\\input{{part}}\n"
+             + end)  # fmt: skip
+    cases.append(({"main.tex": main, "part.tex": words() + ".\n"}, {}, [("main.tex", at)], [],
+                  []))  # fmt: skip
+
+    # A Scientific WorkPlace preamble adds to a command through `\expandafter`, which is
+    # passed over there; one that builds a name by `\csname`, and one in the body, are not.
+    swp = ("\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize"
+           "\\setlength\\abovedisplayskip{6pt}}\n")  # fmt: skip
+    main = head + swp + begin + words() + ".\n" + end
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    built = head + "\\expandafter\\def\\csname x\\endcsname{1}\n" + begin + words() + ".\n" + end
+    cases.append(({"main.tex": built}, {}, [("main.tex", len(head))], [], []))
+    main = head + begin + words() + ".\n" + swp + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index(swp))], [], []))
 
     delimiter = draw(st.sampled_from(("/", ".5", "\\relax", "!!")))
     defined = f"\\def\\eg{delimiter}{{e.g.}}\n"
@@ -4561,6 +4806,146 @@ def finding_places(
     return inputs, truth
 
 
+# ----------------------------------------------------- what a checklist's answer quotes
+
+#: Each way an answer to a reporting checklist's item quotes the manuscript (G5,
+#: `gates/checklist_quotes.py`), and what is found of it: "found" under what its `where`
+#: names, "elsewhere" where it stands under another part only, "nowhere", and "missing" where
+#: it is no quote: none, or fewer than four words.
+CHECKLIST_QUOTES = {
+    "copied": "found",
+    "typed": "found",
+    "capitals": "found",
+    "wrapped": "found",
+    "elided": "found",
+    "in a subsection": "found",
+    "in the supplement": "found",
+    "in the next file": "found",
+    "in the next file's subsection": "found",
+    "binding as written": "found",
+    "binding as printed": "found",
+    "in a table's caption": "found",
+    "in a figure's legend": "found",
+    "under another heading": "elsewhere",
+    "the parent's own text": "elsewhere",
+    "another display's caption": "elsewhere",
+    "in a comment": "nowhere",
+    "word changed": "nowhere",
+    "inside a word": "nowhere",
+    "out of order": "nowhere",
+    "half printed, half written": "nowhere",
+    "three words": "missing",
+    "no quote": "missing",
+}
+#: Where a paragraph of `checklist_quotes` holds a word marked up and one set otherwise, and
+#: where the subsection's holds its two bindings.
+_QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
+
+
+@st.composite
+def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, Any]]]:
+    """A manuscript of three files, `main.md` with a section A, its subsection A1 and a
+    section B, `01_more.md`, which the build prints after it, with a paragraph under no
+    heading and a subsection D, both of them B's, and `supplementary/S1.md` with a section C,
+    each heading and paragraph of words of
+    their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
+    one set by the typographer, drawn white space between words, two value bindings in A1's
+    paragraph, a comment and a figure's legend typed under B, and two emitted tables'
+    captions; and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
+    time, each with what G5 finds of it: None for no quote, else whether it stands under what
+    its `where` names and the parts it stands under instead.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed;
+    every word is the manuscript's once, so that a quote is found where it was taken and
+    nowhere else."""
+    counted = iter(range(1, 100_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def paragraph() -> list[str]:
+        words = [word() for _ in range(12)]
+        words[_QUOTED_MARKED] = draw(st.sampled_from(_MARKED_AS)).format(words[_QUOTED_MARKED])
+        words[_QUOTED_SET] = draw(st.sampled_from(_SET_AS)).format(words[_QUOTED_SET])
+        return words
+
+    def joined(words: list[str]) -> str:
+        return "".join(w + draw(st.sampled_from(SOURCE_GAPS)) for w in words[:-1]) + words[-1]
+
+    def title() -> str:
+        return f"{word().capitalize()} {word()}"
+
+    a, a1, b, c, d = title(), title(), title(), title(), title()
+    para_a, para_a1, para_b, para_c = paragraph(), paragraph(), paragraph(), paragraph()
+    para_next, para_d = paragraph(), paragraph()
+    values, shown = {}, {}
+    for at in _QUOTED_BOUND:
+        ref = f"results.{word()}"
+        values[ref] = f"{next(counted)}.{draw(st.integers(10, 99))}"
+        para_a1[at] = f"{{{{{ref}}}}}"
+        shown[para_a1[at]] = values[ref]
+    comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
+    captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
+    files = {
+        # First by path, and printed after `main.md`, as the main text's other files are.
+        "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
+        "main.md": "\n\n".join((
+            f"# {a}", joined(para_a), f"## {a1}", joined(para_a1), f"# {b}", joined(para_b),
+            f"<!-- {' '.join(comment)} -->", f"Figure 1. {' '.join(legend)}.",
+        )) + "\n",
+        "supplementary/S1.md": f"# {c}\n\n{joined(para_c)}\n",
+    }  # fmt: skip
+
+    def printed(words: list[str], keep: str | None = None) -> list[str]:
+        return [shown[w] if w in shown and w != keep else w for w in words]
+
+    def run(words: list[str], low: int = 4, high: int = 8) -> list[str]:
+        size = draw(st.integers(low, high))
+        start = draw(st.integers(0, len(words) - size))
+        return words[start : start + size]
+
+    gap = draw(st.sampled_from((" ... ", " [...] ", " \N{HORIZONTAL ELLIPSIS} ")))
+    found, under_a = [True, []], [False, [repr(a)]]
+    ways: dict[str, tuple[str, str | None, Any]] = {
+        "copied": (a, " ".join(run(para_a)), found),
+        "typed": (a, " ".join(_as_typed(w) for w in para_a[:5]), found),
+        "capitals": (b, " ".join(run(para_b)).upper(), found),
+        "wrapped": (a, "\n    ".join(run(para_a)), found),
+        "elided": (b, " ".join(para_b[:3]) + gap + " ".join(para_b[-3:]), found),
+        "in a subsection": (a, " ".join(para_a1[:5]), found),
+        "in the supplement": (c, " ".join(run(para_c)), found),
+        "in the next file": (b, " ".join(run(para_next)), found),
+        "in the next file's subsection": (b, " ".join(run(para_d)), found),
+        "binding as written": (a1, " ".join(para_a1[5:10]), found),
+        "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
+        "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
+        "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
+        "under another heading": (b, " ".join(para_a[5:10]), under_a),
+        "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
+        "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),
+                                      [False, ["the caption of Table 1"]]),
+        "in a comment": (b, " ".join(run(comment, 4, 6)), [False, []]),
+        "word changed": (a, " ".join([*para_a[4:6], word(), *para_a[7:9]]), [False, []]),
+        # Its first letter left off: the rest stands inside the word, and is no word anywhere.
+        "inside a word": (a, " ".join(para_a[5:10])[1:], [False, []]),
+        "out of order": (b, " ".join(para_b[-3:]) + gap + " ".join(para_b[:3]), [False, []]),
+        "half printed, half written": (
+            a1, " ".join(printed(para_a1[5:10], keep=para_a1[_QUOTED_BOUND[1]])), [False, []]),
+        "three words": (a, " ".join(para_a[5:8]), None),
+        "no quote": (a, None, None),
+    }  # fmt: skip
+    order = draw(st.permutations(sorted(CHECKLIST_QUOTES)))
+    given = {
+        "files": files,
+        "values": values,
+        "captions": [["table", False, n, " ".join(words) + "."]
+                     for n, words in enumerate(captions, 1)],
+        "items": [{"where": ways[kind][0], "quote": ways[kind][1]} for kind in order],
+    }  # fmt: skip
+    return given, [(kind, ways[kind][2]) for kind in order]
+
+
 # ------------------------------------------------------------ passages of cited works
 
 #: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
@@ -7229,6 +7614,75 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
     return pairs
 
 
+#: Abbreviations a manuscript may define, each with its long form, which G14 reads as a
+#: definition in either order.
+WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting ratio"),
+               ("HR", "hazard ratio"), ("IC", "information component"), ("RR", "risk ratio"),
+               ("SDR", "signal detection ratio"), ("EBGM", "empirical Bayes geometric mean"),
+               ("OR", "odds ratio"), ("CFR", "case fatality rate"),
+               ("IQR", "interquartile range"), ("SAE", "serious adverse event"),
+               ("AOR", "adjusted odds ratio"), ("CCI", "Charlson comorbidity index"))  # fmt: skip
+
+#: Abbreviations only the list of abbreviations gives, and the forms an entry of the list is
+#: written in, each read as a definition. Only the two with a bracket look like the text's,
+#: so each list holds one of each (round 1 of #645).
+LISTED_ONLY = (("ADR", "adverse drug reaction"), ("BMI", "body mass index"),
+               ("ICU", "intensive care unit"))  # fmt: skip
+ENTRY_FORMS = ("{0}: {1}", "{0}\t{1}", "{0} ({1})", "{1} ({0})")
+#: Abbreviations whose long form opens on a word that keeps its own case, and others
+#: defined just before a citation (round 2 of #645).
+KEEPS_ITS_CASE = (("MV", "mRNA vaccine"), ("ES", "eGFR slope"), ("PD", "pH drop"))
+CITED_AFTER = (("NNT", "number needed to treat"), ("GFR", "glomerular filtration rate"),
+               ("MAP", "mean arterial pressure"))  # fmt: skip
+#: What may stand between "an" and the short form it was chosen for: a space, a line
+#: break, a no-break space, a LaTeX tie, a mark of emphasis around the definition, a
+#: quotation mark (round 2 of #645).
+AN_SHAPES = ("an {0} ({1})", "an\n{0} ({1})", "an\N{NO-BREAK SPACE}{0} ({1})", "an~{0} ({1})",
+             "an **{0} ({1})**", "an \N{LEFT DOUBLE QUOTATION MARK}{0} ({1})"
+             "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
+
+
+@st.composite
+def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript typed and as G14's abbreviation edits leave it. Written out: an
+    abbreviation defined and not used again after its long form in round brackets and in
+    square ones, before its long form inside a sentence and opening one, where the long form
+    takes the capital unless its first word keeps its own case, one defined twice, one just
+    before a citation, one also listed among the abbreviations, whose entry stays, and one
+    defined in the text and again by a funder, whose sentence stays. Left as they are: one
+    used again, one whose bracket holds more, a funder's, one after "an" in each shape,
+    which no edit puts right, a link's, and the entries of the list of abbreviations, one in
+    each form an entry is written in, which the list is to drop (rounds 1 and 2 of #645)."""
+    a, b, c, d, e, f, g, h, i, j, k, m, n = draw(st.permutations(WRITTEN_OUT))
+    opening = d[1][:1].upper() + d[1][1:]
+    kept, cited = draw(st.sampled_from(KEEPS_ITS_CASE)), draw(st.sampled_from(CITED_AFTER))
+    pairs = [
+        (f"seen.\n\n{kept[0]} ({kept[1]}) read", f"seen.\n\n{kept[1]} read"),
+        (f"the {cited[1]} ({cited[0]})[@smith2020] read", f"the {cited[1]}[@smith2020] read"),
+        *((shape.format(*i) + " read",) * 2 for shape in AN_SHAPES),
+        (f"the {a[1]} ({a[0]}) read", f"the {a[1]} read"),
+        (f"the {b[1]} [{b[0]}] read", f"the {b[1]} read"),
+        (f"then {c[0]} ({c[1]}) read", f"then {c[1]} read"),
+        (f"seen.\n\n{d[0]} ({d[1]}) read", f"seen.\n\n{opening} read"),
+        (f"the {e[1]} ({e[0]}) and again the {e[1]} ({e[0]})",
+         f"the {e[1]} and again the {e[1]}"),
+        (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
+        (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
+        (f"the {j[1]} [{j[0]}](https://example.org/{j[0]}) read",) * 2,
+        (f"the {m[1]} ({m[0]}) read", f"the {m[1]} read"),
+        (f"the {n[1]} ({n[0]}) read", f"the {n[1]} read"),
+    ]  # fmt: skip
+    typed, edited = _both_ways(draw, draw(st.permutations(pairs)))
+    listed = [form.format(*pair)
+              for form, pair in zip(draw(st.permutations(ENTRY_FORMS)), (k, *LISTED_ONLY),
+                                    strict=True)]  # fmt: skip
+    listed.append(draw(st.sampled_from(ENTRY_FORMS)).format(*m))
+    after = ("# Abbreviations\n\n" + "".join(f"{entry}\n\n" for entry in
+                                              draw(st.permutations(listed)))
+             + f"# Acknowledgements\n\nFunded by the {h[1]} ({h[0]}) and the {n[1]} ({n[0]}).\n")
+    return typed + after, edited + after
+
+
 @st.composite
 def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], str, str]]:
     """Five manuscripts, each with the English it declares and the spellings it keeps,
@@ -8314,13 +8768,44 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: real-paper corpus, 2026-11-11). And a number reported under a subsection of the Results
 #: whose title holds the word "method" and is no Methods, "Performance of the proposed
 #: method", under a Results titled "Results and discussion", which no Methods may stand
-#: under (round 1 of #624).
+#: under (round 1 of #624). And a number reported only under a section of another name
+#: (`OTHER_SECTIONS`), which is found, one only in the Introduction and one only in the
+#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
     "estimate closed up", "identifier", "identifier by its number", "under a method",
+    "other section", "introduction", "conclusion", "references", "note", "statement",
+    "summary", "related work", "over the methods", "title page",
 )  # fmt: skip
+#: Where each of the kinds a number of the Abstract is not found in stands, and what it
+#: starts at: in the reference list, in a footnote's definition under the Results, in a
+#: statement of the back matter, in a summary of the paper beside its Abstract, in a section
+#: that holds the Introduction's material, all not found; and directly under a heading over
+#: a Methods subsection, which is found (round 1 of #641).
+ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summary": 2400,
+                      "related work": 2500, "over the methods": 2600,
+                      "title page": 2700}  # fmt: skip
+#: Titles of a summary of the paper, of a section of the Introduction's material, and of a
+#: statement, as `abstract_papers` draws them.
+PAPER_SUMMARY_TITLES = ("Author summary", "Significance", "Highlights",
+                        "Plain language summary", "Resumen")  # fmt: skip
+INTRODUCTION_MATERIAL_TITLES = ("Related work", "Literature review", "Theoretical framework",
+                                "Hypotheses")  # fmt: skip
+STATEMENT_TITLES = ("Funding", "Acknowledgements", "Data availability")
+
+
+class Apart(NamedTuple):
+    """A part of a paper of `abstract_papers` written one way in Markdown and another in
+    LaTeX: a footnote."""
+
+    markdown: str
+    latex: str
+#: Titles of a section that names no part the Abstract against Results knows, under which a
+#: real paper reports: an Abstract's number there is found.
+OTHER_SECTIONS = ("Participants", "Study design", "Data analysis and results", "Appendix",
+                  "Supplementary analyses")  # fmt: skip
 #: Titles of a subsection of the Results that hold the word "method" and name no Methods.
 METHOD_SUBSECTIONS = ("Performance of the proposed method", "Our method at scale",
                       "A method for the second cohort")  # fmt: skip
@@ -8364,6 +8849,10 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     results: list[str] = []
     discussion: list[str] = []
     supplement: list[str] = []
+    introduction: list[str] = []
+    elsewhere: list[str] = []
+    after: dict[str, list] = {kind: [] for kind in ABSTRACT_ELSEWHERE}
+    conclusions: list[str] = []
     looked: list[tuple[str, str, str]] = []
     for kind in draw(st.permutations(ABSTRACT_KINDS)):
         short, words = draw(st.sampled_from(ESTIMATE_NAMES))
@@ -8442,6 +8931,29 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             subsection = (draw(st.sampled_from(METHOD_SUBSECTIONS)), f"It was {shown} then.")
             looked.append((kind, shown, "exact"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ("other section", "introduction", "conclusion"):
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + {"other section": 1700, "introduction": 1800,
+                                 "conclusion": 1900}[kind])  # fmt: skip
+            {"other section": elsewhere, "introduction": introduction,
+             "conclusion": conclusions}[kind].append(f"It was {shown} then.")
+            looked.append((kind, shown, "exact" if kind == "other section" else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ABSTRACT_ELSEWHERE:
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + ABSTRACT_ELSEWHERE[kind])
+            if kind == "note":
+                # Under the Results in Markdown, where only its being a note keeps it unread;
+                # in LaTeX a note is printed in its sentence, here the Discussion's.
+                results.append(Apart(f"It was so.[^n1]\n\n[^n1]: It was {shown} then.", ""))
+                discussion.append(Apart("", f"It was so.{BACKSLASH}footnote{{It was {shown} "
+                                            "then.}"))  # fmt: skip
+            elif kind == "references":
+                after[kind].append(f"Doe J. A title. BMJ. 2020;1:{shown}.")
+            else:
+                after[kind].append(f"It was {shown} then.")
+            looked.append((kind, shown, "exact" if kind == "over the methods" else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8494,25 +9006,43 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 expected["looked"].append([line, shown, state])
     # The subsection closes the Results, so that what they report stands over it.
     results.append(subsection)
-    for heading, part in (("Methods", methods), ("Results and discussion", results),
-                          ("Discussion", discussion)):  # fmt: skip
-        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+    # The title page, a section of its own before the Abstract (round 2 of #641).
+    front = ("Correspondence", after["title page"])
+    lines[2:2] = [f"## {front[0]}", "", *(one for said in front[1] for one in (said, ""))]
+    expected["looked"] = [[line + 2 + 2 * len(front[1]), shown, state]
+                          for line, shown, state in expected["looked"]]  # fmt: skip
+    expected["conflicts"] = [[line + 2 + 2 * len(front[1]), kind]
+                             for line, kind in expected["conflicts"]]  # fmt: skip
+    parts = ((draw(st.sampled_from(PAPER_SUMMARY_TITLES)), after["summary"]),
+             ("Introduction", introduction),
+             (draw(st.sampled_from(INTRODUCTION_MATERIAL_TITLES)), after["related work"]),
+             ("Design and setting", [*after["over the methods"],
+                                     ("Statistical methods", "It was so.")]),
+             ("Methods", methods), (draw(st.sampled_from(OTHER_SECTIONS)), elsewhere),
+             ("Results and discussion", results), ("Discussion", discussion),
+             ("Conclusions", conclusions),
+             (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
+             ("References", after["references"]))  # fmt: skip
+    for heading, part in parts:
+        part = [said.markdown if isinstance(said, Apart) else
+                f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
                 for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
-    latex, in_latex = _abstract_latex(abstract, looked, methods, results, discussion)
+    latex, in_latex = _abstract_latex(abstract, looked, parts, front)
     supplement_tex = "\n".join([BACKSLASH + "documentclass{article}", BACKSLASH +
                                 "begin{document}", *supplement, BACKSLASH + "end{document}"])
     return ("\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected,
             latex, supplement_tex + "\n", in_latex)  # fmt: skip
 
 
-def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
-                    discussion: list) -> tuple[str, dict[str, list]]:  # fmt: skip
+def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list], ...],
+                    front: tuple[str, list]) -> tuple[str, dict[str, list]]:
     """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
     `\\end{abstract}`, its table a `tabular`, and what is found in it, by its lines."""
     lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}",
+             f"{BACKSLASH}section{{{front[0]}}}", "", *front[1], "",
              BACKSLASH + "begin{abstract}"]  # fmt: skip
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for index, (kind, said) in enumerate(abstract):
@@ -8526,11 +9056,17 @@ def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
             expected["conflicts"].append([line, kind.split()[0]])
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
-    for heading, part in (("Methods", methods), ("Results and discussion", results),
-                          ("Discussion", discussion)):  # fmt: skip
+    for heading, part in parts:
+        if heading == "References":
+            lines += ["", BACKSLASH + "begin{thebibliography}{9}",
+                      *(f"{BACKSLASH}bibitem{{r{at}}} {said}" for at, said in enumerate(part)),
+                      BACKSLASH + "end{thebibliography}"]  # fmt: skip
+            continue
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if isinstance(said, tuple):
+            if isinstance(said, Apart):
+                lines += [said.latex, ""]
+            elif isinstance(said, tuple):
                 lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
             elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
@@ -12111,6 +12647,141 @@ def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return "\n".join(entries), cited
 
 
+# ------------------------------------------- a typed reference list and its citations, init
+
+#: First authors' family names a typed reference list holds, and the letters of each a
+#: Better BibTeX key is written in: a particle, a letter of its own, an accent, a hyphen and
+#: an apostrophe.
+REFERENCE_FAMILIES = (
+    ("Fictional", "fictional"), ("Imaginary", "imaginary"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}deg\N{LATIN SMALL LETTER A WITH RING ABOVE}rd",
+     "odegard"),
+    ("Smith-Jones", "smithjones"), ("van der Berg", "vanderberg"), ("O'Neil", "oneil"),
+    ("Garc\N{LATIN SMALL LETTER I WITH ACUTE}a", "garcia"), ("Notreal", "notreal"),
+    ("Lindqvist", "lindqvist"), ("Moe", "moe"), ("Quist", "quist"), ("Ruiz", "ruiz"),
+    ("Sato", "sato"),
+)  # fmt: skip
+#: Co-authors, whose names may be any work's.
+REFERENCE_OTHERS = ("Other", "Second", "Dupont")
+#: How a citation is typed: names one entry in brackets or in the sentence, names two
+#: entries (one first author, one year, no letter), names none, names the first of a work's
+#: two or three authors alone, names in the sentence one co-author more than a work has (round
+#: 1 of #638: "Brown and Lee (2018)" was made "Brown and @lee2018"), a group whose every part
+#: names one entry, a group one of whose parts names none, and two narratives side by side,
+#: "Smith (2019) and Lee (2018)" (round 2 of #638: the "and" was read as a name more).
+CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
+               "a name more", "group", "group with none", "two narratives",
+               "line break")  # fmt: skip
+_REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
+
+
+def _apa_names(families: list[str], *, narrative: bool) -> list[str]:
+    """Every way APA names these authors in a citation."""
+    if len(families) == 1:
+        return [families[0]]
+    if len(families) == 2:
+        return [f"{families[0]} and {families[1]}"] + ([] if narrative else
+                                                       [f"{families[0]} & {families[1]}"])
+    listed = ", ".join(families[:-1])
+    return [f"{families[0]} et al.", f"{listed}, & {families[-1]}", f"{listed}, and {families[-1]}"]
+
+
+@st.composite
+def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | None]]]:
+    """A paper's Markdown as `init --from` writes a Word paper, with a typed APA reference
+    list under `# References` and a citation typed as text of each kind of `CITED_KINDS`, in
+    an order drawn; and each citation with what `typed_references.read` makes of it, its
+    pandoc citation, or None where it stays as typed. Each work is an article, its journal
+    and volume in italics together or apart, or a book; of one, two or three authors, named
+    in each form APA has; under a prefix or none. Every kind in every example, so that a
+    rule broken for one fails under any seed."""
+    firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=13, max_size=13, unique=True)))
+    entries: list[str] = []
+
+    def work(count: int, year: int, family: tuple[str, str] | None = None,
+             title: str | None = None) -> tuple[list[str], str]:  # fmt: skip
+        written, stem = family or next(firsts)
+        names = [written, *draw(st.lists(st.sampled_from(REFERENCE_OTHERS), min_size=count - 1,
+                                         max_size=count - 1))]  # fmt: skip
+        initials = [draw(st.sampled_from(("A.", "J. A.", "J.-P.", "Ch."))) for _ in names]
+        people = [f"{name}, {given}" for name, given in zip(names, initials, strict=True)]
+        authors = people[0] if count == 1 else ", ".join(people[:-1]) + f", & {people[-1]}"
+        title = title or " ".join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1,
+                                                max_size=4))).capitalize()  # fmt: skip
+        volume, first = draw(st.integers(1, 99)), draw(st.integers(1, 900))
+        shape = draw(st.sampled_from((
+            f"{title}. *Journal of Things*, *{volume}*(2), {first}--{first + 9}.",
+            f"{title}. *Journal of Things, {volume}*, {first}--{first + 9}. "
+            f"https://doi.org/10.1000/x{volume}",
+            f"*{title}*. Big Press.",
+        )))  # fmt: skip
+        entries.append(f"{authors} ({year}). {shape}")
+        return names, f"{stem}{year}"
+
+    def cite(count: int) -> tuple[str, str]:
+        names, key = work(count, next(years))
+        prefix = draw(st.sampled_from(("", "see ", "e.g., ")))
+        return f"{prefix}{draw(st.sampled_from(_apa_names(names, narrative=False)))}, " \
+               f"{key[-4:]}", f"{prefix}@{key}"
+
+    sentences: list[tuple[str, str | None]] = []
+    for kind in draw(st.permutations(CITED_KINDS)):
+        if kind == "bracketed":
+            typed, made = cite(draw(st.integers(1, 3)))
+            sentences.append((f"({typed})", f"[{made}]"))
+        elif kind == "narrative":
+            names, key = work(draw(st.integers(1, 3)), next(years))
+            # As the list writes the names: citeproc prints "van der Berg" in lower case,
+            # so one typed in capitals is left as typed (round 1 of #638).
+            said = draw(st.sampled_from(_apa_names(names, narrative=True)))
+            sentences.append((f"{said} ({key[-4:]})", f"@{key}"))
+        elif kind == "two entries":
+            family, year = next(firsts), next(years)
+            # Two works, not one typed twice, which is one entry (round 1 of #638).
+            work(1, year, family, title="One")
+            work(1, year, family, title="Two")
+            sentences.append((f"({family[0]}, {year})", None))
+        elif kind == "no entry":
+            sentences.append((f"({next(firsts)[0]}, {next(years)})", None))
+        elif kind == "first author alone":
+            names, key = work(draw(st.integers(2, 3)), next(years))
+            sentences.append((f"({names[0]}, {key[-4:]})", None))
+        elif kind == "two narratives":
+            said = []
+            for _ in range(2):
+                names, key = work(1, next(years))
+                said.append((f"{names[0]} ({key[-4:]})", f"@{key}"))
+            join = draw(st.sampled_from((" and ", ", ", " & ")))
+            sentences.append((join.join(t for t, _m in said), join.join(m for _t, m in said)))
+        elif kind == "line break":
+            # A name more on the paragraph's line before (round 2 of #638).
+            names, key = work(1, next(years))
+            more = draw(st.sampled_from(REFERENCE_OTHERS))
+            sentences.append((f"{more} and\n{names[0]} ({key[-4:]})", None))
+        elif kind == "a name more":
+            names, key = work(draw(st.integers(1, 2)), next(years))
+            more = draw(st.sampled_from(REFERENCE_OTHERS))
+            said = draw(st.sampled_from((f"{more} and {names[0]}", f"{more}, {names[0]}"))) \
+                if len(names) == 1 else f"{more}, {names[0]} and {names[1]}"
+            sentences.append((f"{said} ({key[-4:]})", None))
+        else:
+            parts = [cite(draw(st.integers(1, 3))) for _ in range(2)]
+            if kind == "group":
+                sentences.append((f"({'; '.join(t for t, _m in parts)})",
+                                  f"[{'; '.join(m for _t, m in parts)}]"))  # fmt: skip
+            else:
+                # A name no entry has, and a year none is from.
+                missing = f"{REFERENCE_FAMILIES[0][0]}x, 1949"
+                sentences.append((f"({parts[0][0]}; {missing})", None))
+    body = "\n\n".join(
+        f"{' '.join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1, max_size=3)))}"
+        f" {typed}." for typed, _made in sentences
+    )
+    listed = "\n\n".join(draw(st.permutations(entries)))
+    return f"# Introduction\n\n{body}\n\n# References\n\n{listed}\n", sentences
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -12993,6 +13664,65 @@ def bold_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
     return body, sorted(bold)
 
 
+#: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether it is a
+#: line a title can be typed as (`text.docx.DocxText.typed`): every shape of
+#: `BOLD_PARAGRAPHS` but a table's cell and a link, bold or not; a plain one; one in a style
+#: whose id is "Caption" and whose name is another, which pandoc reads as no caption; and none
+#: in a style named "caption", "Table Caption" or "Image Caption", numbered by Word, or with
+#: a note's mark.
+TYPED_PARAGRAPHS = {
+    **{kind: (shape, kind not in ("in a cell", "in a link"))
+       for kind, (shape, _bold) in BOLD_PARAGRAPHS.items()},
+    "plain": ("<w:p><w:r><w:t>{}</w:t></w:r></w:p>", True),
+    "id Caption, named otherwise": ('<w:p><w:pPr><w:pStyle w:val="Caption"/></w:pPr><w:r>'
+                                    "<w:t>{}</w:t></w:r></w:p>", True),
+    "Word's caption": ('<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>{}</w:t>'
+                       "</w:r></w:p>", False),
+    "pandoc's table caption": ('<w:p><w:pPr><w:pStyle w:val="TableCaption"/></w:pPr><w:r>'
+                               "<w:t>{}</w:t></w:r></w:p>", False),
+    "pandoc's image caption": ('<w:p><w:pPr><w:pStyle w:val="ImageCaption"/></w:pPr><w:r>'
+                               "<w:t>{}</w:t></w:r></w:p>", False),
+    "numbered by Word": ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/>'
+                         "</w:numPr></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>", False),
+    "with a note's mark": ('<w:p><w:r><w:t>{}</w:t></w:r><w:r><w:footnoteReference w:id="1"/>'
+                           "</w:r></w:p>", False),
+    # pandoc 3.9.0.2 reads one indented from the left more than it hangs as a block quote,
+    # and one beside a picture as an image beside words (round 2 of #641).
+    "indented from the left": ('<w:p><w:pPr><w:ind w:left="720"/></w:pPr><w:r><w:t>{}</w:t>'
+                               "</w:r></w:p>", False),
+    "hanging as far as indented": ('<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>'
+                                   "<w:r><w:t>{}</w:t></w:r></w:p>", True),
+    "beside a picture": ("<w:p><w:r><w:drawing/></w:r><w:r><w:t>{}</w:t></w:r></w:p>", False),
+}  # fmt: skip
+#: The styles the paragraphs above name.
+TYPED_PARAGRAPH_STYLES = BOLD_PARAGRAPH_STYLES + (
+    '<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Bildunterschrift"/>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/></w:style>'
+    '<w:style w:type="paragraph" w:styleId="TableCaption"><w:name w:val="Table Caption"/>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="ImageCaption"><w:name w:val="Image Caption"/>'
+    "</w:style>"
+)
+
+
+@st.composite
+def typed_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A .docx body with a paragraph of every kind of `TYPED_PARAGRAPHS`, twice over in an
+    order drawn, each with words of its own between plain paragraphs; and the words of those
+    a title can be typed as, the plain paragraphs' among them, sorted."""
+    kinds = draw(st.permutations(list(TYPED_PARAGRAPHS) * 2))
+    body, typed = "", []
+    for number, kind in enumerate(kinds):
+        words = f"{draw(st.sampled_from(FILLER)).capitalize()} {number}"
+        shape, is_typed = TYPED_PARAGRAPHS[kind]
+        body += f"<w:p><w:r><w:t>Plain {number}.</w:t></w:r></w:p>" + shape.format(words)
+        typed.append(f"Plain {number}.")
+        if is_typed:
+            typed.append(f"{words} and more" if kind == "half" else words)
+    return body, sorted(typed)
+
+
 def _str(word: str) -> dict:
     return {"t": "Str", "c": word}
 
@@ -13003,11 +13733,14 @@ def _strong(*inlines: dict) -> dict:
 
 _GAP = {"t": "Space"}
 #: A pandoc paragraph of each kind, as Word papers are read, and the heading
-#: `from_word.bold_headings` makes of it, or None: a name in bold; also underlined, inside
-#: the bold or around it; in a span; numbered; with a colon; a bold title that names no
-#: section; a name in bold opening a sentence; a name only half in bold; one in italics
-#: only; one in a list's item; one in a link.
-BOLD_BLOCKS = {
+#: `from_word.typed_headings` makes of it, or None: a name in bold; also underlined, inside
+#: the bold or around it; in a span; numbered; with a colon; a name only half in bold; one
+#: in italics only; one typed plain, in capitals, numbered in capitals (the real-paper
+#: corpus, 2026-11-11); and none of a bold title that names no section, a name in bold
+#: opening a sentence, a plain one opening a sentence, one in a list's item, one in a link.
+#: Each title names its section once, so that they can be placed: a name twice falls back to
+#: the titles in bold (`tests/test_from_word.py::test_a_name_typed_twice_keeps_the_bold_titles`).
+TYPED_BLOCKS = {
     "in bold": ({"t": "Para", "c": [_strong(_str("Methods"))]}, "Methods"),
     "underlined inside": ({"t": "Para", "c": [_strong({"t": "Underline", "c": [
         _str("References")]})]}, "References"),
@@ -13023,8 +13756,15 @@ BOLD_BLOCKS = {
     "opening a sentence": ({"t": "Para", "c": [_strong(_str("Methods")), _GAP, _str("were"),
                                                 _GAP, _str("kept.")]}, None),
     "half in bold": ({"t": "Para", "c": [_strong(_str("Materials")), _GAP, _str("and"), _GAP,
-                                          _str("methods")]}, None),
-    "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]}, None),
+                                          _str("methods")]}, "Materials and methods"),
+    "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]},
+                   "Conclusions"),
+    "plain": ({"t": "Para", "c": [_str("Introduction")]}, "Introduction"),
+    "in capitals": ({"t": "Para", "c": [_str("LIMITATIONS")]}, "LIMITATIONS"),
+    "numbered in capitals": ({"t": "Para", "c": [_str("4."), _GAP, _str("ACKNOWLEDGEMENTS")]},
+                             "4. ACKNOWLEDGEMENTS"),
+    "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
+                                                      _str("clear.")]}, None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
         _str("Background"))]}]]}, None),
     "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [
@@ -13033,16 +13773,16 @@ BOLD_BLOCKS = {
 
 
 @st.composite
-def bold_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
+def typed_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
     """Pandoc's blocks of a Word paper with no heading, a block of every kind of
-    `BOLD_BLOCKS` in an order drawn, each after a paragraph of words; and the titles of the
+    `TYPED_BLOCKS` in an order drawn, each after a paragraph of words; and the titles of the
     headings to be made of them, in order."""
     blocks: list[dict] = []
     titles: list[str] = []
-    for kind in draw(st.permutations(list(BOLD_BLOCKS))):
-        block, title = BOLD_BLOCKS[kind]
+    for kind in draw(st.permutations(list(TYPED_BLOCKS))):
+        block, title = TYPED_BLOCKS[kind]
         words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
-        # A copy: `bold_headings` makes a new list, and each draw its own blocks.
+        # A copy: `typed_headings` makes a new list, and each draw its own blocks.
         copy = json.loads(json.dumps(block))
         blocks += [{"t": "Para", "c": [_str(word) for word in words]}, copy]
         if title is not None:
@@ -13314,6 +14054,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "passage claims": passage_claims().map(lambda drawn: drawn[0]),
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
+    "checklist quotes": checklist_quotes().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(
@@ -13386,6 +14127,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
+    "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),
@@ -13532,10 +14274,21 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "abbreviations": st.fixed_dictionaries(
         {
             "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
-                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+                lambda text: f"{text}\n\n{GLOSSARY_OPENED}\n\n# Methods\n\n{INITIALS_NAMED}\n"
             ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
+    ),
+    "abbreviation edits": st.one_of(
+        st.fixed_dictionaries({
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }),
+        abbreviations_written_out().map(lambda drawn: {"text": drawn[0], "known": []}),
+    ),  # fmt: skip
+    "audit abbreviations": st.one_of(
+        undefined_forms().map(lambda drawn: drawn[0][0][1]),
+        texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
     ),
     "tex outside maths": lines(),
     "title": lines(),

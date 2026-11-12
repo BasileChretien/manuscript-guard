@@ -676,6 +676,7 @@ def look_up(
 ) -> list[Looked]:
     """Each entry with a DOI or a PMID, asked of the registries, or with `dry_run` only what
     would be asked. A record is written into `cache` and read from it, never elsewhere."""
+    from manuscript_guard.auditing.progress import step
     from manuscript_guard.lookup import run
     from manuscript_guard.lookup.http import default_transport
 
@@ -683,9 +684,14 @@ def look_up(
     credentials = credentials or run.Credentials.from_environment(None)
     ask = run._asker(transport or default_transport, pacer or run.Pacer(), credentials)
     asking = _Asking(ask, services, credentials, today or date.today(), cache, dry_run)
-    return [_looked_up(census.path, entry, asking)
-            for census in censuses for entry in census.entries
-            if entry.dois or entry.pmids]  # fmt: skip
+    wanted = [(census.path, entry) for census in censuses for entry in census.entries
+              if entry.dois or entry.pmids]  # fmt: skip
+    looked: list[Looked] = []
+    for path, entry in wanted:
+        # How many of the entries looked up are done, for a reader who waits (`progress`).
+        step("lookup", len(looked), len(wanted))
+        looked.append(_looked_up(path, entry, asking))
+    return looked
 
 
 @dataclass(frozen=True)

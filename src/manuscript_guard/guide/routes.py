@@ -172,6 +172,8 @@ ROUTES: dict[str, Route] = {
            "figure-file-size", "figure-font-", "figure-format", "figure-height",
            "figure-resolution", "figure-shrinks", "figure-text-clipped", "figure-text-small",
            "figure-line-thin", "legend-words"),
+    # Bars of means with no points: the skill advises points over the summary.
+    **_all("figure-design", None, "figure-bars-"),
     # -- the journal and the checklist ----------------------------------------------------
     **_all("journal-profile", ("journal",), "journal-", "no-journal-chosen",
            "over-journal-limit", "near-journal-limit", "missing-", "abstract-headings-missing",
@@ -268,6 +270,9 @@ LITERATURE_ROUTES = {
 #: and the test that every code is routed takes them as answered.
 NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        "tex-not-judged", "tex-words-not-read",
+                       # What `audit` passed over for its list of journals' style guides
+                       # (`auditing.undefined`): a note in its own report, never `check`'s.
+                       "abbreviations-passed-over",
                        # What `compare` says of two versions of someone else's paper, to its
                        # editor or referee: facts in its own report, which `check` and `next`
                        # never see and the author has nothing to do about.

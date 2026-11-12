@@ -12,8 +12,8 @@
 - `chain` gives the headings over a place as the Markdown reader's `Chain`, and `in_table`
   whether a place is in a table the author typed.
 
-Past a refusal the rest of the file is read as typed, and its bindings are found there by
-their shape, so that a result quoted after the refusal is not said to be quoted nowhere.
+Past a refusal nothing more of the file is read, but its bindings, found there by their
+shape, so that a result quoted after the refusal is not said to be quoted nowhere.
 """
 
 from __future__ import annotations

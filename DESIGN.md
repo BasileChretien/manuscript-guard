@@ -12078,8 +12078,9 @@ package of every kind (named and cited in the main text, in each form of citatio
 only inside a longer word; named with a citation in the next sentence only; named and cited
 only in the supplement's Methods; an R package and a Python one named in another case; one
 named and cited only in the Results; one the Deviations name; one planned and not loaded;
-one only the emitter recorded); `tests/test_properties.py` holds what is said against four
-broken rules, each failing under a dozen seeds.
+one only the emitter recorded); a form of citation after "et al.", "v." and "i.e.", and one
+typed after the stop, are among the forms. `tests/test_properties.py` holds what is said
+against six broken rules, each failing under a dozen seeds.
 
 ## What a change makes stale
 
@@ -25828,9 +25829,30 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the package's reference. Accepted.
   - A citation in another sentence is not the package's: "We used dplyr. It is described in
     [@wickham2023]." is `software-uncited`. A citation typed after a sentence's stop and a
-    space, "dplyr. [12]", opens the next sentence, and is that sentence's.
+    space, "dplyr. [12]", counts for the sentence it follows and for the one it opens.
     Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`
     and `tests/test_corruption.py::test_a_package_named_and_not_cited_in_its_sentence_is_said`.
+  - A sentence goes on after the abbreviations `ABBREVIATIONS` lists in
+    `gates/software_methods.py` ("et al.", "e.g.", "i.e.", "cf.", "v.", "ver.", "vs.",
+    "Fig.", "No."), whatever follows the point, unless a block opens there. Another
+    abbreviation, "approx." or "ref.", before a capital or a bracket still cuts the sentence,
+    and "No." or "v." that ends a sentence joins it to the next.
+    Pinned by `tests/test_corruption.py::test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package`.
+  - A citation by author and year written in the prose, "Bates et al. (2015)", or one
+    whose bracket holds more than the work, "(version 1.1-35; Bates et al., 2015)", is not
+    read as a citation, since G6's reading of typed citations takes neither, and the package
+    is `software-uncited`. Accepted.
+  - A package whose name is a word of English, survival, boot, mice or car, is named by
+    that word in any sense: "Overall survival was estimated with the Kaplan-Meier method
+    [12]." names survival, and nothing tells the package from the word.
+    Pinned by `tests/test_corruption.py::test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands`.
+  - An item's other names count only as G12 holds them to the scripts: those a script loads
+    that somebody chose. "`brms`, under `R` with `stats`" is not named by "R" nor "stats".
+    Pinned by `tests/test_corruption.py::test_the_language_and_base_names_an_item_gives_do_not_name_its_package`.
+  - The example's Deviations entry 9 names `pandas`, `statsmodels` and `matplotlib` in
+    backticks, so that its Methods are not held to citing them, and that stands down
+    `planned-package-unloaded` and `plan-package-unnamed` for the three in the example too.
+    Accepted.
   - The language itself, R or Python, and its version are not held to the Methods.
     Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
   - A Python package is named only by the names its item gives and those the scripts import

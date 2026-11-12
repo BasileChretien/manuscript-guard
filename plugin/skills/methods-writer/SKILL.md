@@ -31,7 +31,8 @@ For each script, capture what a reader needs to reproduce it:
 - software and version
 
 **Name each package the analysis uses, and cite it in the same sentence.** For every item of
-the plan's Software section that a script loads, write its name in the Methods, in the
+the plan's Software section that a script loads, or the run recorded with `em.software()`,
+write its name in the Methods, in the
 sentence that says what it did, and cite there the reference its authors ask for: in R,
 `citation("dplyr")` prints it; for a Python package, its documentation gives it. Add the
 reference to Zotero; do not make one up. "Models were fitted with statsmodels

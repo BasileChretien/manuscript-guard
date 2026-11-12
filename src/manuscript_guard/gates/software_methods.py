@@ -81,7 +81,8 @@ def used_packages(text: str, read: dict[str, str], emitted: Iterable[str],
                   own: frozenset[str]) -> list[Used]:  # fmt: skip
     """The packages the analysis uses, in the order of the plan's items: an item of its
     Software section the plan means to use, which a script loads or the emitter recorded,
-    and which is nobody's choice in neither language, nor named under the Deviations."""
+    and which somebody chose (not the language, base R, the standard library, the project's
+    own modules or the emitters), and which the Deviations do not name."""
     planned = planned_packages(text)
     if not planned:
         return []
@@ -108,30 +109,41 @@ def used_packages(text: str, read: dict[str, str], emitted: Iterable[str],
 
 def _spellings(item: Planned, chosen: list[Load], made: set[str], languages: set[str],
                own: frozenset[str]) -> tuple[tuple[str, str], ...]:  # fmt: skip
-    """The names an item's package may be named by, each with its language: in R, the names
-    the item gives and those R loads it by; in Python, the item's names and those Python
-    imports it by. A package only the emitter recorded is of the language of the scripts
-    read, Python where both are. None for the language itself, nor for a package nobody
-    chooses."""
-    whole = {_norm(name) for name in item.names}
-    keys = whole | {_norm(name.split(".")[0]) for name in item.names}
+    """The names an item's package may be named by, each with its language, as G12 holds an
+    item to the scripts (`software._item_loaded`): its first name, and each other name a
+    script loads that somebody chose, by the name the item gives and the one the script
+    writes; never the language (`R`, `Python`), base R or the standard library, which an
+    item may name beside its package (round 1 of #592 and of #659). A package only the
+    emitter recorded is of the language of the scripts read, Python where both are, and is
+    named by its first name and the others recorded."""
     spelled: list[tuple[str, str]] = []
-    for load in chosen:
-        if load.language == R and _norm(load.name) in whole:
-            spelled.append((R, load.name))
-        elif load.language == PYTHON and _norm(load.name) in keys:
-            spelled.append((PYTHON, load.name))
-    found = {language for language, _name in spelled}
-    if not found and whole & made:
-        first = item.names[0]
-        if _norm(first) in INTERPRETERS:
-            return ()
+    for index, name in enumerate(item.names):
+        for load in chosen:
+            if _names_load(name, load) and (index == 0 or _chosen(name, load.language, own)):
+                spelled += [(load.language, name), (load.language, load.name)]
+    found = sorted({language for language, _name in spelled})
+    spelled = [(language, item.names[0]) for language in found] + spelled
+    if not spelled:
         language = R if R in languages and PYTHON not in languages else PYTHON
-        if _given(Load(first if language == R else first.split(".")[0], language, None), own):
-            return ()
-        found = {language}
-    spelled = [(language, name) for language in sorted(found) for name in item.names] + spelled
-    return tuple(dict.fromkeys(spelled))
+        spelled = [(language, name) for index, name in enumerate(item.names)
+                   if _norm(name) in made and (index == 0 or _chosen(name, language, own))]
+    return tuple(dict.fromkeys(pair for pair in spelled if _chosen(pair[1], pair[0], own)))
+
+
+def _names_load(name: str, load: Load) -> bool:
+    """Whether a name of an item is the package a load loads: by the whole name in R, and in
+    Python by it or by its first part, `statsmodels.api` for `statsmodels`."""
+    if load.language == R:
+        return _norm(name) == _norm(load.name)
+    return _norm(load.name) in (_norm(name), _norm(name.split(".")[0]))
+
+
+def _chosen(name: str, language: str, own: frozenset[str]) -> bool:
+    """Whether a name is one somebody chose: not the language, nor base R, the standard
+    library, the project's own modules or the emitters."""
+    if _norm(name) in INTERPRETERS:
+        return False
+    return not _given(Load(name if language == R else name.split(".")[0], language, None), own)
 
 
 # ------------------------------------------------------------------- reading the Methods
@@ -154,17 +166,47 @@ def _parts(main: str | None, supplement: Sequence[str]) -> list[str]:
     return ([main] if main is not None else []) + list(supplement)
 
 
+#: The abbreviations a Methods sentence goes on after, whatever follows their point: "Bates
+#: et al. [12]", "ggplot2 (v. 3.4.0)", "i.e. Linear models". The claims cut a sentence
+#: after a point and a space before a capital, a digit or a bracket, and the citation was
+#: then the next sentence's (round 1 of #659). Matched in any case, as whole words.
+ABBREVIATIONS = ("et al", "e.g", "i.e", "cf", "v", "ver", "vs", "fig", "no")
+
+
+def _abbreviated(words: Sequence[str]) -> re.Pattern[str]:
+    """What ends a stretch of text that closes one of `words` with its point, a closing
+    bracket or quotation mark and the spaces after them."""
+    listed = "|".join(re.escape(word).replace(r"\ ", r"\s+") for word in words)
+    return re.compile(rf"(?<![^\W\d_])(?:{listed})\.[)\]\"'*_]*\s+\Z", re.IGNORECASE)
+
+
+_ABBREVIATED = _abbreviated(ABBREVIATIONS)
+#: How far back from a cut an abbreviation is looked for.
+_LONGEST = 24
+
+
 def _sentences(text: str) -> list[int]:
     """Where the sentences of a Markdown text are cut, as the claims are read
     (`claims.sentence_spans`), with its start and its end: a sentence runs from one cut to
     the next, and a stretch with no letter of prose, an item that is only a code span, is
-    one of its own."""
-    from manuscript_guard.claims import sentence_spans
+    one of its own. A cut just after one of `ABBREVIATIONS` is not made, unless a block,
+    a blank line, a heading or an item of a list, opens there."""
+    from manuscript_guard.claims import _BLOCK, readable, sentence_spans
 
+    read = readable(text)
+    blocks = {found.start() + 1 for found in _BLOCK.finditer(read)}
     cuts = {0, len(text)}
     for start, _first, end in sentence_spans(text):
         cuts.update((start, end))
-    return sorted(cuts)
+    held = {cut for cut in cuts - blocks - {0, len(text)}
+            if _ABBREVIATED.search(text, max(0, cut - _LONGEST), cut)}  # fmt: skip
+    return sorted(cuts - held)
+
+
+def _carries(cited: list[int], low: int, high: int) -> bool:
+    """Whether the sentence from `low` to `high` carries a citation: one that starts in it,
+    or at the cut it ends at, typed after its stop and a space ("ggplot2. [24]")."""
+    return any(low <= cite <= high for cite in cited)
 
 
 @dataclass(frozen=True)
@@ -199,7 +241,7 @@ def _naming(read: _Read, used: Used) -> list[tuple[int, int, bool]]:
         for match in _finder(language, spelling).finditer(read.printed):
             at = bisect_right(read.cuts, match.start()) - 1
             low, high = read.cuts[at], read.cuts[min(at + 1, len(read.cuts) - 1)]
-            found[(low, high)] = any(low <= cite < high for cite in read.cited)
+            found[(low, high)] = _carries(read.cited, low, high)
     return [(low, high, cited) for (low, high), cited in sorted(found.items())]
 
 

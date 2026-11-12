@@ -12993,9 +12993,14 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
 # ------------------------------------- the packages used, named and cited in the Methods
 
 #: How a sentence cites, written after the package's name and before its stop: pandoc's,
-#: bracketed and narrative, a number typed in brackets, an author and year typed in brackets.
+#: bracketed and narrative, a number typed in brackets, an author and year typed in brackets;
+#: after an abbreviation a sentence is not cut at, "et al.", "v." and "i.e."; and after the
+#: stop and a space, where the citation is the sentence's it follows (round 1 of #659).
 SOFTWARE_CITATIONS = (" [@{key}]", ", as @{key} describes", " [{number}]",
-                      " (Fictional et al., 2019)")  # fmt: skip
+                      " (Fictional et al., 2019)", ", described by Bates et al. [{number}]",
+                      ", described by Bates et al. [@{key}]", " (v. 3.4.0) [{number}]",
+                      ", i.e. Linear models [@{key}]",
+                      ", as Bates et al. (2015) describe [{number}]", ". [{number}]")  # fmt: skip
 #: How the Methods write a package's name, in each language.
 SOFTWARE_NAMINGS = {"r": ("{p}", "`{p}`", "`{p}::fit()`"),
                     "python": ("{p}", "`{p}`", "`import {p}`")}  # fmt: skip

@@ -19146,8 +19146,9 @@ def test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else(
 ) -> None:
     """Each package the plan's Software section names and the analysis loads or recorded is
     named as a word in the Methods, the main text's or the supplement's, in a sentence that
-    cites: in any of the four forms a citation takes, in prose or in a code span, an R
-    package with its case and a Python one in any. A name inside a longer word, a citation
+    cites: in any of the forms a citation takes, after "et al.", "v." or "i.e." or after
+    the stop, in prose or in a code span, an R package with its case and a Python one in
+    any. A name inside a longer word, a citation
     in the next sentence and a sentence of the Results do not count. Nothing is said of a
     package the Deviations name, nor of one nothing loads."""
     given, expected = planted
@@ -19176,6 +19177,20 @@ def _the_supplement_s_methods_are_not_read(patch: pytest.MonkeyPatch) -> None:
 
     parts = software_methods._parts
     patch.setattr(software_methods, "_parts", lambda main, supplement: parts(main, ()))
+
+
+def _a_sentence_is_cut_at_et_al(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    kept = [word for word in software_methods.ABBREVIATIONS if word != "et al"]
+    patch.setattr(software_methods, "_ABBREVIATED", software_methods._abbreviated(kept))
+
+
+def _a_citation_after_the_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_carries", lambda cited, low, high: any(
+        low <= cite < high for cite in cited))  # fmt: skip
 
 
 def _an_r_package_is_matched_in_any_case(patch: pytest.MonkeyPatch) -> None:
@@ -25116,6 +25131,14 @@ BROKEN = {
     ),
     "an R package is matched in any case": (
         _an_r_package_is_matched_in_any_case,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a sentence is cut at et al.": (
+        _a_sentence_is_cut_at_et_al,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation after a sentence's stop is the next sentence's": (
+        _a_citation_after_the_stop_is_the_next_sentence_s,
         test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
     ),
 }

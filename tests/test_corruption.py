@@ -9972,6 +9972,67 @@ def test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_name
     assert _named_said(project) == [("software-unnamed", "sklearn")]
 
 
+def test_the_language_and_base_names_an_item_gives_do_not_name_its_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: every name of an item was a name of its package, so "R" or "Python"
+    in a cited sentence named brms or statsmodels. Only the names G12 holds to the scripts
+    count: the item's first, and those a script loads that somebody chose (round 1 of #592),
+    never the language, base R or the standard library."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(brms)\n")
+    _edited(plan, "- `matplotlib`:", "- `brms` 2.21, under `R` with `stats` and `json`\n"
+            "- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Analyses were run in R 4.4.1 (R Core Team, 2024) with"
+            " stats and json [@fictionalClassSignal2019].")
+    assert _named_said(project) == [("software-unnamed", "brms")]
+    _without_the_uncited_entry(project)
+    _edited(plan, "- `statsmodels`:", "- `statsmodels` (`Python`):")
+    text = main.read_bytes().decode("utf-8")
+    start = text.index("The analysis was run in Python")
+    main.write_bytes((text[:start] + "The analysis was run in Python 3.11 [5]."
+                      + text[text.index("\n\n", start):]).encode())  # fmt: skip
+    assert ("software-unnamed", "statsmodels") in _named_said(project)
+
+
+def test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: a sentence was cut after "et al.", "v." or "i.e." before a capital,
+    a digit or a bracket, and the citation after the cut was the next sentence's."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(
+        b"library(lme4)\nlibrary(nlme)\nlibrary(ggplot2)\nlibrary(glmmTMB)\n")
+    _edited(plan, "- `matplotlib`:", "- `lme4`: mixed models\n- `nlme`: mixed models\n"
+            "- `ggplot2`: figures\n- `glmmTMB`: counts\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Models were fitted with lme4, described by Bates et al."
+            " [12]. Others were fitted with nlme, described by Pinheiro et al."
+            " [@fictionalClassSignal2019]. Figures were drawn with ggplot2 (v. 3.4.0) [24]."
+            " Counts were modelled with glmmTMB, i.e. Linear mixed models for counts"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+    # A citation typed after the stop and a space counts for the sentence it follows.
+    _edited(main, "drawn with ggplot2 (v. 3.4.0) [24].", "drawn with ggplot2. [24]")
+    assert _named_said(project) == []
+    # The paragraph after a stop is another sentence, whatever ends the paragraph before.
+    _edited(main, "drawn with ggplot2. [24]", "drawn as in [@fictionalClassSignal2019] and Bates"
+            " et al.\n\nggplot2 drew them.")
+    assert _named_said(project) == [("software-uncited", "ggplot2")]
+
+
+def test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands(
+    project: Path,
+) -> None:
+    """Known gaps: a package whose name is a word of English, survival, boot, mice, car, is
+    named by that word in any sense; no reading tells the package from the word."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(survival)\n")
+    _edited(plan, "- `matplotlib`:", "- `survival`: Kaplan-Meier curves\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Overall survival was estimated with the Kaplan-Meier"
+            " method [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+
+
 # ------------------------------------------------- the registered protocol
 
 _NCT = "NCT01234567"

@@ -76,14 +76,17 @@ _BETWEEN = 3
 QUALIFYING = ("adjusted for", "adjusting for", "by", "according to", "defined by",
               "stratified by", "across", "from", "since", "based on")  # fmt: skip
 #: Words of a time after baseline, which among the words between make the phrase a change
-#: over time ("baseline and follow-up characteristics"); with them, any word that starts
-#: "post-" (`_TIME`). A word holding a digit is no word between at all (`_WORD`).
-TIMES = ("follow-up", "followup", "week", "weeks", "month", "months", "year", "years", "end",
-         "end-of-treatment", "endpoint", "final", "discharge")  # fmt: skip
+#: over time ("baseline and follow-up characteristics"); with them, a hyphenated word ending in
+#: one ("six-month", `_TIME`). A word holding a digit is no word between at all (`_WORD`).
+TIMES = ("follow-up", "followup", "follow", "week", "weeks", "month", "months", "year", "years",
+         "end", "end-of-treatment", "end-of-study", "endpoint", "final", "last", "discharge",
+         "post-baseline", "post-randomisation", "post-randomization", "post-treatment",
+         "posttreatment", "post-intervention", "post-discharge")  # fmt: skip
 #: A word between: letters, hyphens and apostrophes, straight and curly ("socio-demographic",
 #: "patients’"), not a time.
 _LETTERS = r"(?:[^\W\d_]|['\N{RIGHT SINGLE QUOTATION MARK}-])+"
-_TIME = r"(?:post-|(?:" + "|".join(re.escape(word) for word in TIMES) + r")(?![\w'-]))"
+_TIME = (r"(?:(?:[^\W\d_]+-)+(?:weeks?|months?|years?)|"
+         + "|".join(re.escape(word) for word in TIMES) + r")(?![\w'-])")
 _WORD = rf"(?!{_TIME}){_LETTERS}"
 #: Between two words: spaces, a comma, Markdown's emphasis marks, and LaTeX's tie, braces
 #: and a command that opens a group, "at \emph{baseline}".
@@ -111,10 +114,11 @@ def _names(start: str = _START, word: str = _WORD) -> re.Pattern[str]:
 
 
 _NAMES = _names()
-#: `QUALIFYING` at the end of what stands before the phrase, or up to `_BETWEEN` words before
-#: it, commas and "and" between: "adjusted for age, sex and".
-_QUALIFIED = re.compile(rf"{_START}{_one_of(QUALIFYING)}{_END}(?:{_AND}{_LETTERS}){{0,{_BETWEEN}}}"
-                        rf"{_GAP}\Z", re.IGNORECASE)
+#: `QUALIFYING` at the end of what stands before the phrase, with one bare word ("by selected")
+#: or a list that ends in "and" ("adjusted for age, sex and") between; `_TO` has no comma.
+_TO = r"(?:[\s~{}*_]|\\[A-Za-z]+\{)+"
+_QUALIFIED = re.compile(rf"{_START}{_one_of(QUALIFYING)}{_END}(?:{_TO}{_LETTERS}|(?:{_TO}"
+                        rf"{_LETTERS}\s*,){{0,2}}{_TO}{_LETTERS}\s*,?\s+and)?{_TO}\Z", re.I)
 
 #: The documents a manuscript's tables are read in: the main text's, then the supplement's.
 _DOCUMENTS = (False, True)

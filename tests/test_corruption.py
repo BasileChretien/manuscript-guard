@@ -3667,6 +3667,8 @@ _OUTCOMES_NAMING_BASELINE = (
     "Comparison of baseline and follow-up characteristics",
     "Baseline MRI features associated with response",
     "Patients with or without baseline high-risk features",
+    "Comparison of baseline and follow up characteristics",
+    "Baseline and six-month characteristics",
 )
 
 
@@ -3705,7 +3707,10 @@ def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -
              "Characteristics of the participants at baseline",
              "Demographics at randomization", "Baseline patient demographics",
              # A qualifier before a colon cuts nothing after it (round 3 of #657).
-             "Table 1. By arm: baseline characteristics",
+             "Table 1. By arm: baseline characteristics", "Baseline post-stroke characteristics",
+             "Balance across arms in baseline characteristics", "Table 1. Participants by "
+             "arm, baseline characteristics", "Comparison across treatment arms of baseline "
+             "characteristics",
              "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
              "Characteristics at~baseline", "Characteristics at \\emph{baseline}",
              # Any words, up to three, between (round 2 of #657).

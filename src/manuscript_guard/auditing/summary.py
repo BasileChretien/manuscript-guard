@@ -139,8 +139,13 @@ def _abstract(read) -> str:
     if not read.compared:
         return f"not compared: {read.why_not}"
     said = (f"{_n(read.numbers, 'number')}: {read.matched} found where the paper reports its "
-            f"results, {len(read.rounded)} only as a rounding, {len(read.not_found)} not "
-            "found")  # fmt: skip
+            f"results, {len(read.rounded)} only as a rounding, "
+            + (f"{len(read.from_counts)} given by the counts beside them, "
+               if read.from_counts else "")
+            + f"{len(read.not_found)} not found")  # fmt: skip
+    if read.off_counts:
+        said += f"; {_n(len(read.off_counts), 'percentage')} that the counts beside " + (
+            "it do not give" if len(read.off_counts) == 1 else "them do not give")
     if read.conflicts:
         said += f"; {_n(len(read.conflicts), 'interval or test', 'intervals or tests')} that " \
                 "differ (counted by --strict)"  # fmt: skip

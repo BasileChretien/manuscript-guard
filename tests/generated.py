@@ -9235,7 +9235,14 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: method", under a Results titled "Results and discussion", which no Methods may stand
 #: under (round 1 of #624). And a number reported only under a section of another name
 #: (`OTHER_SECTIONS`), which is found, one only in the Introduction and one only in the
-#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints).
+#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints). And a
+#: percentage beside both its counts in each shape of `SHARE_SHAPES`, which they give; one
+#: to a place or two, one they give rounded up, and one they do not give, each in a shape
+#: drawn, and one typed closed up against its counts they do not give, "164/250(75%)"; and
+#: (the author, 2026-11-11) one beside a count with no denominator, after counts the
+#: sentence gives first, "Of 250 patients, 164 (66%)", one with no "%" and one with a
+#: decimal comma, none of them found. And what reads as a share and is none
+#: (`NO_SHARE_SHAPES`), its percentage reported, so found (round 1 of #664).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9243,7 +9250,43 @@ ABSTRACT_KINDS = (
     "estimate closed up", "identifier", "identifier by its number", "under a method",
     "other section", "introduction", "conclusion", "references", "note", "statement",
     "summary", "related work", "over the methods", "title page",
+    "share out of", "share of", "share slash", "share after words", "share goes on",
+    "share first", "share first of", "share first n", "share thousands", "share decimal",
+    "share rounded up", "share off", "share closed up", "share without a denominator",
+    "share after its counts", "share without a sign", "share with a decimal comma",
+    "share season", "share season and year", "share count over", "share over a hundred",
 )  # fmt: skip
+#: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
+#: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
+SHARE_SHAPES = {
+    "share out of": "{k} out of {n} ({p}%)", "share of": "{k} of {n} ({p}%)",
+    "share slash": "{k}/{n} ({p}%)", "share after words": "{k} of {n} {words} ({p}%)",
+    "share goes on": "{k} of {n} ({p}%, as planned)", "share first": "{p}% ({k}/{n})",
+    "share first of": "{p}% ({k} of {n})", "share first n": "{p}% (n = {k}/{n})",
+    "share thousands": "{k:,} of {n:,} ({p}%)",
+}  # fmt: skip
+#: What reads as a percentage beside its counts and is none, `{y}` a year, `{d}` a day over
+#: twelve and `{m}` a month, `{k}` and `{n}` a count and its denominator, `{p}` the
+#: percentage, and the first tenth each draws its percentage from: a year and the next
+#: shortened, a count over its denominator as well; a year and the next in full; a day and
+#: its month, a count over its denominator; and a share over 100.
+NO_SHARE_SHAPES = {
+    "share season": ("{p}% ({y}/{yy:02d})", 301), "share season and year": (
+        "in the {y}/{next} season ({p}%)", 401),
+    "share count over": ("on {d}/{m} ({p}%)", 501), "share over a hundred": (
+        "{k} of {n} ({p}%)", 1011),
+}  # fmt: skip
+#: The shapes in which a percentage has no counts the reader takes, and the first tenth
+#: each draws its percentage from: a count with no denominator, counts the sentence gives
+#: before its share, a share with no "%", and a decimal comma, `{a}` and `{b}` either side.
+SHARE_UNREAD = {
+    "share without a denominator": ("n = {k} ({p}%)", 101),
+    "share after its counts": ("of {n} patients, {k} ({p}%)", 601),
+    "share without a sign": ("{k} of {n} ({p})", 701),
+    "share with a decimal comma": ("{k} of {n} ({a},{b}%)", 211),
+}  # fmt: skip
+#: The words that may stand between a count's denominator and its share.
+SHARE_WORDS = ("patients", "adults in all", "of the women")
 #: Where each of the kinds a number of the Abstract is not found in stands, and what it
 #: starts at: in the reference list, in a footnote's definition under the Results, in a
 #: statement of the back matter, in a summary of the paper beside its Abstract, in a section
@@ -9296,6 +9339,48 @@ def _tenths(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
+def _abstract_share(draw: st.DrawFn, kind: str) -> tuple[str, str, str, list[str]]:
+    """A percentage of `abstract_papers` beside its counts, of one of the share kinds of
+    `ABSTRACT_KINDS`: how it is written, the number looked for as printed, what the
+    Abstract against Results makes of it ("counts", "off", "exact" or "not found"), and
+    what the Results report: its counts, and the percentage of what is no share. Each
+    kind's denominators are apart from the others', and so are the tenths of a percentage
+    that is not read beside its counts, none of which a number where the paper reports is
+    or rounds to."""
+    first = ABSTRACT_KINDS.index("share out of")
+    n = 3000 + 100 * (ABSTRACT_KINDS.index(kind) - first) + draw(st.integers(0, 99))
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    if kind == "share rounded up":
+        # The first digit dropped is over a half: the share cut short is off its counts.
+        while 2 * (100 * k % n) <= n:
+            k += 1
+    counts = [f"Of the {n} in all, {k} were seen."]
+    if kind in NO_SHARE_SHAPES or kind in SHARE_UNREAD:
+        shape, base = {**NO_SHARE_SHAPES, **SHARE_UNREAD}[kind]
+        tenths = base + draw(st.integers(0, 88))
+        tenths += tenths % 10 == 0
+        p = Decimal(tenths) / 10
+        y, d = draw(st.integers(2000, 2030)), draw(st.integers(13, 28))
+        written = shape.format(p=p, k=k, n=n, y=y, yy=(y + 1) % 100, next=y + 1, d=d,
+                               m=draw(st.integers(1, 12)), a=tenths // 10, b=tenths % 10)
+        if kind in NO_SHARE_SHAPES:
+            return written, f"{p}%", "exact", [*counts, f"It was {p}% then."]
+        shown = {"share without a sign": f"{p}",
+                 "share with a decimal comma": f"{tenths // 10},{tenths % 10}%"}.get(
+            kind, f"{p}%")  # fmt: skip
+        return written, shown, "not found", counts
+    places = draw(st.integers(1, 2)) if kind == "share decimal" else 0
+    p = (Decimal(100 * k) / n).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    if kind in ("share off", "share closed up"):
+        p += draw(st.integers(2, 9)) * draw(st.sampled_from((1, -1)))
+    if kind == "share closed up":
+        # Read as one atom, its counts and its share: "164/250(75%".
+        return f"{k}/{n}({p}%)", f"{k}/{n}({p}%", "off", counts
+    shape = kind if kind in SHARE_SHAPES else draw(st.sampled_from(sorted(SHARE_SHAPES)))
+    written = SHARE_SHAPES[shape].format(k=k, n=n, p=p, words=draw(st.sampled_from(SHARE_WORDS)))
+    return written, f"{p}%", "off" if kind == "share off" else "counts", counts
+
+
 def _test_printed(kind: str, df: int, statistic: Decimal, sign: str, p: str) -> str:
     written = {"t": f"t({df})", "F": f"F(2, {df})", "chi2": f"chi2({df % 9 + 1})"}[kind]
     return f"{written} = {statistic}, P {sign} {p}"
@@ -9308,7 +9393,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     order drawn, each on a line of its own; and what the Abstract against Results finds: the
     line and kind of each conflict, `interval` or `test`, and for each number planted to be
     looked for, its line, its text and whether it is found as printed, as a rounding or not
-    at all."""
+    at all, or, for a percentage beside both its counts, whether they give it ("counts") or
+    not ("off")."""
     abstract: list[tuple[str, str]] = []
     methods: list[str] = []
     results: list[str] = []
@@ -9367,6 +9453,11 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 printed = _test_printed(test, df, statistic, sign, given)
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        elif kind.startswith("share"):
+            written, shown, state, reported = _abstract_share(draw, kind)
+            results += reported
+            looked.append((kind, shown, state))
+            abstract.append((kind, f"Then {written} were seen here."))
         elif kind == "ordinal":
             place = draw(st.integers(2, 9))
             rank = f"{place}{ {2: 'nd', 3: 'rd'}.get(place, 'th') }" + draw(

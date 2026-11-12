@@ -24,6 +24,14 @@ heading, or none a Results heading, nothing is compared, and the report says so.
   preprint of the real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the
   audit's against the outputs, and the section ends with what one is worth, the roundings
   counted in.
+* **From its counts.** A percentage the Abstract writes beside both its counts, "164 out
+  of 250 (66%)", "66% (164/250)" (`stats.shares.written_shares`), is held to them, as a
+  table's n (%) is to its denominator, and not looked for: one they give is explained by
+  them (`from_counts`), and one they do not, "164 out of 250 (75%)", is an arithmetic
+  finding (`arithmetic`, which the audit lists with the other numbers that do not fit the
+  ones beside them) and neither found nor not found (the author, 2026-11-11). The counts
+  are looked for as any number is. A count with no denominator beside it, "n = 164 (66%)",
+  explains nothing, and its percentage is looked for.
 * **Conflict.** An exact pairing only. An interval of the Abstract (`reported_intervals`) of
   the same estimate and level as one interval where the paper reports, two of whose three
   numbers agree with it, estimate, lower bound and upper bound, and whose third does not; or
@@ -95,6 +103,14 @@ class AbstractRead:
     not_found: list = field(default_factory=list)
     #: Each number found as printed, as its `Candidate`: `matched` of them.
     found: list = field(default_factory=list)
+    #: Each percentage written beside both its counts that they give, and each that they do
+    #: not, as its `Candidate`; and for each of the shares they do not give, wherever its
+    #: percentage was read, the arithmetic finding, as the audit's `Disagreement`.
+    from_counts: list = field(default_factory=list)
+    off_counts: list = field(default_factory=list)
+    arithmetic: list = field(default_factory=list)
+    #: How many shares were read beside their counts.
+    shares: int = 0
     conflicts: list = field(default_factory=list)
     #: What a match is worth against what the paper reports, roundings counted in.
     discrimination: object = None
@@ -464,6 +480,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
              for found in reported_tests(reported)]  # fmt: skip
     for piece, abstract, _reported, lines in split:
         spans = _conflicts(read, piece.path, abstract, intervals, tests)
+        written = _shares(read, piece.path, abstract)
         for atom in piece.atoms:
             if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
                 continue
@@ -471,10 +488,15 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded, words) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
-            if "" in states:
+            off, parts = _off_its_counts(atom, parts, written)
+            states = [_state(part, exact, rounded, words) for part in parts]
+            if off:
+                read.off_counts.append(candidate)
+            elif off is not None and "" not in states:
+                read.from_counts.append(candidate)
+            elif "" in states:
                 read.not_found.append(candidate)
             elif "rounded" in states:
                 read.rounded.append(candidate)
@@ -499,6 +521,59 @@ def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set
     if places is None:
         return "exact" if any(c.isalpha() for c in part) and part in words else ""
     return "rounded" if (value, places[1]) in rounded else ""
+
+
+def _shares(read: AbstractRead, path: Path, abstract: str) -> dict[int, tuple[bool, str]]:
+    """Each share one file's Abstract writes beside both its counts (`shares.written_shares`),
+    by the offset its percentage starts at: whether it is off them, and its percentage as
+    printed; each one off them put in `read` as an arithmetic finding, whether or not its
+    percentage was left for the section to read."""
+    from manuscript_guard.audit import Disagreement
+    from manuscript_guard.stats import shares
+
+    found = {}
+    for share, start in shares.written_shares(abstract):
+        read.shares += 1
+        found[start] = (shares.off(share), share.percent)
+        if found[start][0]:
+            read.arithmetic.append(Disagreement(path, share.line, "in the Abstract, "
+                                                f"{shares.described(share)}",
+                                                _around(abstract, start, share)))  # fmt: skip
+    return found
+
+
+def _around(text: str, at: int, share) -> str:
+    """The words around a share's percentage on its line, as the report quotes a number's
+    (`audit.around`): an Abstract is often a line of its own."""
+    from manuscript_guard.audit import around
+
+    ends = text.find("\n", at)
+    line_start, line_end = text.rfind("\n", 0, at) + 1, len(text) if ends < 0 else ends
+    end = at + len(share.percent)
+    return around(Atom(share.percent, at, end, share.line, at - line_start, line_start,
+                       line_end, text))  # fmt: skip
+
+
+def _off_its_counts(atom: Atom, parts: list[str],
+                    written: dict[int, tuple[bool, str]]
+                    ) -> tuple[bool | None, list[str]]:  # fmt: skip
+    """Whether an atom that holds a percentage written beside both its counts is off them,
+    and its other parts, to be looked for; None and all its parts for any other atom. An
+    atom off its counts is listed so whatever else it holds, as its finding is said: one
+    typed closed up, "164/250(75%)", was both not found and off its counts (round 1 of
+    #664). One they give is given by them where its other parts are found."""
+    from manuscript_guard.audit import normalise_number
+
+    at = next((start for start in written if atom.start <= start < atom.end), None)
+    if at is None:
+        return None, parts
+    off, percent = written[at]
+    others = list(parts)
+    for part in parts:
+        if normalise_number(part) == normalise_number(percent):  # "(66 %)": no sign in it
+            others.remove(part)
+            break
+    return off, others
 
 
 # ----------------------------------------------------------------------------- conflicts

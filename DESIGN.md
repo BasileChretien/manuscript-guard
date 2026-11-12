@@ -5600,6 +5600,31 @@ is not a rule.
 The example joins the bounds of its five intervals with "to", sets "%" against its number
 and states no P value with a sign, so it has nothing to report.
 
+**What has one answer is offered as an edit, at every place** (`notation_edits`,
+`spelling_edits`, `corrections.py`). The author asked for a copy of an audited paper with
+the corrections in Word's Track Changes (2026-11-11), and chose the kinds: spelling,
+spacing, intervals and abbreviations. A finding names the first place only. An edit is one
+change at one place, and the readings make one at every place: each sign after P or n
+spaced as the manuscript spaces most of them, each interval joined and each "%" set as
+most are, a space between a number and the unit or word it runs into, and each word of
+the other English respelt in the paper's, with its capital. Where the readings are not
+sure there is no edit, and the finding stays for the author: two forms used as often; the
+P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
+sign; two or three hyphens against an interval's high bound after a negative or bound low
+one, "-1.2--0.3", which may be pandoc's dash or a hyphen and the bound's minus sign (after
+a positive one, "1.2--3.4", they are the dash); a word the list spells two ways; a word
+inside a quotation set inline, in double marks or single ones, somebody else's or a
+title's (Known gaps says where a mark misleads it); a paper mostly in the
+other English than it declares, whose declaration is likelier wrong; one that declares
+none and has as many words of each; and the two endings of `spelling-mixed`, where the
+list does not pair every word. A join is written as the kept form is typed, set evenly:
+a hyphen typed with a space on one side is not copied. The edits of one stretch, or of
+stretches that overlap, are one correction, and two that touch the same characters
+differently are both dropped: an insertion at either end of another's change touches it. An edit's place is the
+passage's text, which for a .docx is the text pandoc converts it to. Held by
+`tests/test_properties.py`, which builds each manuscript with the text its edits must
+leave, and by `tests/test_corrections.py`.
+
 ## A name from the code is no word of the prose
 
 "hr_adj_main was 1.42" and "patients with ckd_flag" are sentences written from the
@@ -25710,6 +25735,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+- **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
+  2 of #636). A word after a straight double mark its paragraph has not closed is taken to
+  be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later
+  word in its paragraph; the finding still counts them. Single marks are read loosely: a
+  word with a mark before it in its paragraph that may open a quotation, one at the start of
+  what follows it, and one after it that may close one, at the end of what stands before
+  it, is taken to be quoted. So "'tis" with a plural's apostrophe later in the paragraph,
+  "the patients' choice", holds back every respelling between them, and so does a
+  quotation closed before a word, "'cleaned'", with such an apostrophe after it (round 4
+  of #636). An insertion at either
+  end of another edit's change clashes with it, so "colour+5" in an American paper is
+  neither respelt nor spaced. Each only keeps an edit from being offered. Pinned by
+  `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`,
+  `tests/test_corrections.py::test_an_apostrophe_opening_a_word_quotes_up_to_a_mark_that_may_close`,
+  `tests/test_corrections.py::test_a_space_put_after_a_respelt_word_is_no_edit_of_either`.
 
 - **A comparison beside a binding is read beside a statistic's symbol, and fails only for a
   plural.** G2 reads a comparator typed beside a binding (`comparison-contradicted`) in two

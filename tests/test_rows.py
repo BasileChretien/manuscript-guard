@@ -159,6 +159,50 @@ def test_an_item_whole_at_the_top_of_a_page_is_read_by_its_number(
     ]
 
 
+def test_a_row_whose_number_fell_after_the_break_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pinned limit (DESIGN.md, Known gaps). Where Word sets a broken row's number on the part
+    after the break, the part before it is a run no number is centred on, and the
+    transcription stops there rather than guess which item it opens."""
+    first = bbox(
+        (34, 70, "topic number page number"),
+        (34, 100, "Opening"),
+        *centred("1", 130, "The thing is named plainly"),
+        (140, 148, "The thing is weighed, and"),
+    )
+    second = bbox(*centred("2", 60, "the weight is given", "in grams"))
+    pages_are(monkeypatch, {1: first, 2: second})
+    with pytest.raises(RecipeError, match="page 1: 'The thing is weighed, and' is in no item's"):
+        transcribe_rows(
+            Path("x.pdf"), recipe(pages=[1, 2], items=2, start_after="topic number page number")
+        )
+
+
+def test_a_titled_row_carries_on_across_a_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A row's text at the top of the next page, before any heading or title, is the row's."""
+    first = bbox(
+        (52, 40, "For each row, say where it is reported."),
+        (52, 70, "Finding:"),
+        (77, 100, "Things made"),
+        (285, 100, BOX),
+        (77, 112, "Say what was made, and"),
+    )
+    second = bbox((77, 60, "by whom."), (77, 90, "Things bought"), (285, 90, BOX),
+                  (77, 102, "Name the seller."))
+    pages_are(monkeypatch, {1: first, 2: second})
+    settings = {
+        "rows": "topics", "columns": TOPIC_COLUMNS, "pages": [1, 2], "items": 2,
+        "topics": TOPICS[:2], "start_after": "For each row, say where it is reported.",
+        "marker": "where reported",
+    }
+    items = transcribe_rows(Path("x.pdf"), RowsRecipe.from_layout("x.pdf", settings))
+    assert [(i.id, i.text) for i in items] == [
+        ("F1", "Say what was made, and by whom."),
+        ("F2", "Name the seller."),
+    ]
+
+
 def test_a_line_no_number_takes_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     page = bbox(*TABLE_LINES, (140, 316, "a stray line"))
     with pytest.raises(RecipeError, match="'a stray line' is in no item's run"):
@@ -347,24 +391,123 @@ def test_a_suspended_hyphen_at_a_line_end_loses_its_space() -> None:
     assert joined(["Sex-", "and gender-based analyses"]) == "Sex-and gender-based analyses"
 
 
+#: The opening of what Xpdf 4.00's pdftotext writes to stderr, with an exit status of 99, when
+#: asked for -bbox (Git for Windows' copy, 2026-11-12): its usage, which lists no -bbox.
+_XPDF_USAGE = (
+    "pdftotext version 4.00\nCopyright 1996-2017 Glyph & Cog, LLC\n"
+    "Usage: pdftotext [options] <PDF-file> [<text-file>]\n"
+    "  -f <int>             : first page to convert\n"
+    "  -l <int>             : last page to convert\n"
+    "  -layout              : maintain original physical layout\n"
+    "  -table               : similar to -layout, but optimized for tables\n"
+    "  -h                   : print usage information\n"
+)
+
+
+def _pdftotext_fails(monkeypatch: pytest.MonkeyPatch, stderr: str, status: int) -> None:
+    from test_transcribe import pdftotext_runs
+
+    pdftotext_runs(
+        monkeypatch, f"import sys; sys.stderr.write({stderr!r}); sys.exit({status})"
+    )
+
+
 def test_a_pdftotext_without_bbox_is_refused_in_a_sentence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Xpdf's pdftotext answers -bbox with its usage and an exit status of 99."""
-    from test_transcribe import pdftotext_runs
-
-    from manuscript_guard.reporting import columns
     from manuscript_guard.reporting.rows import page_words
 
-    pdftotext_runs(
-        monkeypatch,
-        "import sys; sys.stderr.write('Usage: pdftotext [options] <PDF-file>'); sys.exit(99)",
-    )
-    assert columns.shutil.which("pdftotext") == "pdftotext"
+    _pdftotext_fails(monkeypatch, _XPDF_USAGE, 99)
     path = tmp_path / "x.pdf"
     path.write_bytes(b"%PDF-1.4")
     with pytest.raises(RecipeError, match="Poppler's pdftotext gives it; Xpdf's"):
         page_words(path, 3)
+
+
+@pytest.mark.parametrize(
+    ("stderr", "status"),
+    [
+        ("Syntax Error: Couldn't find trailer dictionary\n"
+         "Syntax Error: Couldn't read xref table\n", 1),
+        ("Command Line Error: Wrong page range given: the first page (9) can not be after "
+         "the last page (5).\n", 99),
+        ("Command Line Error: Incorrect password\n", 1),
+    ],
+    ids=["damaged", "past-the-end", "encrypted"],
+)
+def test_poppler_failing_on_the_document_says_why_and_not_xpdf(
+    stderr: str, status: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every failure was reported as Xpdf's missing -bbox, which sent a poppler user looking for
+    a pdftotext they already had. Poppler's own words, as it writes them, are carried instead."""
+    from manuscript_guard.reporting.rows import page_words
+
+    _pdftotext_fails(monkeypatch, stderr, status)
+    path = tmp_path / "x.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    with pytest.raises(RecipeError) as refused:
+        page_words(path, 9)
+    said = str(refused.value)
+    assert stderr.splitlines()[-1].strip() in said
+    assert "Xpdf" not in said
+
+
+def test_a_word_left_of_the_page_is_refused_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Poppler gives a negative xMin to text that starts left of the crop box, and the first
+    column starts at 0: the word fell in no column and the reader raised IndexError. It is
+    refused, named, rather than put in the first column, since it is outside what the recipe's
+    columns describe."""
+    page = TABLE.replace(
+        "</page>", '<word xMin="-1.5" yMin="130" xMax="20" yMax="142">x</word>\n</page>'
+    )
+    with pytest.raises(RecipeError, match=r"'x' starts at -1\.5 points, left of the first column"):
+        read_table(monkeypatch, page)
+
+
+def _recipe_file(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "X.recipe.yaml"
+    path.write_text(
+        "schema: manuscript-guard/recipe/1\n"
+        "meta:\n  name: X\n  source_url: https://example.org/\n"
+        "  retrieved_on: 2026-11-12\n  licence: invented for this test\n"
+        "document: x.docx\ntext_column: 1\n" + body,
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["marker: x\n", "columns: {text: 0}\n", "rows: topics\n", "start_after: y\n",
+     "ignore: [z]\n", "topics: [{id: A, topic: B}]\n"],
+    ids=["marker", "columns", "rows", "start_after", "ignore", "topics"],
+)
+def test_a_rows_key_in_another_format_is_still_unknown(key: str, tmp_path: Path) -> None:
+    """The rows reader's keys were taken out of every recipe before the table reader saw them,
+    so a Word-table recipe carrying one was read with it ignored, where it had been refused."""
+    from manuscript_guard.reporting.build import load_recipe
+
+    name = key.split(":")[0]
+    with pytest.raises(RecipeError, match=f"unknown recipe keys: {name}"):
+        load_recipe(_recipe_file(tmp_path, key))
+    with pytest.raises(RecipeError, match=f"unknown recipe keys: {name}"):
+        load_recipe(_recipe_file(tmp_path, "format: pdf-columns\n" + key))
+
+
+def test_a_rows_recipe_takes_its_own_keys(tmp_path: Path) -> None:
+    from manuscript_guard.reporting.build import load_recipe
+
+    _recipe, meta = load_recipe(
+        _recipe_file(
+            tmp_path,
+            "format: pdf-rows\nrows: topics\ncolumns: {text: 0, form: 280}\nmarker: x\n"
+            "start_after: y\nignore: [z]\ntopics: [{id: A, topic: B}]\nitems: 1\n",
+        )
+    )
+    layout = meta["_layout"]
+    assert (layout["rows"], layout["marker"], layout["ignore"]) == ("topics", "x", ["z"])
+    RowsRecipe.from_layout("x.pdf", layout)
 
 
 def test_a_word_is_read_as_pdftotext_escapes_it(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -423,14 +566,20 @@ def test_the_shipped_rows_recipes_state_their_counts_and_checksums() -> None:
     from manuscript_guard.paths import SHIPPED_RECIPES
     from manuscript_guard.reporting.build import load_recipe
 
+    mdar = "65b35021805f4db3c5b66e9421545cd1d682b931052b13205ebd752f0ed0dfaf"
+    sager = "b8a4992f6356243504af3d77fed474ebf9549cf2d7fbb98c73bda193db52605b"
     found = {}
     for path in sorted(SHIPPED_RECIPES.glob("*.recipe.yaml")):
         recipe_, meta = load_recipe(path)
         if meta["_layout"]["format"] == "pdf-rows":
             RowsRecipe.from_layout(recipe_.document, meta["_layout"])
-            assert len(meta["sha256"]) == 64, path.name
-            found[meta["name"]] = meta["_layout"]["items"]
-    assert found == {"MDAR": 18, "SAGER-2022-human": 18, "SAGER-2022-other": 13}
+            found[meta["name"]] = (meta["_layout"]["items"], meta["sha256"])
+    # The digests of the copies each profile was read from and checked against by hand.
+    assert found == {
+        "MDAR": (18, mdar),
+        "SAGER-2022-human": (18, sager),
+        "SAGER-2022-other": (13, sager),
+    }
 
 
 # ---------------------------------------------------------------- the published documents

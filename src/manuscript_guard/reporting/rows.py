@@ -13,9 +13,10 @@ table from those. What it reads by:
 
 **The page.** Words whose middles lie within two points of each other, top to bottom, are one
 line. A line is cut into the recipe's `columns` by where each word starts, in points from the
-page's left edge. Reading begins after the first line whose words, joined, equal `start_after`,
-and ends at the first equal to `stop_at`; a line equal to one of `ignore` is passed over
-wherever it is. A word in a column the recipe calls `blank` is refused.
+page's left edge; a word that starts left of the first column, as poppler sets text left of
+the crop box, is refused. Reading begins after the first line whose words, joined, equal
+`start_after`, and ends at the first equal to `stop_at`; a line equal to one of `ignore` is
+passed over wherever it is. A word in a column the recipe calls `blank` is refused.
 
 **A heading** is a line with words in the `section` column and nowhere else. A heading that
 shares its line with an item's text or number is refused.
@@ -179,21 +180,30 @@ class RowsRecipe:
         )
 
 
+def knows_no_bbox(stderr: str) -> bool:
+    """Whether a failed pdftotext answered with its usage, listing no -bbox: what Xpdf 4.00's
+    writes, and exits 99 on, when it is asked for an option it does not have. Poppler's also
+    exits 99 on a page past the end, so the status alone says nothing."""
+    return "Usage: pdftotext" in stderr and "-bbox" not in stderr
+
+
 def page_words(path: Path, page: int) -> list[Word]:
     """Every word of one page with its place, from poppler's `pdftotext -bbox`."""
-    from manuscript_guard.reporting.columns import run_pdftotext
+    from manuscript_guard.reporting.columns import PdftotextFailed, run_pdftotext
 
     try:
         out = run_pdftotext(path, page, "-bbox")
-    except RecipeError as refused:
-        if "pdftotext failed on" not in str(refused):
-            raise
-        # Xpdf's answers -bbox with its usage, which says nothing of the cause.
+    except PdftotextFailed as failed:
+        if not knows_no_bbox(failed.stderr):
+            # Poppler failing on the document itself: damaged, encrypted, or too short.
+            raise RecipeError(
+                f"pdftotext -bbox failed on page {page} of {path.name}: {failed.stderr[:400]}"
+            ) from failed
         raise RecipeError(
             f"pdftotext would not give the place of each word on page {page} of {path.name} "
             f"(-bbox), which reading a checklist laid out as rows needs. Poppler's pdftotext "
             f"gives it; Xpdf's, which Git for Windows puts on PATH, does not"
-        ) from refused
+        ) from failed
     if "<page" not in out:
         raise RecipeError(
             f"pdftotext -bbox gave no page {page} of {path.name}; poppler's pdftotext is needed"
@@ -222,8 +232,15 @@ def lines_of(words: list[Word], page: int, columns: tuple[tuple[str, float], ...
         group.sort(key=lambda w: w.x0)
         cells: dict[str, list[str]] = {}
         for word in group:
-            role = [r for r, start in columns if word.x0 >= start][-1]
-            cells.setdefault(role, []).append(word.text)
+            roles = [r for r, start in columns if word.x0 >= start]
+            if not roles:
+                # Poppler gives a negative x to text that starts left of the crop box. It is
+                # outside every column the recipe draws, so it is refused, not given one.
+                raise RecipeError(
+                    f"page {page}: {word.text[:40]!r} starts at {word.x0:g} points, left of "
+                    f"the first column, which starts at {columns[0][1]:g}"
+                )
+            cells.setdefault(roles[-1], []).append(word.text)
         lines.append(
             Line(
                 page=page,
@@ -411,8 +428,9 @@ def _one_box_each(lines: list[Line], rows: list, marker: str) -> None:
 
 def transcribe_rows(path: Path, recipe: RowsRecipe) -> list[Item]:
     """Apply a pdf-rows recipe to a PDF."""
-    pages = [lines_of(page_words(path, page), page, recipe.columns) for page in recipe.pages]
+    words = [(page, page_words(path, page)) for page in recipe.pages]
     try:
+        pages = [lines_of(found, page, recipe.columns) for page, found in words]
         lines = window(pages, recipe)
         items = read_centred(lines) if recipe.rows == "centred-id" else read_topics(lines, recipe)
     except RecipeError as refused:

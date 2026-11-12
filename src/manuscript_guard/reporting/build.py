@@ -16,6 +16,9 @@ from manuscript_guard.reporting.transcribe import Recipe, RecipeError, transcrib
 
 RECIPE_SUFFIX = ".recipe.yaml"
 
+#: The keys only a `pdf-rows` recipe has.
+ROWS_KEYS = ("columns", "rows", "start_after", "ignore", "topics", "marker")
+
 
 def load_recipe(path: Path) -> tuple[Recipe, dict]:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -39,15 +42,12 @@ def load_recipe(path: Path) -> tuple[Recipe, dict]:
             "options",
             "stop_at",
             "table",
-            # The rows reader's (`reporting/rows.py`).
-            "columns",
-            "rows",
-            "start_after",
-            "ignore",
-            "topics",
-            "marker",
         )
     }
+    if layout["format"] == "pdf-rows":
+        # The rows reader's (`reporting/rows.py`), taken out of its own recipes only, so that a
+        # recipe of any other format that carries one is still refused as an unknown key.
+        layout.update({key: parse.pop(key, None) for key in ROWS_KEYS})
     if layout["format"] == "jats-table":
         # A paper's table is not the checklist file: the recipe says which it read.
         for required in ("read_from",):

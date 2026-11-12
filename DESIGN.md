@@ -20997,7 +20997,28 @@ Open, recorded as each change landed:
     stands on the part before the break and nothing but the carried lines is above the next
     page's first heading; a row whose number fell on the part after the break is refused, as
     no item's run, rather than read. SAGER's 5b breaks the first way. Pinned by
-    `tests/test_rows.py::test_a_row_broken_across_pages_carries_on_above_the_next_heading`.
+    `tests/test_rows.py::test_a_row_broken_across_pages_carries_on_above_the_next_heading` and
+    `tests/test_rows.py::test_a_row_whose_number_fell_after_the_break_is_refused`.
+  - Words are one line where each word's middle is within two points of the middle of the
+    first word put in the line, taking words from the top. A printed line whose words' middles
+    spread wider, as a superscript or a larger font can, is cut in two, and the parts are
+    ordered by their middles, not left to right, so its words may be read in another order.
+    On the pages the three recipes read, the middles of one line's words spread by 1.44 points
+    at most (MDAR's page 3, a title and the box beside it), and two lines' middles stand 5.28
+    points apart at least. Accepted.
+  - In `rows: topics`, a line of a row's text that equals the next title in the recipe is
+    taken as that title, and the row ends there. None of MDAR's text lines equals a title.
+    Accepted.
+  - MDAR's recipe states no `stop_at` and no `ignore`: it needs neither, since its pages carry
+    nothing below the last row but a page number in the `form` column, and no header or foot
+    in the text column. On a revised document a footnote under R1, or a running line in the
+    text column, would join the open row. That the shipped document has none was checked by
+    hand against its pages, and the checksum stops a revised one. Accepted.
+  - A heading is one line. A heading set on two lines would be two headings, and the section
+    of the items under it would be its last line ("abstract" for "Title and" / "abstract").
+    Every section of the three shipped profiles was checked against the pages and is printed
+    on one line: MDAR's Materials, Design, Analysis and Reporting, and SAGER's General, Title,
+    Abstract, Introduction, Methods, Results and Discussion in both tables. Accepted.
   - SAGER marks with an asterisk the items its footnote says "extend beyond the original SAGER
     table". The asterisk stays in the item's text and the footnote, below `stop_at`, is not
     read, so the profile does not say what the asterisk means. Accepted.

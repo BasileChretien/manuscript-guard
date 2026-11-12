@@ -9403,14 +9403,21 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
 #: word of another, so that each row is named by its own label alone.
 NON_NEGATIVE_LABELS = (
     "Weight", "Ferritin", "Creatinine", "Viral load", "Length of stay", "Bilirubin",
-    "Lactate", "Troponin", "Albumin",
+    "Lactate", "Troponin", "Albumin", "Glucose", "Platelets",
 )  # fmt: skip
 #: The kinds of row the first table of `spread_tables` holds one of: a mean less than twice
 #: its SD, one more than twice, one exactly twice, one negative, a row whose label names a
-#: standard error, one whose label names a percentage, one of medians and ranges, a row
+#: standard error, one whose label names a percentage, one whose label names a change, one
+#: of counts and their shares in a table that says n (%), one of medians and ranges, a row
 #: nobody names, and a row whose label holds a named one inside a word.
-SPREAD_ROWS = ("skewed", "fine", "twice", "negative", "se", "percent", "median", "unnamed",
-               "inside")  # fmt: skip
+SPREAD_ROWS = ("skewed", "fine", "twice", "negative", "se", "percent", "change", "counts",
+               "median", "unnamed", "inside")  # fmt: skip
+#: How a label names a change, `{label}` the measure's.
+CHANGE_NAMES = ("Change in {lower}", "{label} change from baseline", "{label}, difference",
+                "\N{GREEK CAPITAL LETTER DELTA} {lower}", "{label} delta")  # fmt: skip
+#: Where a table says its cells are n (%): a caption above it, one below it, or its header's
+#: first cell.
+SAID_N_PERCENT = ("above", "below", "header")
 #: How a cell prints a mean and its SD, the SD at `{sd}`.
 SPREAD_SHAPES = (" ({sd})", "({sd})", " ( {sd} )", " \N{PLUS-MINUS SIGN} {sd}",
                  "\N{PLUS-MINUS SIGN}{sd}", " +/- {sd}")  # fmt: skip
@@ -9434,8 +9441,17 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
     names a standard error over its first arm and an SD over its second, its one row named;
     and a mean and SD in a sentence, which is not read. With the labels an auditor names, in
     lower case, one of them in no row; each mean and SD the reading finds (`Spreaded`), in
-    order; and each named row passed over, as its line and why."""
-    from manuscript_guard.stats.skew import PERCENT, SE_HEADER, SE_LABEL
+    order; and each named row passed over, as its line and why. The first table says its
+    cells are n (%), in a place of `SAID_N_PERCENT` drawn; the second's header names a
+    percentage over a third arm."""
+    from manuscript_guard.stats.skew import (
+        CHANGE,
+        COUNTS,
+        PERCENT,
+        PERCENT_HEADER,
+        SE_HEADER,
+        SE_LABEL,
+    )
 
     labels = list(draw(st.permutations(NON_NEGATIVE_LABELS)))
     named_kinds = [kind for kind in SPREAD_ROWS if kind not in ("unnamed", "inside")]
@@ -9451,7 +9467,7 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
 
     def pair(kind: str) -> tuple[int, int]:
         sd = draw(st.integers(1, 99))
-        if kind in ("skewed", "se", "percent", "unnamed", "inside"):
+        if kind in ("skewed", "se", "percent", "change", "counts", "unnamed", "inside"):
             return draw(st.integers(0, 2 * sd - 1)), sd
         if kind == "fine":
             return draw(st.integers(2 * sd + 1, 2 * sd + 300)), sd
@@ -9462,7 +9478,11 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
     def row(label: str, cells: list[str]) -> None:
         lines.append("| " + " | ".join([label, *cells]) + " |")
 
-    lines += ["| Characteristic | Treated (n = 40) | Control (n = 41) |", "|---|---|---|"]
+    said_where = draw(st.sampled_from(SAID_N_PERCENT))
+    if said_where == "above":
+        lines[-1:] = ["", "Table 1. Values are n (%) or mean (SD).", ""]
+    first = "Characteristic, n (%) or mean (SD)" if said_where == "header" else "Characteristic"
+    lines += [f"| {first} | Treated (n = 40) | Control (n = 41) |", "|---|---|---|"]
     for kind in draw(st.permutations(SPREAD_ROWS)):
         pairs = [pair(kind) for _arm in range(2)]
         cells = [cell(mean, sd) for mean, sd in pairs]
@@ -9485,18 +9505,34 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
                 [f"{draw(st.integers(1, 40))} ({_one_dp(sd)})" for _m, sd in pairs])
             passed.append([len(lines), PERCENT])
             continue
+        if kind == "change":
+            shape = draw(st.sampled_from(CHANGE_NAMES))
+            row(shape.format(label=named[kind], lower=named[kind].lower()), cells)
+            passed.append([len(lines), CHANGE])
+            continue
+        if kind == "counts":
+            row(f"{named[kind]} above the limit",
+                [f"{draw(st.integers(0, 40))} ({_one_dp(draw(st.integers(0, 1000)))})"
+                 for _pair in pairs])  # fmt: skip
+            passed.append([len(lines), COUNTS])
+            continue
         # A footnote marker after the label's words, or one that ends it, as `mean_tables`.
         marker, last = draw(st.sampled_from((("", False), *MARKERS)))
         row(f"{named[kind]}, mean (SD){marker}" if last else f"{named[kind]}{marker}, mean (SD)",
             cells)  # fmt: skip
         for mean, sd in pairs:
             expected.append((len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd))
+    if said_where == "below":
+        lines += ["", "Values are n (%) or mean (SD)."]
     lines += ["", draw(sentence).capitalize() + ".", ""]
-    # The header names a standard error over the first arm: its cells are not read.
-    lines += ["| Characteristic | Treated, mean (SE) | Control, mean (SD) |", "|---|---|---|"]
+    # The header names a standard error over the first arm, and a percentage over the third:
+    # their cells are not read.
+    lines += ["| Characteristic | Treated, mean (SE) | Control, mean (SD) | Pooled, % |",
+              "|---|---|---|---|"]  # fmt: skip
     pairs = [pair("skewed"), pair("skewed")]
-    row(named["header"], [cell(mean, sd) for mean, sd in pairs])
-    passed.append([len(lines), SE_HEADER])
+    share = f"{draw(st.integers(0, 40))} ({_one_dp(draw(st.integers(0, 1000)))})"
+    row(named["header"], [*(cell(mean, sd) for mean, sd in pairs), share])
+    passed += [[len(lines), SE_HEADER], [len(lines), PERCENT_HEADER]]
     expected.append((len(lines), _one_dp(pairs[1][0]), _one_dp(pairs[1][1]), True))
     mean, sd = pair("skewed")
     lines += ["", f"{draw(sentence).capitalize()} {named['skewed']} {cell(mean, sd)} "
@@ -9508,9 +9544,9 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
 #: that is not zero, though more than twice above zero; exactly twice above the floor; more
 #: than twice; less than twice above a floor of zero; one with a standard error and no SD;
 #: one skewed with a reason given, and one with a blank reason; one whose variable has no
-#: floor; and one that names no variable.
+#: floor, one whose floor is text, a date's "20200101"; and one that names no variable.
 FLOORED = ("above zero only", "twice", "above", "zero floor", "se", "reason", "blank",
-           "no floor", "no variable")  # fmt: skip
+           "no floor", "text floor", "no variable")  # fmt: skip
 
 
 @st.composite
@@ -9543,12 +9579,12 @@ def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], lis
             spec["skewed_ok"] = draw(st.sampled_from(("", " ", "\t")))
         values[key] = spec
         # A floor as YAML gives one: a whole number, or a decimal in tenths.
-        floors[name] = None if kind == "no floor" else (
+        floors[name] = None if kind == "no floor" else "20200101" if kind == "text floor" else (
             floor // 10 if floor % 10 == 0 else floor / 10)
         spread = "se" if kind == "se" else "sd"
         values[f"v{at}.{spread}"] = {"value": sd / 10, "display": _one_dp(sd), "spread": spread,
                                      "of": key}  # fmt: skip
-        if kind in ("se", "no floor", "no variable"):
+        if kind in ("se", "no floor", "text floor", "no variable"):
             continue
         warned = kind in ("zero floor", "blank", "above zero only")
         expected.append([f"v{at}.sd", key, floors[name], warned])

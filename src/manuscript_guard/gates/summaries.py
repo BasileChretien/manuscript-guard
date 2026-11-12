@@ -4,14 +4,17 @@ A model is the model its variables call for (`gates/models.py`); so is a summary
 names the variable of the data dictionary it is of (`em.value(..., variable="crp")`), and
 the dictionary gives the variable's floor, its `range.min`. Each SD of that mean, a value
 with `spread="sd"` and `of` the mean's key, is then held to it: where the mean is less than
-twice the SD above the floor, the data are skewed, and the mean (SD) describes them badly
-(Altman and Bland, BMJ 1996;313:1200; `stats/skew.py`). That is `mean-sd-skewed`, a warning
+twice the SD above the floor, the data are skewed, and the mean (SD) describes them badly:
+Altman and Bland's rule (BMJ 1996;313:1200) for a floor of 0, the Cochrane Handbook's check
+(section 10.5.3) for another, and the message cites the one applied (`stats/skew.py`). That
+is `mean-sd-skewed`, a warning
 at every stage, since a skewed variable may still be reported so for a reason: the trial's
 registration, a meta-analysis that will pool means. `skewed_ok="<reason>"` on the mean says
 so, and stands the warning down; only a sentence does, not a blank.
 
 What is not read: a standard error (`spread="se"`), whose SD needs the n the value does not
-carry; a mean whose variable has no numeric floor in the dictionary; and a project with no
+carry; a mean whose variable has no floor in the dictionary that is a number, a date's
+"20200101" being text; and a project with no
 dictionary, or one that does not read, which G12 reports. A `variable` the dictionary has no
 entry for is G16's `not-in-dictionary` (`gates/data_quality.py`), as is any variable the
 analysis names.
@@ -52,6 +55,14 @@ def stands_down(reason: object) -> bool:
     return isinstance(reason, str) and bool(reason.strip())
 
 
+def floor(minimum: object) -> int | float | None:
+    """A dictionary's `range.min` as a floor: a number, and not a truth value. A date's,
+    "20200101", is text and no floor (round 1 of #660)."""
+    if isinstance(minimum, bool) or not isinstance(minimum, (int, float)):
+        return None
+    return minimum
+
+
 def held(values: Mapping[str, Value], floor_of: Callable[[str], object]) -> list[Held]:
     """Each SD of a mean that names its variable, against the floor `floor_of` gives the
     variable (None where it has none), in the order of the SDs' keys."""
@@ -80,7 +91,7 @@ def check_summaries(project: Project, results: Results) -> Report:
 
     def floor_of(name: str) -> object:
         entry = dictionary.variable(name)
-        return None if entry is None else entry.minimum
+        return None if entry is None else floor(entry.minimum)
 
     found = held(results.values, floor_of)
     findings = tuple(_finding(one) for one in found if one.warned)

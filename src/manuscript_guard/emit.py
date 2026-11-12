@@ -1570,7 +1570,8 @@ class Emitter:
         A mean names the variable of the data dictionary it is of with `variable`, and G15
         holds it and each SD of it to the variable's floor, its `range.min`: a mean less
         than twice its SD above the floor shows skewed data, which a median and an
-        interquartile range describe better (Altman and Bland, BMJ 1996;313:1200).
+        interquartile range describe better (Altman and Bland, BMJ 1996;313:1200, for a
+        floor of 0; the Cochrane Handbook, section 10.5.3, for another).
         `skewed_ok` gives the reason the mean (SD) is reported all the same:
 
             em.value("crp.mean", 5.1, digits=1, variable="crp",

@@ -321,12 +321,23 @@ cannot be negative, so this too is read only in the rows you name: `--non-negati
 one of those, at word edges and in any case, and each cell printed as a mean and its SD,
 "12.3 (4.5)", "12.3 ± 4.5" or "12.3 +/- 4.5". A mean less than twice its SD is listed with
 the other disagreements, with the mean, the SD and the floor of 0; exactly twice is not.
-Neither is counted by `--strict`. A row whose label names a standard error (SE, SEM, s.e.,
-"standard error"), or whose cells stand under a header that names one, is not read, since an
-SE gives the SD only with the n, and is said; so is a row whose label names a percentage. A
-label under which nothing was read is said. Means in sentences are not read, nor an SE named
-only in a caption or a note. A variable with another floor, a score of 1 to 7, is held to 0
-here; `check` holds a project's means to the floor its data dictionary gives.
+Neither is counted by `--strict`. Some rows and cells under a label you name are not means
+and SDs of that measure, and are not read; each is said:
+
+- a row whose label names a standard error (SE, SEM, s.e., "standard error"), or a cell
+  under a header in the table's first row that names one, since an SE gives the SD only
+  with the n;
+- a row whose label names a change or a difference ("change", "difference", "from
+  baseline", "delta", Δ), which can be negative;
+- a row whose label names a percentage, and a cell under a header in the first row that
+  names one without naming a mean or an SD;
+- a count and its share, "5 (12.5)", a whole number and a decimal of 100 or less, where the
+  caption (the paragraph above or below the table) or the first row says n (%).
+
+A label under which nothing was read is said. Means in sentences are not read, nor an SE
+named only in a caption, a note or a second header row. A variable with another floor, a
+score of 1 to 7, is held to 0 here; `check` holds a project's means to the floor its data
+dictionary gives.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.

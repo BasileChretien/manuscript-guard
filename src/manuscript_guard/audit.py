@@ -1488,7 +1488,7 @@ def _read_numbers(
     if report.non_negative:
         from manuscript_guard.auditing.skew import non_negative_means
 
-        found = sorted(found + non_negative_means(report, path, list(source.tables)),
+        found = sorted(found + non_negative_means(report, path, list(source.tables), text),
                        key=lambda d: d.line)  # fmt: skip
     report.disagreements += found
     _margins(report, path, list(source.tables))

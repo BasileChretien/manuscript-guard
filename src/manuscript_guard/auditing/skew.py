@@ -6,9 +6,10 @@ length of stay, by a word or words of their label, as `--whole-numbers` names it
 cell there printed as a mean and its SD, "12.3 (4.5)" or "12.3 ± 4.5", is read, and one whose
 mean is less than twice its SD shows skewed data (`stats/skew.py`): a warning in the
 Arithmetic section, `mean-sd-skewed`, which `--strict` does not count. A named row whose
-label, or the header over its cells, names a standard error is not read, nor one whose label
-names a percentage, and each is said as a note; a label under which nothing was read is
-said too.
+label, or the table's first row over its cells, names a standard error is not read, nor one
+whose label names a change or a percentage, a cell under a header naming a percentage, or a
+count and its share where the caption or the header says n (%); each is said as a note, and
+a label under which nothing was read is said too.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from manuscript_guard.audit import AuditReport, Disagreement
 from manuscript_guard.stats.granularity import names
-from manuscript_guard.stats.skew import said, table_spreads
+from manuscript_guard.stats.skew import caption_of, said, table_spreads
 from manuscript_guard.text.tables import Table
 
 CODE = "mean-sd-skewed"
@@ -27,13 +28,18 @@ FLOOR = "0"
 FLAG = "--non-negative"
 
 
-def non_negative_means(report: AuditReport, path: Path, tables: list[Table]) -> list[Disagreement]:
+def non_negative_means(
+    report: AuditReport, path: Path, tables: list[Table], text: str = ""
+) -> list[Disagreement]:
     """Each mean and its SD in a row --non-negative named, returned where the mean is less
     than twice the SD; each named row not read is kept in the report, and a label under
-    which a cell was read, or a row passed over, is taken off the labels that read nothing."""
+    which a cell was read, or a row passed over, is taken off the labels that read nothing.
+    `text` is the paper's, whose lines the tables' cells name: the paragraph above or below
+    a table is read for a caption that says its cells are n (%)."""
     found = []
+    lines = text.split("\n")
     for table in tables:
-        spreads, passed = table_spreads(table, report.non_negative)
+        spreads, passed = table_spreads(table, report.non_negative, caption_of(lines, table))
         for spread in spreads:
             report.spreads_read += 1
             _found(report, spread.label)

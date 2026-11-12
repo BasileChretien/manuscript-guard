@@ -499,7 +499,7 @@
         "variable": {
           "type": "string",
           "minLength": 1,
-          "description": "The variable of the data dictionary (design/data_dictionary.yaml) this value is of, by its name there. On a mean, G15 holds the mean and each SD of it (`spread` \"sd\", `of` this key) to the variable's floor, its `range.min`: a mean less than twice the SD above the floor shows skewed data (Altman and Bland, BMJ 1996;313:1200). G16 warns where the dictionary has no such entry."
+          "description": "The variable of the data dictionary (design/data_dictionary.yaml) this value is of, by its name there. On a mean, G15 holds the mean and each SD of it (`spread` \"sd\", `of` this key) to the variable's floor, its `range.min`: a mean less than twice the SD above the floor shows skewed data (Altman and Bland, BMJ 1996;313:1200, for a floor of 0; the Cochrane Handbook for Systematic Reviews of Interventions, version 6.5.1, section 10.5.3, for another). G16 warns where the dictionary has no such entry."
         },
         "skewed_ok": {
           "type": "string",

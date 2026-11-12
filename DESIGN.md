@@ -6142,8 +6142,10 @@ mean), the floor being the `range.min` the data dictionary gives the variable;
 down, a sentence and not a blank. A `variable=` with no entry is G16's `not-in-dictionary`.
 In `audit`, `--non-negative` names the rows, by words of their labels as `--whole-numbers`
 does, and each cell printed as a mean and its SD is held to 0; one less than twice its SD
-is listed with the disagreements, and a row that gives an SE or a percentage is said and
-not read. The limits are under "Known gaps".
+is listed with the disagreements, and a row that gives an SE, a percentage, a change, or
+counts and their shares under a table that says n (%), is said and not read. A message cites
+Altman and Bland where the floor is 0 and the Handbook where it is another. The limits are
+under "Known gaps".
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -20871,14 +20873,20 @@ Open, recorded as each change landed:
   cell is read where it is a mean and its SD in round brackets, "12.3 (4.5)", or after a
   plus-minus sign, "12.3 ± 4.5" or "12.3 +/- 4.5", in a row whose label holds a label given,
   at word edges and in any case. A mean in square brackets, a mean alone, and a mean in a
-  sentence are not read. A standard error is seen where the row's label or the header over
-  the cell names one (SE, SEM, s.e., s.e.m., "standard error"), and such cells are not read
-  and said; one named only in a caption or a note is not seen, and the cell is read as a
-  mean and its SD. A row whose label names a percentage is not read. A label is taken as
+  sentence are not read. A standard error is seen where the row's label or the table's
+  first row over the cell names one (SE, SEM, s.e., s.e.m., "standard error"), and such
+  cells are not read and said; one named only in a caption, a note or a second header row
+  is not seen, and the cell is read as a mean and its SD. A row whose label names a change
+  or a percentage is not read, nor a cell under a first-row header naming a percentage and
+  no mean or SD, nor a count and its share ("5 (12.5)") where the paragraph above or below
+  the table, or its first row, says n (%) (round 1 of #660). A change named only in a
+  column's header is read, and so is a count with its share in a table that says n (%)
+  only further away than the paragraphs next to it, or nowhere. A label is taken as
   one of a variable that cannot be negative because the auditor says so: a variable with
   another floor, a score of 1 to 7, is held to 0, which can only report fewer means.
   Pinned by `tests/test_properties.py::test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero`
-  and `tests/test_corruption.py::test_an_se_named_only_in_a_caption_is_not_seen`.
+  and `tests/test_corruption.py::test_an_se_named_only_in_a_caption_is_not_seen`
+  and `tests/test_corruption.py::test_counts_and_their_shares_under_a_header_saying_n_percent_are_not_read`.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

@@ -7464,16 +7464,19 @@ def test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero(
     edges and in any case, each cell printed as a mean and its SD, in brackets or after a
     plus-minus sign, a minus sign before a negative mean, is read, and said skewed where the
     mean is less than twice the SD, exactly twice not. A row whose label names a standard
-    error, or the column under a header that names one, is passed over and said; so is a
-    row whose label names a percentage. A row not named, one whose label holds a named one
-    inside a word, a row of medians and a sentence are not read."""
-    from manuscript_guard.stats.skew import table_spreads
+    error, or the column under a first-row header that names one, is passed over and said;
+    so is a row whose label names a percentage or a change, a column under a header naming
+    a percentage, and a count and its share where a caption or the header says n (%). A row
+    not named, one whose label holds a named one inside a word, a row of medians and a
+    sentence are not read."""
+    from manuscript_guard.stats.skew import caption_of, table_spreads
     from manuscript_guard.text.tables import markdown_tables
 
     text, labels, expected, passed = drawn
     found, rows = [], []
     for table in markdown_tables(text):
-        spreads, passed_over = table_spreads(table, tuple(labels))
+        spreads, passed_over = table_spreads(table, tuple(labels),
+                                             caption_of(text.split("\n"), table))
         found += [(s.line, s.mean, s.sd, s.skewed) for s in spreads]
         rows += [[row.line, row.why] for row in passed_over]
     assert found == expected, text
@@ -7488,16 +7491,18 @@ def test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable(
     dictionary gives the variable, and warns where the mean is less than twice the SD above
     it, exactly twice not, a floor other than zero taken as the distance from it. A reason
     on the mean stands the warning down; a blank one does not. A standard error, a variable
-    with no floor and a mean that names no variable are not held to one."""
+    with no floor or with a floor written as text, and a mean that names no variable are not
+    held to one."""
     from manuscript_guard.contracts.values import RESULTS, Value
-    from manuscript_guard.gates.summaries import held
+    from manuscript_guard.gates.summaries import floor, held
 
     values, floors, expected = drawn
     read = {key: Value(key=key, value=spec["value"], display=spec["display"], origin=RESULTS,
                        of=spec.get("of"), spread=spec.get("spread"),
                        variable=spec.get("variable"), skewed_ok=spec.get("skewed_ok"))
             for key, spec in values.items()}  # fmt: skip
-    found = [[one.sd.key, one.mean.key, one.floor, one.warned] for one in held(read, floors.get)]
+    found = [[one.sd.key, one.mean.key, one.floor, one.warned]
+             for one in held(read, lambda name: floor(floors.get(name)))]  # fmt: skip
     assert found == expected, values
 
 
@@ -7532,6 +7537,24 @@ def _an_se_in_a_table_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import skew
 
     patch.setattr(skew, "_SE", re.compile(r"(?!)"))
+
+
+def _a_change_is_read_as_the_measure(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_CHANGE", re.compile(r"(?!)"))
+
+
+def _a_count_and_its_share_is_read_as_a_mean_and_its_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_count_and_share", lambda match: False)
+
+
+def _a_floor_written_as_text_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import summaries
+
+    patch.setattr(summaries, "floor", lambda minimum: minimum)
 
 
 def _an_se_of_a_mean_is_read_as_its_sd(patch: pytest.MonkeyPatch) -> None:
@@ -22699,6 +22722,18 @@ BROKEN = {
     ),
     "an SE of a mean is read as its SD": (
         _an_se_of_a_mean_is_read_as_its_sd,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a change in a named measure is read as the measure": (
+        _a_change_is_read_as_the_measure,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a count and its share under n (%) is read as a mean and its SD": (
+        _a_count_and_its_share_is_read_as_a_mean_and_its_sd,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a floor written as text is read as a number": (
+        _a_floor_written_as_text_is_read,
         test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
     ),
     "a footnote marker on a row of means is not seen": (

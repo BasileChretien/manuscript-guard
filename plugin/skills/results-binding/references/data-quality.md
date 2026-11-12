@@ -51,7 +51,8 @@ lines, as `check` refuses it. In R, `check_data` needs the yaml package.
 A mean names the variable it is of with `variable="crp"` (R: `variable = "crp"`), the
 entry's `name` in the dictionary. Where the entry gives a `range.min`, each SD of the mean
 (`spread="sd"`, `of` the mean's key) is held to it: a mean less than twice its SD above that
-floor shows skewed data (Altman and Bland, BMJ 1996;313:1200), and G15 warns
+floor shows skewed data (Altman and Bland, BMJ 1996;313:1200, for a floor of 0; the
+Cochrane Handbook for Systematic Reviews of Interventions, version 6.5.1, section 10.5.3, for another), and G15 warns
 `mean-sd-skewed`. Emit the median and the interquartile range instead; or, where the mean
 (SD) is wanted all the same (the trial registered it, a meta-analysis will pool it), say why
 on the mean with `skewed_ok="as the trial registered it"`. The reason is a sentence: a blank

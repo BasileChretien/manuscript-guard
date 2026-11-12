@@ -10917,17 +10917,39 @@ def test_a_mean_less_than_twice_its_sd_above_its_floor_is_a_warning(
     assert [(f.gate, f.code, f.severity) for f in found] == warned * said
 
 
-def test_the_skew_warning_gives_the_mean_the_sd_the_floor_and_the_source(project: Path) -> None:
-    _with_floor(project, "crp", 10)
-    _mean_and_sd(project, 15, 3, variable="crp")
+@pytest.mark.parametrize(
+    ("floor", "mean", "sd", "source"),
+    [
+        # Altman and Bland's rule is for a variable that cannot be negative: a floor of 0.
+        (0, 5, 4, "Altman and Bland, BMJ 1996;313:1200"),
+        (0.0, 5, 4, "Altman and Bland, BMJ 1996;313:1200"),
+        # From another floor the check is the Cochrane Handbook's (round 1 of #660).
+        (10, 15, 3, "Cochrane Handbook for Systematic Reviews of Interventions, version "
+                    "6.5.1, section 10.5.3"),
+    ],
+)
+def test_the_skew_warning_gives_the_mean_the_sd_the_floor_and_the_source(
+    project: Path, floor: object, mean: int, sd: int, source: str
+) -> None:
+    _with_floor(project, "crp", floor)
+    _mean_and_sd(project, mean, sd, variable="crp")
     (finding,) = _skew_said(project)
     assert finding.message == (
-        "crp.mean (crp, floor 10 in the data dictionary) and its SD crp.sd: the mean 15 is "
-        "less than twice the SD 3 above the floor 10, so the data are skewed and the mean (SD) "
-        "describes them badly (Altman and Bland, BMJ 1996;313:1200)"
+        f"crp.mean (crp, floor {floor} in the data dictionary) and its SD crp.sd: the mean "
+        f"{mean} is less than twice the SD {sd} above the floor {floor}, so the data are "
+        f"skewed and the mean (SD) describes them badly ({source})"
     )
     assert "median and an interquartile range" in finding.hint and "skewed_ok" in finding.hint
     assert finding.path == project / "results" / "01_disproportionality.json"
+
+
+def test_a_floor_written_as_text_is_no_floor(project: Path) -> None:
+    """Round 1 of #660: a date's range, "20200101" (an ISO 8601 date the dictionary reads),
+    was read as the number 20200101, and a mean of 5 was held to it."""
+    _dictionary_edited(project, "rules:", "  - name: crp\n    label: CRP\n    definition: "
+                       "A date.\n    type: date\n    range: {min: \"20200101\"}\nrules:")
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
 
 
 @pytest.mark.parametrize(
@@ -16480,6 +16502,90 @@ def test_an_audited_mean_less_than_twice_its_sd_in_a_named_row_is_said(tmp_path:
     assert ("Means and SDs of variables that cannot be negative (--non-negative): 4 read in "
             "the rows named, 2 with a mean less than twice its SD.") in shown
     assert "--non-negative 'weight': no mean (SD) was read in a row whose label holds it" in shown
+
+
+def _never_negative_said(tmp_path: Path, text: str, *labels: str) -> tuple[list, list]:
+    """What `audit --non-negative` lists of a paper: each skewed cell's line and printing,
+    and each named row not read, as its line and message."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None, non_negative=labels)
+    skewed = [(d.line, d.message.split(":")[0]) for d in report.disagreements
+              if d.code == "mean-sd-skewed"]  # fmt: skip
+    return skewed, [(d.line, d.message) for d in report.non_negative_unread]
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["Values are n (%) or mean (SD).", "Values are No. (%) or mean (SD)."],
+)
+def test_counts_and_their_shares_under_a_caption_saying_n_percent_are_not_read(
+    tmp_path: Path, said: str
+) -> None:
+    """Round 1 of #660: under a caption saying n (%), "5 (12.5)", a whole count and a share
+    of 100 or less, was read as a mean of 5 and an SD of 12.5, and listed as skewed."""
+    text = (f"Table 1. {said}\n\n| Characteristic | Treated | Control |\n|---|---|---|\n"
+            "| Weight, kg, mean (SD) | 72.1 (12.3) | 70.4 (11.9) |\n"
+            "| Weight >= 100 kg | 5 (12.5) | 6 (14.6) |\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == []
+    assert unread == [(6, "--non-negative row 'Weight >= 100 kg': not read, as its cells are "
+                          "counts and their shares, as the table says n (%)")]  # fmt: skip
+
+
+def test_counts_and_their_shares_under_a_header_saying_n_percent_are_not_read(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #660: a header that names a percentage, or n (%), over a column says its
+    cells are not means; and a header row saying n (%) says it of a count with its share in
+    any column, as a caption does."""
+    text = ("| Characteristic | Treated, n (%) | Control, % |\n|---|---|---|\n"
+            "| Weight >= 100 kg | 5 (12.5) | 6.0 (14.6) |\n\n"
+            "| Characteristic, n (%) or mean (SD) | Treated | Control |\n|---|---|---|\n"
+            "| Weight >= 100 kg | 5 (12.5) | 6 (14.6) |\n"
+            "| Weight, kg | 7.1 (12.3) | 26.0 (8.0) |\n\n"
+            # A column of "n (%) or mean (SD)" holds means too, and they are read.
+            "| Characteristic | Treated, n (%) or mean (SD) |\n|---|---|\n"
+            "| Weight >= 100 kg | 5 (12.5) |\n| Weight, kg | 7.2 (12.3) |\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == [(8, "7.1 (12.3)"), (13, "7.2 (12.3)")]
+    assert unread == [
+        (3, "--non-negative row 'Weight >= 100 kg': not read, as the header over its cells "
+            "names a percentage"),
+        (7, "--non-negative row 'Weight >= 100 kg': not read, as its cells are counts and "
+            "their shares, as the table says n (%)"),
+        (12, "--non-negative row 'Weight >= 100 kg': not read, as its cells are counts and "
+             "their shares, as the table says n (%)"),
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Weight change from baseline, kg", "Change in weight, kg", "Weight, difference",
+     "\N{GREEK CAPITAL LETTER DELTA} weight, kg", "Weight delta, kg",
+     "Weight from baseline to week 12"],
+)
+def test_a_change_in_a_named_measure_is_not_read(tmp_path: Path, label: str) -> None:
+    """Round 1 of #660: a change can be negative, so a row of changes in the measure the
+    auditor names is not held to a floor of 0, and is said as not read."""
+    text = (f"| Characteristic | Treated | Control |\n|---|---|---|\n"
+            f"| {label} | \N{MINUS SIGN}1.2 (3.0) | 0.4 (2.9) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == []
+    assert unread == [(3, f"--non-negative row {label!r}: not read, as its label names a "
+                          "change or a difference, which can be negative")]
+
+
+def test_a_mean_of_a_percentage_is_said_as_one(tmp_path: Path) -> None:
+    """Round 1 of #660: a mean (SD) row whose label holds the unit "%" was said to hold
+    counts and their shares."""
+    text = ("| Characteristic | Treated |\n|---|---|\n| HbA1c, %, mean (SD) | 7.1 (4.0) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "hba1c")
+    assert skewed == []
+    assert unread == [(3, "--non-negative row 'HbA1c, %, mean (SD)': not read, as its label "
+                          "names a percentage")]
 
 
 def test_an_audit_without_non_negative_reads_no_mean_and_sd(tmp_path: Path) -> None:

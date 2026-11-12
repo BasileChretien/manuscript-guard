@@ -100,6 +100,7 @@ from manuscript_guard.gates.data_sources import (
 )
 from manuscript_guard.gates.data_statement import check_deposit_doi, check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
+from manuscript_guard.gates.disclosures import check_disclosures
 from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
@@ -111,6 +112,7 @@ from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.software import check_software
+from manuscript_guard.gates.software_methods import check_software_cited
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.gates.vault import check_vault_results
 from manuscript_guard.paper_edit import KEYS as PAPER_KEYS
@@ -222,6 +224,9 @@ def _gate_run(
         # Its own, since the note for a paper whose journal asks for no statement runs with
         # no journal chosen.
         ("G4", lambda: check_ai_use(project, chosen)),
+        # Its own too: the declarations are held to authors.yaml whether or not a journal is
+        # chosen, and a journal that asks for them has G4's required statements as well.
+        ("G4", lambda: check_disclosures(project, chosen)),
         ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
@@ -236,6 +241,9 @@ def _gate_run(
         ("G12", lambda: check_data_sources(project, chosen)),
         ("G12", lambda: check_declared_datasets(project, results)),
         ("G12", lambda: check_software(project, results, chosen)),
+        # Its own, since it reads the manuscript: one that cannot be read stops it and not
+        # the check of the plan against the scripts.
+        ("G12", lambda: check_software_cited(project, results)),
         ("G7", lambda: check_method_passages(project)),
         ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),

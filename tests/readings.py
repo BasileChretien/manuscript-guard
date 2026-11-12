@@ -886,6 +886,19 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("disclosures")
+def _disclosures() -> Reading:
+    from manuscript_guard.gates.disclosures import judge
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        """What G4 says of a manuscript's funding, competing interests, ethics and author
+        contributions statements against an authors.yaml, at submission."""
+        return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
+                           submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
 @reading("deposit named")
 def _deposit_named() -> Reading:
     from manuscript_guard.gates.data_statement import names_doi
@@ -1570,6 +1583,24 @@ def _software() -> Reading:
                                     given["stage"]))  # fmt: skip
 
     return software
+
+
+@reading("software in the methods")
+def _software_in_the_methods() -> Reading:
+    """What G12 says of the Methods against the packages a plan's Software section names and
+    the scripts given load or the emitter recorded: the main text's Methods and each of the
+    supplement's, as G9 finds them in the documents given (`gates/software_methods.py`)."""
+    from manuscript_guard.gates.methods import methods_in, supplement_methods_in
+    from manuscript_guard.gates.software_methods import judge_named
+
+    def software_in_the_methods(given: dict[str, Any]) -> dict[str, Any]:
+        supplement = [found for text in given["supplement"]
+                      if (found := supplement_methods_in(text)) is not None]  # fmt: skip
+        return _told(judge_named(Path("."), given["plan"], dict(given["scripts"]),
+                                 list(given["emitted"]), frozenset(given["own"]),
+                                 methods_in(given["main"]), supplement))  # fmt: skip
+
+    return software_in_the_methods
 
 
 @reading("model names")

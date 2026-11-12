@@ -7,7 +7,9 @@ changed in the tree before pandoc writes it as Markdown, and nothing else:
   section's name alone, in bold or not, numbered or not, in capitals or not, "**Abstract**",
   "ABSTRACT", "3. RESULTS", "**[References]{.underline}**", is made a heading
   (`typed_headings`), as many Word papers title their sections; by the closed list a PDF's
-  lines are read by, so a title that names no section stays a paragraph.
+  lines are read by, so a title that names no section stays a paragraph. Where those
+  cannot be placed, the paragraphs wholly in bold alone are, where they can be; else
+  every typed title is a heading of level 1.
 - Each table whose cells hold only paragraphs is written as a pipe table, which every reader
   here reads as rows of cells: a cell's paragraphs and line breaks are joined with spaces, a
   merged cell's text stands in its first row and column with the cells it covered left
@@ -549,9 +551,11 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     a list's item, a table's cell and a caption are not, and only by the closed list of
     names a PDF's line is read by, so "Our cohort" and a sentence that opens with "Results"
     stay text. A structured abstract's titles are the Abstract's, at level 2, where
-    `section_levels` can place them; else every one is at level 1, and the Abstract ends at
-    its first. A heading is titled with the paragraph's words, its number kept and a colon
-    or a stop after it left out, "2. Methods"."""
+    `section_levels` can place them. Where it cannot place them all, those wholly in bold
+    alone are made headings, where it can place those, as the audit places them, and a
+    plain title is left a paragraph; else every typed title is made a heading of level 1,
+    and the Abstract ends at its first. A heading is titled with the paragraph's words, its
+    number kept and a colon or a stop after it left out, "2. Methods"."""
     from manuscript_guard.text.section_names import section_levels, section_name_alone
 
     found: list[tuple[int, str, str]] = []

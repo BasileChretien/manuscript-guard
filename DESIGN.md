@@ -5324,6 +5324,70 @@ funding or of interests alone names no initials, since their capitals are instit
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
 
+**The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
+"INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
+defined). Its departments, units and institutions need no defining, and nothing on it is a
+definition: "Institut national de la santé et de la recherche médicale (INSERM)" in an
+affiliation does not define the INSERM of the Methods. Its words make one use only, of an
+entry of the list of abbreviations, which covers the title page's units and institutions
+too: an entry only the title page uses is used (Basile, 2026-11-12, "Yes, count it"). A short
+form the text defines and uses nowhere else but on the title page is unused, and its hint
+says that the title page uses it and is not read for abbreviations (round 1 of #654).
+Everything from
+the end of the title page on is read as before. The other readings of G14, the spelling, the
+terms and the notation, still read it.
+
+Not every paper has an abstract, a letter to the editor has none, so the end is not found
+by one word (`text/title_page.py`). The first file of the paper, and the first of the
+supplement, is read from its opening, block by block, a heading or a paragraph, past the
+front matter and a comment `init --from` set aside, and each block is one of five kinds:
+
+- a line only a title page holds: an affiliation, a paragraph naming a department, a
+  faculty, a university, an institute, a hospital, a school, a laboratory, a centre, a unit,
+  a service, Inserm, CNRS or UMR, in English, French ("Département", "Service de"), German
+  ("Abteilung"), Spanish ("Departamento") or Italian ("Dipartimento"), in pieces between its
+  commas of ten words at most, the small words of names aside; an e-mail address; an ORCID
+  iD; authors with a degree after a name ("Jane Doe, MD") or the mark of an affiliation
+  ("MARTIN\\*^1^", "Doe1,2" as a PDF prints it); or a label, "Corresponding author",
+  "Correspondence", "Running title", "Word count", "Keywords", "E-mail", "Affiliations", and
+  in French "Correspondance", "Auteur correspondant", "Mots-clés";
+- a line that may stand on one and says nothing either way: names with no mark, a date,
+  "Received: ...", a note under a mark ("\\*These authors contributed equally");
+- the paper's opening: a heading, a paragraph alone or a run-in label that names a section
+  a paper opens on, the Abstract (or the journal's name for it), Summary, Introduction,
+  Background, Methods and its variants, Results, Discussion, Conclusions, Main text, Letter,
+  Highlights, Key points, Objectives and the like, an abstract's name in French, Spanish,
+  Portuguese, German or Italian ("Résumé", "Resumen", "Zusammenfassung"), and a list of
+  abbreviations, which a journal may ask for on the title page itself ("Abbreviations: Food
+  and Drug Administration (FDA); ...", as Pediatrics has it) and which is read, its entries
+  definitions as ever (round 1 of #654), where the glossary's opening pattern or its titles
+  would open a list, "Abbreviations", "Acronyms", "Glossary", "List of abbreviations" or "List
+  of acronyms", and the French "Abréviations" (rounds 2 and 3), past the title; or a letter's salutation, "Dear Editor,", "To the
+  Editor:", "Sir,", "Dear Sir or Madam,", "Madame, Monsieur,";
+- another heading: one of the back matter, "References", "Funding", or one that names no
+  section, past the first block;
+- prose: a paragraph with a word a sentence is made of and a title page is not, "we",
+  "was", "is", "this", "a", "an" and the like, or "the" twice, or one sentence ending before
+  another; or, with none of those, of eight words or more, three in five of them in small
+  letters, the small words of names aside.
+
+The title page runs from the opening to the first block of the last three kinds. It is the
+title page where it holds a line only a title page holds, one where the paper's opening ends
+it and two where anything else does, and 600 words at most, as `init --from` sets aside. The
+first block is the title: a heading, or a paragraph of three lines and 40 words at most, one
+sentence at most and no stop at its end, which may read as prose, and whose institution,
+"Burnout among nurses of a university hospital", is no affiliation. A first paragraph of more
+than three lines is read a line at a time, as a PDF's lines and a title page typed a line to
+each stand in one paragraph, but only where none of its lines holds a sentence: an opening
+paragraph of prose wrapped over lines is one block. So a paper that opens
+on its Introduction has no title page, nor one whose title alone stands above it, nor one
+whose opening prose names a university ("We taught pharmacology at the University of Rouen
+(UR), France"): those are read whole. Where nothing marks a title page there is none; a
+title page found where there is none would hide real findings in the paper's opening, so
+each rule leans the other way. A LaTeX paper is not read so: the title page its class
+writes, `\author`, `\affil`, `\address` and the rest of `FRONT_MATTER_COMMANDS`, is passed
+over by its reader (above), and nothing here changes how a LaTeX paper is read.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -5371,7 +5435,8 @@ is "used here and not spelt out; only the list of abbreviations defines it", wit
 spell it out where it first appears (where the text spells it out after the list, it is
 defined later there, as any); an entry the text does not use, and does not define, is "in the
 list of abbreviations and not used in the main text", with the hint to take it out of the
-list unless the title page, a table, a figure, another entry or the supplement uses it. A long form is quoted as typed, where `repr` had doubled the backslash of an
+list unless a table, a figure, another entry or the supplement uses it; an entry the title
+page uses is used (see "The title page is not read"). A long form is quoted as typed, where `repr` had doubled the backslash of an
 escape, "d\\'Intérêt".
 
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence
@@ -7854,6 +7919,138 @@ in the authors schema and in what `init` writes; `review --ai-use` its place in
 `docs/commands.md` and the tables of `tests/test_reads_nothing.py`; and the four skills
 that now have an agent name itself `<provider>/<model>` say so where
 `tests/test_plugin.py` reads them.
+
+## The declarations are held to authors.yaml
+
+`authors.yaml` records, per author, the grants (`funding`), the competing interests
+(`competing_interests`) and the CRediT roles (`credit`), and the ethics lead's approval
+reference (`roles.ethics_lead.approval`). `submit` writes declarations from them, as files
+of their own. Nothing held the manuscript's own Funding, Competing interests, Ethics and
+Author contributions text to them, so a paper could say "This work received no funding"
+while the record listed a grant, and every gate passed. Commercial checkers look only for
+the heading. Basile set the scope and the funding rule; the check is G4's, since G4 is the
+gate of the statements a journal asks for, and one of its own (`gates/disclosures.py`),
+placed beside the AI-use check, since it runs with no journal chosen.
+
+### Where each statement is
+
+A statement is the section under a heading that names its kind, or a paragraph that opens
+with a label that does ("**Funding:** ...", "Competing interests: ..."), in the main text
+or the supplement. The headings are in `data/disclosures.yaml`, each with where its forms
+come from, starting from the patterns of the journal template's required statements:
+
+- funding: Funding, Sources of funding, Financial support, Grants, Role of the funding
+  source, and the Acknowledgements, where funding often stands;
+- competing interests: Competing interests, Conflict(s) of interest, Declaration of
+  (competing) interests, Duality of interest, Disclosures;
+- ethics: a heading with "ethics", "ethical", "institutional review" or "IRB", a
+  Declarations section, and the Methods, by the test G9 reads them by;
+- author contributions: Author(s') contributions, Contributors, CRediT author statement,
+  CRediT authorship contribution statement, CRediT statement, CRediT roles, Authorship, and
+  "CRediT" alone; not "Image credit", "Photo credit" or "Picture credit".
+
+A heading is read by its words, its number taken off ("6.", "6.1", "VI."). A label alone
+in its paragraph, as a conversion from Word writes "**Funding**", heads the paragraphs
+after it, up to the next heading, the next label of a statement, or the next label alone
+of whatever kind ("**References**", "References:"); a plain lead-in line, the first after
+the label, that names no statement ("The authors contributed as follows:"), ends nothing. A section holds only its own statement: it ends at a
+heading or a label inside it that opens a statement of another kind, so "# Competing
+interests" over "## Author contributions" does not read the contributions as interests.
+A CRediT role written first ("Funding acquisition: AE.", as PLOS writes them) and an item
+of the ICMJE form ("Grants or contracts from any entity: ...") are labels of no statement:
+they open none and end none, though their words name funding (round 2 of #653). A
+Declarations section's parts are read by their own headings
+and labels. Comments and fenced listings are blanked first, as G4 reads every required
+statement. A LaTeX
+manuscript is read in its printed view, which writes each sectioning command as a heading,
+as G4's `main_text` and the AI-use check read it.
+
+### What is compared
+
+- **Funding.** Each entry of each author's `funding` is in the funding statement. An entry
+  is found by each of its words that holds a digit, its grant identifier: "ANR-20-CE17-0001",
+  "12345". The identifier's runs of letters and digits are found in order, case and dashes
+  folded, a separator optional between a letter and a digit and needed between two runs of
+  one kind the record writes apart; no digit may stand before or after its digits, nor a
+  letter before or after its letters, so "12345" is not found in "123456" and "R01" is
+  found in "R01HL123456". An entry with no such word is found by its words in a row, with
+  accents, case, marks and `&` folded. A statement that says the work had none ("received
+  no funding", "No funding", Elsevier's "did not receive any specific grant", or "None" as
+  the whole of a place a funding heading or label opens) while an author's `funding` is not
+  empty is `funding-denied`, one finding that lists the record, and no grant is then
+  reported apart. Round 1 of #653 narrowed it: "None" under the Acknowledgements says there
+  is no one to thank; the funders ("no funding body had any role") and funding of one kind
+  ("no external funding", "no financial support from industry", "not funded by any
+  commercial entity") deny nothing; and a statement that gives a recorded grant identifier
+  is read as giving it, whatever another sentence of it says.
+- **Competing interests.** A record declares an interest when it is filled and is not a
+  statement of none ("None declared.", the form `init` writes; "No competing interests";
+  "Nothing to declare"; "N/A"; Springer Nature's "no relevant financial or non-financial
+  interests to disclose"; Elsevier's "no known competing financial interests or personal
+  relationships that could have appeared to influence the work"). Each author whose record
+  declares one is named in the statement, by family name or by the initials `submit` prints
+  ("AE reports ...", as The Lancet writes it), read as written, in capitals, so Ian Smith's
+  "IS" is never the word "is". A collective none needs "competing", "conflicting" or
+  "conflict", or Springer Nature's or Elsevier's sentence: "no financial interest in the
+  device" is none of them. A statement that says none for everyone,
+  "None declared." as the whole of it or a sentence such as "The authors declare no
+  competing interests", stands only while every record says none: otherwise it is
+  `interests-none-contradicted`. "The other authors" and "All other authors declare no
+  competing interests" say it of some of them, and are not read so. An
+  empty field while another author's is filled is `interests-unfilled`: an empty field is
+  not a declaration of none, as `submit` already says.
+- **Ethics.** Where `roles.ethics_lead` gives `approval`, the reference is found as a
+  funding entry is, in an Ethics section, a Declarations section or the Methods, of the main
+  text or the supplement. A sentence anywhere in either that says no approval was needed
+  ("no ethical approval was required", "exempt from ethical review") is
+  `ethics-approval-denied`, since a paper says it where it says it: the example says it in
+  its Data availability.
+- **Author contributions.** Where the manuscript has such a statement, each author with
+  recorded roles is named in it, by family name or by the initials `submit` prints, as
+  written in capitals ("A.E.", "AE", "A. E.", "A E" or "A-E"), and each role recorded is in it in CRediT's words, folded: "Writing – original
+  draft" with any dash, "&" or "and", "-isation" for "-ization". Which author holds which
+  role is not read. With no such statement nothing is said: many journals collect CRediT
+  on the submission form.
+
+### The findings
+
+| Code | When | Severity |
+|---|---|---|
+| `funding-grant-missing` | an entry of an author's `funding` is not in the funding statement | warning; a failure at submission |
+| `funding-denied` | the funding statement says there was none, and an author's `funding` is not empty | the same |
+| `funding-not-stated` | an author's `funding` is not empty, and the manuscript has no funding statement | note |
+| `interests-author-missing` | an author whose record declares an interest is not named in the statement | warning; a failure at submission |
+| `interests-none-contradicted` | the statement says no author has an interest, and a record declares one | the same |
+| `interests-unfilled` | an author's `competing_interests` is empty, and another's is filled | the same |
+| `interests-not-stated` | a record declares an interest, and the manuscript has no statement | note |
+| `ethics-approval-missing` | the approval reference is not in an Ethics section, the Declarations or the Methods | warning; a failure at submission |
+| `ethics-approval-denied` | the manuscript says no approval was needed, and the record gives one | the same |
+| `credit-author-missing` | an author with recorded roles is not named in the contributions statement | the same |
+| `credit-role-missing` | a role recorded is not in the contributions statement | the same |
+
+The two notes: with no statement, the record still has something to declare, and a journal
+that asks for the statement has G4's `missing-required-statement` already, while one that
+collects it on its form has the declarations `submit` writes. A note says it without
+failing either. Each hint says what to write, and that authors.yaml is the record, or that
+the record is what is wrong. With no authors.yaml, or none of these fields filled, nothing
+is said. A paper in no project has no authors.yaml, so `audit` does not run the check.
+
+### Tests
+
+The reading of statements reads text, so it is held over generated inputs:
+`tests/generated.py` draws papers whose declarations give a grant identifier, a funder in
+words, an author with an interest beside one with none, an approval reference and CRediT
+roles, each written in a typography drawn (dashes, case, accents, line breaks, emphasis,
+initials, the author with an interest by name or by initials, the contributions by author
+or role first), under headings drawn,
+numbered or not, and labels drawn, opening a paragraph or alone in one, with every near
+miss in each example: an
+identifier with a digit more, a funder with a word changed, a family name changed, the
+initials written as a word in lower case, a role left out, a collective none, a denial of
+funding. `tests/readings.py` gains the reading and
+`tests/test_properties.py` the property, with broken rules in `BROKEN` that it must catch
+under a dozen seeds. Each finding has its case in `tests/test_corruption.py`, the LaTeX twin
+and the supplement among them.
 
 ## A number a summary gives is one the paper reports
 
@@ -12218,6 +12415,56 @@ place a name is written without loading anything into each example, once for a p
 plan names and once for one it does not; `tests/test_properties.py` holds what is said, line
 for line, against twenty-seven broken rules, each failing under a dozen seeds. The limits are in
 Known gaps.
+
+### Each package used is named in the Methods, and cited there
+
+The plan's Software section and the scripts are not what a reader of the paper sees. The
+Methods are, and a package is credited, and its version found again, through the reference
+its authors ask users to cite. Basile, 2026-11-12: each package the analysis uses is named
+in the Methods, and the sentence that names it cites something.
+
+What `check` says (`gates/software_methods.py`, G12, a check of its own since it reads the
+manuscript):
+
+* A package is used when an item of the Software section names it and a script loads it, or
+  `em.software()` recorded it, as above. Base R, the standard library, the project's own
+  modules, the emitters and the language itself are left out, and so is a package named in
+  backticks under Deviations, which is how a package left out on purpose is said.
+* `software-unnamed`: no sentence of the Methods names it. The Methods are read as G9 reads
+  them: the main text's Methods section with its subsections, and the Methods of each file
+  of the supplement, a LaTeX document's in its printed view.
+* `software-uncited`: sentences name it and none of them carries a citation, read as G6
+  reads one beside an appeal to authority (`citation_starts`): a pandoc citation, bracketed
+  or narrative, a LaTeX citation command, which the printed view writes as pandoc's, and a
+  number in brackets or an author and year typed in brackets.
+* Both warn at every stage and never fail. One sentence that names the package and cites is
+  enough, wherever it stands in the Methods. The finding stands on the item's line in the
+  plan, and an uncited one quotes the first sentence that names the package.
+
+A name is a word. In R it is matched with its case, as R loads it, with a point inside it
+and a hyphen after it ("dplyr-based"). In Python it is matched in any case, since authors
+write "Matplotlib" and "NumPy", with `-`, `_` and `.` taken for one another, as PyPI
+compares distribution names (PEP 503), and with a module after a point (`statsmodels.api`).
+A package's names are those its item gives and those the scripts load it by, so an item that
+gives `scikit-learn` and `sklearn` is named by either. A sentence is cut as the claims are
+(`claims.sentence_spans`), and a stretch with no prose, a list item that is only a code
+span, is a sentence of its own. Comments, the keys of bindings and citation keys name
+nothing. A paper whose Methods the reader does not find is not read for its packages: G4
+holds a paper to its required sections.
+
+The example's Methods name statsmodels and not pandas or matplotlib, and cite none of them:
+its references are invented, and a citation of one for a package would be false. Its
+Deviations name the three and say so, and `tests/test_latex_twin.py` reads the plan without
+that entry, so that the twin is held to the three findings the example would give.
+
+The campaign: `software_methods()` in `tests/generated.py` puts into each example one
+package of every kind (named and cited in the main text, in each form of citation; named
+only inside a longer word; named with a citation in the next sentence only; named and cited
+only in the supplement's Methods; an R package and a Python one named in another case; one
+named and cited only in the Results; one the Deviations name; one planned and not loaded;
+one only the emitter recorded); a form of citation after "et al.", "v." and "i.e.", and one
+typed after the stop, are among the forms. `tests/test_properties.py` holds what is said
+against six broken rules, each failing under a dozen seeds.
 
 ## What a change makes stale
 
@@ -24525,7 +24772,17 @@ Open, recorded as each change landed:
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a
     paper titled in bold alone was read before. Pinned by
-    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+    `tests/test_audit.py::test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level`,
+    `tests/test_audit.py::test_init_from_makes_bold_abstract_parts_beside_plain_ones_one_level`.
+  - Where a plain title sits among titles in bold and the typed titles cannot be placed,
+    one of their names typed twice, the plain one is no heading where those in bold can be
+    placed (where they cannot, a bold "Results" typed twice, every typed title is a heading
+    of level 1 to `init --from`, the plain one included): a plain "ABSTRACT" before
+    a bold Introduction, Methods, Results, Discussion and References, a plain "RESULTS" in
+    the Discussion, is set aside by `init --from` in the title page's comment, which no gate
+    reads, and the audit compares nothing, as both did before a plain title was read
+    (review of #641). Pinned by
+    `tests/test_audit.py::test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -26142,6 +26399,60 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the statement, are not read. Accepted.
   - A paper in no project has no records, so `audit --journal` does not run the check and
     says so among what G4 did not check.
+- **The declarations are held to the words of authors.yaml, not to what they mean.** G4's
+  check of the funding, competing interests, ethics and author contributions statements
+  (`gates/disclosures.py`; "The declarations are held to authors.yaml") has these limits,
+  each written down when it was built. Accepted.
+  - A grant entry with a number is found by its number alone, so the right number under the
+    wrong funder passes, and a number written apart from how the record writes it ("12 345"
+    for "12345") is not found.
+    Pinned by `tests/test_disclosures.py::test_a_grant_is_found_by_its_identifier_whatever_funder_it_is_given_under`.
+  - An entry with no number is found only by all its words, in the record's order: "the FRM"
+    or a word left out does not give "Fondation pour la Recherche Médicale".
+    Pinned by `tests/test_disclosures.py::test_a_funder_in_words_is_found_only_as_the_record_writes_it`.
+  - A denial of funding is read by the phrases of `data/disclosures.yaml` only; one in other
+    words is read as a statement that leaves the grant out.
+    Pinned by `tests/test_disclosures.py::test_a_denial_is_read_by_the_listed_phrases_only`.
+  - The headings, labels and phrases are English only: a statement under "Financement" is
+    no funding statement.
+    Pinned by `tests/test_disclosures.py::test_a_statement_under_a_heading_in_another_language_is_not_read`.
+  - An author named in the competing interests statement passes whatever it says of them,
+    "Ada Example declares no competing interests" among it.
+    Pinned by `tests/test_disclosures.py::test_an_author_named_passes_whatever_the_statement_says_of_them`.
+  - A collective none after a clause of its own ("Apart from this, the authors declare no
+    competing interests") is read as one for everyone, and is said to contradict the record
+    of the author the statement named before it.
+    Pinned by `tests/test_disclosures.py::test_a_collective_none_after_the_named_authors_is_read_by_its_words`.
+  - A sentence that says no ethical approval was needed is read wherever it stands in the
+    main text or the supplement, so one about another study is read as the paper's.
+    Pinned by `tests/test_disclosures.py::test_an_ethics_denial_is_read_anywhere_in_the_manuscript`.
+  - Which author holds which CRediT role is not read: a role counts wherever the
+    contributions statement gives it, and an author's initials, in capitals as written
+    ("AE", "A.E."), name them wherever they stand in it or in the competing interests
+    statement, an abbreviation spelt the same among them.
+    Pinned by `tests/test_disclosures.py::test_a_role_counts_whoever_the_statement_gives_it_to`
+    and `tests/test_disclosures.py::test_initials_name_an_author_only_as_written_in_capitals`.
+  - A label alone of more than six words ("**Funding and role of the funding source**",
+    seven) is not read as a label, so what follows it is no statement. Accepted.
+  - A short paragraph wholly in emphasis counts as a label alone, and ends the statement a
+    label alone above it heads. Accepted.
+  - A CRediT heading with a closing stop or a word after it ("CRediT author statement
+    (Elsevier)") is not read as a contributions statement. Accepted.
+  - Elsevier's sentence of none with an exception added to it ("..., except AE, who reports
+    fees from Pharma X.") is read whole as a statement of none. Accepted.
+  - A numbered list of statements ("1. Funding: ...") is not read as labels. Accepted.
+  - A record such as "No financial interests or personal relationships, except fees from
+    Pharma X." reads as none, through the tail of the record's broad form. Accepted.
+  - A declaration given only on the journal's submission form, or in the covering letter, is
+    not read; with no statement of its kind in the manuscript, a recorded grant or interest
+    is a note. Accepted.
+  - A grant identifier written with a comma between its runs of digits ("Grant 12,345") is
+    not found, in the record or in the text: a comma is no separator, since it separates
+    numbers in a list. Accepted.
+  - Two authors with one family name are both named where either is, for competing
+    interests and for contributions.
+    Pinned by `tests/test_disclosures.py::test_two_authors_of_one_family_name_are_named_together`.
+  - A paper in no project has no authors.yaml, so `audit` does not run the check. Accepted.
 - **The plan's Software section is held to the names a script writes, not to what runs.**
   (`gates/software.py`, "The plan names the software for the data".) Accepted.
   - A package loaded by a name the code computes is not read: `library(pkg, character.only
@@ -26181,6 +26492,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Whether the package chosen is the right one for the data is not judged, and no list of
     the packages written for a source is kept: Basile, 2026-11-05, since such a list goes
     stale and favours the fields its authors know.
+
+- **A package is held to the Methods by its name and a citation in its sentence, not by
+  what is cited.** (`gates/software_methods.py`, "Each package used is named in the Methods,
+  and cited there".) Accepted.
+  - Any citation in the sentence stands the package down, whether or not the work cited is
+    the package's reference. Accepted.
+  - A citation in another sentence is not the package's: "We used dplyr. It is described in
+    [@wickham2023]." is `software-uncited`. A citation typed after a sentence's stop and a
+    space, "dplyr. [12]", counts for the sentence it follows and for the one it opens.
+    Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`
+    and `tests/test_corruption.py::test_a_package_named_and_not_cited_in_its_sentence_is_said`.
+  - A sentence goes on after the abbreviations `ABBREVIATIONS` lists in
+    `gates/software_methods.py` ("et al.", "e.g.", "i.e.", "cf.", "v.", "ver.", "vs.",
+    "Fig.", "No."), whatever follows the point, unless a block opens there. Another
+    abbreviation, "approx." or "ref.", before a capital or a bracket still cuts the sentence,
+    and "et al.", "No." or "v." ending a sentence before a capital joins it to the next.
+    Pinned by `tests/test_corruption.py::test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package`.
+  - A citation by author and year written in the prose, "Bates et al. (2015)", or one
+    whose bracket holds more than the work, "(version 1.1-35; Bates et al., 2015)", is not
+    read as a citation, since G6's reading of typed citations takes neither, and the package
+    is `software-uncited`. Accepted.
+  - A package whose name is a word of English, survival, boot, mice or car, is named by
+    that word in any sense: "Overall survival was estimated with the Kaplan-Meier method
+    [12]." names survival, and nothing tells the package from the word.
+    Pinned by `tests/test_corruption.py::test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands`.
+  - An item's other names count only as G12 holds them to the scripts: those a script loads
+    that somebody chose. "`brms`, under `R` with `stats`" is not named by "R" nor "stats".
+    Pinned by `tests/test_corruption.py::test_the_language_and_base_names_an_item_gives_do_not_name_its_package`.
+  - The example's Deviations entry 9 names `pandas`, `statsmodels` and `matplotlib` in
+    backticks, so that its Methods are not held to citing them, and that stands down
+    `planned-package-unloaded` and `plan-package-unnamed` for the three in the example too.
+    Accepted.
+  - The language itself, R or Python, and its version are not held to the Methods.
+    Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
+  - A Python package is named only by its item's first name and the names the scripts import
+    it by. An item that gives only `sklearn` is not named by "scikit-learn", its
+    distribution's name, since nothing here maps one to the other.
+    Pinned by `tests/test_corruption.py::test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names`.
+  - An R package is matched with its case, so "Dplyr" opening a sentence does not name
+    dplyr. Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`.
+  - An item's other name counts only where a script loads a package of that name: `glm` does
+    not, and `numpy` in "`pandas` with `numpy`" or `rstan` in "`brms` with `rstan`" does, so
+    "Arrays were handled with NumPy [3]" names and cites pandas, as on main. Accepted.
+  - A package only `em.software()` recorded, which no script loads, is matched as Python in a
+    project with scripts in both languages. Accepted.
+  - A paper whose Methods G9's reading does not find, in the main text or the supplement, is
+    not read, and nothing is said of its packages.
+    Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
+  - The finding stands on the plan's item, not on the sentence of the manuscript, since a
+    package unnamed has no sentence. Accepted.
 
 - **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
   number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
@@ -26427,6 +26788,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+- **G14 finds a title page by the shape of its lines, and leans towards finding none.**
+  The rules are in "Abbreviations are checked against the manuscript", under "The title page
+  is not read". Where it finds none, the title page is read as before, its units and
+  institutions reported as undefined; where it finds one that is not, the paper's opening
+  is not read for abbreviations. Accepted.
+  - A title that ends in a stop, holds two sentences, or runs over three lines or 40 words
+    is no title, and a paper that opens on one has no title page; so has a PDF whose first
+    line, or first line of its title in sentence case, reads as prose, its lines standing in
+    one paragraph before the first heading, and one whose first paragraph holds a sentence
+    on any line, which is then read as one block. Accepted.
+  - A title page with one line only a title page holds is found only where the paper's
+    opening ends it: ended by prose, by a heading of the back matter or by the end of the
+    file, it needs two, and is otherwise read. Pinned by
+    `tests/test_language.py::test_one_line_of_a_title_page_before_prose_is_read`.
+  - A list of abbreviations whose first entry stands on its label's line, "**Abbreviations:**
+    FDA: Food and Drug Administration", or whose entries run on with commas, "Abbreviations:
+    FDA, Food and Drug Administration; WHO, ...", is no glossary of entries to G14, on the
+    title page or elsewhere: that entry, or every one, defines nothing. The title page reads
+    it as the rest of the paper does. Pinned by
+    `tests/test_language.py::test_a_list_on_the_title_page_is_read_as_with_no_title_page`.
+  - The other languages are read by a few words each: an abstract's name in French,
+    Spanish, Portuguese, German and Italian; a salutation in French, Spanish and German; a
+    label in French, Spanish, German and Italian; an institution's word in those four; and a
+    sentence's words only in English and a few of French. A title page in another language is
+    read as before. Accepted.
+  - Of those words only the French letter's (its service, department and salutation) are
+    held by a test; the rest, and a sentence in Spanish or Italian that names a
+    "Departamento" or a "Dipartimento" in pieces as short as an affiliation's, which none of
+    the words of a sentence marks as prose and so reads as an affiliation, are held by none.
+    Accepted.
+  - Whether a first paragraph of more than three lines is read a line at a time is tested on
+    each line apart: a title page typed a line to each with one line that holds a sentence
+    is read as one block, and so found only where that block is no prose; a prose paragraph
+    none of whose lines holds a sentence alone is read a line at a time. Accepted.
+  - A line of the title page that reads as prose ends the title page there, and what
+    follows it is read: an affiliation with "a" or "we" in it, a funding line "Funding: This
+    work was ...". Accepted.
+  - A sentence that holds none of the words of a sentence, no "the" twice and no second
+    sentence, names an institution and keeps between its commas to ten words, "Students of
+    Rouen University, France, sat exams at CHU Caen in 2021.", reads as an affiliation:
+    after a title and before the paper's first section, it is taken for a title page and
+    not read for abbreviations. Accepted.
+  - "Correspondence" is a title page's label, the corresponding author's, and so not the
+    paper's opening, though The Lancet names a section so. Accepted.
+  - Only the first file of the paper and of the supplement may open on a title page. A
+    title page kept in a file of its own that the build prints after `main.md` is read.
+    Pinned by
+    `tests/test_language.py::test_only_the_first_file_of_the_paper_may_open_on_a_title_page`.
+  - A title page of more than 600 words is read whole, as `init --from` leaves one in the
+    text. Pinned by `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
   - A figure written outside the project is named by its file name alone, so two from
     different folders with one name are named alike: `alt-text.md` then holds two
     "## x.svg". Accepted.

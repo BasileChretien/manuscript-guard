@@ -899,6 +899,226 @@ def initials_named(draw: st.DrawFn) -> tuple[str, list[str]]:
                          INITIAL_PART])  # fmt: skip
 
 
+#: A title page's titles: in sentence case, which reads as prose, in bold and in capitals of
+#: each word, and as a heading; each with a short form in it, which is the title page's.
+TITLE_PAGE_TITLES = (
+    "Pharmacology exam success in the PACES year",
+    "**Influence of Learning Activities on Exam Success in the PACES Year**",
+    "# Exam success in the PACES year",
+)
+#: The lines of a full title page: the authors with their marks or their degrees, in
+#: capitals as Word papers write family names; the affiliations, French and English, with
+#: their units and institutions; one that spells INSERM out; the corresponding author, a
+#: running title, a word count, keywords and a note under a mark. Every capital in them is
+#: the title page's, and none is read.
+TITLE_PAGE_AUTHORS = (
+    "Ana MARTIN^1^, Paul GIRARD^2,3^\\*, Lea ROUX^1^",
+    "Ana MARTIN, PharmD, MSc^1^; Paul GIRARD, MD, PhD^2^",
+)
+TITLE_PAGE_AFFILIATIONS = (
+    "Université de Rouen, UFR Santé, F-76000 Rouen, France",
+    "Normandie Univ, UNICAEN, UMR-S 1237, PhIND, GIP Cyceron, F-14000 Caen, France",
+    "Institut national de la santé et de la recherche médicale (INSERM), Paris, France",
+)
+#: How an affiliation is marked: a superscript, or a numbered list as pandoc writes Word's.
+TITLE_PAGE_MARKS = ("^{}^ ", "{}.  ")
+TITLE_PAGE_LINES = (
+    "**Corresponding author**",
+    "Correspondence to Dr Ana MARTIN, CHU de Rouen, ana.martin@example.org",
+    "E-mail: ana.martin@example.org",
+    "ORCID: 0000-0002-1825-0097",
+    "Running title: Exam success in the PACES",
+    "Word count: 3,412",
+    "Keywords: pharmacology; L.AS; medical education",
+    "\\*These authors contributed equally to this work.",
+)
+#: A title page of a single line that only a title page holds, after names with no mark.
+TITLE_PAGE_NAMES = "Ana Martin, Paul Girard and Lea Roux"
+TITLE_PAGE_ONE_AFFILIATION = "Department of Pharmacology, CHU de Rouen, UNICAEN, Rouen, France"
+#: Each line a title page may hold as its only one that a title page alone holds, after
+#: names in capitals with no mark: the authors with their degrees, with their marks, an
+#: e-mail address alone and an ORCID iD alone.
+TITLE_PAGE_ONE_LINE = {
+    "degrees": ("Ana MARTIN, PharmD, MSc; Paul GIRARD, MD, PhD",),
+    "marked": ("Ana MARTIN^1^, Paul GIRARD^2^",),
+    "email": ("Ana MARTIN and Paul GIRARD", "ana.martin@example.org"),
+    "orcid": ("Ana MARTIN and Paul GIRARD", "0000-0002-1825-0097"),
+}
+#: What the title page alone uses again: a definition the text gives, which stays unused,
+#: and an entry of the list of abbreviations, which is used.
+TITLE_PAGE_DEFINED = ("the Unité de Formation et de Recherche (UFR) hosted the data", "UFR")
+TITLE_PAGE_LISTED = ("UNICAEN: Université de Caen Normandie", "UNICAEN")
+#: A first section run in from its label, after a title page of one affiliation.
+RUN_IN_OPENINGS = ("**Background:** ", "Background: ", "__Introduction.__ ")
+#: A list of abbreviations on the title page, which ends it and is read: in one paragraph,
+#: Pediatrics' form, and under a label in bold with an entry to a paragraph. (An entry on
+#: the label's own line is no entry to G14's glossary, title page or not: DESIGN.md, Known
+#: gaps.)
+TITLE_PAGE_LISTS = (
+    "Abbreviations: Food and Drug Administration (FDA); World Health Organization (WHO)",
+    *(f"{opener}\n\nFDA: Food and Drug Administration\n\nWHO: World Health Organization"
+      for opener in ("**Abbreviations:**", "**Abbreviations and acronyms**", "Glossary of terms",
+                     "Acronyms and abbreviations:")),
+)  # fmt: skip
+#: The headings an abstract opens under, and a line that is only its name, in bold or not,
+#: and its name run in before its text.
+ABSTRACT_OPENINGS = ("# Abstract", "## ABSTRACT", "**Abstract**", "Abstract", "# Summary",
+                     "**Abstract:** ")  # fmt: skip
+#: The first section of a paper with no abstract: a heading, numbered or not, and a line in
+#: bold, none of them an Abstract.
+SECTION_OPENINGS = ("# Introduction", "# Background", "## 1. Introduction", "# Main text",
+                    "# Methods", "**Introduction**")  # fmt: skip
+#: How a letter opens, and the short form its salutation holds, which is the letter's own.
+SALUTATIONS = (("Dear Editor,", ()), ("To the Editor of the EJHP:", ("EJHP",)), ("Sir,", ()),
+               ("Dear Sir or Madam,", ()))  # fmt: skip
+#: A paper's opening that names a university in a sentence and defines a short form there,
+#: which is no title page: a sentence with "we" in pieces as short as an affiliation's, and
+#: one with no word of a sentence in a piece longer than one; each after a title. And one
+#: sentence that opens the paper with no title.
+OPENING_MENTIONS = (
+    "We taught pharmacology at the University of Rouen (UR), France, in 2021.",
+    "Second-year students from Rouen University (UR) took exams at CHU Caen during spring "
+    "2021 and autumn 2022",
+)
+OPENING_SENTENCE = "Students of the University of Rouen (UR) sat the exam at the CHU in 2021."
+#: A paper with no title page whose title stands alone above its Introduction, defining a
+#: short form a hospital's name gives it, which is read.
+TITLE_ALONE = "Pharmacology teaching at Rouen University Hospital (RUH)"
+
+
+@st.composite
+def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]:
+    """Manuscripts that open in each way a title page ends, by name, each with the findings
+    G14 gives, in order: `abstract`, a full title page, its lines in an order drawn, ending at
+    an Abstract drawn among its forms; `section`, a title page of one affiliation ending at
+    another first section; `letter`, one ending at a salutation, with no heading at all;
+    `prose`, a letter with no salutation, whose title page of two lines only a title page
+    holds ends where its prose begins; `degrees`, `marked`, `email` and `orcid`, title pages
+    whose one such line is the authors with their degrees, with their marks, an e-mail
+    address alone and an ORCID iD alone; `run-in`, one ending at a section run in from its
+    label; `listed`, one ending at a list of abbreviations, which is read;
+    `headed` and `alone`, papers with no title page, one opening on its Introduction, and one
+    on a title alone; and `mentions-0`, `mentions-1` and `sentence`, papers whose opening
+    names a university in a sentence. One of each in every example, and the same line ends
+    in all of them.
+
+    The title page's capitals are reported nowhere; its spelling out of INSERM defines
+    nothing, so the text's INSERM is undefined; the CHU, which the text uses too, is reported
+    where the text uses it. In `abstract`, the text defines UFR, which only the title page
+    uses again, and it is unused; the list of abbreviations at its end has UNICAEN, which
+    only the title page uses, and it is used. In the papers with no title page, every
+    capital is read."""
+    end = draw(st.sampled_from(("\n", "\n", "\r\n")))
+    title = draw(st.sampled_from(TITLE_PAGE_TITLES))
+
+    def body(*uses: str) -> str:
+        text, _starts = _paragraphs(draw, uses)
+        return text
+
+    def paper(*blocks: str) -> str:
+        return "\n\n".join(block.strip("\n") for block in blocks if block) + "\n"
+
+    mark = draw(st.sampled_from(TITLE_PAGE_MARKS))
+    affiliations = [mark.format(at) + line for at, line in enumerate(TITLE_PAGE_AFFILIATIONS, 1)]
+    lines = draw(st.permutations([*affiliations, *TITLE_PAGE_LINES]))
+    opening = draw(st.sampled_from(ABSTRACT_OPENINGS))
+    # A run-in label has its text after it on its line, any other opening under it.
+    abstract = opening + ("" if opening.endswith(" ") else "\n\n") + "the NIH paid for the reports"
+    # The title is left to the front matter in some, as a Markdown paper keeps it.
+    titled = draw(st.booleans())
+    # The text defines UFR and uses it only on the title page, which is no use of it; the list
+    # of abbreviations at the end has UNICAEN, which the title page alone uses, and that is a
+    # use of an entry of the list (Basile, 2026-11-12, "Yes, count it").
+    main = body("the reporting odds ratio (ROR) was computed", "the ROR rose at the CHU",
+                "the INSERM unit paid for the survey", TITLE_PAGE_DEFINED[0])  # fmt: skip
+    found = {
+        "abstract": (
+            paper(title if titled else "---\ntitle: Exam success\n---",
+                  draw(st.sampled_from(TITLE_PAGE_AUTHORS)), *lines, abstract,
+                  "# Introduction", main, "# Abbreviations", TITLE_PAGE_LISTED[0]),
+            sorted([*(("abbreviation-undefined", short) for short in ("CHU", "INSERM", "NIH")),
+                    ("abbreviation-unused", TITLE_PAGE_DEFINED[1])]),
+        ),
+        "section": (
+            paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                  draw(st.sampled_from(SECTION_OPENINGS)), body("the CHU paid for the survey")),
+            [("abbreviation-undefined", "CHU")],
+        ),
+    }
+    salutation, said = draw(st.sampled_from(SALUTATIONS))
+    found["letter"] = (
+        paper(title, "Ana Martin and Paul Girard", TITLE_PAGE_ONE_AFFILIATION, salutation,
+              body("We read with interest the report on the NIH survey.",
+                   "the CHU paid for the survey")),
+        sorted(("abbreviation-undefined", short) for short in ("CHU", "NIH", *said)),
+    )
+    # A title page whose only line a title page alone holds is each of those that may be,
+    # ending at the Introduction; one of an affiliation ending at a section run in from its
+    # label; and one whose list of abbreviations ends it, which is read and defines.
+    for name, lines_of in TITLE_PAGE_ONE_LINE.items():
+        found[name] = (paper(title, *lines_of, "# Introduction",
+                             body("the CHU paid for the survey")),
+                       [("abbreviation-undefined", "CHU")])  # fmt: skip
+    found["run-in"] = (
+        paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+              draw(st.sampled_from(RUN_IN_OPENINGS)) + "the NIH paid for the survey"),
+        [("abbreviation-undefined", "NIH")],
+    )
+    found["listed"] = (
+        paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+              draw(st.sampled_from(TITLE_PAGE_LISTS)), "# Introduction",
+              body("the FDA and the WHO paid for the survey", "the CHU read the reports")),
+        [("abbreviation-undefined", "CHU")],
+    )
+    # A letter that opens with no salutation: its title page of two lines only a title page
+    # holds ends where its prose begins.
+    found["prose"] = (
+        paper(title, draw(st.sampled_from(TITLE_PAGE_AUTHORS)), affiliations[1],
+              body("We read with interest the report on the NIH survey.",
+                   "the CHU paid for the survey")),
+        [("abbreviation-undefined", short) for short in ("CHU", "NIH")],
+    )
+    header = draw(st.sampled_from(("", "---\ntitle: Exam success\n---")))
+    found["headed"] = (
+        paper(header, "# Introduction",
+              body("the INSERM unit and the CHU paid for the survey",
+                   "the UNICAEN team read the reports")),
+        [("abbreviation-undefined", short) for short in ("CHU", "INSERM", "UNICAEN")],
+    )
+    found["alone"] = (
+        paper(TITLE_ALONE, "# Introduction", body("the RUH and the CHU paid for the survey")),
+        [("abbreviation-undefined", "CHU")],
+    )
+    methods = ("# Methods", body("the UR and the CHU paid for the survey"))
+    for at, mention in enumerate(OPENING_MENTIONS):
+        # With no title page, the title is read, and its PACES is undefined; a heading's
+        # words are not read for abbreviations anyway.
+        heading = draw(st.sampled_from(TITLE_PAGE_TITLES))
+        shorts = ("CHU",) if heading.startswith("#") else ("CHU", "PACES")
+        found[f"mentions-{at}"] = (
+            paper(heading, mention, *methods),
+            [("abbreviation-undefined", short) for short in shorts],
+        )
+    found["sentence"] = (paper(OPENING_SENTENCE, *methods), [("abbreviation-undefined", "CHU")])
+    return {name: (text.replace("\n", end), expected)
+            for name, (text, expected) in found.items()}  # fmt: skip
+
+
+#: The openings an input of the `abbreviations` reading starts with, so that old and new
+#: are compared on title pages: none, a full one ending at an Abstract, one ending at an
+#: Introduction, and a letter's.
+TITLE_PAGE_OPENINGS = (
+    "",
+    "\n\n".join((TITLE_PAGE_TITLES[1], TITLE_PAGE_AUTHORS[0],
+                 *(f"^{at}^ {line}" for at, line in enumerate(TITLE_PAGE_AFFILIATIONS, 1)),
+                 *TITLE_PAGE_LINES, "# Abstract", "the NIH paid for the reports\n\n")),
+    "\n\n".join((TITLE_PAGE_TITLES[0], TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                 "# Introduction\n\n")),
+    "\n\n".join((TITLE_PAGE_TITLES[2], TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                 "Dear Editor,\n\n")),
+)  # fmt: skip
+
+
 #: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.
 STATISTICS_EXEMPT = ("ANOVA", "RMSD", "RMSE", "SD")
 STATISTICS_NOT = ("CI", "HR", "IQR", "OR", "SE", "SEM")
@@ -7105,6 +7325,193 @@ def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
         return " ".join([*pieces[:at], written, *pieces[at:]])
 
     return text, [put(written) for written in DOI_NAMED], [put(other) for other in DOI_NOT_NAMED]
+
+
+# ------------------------------------------------- the declarations held to authors.yaml
+
+#: The dashes an author types where the record writes a hyphen.
+DECLARED_DASHES = ("-", chr(0x2010), chr(0x2011), chr(0x2013), chr(0x2014), chr(0x2212))
+#: The record a paper's declarations are held to: a grant with an identifier and a funder in
+#: words, an author with an interest beside one with none, roles of both, and an approval.
+#: The family names have an accent, a hyphen, an apostrophe and particles.
+DECLARED_FUNDER = "Fondation pour la Recherche M" + chr(0xE9) + "dicale"
+DECLARED_FAMILIES = ("L" + chr(0xE9) + "vy-Strauss", "O'Brien", "van der Berg",
+                     "M" + chr(0xFC) + "ller")  # fmt: skip
+#: "Funding acquisition" names funding, and as PLOS writes it first in its paragraph is a
+#: label that is no funding statement (round 2 of #653).
+DECLARED_ROLES = ("Conceptualization", "Funding acquisition",
+                  "Writing " + chr(0x2013) + " original draft",
+                  "Writing " + chr(0x2013) + " review & editing")  # fmt: skip
+#: Each heading or label a statement of each kind may stand under, `{}` its words.
+DECLARED_HEADINGS = {
+    "funding": ("Funding", "Sources of funding", "Financial support", "Acknowledgements"),
+    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests"),
+    "ethics": ("Ethics", "Ethics approval and consent to participate", "Methods"),
+    "contributions": ("Author contributions", "Contributors", "CRediT author statement"),
+}  # fmt: skip
+#: The ways a funding statement says there was none, each a finding beside a recorded grant.
+FUNDING_DENIALS = (
+    "This work received no funding.", "No funding was received for this work.",
+    "This research did not receive any specific grant from funding agencies.",
+)  # fmt: skip
+
+
+def _typed(draw: st.DrawFn, words: str, *, accents: bool = True) -> str:
+    """`words` as an author may type them: in a case drawn, its accents taken off or kept,
+    an apostrophe curly or straight, a space a line break, emphasised or not."""
+    import unicodedata
+
+    case = draw(st.sampled_from(("as", "upper", "lower")))
+    typed = {"as": words, "upper": words.upper(), "lower": words.lower()}[case]
+    if accents and draw(st.booleans()):
+        typed = "".join(c for c in unicodedata.normalize("NFKD", typed)
+                        if not unicodedata.combining(c))  # fmt: skip
+    if draw(st.booleans()):
+        typed = typed.replace("'", chr(0x2019))
+    spaces = [i for i, c in enumerate(typed) if c == " "]
+    if spaces and draw(st.booleans()):
+        at = draw(st.sampled_from(spaces))
+        typed = typed[:at] + "\n" + typed[at + 1 :]
+    mark = draw(st.sampled_from(("", "", "*", "**")))
+    return f"{mark}{typed}{mark}"
+
+
+def _grant_typed(draw: st.DrawFn, grant: str) -> str:
+    """A grant identifier as typed: its dashes drawn, its case, its parts joined or spaced,
+    in brackets or a link."""
+    dash = draw(st.sampled_from(DECLARED_DASHES))
+    typed = grant.replace("-", dash)
+    if draw(st.booleans()):
+        typed = typed.lower()
+    if draw(st.booleans()):
+        typed = typed.replace(dash, " ")
+    shape = draw(st.sampled_from(("{}", "({})", "[{}](https://example.org/{})", "**{}**")))
+    return shape.format(typed, grant)
+
+
+def _initials_typed(draw: st.DrawFn, given: str, family: str) -> str:
+    letters = [given[0], family[0]]
+    return draw(st.sampled_from(("{}.{}.", "{}{}", "{}. {}.", "{}-{}"))).format(*letters)
+
+
+def _role_typed(draw: st.DrawFn, role: str) -> str:
+    dash = draw(st.sampled_from(DECLARED_DASHES))
+    typed = role.replace(chr(0x2013), dash)
+    if draw(st.booleans()):
+        typed = typed.replace("&", "and")
+    if draw(st.booleans()):
+        typed = typed.replace("ization", "isation")
+    return _typed(draw, typed, accents=False)
+
+
+def _headed(draw: st.DrawFn, kind: str, body: str) -> str:
+    """`body` under a heading of `kind`, numbered or not, or a label: one that opens the
+    paragraph, or one alone in a paragraph of its own, as a conversion from Word writes it
+    (round 1 of #653)."""
+    title = draw(st.sampled_from(DECLARED_HEADINGS[kind]))
+    shape = draw(st.sampled_from(("heading", "heading", "label", "plain label", "alone",
+                                  "plain alone")))  # fmt: skip
+    if shape == "heading" or title == "Methods":
+        # The Methods are read by their heading, as G9 reads them, and by no label.
+        number = draw(st.sampled_from(("", "", "6. ", "6.1 ", "VI. ")))
+        return f"{'#' * draw(st.integers(1, 3))} {number}{title}\n\n{body}"
+    if "\n\n" in body and shape in ("label", "plain label"):
+        # A label that opens a paragraph heads that paragraph alone; a statement of several
+        # stands under a heading or a label of its own.
+        shape = "alone" if shape == "label" else "plain alone"
+    if shape == "label":
+        return f"**{title}:** {body}"
+    if shape == "alone":
+        return f"**{title}**\n\n{body}"
+    if shape == "plain alone":
+        return f"{title}:\n\n{body}"
+    return f"{title}: {body}"
+
+
+@st.composite
+def declaration_papers(
+    draw: st.DrawFn,
+) -> tuple[dict, str, list[tuple[str, str]]]:
+    """A record of every kind G4 holds the declarations to, a paper whose statements give
+    each in a typography drawn under headings or labels drawn, in an order drawn between
+    pieces of the pool; and for each near miss, the code it must raise and the paper with it
+    in place of the statement it changes: a grant with a digit more, a funder with a word
+    changed, a denial of funding, the family name of the author with an interest changed,
+    their initials written as a word in lower case, a collective none, a role left out, the
+    initials of an author changed, the approval with a digit changed. One of every kind in
+    each example. The contributions name the authors first, or, as PLOS writes them, the
+    roles first, one paragraph each (round 2 of #653)."""
+    family = draw(st.sampled_from(DECLARED_FAMILIES))
+    grant = draw(st.sampled_from(("ANR-20-CE17-0001", "R01-HL123456", "2021-0456-12")))
+    approval = draw(st.sampled_from(("CPP Ouest III 2021-A00123-36", "IRB-2019-117")))
+    authors = {
+        "authors": [
+            {"given": "Ada", "family": family, "funding": [f"Agence ({grant})", DECLARED_FUNDER],
+             "competing_interests": "Consulting fees from Pharma X.",
+             "credit": list(DECLARED_ROLES[:3])},
+            {"given": "Blaise", "family": "Sample", "competing_interests": "None declared.",
+             "credit": [DECLARED_ROLES[3]]},
+        ],
+        "roles": {"ethics_lead": {"author": "Sample", "approval": approval}},
+    }  # fmt: skip
+    # The author with an interest, by name or, as The Lancet writes it, by initials.
+    a_name = draw(st.sampled_from(("Ada " + _typed(draw, family),
+                                   _initials_typed(draw, "Ada", family))))  # fmt: skip
+    b_initials = _initials_typed(draw, "Blaise", "Sample")
+    roles = [_role_typed(draw, role) for role in DECLARED_ROLES]
+    approval_dash = draw(st.sampled_from(DECLARED_DASHES))
+    a_initials = _initials_typed(draw, "Ada", family)
+    role_first = draw(st.booleans())
+
+    def contributions(shown: list[str | None], b_name: str) -> str:
+        held = [(shown[0], a_initials), (shown[1], a_initials), (shown[2], a_initials),
+                (shown[3], b_name)]  # fmt: skip
+        if role_first:
+            return "\n\n".join(f"{role}: {who}." for role, who in held if role is not None)
+        first = ", ".join(role for role in shown[:3] if role is not None)
+        return f"{a_initials}: {first}. {b_name}: {shown[3]}."
+
+    bodies = {
+        "funding": f"Supported by {_grant_typed(draw, grant)} and the "
+                   f"{_typed(draw, DECLARED_FUNDER)}.",
+        "interests": f"{a_name} received consulting fees from Pharma X. The other authors "
+                     "declare no competing interests.",
+        "ethics": f"Approved ({_typed(draw, approval.replace('-', approval_dash))}).",
+        "contributions": contributions(roles, b_initials),
+    }  # fmt: skip
+    order = draw(st.permutations(list(bodies)))
+    # Plain words between the statements: the pool's listings and comments, left open, would
+    # hide what follows them, as they hide it from the reader.
+    between = st.lists(st.sampled_from(FILLER), min_size=3, max_size=12)
+    gaps = {kind: " ".join(draw(between)).capitalize() + "." for kind in order}
+
+    def paper(changed: dict[str, str]) -> str:
+        said = {**bodies, **changed}
+        return "".join(f"{gaps[kind]}\n\n{_headed(draw, kind, said[kind])}\n\n"
+                       for kind in order)  # fmt: skip
+
+    more = grant + "7"
+    other_family = "Smith"
+    near = [
+        ("funding-grant-missing", {"funding": f"Supported by {_grant_typed(draw, more)} and "
+                                   f"the {_typed(draw, DECLARED_FUNDER)}."}),
+        ("funding-grant-missing", {"funding": f"Supported by {_grant_typed(draw, grant)} and "
+                                   "the Fondation pour la Recherche Clinique."}),
+        ("funding-denied", {"funding": draw(st.sampled_from(FUNDING_DENIALS))}),
+        ("interests-author-missing", {"interests": f"Ada {other_family} received consulting "
+                                      "fees. The other authors declare no competing interests."}),
+        # Ada's initials as a word in lower case, "am" for Ada Müller, name no one.
+        ("interests-author-missing", {"interests": f"Of the authors, {('A' + family[0]).lower()}"
+                                      " received consulting fees. The other authors declare no "
+                                      "competing interests."}),
+        ("interests-none-contradicted", {"interests": "The authors declare no competing "
+                                         "interests."}),
+        ("credit-role-missing", {"contributions": contributions(
+            [roles[0], None, roles[2], roles[3]], b_initials)}),
+        ("credit-author-missing", {"contributions": contributions(roles, "C.D.")}),
+        ("ethics-approval-missing", {"ethics": "Approved (" + approval.replace("1", "4") + ")."}),
+    ]  # fmt: skip
+    return authors, paper({}), [(code, paper(changed)) for code, changed in near]
 
 
 # --------------------------------------------------- the head over a fetched PDF's title
@@ -13395,6 +13802,105 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# ------------------------------------- the packages used, named and cited in the Methods
+
+#: How a sentence cites, written after the package's name and before its stop: pandoc's,
+#: bracketed and narrative, a number typed in brackets, an author and year typed in brackets;
+#: after an abbreviation a sentence is not cut at, "et al.", "v." and "i.e."; and after the
+#: stop and a space, where the citation is the sentence's it follows (round 1 of #659).
+SOFTWARE_CITATIONS = (" [@{key}]", ", as @{key} describes", " [{number}]",
+                      " (Fictional et al., 2019)", ", described by Bates et al. [{number}]",
+                      ", described by Bates et al. [@{key}]", " (v. 3.4.0) [{number}]",
+                      ", i.e. Linear models [@{key}]",
+                      ", as Bates et al. (2015) describe [{number}]", ". [{number}]")  # fmt: skip
+#: How the Methods write a package's name, in each language.
+SOFTWARE_NAMINGS = {"r": ("{p}", "`{p}`", "`{p}::fit()`"),
+                    "python": ("{p}", "`{p}`", "`import {p}`")}  # fmt: skip
+#: Each kind of package, and what G12 says of it: named and cited in the main text, once
+#: for each form of citation; named only inside a longer word; named with the citation in
+#: the next sentence; named and cited in the supplement's Methods only; an R package and a
+#: Python one named in another case; named and cited only in the Results; one the Deviations
+#: name; one no script loads; one only the emitter recorded.
+SOFTWARE_KINDS = {
+    **{f"cited {form}": None for form in range(len(SOFTWARE_CITATIONS))},
+    "inside": "software-unnamed", "next": "software-uncited", "supplement": None,
+    "r case": "software-unnamed", "python case": None, "results": "software-unnamed",
+    "deviated": None, "unloaded": None, "recorded": "software-unnamed",
+}  # fmt: skip
+
+
+@st.composite
+def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
+    """A plan whose Software section names one package of every kind in `SOFTWARE_KINDS`,
+    in an order drawn, the scripts that load them, the names the emitter recorded, and a
+    main text and a supplement whose Methods name them; and what G12 says of them, as
+    `[code, severity, path, line]`, the line the item's in the plan."""
+    prefix = draw(st.sampled_from(("qz", "vk", "pm")))
+    kinds = draw(st.permutations(sorted(SOFTWARE_KINDS)))
+    fixed = {"r case": "r", "python case": "python", "recorded": "python"}
+    plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
+            "## Software", ""]  # fmt: skip
+    scripts = {"r": [], "python": []}
+    emitted: list[str] = []
+    deviations: list[str] = []
+    methods: list[str] = []
+    supplement: list[str] = []
+    results: list[str] = []
+    found = []
+    for number, kind in enumerate(kinds):
+        language = fixed.get(kind) or draw(st.sampled_from(("r", "python")))
+        name = prefix + chr(ord("a") + number // 26) + chr(ord("a") + number % 26)
+        if language == "r" and draw(st.booleans()):
+            name += ".x" + chr(ord("a") + number % 26)
+        line = len(plan) + 1
+        plan.append(f"- `{name}` 1.{number}.0: {draw(st.sampled_from(FILLER))}")
+        if SOFTWARE_KINDS[kind]:
+            found.append([SOFTWARE_KINDS[kind], "warn", "design/plan.md", line])
+        if kind == "recorded":
+            emitted.append(name)
+        elif kind != "unloaded":
+            scripts[language].append(f"library({name})" if language == "r" else f"import {name}")
+        form = draw(st.integers(0, len(SOFTWARE_CITATIONS) - 1))
+        if kind.startswith("cited "):
+            form = int(kind.split()[1])
+        cited = SOFTWARE_CITATIONS[form].format(key=f"fictional2019{chr(97 + number % 26)}",
+                                                number=number + 1)  # fmt: skip
+        named = draw(st.sampled_from(SOFTWARE_NAMINGS[language])).format(p=name)
+        if kind.startswith("cited ") or kind == "deviated" and draw(st.booleans()):
+            methods.append(f"Models were fitted with {named}{cited}.")
+        elif kind == "inside":
+            methods.append(f"The {name}ed tables were kept{cited}.")
+        elif kind == "next":
+            methods.append(f"Tables were drawn with {named}. Their layout follows earlier "
+                           f"work{cited}.")  # fmt: skip
+        elif kind == "supplement":
+            supplement.append(f"Weights were computed with {named}{cited}.")
+        elif kind in ("r case", "python case"):
+            other = draw(st.sampled_from((name.upper(), name.capitalize())))
+            methods.append(f"Curves were smoothed with {other}{cited}.")
+        elif kind == "results":
+            results.append(f"Counts were made with {named}{cited}.")
+        if kind == "deviated":
+            deviations.append(f"`{name}` was set aside after the plan was agreed.")
+    # Each sentence in the Methods' own text or in a subsection of them, as drawn.
+    under = draw(st.lists(st.booleans(), min_size=len(methods), max_size=len(methods)))
+    top = " ".join(s for s, deep in zip(methods, under, strict=True) if not deep) or "Text."
+    below = " ".join(s for s, deep in zip(methods, under, strict=True) if deep) or "Text."
+    main = (f"# Introduction\n\nReports were included.\n\n# Methods\n\n{top}\n\n"
+            f"## Statistical analysis\n\n{below}\n\n# Results\n\n{' '.join(results)}\n")
+    supplementary = (f"# Supplementary methods\n\n{' '.join(supplement)}\n\n"
+                     "## Table S1. Counts\n\nCounts were kept.\n")  # fmt: skip
+    plan += ["", "## Deviations from the plan", ""]
+    plan += [f"{number}. {said}" for number, said in enumerate(deviations, 1)] or ["None."]
+    given = {
+        "plan": "\n".join(plan) + "\n",
+        "scripts": {"analysis/01_fit.R": "\n".join(scripts["r"]) + "\n",
+                    "analysis/02_fit.py": "\n".join(scripts["python"]) + "\n"},
+        "emitted": emitted, "own": [], "main": main, "supplement": [supplementary],
+    }  # fmt: skip
+    return given, sorted(found, key=json.dumps)
+
+
 # --------------------------------------- titles standing alone, placed, and titles in bold
 
 #: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
@@ -14219,6 +14725,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "disclosures": st.one_of(
+        declaration_papers().flatmap(lambda drawn: st.sampled_from(
+            [{"authors": drawn[0], "main": drawn[1]}]
+            + [{"authors": drawn[0], "main": text} for _code, text in drawn[2]])),
+        st.tuples(declaration_papers(), texts(), texts()).map(lambda drawn: {
+            "authors": drawn[0][0], "main": drawn[1], "supplement": drawn[2]}),
+    ),  # fmt: skip
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),
     "vault named": vault_commands().flatmap(
@@ -14280,8 +14793,12 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
-                lambda text: f"{text}\n\n{GLOSSARY_OPENED}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+            "text": st.tuples(
+                st.sampled_from(TITLE_PAGE_OPENINGS),
+                texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            ).map(
+                lambda drawn: f"{drawn[0]}{drawn[1]}\n\n{GLOSSARY_OPENED}\n\n# Methods\n\n"
+                f"{INITIALS_NAMED}\n"
             ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
@@ -14333,4 +14850,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ])
     ),  # fmt: skip
     "software": software_plans().map(lambda drawn: drawn[0]),
+    "software in the methods": software_methods().map(lambda drawn: drawn[0]),
 }

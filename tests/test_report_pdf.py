@@ -356,6 +356,43 @@ def test_each_paper_s_words_in_the_contents_go_to_that_paper(
         assert printed and int(printed.group(1)) == where[0] + 1, (name, where)
         assert where in links(reader.pages[0])
     assert marks["Writing and language: first.md"] != marks["Writing and language: second.md"]
+    # The tile stands in "What was checked", over the contents (round 2 of #646).
+    tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
+    assert any(top > marks["In this report"][1] for top in tops), tops
+
+
+def _tops_of_links_to(reader, page, where: tuple[int, int]) -> list[float]:
+    """The top of each area of `page` that links to the place `where`, (page, top)."""
+    number = {one.indirect_reference.idnum: at for at, one in enumerate(reader.pages)}
+    annots = [annot.get_object() for annot in page.get("/Annots") or []]
+    return [float(annot["/Rect"][3]) for annot in annots
+            if annot.get("/Subtype") == "/Link" and "/Dest" in annot
+            and (number[annot["/Dest"][0].idnum], round(float(annot["/Dest"][3]))) == where]
+
+
+def test_the_contents_list_each_note_and_a_paper_with_only_a_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note (what was not read, how the headings were read) and the words of a paper that
+    hold only a note of why they were not read each have a line of the contents, which links
+    to them and prints their page; the summary's tile then goes to that paper's note (round
+    2 of #646)."""
+    from manuscript_guard.auditing.report_pdf import written
+
+    view, _reader = _audited_pdf(tmp_path, monkeypatch, "first.md", "second.md")
+    view["notes"] = [["Could not read:", ["third.md: no such file"]],
+                     ["How the headings were read:", ["first.md: from its typed titles"]]]
+    view["words"][0].update(note="G14 could not read it.", kinds=[])
+    reader = pypdf.PdfReader(io.BytesIO(written(view, "Audit", "0")), strict=True)
+    marks, links = _destinations(reader)
+    first = " ".join(reader.pages[0].extract_text().split())
+    for title in ("Could not read", "How the headings were read",
+                  "Writing and language: first.md"):  # fmt: skip
+        printed = re.search(re.escape(title) + r" (\d+)", first)
+        assert printed and int(printed.group(1)) == marks[title][0] + 1, title
+        assert marks[title] in links(reader.pages[0]), title
+    tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
+    assert any(top > marks["In this report"][1] for top in tops), tops
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

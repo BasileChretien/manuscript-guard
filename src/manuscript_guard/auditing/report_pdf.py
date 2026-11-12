@@ -139,8 +139,9 @@ def _parts(view: dict) -> list[tuple[str, str, int | None, int]]:
 
 
 def _contents(pdf: Pdf, view: dict, pages: dict[str, int]) -> None:
-    """In this report: each kind of finding and each section, a line that links to it, with
-    its count and its page; what a reader of a long report goes to first."""
+    """In this report: each part `_parts` gives (each note, each paper's words and each kind
+    of finding under them, each other section), a line that links to it, with its count and
+    its page; what a reader of a long report goes to first."""
     parts = _parts(view)
     if not parts:
         return

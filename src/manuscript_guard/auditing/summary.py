@@ -165,6 +165,14 @@ def _words(report) -> str:
     if unread:
         names = ", ".join(run.paper.name for run in unread)
         said += ("; " if said else "") + f"not run on {names}: see below"
+    # A LaTeX file the reader stopped in was read only to there (Basile, 2026-11-11: "nothing
+    # reported" was said of a paper read to its preamble).
+    from manuscript_guard.auditing.latex import stopped
+
+    files = stopped(report.trees)
+    if files:
+        said = (said or "nothing reported in what was read") + "; " + ", ".join(
+            f"not read past line {line} of {where}" for where, line in files)
     return said or "nothing reported"
 
 

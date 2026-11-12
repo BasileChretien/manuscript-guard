@@ -134,6 +134,55 @@ def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
     well, and journals ask for the figure legends and the tables after the references: run on
     to the next heading, the list hid them from G14. A heading that names the reference list,
     `# References`, is not found here; `Section.is_references` reads it."""
+    return _lists(text, marked=False)
+
+
+def reference_lists(text: str) -> list[tuple[int, int]]:
+    """Where a Markdown file's reference lists run, as offsets `[start, end)`, in order: under
+    a line that is no heading (`unmarked_reference_lists`), and under a heading that is one
+    (`is_bibliography_heading`, marked), "# References" or "## 6. Bibliography {-}".
+
+    A list under a heading ends where one under a line that is no heading ends: at the next
+    heading, whatever its level, at a line shaped like one, and at a paragraph that is no
+    entry, a table, a caption or a title of back matter (`_ends_a_list`). G2 lets the
+    numbers of these lists through, and `init --from` reads its entries from them: run on to
+    the next heading, a table that a paper converted from Word puts after its references
+    would be let through with them.
+
+    Here a list also ends at a footnote's definition and at a paragraph that is a section's
+    name alone by the closed list (`section_name_alone`), "Abstract", "**Appendix**" or "3.
+    Conclusion", a title in a paper converted from Word that pandoc did not make a heading.
+    pandoc writes a Word paper's notes after its last section, often the reference list,
+    and run on over them, "We excluded 4321 patients." in a note passed G2 (round 1 of
+    #638). `unmarked_reference_lists`, which G4, G14 and the recycling check read, does not
+    end there yet.
+    """
+    return sorted(_lists(text, marked=True, ends=True) + _lists(text, marked=False, ends=True))
+
+
+#: A footnote's definition, `[^1]:`, at the start of a line; and a caption numbered with
+#: a letter, as an appendix numbers its displays, "Table A1." or "Figure B2:".
+_NOTE = re.compile(r"[ ]{0,3}(?:\[\^[^\]\s]+\]:|[*_]{0,3}(?:fig(?:ure)?|table)\s+[a-z][0-9]+[.:])",
+                   re.IGNORECASE)
+
+
+def _ends_here(lines: list[str], number: int) -> bool:
+    """Whether line `number`, opening a paragraph, ends a reference list for G2 and `init
+    --from`: a footnote's definition, a caption numbered with a letter, or a section's name
+    alone, in bold or not, its number escaped as pandoc writes it or not ("3\\. Conclusion"),
+    that names no reference list."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    line = lines[number]
+    if _NOTE.match(line):
+        return True
+    printed = re.sub(r"^(\d+)\\\.", r"\1.", _printed(line).strip().strip("*_").strip())
+    return section_name_alone(printed) is not None and not is_bibliography_heading(printed)
+
+
+def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, int]]:
+    """The reference lists under a heading (`marked`) or under a line that is no heading.
+    With `ends`, a list ends at a note and a section's name as well (`_ends_here`)."""
     headings = find_headings(text)
     newlines = [found.start() for found in re.finditer("\n", text)]
     offsets = [0, *(index + 1 for index in newlines)]
@@ -148,6 +197,22 @@ def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
     # rule.
     under = {line_of(heading.start) + heading.setext for heading in headings}
     spans: list[tuple[int, int]] = []
+
+    def runs_to(number: int) -> int:
+        while number < len(lines) and number not in breaks and not (
+            _opens_a_paragraph(lines, number, under) and (
+                _ends_a_list(lines, number) or (ends and _ends_here(lines, number)))
+        ):
+            number += 1
+        return number
+
+    if marked:
+        for heading in headings:
+            start = line_of(heading.start)
+            if is_bibliography_heading(lines[start], marked=True):
+                end = runs_to(start + 1 + heading.setext)
+                spans.append((offsets[start], offsets[end] if end < len(lines) else len(text)))
+        return spans
     number = 0
     while number < len(lines):
         if (
@@ -158,11 +223,7 @@ def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
         ):
             number += 1
             continue
-        start, number = number, number + 1
-        while number < len(lines) and number not in breaks and not (
-            _opens_a_paragraph(lines, number, under) and _ends_a_list(lines, number)
-        ):
-            number += 1
+        start, number = number, runs_to(number + 1)
         spans.append((offsets[start], offsets[number] if number < len(lines) else len(text)))
     return spans
 

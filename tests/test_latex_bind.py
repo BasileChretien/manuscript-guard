@@ -97,8 +97,8 @@ def test_bind_offers_and_writes_a_latex_binding(
 def test_bind_writes_nothing_past_a_files_first_refusal(
     project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Past a refusal the reader reads the file as typed, comments and options among it: a
-    number there is not offered, nor written (round 1 of step 12)."""
+    """Past a refusal the reader reads nothing of the file: a number typed there is named,
+    and not offered, nor written (round 1 of step 12; Basile, 2026-11-11)."""
     point = _display(project, "results.ror.point")
     typed = f"\\ifdefined\\x\\fi\nThe estimate was {point} again.% old: {point}\n"
     _typed_before(twin, "\\section{Discussion}", typed)

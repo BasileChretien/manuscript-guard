@@ -12,16 +12,21 @@ schema: manuscript-guard/disclosures/1
 # English only. A statement under a heading in another language is not found (Known gaps).
 
 fragments:
-  # What an author may have none of: "competing interests", "conflicts of interest", "known
-  # competing financial interests or personal relationships that could have appeared to
-  # influence the work" (Elsevier); always with "competing", "conflicting" or "conflict", so
-  # "no financial interest in the device" is none of them (round 2 of #653). Not "other
-  # competing interests", which leaves out those named.
+  # What an author may have none of, in a record or a whole statement of none: "competing
+  # interests", "conflicts of interest", "financial interests", "interests" ("No interests to
+  # declare."), "known competing financial interests or personal relationships that could
+  # have appeared to influence the work" (Elsevier). Not "other competing interests", which
+  # leaves out those named.
   interest: >-
+    (?:(?:known|potential|relevant|actual|perceived) )*(?:(?:competing|conflicting|financial|non-financial|personal)(?: or non-financial| and non-financial| or personal)? )*(?:interests?|conflicts? of interests?)(?: or personal relationships\b.*)?
+  # The same in a sentence among others, which says none for everyone: always with
+  # "competing", "conflicting" or "conflict", so "no financial interest in the device" is
+  # none of them (round 2 of #653).
+  competing: >-
     (?:(?:known|potential|relevant|actual|perceived) )*(?:(?:financial|non-financial|personal) )*(?:(?:competing|conflicting)(?: (?:financial|non-financial|personal))*(?: or (?:non-financial|personal))? interests?|conflicts? of interests?)(?: or personal relationships\b.*)?
   # Springer Nature's sentence of none, which names no competing interest: "The author has
   # no relevant financial or non-financial interests to disclose."
-  springer: 'no relevant financial or non-financial interests(?: to disclose)?'
+  springer: 'no (?:relevant )?financial or non-financial interests(?: to disclose)?'
   # Who may say it, and how.
   verb: '(?:declares?|reports?|has|have|states?|discloses?)'
   # What follows a phrase about funding that says nothing of whether there was any: the
@@ -120,5 +125,5 @@ none_funding:
 # authors" or "the author", so "the other authors", "all other authors" and "the remaining
 # authors", which say it of some of them after those the statement names, are not read.
 collective_none:
-  - '\b(?:the authors|all authors|all the authors|the author)[ ]${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|${springer}|no (?:relevant )?disclosures?)'
-  - '\bthere (?:are|is|were|was) no ${interest}'
+  - '\b(?:the authors|all authors|all the authors|the author)[ ]${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${competing}|${springer}|no (?:relevant )?disclosures?)'
+  - '\bthere (?:are|is|were|was) no ${competing}'

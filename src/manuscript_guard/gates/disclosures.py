@@ -255,7 +255,9 @@ def _label_kinds(label: str) -> list[str]:
     """The kinds of statement a label opens: none for a CRediT role ("Funding acquisition:
     AE.", as PLOS writes the roles first) or an item of the ICMJE form ("Grants or contracts
     from any entity: ..."), whose words name a statement they are no part of."""
-    folded = fold(re.sub(r"[*_`]", "", label)).rstrip(" .:")
+    # A list's marker is no word of the label: "- Funding acquisition: AE." (round 3 of #653).
+    bare = re.sub(r"^\s*(?:[-+*]|\d+[.)])\s+", "", label)
+    folded = fold(re.sub(r"[*_`]", "", bare)).rstrip(" .:")
     if any(_pattern(f"(?:{p})").fullmatch(folded) for p in _data()["not_statements"]):
         return []
     return _heading_kinds(label)
@@ -284,9 +286,12 @@ def _labelled(printed: str) -> Iterator[tuple[str, str]]:
     label of no statement, and is read as part of the one above."""
 
     def ends(paragraph: str) -> bool:
+        # A plain line ending in a colon, "The authors contributed as follows:", is a lead-in
+        # and ends nothing; an emphasised label alone does (round 3 of #653).
         labelled = _label(paragraph)
-        return labelled is not None and (not labelled[1].strip()
-                                         or bool(_label_kinds(labelled[0])))  # fmt: skip
+        alone = (labelled is not None and not labelled[1].strip()
+                 and paragraph.lstrip()[:1] in ("*", "_"))  # fmt: skip
+        return alone or (labelled is not None and bool(_label_kinds(labelled[0])))
 
     pieces = paragraphs(printed)
     for index, paragraph in enumerate(pieces):
@@ -416,13 +421,14 @@ def _unaccented(text: str) -> str:
 
 def _initials_pattern(initials: str) -> re.Pattern[str] | None:
     """What finds initials as they are written, case kept, so that Ian Smith's "IS" is never
-    the word "is": "IS", "I.S.", "I. S." and "I-S", each letter as `submit` prints it or in
+    the word "is": "IS", "I.S.", "I. S.", "I S" and "I-S", each letter as `submit` prints it or in
     capitals ("A.v." is "A.v." or "AV"), and no letter or digit on either side."""
     letters = re.findall(r"[^\W\d_]", _unaccented(initials))
     if not letters:
         return None
     each = [f"[{re.escape(c)}{re.escape(c.upper())}]" for c in letters]
-    between = r"(?:\.[ ]?|\.?-)?"
+    # A full stop, a space or a no-break space, or both, or a hyphen (round 3 of #653).
+    between = r"(?:\.?[ " + chr(0xA0) + r"]|\.?-|\.)?"
     return re.compile(r"(?<![^\W_])" + between.join(each) + r"\.?(?![^\W_])")
 
 

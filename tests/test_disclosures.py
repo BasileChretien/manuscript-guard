@@ -249,10 +249,62 @@ def test_a_label_alone_stops_at_the_next_label_alone() -> None:
     whatever it names."""
     authors = _authors(ada_competing_interests="Fees from Pharma X.",
                        blaise_competing_interests="None declared.")
-    for after in ("**References**", "**Data availability**", "References:"):
+    # A plain line ending in a colon ends nothing (round 3 of #653): only an emphasised one.
+    for after in ("**References**", "**Data availability**", "*References*"):
         main = (f"**Competing interests**\n\nNone declared.\n\n{after}\n\n1. Example A, "
                 "Sample B. A study. J Ex. 2020;1:1-2.\n")
         assert _codes(authors, main) == ["interests-none-contradicted"], after
+
+
+def test_a_lead_in_line_ending_in_a_colon_ends_no_statement() -> None:
+    """Round 3 of #653: only an emphasised label alone, a statement label or a heading ends
+    what a label alone heads; "The authors contributed as follows:" does not."""
+    credited = _authors(ada_credit=["Conceptualization"], blaise_credit=["Supervision"])
+    main = ("**Author contributions**\n\nThe authors contributed as follows:\n\n"
+            "AE: Conceptualization. BS: Supervision.\n")
+    assert _codes(credited, main) == []
+    funded = _authors(ada_funding=["Wellcome Trust"])
+    assert _codes(funded, "**Funding**\n\nThis work was supported by:\n\nWellcome Trust.\n") == []
+
+
+def test_a_record_of_no_financial_interests_is_none() -> None:
+    """Round 3 of #653: a record or a whole statement of none may name no competing
+    interest; a sentence among others still needs one to say none for everyone."""
+    for said in ("No financial interests to declare.", "No interests to declare.",
+                 "No relevant financial interests.", "No financial or non-financial interests "
+                 "to disclose."):
+        assert is_none_statement(said), said
+        both = _authors(ada_competing_interests=said, blaise_competing_interests=said)
+        assert _codes(both, "## Competing interests\n\nNone declared.\n") == [], said
+    authors = _authors(ada_competing_interests="Fees from Pharma X.",
+                       blaise_competing_interests="None declared.")
+    assert _codes(authors, "## Competing interests\n\nAE reports fees from Pharma X. The "
+                  "authors have no financial interest in the device used.\n") == []
+
+
+def test_a_bulleted_role_first_list_is_one_statement() -> None:
+    """Round 3 of #653: a list marker before a CRediT role does not make it a funding label."""
+    credited = {"authors": [
+        {"given": "Ada", "family": "Example", "credit": ["Conceptualization",
+                                                        "Funding acquisition"]},
+        {"given": "Blaise", "family": "Sample", "credit": ["Supervision"]},
+    ]}  # fmt: skip
+    for marker in ("- ", "* ", "1. "):
+        main = (f"## Author contributions\n\n{marker}Conceptualization: AE.\n\n"
+                f"{marker}Funding acquisition: AE.\n\n{marker}Supervision: BS.\n")
+        assert _codes(credited, main) == [], marker
+
+
+def test_initials_with_a_space_between_them_name_an_author() -> None:
+    """Round 3 of #653: "A E" and "A. E.", with a space or a no-break space, as 6c20bd8's
+    base read them; a lower-case word still names no one."""
+    authors = _authors(ada_competing_interests="Fees from Pharma X.",
+                       blaise_competing_interests="None declared.")
+    for written in ("A E", "A. E.", "A\N{NO-BREAK SPACE}E", "A.\N{NO-BREAK SPACE}E."):
+        main = f"## Competing interests\n\n{written} reports fees from Pharma X.\n"
+        assert _codes(authors, main) == [], written
+    main = "## Competing interests\n\nA report of a e and fees from Pharma X.\n"
+    assert _codes(authors, main) == ["interests-author-missing"]
 
 
 #: Record values that say none, as journals' forms write them, and what each reads as.

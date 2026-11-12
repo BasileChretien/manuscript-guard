@@ -7828,7 +7828,8 @@ come from, starting from the patterns of the journal template's required stateme
 A heading is read by its words, its number taken off ("6.", "6.1", "VI."). A label alone
 in its paragraph, as a conversion from Word writes "**Funding**", heads the paragraphs
 after it, up to the next heading, the next label of a statement, or the next label alone
-of whatever kind ("**References**"). A section holds only its own statement: it ends at a
+of whatever kind in emphasis ("**References**"); a plain lead-in line ending in a colon
+("The authors contributed as follows:") ends nothing. A section holds only its own statement: it ends at a
 heading or a label inside it that opens a statement of another kind, so "# Competing
 interests" over "## Author contributions" does not read the contributions as interests.
 A CRediT role written first ("Funding acquisition: AE.", as PLOS writes them) and an item
@@ -7882,7 +7883,7 @@ as G4's `main_text` and the AI-use check read it.
   its Data availability.
 - **Author contributions.** Where the manuscript has such a statement, each author with
   recorded roles is named in it, by family name or by the initials `submit` prints, as
-  written in capitals ("A.E.", "AE", "A. E." or "A-E"), and each role recorded is in it in CRediT's words, folded: "Writing – original
+  written in capitals ("A.E.", "AE", "A. E.", "A E" or "A-E"), and each role recorded is in it in CRediT's words, folded: "Writing – original
   draft" with any dash, "&" or "and", "-isation" for "-ization". Which author holds which
   role is not read. With no such statement nothing is said: many journals collect CRediT
   on the submission form.
@@ -26053,6 +26054,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     and `tests/test_disclosures.py::test_initials_name_an_author_only_as_written_in_capitals`.
   - A label alone of more than six words ("**Funding and role of the funding source**",
     seven) is not read as a label, so what follows it is no statement. Accepted.
+  - A short paragraph wholly in emphasis counts as a label alone, and ends the statement a
+    label alone above it heads. Accepted.
+  - A CRediT heading with a closing stop or a word after it ("CRediT author statement
+    (Elsevier)") is not read as a contributions statement. Accepted.
   - Elsevier's sentence of none with an exception added to it ("..., except AE, who reports
     fees from Pharma X.") is read whole as a statement of none. Accepted.
   - A declaration given only on the journal's submission form, or in the covering letter, is

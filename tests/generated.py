@@ -4575,6 +4575,8 @@ CHECKLIST_QUOTES = {
     "elided": "found",
     "in a subsection": "found",
     "in the supplement": "found",
+    "in the next file": "found",
+    "in the next file's subsection": "found",
     "binding as written": "found",
     "binding as printed": "found",
     "in a table's caption": "found",
@@ -4597,8 +4599,10 @@ _QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
 
 @st.composite
 def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, Any]]]:
-    """A manuscript of two files, `main.md` with a section A, its subsection A1 and a section
-    B, and `supplementary/S1.md` with a section C, each heading and paragraph of words of
+    """A manuscript of three files, `main.md` with a section A, its subsection A1 and a
+    section B, `01_more.md`, which the build prints after it, with a paragraph under no
+    heading and a subsection D, both of them B's, and `supplementary/S1.md` with a section C,
+    each heading and paragraph of words of
     their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
     one set by the typographer, drawn white space between words, two value bindings in A1's
     paragraph, a comment and a figure's legend typed under B, and two emitted tables'
@@ -4627,8 +4631,9 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     def title() -> str:
         return f"{word().capitalize()} {word()}"
 
-    a, a1, b, c = title(), title(), title(), title()
+    a, a1, b, c, d = title(), title(), title(), title(), title()
     para_a, para_a1, para_b, para_c = paragraph(), paragraph(), paragraph(), paragraph()
+    para_next, para_d = paragraph(), paragraph()
     values, shown = {}, {}
     for at in _QUOTED_BOUND:
         ref = f"results.{word()}"
@@ -4638,6 +4643,8 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
     captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
     files = {
+        # First by path, and printed after `main.md`, as the main text's other files are.
+        "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
         "main.md": "\n\n".join((
             f"# {a}", joined(para_a), f"## {a1}", joined(para_a1), f"# {b}", joined(para_b),
             f"<!-- {' '.join(comment)} -->", f"Figure 1. {' '.join(legend)}.",
@@ -4663,6 +4670,8 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "elided": (b, " ".join(para_b[:3]) + gap + " ".join(para_b[-3:]), found),
         "in a subsection": (a, " ".join(para_a1[:5]), found),
         "in the supplement": (c, " ".join(run(para_c)), found),
+        "in the next file": (b, " ".join(run(para_next)), found),
+        "in the next file's subsection": (b, " ".join(run(para_d)), found),
         "binding as written": (a1, " ".join(para_a1[5:10]), found),
         "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
         "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),

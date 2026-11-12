@@ -2,14 +2,16 @@
 
 An item's `where:` names a heading, and any manuscript has a Methods. In the IICARus trial
 (Hair, Macleod and Sena, Res Integr Peer Rev 2019;4:12), asking authors to complete the ARRIVE
-checklist changed nothing: of 1,689 manuscripts, none was fully compliant in either arm. The
-completed checklist is not the reporting; the sentence is. So an item may carry `quote:`, the
+checklist changed nothing: of 1,689 manuscripts randomised, none of those accepted for
+publication (762) met the checklist in full, in either arm. The completed checklist is not
+the reporting; the sentence is. So an item may carry `quote:`, the
 sentence (or a part of one) that addresses it, and the gate holds the quote to the manuscript.
 A person or an agent names the sentence; this module only says whether it is there.
 
 **Where it is looked for.** Under each heading `where` names, as G5 has always matched a
 heading against `where` (`reporting._points_somewhere_real`): that heading's section,
-subsections included, in the main text or the supplement. Where `where` names a table or a
+subsections included, in the main text or the supplement, each its files joined as the build
+prints them (`documents`). Where `where` names a table or a
 figure ("Table 1", "Figure S2", "eTable 1"), in that display's caption as well: a legend typed
 as a paragraph that opens with the display's pointer, as G2 reads one (`opening_pointer`), and
 an emitted table's caption, numbered as the build numbers it (`display_numbers`).
@@ -31,9 +33,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from manuscript_guard.anchoring import QUOTE_WORDS, _written, plain, words
 from manuscript_guard.gates.figure_alt import printed_alt
+from manuscript_guard.gates.numbers import SUPPLEMENTARY, printed_order, source_files
 from manuscript_guard.gates.pointers import _POINTER, TABLE, _kind
 from manuscript_guard.gates.quotations import words_in
 from manuscript_guard.literature.sources import normalise
@@ -157,10 +161,29 @@ class Manuscript:
 
 
 def _sections(text: str, namespace: Mapping[str, object]) -> Iterable[_Part]:
-    shown = without_front_matter(blank_comments(text.replace("\r\n", "\n")))
-    for section in split_sections(shown):
+    for section in split_sections(text):
         yield _Part(section.title, None, _folded(section.body, namespace),
                     _folded(section.enclosed, namespace))  # fmt: skip
+
+
+def _prepared(text: str) -> str:
+    """A Markdown file as it prints: its comments blank and its front matter left out."""
+    return without_front_matter(blank_comments(text.replace("\r\n", "\n")))
+
+
+def documents(files: Mapping[str, str]) -> list[str]:
+    """The main text and the supplement, each the Markdown `files` of it, named by their path
+    under the manuscript folder, joined in the order the build prints them (`printed_order`:
+    `main.md` first and the rest by name), so that a section carries on into the next file
+    as it does in the document (round 1 of #651); each file's comments and front matter out."""
+    by_path = {Path(name): text for name, text in files.items()}
+    out = []
+    for supplementary in (False, True):
+        paths = [path for path in by_path
+                 if (len(path.parts) > 1 and path.parts[0] == SUPPLEMENTARY) == supplementary]
+        out.append("\n\n".join(_prepared(by_path[path])
+                               for path in printed_order(paths, supplementary=supplementary)))
+    return out  # fmt: skip
 
 
 def read(
@@ -168,9 +191,10 @@ def read(
     namespace: Mapping[str, object],
     captions: Iterable[Caption] = (),
 ) -> Manuscript:
-    """The manuscript `texts`, each a Markdown file or a LaTeX document as it prints in
-    Markdown, and the `captions` of its displays, read for quotes. `namespace` gives each
-    value binding's display, as `load_namespace` does."""
+    """The manuscript `texts`, each a document as it prints in Markdown, the main text and
+    the supplement (`documents`, or a LaTeX manuscript's `printed_document`), and the
+    `captions` of its displays, read for quotes. `namespace` gives each value binding's
+    display, as `load_namespace` does."""
     parts = [part for text in texts for part in _sections(text, namespace)]
     for caption in captions:
         folded = _folded(caption.text, namespace)
@@ -180,11 +204,10 @@ def read(
 
 
 def of_project(project, namespace: Mapping[str, object] | None, results) -> Manuscript:
-    """A project's manuscript read for quotes: each Markdown file, main text and supplement,
-    with the captions of the displays it places; or a LaTeX manuscript's two documents as
-    they print in Markdown, as G5 reads its headings (step 8). The values are loaded where
-    `namespace` or `results` is not given."""
-    from manuscript_guard.gates.numbers import source_files
+    """A project's manuscript read for quotes: the main text and the supplement, each its
+    Markdown files joined as the build prints them, with the captions of the displays it
+    places; or a LaTeX manuscript's two documents as they print in Markdown, as G5 reads its
+    headings (step 8). The values are loaded where `namespace` or `results` is not given."""
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     if namespace is None or results is None:
@@ -201,7 +224,8 @@ def of_project(project, namespace: Mapping[str, object] | None, results) -> Manu
                      for part in (False, True)], namespace)  # fmt: skip
     from manuscript_guard.contracts._schema import read_text
 
-    texts = [read_text(path) for path in source_files(folder)]
+    texts = documents({path.relative_to(folder).as_posix(): read_text(path)
+                       for path in source_files(folder)})  # fmt: skip
     return read(texts, namespace, captions(project, texts, results))
 
 

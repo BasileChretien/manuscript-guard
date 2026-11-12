@@ -8501,7 +8501,8 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     drawn: tuple[dict[str, Any], list[tuple[str, Any]]],
 ) -> None:
     """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
-    subsections included, in the main text or the supplement, or in the caption of the table
+    subsections included, in the main text or the supplement, the section carried on into
+    the next file the build prints (round 1 of #651), or in the caption of the table
     or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
     folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
     out, its bindings as written or each value's display, not half of each. A quote under
@@ -18534,6 +18535,19 @@ def _a_heading_s_subsections_are_not_under_it(patch: pytest.MonkeyPatch) -> None
         dataclasses.replace(section, enclosed=section.body) for section in split(text)])
 
 
+def _each_file_is_read_on_its_own_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "documents", lambda files: [
+        checklist_quotes._prepared(text) for text in files.values()])  # fmt: skip
+
+
+def _a_checklist_s_files_are_joined_in_path_order(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "printed_order", lambda paths, *, supplementary: sorted(paths))
+
+
 def _a_checklist_quote_is_read_only_as_written(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import checklist_quotes
 
@@ -19853,6 +19867,14 @@ BROKEN = {
     ),
     "a heading's subsections are not under it for a checklist's quote": (
         _a_heading_s_subsections_are_not_under_it,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "each file is read on its own for a checklist answer's quote": (
+        _each_file_is_read_on_its_own_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the main text's files are joined in path order for a checklist answer's quote": (
+        _a_checklist_s_files_are_joined_in_path_order,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
     ),
     "a checklist answer's quote is read only as written": (

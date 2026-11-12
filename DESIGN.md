@@ -4708,18 +4708,24 @@ Two smaller decisions fell out of this:
 `where: Methods` satisfied every item of every checklist, since every paper has a Methods. In
 the IICARus randomised trial (Hair, Macleod and Sena, Res Integr Peer Rev 2019;4:12,
 doi:10.1186/s41073-019-0069-3), asking authors to complete an ARRIVE checklist changed
-nothing: of 1,689 PLOS ONE manuscripts, none was fully compliant in either arm. The checklist
-file is not the reporting; the sentence is. SciScore finds such sentences with a classifier.
+nothing: of 1,689 PLOS ONE manuscripts randomised, none of those accepted for publication
+(762) met the checklist in full, in either arm. The checklist file is not the reporting; the
+sentence is. SciScore finds such sentences with a classifier.
 Here a person, or an agent the author checks, names the sentence in `quote:`, and G5 checks
 that it is there (`gates/checklist_quotes.py`).
 
 - **Where.** Under each heading `where` names, matched as G5 already matched one (a heading
   in `where` or `where` in a heading, whatever case), that heading's section with its
-  subsections, in the main text or the supplement. Where `where` names a table or a figure
+  subsections, in the main text or the supplement, each read as the build prints it: its
+  files joined in `printed_order`, `main.md` first and the rest by name, so that a section
+  carries on into the next file (round 1 of #651). Where `where` names a table or a figure
   ("Table 1", "Figure S2", "eTable 1", read whole by G2's pointer pattern), in that display's
-  caption too: a legend typed as a paragraph that opens with its pointer, and an emitted
-  table's caption under the number the build gives it (`display_numbers`). A `where` that
-  names such a display is a place, and `checklist-location-unknown` is not said of it.
+  caption too: a legend typed as a paragraph that opens with its pointer, and the caption of
+  a table the analysis emits with one, placed once by its binding in a document whose tables
+  the build numbers (`display_numbers`), under that number. A `where` that names a display
+  with one of these captions is a place, and `checklist-location-unknown` is not said of it;
+  a table emitted with no caption, placed twice, or in a document that also places a table
+  by hand or sends its tables as files has none, and is still said to be no heading.
 - **How.** As a review finding's quote is found in the manuscript (`anchoring.py`), which is
   as G7 finds a passage in a work's source (`words_in`): typography, white space and case
   folded, whole words, pieces in order around `...`, Markdown's marks of emphasis and code
@@ -20885,11 +20891,27 @@ Open, recorded as each change landed:
   them, or copy the citation as the Markdown writes it.
   Pinned by `tests/test_compliance.py::test_a_quote_copied_across_a_printed_citation_is_not_found`.
 - **A caption is read for a `where` that names a display only in Markdown, and only where it
-  is numbered.** A legend typed as a paragraph that opens with its pointer, and an emitted
-  table's caption under the number the build gives it, are read. A table typed by hand with a
-  `Table:` caption line and no pointer is no numbered display's, and a LaTeX manuscript's
-  `\caption` is read only as text under its heading: on a LaTeX manuscript `where: Table 1`
-  names no caption, and a quote of it is not found there. Accepted.
+  is numbered.** A legend typed as a paragraph that opens with its pointer is read, and so is
+  the caption of a table the analysis emits with one, placed once by its binding in a
+  document that places no table by hand and sends none as a file, under the number the build
+  gives it. A table emitted with no caption, placed twice or in such a document has none read,
+  and `where` naming it is `checklist-location-unknown`. A table typed by hand with a `Table:`
+  caption line and no pointer is no numbered display's, and a LaTeX manuscript's `\caption`
+  is read only as text under its heading: on a LaTeX manuscript `where: Table 1` names no
+  caption, and a quote of it is not found there. Accepted.
+- **A legend typed as "Figure 1." in a supplementary file is filed as the main text's Figure
+  1.** A typed legend is numbered by its pointer alone, and "Figure 1." says nothing of the
+  supplement, so `where: Figure 1` can be met by the supplement's legend of its own first
+  figure. Accepted.
+- **The printed reading keeps pandoc's escapes and footnote marks.** Only value bindings are
+  replaced by their displays, so `\$`, `\*` and a footnote's `[^1]` stay as written, and a
+  quote copied from the .docx across one of them, where Word shows "$", "*" or a superscript
+  number, is not found. Accepted.
+- **A heading inside an HTML comment or the front matter counts for `where`, and the quote
+  reader does not see it.** The headings `where` is held to are read from the files as they
+  are written, comments and front matter included, while the quote is looked for in what
+  prints: `where` naming such a heading raises no `checklist-location-unknown`, and the
+  finding on its quote says the `where` "names no heading and no caption". Accepted.
 - **Word counts will not match a journal's own counter exactly.** The rule is stated so a
   disagreement is visible; where a journal counts differently there is no way to configure
   it yet. Accepted.
@@ -22165,14 +22187,18 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
-- **A reporting checklist's `where:` can only point at a manuscript heading, or a table or
-  a figure the manuscript numbers.** RECORD's added items are answered in supplementary
-  tables, appendices and registry records; a supplementary table placed by its binding is a
-  place since `quote:` (2026-11-12), and an appendix outside the manuscript or a registry
-  record is not, so those items report `checklist-location-unknown`, and their quote
+- **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
+  or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
+  tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
+  display is a place where G5 reads a caption for it, in a Markdown manuscript only: a legend
+  typed as a paragraph that opens with the display's pointer, or the caption of a table the
+  analysis emits with one, placed once by its binding in a document that places no table by
+  hand and sends none as a file. A table emitted with no caption, placed twice, or in such a
+  document has no caption read, and neither has an appendix outside the manuscript or a
+  registry record, so those items report `checklist-location-unknown`, and their quote
   `checklist-quote-not-found`. The first is a warning, which is the only reason it is
   tolerable; the second fails at submission, so such an item is answered under the heading
-  that cites the record, with the sentence that does.
+  that cites the table or the record, with the sentence that does.
   Pinned by `tests/test_compliance.py::test_pointing_at_a_section_that_does_not_exist_warns`.
 - **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
   the conventional thresholds are. A corrected threshold goes in the project's own

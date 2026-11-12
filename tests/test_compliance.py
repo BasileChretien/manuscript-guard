@@ -884,6 +884,39 @@ def test_a_quote_copied_across_a_printed_citation_is_not_found(project: Path) ->
     assert quote_findings(project) == []
 
 
+@pytest.mark.parametrize("headed", [True, False], ids=["subsection", "no heading"])
+def test_a_section_carries_on_into_the_next_file_as_the_build_prints_it(
+    project: Path, headed: bool
+) -> None:
+    """The build prints the main text's files joined, `main.md` first and the rest by name
+    (`printed_order`), so a section carries on into the next file, under a subsection of its
+    own or under no heading at all. Read file by file, the Methods ended where `main.md`
+    did (round 1 of #651). The file is `01_...`, which sorts before `main.md` by path."""
+    folder = project / "manuscript"
+    (folder / "main.md").write_text("# Methods\n\nThe first paragraph of the Methods.\n", "utf-8")
+    heading = "## Statistical analysis\n\n" if headed else ""
+    (folder / "01_statistics.md").write_text(
+        f"{heading}Confidence intervals were derived from the standard error of the log "
+        "odds ratio.\n", "utf-8")  # fmt: skip
+    told = [f for f in quote_findings(project) if f.message.startswith("DEMO-OBS 4 ")]
+    assert told == [], told
+
+
+def test_a_quote_left_empty_is_a_missing_quote_not_a_schema_error(project: Path) -> None:
+    """The skill says to leave `quote:` empty where no sentence addresses the item, and a
+    bare `quote:` is null in YAML: refused by the schema, the whole file went unread (round
+    1 of #651)."""
+    path = project / CHECKLIST
+    text = path.read_text("utf-8")
+    written = ("    quote: Confidence intervals were derived from the standard error of the log "
+               "odds ratio\n")  # fmt: skip
+    assert text.count(written) == 1
+    path.write_text(text.replace(written, "    quote:\n"), "utf-8")
+    report = reporting_report(project)
+    assert [(f.code, f.message.split(" ")[1]) for f in report.findings] == [
+        ("checklist-quote-missing", "4")], report.findings  # fmt: skip
+
+
 def test_an_excluded_item_quotes_nothing(project: Path) -> None:
     def mutate(document):
         document["items"][2].update(where="", not_applicable="no records were selected")

@@ -8493,6 +8493,29 @@ def test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_el
             assert listed == wanted, (who, way, given["findings"][int(ident[1:]) - 1])
 
 
+from generated import CHECKLIST_QUOTES, checklist_quotes  # noqa: E402
+
+
+@holds(60, checklist_quotes())
+def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else(
+    drawn: tuple[dict[str, Any], list[tuple[str, Any]]],
+) -> None:
+    """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
+    subsections included, in the main text or the supplement, or in the caption of the table
+    or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
+    folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
+    out, its bindings as written or each value's display, not half of each. A quote under
+    another heading, under the parent's own text where `where` names a subsection, or in
+    another display's caption is said to stand there; a quote in a comment, with a word
+    changed, inside a word or with its pieces out of order stands nowhere; three words, or
+    none, are no quote."""
+    given, ways = drawn
+    found = READINGS["checklist quotes"]()(given)
+    assert {kind for kind, _expected in ways} == set(CHECKLIST_QUOTES)
+    for (kind, expected), got, item in zip(ways, found, given["items"], strict=True):
+        assert got == expected, (kind, item, got)
+
+
 from generated import finding_places  # noqa: E402
 
 
@@ -18482,6 +18505,67 @@ def _a_point_and_a_hyphen_are_two_versions(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(model_names, "_CUT", re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)|\."))
 
 
+# --------------------------------------------- broken rules of a checklist answer's quote
+
+
+def _a_checklist_quote_is_found_as_characters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+    from manuscript_guard.literature.sources import normalise
+
+    patch.setattr(checklist_quotes, "words_in", lambda text, words: normalise(words).lower()
+                  in normalise(text).lower())  # fmt: skip
+
+
+def _a_checklist_quote_is_folded_for_white_space_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes, quotations
+
+    def spaces_only(text: str) -> str:
+        return " ".join(text.split())
+
+    patch.setattr(checklist_quotes, "normalise", spaces_only)
+    patch.setattr(quotations, "normalise", spaces_only)
+
+
+def _a_heading_s_subsections_are_not_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    split = checklist_quotes.split_sections
+    patch.setattr(checklist_quotes, "split_sections", lambda text: [
+        dataclasses.replace(section, enclosed=section.body) for section in split(text)])
+
+
+def _a_checklist_quote_is_read_only_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "printed_alt", lambda raw, namespace: raw)
+
+
+def _a_checklist_quote_is_looked_for_under_every_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes.Manuscript, "_named", lambda self, where: list(self.parts))
+
+
+def _a_comment_is_read_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "blank_comments", lambda text: text)
+
+
+def _a_checklist_quote_of_three_words_is_a_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "QUOTE_WORDS", 1)
+
+
+def _any_table_s_caption_is_the_one_where_names(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    named = checklist_quotes.display_named
+    patch.setattr(checklist_quotes, "display_named", lambda where: None if named(where) is None
+                  else (named(where)[0], False, 1))  # fmt: skip
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -19758,6 +19842,38 @@ BROKEN = {
     "a count held beside is read as any from nought": (
         _a_count_held_beside_is_read_as_any,
         test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a checklist answer's quote is found as characters, not as words": (
+        _a_checklist_quote_is_found_as_characters,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is folded for white space only": (
+        _a_checklist_quote_is_folded_for_white_space_only,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a heading's subsections are not under it for a checklist's quote": (
+        _a_heading_s_subsections_are_not_under_it,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is read only as written": (
+        _a_checklist_quote_is_read_only_as_written,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote is looked for under every heading": (
+        _a_checklist_quote_is_looked_for_under_every_heading,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a comment is read for a checklist answer's quote": (
+        _a_comment_is_read_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's quote of three words is a quote": (
+        _a_checklist_quote_of_three_words_is_a_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "any table's caption is the one a checklist's answer names": (
+        _any_table_s_caption_is_the_one_where_names,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
     ),
     "a finding's quote is found as characters, not as words": (
         _a_quote_is_found_as_characters,

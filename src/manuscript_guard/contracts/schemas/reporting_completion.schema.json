@@ -19,7 +19,11 @@
           "id": { "type": "string" },
           "where": {
             "type": "string",
-            "description": "Section, and page or heading, where the item is addressed. Checked against the manuscript's actual headings."
+            "description": "Section, and page or heading, where the item is addressed. Checked against the manuscript's actual headings, or a table or figure it places: 'Table 1', 'Figure S2'."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The sentence, or a part of one of four words or more, that addresses the item, as the manuscript has it under the heading `where` names, subsections and the supplement included, or in the caption of the table or figure it names. Copied from the source with its bindings as written, or from the built document with their values; '...' stands for words left out. A heading alone is satisfied by any manuscript; the sentence is what a reviewer checks. Missing or not found there, it is a warning from internal review and a failure at submission."
           },
           "not_applicable": {
             "type": "string",

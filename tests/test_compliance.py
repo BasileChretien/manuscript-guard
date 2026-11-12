@@ -775,6 +775,156 @@ def test_pointing_at_a_section_that_does_not_exist_warns(project: Path) -> None:
     assert any(f.code == "checklist-location-unknown" for f in report.warnings)
 
 
+# ------------------------------------------------ an answer quotes the sentence that gives it
+
+
+def quote_findings(root: Path, stage: str = "internal-review") -> list:
+    loaded, _ = load_project(root)
+    return [f for f in check_reporting(loaded, stage=stage).findings
+            if f.code.startswith("checklist-quote")]  # fmt: skip
+
+
+def quote(root: Path, index: int, **changes) -> None:
+    edit_yaml(root / CHECKLIST, lambda d: d["items"][index].update(**changes))
+
+
+def test_the_example_quotes_each_answer_under_the_heading_it_names(project: Path) -> None:
+    assert quote_findings(project, "submission") == []
+
+
+@pytest.mark.parametrize(
+    ("stage", "severity"),
+    [("drafting", "info"), ("internal-review", "warn"), ("submission", "fail")],
+)
+def test_an_answer_that_quotes_nothing_is_noted_then_warned_of_then_failed(
+    project: Path, stage: str, severity: str
+) -> None:
+    """Basile's choice: a heading alone is satisfied by any manuscript, so an answer that
+    quotes no sentence is a note while drafting, a warning from internal review and a failure
+    at submission."""
+    edit_yaml(project / CHECKLIST, lambda d: d["items"][2].pop("quote"))
+    found = quote_findings(project, stage)
+    assert [(f.code, f.severity) for f in found] == [("checklist-quote-missing", severity)]
+    assert "DEMO-OBS 3" in found[0].message and "'Methods'" in found[0].message
+
+
+def test_a_quote_of_two_words_is_no_quote(project: Path) -> None:
+    quote(project, 3, quote="Confidence intervals")
+    found = quote_findings(project)
+    assert [f.code for f in found] == ["checklist-quote-missing"]
+    assert "2 words" in found[0].message
+
+
+def test_a_quote_under_another_heading_says_which(project: Path) -> None:
+    """`where` is then wrong: the finding names the heading searched and the one the quote
+    stands under, and the hint points `where` there."""
+    quote(project, 6, where="Methods")
+    (found,) = quote_findings(project)
+    assert found.code == "checklist-quote-not-found"
+    assert "the quote 'Reporting of hepatic injury was disproportionate for example-drug'" in (
+        found.message)  # fmt: skip
+    assert "is not under 'Methods' or 'Supplementary methods'" in found.message
+    assert found.message.endswith("it stands under 'Results'")
+    assert "point `where` at 'Results'" in found.hint
+
+
+def test_a_quote_the_manuscript_does_not_have_is_not_found(project: Path) -> None:
+    quote(project, 6, quote="Reporting of hepatic injury was proportionate for example-drug in "
+                            "these data")  # fmt: skip
+    (found,) = quote_findings(project)
+    assert found.code == "checklist-quote-not-found"
+    assert "'Reporting of hepatic injury was proportionate for example-drug ...'" in (
+        found.message)  # fmt: skip
+    assert "stands under" not in found.message
+    assert "not addressed yet" in found.hint
+
+
+def test_a_quote_inside_a_comment_is_not_found(project: Path) -> None:
+    quote(project, 4, quote="That checklist is a demonstration profile, not a published guideline")
+    assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"]
+
+
+def test_a_quote_copied_from_the_built_document_is_found(project: Path) -> None:
+    """The values the build prints in place of the bindings, as an author copies the sentence
+    from the .docx; and a quote that is half one and half the other is not found."""
+    from manuscript_guard.contracts import load_namespace
+
+    namespace = load_namespace(load_project(project)[0])[0]
+    alpha = namespace["results.param.alpha"].display
+    quote(project, 4, quote=f"are 95% confidence intervals, two\N{EN DASH}sided at an alpha "
+                            f"of {alpha}")  # fmt: skip
+    assert quote_findings(project) == []
+    n_reports, n_drug = (namespace[f"results.cohort.{key}"].display
+                         for key in ("n_reports", "n_drug_reports"))  # fmt: skip
+    quote(project, 5, quote=f"The database contained {n_reports} reports, of which {n_drug} "
+                            "named example-drug.")  # fmt: skip
+    assert quote_findings(project) == []
+    quote(project, 5, quote=f"The database contained {n_reports} reports, of which "
+                            "{{results.cohort.n_drug_reports}} named example-drug.")  # fmt: skip
+    assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"]
+
+
+def test_one_sentence_may_be_quoted_for_two_items(project: Path) -> None:
+    """Known gaps: nothing holds a quote to one item."""
+    sentence = "Confidence intervals were derived from the standard error of the log odds ratio"
+    quote(project, 2, quote=sentence)
+    quote(project, 3, quote=sentence)
+    assert quote_findings(project, "submission") == []
+
+
+def test_a_quote_copied_across_a_printed_citation_is_not_found(project: Path) -> None:
+    """Known gaps: a citation is read as the Markdown writes it, not as the build prints it;
+    the words either side of it, with `...` between, are found."""
+    quote(project, 1, quote="per 100 000 person-years (1), and a disproportionality signal")
+    assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"]
+    quote(project, 1, quote="per 100 000 person-years [@fictionalHepaticCohort2021], and a "
+                            "disproportionality signal")  # fmt: skip
+    assert quote_findings(project) == []
+    quote(project, 1, quote="per 100 000 person-years ... and a disproportionality signal")
+    assert quote_findings(project) == []
+
+
+def test_an_excluded_item_quotes_nothing(project: Path) -> None:
+    def mutate(document):
+        document["items"][2].update(where="", not_applicable="no records were selected")
+        document["items"][2].pop("quote")
+
+    edit_yaml(project / CHECKLIST, mutate)
+    assert quote_findings(project, "submission") == []
+
+
+def test_a_quote_stands_in_a_subsection_of_the_supplement(project: Path) -> None:
+    """The heading's section with its subsections, and the supplement read as the main text."""
+    quote(project, 2, where="Supplementary methods",
+          quote="The case definition belongs here rather than in the Methods because it is a list")
+    assert quote_findings(project, "submission") == []
+    quote(project, 2, where="Supplementary methods",
+          quote="The case definition belongs here rather than in the Results")
+    assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"]
+
+
+def test_a_quote_stands_in_the_caption_of_the_table_or_figure_where_names(project: Path) -> None:
+    """An emitted table's caption, under the number the build gives the table, and a figure's
+    legend typed as a paragraph that opens with its pointer; `where` naming either is a
+    place, not an unknown heading."""
+    quote(project, 5, where="Table 1", quote="Reports by drug group. Values are n (%)")
+    report = reporting_report(project)
+    assert not [f for f in report.findings if f.code.startswith("checklist-")], report.findings
+    quote(project, 5, where="Table 2")
+    (found,) = quote_findings(project)
+    assert found.message.endswith("it stands under the caption of Table 1"), found.message
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text("utf-8").replace(
+        "{{figure.forest}}\n", "{{figure.forest}}\n\nFigure 1. The reporting odds ratio of "
+        "hepatic injury for example-drug, with its interval.\n", 1), "utf-8")  # fmt: skip
+    quote(project, 6, where="Figure 1",
+          quote="The reporting odds ratio of hepatic injury for example-drug, with its interval")
+    assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"], (
+        "item 6 still quotes Table 1's caption under Table 2")  # fmt: skip
+    quote(project, 5, where="Table 1")
+    assert quote_findings(project, "submission") == []
+
+
 def test_a_dropped_item_is_caught(project: Path) -> None:
     edit_yaml(project / CHECKLIST, lambda d: d["items"].pop(2))
     assert "checklist-item-missing" in codes(reporting_report(project))
@@ -799,13 +949,16 @@ def test_scaffolding_preserves_answers_already_given(project: Path) -> None:
     assert added == 0
     assert total == len(before["items"])
     assert [i.get("where") for i in after["items"]] == [i.get("where") for i in before["items"]]
+    assert [i.get("quote") for i in after["items"]] == [i.get("quote") for i in before["items"]]
 
 
 def test_scaffolding_adds_only_new_items(project: Path) -> None:
     edit_yaml(project / CHECKLIST, lambda d: d["items"].pop())
     project_obj, _ = load_project(project)
-    _path, _total, added = scaffold_completion(project_obj, "DEMO-OBS")
+    path, _total, added = scaffold_completion(project_obj, "DEMO-OBS")
     assert added == 1
+    new = yaml.safe_load(path.read_text(encoding="utf-8"))["items"][-1]
+    assert new == {"id": "10", "where": "", "quote": "", "note": "Funding"}
 
 
 # ------------------------------------------- a guideline claimed in prose but never declared

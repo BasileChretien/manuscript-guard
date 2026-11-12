@@ -5,35 +5,54 @@ guideline: DEMO-OBS
 # submission; producing it while writing rather than the night before is the only way a
 # reporting checklist does what it is for, which is to surface what is missing while there
 # is still time to add it.
+#
+# Each answer names the heading and quotes the sentence under it that addresses the item.
+# A heading alone is satisfied by any manuscript, since every paper has a Methods; G5 checks
+# that each quote stands under its heading, so a sentence deleted or moved is found. A quote
+# is copied with its bindings as written, as item 3's is, or with the values the built
+# document prints.
 
 items:
   - id: '1'
     where: Abstract
+    quote: Disproportionality analysis of a synthetic spontaneous reporting database
     note: Study design
   - id: '2'
     where: Introduction
+    quote: This analysis asks whether the signal extends to example-drug specifically.
     note: Rationale
   - id: '3'
     where: Methods
+    quote: 'We analysed a synthetic spontaneous reporting database, generated on
+      {{results.dataset.reports.extracted}} to cover {{results.dataset.reports.covers_from}}
+      to {{results.dataset.reports.covers_to}}.'
     note: Data source
   - id: '4'
     where: Methods
+    quote: Confidence intervals were derived from the standard error of the log odds ratio
     note: Measure of association
   - id: '5'
     where: Methods
+    quote: 'are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}'
     note: Statistical methods
   - id: '6'
     where: Results
+    quote: 'The database contained {{results.cohort.n_reports}} reports, of which
+      {{results.cohort.n_drug_reports}} named example-drug.'
     note: Participants
   - id: '7'
     where: Results
+    quote: Reporting of hepatic injury was disproportionate for example-drug
     note: Main results
   - id: '8'
     where: Discussion
+    quote: Spontaneous reports are subject to notoriety bias, and the denominator is unknown.
     note: Limitations
   - id: '9'
     where: Discussion
+    quote: Disproportionality is not incidence, and nothing in these data supports a rate.
     note: Interpretation
   - id: '10'
     where: Funding
+    quote: This work received no funding.
     note: Funding

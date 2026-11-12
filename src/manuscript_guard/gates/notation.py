@@ -36,6 +36,11 @@ a sentence taken for a number: "(95% CI {{…}} to {{…}})" is an interval join
 zero, is the emitter's and the journal's, and is not this reading's.
 
 All of it is a warning: a `p` can be a proportion, and a count is a majority, not a rule.
+
+**What has one answer is an edit, at every place** (`notation_edits`): each other form of a
+sign's spacing, an interval's join or a "%" made the manuscript's own, and each number run
+into its unit or a word spaced, for the audit's copy in Track Changes. Not the P's symbol,
+and nothing where two forms are used as often.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.spelling import opens_a_sentence
 from manuscript_guard.gates.vocabulary import Passage, context, own_words
@@ -231,6 +237,16 @@ class _Use:
     offset: int
     passage: Passage
     length: int
+    #: The stretches of the passage's text an edit would change, each (start, end): the
+    #: spaces around a sign, what joins two bounds, the space before "%", or the place a
+    #: space is left out, where start and end are one.
+    pieces: tuple[tuple[int, int], ...] = ()
+    #: Whether a bound of an interval is negative, which a dash would read as its sign.
+    negative: bool = False
+    #: Whether the reading cannot be sure what it read: two or three hyphens against the
+    #: high bound after a negative or bound low one, "-1.2--0.3", are pandoc's dash or a
+    #: hyphen and the bound's minus sign.
+    doubtful: bool = False
 
     @property
     def key(self) -> tuple[int, int]:
@@ -362,13 +378,38 @@ def _hint(level: bool) -> str:
     return _KEEP + (", or the later of the two, since they are level" if level else "")
 
 
-def judge_notation(passages: Iterable[Passage]) -> Report:
-    """The findings of the notation reading, over the whole manuscript in the order it is
-    read. It takes no setting: the manuscript is held to itself, and to the SI Brochure
-    for the space before a unit."""
-    symbols, signs, joins, percents = _Family(), _Family(), _Family(), _Family()
-    closed: list[tuple[_Use, str]] = []
-    run_on: list[_Use] = []
+@dataclass
+class _Read:
+    """What the reading found before it judges: the forms of each thing, the numbers run
+    into their unit, each with the unit, and the spaces left out."""
+
+    symbols: _Family = field(default_factory=_Family)
+    signs: _Family = field(default_factory=_Family)
+    joins: _Family = field(default_factory=_Family)
+    percents: _Family = field(default_factory=_Family)
+    closed: list[tuple[_Use, str]] = field(default_factory=list)
+    run_on: list[_Use] = field(default_factory=list)
+
+
+def _doubtful(join: str, low: str) -> bool:
+    """Are two or three hyphens against the high bound pandoc's dash or a hyphen and the
+    bound's minus sign? Not after a positive low bound, where a minus sign would make the
+    high bound the lower: "1.2--3.4" is the dash (rounds 1 and 2 of #636)."""
+    return (join.strip() in ("--", "---") and join.endswith("-")
+            and (_negative(low) or VALUE in low))  # fmt: skip
+
+
+def _letters_before(found: re.Match[str]) -> int:
+    """Where the sign stands in "to+0.77": after the word's letters."""
+    typed = found.group(0)
+    return found.start() + len(typed) - len(typed.lstrip("abcdefghijklmnopqrstuvwxyz"))
+
+
+def _read(passages: Iterable[Passage]) -> _Read:
+    """Each place the notation stands, over the whole manuscript in the order it is read."""
+    read = _Read()
+    symbols, signs, joins, percents = read.symbols, read.signs, read.joins, read.percents
+    closed, run_on = read.closed, read.run_on
 
     for place, passage in enumerate(passages):
         text = _counted(passage)
@@ -385,7 +426,8 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                     # "P = 3.2 x 10-9" or "P < 10^-5^", whose figures are above 1 and
                     # whose value is not.
                     continue
-            use = _Use(place, found.start(), passage, found.end() - found.start())
+            use = _Use(place, found.start(), passage, found.end() - found.start(),
+                       (found.span("before"), found.span("after")) if sign else ())
             if sign is not None:
                 signs.add(_spacing(found["before"], found["after"]), use)
             if symbol == "P" and not found["mark"] and opens_a_sentence(text, found.start()):
@@ -396,7 +438,8 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             symbols.add(f"{mark}{symbol}{mark}", use)
 
         for found in _N.finditer(text):
-            use = _Use(place, found.start(), passage, found.end() - found.start())
+            use = _Use(place, found.start(), passage, found.end() - found.start(),
+                       (found.span("before"), found.span("after")))
             signs.add(_spacing(found["before"], found["after"]), use)
 
         for found in _INTERVAL.finditer(text):
@@ -412,11 +455,16 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 and not _LEVEL_BEFORE.search(text[max(0, found.start() - _BACK) : found.start()])
             ):
                 continue  # "a confidence interval of 95%, 5% margin": the level, no bound
-            use = _Use(place, found.start(), passage, found.end() - found.start())
+            typed = found["join"]
+            use = _Use(place, found.start(), passage, found.end() - found.start(),
+                       (found.span("join"),),
+                       _negative(found["low"]) or _negative(found["high"]),
+                       _doubtful(typed, found["low"]))  # fmt: skip
             joins.add(_JOINS["t" if join == "to" else join], use)
 
         for found in _PERCENT.finditer(text):
-            use = _Use(place, found.start(), passage, found.end() - found.start())
+            use = _Use(place, found.start(), passage, found.end() - found.start(),
+                       (found.span("gap"),))  # fmt: skip
             percents.add("spaced" if found["gap"] else "closed", use)
 
         for found in _UNIT.finditer(text):
@@ -426,7 +474,9 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             before = text[max(0, found.start() - _BACK) : found.start()]
             if unit == "g" and _a_force(found["value"], before):
                 continue  # "centrifuged at 12,000g" is a force, not twelve kilograms
-            use = _Use(place, found.start(), passage, found.end() - found.start())
+            between = found.end("value")
+            use = _Use(place, found.start(), passage, found.end() - found.start(),
+                       ((between, between),))  # fmt: skip
             closed.append((use, unit))
 
         for found in _NUMBER_THEN_WORD.finditer(text):
@@ -435,10 +485,23 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 continue  # "30min": a unit, which `notation-unit` reports
             if _HEXADECIMAL.fullmatch(found.group(0)):
                 continue  # "0xff", a number written in hexadecimal
-            run_on.append(_Use(place, found.start(), passage, found.end() - found.start()))
+            between = found.start("word")
+            run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
+                               ((between, between),)))  # fmt: skip
         for found in _WORD_THEN_NUMBER.finditer(text):
-            run_on.append(_Use(place, found.start(), passage, found.end() - found.start()))
+            between = _letters_before(found)
+            run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
+                               ((between, between),)))  # fmt: skip
+    return read
 
+
+def judge_notation(passages: Iterable[Passage]) -> Report:
+    """The findings of the notation reading, over the whole manuscript in the order it is
+    read. It takes no setting: the manuscript is held to itself, and to the SI Brochure
+    for the space before a unit."""
+    read = _read(passages)
+    symbols, signs, joins, percents = read.symbols, read.signs, read.joins, read.percents
+    closed, run_on = read.closed, read.run_on
     findings: list[Finding] = []
 
     for form, found, most, kept, level in _apart(symbols):
@@ -553,3 +616,88 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             "notation_spaces_missing": len(run_on),
         },
     )
+
+
+#: What an edit writes for the form the manuscript keeps: the spaces either side of a
+#: sign, and the space before "%".
+_SIGN_SPACES = {"spaced": (" ", " "), "closed": ("", "")}
+_PERCENT_SPACE = {"spaced": " ", "closed": ""}
+#: The joins a negative bound is not to be put after: its minus sign would read as one.
+_DASHES = frozenset({"an en dash", "an em dash", "a hyphen"})
+
+
+def notation_edits(passages: Iterable[Passage]) -> list[Edit]:
+    """What the reading would change, at every place: each sign after P or n spaced as the
+    manuscript spaces most of them, each interval joined and each "%" set as most are, and
+    a space between a number and the unit or the word run into it. Nothing of the P's
+    symbol, which is the journal's to say, nor where two forms are used as often; and no
+    dash put before or after a negative bound, whose sign it would read as; and nothing of
+    an interval whose hyphens may hold its high bound's sign, "-1.2--0.3" (round 1 of
+    #636)."""
+    read = _read(passages)
+    edits: list[Edit] = []
+    kept = _kept(read.signs, ("spaced", "closed"))
+    if kept is not None:
+        for form, uses in read.signs.forms.items():
+            if form != kept:
+                edits += _set(uses, "notation-sign-spacing", _SIGN_SPACES[kept])
+    kept = _kept(read.joins)
+    if kept is not None:
+        join = _join_of(read.joins.forms[kept])
+        for form, uses in read.joins.forms.items():
+            if form != kept:
+                allowed = [use for use in uses if not (kept in _DASHES and use.negative)]
+                edits += _set(allowed, "notation-interval", (join,))
+    kept = _kept(read.percents)
+    if kept is not None:
+        for form, uses in read.percents.forms.items():
+            if form != kept:
+                edits += _set(uses, "notation-percent", (_PERCENT_SPACE[kept],))
+    edits += _set([use for use, _unit in read.closed], "notation-unit", (" ",))
+    edits += _set(read.run_on, "notation-space-missing", (" ",))
+    return edits
+
+
+def _kept(family: _Family, among: tuple[str, ...] | None = None) -> str | None:
+    """The form the manuscript keeps, of `among` where it is given: the one used most.
+    None where it writes none of them, or two as often."""
+    forms = [(form, uses) for form, uses in family.forms.items()
+             if among is None or form in among]  # fmt: skip
+    ranked = sorted(forms, key=lambda item: -len(item[1]))
+    if not ranked or (len(ranked) > 1 and len(ranked[0][1]) == len(ranked[1][1])):
+        return None
+    return ranked[0][0]
+
+
+def _join_of(uses: list[_Use]) -> str:
+    """What joins the bounds as the kept form is typed where it first stands, set evenly:
+    " to ", ", ", and a dash with a space either side or none, so that a dash typed with a
+    space on one side, "1.2 -3.4", is not copied to read as a minus sign (round 1 of #636)."""
+    first = min(uses, key=lambda use: use.key)
+    start, end = first.pieces[0]
+    typed = first.passage.text[start:end]
+    core = typed.strip()
+    if core == "to":
+        return " to "
+    if core in (",", ";"):
+        return core + " "
+    return f" {core} " if typed[:1].isspace() and typed[-1:].isspace() else core
+
+
+def _sure(use: _Use) -> bool:
+    """Whether the reading is sure enough of what it read to edit it."""
+    return not use.doubtful
+
+
+def _set(uses: Iterable[_Use], code: str, news: tuple[str, ...]) -> list[Edit]:
+    """An edit of each piece of each use to its counterpart in `news`, where it differs;
+    none of a use the reading is not sure of."""
+    edits = []
+    for use in uses:
+        if not _sure(use):
+            continue
+        within = (use.offset, use.offset + use.length)
+        for (start, end), new in zip(use.pieces, news, strict=True):
+            if use.passage.text[start:end] != new:
+                edits.append(Edit(code, use.passage, start, end, new, within))
+    return edits

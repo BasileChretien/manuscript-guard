@@ -5171,6 +5171,55 @@ funding or of interests alone names no initials, since their capitals are instit
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
 
+**The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
+"INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
+defined). Its departments, units and institutions need no defining, and nothing on it is a
+use or a definition of the paper's short forms: "Institut national de la santé et de la
+recherche médicale (INSERM)" in an affiliation does not define the INSERM of the Methods, and
+an entry of the list of abbreviations the title page alone uses is unused. Everything from
+the end of the title page on is read as before. The other readings of G14, the spelling, the
+terms and the notation, still read it.
+
+Not every paper has an abstract, a letter to the editor has none, so the end is not found
+by one word (`text/title_page.py`). The first file of the paper, and the first of the
+supplement, is read from its opening, block by block, a heading or a paragraph, past the
+front matter and a comment `init --from` set aside, and each block is one of five kinds:
+
+- a line only a title page holds: an affiliation, a paragraph naming a department, a
+  faculty, a university, an institute, a hospital, a school, a laboratory, a centre, a unit,
+  Inserm, CNRS or UMR, in English, French, German, Spanish or Italian, in pieces between its
+  commas of ten words at most, the small words of names aside; an e-mail address; an ORCID
+  iD; authors with a degree after a name ("Jane Doe, MD") or the mark of an affiliation
+  ("MARTIN\\*^1^", "Doe1,2" as a PDF prints it); or a label, "Corresponding author",
+  "Correspondence", "Running title", "Word count", "Keywords", "E-mail", "Affiliations";
+- a line that may stand on one and says nothing either way: names with no mark, a date,
+  "Received: ...", a note under a mark ("\\*These authors contributed equally");
+- the paper's opening: a heading, a paragraph alone or a run-in label that names a section
+  a paper opens on, the Abstract (or the journal's name for it), Summary, Introduction,
+  Background, Methods and its variants, Results, Discussion, Conclusions, Main text, Letter,
+  Highlights, Key points, Objectives and the like; or a letter's salutation, "Dear Editor,",
+  "To the Editor:", "Sir,", "Dear Sir or Madam,";
+- another heading: one of the back matter, "References", "Funding", or one that names no
+  section, past the first block;
+- prose: a paragraph with a word a sentence is made of and a title page is not, "we",
+  "was", "is", "this", "a", "an" and the like, or "the" twice, or one sentence ending before
+  another; or, with none of those, of eight words or more, three in five of them in small
+  letters, the small words of names aside.
+
+The title page runs from the opening to the first block of the last three kinds. It is the
+title page where it holds a line only a title page holds, one where the paper's opening ends
+it and two where anything else does, and 600 words at most, as `init --from` sets aside. The
+first block is the title: a heading, or a paragraph of three lines and 40 words at most, one
+sentence at most and no stop at its end, which may read as prose, and whose institution,
+"Burnout among nurses of a university hospital", is no affiliation. So a paper that opens
+on its Introduction has no title page, nor one whose title alone stands above it, nor one
+whose opening prose names a university ("We taught pharmacology at the University of Rouen
+(UR), France"): those are read whole. Where nothing marks a title page there is none; a
+title page found where there is none would hide real findings in the paper's opening, so
+each rule leans the other way. A LaTeX paper is not read so: the title page its class
+writes, `\author`, `\affil`, `\address` and the rest of `FRONT_MATTER_COMMANDS`, is passed
+over by its reader (above), and nothing here changes how a LaTeX paper is read.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -25780,6 +25829,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+- **G14 finds a title page by the shape of its lines, and leans towards finding none.**
+  The rules are in "Abbreviations are checked against the manuscript", under "The title page
+  is not read". Where it finds none, the title page is read as before, its units and
+  institutions reported as undefined; where it finds one that is not, the paper's opening
+  is not read for abbreviations. Accepted.
+  - A title that ends in a stop, holds two sentences, or runs over three lines or 40 words
+    is no title, and a paper that opens on one has no title page; so has a PDF whose first
+    line, or first line of its title in sentence case, reads as prose, its lines standing in
+    one paragraph before the first heading. Accepted.
+  - A title page with one line only a title page holds is found only where the paper's
+    opening ends it: ended by prose, by a heading of the back matter or by the end of the
+    file, it needs two, and is otherwise read. Pinned by
+    `tests/test_language.py::test_a_title_page_ends_where_running_prose_begins`.
+  - A line of the title page that reads as prose ends the title page there, and what
+    follows it is read: an affiliation with "a" or "we" in it, a funding line "Funding: This
+    work was ...". Accepted.
+  - A sentence that holds none of the words of a sentence, no "the" twice and no second
+    sentence, names an institution and keeps between its commas to ten words, "Students of
+    Rouen University, France, sat exams at CHU Caen in 2021.", reads as an affiliation:
+    after a title and before the paper's first section, it is taken for a title page and
+    not read for abbreviations. Accepted.
+  - "Correspondence" is a title page's label, the corresponding author's, and so not the
+    paper's opening, though The Lancet names a section so. Accepted.
+  - Only the first file of the paper and of the supplement may open on a title page. A
+    title page kept in a file of its own that the build prints after `main.md` is read.
+    Pinned by
+    `tests/test_language.py::test_only_the_first_file_of_the_paper_may_open_on_a_title_page`.
+  - A title page of more than 600 words is read whole, as `init --from` leaves one in the
+    text. Pinned by `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

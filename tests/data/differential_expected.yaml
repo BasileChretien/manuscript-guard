@@ -26,11 +26,12 @@
 expected:
   - reading: abbreviations
     why: >-
-      an entry of a list of abbreviations that the text neither uses nor defines is said as
-      the list's, "in the list of abbreviations and not used in the main text", with the hint
-      to take it out of the list, and a use above an entry the text never spells out is told
-      to spell it out where it first appears; a long form is quoted as typed, not by repr
-      (the author's audit, 2026-11-11)
+      the title page that opens a file is not read for abbreviations: its authors' names,
+      departments, units and institutions are reported nowhere, and nothing on it defines or
+      uses a short form; it ends at the first section a paper opens on, at a letter's
+      salutation, or at running prose, and is found only where it holds a line only a title
+      page holds (Basile, 2026-11-12); the inputs now open on a title page of each kind, or
+      on none
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

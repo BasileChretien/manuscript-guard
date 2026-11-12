@@ -836,6 +836,173 @@ def initials_named(draw: st.DrawFn) -> tuple[str, list[str]]:
                          INITIAL_PART])  # fmt: skip
 
 
+#: A title page's titles: in sentence case, which reads as prose, in bold and in capitals of
+#: each word, and as a heading; each with a short form in it, which is the title page's.
+TITLE_PAGE_TITLES = (
+    "Pharmacology exam success in the PACES year",
+    "**Influence of Learning Activities on Exam Success in the PACES Year**",
+    "# Exam success in the PACES year",
+)
+#: The lines of a full title page: the authors with their marks or their degrees, in
+#: capitals as Word papers write family names; the affiliations, French and English, with
+#: their units and institutions; one that spells INSERM out; the corresponding author, a
+#: running title, a word count, keywords and a note under a mark. Every capital in them is
+#: the title page's, and none is read.
+TITLE_PAGE_AUTHORS = (
+    "Ana MARTIN^1^, Paul GIRARD^2,3^\\*, Lea ROUX^1^",
+    "Ana MARTIN, PharmD, MSc^1^; Paul GIRARD, MD, PhD^2^",
+)
+TITLE_PAGE_AFFILIATIONS = (
+    "Université de Rouen, UFR Santé, F-76000 Rouen, France",
+    "Normandie Univ, UNICAEN, UMR-S 1237, PhIND, GIP Cyceron, F-14000 Caen, France",
+    "Institut national de la santé et de la recherche médicale (INSERM), Paris, France",
+)
+#: How an affiliation is marked: a superscript, or a numbered list as pandoc writes Word's.
+TITLE_PAGE_MARKS = ("^{}^ ", "{}.  ")
+TITLE_PAGE_LINES = (
+    "**Corresponding author**",
+    "Correspondence to Dr Ana MARTIN, CHU de Rouen, ana.martin@example.org",
+    "E-mail: ana.martin@example.org",
+    "ORCID: 0000-0002-1825-0097",
+    "Running title: Exam success in the PACES",
+    "Word count: 3,412",
+    "Keywords: pharmacology; L.AS; medical education",
+    "\\*These authors contributed equally to this work.",
+)
+#: A title page of a single line that only a title page holds, after names with no mark.
+TITLE_PAGE_NAMES = "Ana Martin, Paul Girard and Lea Roux"
+TITLE_PAGE_ONE_AFFILIATION = "Department of Pharmacology, CHU de Rouen, UNICAEN, Rouen, France"
+#: The headings an abstract opens under, and a line that is only its name, in bold or not,
+#: and its name run in before its text.
+ABSTRACT_OPENINGS = ("# Abstract", "## ABSTRACT", "**Abstract**", "Abstract", "# Summary",
+                     "**Abstract:** ")  # fmt: skip
+#: The first section of a paper with no abstract: a heading, numbered or not, and a line in
+#: bold, none of them an Abstract.
+SECTION_OPENINGS = ("# Introduction", "# Background", "## 1. Introduction", "# Main text",
+                    "# Methods", "**Introduction**")  # fmt: skip
+#: How a letter opens, and the short form its salutation holds, which is the letter's own.
+SALUTATIONS = (("Dear Editor,", ()), ("To the Editor of the EJHP:", ("EJHP",)), ("Sir,", ()),
+               ("Dear Sir or Madam,", ()))  # fmt: skip
+#: A paper's opening that names a university in a sentence and defines a short form there,
+#: which is no title page: a sentence with "we" in pieces as short as an affiliation's, and
+#: one with no word of a sentence in a piece longer than one; each after a title. And one
+#: sentence that opens the paper with no title.
+OPENING_MENTIONS = (
+    "We taught pharmacology at the University of Rouen (UR), France, in 2021.",
+    "Second-year students from Rouen University (UR) took exams at CHU Caen during spring "
+    "2021 and autumn 2022",
+)
+OPENING_SENTENCE = "Students of the University of Rouen (UR) sat the exam at the CHU in 2021."
+#: A paper with no title page whose title stands alone above its Introduction, defining a
+#: short form a hospital's name gives it, which is read.
+TITLE_ALONE = "Pharmacology teaching at Rouen University Hospital (RUH)"
+
+
+@st.composite
+def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]:
+    """Manuscripts that open in each way a title page ends, by name, each with the findings
+    G14 gives, in order: `abstract`, a full title page, its lines in an order drawn, ending at
+    an Abstract drawn among its forms; `section`, a title page of one affiliation ending at
+    another first section; `letter`, one ending at a salutation, with no heading at all;
+    `prose`, a letter with no salutation, whose title page of two lines only a title page
+    holds ends where its prose begins;
+    `headed` and `alone`, papers with no title page, one opening on its Introduction, and one
+    on a title alone; and `mentions-0`, `mentions-1` and `sentence`, papers whose opening
+    names a university in a sentence. One of each in every example, and the same line ends
+    in all of them.
+
+    The title page's capitals are reported nowhere; its spelling out of INSERM defines
+    nothing, so the text's INSERM is undefined; the CHU, which the text uses too, is reported
+    where the text uses it. In the papers with no title page, every capital is read."""
+    end = draw(st.sampled_from(("\n", "\n", "\r\n")))
+    title = draw(st.sampled_from(TITLE_PAGE_TITLES))
+
+    def body(*uses: str) -> str:
+        text, _starts = _paragraphs(draw, uses)
+        return text
+
+    def paper(*blocks: str) -> str:
+        return "\n\n".join(block.strip("\n") for block in blocks if block) + "\n"
+
+    mark = draw(st.sampled_from(TITLE_PAGE_MARKS))
+    affiliations = [mark.format(at) + line for at, line in enumerate(TITLE_PAGE_AFFILIATIONS, 1)]
+    lines = draw(st.permutations([*affiliations, *TITLE_PAGE_LINES]))
+    opening = draw(st.sampled_from(ABSTRACT_OPENINGS))
+    # A run-in label has its text after it on its line, any other opening under it.
+    abstract = opening + ("" if opening.endswith(" ") else "\n\n") + "the NIH paid for the reports"
+    # The title is left to the front matter in some, as a Markdown paper keeps it.
+    titled = draw(st.booleans())
+    main = body("the reporting odds ratio (ROR) was computed", "the ROR rose at the CHU",
+                "the INSERM unit paid for the survey")  # fmt: skip
+    found = {
+        "abstract": (
+            paper(title if titled else "---\ntitle: Exam success\n---",
+                  draw(st.sampled_from(TITLE_PAGE_AUTHORS)), *lines, abstract,
+                  "# Introduction", main),
+            [("abbreviation-undefined", short) for short in ("CHU", "INSERM", "NIH")],
+        ),
+        "section": (
+            paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                  draw(st.sampled_from(SECTION_OPENINGS)), body("the CHU paid for the survey")),
+            [("abbreviation-undefined", "CHU")],
+        ),
+    }
+    salutation, said = draw(st.sampled_from(SALUTATIONS))
+    found["letter"] = (
+        paper(title, "Ana Martin and Paul Girard", TITLE_PAGE_ONE_AFFILIATION, salutation,
+              body("We read with interest the report on the NIH survey.",
+                   "the CHU paid for the survey")),
+        sorted(("abbreviation-undefined", short) for short in ("CHU", "NIH", *said)),
+    )
+    # A letter that opens with no salutation: its title page of two lines only a title page
+    # holds ends where its prose begins.
+    found["prose"] = (
+        paper(title, draw(st.sampled_from(TITLE_PAGE_AUTHORS)), affiliations[1],
+              body("We read with interest the report on the NIH survey.",
+                   "the CHU paid for the survey")),
+        [("abbreviation-undefined", short) for short in ("CHU", "NIH")],
+    )
+    header = draw(st.sampled_from(("", "---\ntitle: Exam success\n---")))
+    found["headed"] = (
+        paper(header, "# Introduction",
+              body("the INSERM unit and the CHU paid for the survey",
+                   "the UNICAEN team read the reports")),
+        [("abbreviation-undefined", short) for short in ("CHU", "INSERM", "UNICAEN")],
+    )
+    found["alone"] = (
+        paper(TITLE_ALONE, "# Introduction", body("the RUH and the CHU paid for the survey")),
+        [("abbreviation-undefined", "CHU")],
+    )
+    methods = ("# Methods", body("the UR and the CHU paid for the survey"))
+    for at, mention in enumerate(OPENING_MENTIONS):
+        # With no title page, the title is read, and its PACES is undefined; a heading's
+        # words are not read for abbreviations anyway.
+        heading = draw(st.sampled_from(TITLE_PAGE_TITLES))
+        shorts = ("CHU",) if heading.startswith("#") else ("CHU", "PACES")
+        found[f"mentions-{at}"] = (
+            paper(heading, mention, *methods),
+            [("abbreviation-undefined", short) for short in shorts],
+        )
+    found["sentence"] = (paper(OPENING_SENTENCE, *methods), [("abbreviation-undefined", "CHU")])
+    return {name: (text.replace("\n", end), expected)
+            for name, (text, expected) in found.items()}  # fmt: skip
+
+
+#: The openings an input of the `abbreviations` reading starts with, so that old and new
+#: are compared on title pages: none, a full one ending at an Abstract, one ending at an
+#: Introduction, and a letter's.
+TITLE_PAGE_OPENINGS = (
+    "",
+    "\n\n".join((TITLE_PAGE_TITLES[1], TITLE_PAGE_AUTHORS[0],
+                 *(f"^{at}^ {line}" for at, line in enumerate(TITLE_PAGE_AFFILIATIONS, 1)),
+                 *TITLE_PAGE_LINES, "# Abstract", "the NIH paid for the reports\n\n")),
+    "\n\n".join((TITLE_PAGE_TITLES[0], TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                 "# Introduction\n\n")),
+    "\n\n".join((TITLE_PAGE_TITLES[2], TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
+                 "Dear Editor,\n\n")),
+)  # fmt: skip
+
+
 #: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.
 STATISTICS_EXEMPT = ("ANOVA", "RMSD", "RMSE", "SD")
 STATISTICS_NOT = ("CI", "HR", "IQR", "OR", "SE", "SEM")
@@ -13384,9 +13551,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
-                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
-            ),
+            "text": st.tuples(
+                st.sampled_from(TITLE_PAGE_OPENINGS),
+                texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            ).map(lambda drawn: f"{drawn[0]}{drawn[1]}\n\n# Methods\n\n{INITIALS_NAMED}\n"),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),

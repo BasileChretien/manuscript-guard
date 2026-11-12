@@ -25,7 +25,9 @@ build.
 Three texts are read apart, because each is read apart. The abstract is indexed and read
 without the paper, so what it uses it must define. The main text does not inherit from the
 abstract. The supplement is read after the paper, so it inherits the main text's
-definitions and is otherwise held to its own.
+definitions and is otherwise held to its own. The title page that opens either is not read
+for abbreviations at all (`text/title_page.py`): its units and institutions need no
+defining.
 
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
@@ -71,6 +73,7 @@ from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
+from manuscript_guard.text.title_page import title_page_end
 
 if TYPE_CHECKING:
     from manuscript_guard.text.latex.structure import Source
@@ -773,6 +776,13 @@ def _in_a_glossary(file: _File, offset: int) -> bool:
     return _inside(file.glossaries, offset)
 
 
+def _on_the_title_page(file: _File, offset: int) -> bool:
+    """Whether a word at `offset` is on the title page that opens the file, which G14 does
+    not read for abbreviations: nothing there needs defining, and nothing there is a use or
+    a definition (`text/title_page.py`)."""
+    return offset < file.title_page
+
+
 def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
     """`_within` for spans in order and none inside another, by halving."""
     at = bisect_right(spans, (offset, float("inf"))) - 1
@@ -1150,6 +1160,9 @@ class _File:
     supplementary: bool = False
     #: The authors' initials its contributions statement names (`_initials`).
     initials: frozenset[str] = frozenset()
+    #: Where the title page that opens the file ends, 0 where it opens with none
+    #: (`text/title_page.py`): no abbreviation is read before it.
+    title_page: int = 0
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1172,9 +1185,15 @@ def _file(
     chain: list[Section],
     supplementary: bool,
     abstract_title: str | None = None,
+    opens: bool | None = None,
 ) -> _File:
+    """A Markdown file read. `opens` where it is the first file of the paper or of the
+    supplement, which a title page may open; by default, where `order` is 0."""
     headings = find_headings(text)
     hidden, code = _views(text)
+    if opens is None:
+        opens = order == 0
+    title_page = (title_page_end(hidden, headings, abstract_title) or 0) if opens else 0
     # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
     # not where a reader expects it defined: the abbreviations are read without them.
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
@@ -1195,6 +1214,7 @@ def _file(
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         initials=_initials(prose, _contributions(hidden, titled, statements)),
+        title_page=title_page,
     )  # fmt: skip
 
 
@@ -1443,9 +1463,9 @@ def _read(project: Project) -> list[_File]:
     files: list[_File] = []
     for document, supplementary in ((paper, False), (supplement, True)):
         chain: list[Section] = []
-        for path in document:
+        for at, path in enumerate(document):
             text = read_text(path)
-            files.append(_file(len(files), path, text, chain, supplementary, named))
+            files.append(_file(len(files), path, text, chain, supplementary, named, at == 0))
     return files
 
 
@@ -1457,7 +1477,9 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
     for file in files:
         for offset, short, long in file.definitions:
             region = file.region_at(offset)
-            if region.scope is None:
+            # Nothing on the title page is a definition: its institutions' names are not
+            # the paper's terms (Basile, 2026-11-12).
+            if region.scope is None or _on_the_title_page(file, offset):
                 continue
             defined.add(short)
             defining.add((file.order, offset))
@@ -1477,8 +1499,10 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             if token.islower() or token.isdigit():
                 continue
             region = file.region_at(word.start())
-            # A glossary's lines are its entries, and none of them is a use.
-            if region.scope is None or _in_a_glossary(file, word.start()):
+            # A glossary's lines are its entries, and none of them is a use; nor is a word
+            # of the title page, its departments, units and institutions.
+            if (region.scope is None or _in_a_glossary(file, word.start())
+                    or _on_the_title_page(file, word.start())):  # fmt: skip
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]

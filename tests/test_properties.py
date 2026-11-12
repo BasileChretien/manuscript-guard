@@ -1923,6 +1923,81 @@ def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
+from generated import title_pages  # noqa: E402
+
+
+@holds(40, title_pages())
+def test_the_title_page_is_not_read_for_abbreviations(
+    drawn: dict[str, tuple[str, list[tuple[str, str]]]],
+) -> None:
+    """A title page's capitals, its authors' names, units and institutions, are reported
+    nowhere, and what it spells out defines nothing, wherever it ends: at an Abstract, at
+    another first section, at a letter's salutation. A paper with no title page, opening on a
+    heading or on a title alone, is read whole, and so is one whose opening names a
+    university in a sentence (Basile, 2026-11-12)."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for name, (text, expected) in drawn.items():
+        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+                                      Path("."))  # fmt: skip
+        found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+        assert found == expected, (name, text)
+
+
+def _no_title_page_is_found(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "title_page_end", lambda *args, **kwargs: None)
+
+
+def _only_an_abstract_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_OPENING_NAMES", frozenset({"abstract", "summary"}))
+
+
+def _a_salutation_opens_no_letter(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SALUTATION", re.compile(r"(?!)"))
+
+
+def _prose_ends_no_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+
+    def kind(raw: str, joined: str, *, first: bool = False) -> str:
+        found = real(raw, joined, first=first)
+        return title_page.NEUTRAL if found == title_page.PROSE else found
+
+    patch.setattr(title_page, "_paragraph_kind", kind)
+
+
+def _no_word_makes_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SENTENCE", frozenset())
+    patch.setattr(title_page, "_SENTENCE_OPENING", frozenset())
+
+
+def _an_affiliation_is_no_title_page_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_INSTITUTION", re.compile(r"(?!)"))
+
+
+def _an_affiliation_s_pieces_may_be_any_length(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_PIECE_WORDS", 1000)
+
+
+def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+    patch.setattr(title_page, "_paragraph_kind",
+                  lambda raw, joined, *, first=False: real(raw, joined))  # fmt: skip
+
+
 def _no_initials_are_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_initials", lambda prose, spans: frozenset())
 
@@ -21819,6 +21894,38 @@ BROKEN = {
     "no initials are read from a contributions statement": (
         _no_initials_are_read,
         test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "no title page is found": (
+        _no_title_page_is_found,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "only an abstract ends a title page": (
+        _only_an_abstract_ends_a_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a salutation opens no letter": (
+        _a_salutation_opens_no_letter,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "prose ends no title page": (
+        _prose_ends_no_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "no word makes a sentence of an opening": (
+        _no_word_makes_a_sentence,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation is no line of a title page": (
+        _an_affiliation_is_no_title_page_line,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's pieces may be of any length": (
+        _an_affiliation_s_pieces_may_be_any_length,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title's institution is an affiliation": (
+        _a_title_s_institution_is_an_affiliation,
+        test_the_title_page_is_not_read_for_abbreviations,
     ),
     "every statement's capitals are initials": (
         _every_statement_names_initials,

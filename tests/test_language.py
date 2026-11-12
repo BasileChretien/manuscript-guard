@@ -1957,3 +1957,147 @@ def test_a_long_hyphenated_word_is_read_in_linear_time(assert_linear) -> None:
     # From 50 parts: reading every stretch of the word whole is cubic, and from 2,000 a
     # return of it would not fail this test but stall it for hours.
     assert_linear(chained, lambda token: _forms(token, set(), nothing), 50, "one word, by hyphen")
+
+
+# ------------------------------------------------------------------- the title page
+
+#: A title page as pandoc writes a Word paper's, its title a heading in the Title style's
+#: place: authors in capitals with their degrees and marks, French affiliations in a
+#: numbered list with their units and institutions, a note, the corresponding author.
+FRENCH_TITLE_PAGE = (
+    "# Pharmacology exam success in second-year medical students\n\n"
+    "Ana MARTIN\\*^1^, Paul GIRARD, PharmD, MSc\\*^2,3^, Lea ROUX, MD, PhD^4^\n\n"
+    "1.  Université Caen Normandie, UNICAEN, CEMU, F-14000 Caen, France\n\n"
+    "2.  Normandie Univ, UNICAEN, INSERM U1237, UMR-S 1237, PhIND, Institut Blood and Brain "
+    "\\@ Caen-Normandie (BB\\@C), GIP Cyceron, F-14000 Caen, France\n\n"
+    "3.  Nagoya University Graduate School of Medicine, Department of International Medical "
+    "Education, Nagoya, Japan.\n\n"
+    "4.  Department of Pharmacology, CHU de Caen Normandie, F-14000 Caen, France\n\n"
+    "\\*: These authors equally contributed to this work\n\n"
+    "**Corresponding author**\n\n"
+    "Dr. Lea ROUX, MD, PhD\n\n"
+    "Pharmacology Department, CHU de Caen Normandie, 14033 Caen, France\n\n"
+    "Email: <lea.roux@example.org>\n\n"
+    "ORCID: 0000-0002-1825-0097\n\n"
+)
+BODY = (
+    "# Introduction\n\nThe reporting odds ratio (ROR) was computed for each drug.\n\n"
+    "# Methods\n\nThe ROR was compared between groups.\n"
+)
+
+
+def _named(report) -> set[str]:
+    return {f.message.split()[0] for f in report.findings}
+
+
+def test_a_title_page_like_the_author_s_gives_no_finding(project: Path) -> None:
+    """The author's audit, 2026-11-12: a title page's departments, units and institutions,
+    "INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND", "GIP Cyceron", and its
+    authors' names in capitals were each an undefined abbreviation. The title page ends at
+    the Abstract, and from there the paper is read as before."""
+    text = FRENCH_TITLE_PAGE + "# Abstract\n\nThe NIH paid for it.\n\n" + BODY
+    report = written(project, text)
+    assert _named(report) == {"NIH"}, found(report)
+    (finding,) = report.findings
+    assert finding.line == text[: text.index("The NIH")].count("\n") + 1
+
+
+@pytest.mark.parametrize("opening", ["# Introduction", "**Background**", "## 1. Main text"])
+def test_without_an_abstract_the_title_page_ends_at_the_first_section(
+    project: Path, opening: str
+) -> None:
+    """A paper with no abstract, a research letter, has its title page end at the first
+    heading that names a section of the paper, and at a paragraph in bold that does."""
+    text = FRENCH_TITLE_PAGE + opening + "\n\nThe CHU paid for it.\n"
+    assert _named(written(project, text)) == {"CHU"}
+
+
+@pytest.mark.parametrize(
+    "salutation", ["Dear Editor,", "To the Editor:", "Sir,", "Dear Sir or Madam,"]
+)
+def test_a_letter_s_title_page_ends_at_its_salutation(project: Path, salutation: str) -> None:
+    """A letter has no heading at all: its title page ends where the letter opens."""
+    text = (
+        "Pharmacology exam success\n\nAna Martin and Paul Girard\n\n"
+        "Department of Pharmacology, CHU de Rouen, UNICAEN, Rouen, France\n\n"
+        f"{salutation}\n\nWe read the report on the NIH survey with interest.\n"
+    )
+    assert _named(written(project, text)) == {"NIH"}
+
+
+def test_a_title_page_ends_where_running_prose_begins(project: Path) -> None:
+    """With no heading and no salutation, the title page ends at the first paragraph of
+    prose, where it has two lines only a title page holds."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN, MD^1^\n\n"
+        "^1^ Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
+        "We read the report on the NIH survey with interest.\n"
+    )
+    assert _named(written(project, text)) == {"NIH"}
+
+
+def test_nothing_on_the_title_page_defines_or_uses(project: Path) -> None:
+    """INSERM spelt out on the title page does not define the text's INSERM, and the
+    title page's UNICAEN is no use of the text's definition."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN^1^\n\n"
+        "^1^ Institut national de la santé et de la recherche médicale (INSERM), UNICAEN, "
+        "Caen, France\n\n# Abstract\n\nNone.\n\n# Introduction\n\n"
+        "The INSERM paid for it, and the University of Caen (UNICAEN) hosted it.\n"
+    )
+    report = written(project, text)
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-undefined", "INSERM"), ("abbreviation-unused", "UNICAEN")]
+
+
+@pytest.mark.parametrize(
+    "opening",
+    [
+        # Opening prose that names a university, with no title page above it.
+        "Students of the University of Rouen sat the CHU exam in 2021.\n\n",
+        "Pharmacology exam success\n\nWe taught at the University of Rouen, France, in 2021, "
+        "with the CHU.\n\n",
+        # A title alone, and a paper that opens on its Introduction.
+        "Teaching at the CHU of Rouen University Hospital\n\n",
+        "",
+        # A Markdown paper whose title is in its front matter.
+        "---\ntitle: Exam success\nauthor: Ana Martin\n---\n\n",
+    ],
+)
+def test_a_paper_with_no_title_page_is_read_whole(project: Path, opening: str) -> None:
+    text = opening + "# Introduction\n\nThe CHU paid for it.\n"
+    assert _named(written(project, text)) == {"CHU"}
+
+
+def test_a_title_page_over_600_words_is_read(project: Path) -> None:
+    """Six hundred words is more than a title page holds, as `init --from` counts one: a
+    longer run is read, as the paper's own text may be."""
+    affiliations = "".join(f"^{at}^ Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
+                           for at in range(1, 80))  # fmt: skip
+    text = f"Exam success\n\nAna MARTIN^1^\n\n{affiliations}# Abstract\n\nNone.\n"
+    assert "CHU" in _named(written(project, text))
+
+
+def test_the_supplement_s_title_page_is_not_read(project: Path) -> None:
+    """The supplement opens on a title page of its own as often as the paper does."""
+    supplement = FRENCH_TITLE_PAGE + "# Supplementary methods\n\nThe NIH paid for it.\n"
+    report = written(project, "# Methods\n\nNothing.\n", supplement=supplement)
+    assert _named(report) == {"NIH"}, found(report)
+
+
+def test_only_the_first_file_of_the_paper_may_open_on_a_title_page(project: Path) -> None:
+    """A second file of the paper continues it, and is read whole."""
+    report = written(project, FRENCH_TITLE_PAGE + "# Abstract\n\nNone.\n",
+                     zz_more=FRENCH_TITLE_PAGE + "# Methods\n\nNone.\n")  # fmt: skip
+    assert "UNICAEN" in _named(report)
+
+
+def test_the_title_page_is_found_in_linear_time(assert_linear) -> None:
+    from manuscript_guard.text.blocks import find_headings
+    from manuscript_guard.text.title_page import title_page_end
+
+    def lines(count: int) -> str:
+        return "Title\n\n" + "Department of X, CHU de Rouen\n\n" * count + "# Abstract\n"
+
+    assert_linear(lines, lambda text: title_page_end(text, find_headings(text)), 200,
+                  "the title page, by line")  # fmt: skip

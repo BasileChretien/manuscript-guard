@@ -31746,3 +31746,44 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     _ai_use_required(project)
     _ai_use_stated(project, "## Use of AI\n\nNo AI tool was used.")
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
+
+
+#: A title page as a Word paper converted by pandoc opens with one, put between the
+#: example's front matter and its Abstract: authors in capitals with their marks and
+#: degrees, French affiliations with their units and institutions, the corresponding author.
+TITLE_PAGE = (
+    "Ana MARTIN, PharmD^1,2^, Paul GIRARD, MD, PhD^3^\n\n"
+    "1.  Normandie Univ, UNICAEN, INSERM U1237, PhIND, GIP Cyceron, F-14000 Caen, France\n\n"
+    "2.  Department of Pharmacology, CHU de Caen Normandie, F-14000 Caen, France\n\n"
+    "3.  UMR-S 1237, Institut Blood and Brain, Caen, France\n\n"
+    "**Corresponding author**\n\n"
+    "Ana MARTIN, ana.martin@example.org\n\n"
+)
+
+
+def with_title_page(root: Path, text: str, running: str = "") -> str:
+    """`text` with `TITLE_PAGE` above its Abstract, and a running title where one is given."""
+    titled = text.replace("# Abstract", TITLE_PAGE + running + "# Abstract", 1)
+    assert titled != text, "the fixture changed under this test"
+    main_md(root).write_text(titled, encoding="utf-8")
+    return titled
+
+
+def test_a_title_page_above_the_mended_example_adds_nothing(project: Path) -> None:
+    """The title page names institutions and units that no paper defines, and G14 does not
+    read it (Basile, 2026-11-12): read, each of its capitals was an undefined abbreviation."""
+    with_title_page(project, with_ror_defined(project))
+    assert language_findings(project) == []
+
+
+def test_a_definition_only_the_title_page_gives_is_caught(project: Path) -> None:
+    """The Introduction's definition is cut, and ROR is spelt out only in the running title
+    on the title page. Nothing there defines: the Introduction's ROR is undefined."""
+    mended = with_ror_defined(project)
+    cut = mended.replace(DEFINED_USE, UNDEFINED_USE)
+    titled = with_title_page(
+        project, cut, "Running title: Reporting odds ratio (ROR) of hepatic injury\n\n"
+    )
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(titled, "(ROR {{"))
+    ]

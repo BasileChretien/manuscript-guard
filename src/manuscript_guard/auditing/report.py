@@ -637,9 +637,10 @@ def _grouped_gates(report, show: _Show) -> list[str]:
                      "writes it" if run.converted and run.places is None else "")  # fmt: skip
         # The short forms left undefined counted as their kind's line counts them.
         many = counted(found)
-        lines.append(f"  {show(run.paper)}: {many} finding{'s' if many != 1 else ''}"
-                     f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
-                     f"{converted}")  # fmt: skip
+        kinds = sum(1 for kind in kinds_of(found).values() if counted(kind))
+        said = (f"{many} finding{'s' if many != 1 else ''} in {kinds} kind"
+                f"{'s' if kinds != 1 else ''}" if many else "a note, and no finding to look at")
+        lines.append(f"  {show(run.paper)}: {said}{converted}")
         lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
     return lines
 

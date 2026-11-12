@@ -284,7 +284,7 @@ All deterministic, all runnable in CI without Claude.
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
-| G5 | Reporting checklist | a checklist item is unaddressed |
+| G5 | Reporting checklist | a checklist item is unaddressed, or its quote is not under the heading it names |
 | G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
@@ -4752,6 +4752,49 @@ Two smaller decisions fell out of this:
   rather than about the project.
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
+
+### An answer quotes the sentence that addresses it
+
+`where: Methods` satisfied every item of every checklist, since every paper has a Methods. In
+the IICARus randomised trial (Hair, Macleod and Sena, Res Integr Peer Rev 2019;4:12,
+doi:10.1186/s41073-019-0069-3), asking authors to complete an ARRIVE checklist changed
+nothing: of 1,689 PLOS ONE manuscripts randomised, none of those accepted for publication
+(762) met the checklist in full, in either arm. The checklist file is not the reporting; the
+sentence is. SciScore finds such sentences with a classifier.
+Here a person, or an agent the author checks, names the sentence in `quote:`, and G5 checks
+that it is there (`gates/checklist_quotes.py`).
+
+- **Where.** Under each heading `where` names, matched as G5 already matched one (a heading
+  in `where` or `where` in a heading, whatever case), that heading's section with its
+  subsections, in the main text or the supplement, each read as the build prints it: its
+  files joined in `printed_order`, `main.md` first and the rest by name, so that a section
+  carries on into the next file (round 1 of #651). Where `where` names a table or a figure
+  ("Table 1", "Figure S2", "eTable 1", read whole by G2's pointer pattern), in that display's
+  caption too: a legend typed as a paragraph that opens with its pointer, and the caption of
+  a table the analysis emits with one, placed once by its binding in a document whose tables
+  the build numbers (`display_numbers`), under that number. A `where` that names a display
+  with one of these captions is a place, and `checklist-location-unknown` is not said of it;
+  a table emitted with no caption, placed twice, or in a document that also places a table
+  by hand or sends its tables as files has none, and is still said to be no heading.
+- **How.** As a review finding's quote is found in the manuscript (`anchoring.py`), which is
+  as G7 finds a passage in a work's source (`words_in`): typography, white space and case
+  folded, whole words, pieces in order around `...`, Markdown's marks of emphasis and code
+  out of both sides. No second folding was written. Each section is read twice, as written
+  and as the build prints it (each value binding its display, an anchor nothing, through
+  `figure_alt.printed_alt`), and a quote matches one reading whole: an author copies either
+  from the source or from the .docx, and a quote half of each is copied from neither.
+  Comments and front matter print nothing and are read as nothing. A quote holds four words
+  or more (`QUOTE_WORDS`), or it is no quote.
+- **Strictness (Basile, 2026-11-12).** An answered item with no quote, a quote under four
+  words (`checklist-quote-missing`), and a quote not under its heading
+  (`checklist-quote-not-found`) are notes while drafting, warnings from internal review and
+  failures at submission. The not-found message names the headings searched, the quote's
+  first words and, where the words stand under another heading, that one, since `where` is
+  then wrong. An item excluded with `not_applicable` quotes nothing. `checklist` writes
+  `quote: ''` beside each new item's `where` and keeps what is written.
+- **LaTeX.** The two documents as they print in Markdown (`printed_document`, the quoting
+  view), whose headings G5 already read; their captions are not read for a `where` that
+  names a display (Known gaps).
 
 **What the Data availability statement says is the journal's rule, not the tool's.** G4 found
 the statement's heading and read nothing under it. Publishers differ on what it must hold:
@@ -10571,6 +10614,17 @@ read nothing is not run, whatever note its section prints, and a section that li
 something for a reader, a rule to check by hand or the references by an author, is to look
 at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
 `tests/test_report_pdf.py`.
+
+**A report to move around in** (the author, 2026-11-12: "make the pdf really interactive",
+once the page showed it). Under the summary, *In this report* lists each note (what was not
+read, how the headings were read), each paper's words with each kind of finding and its
+count under them, and each other section, each line a link to where it stands with the page
+it prints; each paper's words have a place of their own, as two under one took the first's
+(round 1 of #646). Each kind's heading links back to the contents, and the title over every
+page after the first links back to the summary. The pages a contents gives are only known once the
+report is drawn, so it is drawn twice: the numbers stand in a column of their own width, so
+the second drawing is laid out as the first, and the test reads each printed page against
+the bookmark of the kind it names.
 
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
@@ -20997,8 +21051,49 @@ Open, recorded as each change landed:
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work. Accepted.
-- **A completed checklist proves an item was answered, not answered well.** `where: Methods`
-  is checked against the manuscript's headings and nothing more. Accepted.
+- **A completed checklist proves the words are there, not that they are adequate.** An
+  item's `quote:` is held to the manuscript's words under the heading `where` names; whether
+  the sentence does what the item asks is the author's judgement and the reporting-guideline
+  reader's, not G5's. A part of a sentence of four words or more is a quote, so "the
+  denominator is unknown" answers an item on limitations as well as a paragraph would.
+  Accepted.
+- **One sentence may be quoted for two items.** Nothing holds a quote to one item: a
+  sentence that gives the period and the selection of the records answers two items, and
+  one that gives neither can be quoted for both as easily.
+  Pinned by `tests/test_compliance.py::test_one_sentence_may_be_quoted_for_two_items`.
+- **`where` names a heading by containment, so "Methods" names "Supplementary methods".** As
+  G5 has matched `where` to a heading from the start, a heading in `where` or `where` in a
+  heading, whatever case: a quote under the supplement's methods answers `where: Methods`,
+  and a not-found finding lists both headings as searched.
+  Pinned by `tests/test_compliance.py::test_a_quote_under_another_heading_says_which`.
+- **A quote copied across a printed citation, or a printed cross-reference, is not found.**
+  The build prints `[@key]` as "(1)" or "(Smith, 2020)" and `{{ref.table.x}}` as "Table 1";
+  a quote is read against the source as written and against it with each value binding's
+  display, and neither reading prints those. Quote the words either side with `...` between
+  them, or copy the citation as the Markdown writes it.
+  Pinned by `tests/test_compliance.py::test_a_quote_copied_across_a_printed_citation_is_not_found`.
+- **A caption is read for a `where` that names a display only in Markdown, and only where it
+  is numbered.** A legend typed as a paragraph that opens with its pointer is read, and so is
+  the caption of a table the analysis emits with one, placed once by its binding in a
+  document that places no table by hand and sends none as a file, under the number the build
+  gives it. A table emitted with no caption, placed twice or in such a document has none read,
+  and `where` naming it is `checklist-location-unknown`. A table typed by hand with a `Table:`
+  caption line and no pointer is no numbered display's, and a LaTeX manuscript's `\caption`
+  is read only as text under its heading: on a LaTeX manuscript `where: Table 1` names no
+  caption, and a quote of it is not found there. Accepted.
+- **A legend typed as "Figure 1." in a supplementary file is filed as the main text's Figure
+  1.** A typed legend is numbered by its pointer alone, and "Figure 1." says nothing of the
+  supplement, so `where: Figure 1` can be met by the supplement's legend of its own first
+  figure. Accepted.
+- **The printed reading keeps pandoc's escapes and footnote marks.** Only value bindings are
+  replaced by their displays, so `\$`, `\*` and a footnote's `[^1]` stay as written, and a
+  quote copied from the .docx across one of them, where Word shows "$", "*" or a superscript
+  number, is not found. Accepted.
+- **A heading inside an HTML comment or the front matter counts for `where`, and the quote
+  reader does not see it.** The headings `where` is held to are read from the files as they
+  are written, comments and front matter included, while the quote is looked for in what
+  prints: `where` naming such a heading raises no `checklist-location-unknown`, and the
+  finding on its quote says the `where` "names no heading and no caption". Accepted.
 - **Word counts will not match a journal's own counter exactly.** The rule is stated so a
   disagreement is visible; where a journal counts differently there is no way to configure
   it yet. Accepted.
@@ -22274,10 +22369,18 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
-- **A reporting checklist's `where:` can only point at a manuscript heading.** RECORD's added
-  items are answered in supplementary tables, appendices and registry records, so the items
-  the extension exists for are the ones that report `checklist-location-unknown`. It is a
-  warning, which is the only reason it is tolerable.
+- **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
+  or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
+  tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
+  display is a place where G5 reads a caption for it, in a Markdown manuscript only: a legend
+  typed as a paragraph that opens with the display's pointer, or the caption of a table the
+  analysis emits with one, placed once by its binding in a document that places no table by
+  hand and sends none as a file. A table emitted with no caption, placed twice, or in such a
+  document has no caption read, and neither has an appendix outside the manuscript or a
+  registry record, so those items report `checklist-location-unknown`, and their quote
+  `checklist-quote-not-found`. The first is a warning, which is the only reason it is
+  tolerable; the second fails at submission, so such an item is answered under the heading
+  that cites the table or the record, with the sentence that does.
   Pinned by `tests/test_compliance.py::test_pointing_at_a_section_that_does_not_exist_warns`.
 - **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
   the conventional thresholds are. A corrected threshold goes in the project's own

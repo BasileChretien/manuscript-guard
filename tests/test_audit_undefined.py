@@ -149,6 +149,25 @@ def test_the_note_on_forms_passed_over_counts_for_nothing(tmp_path: Path) -> Non
     assert standings(beside)["Writing and language"] == LOOK
 
 
+def test_the_note_is_no_kind_of_finding_in_the_tallies(tmp_path: Path, capsys) -> None:
+    """The note's kind is no kind of finding (the final check of #640)."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing.gates import GateRun
+    from manuscript_guard.auditing.summary import checks
+    from manuscript_guard.findings import WARN, Finding
+
+    paper = written(tmp_path, "# Methods\n\nPeople with HIV had an MRI and an EEG.\n")
+    main(["audit", str(paper)])
+    out = capsys.readouterr().out
+    assert "paper.md: a note, and no finding to look at" in out and "0 findings" not in out
+    (note,) = undefined.one_finding([
+        Finding("G14", undefined.CODE, f"{form} is used once in the main text as G14 reads it, "
+                "and not defined there", WARN, line=3) for form in PASSED])  # fmt: skip
+    phrasing = [Finding("G6", "ai-phrasing", "a phrase", WARN, line=at) for at in (1, 2)]
+    report = AuditReport(gates=[GateRun(paper, writing=phrasing, language=[note])])
+    assert any("2 findings to look at, in 1 kind " in line for line in checks(report))
+
+
 def test_details_and_the_referee_draft_count_the_forms(tmp_path: Path, capsys) -> None:
     """`--details` and the referee draft's row count the forms, as the summary does (round 2
     of #640, finding 2)."""

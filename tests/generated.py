@@ -11498,6 +11498,97 @@ def latex_displays_placed(draw: st.DrawFn) -> tuple[str, int]:
     return document, count
 
 
+# ---------------------------------------------- a figure file placed the ordinary way, G10
+
+#: An image a Markdown text places, and the path pandoc prints it from: alone, with a pair
+#: of brackets in its caption, a pair of parentheses in its path and a title, in angle
+#: brackets with attributes, in a sentence, with a percent escape and with a backslash one.
+IMAGES_PLACED = (
+    ("![A chart.](figs/a.svg)", "figs/a.svg"),
+    ('![Panel [a] and b](figs/f(1).png "A title")', "figs/f(1).png"),
+    ("![](<figs/a b.png>){width=50%}", "figs/a b.png"),
+    ("A map, ![inline](figs/m.png), in a sentence.", "figs/m.png"),
+    ("![Escaped.](figs/a%20c.png)", "figs/a c.png"),
+    ("![Escaped.](figs/u\\_v.png)", "figs/u_v.png"),
+)
+#: What looks like one and is not printed as an image: in a comment, in a fence, in a code
+#: span, a link, and a web address, which is no file of the paper's.
+IMAGES_NOT_PLACED = (
+    "<!--\n\n![In a comment.](figs/c.png)\n\n-->",
+    "```\n![In a fence.](figs/f.png)\n```",
+    "Code: `![](figs/k.png)`.",
+    "[A link, not an image](figs/l.png)",
+    "![A web address](https://example.org/w.png)",
+)
+
+
+@st.composite
+def markdown_images(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """Paragraphs of filler words with every piece above between them, in an order drawn;
+    and the path of each image pandoc prints, in the order the text places them."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    pieces = [*IMAGES_PLACED, *((piece, None) for piece in IMAGES_NOT_PLACED)]
+    text, found = words(), []
+    for piece, path in draw(st.permutations(pieces)):
+        text += f"\n\n{piece}\n\n{words()}"
+        found += [path] if path is not None else []
+    return text + "\n", found
+
+
+#: A file of the manuscript's folder a generated LaTeX document may place: two exports of one
+#: picture, a picture beside the entry file and under `\graphicspath`, one in a folder of its
+#: own, and those only what TeX does not print names.
+GRAPHICS_FILES = ("figs/g1.pdf", "figs/g1.png", "figs/g2.png", "here.pdf", "figs/here.pdf",
+                  "other/g3.png", "figs/g4.pdf", "split.png", "figs/split.pdf", "figs/c1.pdf",
+                  "figs/c2.pdf", "figs/c3.pdf")  # fmt: skip
+#: An `\\includegraphics` and the file graphicx finds for it: a name with no extension, the
+#: PDF before the PNG; one with its extension and options; the starred form, found beside the
+#: entry file before under `\\graphicspath`; a folder's file with no extension, whose only
+#: export is a PNG; a quoted name; and a name whose PNG is beside the entry file and whose PDF is
+#: under `\\graphicspath`, the PDF found first, since graphicx tries each extension in every
+#: folder before the next.
+GRAPHICS_PLACED = (
+    ("\\includegraphics{g1}", "figs/g1.pdf"),
+    ("\\includegraphics[width=\\linewidth]{g2.png}", "figs/g2.png"),
+    ("\\includegraphics*[scale=0.5]{here}", "here.pdf"),
+    ("\\includegraphics{other/g3}", "other/g3.png"),
+    ('\\includegraphics{"g4"}', "figs/g4.pdf"),
+    ("\\includegraphics{split}", "figs/split.pdf"),
+)
+#: What names a picture and places none: in a comment, in an `\\iffalse` block, as a
+#: parameter in a definition's body, in the body of a command never used (round 1 of #630),
+#: and a name no file has.
+GRAPHICS_NOT_PLACED = (
+    "% \\includegraphics{c1}",
+    "\\iffalse\n\\includegraphics{c2}\n\\fi",
+    "\\newcommand{\\fig}[1]{\\includegraphics{#1}}",
+    "\\newcommand{\\logo}{\\includegraphics{c3}}",
+    "\\includegraphics{missing}",
+)
+
+
+@st.composite
+def latex_graphics(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A LaTeX document whose preamble sets `\\graphicspath{{figs/}}`, with every piece above
+    among paragraphs of filler words in an order drawn, its files `GRAPHICS_FILES`; and each
+    file graphicx finds for it, by its path in the manuscript's folder, sorted."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    pieces = [*GRAPHICS_PLACED, *((piece, None) for piece in GRAPHICS_NOT_PLACED)]
+    body, found = words(), []
+    for piece, path in draw(st.permutations(pieces)):
+        body += f"\n\n{piece}\n\n{words()}"
+        found += [path] if path is not None else []
+    document = ("\\documentclass{article}\n\\usepackage{graphicx}\n\\graphicspath{{figs/}}\n"
+                f"\\begin{{document}}\n{body}\n\n\\end{{document}}\n")  # fmt: skip
+    return document, sorted(found)
+
+
 # ------------------------------------------------- one reference written two ways, G7
 
 #: DOIs with what a `.bib` file or a resolver's link writes otherwise: an underscore, a
@@ -12991,6 +13082,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
                                                             "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
+    "placed images": st.one_of(markdown_images().map(lambda drawn: drawn[0]), texts()),
+    "placed graphics": st.one_of(latex_graphics(), latex_texts().map(lambda text: (text, []))
+                                 ).map(lambda drawn: {"document": drawn[0],
+                                                      "files": list(GRAPHICS_FILES)}),  # fmt: skip
     # As text, a byte a character, so that the bytes pass to a reader as they are.
     "pdf figure": pdf_figures().map(lambda drawn: drawn[0].decode("latin-1")),
     "quote words": st.fixed_dictionaries(

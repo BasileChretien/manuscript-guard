@@ -5100,12 +5100,30 @@ letters: the short form closing a bracket after a semicolon or a comma, its long
 before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
 form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
-form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
-definition where an equals sign or a number follows the short form, or a colon, a comma
-or an opening bracket and a number, past spaces and no-break spaces: "higher in older
-people – OR, 1.52", "– OR: 1.52" and "– OR (95% CI 1.1–2.0) 1.52" give the odds ratio's
-value, and "Basic Payment Scheme – BPS, which pays farmers" defines. A bracket is read
-otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
+form before the dash, "Basic Payment Scheme – BPS". A dash defines only where the short
+form ends its clause: where a stop, a semicolon, a closing bracket of either kind, a table
+cell's bar, a comma or a colon and a word, a closing spaced dash or a hard line break
+follow it, or the end of its paragraph or of the text does, past spaces and no-break
+spaces, past a closing quote or emphasis mark, "**… – BPS**.", and past a citation, which
+is no more words of the sentence: a bracket the mask has blanked, `[@key]`, one of
+numbers, commas and dashes, "[12]", a superscript number, "^3^", and LaTeX's
+`~\cite{key}`, which its view blanks. A list item's line ends the clause where the line
+ends, so a list written long form first, "- Basic Payment Scheme – BPS" over "- Common
+Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. A hard
+line break is a backslash or two spaces before the line's end, as pandoc reads them, and as
+LaTeX's view leaves `\\`. "Basic Payment Scheme – BPS, which pays farmers", "… – BPS:
+farmers received it", "… – BPS [@ec2013]." and "… – BPS – replaced the SPS" define. A
+statistic after a dash goes on past its short form, and defines nothing, whatever follows:
+"higher in older people – OR 1.52", "– OR: 1.52", "– OR [95% CI 1.1–2.0] 1.52", "– OR ≈
+1.52" and "– OR of 1.52" give the odds ratio's value, and "– RDP (2014–2020)" is not read.
+This replaced, on the author's decision of 2026-11-12, the list of statistic shapes #623
+had gathered, which each new shape got past. A single line break inside a paragraph,
+hard-wrapped text, is read as a space: "– OR" with "1.52" on the next line defines nothing,
+and "– BPS" with "which pays" on the next line has a word after it and no comma, so defines
+nothing. A stop before a digit is a decimal point, "– OR .52", and ends nothing. The
+definitions this misses, and the statistics it still reads as one, are in Known gaps. A
+bracket is read otherwise, as before: "the signal detection
+ratio (SDR, 2.4)" defines. A hyphen with
 no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
@@ -22632,6 +22650,23 @@ Open, recorded as each change landed:
     after a semicolon or a comma, "(i.e. time to task failure; TTF)"; one in its middle,
     "(as before, TTF, i.e. time to task failure)", defines nothing.
     Pinned by `tests/test_language.py::test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule`.
+  - A definition with a dash is read only where the short form ends its clause (see "A
+    definition is read by its shape"), so one with more words after it and no comma,
+    "Basic Payment Scheme – BPS was introduced", defines nothing, and BPS is then reported
+    as undefined. So does one before a citation that leaves words, a locator or a prefix,
+    "– BPS [@ec2013, p. 3]." and "– BPS [see @ec2013].", and LaTeX's
+    `~\citep[p.~3]{ec2013}`, whose locator its view prints; and one ending a line of
+    hard-wrapped prose with one space before the line's end, which is no hard line break.
+    Each of these defined before 2026-11-12. Accepted, as the author decided, so that a
+    statistic after a dash in any shape is not read as a second definition.
+    Pinned by `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`
+    and `tests/test_language.py::test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break`.
+  - A statistic after a dash whose short form is followed by a comma and a letter, or by a
+    semicolon, is read as a definition, since these end the clause: after "odds ratio (OR)",
+    "higher in older people – OR, p < 0.001" and "– OR; 95% CI 1.1–2.0" are a second
+    definition of OR, `abbreviation-redefined`, as they were before 2026-11-12.
+    Accepted, as the endings are the author's decision (round 1 of #643).
+    Pinned by `tests/test_language.py::test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:

@@ -1991,7 +1991,7 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
     it; one followed by a colon defines where its letters are found before the bracket, as
     any short form does, one per word or not; one whose letters are found only inside a
     bracket its long form would open defines nothing, though the words before each hold its
-    letters."""
+    letters. A short form after a spaced dash defines only where it ends its clause."""
     text, planted = drawn
     read = _file(0, Path("main.md"), text, [], False)
     defined = {at: short for at, short, _long in read.definitions}
@@ -2260,13 +2260,7 @@ def _a_bracket_s_last_word_is_spelt_from_before_the_bracket(patch: pytest.Monkey
 
 
 def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_dashed", lambda prose: [])
-
-
-#: What `_DASHED` ends with: no statistic after the short form.
-_DASH_STATISTIC = (
-    r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|(?:[:,(][ \t\N{NO-BREAK SPACE}]*)?\d))"
-)
+    patch.setattr(language_gate, "_dashed", lambda prose, typed=None: [])
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -2276,26 +2270,105 @@ def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) 
     patch.setattr(language_gate, "_DASHED", re.compile(pattern.replace(old, new)))
 
 
-def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
-    _dashed_with(patch, _DASH_STATISTIC, "")
+def _clause_ends_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
+    """`_CLAUSE_ENDS` with `old` written `new`, `count` times, as it must stand there."""
+    pattern = language_gate._CLAUSE_ENDS.pattern
+    assert pattern.count(old) == count, (old, pattern)
+    patch.setattr(language_gate, "_CLAUSE_ENDS", re.compile(pattern.replace(old, new)))
 
 
-def _a_comma_and_a_number_after_a_dash_s_short_form_define(patch: pytest.MonkeyPatch) -> None:
-    """The rule before round 1 of #623: "older people - OR, 1.52" defined OR."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d))")
+def _a_dash_s_short_form_need_not_end_its_clause(patch: pytest.MonkeyPatch) -> None:
+    """Whatever follows: "older people - OR 1.52" defined OR, as before round 1 of #623."""
+    patch.setattr(language_gate, "_ends_its_clause", lambda prose, typed, dash: True)
 
 
-def _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines(
+def _a_dash_s_clause_ends_where_623_said_no_statistic_follows(
     patch: pytest.MonkeyPatch,
 ) -> None:
-    """The rule of round 1 of #623: "- OR: 1.52", "- OR (95% CI ...) 1.52" and a no-break
-    space before the value defined OR."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d|,[ \t]*\d))")
+    """The rule of #623, its list of statistic shapes in place of the clause's end: "- OR
+    [95% CI ...] 1.52", "- OR of 1.52" and "- OR" with the value on the next line defined."""
+    space = language_gate._DASH_SPACE
+    statistic = re.compile(rf"{space}*(?:=|(?:[:,(]{space}*)?\d)")
+    patch.setattr(language_gate, "_ends_its_clause",
+                  lambda prose, typed, dash: not statistic.match(prose, dash.end()))  # fmt: skip
 
 
-def _a_comma_after_a_dash_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    """Too wide: "Area Payment Scheme - APS, which pays farmers" is a definition."""
-    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|[:,(]|\d))")
+def _a_comma_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPatch) -> None:
+    """The comma's word dropped: "older people - OR, 1.52" defined OR."""
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"[,:]{one_break}{marks}[^\W\d_]", "[,:]")
+
+
+def _a_comma_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Too narrow: "Area Payment Scheme - APS, which pays farmers" is a definition."""
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"|[,:]{one_break}{marks}[^\W\d_]", "")
+
+
+def _a_colon_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "- SFI: farmers joined it" defined nothing."""
+    _clause_ends_with(patch, "[,:]", ",")
+
+
+def _a_line_break_ends_a_dash_s_paragraph(patch: pytest.MonkeyPatch) -> None:
+    """Hard-wrapped text: "- OR" with "1.52" on the next line defined OR."""
+    _clause_ends_with(patch, rf"(?:\Z|\n{language_gate._LINE_GAP}(?:\n|\Z))", r"(?:\Z|\n)")
+
+
+def _the_end_of_the_text_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: a short form with nothing after it defined nothing."""
+    _clause_ends_with(patch, rf"(?:\Z|\n{language_gate._LINE_GAP}(?:\n|\Z))",
+                      rf"\n{language_gate._LINE_GAP}\n")  # fmt: skip
+
+
+def _a_dash_s_clause_is_not_read_past_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    """Hard-wrapped text: "- CSS," with "which pays" on the next line defined nothing."""
+    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=3)
+
+
+def _a_closing_mark_after_a_dash_s_short_form_ends_nothing(patch: pytest.MonkeyPatch) -> None:
+    """"**... - RIS**." and a closing quote before the comma defined nothing."""
+    marks, cited = language_gate._MARKS, language_gate._CITED
+    _clause_ends_with(patch, f"{marks}{cited}", cited)
+
+
+def _a_decimal_point_ends_a_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """"older people - OR .52" defined OR."""
+    _clause_ends_with(patch, r"\.(?!\d)|", r"\.|")
+
+
+def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "- ELS [@smith2020]." and "- HLS [12]." defined nothing."""
+    marks, cited = language_gate._MARKS, language_gate._CITED
+    _clause_ends_with(patch, f"{marks}{cited}", marks)
+
+
+def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
+    space, dash = language_gate._DASH_SPACE, language_gate._DASH
+    _clause_ends_with(patch, f"|{space}+{dash}{space}", "")
+
+
+def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: a line ending in a backslash or two spaces read on into the next."""
+    _clause_ends_with(patch, rf"|(?:{language_gate._DASH_SPACE}*\\| {{2,}})\r?\n", "")
+
+
+def _one_space_is_a_hard_line_break(patch: pytest.MonkeyPatch) -> None:
+    """Too wide: a single space before the line's end is how hard-wrapped text ends one."""
+    _clause_ends_with(patch, " {2,}", " +")
+
+
+def _a_table_cell_s_bar_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: "| the Environmental Stewardship Scheme - ESS | 3 |" defined
+    nothing."""
+    _clause_ends_with(patch, r"[;)\]|]", r"[;)\]]")
+
+
+def _a_list_item_s_line_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643: each item of a list written long form first but the last defined
+    nothing."""
+    patch.setattr(language_gate, "_LIST_ITEM", re.compile("(?!)"))
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
@@ -2309,7 +2382,8 @@ def _pandoc_s_smart_dashes_are_no_dashes(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_no_break_space_is_no_space_before_a_dash(patch: pytest.MonkeyPatch) -> None:
-    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=4)
+    _dashed_with(patch, f"]){language_gate._DASH_SPACE}", "])[ \\t]")
+    _dashed_with(patch, f"(?<=\\S){language_gate._DASH_SPACE}", "(?<=\\S)[ \\t]")
 
 
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
@@ -22021,24 +22095,72 @@ BROKEN = {
         _a_dash_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a number after a dash's short form defines it": (
-        _a_number_after_a_dash_s_short_form_defines_too,
+    "a dash's short form need not end its clause": (
+        _a_dash_s_short_form_need_not_end_its_clause,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a dash with no space defines": (
         _a_dash_needs_no_space,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a comma and a number after a dash's short form define it": (
-        _a_comma_and_a_number_after_a_dash_s_short_form_define,
+    "a dash defines where #623's statistic shapes do not follow": (
+        _a_dash_s_clause_ends_where_623_said_no_statistic_follows,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a colon, a bracket or a no-break space before a dash's value defines": (
-        _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines,
+    "a comma ends a dash's clause before anything": (
+        _a_comma_ends_a_dash_s_clause_before_anything,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a comma after a dash's short form defines nothing": (
-        _a_comma_after_a_dash_s_short_form_defines_nothing,
+    "a comma ends no dash's clause": (
+        _a_comma_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a line break ends a dash's paragraph": (
+        _a_line_break_ends_a_dash_s_paragraph,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a dash's clause is not read past a line break": (
+        _a_dash_s_clause_is_not_read_past_a_line_break,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing mark after a dash's short form ends nothing": (
+        _a_closing_mark_after_a_dash_s_short_form_ends_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a decimal point ends a dash's clause": (
+        _a_decimal_point_ends_a_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon ends no dash's clause": (
+        _a_colon_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "the end of the text ends no dash's clause": (
+        _the_end_of_the_text_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a citation after a dash's short form is words": (
+        _a_citation_after_a_dash_s_short_form_is_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing dash ends no dash's clause": (
+        _a_closing_dash_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a hard line break ends no dash's clause": (
+        _a_hard_line_break_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "one space before a line's end is a hard line break": (
+        _one_space_is_a_hard_line_break,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a table cell's bar ends no dash's clause": (
+        _a_table_cell_s_bar_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a list item's line ends no dash's clause": (
+        _a_list_item_s_line_ends_no_dash_s_clause,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "pandoc's smart dashes are no dashes": (

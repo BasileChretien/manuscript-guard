@@ -27804,6 +27804,67 @@ def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None
     ]
 
 
+def test_a_statistic_after_a_dash_is_no_second_definition(project: Path) -> None:
+    """The final check of #623 (from an agricultural-policy preprint of the real-paper
+    corpus): a value given after a dash with its interval in square brackets first, "older
+    people - OR [95% CI ...] 1.52", was read as a second definition of the short form, by
+    the words before the dash. A dash defines only where its short form ends the clause."""
+    mended = with_ror_defined(project)
+    stated = mended.replace(
+        "The reporting odds ratio observed here",
+        "The odds were higher in reports from older patients \N{EN DASH} ROR [95% CI "
+        "1.1\N{EN DASH}2.0] 1.52. The reporting odds ratio observed here",
+    )
+    assert stated != mended
+    main_md(project).write_text(stated, encoding="utf-8")
+    # The interval is written as the example does not write its others, which G14 says.
+    assert language_findings(project) == [("notation-interval", line_of(stated, "ROR [95%"))]
+
+
+@pytest.mark.parametrize(
+    "defined",
+    [
+        # A citation after the short form, as mask leaves it: a bracket of blanks.
+        "Signals were checked against the Uppsala Monitoring Centre \N{EN DASH} UMC "
+        "[@fictionalClassSignal2019]. The UMC holds the reports.\n\n",
+        # A list written long form first, every item but the last followed by the next.
+        "- the Uppsala Monitoring Centre \N{EN DASH} UMC\n- the Summary of Product "
+        "Characteristics \N{EN DASH} SmPC\n- the Individual Case Safety Report \N{EN DASH} "
+        "ICSR\n\nThe UMC, the SmPC and each ICSR were read.\n\n",
+    ],
+    ids=["a citation", "a list"],
+)
+def test_a_dash_definition_before_a_citation_or_in_a_list_is_read(
+    project: Path, defined: str
+) -> None:
+    """Round 1 of #643: a dash definition followed by a citation, and each entry but the last
+    of a list written long form first, were read as defining nothing, and each use of the
+    short form was reported as undefined. A citation is no more words of the sentence, and
+    a list item ends where its line does."""
+    mended = with_ror_defined(project)
+    added = mended.replace(
+        "The reporting odds ratio observed here", f"{defined}The reporting odds ratio observed here"
+    )
+    assert added != mended
+    main_md(project).write_text(added, encoding="utf-8")
+    assert language_findings(project) == []
+
+
+def test_a_definition_given_again_after_a_dash_is_caught(project: Path) -> None:
+    """The definition pasted again with a dash, its short form ending the clause: a second
+    definition, as one in brackets is."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here exceeds",
+        "The reporting odds ratio \N{EN DASH} ROR, observed here, exceeds",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio \N{EN DASH} ROR,"))
+    ]
+
+
 def journal_asks_for(root: Path, rules: dict, quotes: dict) -> None:
     """The example's journal profile, asking for `rules` under `abbreviations:`."""
     path = root / "profiles" / "journals" / "demo-journal.yaml"

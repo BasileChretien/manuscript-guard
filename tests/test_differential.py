@@ -61,7 +61,7 @@ from differential import (
     same_source,
     summarised,
 )
-from generated import INPUTS, generated, times
+from generated import GLOSSARY_OPENED, INPUTS, generated, times
 from hypothesis import given
 from readings import READINGS, Unavailable, why_not
 
@@ -382,6 +382,20 @@ def test_every_abbreviations_input_holds_initials_a_contributions_statement_name
 
     held()
     assert asked and all("**Author contributions:** EF and GH" in text for text in asked)
+
+
+def test_every_abbreviations_input_holds_a_glossary_a_sentence_opens() -> None:
+    """The same for the change "a glossary a sentence opens is not read", once the dash
+    definitions of 2026-11-12 added blocks to the pool."""
+    asked: list[str] = []
+
+    @generated(30)
+    @given(INPUTS["abbreviations"])
+    def held(given: Any) -> None:
+        asked.append(given["text"])
+
+    held()
+    assert asked and all(GLOSSARY_OPENED in text for text in asked)
 
 
 def _changed_copy(case: str, folder: Path) -> Reader:

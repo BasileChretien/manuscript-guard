@@ -26,11 +26,16 @@
 expected:
   - reading: abbreviations
     why: >-
-      an entry of a list of abbreviations that the text neither uses nor defines is said as
-      the list's, "in the list of abbreviations and not used in the main text", with the hint
-      to take it out of the list, and a use above an entry the text never spells out is told
-      to spell it out where it first appears; a long form is quoted as typed, not by repr
-      (the author's audit, 2026-11-11)
+      a short form after a spaced dash defines only where it ends its clause, followed by a
+      stop, a semicolon, a closing bracket or a table cell's bar, a comma or a colon and a
+      word, a closing spaced dash, a hard line break, the end of a list item's line, or the
+      end of its paragraph or text, a citation passed over, in place of #623's list of
+      statistic shapes: "older people – OR [95% CI 1.1–2.0] 1.52", "– OR ≈ 1.52", "– OR of
+      1.52" and the value on the next line define nothing, where each was a second
+      definition of OR (the author, 2026-11-12, after #623's final check; round 1 of #643);
+      the inputs now hold a dash definition with each ending and a statistic after a dash in
+      each of those shapes. The entry it replaces, for the list of abbreviations' entries,
+      is spent
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

@@ -577,7 +577,8 @@ def signs() -> st.SearchStrategy[str]:
 #: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
 #: whose nearest letter is inside a bracket the long form would open, found again before
 #: it; a short form closing a bracket after a semicolon or a comma, its long form before
-#: that; and a short form after a spaced dash of each kind, no bracket at all.
+#: that; and a short form after a spaced dash of each kind, no bracket at all, ending its
+#: clause in each way that ends one.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -624,12 +625,52 @@ DEFINING = (
     ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
     # A comma before words, which gives no statistic (round 2 of #623).
     ("the Area Payment Scheme \N{EN DASH} APS, which pays farmers", "\N{EN DASH} APS", "APS"),
+    # The short form ending its clause in each way (the author, 2026-11-12), the end of the
+    # paragraph being the dashes' above: a stop, a semicolon, a closing bracket of each
+    # kind, a comma and a word across a line break, and a closing emphasis mark or quote.
+    ("the Single Farm Payment \N{EN DASH} SFP. It pays farmers", "\N{EN DASH} SFP", "SFP"),
+    ("the Voluntary Coupled Support \N{EN DASH} VCS; it pays farmers", "\N{EN DASH} VCS",
+     "VCS"),
+    ("farmers joined (the Less Favoured Area \N{EN DASH} LFA) in 2015", "\N{EN DASH} LFA",
+     "LFA"),
+    ("farmers joined [the Greening Payment \N{EN DASH} GP] in 2015", "\N{EN DASH} GP", "GP"),
+    ("the Coupled Support Scheme \N{EN DASH} CSS,\nwhich pays farmers", "\N{EN DASH} CSS",
+     "CSS"),
+    ("**the Redistributive Income Support \N{EN DASH} RIS**. It pays farmers",
+     "\N{EN DASH} RIS", "RIS"),
+    ("\N{LEFT DOUBLE QUOTATION MARK}the Complementary Income Support \N{EN DASH} "
+     "CIS\N{RIGHT DOUBLE QUOTATION MARK}, which pays farmers", "\N{EN DASH} CIS", "CIS"),
+    # Round 1 of #643: a citation passed over, blanked by the mask, of numbers and a
+    # superscript one; a colon and a word; a closing spaced dash; a table cell's bar; a hard
+    # line break, a backslash and two spaces, before words with no comma; and a list item's
+    # line, the next item on the next line.
+    ("the Entry Level Scheme \N{EN DASH} ELS [@smith2020]. It pays farmers",
+     "\N{EN DASH} ELS", "ELS"),
+    ("the Higher Level Scheme \N{EN DASH} HLS [12, 14\N{EN DASH}16]. It pays farmers",
+     "\N{EN DASH} HLS", "HLS"),
+    ("the Organic Entry Level \N{EN DASH} OEL^3^. It pays farmers", "\N{EN DASH} OEL", "OEL"),
+    ("the Sustainable Farming Incentive \N{EN DASH} SFI: farmers joined it",
+     "\N{EN DASH} SFI", "SFI"),
+    ("the Single Payment Scheme \N{EN DASH} SPS \N{EN DASH} replaced it", "\N{EN DASH} SPS",
+     "SPS"),
+    ("| the Environmental Stewardship Scheme \N{EN DASH} ESS | 3 |", "\N{EN DASH} ESS", "ESS"),
+    ("the Countryside Premium Scheme \N{EN DASH} CPS\\\nwhich pays farmers", "\N{EN DASH} CPS",
+     "CPS"),
+    ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
+     "HFA"),
+    ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
+     "\N{EN DASH} FTF", "FTF"),
 )  # fmt: skip
+
+#: A dash definition at the very end of the text, which every example of `bracketed` ends
+#: with, its short form followed by nothing (round 1 of #643).
+AT_THE_END = ("the Agri-Environment Scheme \N{EN DASH} AES", "\N{EN DASH} AES", "AES")
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
 #: a statistic, its short form followed by an equals sign or a number, whatever the words
-#: before it are, their initials among them; and a short form whose letters are found only
-#: by going into another bracket, "(12.5%)".
+#: before it are, their initials among them; a short form whose letters are found only
+#: by going into another bracket, "(12.5%)"; and a short form after a dash that does not end
+#: its clause, a statistic's of each shape among them.
 NOT_DEFINING = (
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
@@ -658,6 +699,25 @@ NOT_DEFINING = (
     ("the odds were higher in older people \N{EN DASH} OR\N{NO-BREAK SPACE}1.52",
      "OR\N{NO-BREAK SPACE}1.52", "OR"),
     ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
+    # A dash's short form that does not end its clause (the author, 2026-11-12): the shapes
+    # #623's exceptions missed, an interval in square brackets, a sign and a word before
+    # the value; the value on the next line, after a decimal point, and a year in
+    # brackets; and words on the next line, with no comma.
+    ("the risk was higher in older people \N{EN DASH} OR [95% CI 1.1\N{EN DASH}2.0] 1.52",
+     "OR [95%", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{ALMOST EQUAL TO} 1.52",
+     "OR \N{ALMOST EQUAL TO}", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR of 1.52", "OR of", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR\n1.52", "OR\n1.52", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR .52", "OR .52", "OR"),
+    ("the Rural Development Programme \N{EN DASH} RDP (2014\N{EN DASH}2020)", "RDP (2014",
+     "RDP"),
+    ("the Area Facing Constraints \N{EN DASH} AFC\nwhich pays farmers", "AFC\nwhich", "AFC"),
+    # Round 1 of #643: one space before the line's end is no hard line break; a colon and a
+    # number, and a bracket of numbers before the value, give a statistic.
+    ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
+    ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -748,11 +808,14 @@ def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]
 @st.composite
 def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     """A manuscript with every bracket of `DEFINING` and `NOT_DEFINING`, in an order drawn,
-    and for each where its short form stands, the short form, and whether it is defined
-    there."""
+    ending with `AT_THE_END`, and for each where its short form stands, the short form, and
+    whether it is defined there."""
     planted = draw(st.permutations([*((*each, True) for each in DEFINING),
                                     *((*each, False) for each in NOT_DEFINING)]))  # fmt: skip
     text, starts = _paragraphs(draw, (written for written, *_rest in planted))
+    # The last piece ends the text, with nothing after it.
+    planted, starts = [*planted, (*AT_THE_END, True)], [*starts, len(text)]
+    text += AT_THE_END[0]
     found = []
     for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
         found.append((start + written.rindex(needle) + needle.index(short), short, defines))
@@ -1042,6 +1105,13 @@ INITIALS_NAMED = next(
     block for block in NOT_ABBREVIATIONS if "**Author contributions:** EF" in block
 )
 
+#: A glossary a sentence opens, with no heading, as Word papers type one, which every input
+#: of the `abbreviations` reading holds before the contributions statement: drawn as one
+#: block among the pool's, it was in too few of 120 inputs once the dash definitions of
+#: 2026-11-12 added blocks, and a rule that stopped reading it went unnoticed.
+GLOSSARY_OPENED = "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
+                               GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0]))  # fmt: skip
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
@@ -1050,9 +1120,7 @@ ABBREVIATION_BLOCKS = tuple(
         *NOT_ABBREVIATIONS,
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
-        # A glossary a sentence opens, with no heading, as Word papers type one.
-        "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
-                     GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0])),
+        GLOSSARY_OPENED,
     )
 )
 
@@ -13691,7 +13759,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "abbreviations": st.fixed_dictionaries(
         {
             "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
-                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+                lambda text: f"{text}\n\n{GLOSSARY_OPENED}\n\n# Methods\n\n{INITIALS_NAMED}\n"
             ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }

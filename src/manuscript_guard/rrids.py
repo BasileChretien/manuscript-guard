@@ -8,14 +8,16 @@ RRID the manuscript types is read: a resource written with none is not looked fo
 **How one is read.** "RRID:" in capitals, a space or none after the colon (a line break
 counts as the space), then the accession: the authority's prefix and the identifier it
 issued, as the resolver's syntax gives them, `^RRID:[a-zA-Z]+.+$` (identifiers.org's
-namespace `rrid`, read 2026-11-12), the prefix and each part after it joined by `_`, `:` or
-`-` (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`, `ZFIN_ZDB-GENO-`, `BDSC_`,
-`WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-`). Each joining mark is followed by a letter or a
-digit, so the full stop, comma, colon, semicolon or bracket after an RRID is not part of it.
-The accession keeps its case as written. It is read in the main text and the supplement,
-Markdown and LaTeX alike, outside comments and code: a Markdown file as `masking.mask`
-leaves it with its code spans blanked too, a LaTeX file as its reader masks it, with its
-`\\verb` and `\\texttt` blanked and `AB\\_1` read as `AB_1`.
+namespace `rrid`, read 2026-11-12), the prefix and each part after it joined by `_`, `:`,
+`.` or `-` (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`, `ZFIN_ZDB-GENO-`,
+`BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-`, `NXR_0.0005`), or one part of letters
+then digits (`SAMN12345678`). Each joining mark is followed by a letter or a digit, so the
+full stop, comma, colon, semicolon or bracket after an RRID is not part of it, nor is a word
+of small letters after a hyphen, "-derived". The accession keeps its case as written. It
+is read in the main text and the supplement, Markdown and LaTeX alike, outside comments and
+code: a Markdown file as `masking.mask` leaves it with its code spans blanked too, a LaTeX
+file as its reader masks it, with its `\\verb` and `\\texttt` blanked and `AB\\_1` read as
+`AB_1`.
 
 **What is kept.** `literature/rrids/<accession>.yaml` is what `manuscript-guard lookup
 --resources` heard of one RRID on one day: whether the resolver knew it, each record it
@@ -53,9 +55,15 @@ CELLOSAURUS_LICENCE = "CC BY 4.0"
 _LABEL = r"(?<![A-Za-z0-9_\-])RRID:"
 #: The space after the colon: one space, a tab, a no-break space, or a line break.
 _GAP = r"(?:[ \t  ]|\r?\n)?"
-#: The authority's prefix and what it issued, each part joined by `_`, `:` or `-`, and
-#: each joining mark followed by a letter or a digit: trailing punctuation is not read.
-_ACCESSION = r"(?P<accession>[A-Za-z][A-Za-z0-9]*(?:[_:\-][A-Za-z0-9]+)+)"
+#: The authority's prefix and what it issued, each part joined by `_`, `:`, `.` or `-`, and
+#: each joining mark followed by a letter or a digit, so a full stop or a comma after it is
+#: not read; a `-` before a part of small letters only ends it, "RRID:CVCL_0030-derived"
+#: being CVCL_0030, where MMRRC_000231-UNC and ZFIN_ZDB-GENO-960809-7 are whole. Or a single
+#: part of letters then digits, SAMN12345678; "RRID: pending" and "RRID:AB" are none
+#: (round 1 of #658: NXR_0.0005 was read as NXR_0, and SAMN12345678 not at all).
+_JOIN = r"(?:[_:.]|-(?![a-z]+(?![A-Za-z0-9])))"
+_ACCESSION = (rf"(?P<accession>[A-Za-z][A-Za-z0-9]*(?:{_JOIN}[A-Za-z0-9]+)+"
+              r"|[A-Za-z]+[0-9][A-Za-z0-9]*)")
 TYPED = re.compile(_LABEL + _GAP + _ACCESSION)
 #: The documents of a manuscript, the main text's and the supplement's.
 PARTS = (False, True)

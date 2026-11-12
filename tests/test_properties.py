@@ -19726,7 +19726,8 @@ def test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else(
 def _an_rrid_keeps_the_mark_after_it(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import rrids
 
-    accession = r"(?P<accession>[A-Za-z][A-Za-z0-9]*(?:[_:\-][A-Za-z0-9]+)+[.,;:)]?)"
+    inner = rrids._ACCESSION.removeprefix("(?P<accession>").removesuffix(")")
+    accession = rf"(?P<accession>(?:{inner})[.,;:)]?)"
     patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
 
 
@@ -19758,6 +19759,12 @@ def _an_rrid_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(rrids, "latex_view", with_comments)
 
 
+def _an_rrid_in_a_code_span_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans", lambda text: [])
+
+
 def _no_space_is_read_after_the_colon(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import rrids
 
@@ -19781,6 +19788,10 @@ BROKEN = {
     ),
     "an RRID in a comment is read": (
         _an_rrid_in_a_comment_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID in a code span is read": (
+        _an_rrid_in_a_code_span_is_read,
         test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
     ),
     "no space is read after an RRID's colon": (

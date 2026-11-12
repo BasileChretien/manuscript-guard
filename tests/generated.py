@@ -13429,19 +13429,30 @@ def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
 
 #: One accession of each form the resolver's authorities issue (`rrids.py`): an antibody, a
 #: cell line, a tool, a mouse strain, a plasmid, a mouse gene, a fish genotype, a fly stock, a
-#: worm strain, a mouse line with its centre, and an old identifier of the registry's.
+#: worm strain, a mouse line with its centre, an old identifier of the registry's, a frog
+#: line whose parts a dot joins, and a biosample of one part (round 1 of #658).
 RRID_ACCESSIONS = (
     "AB_2298772", "CVCL_0030", "SCR_002798", "IMSR_JAX:000664", "Addgene_12345",
     "MGI:3840442", "ZFIN_ZDB-GENO-960809-7", "BDSC_8848", "WB-STRAIN:WBStrain00000001",
-    "MMRRC_000006-UCD", "nif-0000-30467",
+    "MMRRC_000006-UCD", "nif-0000-30467", "NXR_0.0005", "SAMN12345678",
 )  # fmt: skip
 #: What may stand between "RRID:" and the accession: nothing, a space, a no-break space, or
 #: a line break.
 RRID_GAPS = ("", " ", "\u00a0", "\n")
-#: What may follow an RRID, which is not part of it.
-RRID_TRAILS = ("", ".", ",", ";", ")", ":")
-#: The case an accession is written in: as the authority lists it, or in small letters.
+#: What may follow an RRID, which is not part of it: a mark, or a word of small letters
+#: after a hyphen, "CVCL_0030-derived cells" (round 1 of #658).
+RRID_TRAILS = ("", ".", ",", ";", ")", ":", "-derived")
+#: The case an accession is written in: as the authority lists it, or its prefix, up to its
+#: first joining mark, in small letters: "ab_2298772", "wb-STRAIN:WBStrain00000001". A later
+#: part of small letters after a hyphen ends the accession, so only the prefix is lowered.
 RRID_CASES = ("as listed", "lowered")
+
+
+def _lowered(accession: str) -> str:
+    """The accession with its prefix, up to its first joining mark, in small letters."""
+    found = re.match(r"[A-Za-z][A-Za-z0-9]*", accession)
+    end = found.end() if found else 0
+    return accession[:end].lower() + accession[end:]
 #: The documents an RRID may stand in.
 RRID_PARTS = (False, True)
 #: RRIDs that stand in a comment and in code, which are not read. They hold no underscore, so
@@ -13471,16 +13482,17 @@ def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, 
     cases = _each_once(draw, RRID_CASES, count)
     parts = _each_once(draw, RRID_PARTS, count)
     word = st.sampled_from(FILLER)
-    lines: dict[bool, list[tuple[str, str, str | None]]] = {False: [], True: []}
+    lines: dict[bool, list[tuple[str, str, str | None, str]]] = {False: [], True: []}
     for at, written in enumerate(accessions):
-        kept = written if cases[at] == "as listed" else written.lower()
+        kept = written if cases[at] == "as listed" else _lowered(written)
         before = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
         after = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
-        lines[parts[at]].append((before, f"RRID:{gaps[at]}", kept + trails[at] + " " + after))
+        lines[parts[at]].append((before, f"RRID:{gaps[at]}", kept + trails[at] + " " + after,
+                                 kept))  # fmt: skip
     for part in RRID_PARTS:
         for decoy in ("comment", "code"):
             where = draw(st.integers(0, len(lines[part])))
-            lines[part].insert(where, (decoy, "", None))
+            lines[part].insert(where, (decoy, "", None, ""))
     markdown: dict[str, str] = {}
     latex: dict[str, str] = {}
     read_md: list = []
@@ -13490,7 +13502,7 @@ def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, 
     for part in RRID_PARTS:
         md_lines: list[str] = []
         tex_lines: list[str] = ["\\documentclass{article}", "\\begin{document}"]
-        for before, label, rest in lines[part]:
+        for before, label, rest, accession in lines[part]:
             for _filler in range(draw(st.integers(0, 2))):
                 said = " ".join(draw(st.lists(word, min_size=2, max_size=5)))
                 md_lines.append(said)
@@ -13504,7 +13516,6 @@ def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, 
                     md_lines.append(f"the reports `RRID:{unread}` were")
                     tex_lines.append(f"the reports \\verb|RRID:{unread}| were")
                 continue
-            accession = rest.split(" ", 1)[0].rstrip(".,;):")
             rrid = "RRID:" + accession
             md_name, tex_name = (f"manuscript/{name}" for name in names[part])
             read_md.append([rrid, md_name, len(md_lines) + 1, part])

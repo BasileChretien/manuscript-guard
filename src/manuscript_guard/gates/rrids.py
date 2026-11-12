@@ -128,6 +128,10 @@ def check_rrids(project: Project) -> Report:
             continue
         looked += 1
         report = report.with_findings(*_judged(rrid, record, where))
+    if not places:
+        # No count where nothing is typed: a paper with no RRID reads as it did before, as
+        # one with no registration does in G12 (round 1 of #658).
+        return report
     return report.with_counts(rrids=len(places), rrids_looked_up=looked)
 
 

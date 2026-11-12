@@ -139,9 +139,7 @@ def _hit(hit: Any) -> dict[str, Any] | None:
         "types": _types(item),
         "citation": rrid.get("properCitation"),
     }
-    kept = {key: (" ".join(value.split()) if isinstance(value, str) else
-                  value if key == "types" else None)
-            for key, value in out.items()}  # fmt: skip
+    kept = {key: value if key == "types" else _text(value) for key, value in out.items()}
     kept = {key: value for key, value in kept.items() if value not in (None, "", [])}
     if not (isinstance(kept.get("curie"), str) or isinstance(kept.get("name"), str)):
         return None
@@ -172,9 +170,44 @@ def resolver(rrid: str, ask: Ask, base: str) -> dict[str, Any]:
     return {"status": FOUND, "total": total, "hits": kept[:MOST_HITS]}
 
 
-def _values(entries: Any, kind: str) -> list[str]:
-    return [e["value"] for e in entries if isinstance(e, dict) and e.get("type") == kind
-            and isinstance(e.get("value"), str)] if isinstance(entries, list) else []  # fmt: skip
+def _text(value: Any) -> str | None:
+    """A string as the record keeps it, its spacing folded; None for anything else, and for
+    a string that is empty once stripped (round 1 of #658: a name of spaces failed the
+    record's schema in `write_record`)."""
+    if not isinstance(value, str):
+        return None
+    return " ".join(value.split()) or None
+
+
+def _entries(listed: Any) -> list[dict[str, Any]]:
+    """The entries of one of a line's lists. Raises NoAnswer where the list is there and is
+    no list (round 1 of #658: `"accession-list": 5` raised a TypeError)."""
+    if listed is None:
+        return []
+    if not isinstance(listed, list):
+        raise NoAnswer(f"Cellosaurus gave {SHAPE}")
+    return [entry for entry in listed if isinstance(entry, dict)]
+
+
+def _values(entries: list[dict[str, Any]], kind: str) -> list[str]:
+    """The values of the entries of one type, each a string that holds something."""
+    found = (_text(entry.get("value")) for entry in entries if entry.get("type") == kind)
+    return [value for value in found if value is not None]
+
+
+def _line(line: dict[str, Any], asked: str) -> dict[str, Any] | None:
+    """What Cellosaurus says of the line, None where it is another line."""
+    accessions = _entries(line.get("accession-list"))
+    written = {value.upper() for value in (_text(e.get("value")) for e in accessions) if value}
+    if asked not in written:
+        return None
+    problems = [_text(comment.get("value")) for comment in _entries(line.get("comment-list"))
+                if comment.get("category") == PROBLEMATIC]  # fmt: skip
+    out = {"status": FOUND, "accession": next(iter(_values(accessions, "primary")), None),
+           "name": next(iter(_values(_entries(line.get("name-list")), "identifier")), None),
+           "problems": [problem for problem in problems if problem is not None],
+           "licence": CELLOSAURUS_LICENCE}  # fmt: skip
+    return {key: value for key, value in out.items() if value not in (None, [])}
 
 
 def cellosaurus(rrid: str, ask: Ask, base: str) -> dict[str, Any]:
@@ -197,21 +230,9 @@ def cellosaurus(rrid: str, ask: Ask, base: str) -> dict[str, Any]:
     for line in lines:
         if not isinstance(line, dict):
             raise NoAnswer(f"Cellosaurus gave {SHAPE}")
-        accessions = line.get("accession-list")
-        written = [e.get("value", "").upper() for e in accessions or [] if isinstance(e, dict)
-                   and isinstance(e.get("value"), str)]  # fmt: skip
-        if asked not in written:
-            continue
-        comments = line.get("comment-list") or []
-        if not isinstance(comments, list):
-            raise NoAnswer(f"Cellosaurus gave {SHAPE}")
-        problems = [" ".join(c["value"].split()) for c in comments if isinstance(c, dict)
-                    and c.get("category") == PROBLEMATIC and isinstance(c.get("value"), str)
-                    and c["value"].strip()]  # fmt: skip
-        out = {"status": FOUND, "accession": next(iter(_values(accessions, "primary")), None),
-               "name": next(iter(_values(line.get("name-list"), "identifier")), None),
-               "problems": problems, "licence": CELLOSAURUS_LICENCE}  # fmt: skip
-        return {key: value for key, value in out.items() if value not in (None, [])}
+        found = _line(line, asked)
+        if found is not None:
+            return found
     raise NoAnswer(f"Cellosaurus gave no line {asked} in its answer")
 
 
@@ -235,7 +256,8 @@ def run(
     said: Callable[[str], None] = print,
 ) -> tuple[list[tuple[Planned, dict[str, Any], Path]], list[tuple[Planned, str]]]:
     """Ask about each RRID that is due and write its record; what was written, and each
-    RRID whose answer did not come, with why. Nothing is written for that one."""
+    RRID whose answer did not come, or made a record its schema refuses, with why. Nothing
+    is written for that one."""
     services = services or Services()
     ask = _asker(transport or default_transport, pacer or Pacer(intervals=dict(INTERVALS)),
                  Credentials())  # fmt: skip
@@ -245,11 +267,13 @@ def run(
             continue
         try:
             record = look_up(one.rrid, ask, services, today or date.today())
-        except NoAnswer as exc:
+            path = write_record(project, record)
+        except (NoAnswer, ContractError) as exc:
+            # An answer whose record its schema refuses is no answer either (round 1 of
+            # #658): a traceback ended the command.
             said(f"{one.rrid}: no answer ({exc}); nothing recorded, asked again next time")
             late.append((one, str(exc)))
             continue
-        path = write_record(project, record)
         said(f"{one.rrid}: " + summary(record))
         written.append((one, record, path))
     return written, late

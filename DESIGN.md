@@ -8519,12 +8519,15 @@ check for presence would have to guess which nouns are resources.
 
 **The reading.** `rrids.typed` reads "RRID:" in capitals, a space, a no-break space, a line
 break or nothing after the colon, then the accession: the authority's prefix and what it
-issued, its parts joined by `_`, `:` or `-`, each joining mark followed by a letter or a
-digit, so that the full stop, comma, colon, semicolon or bracket after it is left out. The
-form is written from the resolver's syntax, identifiers.org's `^RRID:[a-zA-Z]+.+$` for the
-namespace `rrid`, and from the forms its authorities issue (`AB_`, `CVCL_`, `SCR_`,
-`IMSR_JAX:`, `Addgene_`, `MGI:`, `ZFIN_ZDB-GENO-…`, `BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`,
-`nif-0000-…`). The accession is kept in the case it is written. Both documents are read,
+issued, its parts joined by `_`, `:`, `.` or `-`, each joining mark followed by a letter or a
+digit, so that the full stop, comma, colon, semicolon or bracket after it is left out, and a
+hyphen before a part of small letters only ending it ("RRID:CVCL_0030-derived cells"); or a
+single part of letters then digits (`SAMN12345678`). The form is written from the resolver's
+syntax, identifiers.org's `^RRID:[a-zA-Z]+.+$` for the namespace `rrid`, and from the forms
+its authorities issue (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`,
+`ZFIN_ZDB-GENO-…`, `BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-…`, `NXR_0.0005`,
+`SAMN…`; round 1 of #658 added the last two and the hyphen's rule). The accession is kept in
+the case it is written. Both documents are read,
 Markdown as `masking.mask` leaves it with its code spans blanked too, LaTeX as its reader
 masks it with each `\verb` and `\texttt` blanked and `AB\_1` read as `AB_1`, a table's cells
 included. The generated inputs hold an RRID of every form, gap, trailing mark and case in
@@ -26054,15 +26057,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An RRID written without "RRID:" in capitals and its colon is not read: "AB_2298772"
     alone, "RRIDs: AB_1, AB_2", "rrid:AB_1", "RRID AB_1", and one with two spaces after the
     colon. Accepted.
+  - The gap after the colon is one whitespace character or one line break, and the accession
+    has to follow it: a wrapped line with an indent, "(RRID:" then "  AB_2298772)", one in
+    bold, "**RRID:**AB_2298772", and one in a link, "RRID:[AB_2298772](...)", are not read.
+    Accepted.
+  - An accession whose last part is of small letters after a hyphen is read without it:
+    "RRID:Addgene_12345-abc" is RRID:Addgene_12345, the rule that leaves "-derived" out.
+    Accepted.
   - The resolver's answer is taken as it gives it: `found` says only that it gave a record,
     and a record whose `curie` is another RRID than the one asked, an old identifier it maps
     to a new one or one written in other case, is kept and not compared. Accepted.
+  - One hit of the resolver's without a usable `_source` makes the whole answer no answer,
+    so an RRID whose answer always holds one is never recorded and stays not looked up.
+    Accepted.
   - A line Cellosaurus marks problematic only after the record was written is not known until
     `lookup --resources --again` asks again: an RRID record does not age, and no finding says
     it is old. Accepted.
-  - Two RRIDs that differ only in case, or in a `:` against a `-`, share one record file, and
-    the one whose record is not there is said to be misfiled (`rrid-record-misfiled`). Pinned
-    by `tests/test_rrid_lookup.py::test_a_record_edited_or_of_another_rrid_is_not_read`.
+  - Two RRIDs that differ only in case, or in a `:` or a `.` against a `-`, share one record
+    file, and the one whose record is not there is said to be misfiled
+    (`rrid-record-misfiled`); each run of `lookup --resources` asks for that one again and
+    writes its record over the other's, so the two rewrite each other's record on every run.
+    Pinned by `tests/test_rrid_lookup.py::test_a_record_edited_or_of_another_rrid_is_not_read`.
   - In Markdown, an RRID in an indented code block, or in a `~~~` block that `_code_spans`
     pairs with prose, is read as prose. Accepted.
   - In LaTeX, nothing is read past where the reader stopped in a file: `lookup --resources`

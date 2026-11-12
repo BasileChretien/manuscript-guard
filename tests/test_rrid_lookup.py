@@ -25,6 +25,7 @@ from manuscript_guard.contracts.project import load_project
 from manuscript_guard.gates.rrids import check_rrids
 from manuscript_guard.lookup import resources
 from manuscript_guard.lookup.http import NoAnswer, Request, Response, default_transport
+from manuscript_guard.lookup.resources import PROBLEMATIC
 from manuscript_guard.lookup.run import Pacer
 from manuscript_guard.rrids import (
     answers_digest,
@@ -184,6 +185,30 @@ def test_what_is_not_an_rrid_is_not_read(tmp_path: Path) -> None:
     assert [rrid for rrid, *_rest in _read(root)] == ["RRID:ab_6", "RRID:AB_7"]
 
 
+def test_a_dotted_accession_and_one_of_one_part_are_read_whole(tmp_path: Path) -> None:
+    """Round 1 of #658: a dot joins parts, NXR_0.0005 was read as NXR_0; an accession of one
+    part, SAMN12345678, was not read; and a word of small letters after a hyphen is no part,
+    CVCL_0030-derived was read whole. The sentence's full stop is still left out."""
+    text = ("Xenopus laevis (RRID:NXR_0.0005). Biosample RRID:SAMN12345678, and\n"
+            "RRID:CVCL_0030-derived cells, mice RRID:MMRRC_000231-UNC and RRID:AB_2298772.\n"
+            "RRID: pending, RRID:AB, RRID:NXR_0.0005. and RRID:ZFIN_ZDB-GENO-960809-7.")
+    root = _project(tmp_path / "p", text)
+    assert [rrid for rrid, *_rest in _read(root)] == [
+        "RRID:NXR_0.0005", "RRID:SAMN12345678", "RRID:CVCL_0030", "RRID:MMRRC_000231-UNC",
+        "RRID:AB_2298772", "RRID:NXR_0.0005", "RRID:ZFIN_ZDB-GENO-960809-7",
+    ]  # fmt: skip
+
+
+def test_the_new_forms_are_recorded(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p", "Frogs RRID:NXR_0.0005 and RRID:SAMN12345678.")
+    written, late = _look_up(root, Table(resolver={
+        "RRID:NXR_0.0005": resolved(_hit("RRID:NXR_0.0005", "Xenopus laevis", "organism",
+                                         "NXR_0.0005")),
+        "RRID:SAMN12345678": resolved(_hit("RRID:SAMN12345678", "A biosample", "biosample",
+                                           "SAMN12345678"))}))  # fmt: skip
+    assert late == [] and len(written) == 2
+
+
 def test_the_supplement_is_read_and_said_to_be_the_supplement(tmp_path: Path) -> None:
     root = _project(tmp_path / "p", "Cells RRID:CVCL_0030.", "Software RRID:SCR_002798.")
     assert _read(root) == [
@@ -276,6 +301,68 @@ def test_an_answer_that_is_not_one_records_nothing(tmp_path: Path, answer: Respo
     assert _found(root) == {"rrid-not-looked-up": "warn"}
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"Cellosaurus": {"cell-line-list": [{"accession-list": 5}]}},
+        {"Cellosaurus": {"cell-line-list": [{"accession-list": [{"type": "primary",
+                                                                 "value": "CVCL_0372"}],
+                                             "comment-list": "none"}]}},
+        line("CVCL_0372", "   "),
+        {"Cellosaurus": {"cell-line-list": [{"accession-list": [{"type": "primary",
+                                                                 "value": "CVCL_0372"}],
+                                             "name-list": [{"type": "identifier",
+                                                            "value": 7}],
+                                             "comment-list": [{"category": PROBLEMATIC,
+                                                               "value": 7}]}]}},
+    ],
+    ids=["accessions a number", "comments a string", "a name of spaces", "values numbers"],
+)
+def test_a_cellosaurus_answer_of_another_shape_raises_nothing(tmp_path: Path, answer) -> None:
+    """Round 1 of #658: `"accession-list": 5` raised a TypeError, and a name of spaces made
+    the record fail its schema in `write_record`: each is read as far as it goes, or no
+    answer, and nothing raises."""
+    root = _project(tmp_path / "p", "KB cells RRID:CVCL_0372.")
+    written, late = _look_up(root, Table(cellosaurus={"CVCL_0372": answer}))
+    assert len(written) + len(late) == 1
+    for _one, record, _path in written:
+        assert record["cellosaurus"].get("name", "KB").strip()
+
+
+def test_a_record_its_schema_refuses_is_reported_and_not_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record `write_record` refuses is a failure for that RRID, as an answer that did not
+    come is: the others are written, and the command says so and exits 1."""
+    from manuscript_guard.contracts._schema import ContractError
+
+    root = _project(tmp_path / "p", "KB cells RRID:CVCL_0372 and RRID:SCR_002798.")
+    real = resources.write_record
+
+    def refusing(project, record):
+        if record["rrid"] == "RRID:CVCL_0372":
+            raise ContractError("the record for RRID:CVCL_0372 is not valid: name: ''")
+        return real(project, record)
+
+    monkeypatch.setattr(resources, "write_record", refusing)
+    written, late = _look_up(root, Table())
+    assert [one.rrid for one, _r, _p in written] == ["RRID:SCR_002798"]
+    assert [one.rrid for one, _why in late] == ["RRID:CVCL_0372"]
+
+
+def test_the_command_ends_an_answer_of_another_shape_with_a_sentence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _project(tmp_path / "p", "KB cells RRID:CVCL_0372.")
+    table = Table(cellosaurus={"CVCL_0372": {"Cellosaurus": {"cell-line-list": [
+        {"accession-list": 5}]}}})  # fmt: skip
+    monkeypatch.setattr(resources, "default_transport", table)
+    monkeypatch.setattr(resources, "Pacer", lambda **given: Pacer(sleep=lambda s: None, **given))
+    assert main(["lookup", str(root), "--resources"]) == 1
+    said = capsys.readouterr().out
+    assert "RRID:CVCL_0372: no answer" in said and "nothing recorded" in said
+
+
 def test_an_outage_of_cellosaurus_records_nothing_for_the_cell_line(tmp_path: Path) -> None:
     root = _project(tmp_path / "p", "KB cells RRID:CVCL_0372 and RRID:SCR_002798.")
     written, late = _look_up(root, Table(failing=frozenset({"CVCL_0372"})))
@@ -321,7 +408,9 @@ def test_a_record_of_an_rrid_no_longer_typed_is_not_read(tmp_path: Path) -> None
     _look_up(root, Table())
     (root / "manuscript" / "main.md").write_text("# Methods\n\nNo cells.\n", encoding="utf-8")
     report = check_rrids(load_project(root)[0])
-    assert report.findings == () and report.counts["rrids"] == 0
+    # No count where nothing is typed: a paper with no RRID reads as it did before, as one
+    # with no registration does (round 1 of #658, the differential's `check`).
+    assert report.findings == () and not {"rrids", "rrids_looked_up"} & set(report.counts)
 
 
 # ------------------------------------------------------------------------------ the command

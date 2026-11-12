@@ -24,7 +24,7 @@
     "schema": { "const": "manuscript-guard/rrid/1" },
     "rrid": {
       "type": "string",
-      "pattern": "^RRID:[A-Za-z][A-Za-z0-9]*([_:-][A-Za-z0-9]+)+$",
+      "pattern": "^RRID:([A-Za-z][A-Za-z0-9]*([_:.-][A-Za-z0-9]+)+|[A-Za-z]+[0-9][A-Za-z0-9]*)$",
       "description": "The RRID as the manuscript types it, its case kept."
     },
     "asked_on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },

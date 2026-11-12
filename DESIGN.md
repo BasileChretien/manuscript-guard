@@ -10238,6 +10238,21 @@ workflow does and requires each report on the worked example to be the command l
 word, in Node and in Chrome and Firefox, with no request sent and every forbidden one refused.
 Its limits are under Known gaps.
 
+**What a reader sees** (the author, 2026-11-12, testing the live page: "not user friendly",
+"a bit scary and not attractive at all", and a clock where he wanted to see what is being
+done and how long is left). The page wears the landing page's colours and type, says in a
+line what it does and that the paper stays on the computer, shows three steps, and offers an
+invented example paper (`web/example-paper.md`) for a first visit. While a paper is checked
+it lists the steps and the time left: the audit says each step as it starts
+(`auditing.progress`: read, numbers, words, each lookup counted, report), the worker passes
+each to the page and adds the PDF and the copy, and the page times the steps done against how
+long each usually takes. The report is the PDF, shown in the page by the browser's own viewer
+from a `blob:` address, the one kind of frame the policy allows (`frame-src blob:`); the text
+report is shown only where the PDF could not be made, as the report there is then, and CI
+still holds it to the command line's. Only a phone, whose
+browser shows a PDF in a page of its own, opens it there. Where to find every place of every
+finding is the PDF now, so the report names no box for it (`summary.DETAILS`).
+
 The site's root is the project's landing page (`web/landing/`), and the audit page is in
 `audit/` (Basile, 2026-11-06, the plan for a first visit). The landing page runs no script,
 and its policy lets it load its own pictures, style and video and nothing else. Its pictures
@@ -26319,6 +26334,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `review --record-figure` given a name with a folder that holds no placed file of that
     name, `other/forest`, reads the emitted `figures/forest` and leaves the folder aside
     (`_figure_named` falls back to `emitted[:1]`), as before #630. Accepted.
+- **The audit page's report is an untagged PDF** (round 1 of #644). The page shows the report
+  as the PDF `audit --pdf` writes, and the writer marks no structure in it (no tags, no
+  `MarkInfo`): a screen reader reads its text in the browser's viewer, in the order it is
+  drawn, with no headings or lists to move by. The page itself is plain HTML, its steps and
+  messages spoken, and the time left is not, as a count read aloud each second would drown
+  the rest. The text report, which a screen reader reads well, is shown only where the PDF
+  could not be made. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -1202,6 +1202,32 @@ def test_a_spread_says_which_it_is(scratch: Path) -> None:
         em.value("age.se", 1.0, digits=1, spread="se", of="age.mean", over="cohort.n")
 
 
+def test_a_mean_names_its_variable_and_the_reason_its_skew_is_let_stand(scratch: Path) -> None:
+    """`variable` names the data dictionary's entry a mean is of, which G15 reads its floor
+    from; `skewed_ok` is a sentence, said of a mean that names its variable."""
+    em = emitter(scratch)
+    em.value("crp.mean", 5.1, digits=1, variable="crp", skewed_ok="as the trial registered it")
+    em.value("los.mean", 6, variable="los")
+    assert em.document()["values"]["crp.mean"] == {
+        "value": 5.1, "display": "5.1", "digits": 1, "variable": "crp",
+        "skewed_ok": "as the trial registered it",
+    }  # fmt: skip
+    assert em.document()["values"]["los.mean"] == {"value": 6, "display": "6", "variable": "los"}
+    refused = [
+        ({"variable": ""}, "variable names an entry"),
+        ({"variable": "  "}, "variable names an entry"),
+        ({"variable": 3}, "variable names an entry"),
+        ({"variable": "crp", "skewed_ok": ""}, "skewed_ok is a sentence"),
+        ({"variable": "crp", "skewed_ok": " \t"}, "skewed_ok is a sentence"),
+        ({"variable": "crp", "skewed_ok": 1}, "skewed_ok is a sentence"),
+        ({"variable": "crp", "skewed_ok": ["a reason"]}, "skewed_ok is a sentence"),
+        ({"skewed_ok": "a reason"}, "names its variable"),
+    ]
+    for at, (given, said) in enumerate(refused):
+        with pytest.raises(ValueError, match=said):
+            em.value(f"bad.{at}", 1, **given)
+
+
 def test_a_statistic_says_what_it_belongs_to(scratch: Path) -> None:
     """Item 13: a p value names its estimate and family, a share its counts, and a family
     its correction; what makes no sense is refused at the emitter."""

@@ -30,6 +30,8 @@ licence:
 | STARD-2015 | studies of diagnostic accuracy |
 | CHEERS-2022 | health economic evaluations |
 | ARRIVE-2.0 | in vivo animal experiments |
+| MDAR | papers in the life sciences: their materials, design, analysis and reporting |
+| SAGER-2022-human, SAGER-2022-other | how sex and gender are reported, in studies with human participants and in other studies (animals, cells, the applied sciences); beside the design's own guideline |
 | READUS-PV, READUS-PV-abstracts | disproportionality analyses of spontaneous reports |
 | SANRA (2019) | narrative reviews: a rating scale, which no reporting guideline covers |
 
@@ -71,7 +73,9 @@ G5 warns where a declared design has none of its
 guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
 case-control or self-controlled study with STROBE or RECORD, a disproportionality analysis
 with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
-`study_type: other` is a design none of these is. It warns too when the manuscript says it
+`study_type: other` is a design none of these is. MDAR and SAGER belong to no one design, so
+no design asks for them: a project that follows one names it in `reporting_guideline` beside
+its design's guideline. It warns too when the manuscript says it
 followed a guideline that `paper.yaml` does not name, and when a recipe records that the
 guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
 TARGET has no recipe yet.

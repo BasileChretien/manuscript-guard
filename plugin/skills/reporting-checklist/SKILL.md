@@ -21,10 +21,15 @@ quote can be checked against its source.
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
 TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, STARD-2015,
-CHEERS-2022, ARRIVE-2.0 and SANRA. Name the guideline in
+CHEERS-2022, ARRIVE-2.0, MDAR, SAGER-2022-human, SAGER-2022-other and SANRA. Name the guideline in
 `paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
 only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
 RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
+MDAR and SAGER sit beside a design's guideline rather than in place of it: a life-sciences
+paper may list ARRIVE-2.0 and MDAR, and SAGER has one checklist for studies with human
+participants (SAGER-2022-human) and one for the rest (SAGER-2022-other). Their items carry the
+numbers SAGER prints; MDAR prints none, so its identifiers are its recipe's (M1 to M7, D1 to
+D6, A1 to A4, R1, by section).
 
 **SANRA is the one that is not a reporting guideline**, and its own paper says so: it is the
 scale an editor or a reviewer scores a narrative review with. It is there because a narrative
@@ -81,7 +86,10 @@ cannot place — within the limits `scale.py`'s rules set, and not on a line tho
 wrongly. Name the guideline: with no name
 the command tries every recipe. The profile records how thoroughly it was verified, which
 differs. A Word table lets every item's full
-text be checked, and a PDF laid out in columns only each item's opening clause.
+text be checked, and a PDF laid out in columns only each item's opening clause. MDAR's and
+SAGER's tables are read from where each word sits on the page, which needs poppler's
+`pdftotext` (Xpdf's is refused), and their text is checked against nothing else: the profile
+says so, so read a new profile against the published checklist once.
 
 **Do not write or edit the profile by hand.** It is generated, the write guard refuses edits
 to `profiles/reporting/*.yaml` where the hooks run, and a hand-edited profile is no longer a

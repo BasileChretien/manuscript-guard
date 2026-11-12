@@ -1,0 +1,55 @@
+schema: manuscript-guard/recipe/1
+
+# The SAGER guidelines checklist of the EASE Gender Policy Committee (2022), Table 1: studies
+# with human participants. Table 2 of the same file, for studies without human participants,
+# is SAGER-2022-other.
+#
+# The checklist is a Word table saved as a PDF. Each item's number is centred against its
+# text, so a two-line item's number stands on a line of its own between them, and one item's
+# first line follows the last line of the item above with nothing between. The rows reader
+# (`reporting/rows.py`) takes each word's place from poppler's `pdftotext -bbox` and gives each
+# number the run of lines centred on it. Xpdf's pdftotext has no -bbox and is refused; its
+# -layout sets several of these numbers against the wrong item's lines. Read with poppler
+# 24.04.
+#
+# Item 5b runs from page 4 onto page 5, with its number on page 4: the two lines above
+# "Results" on page 5 are its end. Items marked with an asterisk are those the checklist's
+# footnote says "extend beyond the original SAGER table"; the asterisk is kept in the text, and
+# the footnote is not read.
+
+meta:
+  name: SAGER-2022-human
+  long_name: "Sex and Gender Equity in Research (SAGER) guidelines checklist: studies with human participants"
+  version: "2022"
+  applies_to: "Research with human participants; the checklist is meant for papers of any field"
+  source_url: "https://ease.org.uk/communities/gender-policy-committee/the-sager-guidelines/"
+  retrieved_on: 2026-11-12
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    NOT STATED. The checklist PDF states no licence; it names its authors (Van Epps H, Astudillo O, Del Pozo Martín Y, Marsh J, of the EASE Gender Policy Committee) and says it "was originally published as an article in the EASE journal, European Science Editing". The EASE page it is served from states no licence for it, and its footer reads "© European Association of Science Editors 2026 All Rights Reserved" (read 2026-11-12). The article (Van Epps H, et al. Eur Sci Ed 2022;48:e86910, doi:10.3897/ese.2022.e86910) and the SAGER guidelines' paper (Heidari S, et al. Res Integr Peer Rev 2016;1:2, doi:10.1186/s41073-016-0007-6) are each CC BY 4.0 in Crossref, as articles; this recipe reads neither.
+  licence_url: https://ease.org.uk/communities/gender-policy-committee/the-sager-guidelines/
+  download_url: https://ease.org.uk/wp-content/uploads/2023/01/EASE-SAGER-Checklist-2022.pdf
+  sha256: b8a4992f6356243504af3d77fed474ebf9549cf2d7fbb98c73bda193db52605b
+
+document: EASE-SAGER-Checklist-2022.pdf
+format: pdf-rows
+rows: centred-id
+pages: [4, 5]
+# Where each column starts, in points from the left edge of the A4 page: the section headings
+# at 34, the numbers at 103 to 108, the text at 140, and the empty "Reported on page number"
+# column at 491.
+columns:
+  section: 0
+  id: 85
+  text: 135
+  blank: 480
+# The last line of the table's header, as its words join across the columns.
+start_after: "topic number page number"
+# The footnote under the table.
+stop_at: "Adapted from SAGER guidelines. Sex and Gender Equity in Research: rationale for the SAGER"
+# The running foot of every page.
+ignore: ["SAGER Guidelines Checklist"]
+items: 18
+
+# Unused by the rows reader, but the recipe schema expects a text column.
+text_column: 0

@@ -4677,6 +4677,11 @@ scale rather than as a completed reporting checklist, because those are differen
 analyses of spontaneous reports, and is more directly applicable to signal-detection work
 than STROBE.
 
+Three more were added on 2026-11-12: MDAR (18 items), for papers in the life sciences, and the
+two tables of the EASE SAGER checklist of 2022, for reporting sex and gender (18 items for
+studies with human participants, 13 for other studies). Neither belongs to a design, so
+`study_types.yaml` names neither, and a project lists them beside its design's guideline.
+
 **The repository ships recipes, not transcribed text.** Licences were read on 2026-08-03 and
 are recorded per recipe and in [ATTRIBUTION.md](ATTRIBUTION.md). The picture settles the
 design: RECORD is explicitly CC BY, STROBE and ARRIVE are CC BY through their statement
@@ -4744,6 +4749,18 @@ to the wrong number, but not a wrongly assembled tail.
 Rather than let that pass unmarked, every profile now records a `verification` field, and
 ARRIVE's says `opening clause only (column-laid-out PDF)`. Two different guarantees should
 not look identical in the output.
+
+MDAR and SAGER are Word tables saved as PDFs, and neither the table reader nor the column
+reader can read them. SAGER centres each item's number against its text, so a two-line item's
+number has a line of its own and one item's last line runs straight into the next item's
+first; MDAR prints no numbers, and only the bold of a title, which `pdftotext` does not report,
+sets it apart from its text. The rows reader (`reporting/rows.py`) reads both from where each
+word sits, as poppler's `pdftotext -bbox` gives it: a SAGER number takes the run of lines
+centred on it, and an MDAR row runs from its title, which the recipe lists as printed, to the
+next. What holds the reading is the item count the recipe states and, for MDAR, one form box
+to a row. Nothing compares the text with another reading of the page, and the profile says
+that. When the recipes were written, each item of the three profiles was found, in order, in
+poppler's `-layout` text of the same pages, cut to the text column.
 
 Two smaller decisions fell out of this:
 
@@ -21036,6 +21053,66 @@ Open, recorded as each change landed:
   statements is on one line, and both builds transcribe it identically.
 
   [scale-219]: https://github.com/BasileChretien/manuscript-guard/pull/219
+- **A table read from where its words sit needs poppler.** `pdf-rows` (`reporting/rows.py`),
+  which reads MDAR and SAGER 2022, asks `pdftotext -bbox` for each word's place. Xpdf's
+  `pdftotext`, which Git for Windows puts on PATH, has no `-bbox` and answers with its usage,
+  so the transcription stops with a sentence that names poppler. Xpdf's `-layout` would not
+  serve either: on SAGER's page 4 it sets item 4c's number against 4b's last line and 5a's
+  against 4c's. Measured with Xpdf 4.00 and poppler 24.04 on 2026-11-12. Pinned by
+  `tests/test_rows.py::test_a_pdftotext_without_bbox_is_refused_in_a_sentence`.
+- **A table read from where its words sit is checked against nothing else.** The items are
+  what the words' places say, held to the item count the recipe states, to each identifier
+  being read once and, for MDAR, to one form box to a row; the profile's `verification` says
+  that no other reading of the page is compared. When the three recipes were written, each of
+  their 49 items was found, in order, in poppler's `-layout` text of the same pages cut to the
+  text column, which is a check made once by hand and not by the reader. What the rules leave
+  through: Accepted.
+
+  - A line that ends in a hyphen joins the next with no space, which is right for MDAR's
+    "step-" and "by-step" and wrong for a suspended hyphen broken after it, "Sex-" and "and
+    gender-based", which neither checklist breaks there. Pinned by
+    `tests/test_rows.py::test_a_suspended_hyphen_at_a_line_end_loses_its_space`.
+  - In `rows: topics`, text between a heading and the next title is passed over as the
+    section's preamble, as MDAR's page 5 needs. A first row left out of the recipe would be
+    passed over with it; its form box is what refuses it. Pinned by
+    `tests/test_rows.py::test_each_row_runs_from_its_title_to_the_next` and
+    `tests/test_rows.py::test_a_first_title_left_out_leaves_a_box_under_a_heading`.
+  - The `form` column is read only for the marker that opens each box, so MDAR's "n/a", the
+    box's second line ("or state if these demographics were not collected") and the page
+    numbers are not read, and a word of an item that started in that column would be lost
+    without a word. None of MDAR's does: its text ends by 273 points and the column starts at
+    280. Accepted.
+  - In `rows: centred-id`, a row Word broke across a page is carried on only where its number
+    stands on the part before the break and nothing but the carried lines is above the next
+    page's first heading; a row whose number fell on the part after the break is refused, as
+    no item's run, rather than read. SAGER's 5b breaks the first way. Pinned by
+    `tests/test_rows.py::test_a_row_broken_across_pages_carries_on_above_the_next_heading` and
+    `tests/test_rows.py::test_a_row_whose_number_fell_after_the_break_is_refused`.
+  - Words are one line where each word's middle is within two points of the middle of the
+    first word put in the line, taking words from the top. A printed line whose words' middles
+    spread wider, as a superscript or a larger font can, is cut in two, and the parts are
+    ordered by their middles, not left to right, so its words may be read in another order.
+    On the pages the three recipes read, the middles of one line's words spread by 1.44 points
+    at most (MDAR's page 3, a title and the box beside it), and two lines' middles stand 5.28
+    points apart at least. Accepted.
+  - In `rows: topics`, a line of a row's text that equals the next title in the recipe is
+    taken as that title, and the row ends there. None of MDAR's text lines equals a title.
+    Accepted.
+  - MDAR's recipe states no `stop_at` and no `ignore`: it needs neither, since its pages carry
+    nothing below the last row but a page number in the `form` column, and no header or foot
+    in the text column. On a revised document a footnote under R1, or a running line in the
+    text column, would join the open row. That the shipped document has none was checked by
+    hand against its pages, and the checksum stops a revised one. Accepted.
+  - A heading is one line. A heading set on two lines would be two headings, and the section
+    of the items under it would be its last line ("abstract" for "Title and" / "abstract").
+    Every section of the three shipped profiles was checked against the pages and is printed
+    on one line: MDAR's Materials, Design, Analysis and Reporting, and SAGER's General, Title,
+    Abstract, Introduction, Methods, Results and Discussion in both tables. Accepted.
+  - SAGER marks with an asterisk the items its footnote says "extend beyond the original SAGER
+    table". The asterisk stays in the item's text and the footnote, below `stop_at`, is not
+    read, so the profile does not say what the asterisk means. Accepted.
+  - MDAR prints no item numbers, so M1 to R1 are the recipe's, by section and place; a reviewer
+    who cites MDAR by title finds the title in the profile's `topic`. Accepted.
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work. Accepted.

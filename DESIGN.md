@@ -25741,6 +25741,36 @@ What papers converted from Word showed (see "What papers converted from Word sho
     emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
     typed from its source rather than emitted. Accepted.
 
+- **A figure placed the ordinary way is reviewed, described and read for its colours, and
+  its numbers are not traced.** Basile decided on 2026-11-11, after arXiv 2409.10841, that
+  G10, G3's alternative text and the colour-vision check read every figure file the paper
+  places, by `\includegraphics`, as a Markdown image or as a picture `init --from` brought
+  from Word, known by its path from the project's root, its records beside it
+  (`gates/placed_figures.py`). G3's number checks still read what the analysis renders in
+  `figures/`, and one note names each placed figure outside it (`figure-untraced`). A
+  raster's colours are not read, as an emitted raster's are not: a note, unless an SVG or a
+  PDF of the same name stands beside it. G4's artwork rules still hold only the figures the
+  manuscript binds. Pinned by
+  `tests/test_corruption.py::test_a_placed_figure_is_told_what_an_emitted_one_is_at_each_stage`.
+  - A placed figure's alternative text is its guard file's, which `submit` writes into
+    `alt-text.md`; the build does not write it into the picture, where pandoc writes a
+    Markdown image's own description, and the description, a `fig-alt` attribute and
+    `\includegraphics`'s `alt` key are not read as its alternative text. Accepted.
+  - An image in an indented code block is read as placed, and one written by reference,
+    `![a][b]`, is not read. Accepted.
+  - A picture placed by `\includesvg`, `\includestandalone` or a command of the author's
+    is not read: an `\includegraphics` in a definition's body places nothing, even where the
+    command is used, since one in a command the paper never uses was asked for a review
+    (round 1 of #630). A `\graphicspath` counts for every picture of its document wherever
+    it stands, and an imported file's folder is tried before it. Accepted.
+  - A file written or linked outside the project, by a path from the root of the disk, one
+    that climbs out with `..`, or through a link, is checked where it is, its records kept
+    there, named by its file name alone in what `check` says and in `alt-text.md`, so that no
+    folder of the author's is submitted, and named in a note (`figure-outside-project`). A
+    `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
+    are. Pinned by
+    `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading

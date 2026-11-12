@@ -2526,6 +2526,34 @@ def _vector_figure() -> Reading:
     return marks
 
 
+@reading("placed images")
+def _placed_images() -> Reading:
+    """The path of each image a Markdown text places, as figure review, alternative text
+    and the colour-vision check read it (`gates/placed_figures.py`)."""
+    from manuscript_guard.gates.placed_figures import images
+
+    return images
+
+
+@reading("placed graphics")
+def _placed_graphics() -> Reading:
+    """The file each `\\includegraphics` of a LaTeX document places, as graphicx finds it in
+    a manuscript folder holding `files`, by its path there, sorted (`gates/placed_figures.py`)."""
+    from manuscript_guard.gates.placed_figures import latex_graphics
+
+    def read(given: dict[str, Any]) -> list[str]:
+        with tempfile.TemporaryDirectory() as folder:
+            manuscript = Path(folder).resolve()
+            (manuscript / "main.tex").write_text(given["document"], encoding="utf-8")
+            for name in given["files"]:
+                (manuscript / name).parent.mkdir(parents=True, exist_ok=True)
+                (manuscript / name).write_bytes(b"%PDF-1.4\n")
+            return sorted(path.resolve().relative_to(manuscript).as_posix()
+                          for path, _supplementary in latex_graphics(manuscript))  # fmt: skip
+
+    return read
+
+
 @reading("quote words")
 def _quote_words() -> Reading:
     """The words a ledger quote holds beside its value, which G7 counts to say a quote that

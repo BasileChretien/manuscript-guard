@@ -570,7 +570,7 @@ def _off_its_counts(atom: Atom, parts: list[str],
     off, percent = written[at]
     others = list(parts)
     for part in parts:
-        if part.endswith("%") and normalise_number(part) == normalise_number(percent):
+        if normalise_number(part) == normalise_number(percent):  # "(66 %)": no sign in it
             others.remove(part)
             break
     return off, others

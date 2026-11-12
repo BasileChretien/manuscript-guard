@@ -2726,6 +2726,9 @@ def test_an_abstract_share_its_counts_do_not_give_is_a_number_that_does_not_fit(
     assert [c.text for c in report.abstract.from_counts] == ["66%"]
     assert [c.text for c in report.abstract.not_found] == ["66.4%"]
     assert report.disagreements == []
+    report = read("164 of 250 (66 %)")  # its sign in an atom of its own (round 2 of #664)
+    assert [c.text for c in report.abstract.from_counts] == ["66"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
     report = read("164 out of 250 (75%)")
     assert [c.text for c in report.abstract.off_counts] == ["75%"]
     assert [c.text for c in report.abstract.not_found] == ["66.4%"]

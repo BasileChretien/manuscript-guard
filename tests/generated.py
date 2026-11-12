@@ -8749,7 +8749,7 @@ SHARE_UNREAD = {
     "share without a denominator": ("n = {k} ({p}%)", 101),
     "share after its counts": ("of {n} patients, {k} ({p}%)", 601),
     "share without a sign": ("{k} of {n} ({p})", 701),
-    "share with a decimal comma": ("{k} of {n} ({a},{b}%)", 111),
+    "share with a decimal comma": ("{k} of {n} ({a},{b}%)", 211),
 }  # fmt: skip
 #: The words that may stand between a count's denominator and its share.
 SHARE_WORDS = ("patients", "adults in all", "of the women")

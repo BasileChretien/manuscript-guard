@@ -24931,9 +24931,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     count over its denominator, "45% (2019/20)", "on 17/4 (45%)", a share over 100, and a
     year with the next, "the 2019/2020 season (45%)" (round 1 of #664). Pinned by
     `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
-  - A date whose day is no more than twelve, "on 5/12 (45%)", or a pair of years further
-    apart, "2019/2021 (45%)", reads as a count and its denominator, and its percentage is
-    said off them and not looked for. Accepted.
+  - A date whose first number is no more than its second, either order, "on 4/17 (45%)",
+    or a pair of years further apart, "2019/2021 (45%)", reads as a count and its
+    denominator, and its percentage is said off them and not looked for. Accepted.
+  - A season of two two-digit years, "the 19/20 season (45%)", reads as 19 of 20 and is
+    said off its counts: "19/20" can be a real count. Accepted.
   - The counts are taken from where they stand, up to three words before the bracket:
     "12 of 30 sites enrolled patients (40%)" is read as 12 of 30, whatever the 40% is of.
     Accepted.

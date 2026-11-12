@@ -3817,6 +3817,99 @@ def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
         assert names_doi(written, DEPOSIT_DOI) == before, written
 
 
+# ------------------------------------------------- the declarations held to authors.yaml
+
+from generated import declaration_papers  # noqa: E402
+
+
+@holds(100, declaration_papers())
+def test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed(
+    drawn: tuple[dict, str, list[tuple[str, str]]],
+) -> None:
+    """G4 finds each grant, funder, author, role and approval the record holds in the
+    paper's statements however they are typed, under any heading or label of their kind and
+    in any order; and each near miss raises its own finding: a grant with a digit more, a
+    funder with a word changed, a denial, another family name, a collective none, a role
+    left out, other initials, another approval."""
+    from manuscript_guard.gates.disclosures import judge
+
+    authors, paper, near = drawn
+    said = judge(authors, paper).findings
+    assert not said, ([f.message for f in said], paper)
+    for code, changed in near:
+        codes = {f.code for f in judge(authors, changed).findings}
+        assert code in codes, (code, codes, changed)
+
+
+def _grant_found_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    loose = disclosures._identifier_pattern
+
+    def unbounded(token: str) -> re.Pattern[str]:
+        found = loose(token).pattern
+        for bound in ("(?<!\\d)", "(?<![^\\W\\d_])"):
+            found = found.removeprefix(bound)
+        for bound in ("(?!\\d)", "(?![^\\W\\d_])"):
+            found = found.removesuffix(bound)
+        return re.compile(found)
+
+    patch.setattr(disclosures, "_identifier_pattern", unbounded)
+
+
+def _declarations_keep_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def keep_case(text: str) -> str:
+        import unicodedata
+
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(c for c in text if not unicodedata.combining(c))
+        return " ".join(text.translate(disclosures._DASHES).translate(disclosures._QUOTES)
+                        .split())  # fmt: skip
+
+    patch.setattr(disclosures, "fold", keep_case)
+
+
+def _declarations_keep_dashes(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_DASHES", {})
+
+
+def _declarations_keep_accents(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def accented(text: str) -> str:
+        text = text.translate(disclosures._DASHES).translate(disclosures._QUOTES).casefold()
+        return " ".join(text.split())
+
+    patch.setattr(disclosures, "fold", accented)
+
+
+def _declared_initials_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    cased = disclosures._initials_pattern
+
+    def folded(initials: str) -> re.Pattern[str] | None:
+        found = cased(initials)
+        return None if found is None else re.compile(found.pattern, re.IGNORECASE)
+
+    patch.setattr(disclosures, "_initials_pattern", folded)
+
+
+def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = dict(disclosures._data())
+    subject = "(?:the authors|all authors|all the authors|the author)"
+    assert subject in data["collective_none"][0]
+    data["collective_none"] = [pattern.replace(subject, "authors?")
+                               for pattern in data["collective_none"]]  # fmt: skip
+    patch.setattr(disclosures, "_data", lambda: data)
+
+
 # ------------------------------------------------- the head over a fetched PDF's title
 
 from generated import PDF_WORK, pdf_first_pages  # noqa: E402
@@ -21017,6 +21110,30 @@ BROKEN = {
     "a registration is found inside a longer identifier": (
         _registration_found_inside_another,
         test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is,
+    ),
+    "a grant identifier in a declaration is found inside a longer number": (
+        _grant_found_inside_a_longer_number,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "the declarations are read in the case they are typed": (
+        _declarations_keep_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a dash in a declaration is not read as a hyphen": (
+        _declarations_keep_dashes,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a declaration's accents are kept": (
+        _declarations_keep_accents,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "an author's initials in a declaration are read in any case": (
+        _declared_initials_in_any_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a none of the other authors in a declaration is read as everyone's": (
+        _the_other_authors_say_none_for_all,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
     ),
     "an identifier is read inside a longer word": (
         _identifier_read_inside_a_word,

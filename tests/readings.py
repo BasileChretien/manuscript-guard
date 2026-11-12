@@ -886,6 +886,19 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("disclosures")
+def _disclosures() -> Reading:
+    from manuscript_guard.gates.disclosures import judge
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        """What G4 says of a manuscript's funding, competing interests, ethics and author
+        contributions statements against an authors.yaml, at submission."""
+        return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
+                           submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
 @reading("deposit named")
 def _deposit_named() -> Reading:
     from manuscript_guard.gates.data_statement import names_doi

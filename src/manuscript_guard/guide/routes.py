@@ -215,6 +215,10 @@ ROUTES: dict[str, Route] = {
     # The AI-use statement, drafted from what the records show; the skill asks the author
     # for what no record can (`authors.yaml`, `ai_use`). Before `ai-`, the writing's.
     **_all("submission-pack", ("review", "--ai-use"), "ai-use-"),
+    # The declarations held to authors.yaml: the statement is written, or the record put
+    # right, each author's own entries asked of them, as the setup skill has the author fill
+    # authors.yaml. No command fixes either.
+    **_all("project-setup", None, "funding-", "interests-", "ethics-approval-", "credit-"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill

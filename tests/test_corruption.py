@@ -12203,6 +12203,8 @@ _READS_LATEX = (
     "check_boxes",
     # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
     "check_ai_use",
+    # The declarations held to authors.yaml: read in the same two views.
+    "check_disclosures",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -32406,6 +32408,156 @@ def test_a_code_step_edited_in_its_fragment_fails(
     _re_signed(root, field, value)
     assert "results-edited" not in codes(gate_report(root)), "G1 is satisfied, as expected"
     assert caught in _g9_and_load(root)
+
+
+# --------------------------------------------------------------------------------------
+# G4: the manuscript's funding, competing interests, ethics and author contributions held to
+# authors.yaml (DESIGN.md, "The declarations are held to authors.yaml").
+
+
+def _disclosure_findings(root: Path, stage: str | None = None) -> list[tuple[str, str]]:
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.disclosures import GATE
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    ours = ("funding-", "interests-", "ethics-approval-", "credit-")
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.gate == GATE and f.code.startswith(ours))  # fmt: skip
+
+
+def _disclosures_recorded(root: Path, family: str, **fields: object) -> None:
+    """`fields` set on the author of authors.yaml called `family`; `roles` on the file."""
+    path = root / "authors.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    roles = fields.pop("roles", None)
+    if roles is not None:
+        document.setdefault("roles", {}).update(roles)
+    for author in document["authors"]:
+        if author["family"] == family:
+            author.update(fields)
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _replaced(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text, (old, path)
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+_GRANT = "Agence Nationale de la Recherche (ANR-20-CE17-0001)"
+
+
+def test_the_example_s_declarations_agree_with_its_authors_yaml(project: Path) -> None:
+    """"This work received no funding" and "None declared." beside a record of no funding and
+    "None declared." for both authors: nothing is said, at any stage."""
+    assert _disclosure_findings(project, "drafting") == []
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_funding_statement_that_denies_a_recorded_grant_is_caught(project: Path) -> None:
+    """The example says it received no funding; authors.yaml now lists a grant. A warning
+    while drafting, a failure at submission; the grant given passes."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "drafting") == [("funding-denied", "warn")]
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
+    _replaced(main_md(project), "This work received no funding.",
+              "This work was funded by the ANR (ANR\N{EN DASH}20\N{EN DASH}CE17\N{EN DASH}0001).")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_grant_the_funding_statement_leaves_out_is_caught(project: Path) -> None:
+    """A grant identifier with a digit more is another grant; a funder with no identifier is
+    found by its words, with its accents and case folded."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Sample",
+              funding=["Fondation pour la Recherche M\N{LATIN SMALL LETTER E WITH ACUTE}dicale"])
+    _replaced(main_md(project), "This work received no funding.",
+              "Supported by grant ANR-20-CE17-00012 and the FONDATION POUR LA RECHERCHE MEDICALE.")
+    assert _disclosure_findings(project, "submission") == [("funding-grant-missing", "fail")]
+
+
+def test_no_funding_statement_with_a_grant_recorded_is_a_note(project: Path) -> None:
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _replaced(main_md(project), "# Funding\n\nThis work received no funding.\n\n", "")
+    assert _disclosure_findings(project, "submission") == [("funding-not-stated", "info")]
+
+
+def test_none_declared_while_an_author_records_an_interest_is_caught(project: Path) -> None:
+    """The example's "None declared." stands for every author only while every record says
+    none. Naming the author with the interest passes."""
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "drafting") == [("interests-none-contradicted", "warn")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nBlaise SAMPLE received consulting fees from Pharma X. "
+              "The other authors declare no competing interests.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_with_an_interest_the_statement_does_not_name_is_caught(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nAda Example received consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "submission") == [("interests-author-missing", "fail")]
+
+
+def test_an_empty_competing_interests_field_is_caught(project: Path) -> None:
+    """An empty field is not a declaration of none, so the manuscript's "None declared." is
+    not backed by the record."""
+    _disclosures_recorded(project, "Sample", competing_interests="")
+    assert _disclosure_findings(project, "drafting") == [("interests-unfilled", "warn")]
+
+
+def test_an_ethics_approval_the_manuscript_does_not_give_is_caught(project: Path) -> None:
+    """The example says no ethical approval was required, in its Data availability; the
+    ethics lead records one. Given in the Methods instead, it passes."""
+    lead = {"author": "Sample", "approval": "CPP Ouest III 2021-A00123-36"}
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": lead})
+    assert _disclosure_findings(project, "drafting") == [("ethics-approval-denied", "warn")]
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    assert _disclosure_findings(project, "submission") == [("ethics-approval-missing", "fail")]
+    _replaced(main_md(project), "# Funding", "# Ethics\n\nApproved by the CPP Ouest III "
+              "(2021-A00123-36).\n\n# Funding")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_ethics_approval_given_in_the_supplement_s_methods_passes(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": {"name": "R. Lead",
+                                                        "approval": "IRB #2021-0456"}})
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + "\n\n## Supplementary methods\n\nThe IRB approved it (2021-0456).\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_contributions_statement_held_to_the_credit_roles(project: Path) -> None:
+    """With no such statement nothing is said; with one, an author it does not name and a
+    role it does not give are each caught. Initials and a dash of any kind pass."""
+    assert _disclosure_findings(project, "submission") == []
+    _replaced(main_md(project), "# Competing interests",
+              "# Author contributions\n\nA.E.: conceptualisation, formal analysis, writing "
+              "\N{EM DASH} original draft. Ada Example supervised.\n\n# Competing interests")
+    assert _disclosure_findings(project, "submission") == [
+        ("credit-author-missing", "fail"), ("credit-role-missing", "fail"),
+        ("credit-role-missing", "fail"), ("credit-role-missing", "fail")]
+    _replaced(main_md(project), "Ada Example supervised.",
+              "BS: Methodology, Supervision, Writing - Review and Editing.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Path) -> None:
+    """The twin's printed view writes `\\section{Funding}` as a heading, so its funding
+    statement is read as the Markdown's is."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
 
 
 # --------------------------------------------------------------------------------------

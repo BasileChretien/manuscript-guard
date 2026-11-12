@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: written shares
+    why: >-
+      new with this pull request: a share a sentence writes beside both its counts, "12 of
+      40 patients (50%)", under any heading or in a note, is held to them as the Abstract's
+      is, and one off them is listed with the numbers that do not fit the ones beside them,
+      by the heading it stands under (Basile, 2026-11-13, after #664); the base said only
+      the Abstract's and a table's, which the reading lists as before
   - reading: abbreviations
     why: >-
       a short form after a spaced dash followed by a value bound to the results, "– OR

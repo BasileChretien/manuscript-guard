@@ -1367,12 +1367,14 @@ def audit(
 
     report.abstract = against_results(pieces)
     # A share of the Abstract its counts beside it do not give is a number that does not fit
-    # the ones beside it, listed with the rest, by paper in the order read and by line.
+    # the ones beside it, and so is one written anywhere else in a paper's sentences, listed
+    # with the rest, by paper in the order read and by line.
     report.read["shares"] = report.read.get("shares", 0) + report.abstract.shares
-    if report.abstract.arithmetic:
+    elsewhere = _written_shares(report, sources[:read], pieces[:read])
+    if report.abstract.arithmetic or elsewhere:
         order = {path: at for at, path in enumerate(report.papers)}
         report.disagreements = sorted(
-            [*report.disagreements, *report.abstract.arithmetic],
+            [*report.disagreements, *report.abstract.arithmetic, *elsewhere],
             key=lambda d: (order.get(d.source, len(order)), d.line))  # fmt: skip
     from manuscript_guard.auditing import baseline, causal
 
@@ -1469,6 +1471,36 @@ def _lists(report: AuditReport) -> dict[Path, object]:
         tree = trees.get(census.path)
         for path in ([path for path, _source in tree.files] if tree else [census.path]):
             found.setdefault(path, census)
+    return found
+
+
+def _written_shares(report: AuditReport, sources: list[_Source],
+                    pieces: list) -> list[Disagreement]:  # fmt: skip
+    """Each share a paper writes in a sentence beside both its counts (`shares.written_shares`)
+    that they do not give, by the heading it stands under (Basile, 2026-11-13, after #664).
+    Not a table's, which `_disagreements` reads as a table, nor one of an Abstract the
+    Abstract against Results compared, which holds its own (`auditing.abstract`). A share
+    that fits says nothing."""
+    from manuscript_guard.auditing.abstract import _around, _kept, where
+    from manuscript_guard.stats import shares
+
+    found = []
+    for source, piece in zip(sources, pieces, strict=True):
+        def read(line: int, source=source, piece=piece) -> bool:
+            if line in source.table_lines:
+                return False
+            return not (report.abstract.compared and where(piece, line) == "abstract")
+
+        text = _kept(source.hidden, read)
+        for share, at in shares.written_shares(text):
+            report.read["shares"] = report.read.get("shares", 0) + 1
+            if not shares.off(share):
+                continue
+            title = source.part(share.line).title if source.part is not None else ""
+            said = f"in {title}, " if title else ""
+            found.append(Disagreement(source.path, share.line,
+                                      f"{said}{shares.described(share)}",
+                                      _around(text, at, share)))  # fmt: skip
     return found
 
 

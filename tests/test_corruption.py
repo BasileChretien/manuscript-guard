@@ -2765,6 +2765,33 @@ def test_a_season_or_a_date_beside_a_percentage_in_the_abstract_is_no_share(
         assert [c.text for c in report.abstract.found if "45" in c.text], said
 
 
+def test_a_share_its_counts_do_not_give_in_the_results_is_a_number_that_does_not_fit(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-11-13, after #664: "12 of 40 patients (30%)" in the Results says nothing;
+    changed to 50%, it is listed once, by its heading, with the numbers that do not fit the
+    ones beside them. The same share in a table is said once, as the table's; and the
+    Abstract's once, as the Abstract's."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def said(abstract: str, results: str) -> list[tuple[int, str]]:
+        paper.write_text(f"# Paper\n\n## Abstract\n\n{abstract}\n\n## Methods\n\nWe asked "
+                         f"40.\n\n## Results\n\n{results}\n", encoding="utf-8")  # fmt: skip
+        return [(d.line, d.message) for d in audit([paper], None).disagreements]
+
+    assert said("We asked them.", "Then 12 of 40 patients (30%) had it.") == []
+    assert said("We asked them.", "Then 12 of 40 patients (50%) had it.") == [
+        (13, "in Results, n (%) 12 of 40 patients (50%): 12 of 40 is 30.0%, not 50; 50% is "
+             "12 of 24")]  # fmt: skip
+    table = "| Group | Value |\n|---|---|\n| A | 12/40 (50.0%) |"
+    assert [line for line, _said in said("We asked them.", table)] == [15]
+    assert [message for _line, message in said("Then 12 of 40 (50%) had it.", "It was so.")
+            ] == ["in the Abstract, n (%) 12 of 40 (50%): 12 of 40 is 30.0%, not 50; 50% is "
+                  "12 of 24"]  # fmt: skip
+
+
 def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
     tmp_path: Path,
 ) -> None:

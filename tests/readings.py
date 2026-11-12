@@ -1727,6 +1727,22 @@ def _interval_words() -> Reading:
     return read
 
 
+@reading("written shares")
+def _written_shares() -> Reading:
+    """What `audit` says of a Markdown paper's numbers that do not fit the ones beside them:
+    each finding's line and words, a share off its counts in a sentence, the Abstract's and a
+    table's among them."""
+    from manuscript_guard.audit import audit
+
+    def read(given: str) -> list[list[Any]]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper = Path(folder) / "paper.md"
+            paper.write_text(given, encoding="utf-8")
+            return [[d.line, d.message] for d in audit([paper], None).disagreements]
+
+    return read
+
+
 @reading("table shares")
 def _table_shares() -> Reading:
     """Each count and its share in a pipe table, as it is printed, with the denominator the

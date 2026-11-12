@@ -220,9 +220,13 @@ in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share
 up to 100, and a share of its categories' own total, where they do, are not listed: a
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
-read in Markdown, and every table in a .docx. A share the Abstract writes in a sentence
-beside both its counts is held to them the same way (see the Abstract against Results); one
-in a sentence anywhere else is not read.
+read in Markdown, and every table in a .docx. A share a sentence writes beside both its
+counts, "12 of 40 patients (30%)", in any section or note, is held to them the same way,
+in the shapes and with the rounding the Abstract against Results describes, and one that
+does not fit is listed with the heading it stands under, "in Results, n (%) 12 of 40
+patients (50%): ...". One that fits says nothing. The Abstract's own shares are said in
+the Abstract against Results, where it compares, and a table's are read as a table's, so
+none is said twice.
 
 **Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the

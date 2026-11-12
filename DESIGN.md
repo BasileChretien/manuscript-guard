@@ -25442,9 +25442,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A percentage its counts give is explained by them, whatever the paper reports: it is
     not compared with the share the Results print for the same counts. Accepted.
-  - A share written in a sentence anywhere but the Abstract, "164 of 250 (75%)" in the
-    Results, is not held to its counts: only a table's n (%) and the Abstract's are.
-    Accepted.
+  - A share written in a sentence under any heading is held to its counts as the
+    Abstract's is, and one off them is said under Arithmetic by the heading it stands
+    under, a footnote's by the heading over its definition (Basile, 2026-11-13). Only
+    `audit` holds it: `check` binds a project's shares to the analysis, and a share typed
+    there is an unbound number already. Accepted.
+  - A table's share is the table reader's alone, and the Abstract's the Abstract against
+    Results', where it compares; where no Results heading lets it, the Abstract's share is
+    said as any section's. A figure's text is not read for shares. Pinned by
+    `tests/test_properties.py::test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it`.
+  - A share the Introduction or the Discussion quotes from another paper is held to its
+    counts all the same: a wrong one is said, though it is not this paper's. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of

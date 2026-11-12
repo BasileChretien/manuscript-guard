@@ -25874,6 +25874,37 @@ What papers converted from Word showed (see "What papers converted from Word sho
     fill as X, so an IEEE paper's tenth table's marker, "[Insert Table X here]", fails as a
     slot. Pinned by
     `tests/test_corruption.py::test_a_placeholder_in_the_manuscript_fails[[Insert Table X here]]`.
+- **The audit's one finding on short forms left undefined, and its list.** The author's
+  decision of 2026-11-11, after the corpus of 52 real preprints, in which 354 of the 427
+  `abbreviation-undefined` warnings judges read were false (`auditing.undefined`). The
+  audit says those of one paper in one finding, at the first use of the first form, and
+  passes over the forms on a list of what journals' style guides say needs no definition.
+  Pinned by
+  `tests/test_audit_undefined.py::test_the_short_forms_left_undefined_are_one_finding_at_the_first_use`.
+  - The list of forms journals' style guides say need no definition,
+    `data/journal_abbreviations.yaml`, is the same for every paper audited, of any field: a
+    form on it is passed over in a paper where it means something else. The forms whose
+    second meaning in another field is common are left out, and the file says which; one
+    not known for a second meaning is passed over in any paper. It is the list of three
+    sources read on 2026-11-12, and stays as they were then. Accepted.
+  - Where every form the paper leaves undefined is on the list, there is no finding of
+    forms left undefined: a note, which nothing counts, says how many were passed over,
+    which, and by which list (round 1 of #640). Pinned by
+    `tests/test_audit_undefined.py::test_a_paper_whose_forms_are_all_on_the_list_has_a_note_of_them`.
+  - The forms are in G14's reading order, the order its warnings come in: the Abstract's,
+    then the main text's, then the supplement's, each part in the order of each form's
+    first use as G14 reads the files. A form used first in the Abstract, or first in an
+    acknowledgement and later in the text, is ranked by that first use, though its warning
+    stands at its first use in the main text. Pinned by
+    `tests/test_audit_undefined.py::test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files`,
+    `tests/test_audit_undefined.py::test_a_form_used_first_in_the_acknowledgements_ranks_by_that_use`.
+  - The page, the PDF and the copy with comments show the one finding, its message naming
+    every form; each form's place is in `--json` and `--details` only, and the copy's
+    comment stands on the first use of the first form alone. Accepted.
+  - The forms are read from G14's message for one form; a warning whose message is
+    another's is left as a warning of its own. Pinned by
+    `tests/test_audit_undefined.py::test_the_finding_reads_what_g14_writes_of_one_form_in_each_part`.
+  - `check` reads no such list, and a project cannot ask it to. Accepted.
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later

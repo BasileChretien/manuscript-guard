@@ -128,7 +128,11 @@ the reason.
 
 G6 and G14 read the words as `check` does, a .docx through the conversion `init --from`
 makes (skipped with a note without pandoc); ask the author which English the paper is in
-and pass `--english british` or `american`. Neither is counted by `--strict`. The reference
+and pass `--english british` or `american`. Neither is counted by `--strict`. The short
+forms the paper uses and does not define are one finding, which lists them and passes over
+those journals' style guides say need no definition (it says how many, and by which list);
+its remedy is `--known` with the ones the paper's readers take for words or names, which
+you ask the author for, never guess. `--json` gives each form's first use. The reference
 list is counted and its numbered citations held to it; nothing is sent to a registry
 unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
 what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where

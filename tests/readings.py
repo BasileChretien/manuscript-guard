@@ -1950,6 +1950,27 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("audit abbreviations")
+def _audit_abbreviations() -> Reading:
+    """G14's findings on a paper as the audit gives them: the short forms used and not
+    defined in one finding, with each form's warning and the forms the list of journals'
+    style guides passes over (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import one_finding
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    def audited(text: str) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        found = _judge([_file(text)], _Known(exact, lowered), Path("."))
+        return [{"code": f.code, "line": f.line, "message": f.message, "hint": f.hint,
+                 "forms": [[form, warning.line, warning.message]
+                           for form, warning in getattr(f, "forms", ())],
+                 "passed_over": list(getattr(f, "passed_over", ()))}
+                for f in one_finding(list(found.findings))]  # fmt: skip
+
+    _file("")
+    return audited
+
+
 @reading("prose quotations")
 def _prose_quotations() -> Reading:
     """Each quotation of four words or more in a sentence that cites, with the paragraph's

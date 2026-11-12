@@ -25,6 +25,7 @@ KINDS = {
     "abbreviation-used-before-defined": "Abbreviations used before they are defined",
     "abbreviation-redefined": "Abbreviations defined more than once",
     "abbreviation-unused": "Abbreviations defined and not used again",
+    "abbreviations-passed-over": "Short forms passed over, being on the list",
     "spelling-variant": "Words in the other English",
     "spelling-mixed": "British and American spelling mixed",
     "spelling-not-as-declared": "Words not in the English chosen for the paper",
@@ -55,15 +56,28 @@ def kinds_of(found: list[Finding]) -> dict[tuple[str, str], list[Finding]]:
     return kinds
 
 
+def counted(found: list[Finding]) -> int:
+    """How many things a kind's findings report: a finding each, but the one on the short
+    forms used and not defined, which counts its forms (`auditing.undefined`)."""
+    return sum(getattr(finding, "counted", 1) for finding in found)
+
+
+def shown(found: list[Finding]) -> int:
+    """What a kind's line counts: as `counted`, and for the note on short forms passed over,
+    which counts for nothing, the forms it names."""
+    return counted(found) or sum(len(getattr(f, "passed_over", ())) for f in found)
+
+
 def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) -> list[str]:
     """G6's and G14's findings by kind, the kinds with most first: a title and a count, a
     line to each of its first `PLACES` places, and its advice once. `at` says a place: a
     line, or a PDF's page and line."""
     lines: list[str] = []
-    ordered = sorted(kinds_of(found).items(), key=lambda kind: -len(kind[1]))
+    # By what each kind's line counts: the short forms, not the one finding on them.
+    ordered = sorted(kinds_of(found).items(), key=lambda kind: -counted(kind[1]))
     for (gate, code), unordered in ordered:
         mine = sorted(unordered, key=lambda one: (str(one.path), one.line or 0))
-        lines += ["", f"  {KINDS.get(code, code)} ({gate}, {len(mine)})"]
+        lines += ["", f"  {KINDS.get(code, code)} ({gate}, {shown(mine)})"]
         # One hint for the kind where its places share it, as G14's do; each its own where
         # they differ, as G6's rates do.
         shared = len({finding.hint for finding in mine}) == 1
@@ -146,8 +160,8 @@ def _words(report) -> str:
     unread paper beside another's findings is not a paper checked (round 1 of #600)."""
     unread = [run for run in report.gates if run.note]
     found = [finding for run in report.gates for finding in (*run.writing, *run.language)]
-    said = (f"{_n(len(found), 'finding')} to look at, in {_n(len(kinds_of(found)), 'kind')} "
-            "(not counted by --strict)" if found else "")  # fmt: skip
+    said = (f"{_n(counted(found), 'finding')} to look at, in {_n(len(kinds_of(found)), 'kind')} "
+            "(not counted by --strict)" if counted(found) else "")  # fmt: skip
     if unread:
         names = ", ".join(run.paper.name for run in unread)
         said += ("; " if said else "") + f"not run on {names}: see below"
@@ -228,12 +242,12 @@ def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
     where it is, what it says, its context and its own hint. What the page draws, a kind to
     a fold, every place inside it. With `details` every context, as the text gives them."""
     out = []
-    ordered = sorted(kinds_of(found).items(), key=lambda kind: -len(kind[1]))
+    ordered = sorted(kinds_of(found).items(), key=lambda kind: -counted(kind[1]))
     for (gate, code), unordered in ordered:
         mine = sorted(unordered, key=lambda one: (str(one.path), one.line or 0))
         shared = len({finding.hint for finding in mine}) == 1
         out.append({
-            "title": KINDS.get(code, code), "gate": gate, "code": code, "count": len(mine),
+            "title": KINDS.get(code, code), "gate": gate, "code": code, "count": shown(mine),
             "hint": mine[0].hint if shared else None,
             "places": [{"where": at(finding.path, finding.line) if finding.line else "the paper",
                         "message": finding.message,
@@ -302,7 +316,9 @@ def standings(report) -> dict[str, str]:
     if report.gates:
         ran = [run for run in report.gates if not (run.note and not run.writing
                                                    and not run.language)]  # fmt: skip
-        found = any(run.writing or run.language for run in ran) or len(ran) < len(report.gates)
+        # As `counted`, which a name below hides here: the note on forms passed over is none.
+        found = (any(getattr(f, "counted", 1) for run in ran for f in (*run.writing, *run.language))
+                 or len(ran) < len(report.gates))  # fmt: skip
         out["Writing and language"] = NOT_RUN if not ran else of(False, found)
     if report.references:
         counted = [census for census in report.references if not census.note]
@@ -363,5 +379,5 @@ def _flagged(name: str, present, mine: list) -> str:
     return LOOK if looked else CLEAR
 
 
-__all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "grouped",
-           "kinds", "kinds_of", "rows", "standings"]  # fmt: skip
+__all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "counted", "shown",
+           "grouped", "kinds", "kinds_of", "rows", "standings"]  # fmt: skip

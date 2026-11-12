@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from manuscript_guard.auditing.summary import DETAILS, PLACES, grouped
+from manuscript_guard.auditing.summary import DETAILS, grouped
 from manuscript_guard.cli import main
 from manuscript_guard.findings import WARN, Finding
 
@@ -21,6 +21,9 @@ PAPER = (
 )
 #: What G14 says of each, in the text it reads.
 UNDEFINED_SAID = "is used once in the main text as G14 reads it, and not defined there"
+#: What the audit says of them all, in one finding (`auditing.undefined`).
+UNDEFINED_ONE = (f"{len(UNDEFINED)} short forms are used and not defined as G14 reads the "
+                 f"paper: '{UNDEFINED[0]}' here, then {', '.join(UNDEFINED[1:])}")
 
 
 def written(tmp_path: Path, text: str = PAPER) -> Path:
@@ -41,10 +44,12 @@ def test_the_report_says_what_each_check_found_before_its_sections(tmp_path: Pat
         assert f"\n  {name} " in out[glance:], name
     assert "=== Numbers in the outputs ===" not in out and "=== Arithmetic ===" not in out
     assert "=== Small cells" not in out
+    # The ten short forms in one finding, counted as ten (the author's decision of
+    # 2026-11-11, after the corpus run: one warning each buried the true ones).
     assert f"Abbreviations used and not defined (G14, {len(UNDEFINED)})" in out
-    assert out.count(UNDEFINED_SAID) == PLACES
-    assert f"and {len(UNDEFINED) - PLACES} more: {DETAILS} lists every place" in out
-    assert out.count("define it at first use") == 1
+    assert f"    line 7: {UNDEFINED_ONE}" in out, out
+    assert UNDEFINED_SAID not in out and f"{DETAILS} lists every place" not in out
+    assert out.count("define each at its first use") == 1
     assert f"Every place of every finding, with its context and what to do: {DETAILS}." in out
 
 
@@ -55,8 +60,11 @@ def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> 
     out = capsys.readouterr().out
     assert "What was checked:" in out
     assert "=== Numbers in the outputs ===" in out and "=== Arithmetic ===" in out
+    # The one finding, and the warning on each form it stands for, at its place.
+    assert out.count(UNDEFINED_ONE) == 1
     assert out.count(UNDEFINED_SAID) == len(UNDEFINED)
-    assert out.count("define it at first use") == len(UNDEFINED)
+    assert "    line 7: ROR " + UNDEFINED_SAID in out
+    assert out.count("define each at its first use") == 1
     assert "Every place of every finding" not in out
 
 
@@ -113,7 +121,8 @@ def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, cap
                                           encoding="utf-8")  # fmt: skip
     main(["audit", str(tmp_path / "main.tex")])
     out = capsys.readouterr().out
-    assert "    methods.tex:3: ROR is used once" in out, out
+    said = "1 short form is used and not defined as G14 reads the paper: 'ROR' here"
+    assert f"    methods.tex:3: {said}" in out, out
     # By its path within the paper's folder, so two inputs of one name are told apart
     # (round 2 of #600).
     (tmp_path / "sections").mkdir()
@@ -122,7 +131,7 @@ def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, cap
     (tmp_path / "main.tex").write_text(main_tex.replace("{methods}", "{sections/methods}"),
                                        encoding="utf-8")  # fmt: skip
     main(["audit", str(tmp_path / "main.tex")])
-    assert "    sections/methods.tex:3: ROR is used once" in capsys.readouterr().out
+    assert "    sections/methods.tex:3: 1 short form" in capsys.readouterr().out
 
 
 def test_a_failing_finding_on_the_words_says_so_and_a_phrase_shows_its_words() -> None:

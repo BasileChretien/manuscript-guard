@@ -5187,20 +5187,39 @@ form after a dash with a space on either side, a hyphen, an en dash or an em das
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
 form before the dash, "Basic Payment Scheme – BPS". A dash defines only where the short
 form ends its clause: where a stop, a semicolon, a closing bracket of either kind, a table
-cell's bar, a comma or a colon and a word, a closing spaced dash or a hard line break
+cell's bar, a comma, a colon or a closing spaced dash and a word, or a hard line break
 follow it, or the end of its paragraph or of the text does, past spaces and no-break
 spaces, past a closing quote or emphasis mark, "**… – BPS**.", and past a citation, which
 is no more words of the sentence: a bracket the mask has blanked, `[@key]`, one of
 numbers, commas and dashes, "[12]", a superscript number, "^3^", and LaTeX's
 `~\cite{key}`, which its view blanks. A list item's line ends the clause where the line
 ends, so a list written long form first, "- Basic Payment Scheme – BPS" over "- Common
-Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. A hard
+Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. The
+item ends there only where the next line is no continuation of it: a blank line, another
+item's, a heading, or LaTeX's next `\item` or `\end`. A hard-wrapped item goes on, as a
+paragraph does. A line with a marker is an item's where the next line is an item of the
+same kind, the same bullet or the same delimiter after a number, or in a list that opens
+its block, with a marker or indented, or opens under a lead-in line ending in a colon, the
+lines between being the items above it, their indented lines and their lazy
+continuations; each line is read through a block quote's `>`. So a list straight under a
+lead-in line, "The schemes were:" over "* Basic Payment Scheme – BPS" and "* Common
+Agricultural Policy – CAP", with any marker, defines each entry, and a prose line in the
+middle of a paragraph that opens "2020) " or "3. " is no item (round 2 of #643, rounds 1
+and 2 of #662). A hard
 line break is a backslash or two spaces before the line's end, as pandoc reads them, and as
 LaTeX's view leaves `\\`. "Basic Payment Scheme – BPS, which pays farmers", "… – BPS:
 farmers received it", "… – BPS [@ec2013]." and "… – BPS – replaced the SPS" define. A
 statistic after a dash goes on past its short form, and defines nothing, whatever follows:
 "higher in older people – OR 1.52", "– OR: 1.52", "– OR [95% CI 1.1–2.0] 1.52", "– OR ≈
-1.52" and "– OR of 1.52" give the odds ratio's value, and "– RDP (2014–2020)" is not read.
+1.52", "– OR of 1.52" and "– OR – 1.52" give the odds ratio's value, and "– RDP
+(2014–2020)" is not read. A value bound to the results stands where the number would, and
+is read as one, though the mask blanks it: "– OR {{results.or}}.", "– OR:
+{{results.or}}", "– OR, {{results.or}}", "– OR – {{results.or}}", "– OR {{lit.key}}" and
+LaTeX's "– OR \mg{results.or}" and "– OR~\mg{results.or}", its tie a space, define nothing
+(round 2 of #643). Only a binding that prints a value is one, a namespace of
+`VALUE_NAMESPACES` in `text/placeholders.py`: an anchor, `{{method.step}}`, prints nothing,
+and a pointer, `{{ref.table.key}}`, prints "Table 2", so "– BPS {{method.payments}}."
+defines (round 1 of #662).
 This replaced, on the author's decision of 2026-11-12, the list of statistic shapes #623
 had gathered, which each new shape got past. A single line break inside a paragraph,
 hard-wrapped text, is read as a space: "– OR" with "1.52" on the next line defines nothing,
@@ -10280,7 +10299,9 @@ entries were asked and how many a registry knew. An entry with no DOI and no PMI
 asked, and is not passed over: the summary's line counts those not looked up, and the
 section names each at its place, by its number and its first 90 characters (the author's
 audit, 2026-11-11: "we need to check all references, or say which ones were not checked and
-why"; he chose that over a search by title, whose match no rule could vouch for). A table's rules and colours, `\midrule[1pt]`
+why"; he chose that over a search by title, whose match no rule could vouch for, and on
+2026-11-12 chose the search with a near-exact match: see "The references with no DOI or PMID,
+sorted, and looked up by their title"). A table's rules and colours, `\midrule[1pt]`
 and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
 been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
 happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
@@ -10457,6 +10478,85 @@ value could be printed as both, each to its own places: 1.5 and 1.52 do, 1.90 an
 not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or none a Results
 heading outside it, the section says nothing was compared. `--strict` counts a conflict,
 `abstract-conflict`, and not a number not found (the author, 2026-10-28).
+
+### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
+
+On the author's paper seven entries gave neither a DOI nor a PMID, and the audit listed all
+seven as "not looked up". Some were plainly articles or a book, others web pages and a
+decree. His decision of 2026-11-12, which replaces his choice of 2026-11-11 to make no title
+search, is in three parts, and `auditing/by_title.py` holds them.
+
+**Each entry is sorted by its shape** (`sort`), the first rule that holds: a chapter ("In:"
+after its title, or "In" and its editors), a journal article (a year then a volume, a volume
+and its issue before its pages, a volume and pages after a comma, "vol.", "in press"), a
+legal or official text (a law's opening word, "Arrêté", "Décret", "Loi", "Directive",
+"Regulation" and a few more, not followed by initials as a person called Ley is, nor by a
+hyphen as Ley-Cooper; or an official journal or register of law named, "JORF", "Official
+Journal of the European Union", "Federal Register", Légifrance), a web page by its own marks
+(an access or citation date, "[Internet]", "Available from"), a book (a place and a publisher
+before the year, an edition, an ISBN, a city of the United States with its state, a
+publisher's name, editors), a web page by its address alone, and otherwise not sorted. An
+article comes before a web page, so that one that also gives its address is an article; a
+page's own marks come before a book's, so that "[Internet]. Geneva: Example Agency; 2020" is a
+page. A publication or a register of law, "Official Journal of the European Union", "Federal
+Register", "Journal officiel", Légifrance, makes a legal text wherever it is named, a book's
+marks after it or not. A law's and a page's other marks are read first outside the title the
+entry is read to give; then a title that is a law's name, one that ends with it ("Data
+Protection Act 2018", "Patient Protection and Affordable Care Act of 2010", "Public Law
+111-148"), is a legal text; and only then come a book's marks, and a law's or a page's marks
+inside the title. So "How patients accessed care. London: Example Press; 2019." and "The Data
+Protection Act 2018 explained. London: ..." are books (round 1 of #650), and "United
+Kingdom. Data Protection Act 2018. London: The Stationery Office; 2018." and "Commission
+notice. Official Journal of the European Union. Luxembourg: Publications Office; 2020." are
+legal texts (round 2). A web page and a legal
+text are listed as "no DOI expected", with the mark that sorted them; an entry not sorted is
+to be checked by hand.
+
+**An article, a book or a chapter is looked up in Crossref by its title**, with `--lookup`
+only, through the search `lookup` already makes for a reference with no identifier
+(`lookup/unidentified.crossref`, `query.bibliographic` with the title, the first author's
+family name and the year, filtered to the year with one either side, paced in Crossref's list
+pool). What it is looked up by is read from the entry (`cited`): its authors end at the first
+full stop not inside a run of initials ("Ross K. L."), or after "(2019)." where everything
+before it is names, or, where the entry opens with initials as a BibTeX style prints it, at
+the first stop after a word that is none; the title is the part after them, or the quoted
+part; the year the one in brackets, or the first after the title, its address and an access
+date left out. A title whose searched words are fewer than three is not looked up, as
+`lookup` does not look one up (`gates/searched.unsearchable`).
+
+**A work is taken only when it is a near-exact match** (`near_exact`): its title, or its
+title and subtitle joined, the entry's once case, punctuation, accents and tags are folded
+(`fold`; "Børte" is "borte"), the entry's title read as its first part after the authors or as
+that part and the next one or two, so that a title that holds a full stop is still compared
+whole, and the flag a registry puts before a retracted or withdrawn work's title,
+"RETRACTED:" or Springer's "RETRACTED ARTICLE:", taken off as `gates/searched` takes it off
+(it took off the second too from round 2 of #650); the family name of the first person
+the work lists the first author's the entry is read to give, folded the same way, so that an
+entry with its given names first, "K. L. Ross.", is matched by "Ross" (round 1 of #650: it
+had been held to the entry's opening words, and never matched); and, where the entry gives a
+year, one of the work's years that year. Crossref's score is not read. A notice, a peer review
+or a part of a work is never the work (`gates/searched._a_work`). Two works that match, with two DOIs, are neither taken. A
+work taken is said as "found by its title: DOI …", and its DOI is then asked of the
+registries as an entry's own DOI is (`by_title.look_up_all`), so a retraction, a withdrawal or
+an expression of concern is said of it like any other. Where none is taken the entry is "an
+article with no DOI given, and none found by its title: check it by hand"; where Crossref did
+not answer, that is said, and the answer is not kept.
+
+`--lookup --dry-run` says what each would ask, the title, the first author and the year, and
+sends nothing; `--lookup-cache` keeps a search's answer under a name made from what was
+searched for, and reads it from there the next time. Without `--lookup` the entries are still
+sorted and listed, each article and book with "looked up in Crossref by its title only when
+the references are looked up (--lookup)", and nothing is asked. Crossref's search is at the
+host the page's Content-Security-Policy already names, `api.crossref.org`, so the page needed
+no change. The summary's line counts the works found by their title among those looked up,
+the entries with no DOI expected and those to check by hand, by why each is (`by_title.reason`:
+none found by its title, more than one found, Crossref not answering, a title too short to
+look up or not read, not sorted). Each entry to check by hand is a note of its own, with a
+code for its reason, and puts the References tile at "to look at", with `--lookup` and
+without it; the report draft says how many titles were looked up in Crossref, and, where no
+entry gives a DOI or a PMID and no title was found, says that too. The rules read text, so they are held over generated
+entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
+reading "reference sorting").
 
 ## The audit page runs in the reader's browser
 
@@ -23366,12 +23466,23 @@ Open, recorded as each change landed:
     statistic after a dash in any shape is not read as a second definition.
     Pinned by `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`
     and `tests/test_language.py::test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break`.
-  - A statistic after a dash whose short form is followed by a comma and a letter, or by a
-    semicolon, is read as a definition, since these end the clause: after "odds ratio (OR)",
-    "higher in older people – OR, p < 0.001" and "– OR; 95% CI 1.1–2.0" are a second
-    definition of OR, `abbreviation-redefined`, as they were before 2026-11-12.
-    Accepted, as the endings are the author's decision (round 1 of #643).
+  - A statistic after a dash whose short form is followed by a comma or a colon and a
+    letter, or by a semicolon, is read as a definition, since these end the clause: after
+    "odds ratio (OR)", "higher in older people – OR, p < 0.001", "– OR: p < 0.001" and "– OR;
+    95% CI 1.1–2.0" are a second definition of OR, `abbreviation-redefined`, as they were
+    before 2026-11-12. Accepted, as the endings are the author's decision (rounds 1 and 2
+    of #643).
     Pinned by `tests/test_language.py::test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape`.
+  - A closing dash followed by a bracket ends no clause: "The Basic Payment Scheme – BPS –
+    (2015 onwards) replaced it." defines nothing, where it defined before #662, and BPS is
+    then reported as undefined. It follows from the author's decision that a dash defines
+    only where the short form ends its clause: after a closing dash a word is asked for, as
+    after a comma, so that "– OR – 1.52" gives the odds ratio's value (round 1 of #662).
+    Pinned by `tests/test_language.py::test_a_closing_dash_before_a_bracket_defines_nothing`.
+  - A prose line shaped like a marker, "2020) ", is an item under a line ending in ":", beside
+    another such line or past the lookback; and "> # Note" in a quoted list stops the walk up,
+    so an item below it is not read. Accepted.
+    Pinned by `tests/test_language.py::test_a_dash_defines_under_a_lazy_line_a_lead_in_or_before_a_binding_of_no_value` and `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:
@@ -27006,6 +27117,68 @@ What papers converted from Word showed (see "What papers converted from Word sho
   changes are in it as Word's own, to accept or reject; what the author types in it after is
   not tracked unless Track Changes is turned on in Word. The page has no button for this
   copy yet. Accepted.
+- **The audit sorts an entry with no DOI or PMID by its shape, and a shape can mislead.**
+  The rules are marks a style prints (`auditing/by_title.sort`), read in a fixed order, and
+  an entry is what the first one that holds says. Pinned by
+  `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - An article cited with no volume and no pages, its journal's name and nothing after it
+    or a year alone, is not sorted, and is said to be checked by hand; so is a personal
+    communication. Pinned by
+    `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - A report of an agency printed with a place and a publisher before its year is sorted as
+    a book and looked up by its title, and is then most often "none found: check it by
+    hand". A title or a journal that holds a publisher's word, "Press" or "Publishing", or
+    "editors", sorts the entry a book where no mark before it holds. Accepted.
+  - A legal or official text is known only by the words `_LEGAL_OPENING`,
+    `_LEGAL_PUBLISHED` and `_LEGAL_NAMED` list, from French, European, American, British,
+    German, Spanish and Italian law; one of another country that gives an address is a web
+    page, which no DOI is expected of either, and one that gives none is not sorted.
+    Accepted.
+  - A book whose title names a publication of law, "A history of the Federal Register", is
+    sorted as a legal text and not looked up, since a publication of law counts wherever it
+    is named; one whose title ends with a law's name is a legal text too unless its authors
+    open with a family name and initials, "Smith J", "Smith, J." or "J. Smith", and not with
+    "U.S.", "U.K.", "E.U." or "U.N." or a name with "of" or "the" in it. Pinned by
+    `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - "Smith, John.", "John Smith." and "Smith." are read as no person, so such a book whose
+    title ends with a law's name is a legal text; undotted initials first, "KL Ross", stay
+    in the family name read; "U.S. Congress" and a dotted given name first are not drawn in
+    every generated example. Accepted.
+  - A law's name is read in the forms "Act 2018", "Act of 2010" and "Public Law 111-148"
+    only: a chapter number, "2018 c. 12", and an Act named with no year are not read.
+    Accepted.
+  - A title that ends with "act" and a year, "The way we act 2019", is read as a law's name
+    where no person with initials opens its authors. Accepted.
+  - `check`'s search by title takes "RETRACTED ARTICLE:" and "Withdrawn article:" off a
+    registered title as it takes "RETRACTED:" off, so such a title is held to the cited one
+    without them. Accepted.
+  - Where some references give a DOI, the report draft does not say how many titles were
+    sent to Crossref with no answer; the note on each says so. Accepted.
+  - A book or an article that says when it was accessed, with no volume and pages, is a web
+    page, and is not looked up. Accepted.
+- **An article or a book is looked up by the title read from it, and taken only on a
+  near-exact match.** What is read and compared is in `auditing/by_title.py`; a match that
+  is not near-exact is left to a person, never taken on a score. Pinned by
+  `tests/test_audit_by_title.py::test_a_work_is_taken_only_when_near_exact`.
+  - An entry that opens with its title, with no authors, has its title read as its authors
+    and the part after it as its title, and is not found. Accepted.
+  - A title written with "&" where Crossref has "and", a word spelt otherwise, a subtitle
+    left out where Crossref keeps it in its title, a first author Crossref lists second, or
+    a group as the first author, is no match, and the entry is to be checked by hand.
+    Pinned by `tests/test_audit_by_title.py::test_a_work_is_taken_only_when_near_exact`.
+  - Crossref is asked for ten works at most, filtered to the cited year with one either
+    side; one it ranks lower is not seen, and with no year cited no filter is sent.
+    Accepted.
+  - Two works that match, as a book and its new edition under two DOIs, are neither taken.
+    Pinned by `tests/test_audit_by_title.py::test_two_works_of_the_title_are_neither_taken`.
+  - Only Crossref is searched, not PubMed or OpenAlex as `lookup` searches for a reference
+    of a project; a work Crossref does not hold is "none found". Accepted.
+  - A title of fewer than three searched words is not looked up, and is to be checked by
+    hand. Pinned by
+    `tests/test_audit_sections.py::test_each_entry_not_looked_up_is_named_with_why`.
+  - In the file `--cited` writes, an entry found by its title has the registry's title,
+    year and standing, but Europe PMC is not asked for its abstract, which is asked by an
+    identifier the entry types. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

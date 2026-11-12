@@ -208,11 +208,35 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
         ]  # fmt: skip
+    found += _title_items(report)
     return (found + _journal_items(report.journal) + _document_items(report)
             + _causal_items(report.causal) + _baseline_items(report.baseline)
             + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
+
+
+def _title_items(report) -> list[Item]:
+    """What is said of each entry with no DOI and no PMID that a reader is to look at: what
+    a dry run would ask of Crossref, and, with `--lookup` or without it, each one to check by
+    hand, a note with why (`by_title.reason`). The tile counts the same entries (round 1 of
+    #650). One found is said as the DOI it gave is asked about (`by_title.look_up_all`); a
+    web page or a legal text no DOI is expected of is listed in the section only."""
+    from manuscript_guard.auditing import by_title
+
+    looked_up = report.lookups is not None
+    found = []
+    for one in by_title.without_identifier(report):
+        entry, where = one.entry, one.entry.path or one.path
+        why = by_title.reason(one, looked_up)
+        if looked_up and one.asked and not one.came:
+            found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
+                              f"{one.asked}", INFO, False, where, entry.line))  # fmt: skip
+        elif why in by_title.REASONS:
+            found.append(Item(REFERENCES, "G7", by_title.CODES[why],
+                              f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
+                              where, entry.line))  # fmt: skip
+    return found
 
 
 def _non_negative_items(report) -> list[Item]:
@@ -1128,14 +1152,16 @@ def _references(report, show) -> list[str]:
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
         lines += _looked(looked.get(census.path, []), census.path, show)
-        if report.lookups is not None and style != UNTOLD:
-            lines += _unlooked(census, show)
+        if style != UNTOLD:
+            titles = getattr(report, "titles", None)
+            lines += _unlooked(census, show, titles if report.lookups is not None else None)
     if report.lookups is None:
         lines.append(
             "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
             "DataCite and doi.org of one Crossref has no record of, and PubMed of each PMID, "
-            "whether the work was retracted, withdrawn or put under concern, and --lookup "
-            "--dry-run shows what would be sent."
+            "whether the work was retracted, withdrawn or put under concern, and Crossref for "
+            "the title of an article or a book that gives neither, and --lookup --dry-run "
+            "shows what would be sent."
         )
     return lines
 
@@ -1262,19 +1288,29 @@ ENTRY_QUOTED = 90
 _LIST_NUMBER = re.compile(r"^\\?[\[(]?\d{1,4}\\?[\].)]\s+")
 
 
-def _unlooked(census, show) -> list[str]:
-    """Each entry of `census`'s list that was not looked up for having no DOI and no PMID,
-    at its place, by its number and its first words: an entry left out of the look-up is
-    said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
-    or say which ones were not checked and why"). Every one, as the reader asked for each."""
-    from manuscript_guard.auditing.references import BY_PLACE, without_identifier
+def _unlooked(census, show, titles: list | None = None) -> list[str]:
+    """Each entry of `census`'s list with no DOI and no PMID, at its place, by its number and
+    its first words, and under it what it is and what came of it: a web page or a legal text
+    no DOI is expected of, an article or a book found by its title, or one to check by hand
+    (`by_title.said`). An entry no DOI or PMID could be looked up by is said, not passed over
+    (the author's audit, 2026-11-11: "we need to check all references, or say which ones
+    were not checked and why"; his decision of 2026-11-12 to sort them and look up the
+    articles and books by their title). Every one, as the reader asked for each. `titles` is
+    what `--lookup` found (`by_title.look_up_all`); None without it."""
+    from manuscript_guard.auditing import by_title
+    from manuscript_guard.auditing.references import BY_PLACE
 
-    missing = [entry for entry in census.entries if without_identifier(entry)]
-    if not missing:
+    looked_up = titles is not None
+    if looked_up:
+        sorted_ = [one for one in titles if one.path == census.path]
+    else:
+        sorted_ = by_title.unasked(census)
+    if not sorted_:
         return []
-    lines = [f"    not looked up, having no DOI or PMID to look up: "
-             f"{len(missing)} entr{'y' if len(missing) == 1 else 'ies'}"]  # fmt: skip
-    for entry in missing:
+    count = len(sorted_)
+    lines = [f"    with no DOI or PMID given: {count} entr{'y' if count == 1 else 'ies'}"]
+    for one in sorted_:
+        entry = one.entry
         # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
         # every item of a Markdown list, "3\.").
         typed = " ".join(entry.text.split())
@@ -1285,6 +1321,7 @@ def _unlooked(census, show) -> list[str]:
         quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
         lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"
                      + (f": {quoted}" if quoted else ""))  # fmt: skip
+        lines.append(f"        {by_title.said(one, looked_up)}")
     return lines
 
 

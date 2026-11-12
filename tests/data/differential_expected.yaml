@@ -26,19 +26,23 @@
 expected:
   - reading: abbreviations
     why: >-
-      the title page that opens a file is not read for abbreviations: its authors' names,
-      departments, units and institutions are reported nowhere, nothing on it defines a short
-      form, and its only uses are of entries of the list of abbreviations; it ends at the
-      first section a paper opens on, at a list of abbreviations, at a letter's
-      salutation, or at running prose, and is found only where it holds a line only a title
-      page holds (Basile, 2026-11-12); the inputs now open on a title page of each kind, or
-      on none
+      a short form after a spaced dash followed by a value bound to the results, "– OR
+      {{results.or}}.", after a colon, a comma or a closing dash too, or by a closing dash
+      and a number, "– OR – 1.52 in all", defines nothing, where each was a second
+      definition of OR; a list item ends at its line's end only where the next line is no
+      continuation of it, and a prose line opening "2020) " in a paragraph's middle is no
+      list item (round 2 of #643); a binding that prints no value, an anchor or a pointer,
+      leaves the definition standing, an item under a lazy continuation is still one, and a
+      list under a lead-in line, or in a block quote, defines each entry where the next item is of
+      the same kind, or the list opens under a line ending in a colon (rounds 1 and 2 of #662); the inputs now hold each of these
+      shapes, and list items over a nested list and after a continued one, which still
+      define. The entry it replaces, for #643 itself, is spent
   - reading: audit abbreviations
     why: >-
-      the hint of an entry of the list of abbreviations nothing uses no longer names the
-      title page, whose words are now a use of such an entry (Basile, 2026-11-12, "Yes,
-      count it"): "take it out of the list, unless a table, a figure, another entry of the
-      list or the supplementary material uses it: tables and figures are not read here"
+      the audit reads its definitions through G14's, so a short form after a spaced dash
+      followed by a value bound to the results, "– OR {{results.or}}.", is undefined and no
+      longer an unused definition, as G14 now reads it (round 2 of #643); the inputs now
+      hold the dash shapes G14's reading draws
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

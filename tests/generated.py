@@ -658,8 +658,45 @@ DEFINING = (
      "CPS"),
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
+    # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
+    # dash bullet's list is read by the same list rule).
+    ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
+     "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
+    # Round 2 of #643: an item over a nested list, and one after an item with a continuation
+    # line.
+    ("- the Rural Payments Agency \N{EN DASH} RPA\n  - the Rural Payments Service",
+     "\N{EN DASH} RPA", "RPA"),
+    ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+     "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
+    # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
+    # lead-in line, the next item of the same kind; and a binding that prints no
+    # value, an anchor and a pointer.
+    ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
+     "Tree Fund", "\N{EN DASH} THS", "THS"),
+    ("the schemes were:\n- the Farm Investment Fund \N{EN DASH} FIF\n- the Farm Equipment Fund",
+     "\N{EN DASH} FIF", "FIF"),
+    # Round 2 of #662: under a lead-in line, other markers, a next item opening with a digit,
+    # one of another kind after a colon, none, and a block quote.
+    ("the schemes were:\n* the Small Farms Scheme \N{EN DASH} SFS\n* the Small Farms Fund",
+     "\N{EN DASH} SFS", "SFS"),
+    ("the schemes were:\n1. the Basic Farm Payment \N{EN DASH} BFP\n2. the Farm Fund",
+     "\N{EN DASH} BFP", "BFP"),
+    ("the schemes were:\n1) the Clean Air Grant \N{EN DASH} CAG\n2) the Air Fund",
+     "\N{EN DASH} CAG", "CAG"),
+    ("the schemes were:\n- the Water Quality Grant \N{EN DASH} WQG\n- 2015 reform of the WQG",
+     "\N{EN DASH} WQG", "WQG"),
+    ("the payments were:\n- the Hedgerow Planting Grant \N{EN DASH} HPG\n* the Hedge Fund",
+     "\N{EN DASH} HPG", "HPG"),
+    ("the payments were\n* the Peat Restoration Grant \N{EN DASH} PRG\n* the Peat Fund",
+     "\N{EN DASH} PRG", "PRG"),
+    ("> the schemes were:\n> - the Moorland Payment \N{EN DASH} MP\n> - the Moor Fund",
+     "\N{EN DASH} MP", "MP"),
+    ("farmers were paid under the Delinked Payment Scheme \N{EN DASH} DPS {{method.payments}}.",
+     "\N{EN DASH} DPS", "DPS"),
+    ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
+     "\N{EN DASH} LSS", "LSS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -718,6 +755,27 @@ NOT_DEFINING = (
     ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
     ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
+    # Round 2 of #643: a value bound to the results where the number would be, after a
+    # space, a colon, a comma and a closing dash, and before the line's end; a number after
+    # a closing dash; a list item that goes on into its continuation, indented or not; and a
+    # prose line in a paragraph's middle that opens as a list item would.
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR {{lit.cohort.or}}.", "OR {{lit", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} {{results.or}} in all",
+     "OR \N{EN DASH} {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}\nin all",
+     "OR {{results.or}}\n", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} 1.52 in all",
+     "OR \N{EN DASH} 1.52", "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all", "OR\n  1.52",
+     "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
+    ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
+     "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -12618,6 +12676,152 @@ def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(lines))
 
 
+#: An entry with no DOI and no PMID of each kind the audit sorts one into
+#: (`auditing.by_title.sort`), as `{shape}`, with the kind it is: an article in three styles,
+#: one that also gives its address, a book in two, a chapter, a web page with its access
+#: date, a legal text by its opening word, an official text by its journal, and a bare
+#: address; and (round 1 of #650) an article with its authors' given names first, as
+#: BibTeX's plain style prints it, and a book whose title holds a web page's or a law's words.
+#: `{a}` is the first author's family name and `{t}` the title, or `{w}` for that book, whose
+#: author's name opens with a law's word and a hyphen.
+UNIDENTIFIED_ENTRIES = {
+    "an article": ("{a} {i}, {b} {j}. {t}. {journal}. {year};{vol}({issue}):{page}-{end}.",
+                   "article"),
+    "an article with its given names first": (
+        "{d}. {e}. {a} and {k}. {b}. {t}. {long}, {vol}({issue}):{page}-{end}, {year}.",
+        "article",
+    ),
+    "a book whose title holds a page's or a law's words": (
+        "Ley-Cooper {i}. {w}. {place}: {publisher}; {year}.", "book"),
+    # Round 2 of #650: a law's name among a title's words is a book's, a title that is a law's
+    # name is a law's, and a publication of law is a law's, a book's marks after it or not.
+    # By a body, as a law is, so that only where the law's name stands tells them apart.
+    "a book whose title holds a law's name among its words": (
+        "{country}. The {law_name} explained. {place}: {publisher}; {year}.", "book"),
+    "a law whose title is its name, with a book's marks": (
+        "{country}. {law_name}. {place}: {office}; {year}.", "legal text"),
+    "a publication of law, with a book's marks": (
+        "Commission notice on reports. {gazette}. {place}: {office}; {year}.", "legal text"),
+    # Round 3: a person's book whose title ends with a law's name is a book.
+    "a person's book whose title ends with a law's name": (
+        "{a} {i}. A practical guide to the {law_name}. {place}: {publisher}; {year}.", "book"),
+    "a publication of law and its year": ("Commission notice on records. {gazette}. {year}.",
+                                          "legal text"),
+    "an article in APA style": (
+        "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
+        "article",
+    ),
+    "an article with dotted initials": ("{a} {d}. {e}. {t}. {journal}. {year};{vol}:{page}.",
+                                        "article"),
+    "an article that also gives its address": (
+        "{a} {i}. {t}. {journal}. {year};{vol}:{page}-{end}. https://example.org/{vol}",
+        "article",
+    ),
+    "a book": ("{a} {i}. {t}. {place}: {publisher}; {year}.", "book"),
+    "a book printed in a city of the United States": ("{a} {i}. {t}. {city}. {year}", "book"),
+    "a chapter": (
+        "{a} {i}. {t}. In: {b} {j}, editor. Handbook of reports. {place}: {publisher}; {year}. "
+        "p. {page}-{end}.",
+        "chapter",
+    ),
+    "a web page with its access date": (
+        "{site}. Reports and records. {place}: {publisher}; {year}. Accessed {day} Aug {later}. "
+        "https://example.org/{vol}",
+        "web page",
+    ),
+    "a legal text by its opening word": (
+        "{law} du {day} décembre {year} relatif à la formation. https://www.example.gouv.fr/{vol}",
+        "legal text",
+    ),
+    "an official text by its journal": (
+        "Commission notice on reports. {gazette}. C {vol}, {day}.",
+        "legal text",
+    ),
+    "a bare address": ("https://example.org/{site_path}/{vol}", "web page"),
+}
+#: Titles an article or a book is cited by: one with a colon, one with accents, one with a
+#: question mark, one with "U.S.", whose stop ends no title, and one with an apostrophe.
+UNIDENTIFIED_TITLES = (
+    "Ghosts in the classroom: passive disengagement and its implications for teachers",
+    "Barriers to student active learning in higher education",
+    "Les élèves décrocheurs à l'école primaire",
+    "Is hepatic injury under-reported? A review of spontaneous reports",
+    "Renal events after exposure in the U.S. population",
+    "Children's falls in older adults' homes",
+)
+#: First authors' family names: with a stroke and an accent, which fold, with particles,
+#: and with an apostrophe.
+UNIDENTIFIED_FAMILIES = ("Børte", "Østergaard", "van der Berg", "O'Brien", "Dupont", "Ross",
+                         "Lillejord")  # fmt: skip
+#: Titles of books with a word a web page's or a law's mark is made of.
+UNIDENTIFIED_BOOK_TITLES = ("How patients accessed care", "Care available at home",
+                            "The Data Protection Act 2018 explained",
+                            "Records retrieved from the archive")  # fmt: skip
+
+
+@st.composite
+def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, str | None,
+                                                        int | None]]:  # fmt: skip
+    """Each of `UNIDENTIFIED_ENTRIES`, in an order drawn, each `(text, kind, title, first
+    author, year)`, the last three for an article, a book or a chapter only. Every kind in
+    every example; each title and each family name drawn for one of the eleven articles,
+    books and chapters, and each of the three law's names and publications of law for one
+    of the three shapes with one, so that every one stands in every example, and a book's
+    title with a page's or a law's words drawn for the book that has one."""
+    titles = draw(st.permutations(UNIDENTIFIED_TITLES))
+    families = draw(st.permutations(UNIDENTIFIED_FAMILIES))
+    laws = draw(st.permutations(("Data Protection Act {year}", "Public Law {n}-{vol}",
+                                 "Patient Protection and Affordable Care Act of {year}")))
+    gazettes = draw(st.permutations(("Official Journal of the European Union",
+                                     "Federal Register", "Journal officiel")))  # fmt: skip
+    drawn = []
+    # Counted over the shapes that name `{a}`, `{t}`, `{law_name}` and `{gazette}`, so that
+    # each family name, title, law's name and publication stands in one of them at least.
+    named = titled = lawed = gazetted = 0
+    for shape, kind in UNIDENTIFIED_ENTRIES.values():
+        year = draw(st.integers(1970, 2024))
+        fill = {
+            "a": families[named % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
+            "t": titles[titled % len(titles)],
+            "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+            "d": draw(st.sampled_from("JKMH")), "e": draw(st.sampled_from("ABL")),
+            "k": draw(st.sampled_from("JKMH")),
+            "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+            "long": draw(st.sampled_from(_LONG_JOURNALS)),
+            "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+            "publisher": draw(st.sampled_from(("Example Press", "Example Agency",
+                                               "Sample House"))),  # fmt: skip
+            "city": draw(st.sampled_from(("Englewood Cliffs, NJ", "Boston, MA", "Chicago, IL"))),
+            "site": draw(st.sampled_from(("Accueil | Moodle.org", "Example Agency", "Factsheet"))),
+            "site_path": draw(st.sampled_from(("pi/ses", "resources", "accueil"))),
+            "law": draw(st.sampled_from(("Arrêté", "Décret", "Ordonnance"))),
+            "year": year, "later": draw(st.integers(2000, 2025)),
+            "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
+            "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
+            "day": draw(st.integers(1, 28)), "w": draw(st.sampled_from(UNIDENTIFIED_BOOK_TITLES)),
+            "country": draw(st.sampled_from(("United Kingdom", "US Congress", "Ireland"))),
+            "office": draw(st.sampled_from(("The Stationery Office", "Publications Office",
+                                            "US Government Printing Office"))),
+            "gazette": gazettes[gazetted % len(gazettes)],
+        }  # fmt: skip
+        fill["law_name"] = laws[lawed % len(laws)].format(year=year, vol=fill["vol"],
+                                                          n=draw(st.integers(90, 120)))
+        searched = kind in ("article", "book", "chapter")
+        named += searched and "{a}" in shape
+        titled += searched and "{t}" in shape
+        lawed += "{law_name}" in shape
+        gazetted += "{gazette}" in shape
+        title = (fill["w"] if "{w}" in shape else f"The {fill['law_name']} explained"
+                 if "{law_name} explained" in shape else f"A practical guide to the "
+                 f"{fill['law_name']}" if "guide to the" in shape else fill["t"])  # fmt: skip
+        # That book's author, whose name opens with a law's word and a hyphen.
+        family = ("Ley-Cooper" if shape.startswith("Ley-Cooper") else fill["country"]
+                  if shape.startswith("{country}") else fill["a"])  # fmt: skip
+        drawn.append((shape.format(**fill), kind, title if searched else None,
+                      family if searched else None, year if searched else None))  # fmt: skip
+    return draw(st.permutations(drawn))
+
+
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
 #: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
 INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
@@ -15267,6 +15471,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
+    "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),

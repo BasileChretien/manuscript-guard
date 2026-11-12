@@ -207,16 +207,31 @@ def _unchecked_of_audit(report) -> list[str]:
                      "were read as the text's.")  # fmt: skip
     if report.abstract is not None and not report.abstract.compared:
         found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
+    titles = getattr(report, "titles", None) or []
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")
-    elif not report.lookups:
+    elif not report.lookups and not any(one.asked for one in titles):
         found.append("The registries: not asked, since " + (
             "no reference list was read." if all(census.note for census in report.references)
-            else "no reference gives a DOI or a PMID."))  # fmt: skip
-    elif not any(one.came for one in report.lookups):
+            else "no reference gives a DOI or a PMID, nor an article's or a book's title to "
+            "look up."))  # fmt: skip
+    elif not any(one.came for one in [*report.lookups, *titles]):
         # Round 2 of #487: a dry run asked nothing, and was said to have asked.
         found.append("The registries: not looked up (dry run); what would be asked is listed "
                      "under References.")  # fmt: skip
+    elif not report.lookups:
+        # Sent to Crossref by title, and nothing taken: said as the section says each, by why
+        # (round 1 of #650: not passed over; round 2: an unanswered search, or one that found
+        # two works, is no work "not found").
+        from manuscript_guard.auditing import by_title
+
+        sent = [one for one in titles if one.came]
+        reasons = [by_title.reason(one, True) for one in sent]
+        said = "; ".join(f"{why}: {reasons.count(why)}" for why in by_title.REASONS
+                         if reasons.count(why))  # fmt: skip
+        found.append(f"The registries: no reference gives a DOI or a PMID, and of the "
+                     f"{_n(len(sent), 'title')} sent to Crossref none was taken ({said}); each is "
+                     "listed under References.")  # fmt: skip
     found += [f"The journal's rules read from a project: {what}." for what in
               getattr(report.journal, "skipped", [])]  # fmt: skip
     if report.package is not None:
@@ -290,6 +305,20 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
                      else f"looked up, {kept} answered from the records kept")  # fmt: skip
         checks.append(("The registries (--lookup)", said,
                        sum(len(one.problems) for one in report.lookups)))  # fmt: skip
+    # A title Crossref did not answer for was not looked up (round 2 of #650); the note on it
+    # says so.
+    searched = [one for one in getattr(report, "titles", None) or []
+                if one.came and not one.unanswered]  # fmt: skip
+    if searched:
+        # The titles looked up in Crossref, and those to check by hand among them (round 1
+        # of #650: with none found the draft said nothing of the searches).
+        from manuscript_guard.auditing import by_title
+
+        kept = sum(one.came == "kept" for one in searched)
+        said = _read(len(searched), "title", more="looked up in Crossref" + (
+            f", {kept} answered from the records kept" if kept else ""))  # fmt: skip
+        checks.append(("Titles in Crossref (--lookup)", said, sum(
+            1 for one in searched if by_title.outcome(one, True) == by_title.TO_CHECK)))
     checks += _reader_checks(report, items)
     return checks
 

@@ -27649,6 +27649,35 @@ def test_a_statistic_after_a_dash_is_no_second_definition(project: Path) -> None
     assert language_findings(project) == [("notation-interval", line_of(stated, "ROR [95%"))]
 
 
+@pytest.mark.parametrize(
+    "defined",
+    [
+        # A citation after the short form, as mask leaves it: a bracket of blanks.
+        "Signals were checked against the Uppsala Monitoring Centre \N{EN DASH} UMC "
+        "[@fictionalClassSignal2019]. The UMC holds the reports.\n\n",
+        # A list written long form first, every item but the last followed by the next.
+        "- the Uppsala Monitoring Centre \N{EN DASH} UMC\n- the Summary of Product "
+        "Characteristics \N{EN DASH} SmPC\n- the Individual Case Safety Report \N{EN DASH} "
+        "ICSR\n\nThe UMC, the SmPC and each ICSR were read.\n\n",
+    ],
+    ids=["a citation", "a list"],
+)
+def test_a_dash_definition_before_a_citation_or_in_a_list_is_read(
+    project: Path, defined: str
+) -> None:
+    """Round 1 of #643: a dash definition followed by a citation, and each entry but the last
+    of a list written long form first, were read as defining nothing, and each use of the
+    short form was reported as undefined. A citation is no more words of the sentence, and
+    a list item ends where its line does."""
+    mended = with_ror_defined(project)
+    added = mended.replace(
+        "The reporting odds ratio observed here", f"{defined}The reporting odds ratio observed here"
+    )
+    assert added != mended
+    main_md(project).write_text(added, encoding="utf-8")
+    assert language_findings(project) == []
+
+
 def test_a_definition_given_again_after_a_dash_is_caught(project: Path) -> None:
     """The definition pasted again with a dash, its short form ending the clause: a second
     definition, as one in brackets is."""

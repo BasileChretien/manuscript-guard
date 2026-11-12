@@ -640,7 +640,31 @@ DEFINING = (
      "\N{EN DASH} RIS", "RIS"),
     ("\N{LEFT DOUBLE QUOTATION MARK}the Complementary Income Support \N{EN DASH} "
      "CIS\N{RIGHT DOUBLE QUOTATION MARK}, which pays farmers", "\N{EN DASH} CIS", "CIS"),
+    # Round 1 of #643: a citation passed over, blanked by the mask, of numbers and a
+    # superscript one; a colon and a word; a closing spaced dash; a table cell's bar; a hard
+    # line break, a backslash and two spaces, before words with no comma; and a list item's
+    # line, the next item on the next line.
+    ("the Entry Level Scheme \N{EN DASH} ELS [@smith2020]. It pays farmers",
+     "\N{EN DASH} ELS", "ELS"),
+    ("the Higher Level Scheme \N{EN DASH} HLS [12, 14\N{EN DASH}16]. It pays farmers",
+     "\N{EN DASH} HLS", "HLS"),
+    ("the Organic Entry Level \N{EN DASH} OEL^3^. It pays farmers", "\N{EN DASH} OEL", "OEL"),
+    ("the Sustainable Farming Incentive \N{EN DASH} SFI: farmers joined it",
+     "\N{EN DASH} SFI", "SFI"),
+    ("the Single Payment Scheme \N{EN DASH} SPS \N{EN DASH} replaced it", "\N{EN DASH} SPS",
+     "SPS"),
+    ("| the Environmental Stewardship Scheme \N{EN DASH} ESS | 3 |", "\N{EN DASH} ESS", "ESS"),
+    ("the Countryside Premium Scheme \N{EN DASH} CPS\\\nwhich pays farmers", "\N{EN DASH} CPS",
+     "CPS"),
+    ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
+     "HFA"),
+    ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
+     "\N{EN DASH} FTF", "FTF"),
 )  # fmt: skip
+
+#: A dash definition at the very end of the text, which every example of `bracketed` ends
+#: with, its short form followed by nothing (round 1 of #643).
+AT_THE_END = ("the Agri-Environment Scheme \N{EN DASH} AES", "\N{EN DASH} AES", "AES")
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
 #: a statistic, its short form followed by an equals sign or a number, whatever the words
@@ -689,6 +713,11 @@ NOT_DEFINING = (
     ("the Rural Development Programme \N{EN DASH} RDP (2014\N{EN DASH}2020)", "RDP (2014",
      "RDP"),
     ("the Area Facing Constraints \N{EN DASH} AFC\nwhich pays farmers", "AFC\nwhich", "AFC"),
+    # Round 1 of #643: one space before the line's end is no hard line break; a colon and a
+    # number, and a bracket of numbers before the value, give a statistic.
+    ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
+    ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -779,11 +808,14 @@ def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]
 @st.composite
 def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     """A manuscript with every bracket of `DEFINING` and `NOT_DEFINING`, in an order drawn,
-    and for each where its short form stands, the short form, and whether it is defined
-    there."""
+    ending with `AT_THE_END`, and for each where its short form stands, the short form, and
+    whether it is defined there."""
     planted = draw(st.permutations([*((*each, True) for each in DEFINING),
                                     *((*each, False) for each in NOT_DEFINING)]))  # fmt: skip
     text, starts = _paragraphs(draw, (written for written, *_rest in planted))
+    # The last piece ends the text, with nothing after it.
+    planted, starts = [*planted, (*AT_THE_END, True)], [*starts, len(text)]
+    text += AT_THE_END[0]
     found = []
     for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
         found.append((start + written.rindex(needle) + needle.index(short), short, defines))

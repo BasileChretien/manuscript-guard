@@ -27,13 +27,15 @@ expected:
   - reading: abbreviations
     why: >-
       a short form after a spaced dash defines only where it ends its clause, followed by a
-      stop, a semicolon, a closing bracket, a comma and a word, or the end of its paragraph,
-      in place of #623's list of statistic shapes: "older people – OR [95% CI 1.1–2.0]
-      1.52", "– OR ≈ 1.52", "– OR of 1.52" and the value on the next line define nothing,
-      where each was a second definition of OR (the author, 2026-11-12, after #623's final
-      check); the inputs now hold a dash definition with each ending and a statistic after a
-      dash in each of those shapes. The entry it replaces, for the list of abbreviations'
-      entries, is spent
+      stop, a semicolon, a closing bracket or a table cell's bar, a comma or a colon and a
+      word, a closing spaced dash, a hard line break, the end of a list item's line, or the
+      end of its paragraph or text, a citation passed over, in place of #623's list of
+      statistic shapes: "older people – OR [95% CI 1.1–2.0] 1.52", "– OR ≈ 1.52", "– OR of
+      1.52" and the value on the next line define nothing, where each was a second
+      definition of OR (the author, 2026-11-12, after #623's final check; round 1 of #643);
+      the inputs now hold a dash definition with each ending and a statistic after a dash in
+      each of those shapes. The entry it replaces, for the list of abbreviations' entries,
+      is spent
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

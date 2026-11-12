@@ -10493,10 +10493,12 @@ at. Everything is still the four standard fonts; a heading still is a bookmark. 
 `tests/test_report_pdf.py`.
 
 **A report to move around in** (the author, 2026-11-12: "make the pdf really interactive",
-once the page showed it). Under the summary, *In this report* lists each kind of finding on
-the words with its count, and each other section, each line a link to where it stands with
-the page it prints; each kind's heading links back to it, and the title over every page after
-the first links back to the summary. The pages a contents gives are only known once the
+once the page showed it). Under the summary, *In this report* lists each note (what was not
+read, how the headings were read), each paper's words with each kind of finding and its
+count under them, and each other section, each line a link to where it stands with the page
+it prints; each paper's words have a place of their own, as two under one took the first's
+(round 1 of #646). Each kind's heading links back to the contents, and the title over every
+page after the first links back to the summary. The pages a contents gives are only known once the
 report is drawn, so it is drawn twice: the numbers stand in a column of their own width, so
 the second drawing is laid out as the first, and the test reads each printed page against
 the bookmark of the kind it names.

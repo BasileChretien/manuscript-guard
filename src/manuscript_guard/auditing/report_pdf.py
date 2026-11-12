@@ -95,8 +95,8 @@ def _drawn(view: dict, title: str, version: str, ran: tuple[str, ...], on: datet
     _cover(pdf, view, title, version, on)
     _glance(pdf, view)
     _contents(pdf, view, pages)
-    for heading, said in view["notes"]:
-        _note(pdf, heading, said)
+    for at, (heading, said) in enumerate(view["notes"]):
+        _note(pdf, heading, said, _note_key(at))
     _words(pdf, view)
     for heading, text in view["sections"]:
         _section(pdf, heading, text)
@@ -108,17 +108,30 @@ def _kind_key(paper: int, kind: int) -> str:
     return f"kind:{paper}:{kind}"
 
 
+def _paper_key(paper: int) -> str:
+    """Each paper's words under a key of its own: two papers' headings under one key took
+    the first's place for both (round 1 of #646)."""
+    return f"section:writing:{paper}"
+
+
+def _note_key(note: int) -> str:
+    return f"note:{note}"
+
+
 def _parts(view: dict) -> list[tuple[str, str, int | None, int]]:
-    """What the contents list, in the order the report has it: each kind of finding on the
-    words, under the paper's name where several papers were audited, and each other section;
-    each with its key, its count where it has one, and how far it is set in."""
+    """What the contents list, in the order the report has it: each note (what was not read,
+    how the headings were read), each paper's words with each kind of finding under them, the
+    paper's name given where several papers were audited, and each other section; each with
+    its key, its count where it has one, and how far it is set in (round 1 of #646)."""
     several = len(view["words"]) > 1
-    parts: list[tuple[str, str, int | None, int]] = []
+    parts: list[tuple[str, str, int | None, int]] = [
+        (heading.rstrip(":"), _note_key(at), None, 0)
+        for at, (heading, _said) in enumerate(view["notes"])]  # fmt: skip
     for at, paper in enumerate(view["words"]):
-        if not paper["kinds"]:
+        if not paper["note"] and not paper["kinds"]:
             continue
         heading = f"Writing and language: {paper['paper']}" if several else "Writing and language"
-        parts.append((heading, _key("Writing"), None, 0))
+        parts.append((heading, _paper_key(at), None, 0))
         parts += [(kind["title"], _kind_key(at, place), kind["count"], 1)
                   for place, kind in enumerate(paper["kinds"])]  # fmt: skip
     parts += [(heading, _key(heading), None, 0) for heading, _text in view["sections"]]
@@ -254,12 +267,12 @@ def _glance(pdf: Pdf, view: dict) -> None:
     pdf.gap(4)
 
 
-def _note(pdf: Pdf, heading: str, said: list[str]) -> None:
+def _note(pdf: Pdf, heading: str, said: list[str], key: str | None = None) -> None:
     """What was not read, or how the headings were read: a heading of the summary's level
-    and each item in a panel."""
+    and each item in a panel; the place `key`, which the contents link to."""
     pdf.gap(4)
     top = pdf.ensure(40)
-    pdf.bookmark(heading.rstrip(":"), 2)
+    pdf.bookmark(heading.rstrip(":"), 2, key)
     pdf.put(heading.rstrip(":"), x=MARGIN, top=top, kind="bold", size=10.5, color=INK)
     pdf.y = top - 16
     for item in said:
@@ -298,7 +311,9 @@ def _words(pdf: Pdf, view: dict) -> None:
         if not paper["note"] and not paper["kinds"]:
             continue
         heading = f"Writing and language: {paper['paper']}" if several else "Writing and language"
-        _heading(pdf, heading, key=_key("Writing"))
+        _heading(pdf, heading, key=_paper_key(at))
+        # The summary's tile goes to the first paper's words.
+        pdf.places.setdefault(_key("Writing"), pdf.places[_paper_key(at)])
         if paper["note"]:
             _flow(pdf, paper["note"])
             continue

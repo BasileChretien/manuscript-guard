@@ -273,58 +273,89 @@ def test_every_line_stands_within_the_page(tmp_path: Path,
     assert {font for font, *_rest in placed} >= {"F1", "F2", "F3"}
 
 
-def test_the_contents_link_each_kind_and_section_to_the_page_they_print(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The author, 2026-11-12: "make the pdf really interactive". The first page lists each
-    kind of finding and each section, each line a link to where it stands, with the page it
-    prints; each kind links back to the contents; and the title over every page after the
-    first links back to the summary."""
-    from manuscript_guard import web
-
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "paper.md").write_text(PAPER + "".join(f"\nThe XYZ was seen again in case {n}.\n"
-                                                       for n in range(80)), encoding="utf-8")
-    view = web.view(["audit", "paper.md", "--details"])["view"]
-    from manuscript_guard.auditing.report_pdf import written
-
-    reader = pypdf.PdfReader(io.BytesIO(written(view, "Audit of paper.md", "0")), strict=True)
-    pages = reader.pages
-    number = {page.indirect_reference.idnum: at for at, page in enumerate(pages)}
-
-    def links(page) -> list[int]:
-        found = []
-        for annot in page.get("/Annots") or []:
-            annot = annot.get_object()
-            if annot.get("/Subtype") == "/Link" and "/Dest" in annot:
-                found.append(number[annot["/Dest"][0].idnum])
-        return found
-
-    first = " ".join(pages[0].extract_text().split())
-    assert "In this report" in first
+def _destinations(reader) -> tuple[dict, callable]:
+    """Each bookmark's place by its title, (page, top), and a function giving each link of a
+    page as the place it goes to, (page, top)."""
+    number = {page.indirect_reference.idnum: at for at, page in enumerate(reader.pages)}
 
     def bookmarked(items, out):
         for item in items:
             if isinstance(item, list):
                 bookmarked(item, out)
             else:
-                out[item.title] = reader.get_destination_page_number(item)
+                out[item.title] = (reader.get_destination_page_number(item), round(float(item.top)))
         return out
 
-    # Where each kind's heading is, as its bookmark, "Title (count)", says.
-    marks = bookmarked(reader.outline, {})
+    def links(page) -> set[tuple[int, int]]:
+        found = set()
+        for annot in page.get("/Annots") or []:
+            annot = annot.get_object()
+            if annot.get("/Subtype") == "/Link" and "/Dest" in annot:
+                dest = annot["/Dest"]
+                found.add((number[dest[0].idnum], round(float(dest[3]))))
+        return found
+
+    return bookmarked(reader.outline, {}), links
+
+
+def _audited_pdf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *names: str):
+    from manuscript_guard import web
+    from manuscript_guard.auditing.report_pdf import written
+
+    monkeypatch.chdir(tmp_path)
+    for name in names:
+        (tmp_path / name).write_text(PAPER + "".join(
+            f"\nThe XYZ was seen again in case {n}.\n" for n in range(80)), encoding="utf-8")
+    view = web.view(["audit", *names, "--details"])["view"]
+    data = written(view, "Audit of " + ", ".join(names), "0")
+    return view, pypdf.PdfReader(io.BytesIO(data), strict=True)
+
+
+def test_the_contents_link_each_kind_and_section_to_the_page_they_print(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The author, 2026-11-12: "make the pdf really interactive". The first page lists each
+    note, each kind of finding and each section, each line a link to where it stands, with
+    the page it prints; each kind links back to the contents, not to the summary beside
+    them; and the title over every page after the first links back to the summary. Each link
+    is held to the place it goes to, its page and its height (round 1 of #646)."""
+    view, reader = _audited_pdf(tmp_path, monkeypatch, "paper.md")
+    pages = reader.pages
+    marks, links = _destinations(reader)
+    first = " ".join(pages[0].extract_text().split())
+    assert "In this report" in first
+    contents, summary = marks["In this report"], marks["What was checked"]
+    assert contents != summary
     kinds = [kind for paper in view["words"] for kind in paper["kinds"]]
     assert kinds
     for kind in kinds:
         where = marks[f"{kind['title']} ({kind['count']})"]
         printed = re.search(re.escape(kind["title"]) + r" \d+ (\d+)", first)
-        assert printed and int(printed.group(1)) == where + 1, (kind["title"], where)
+        assert printed and int(printed.group(1)) == where[0] + 1, (kind["title"], where)
         assert where in links(pages[0])
-        # Each kind links back to the contents, from the page it stands on.
-        assert marks["In this report"] in links(pages[where])
-    # The title over every page after the first goes back to the summary, on the first.
-    assert len(pages) > 1 and marks["What was checked"] == 0
-    assert all(0 in links(page) for page in pages[1:])
+        # Back to the contents, from the page the kind stands on.
+        assert contents in links(pages[where[0]])
+    for heading, _text in view["sections"]:
+        assert marks[heading] in links(pages[0]), heading
+    assert len(pages) > 1 and summary[0] == 0
+    assert all(summary in links(page) for page in pages[1:])
+
+
+def test_each_paper_s_words_in_the_contents_go_to_that_paper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two papers audited together: each paper's words have a line of the contents of their
+    own, printing that paper's page and linking there; under one key the second printed the
+    first's (round 1 of #646). The summary's tile goes to the first paper's words."""
+    _view, reader = _audited_pdf(tmp_path, monkeypatch, "first.md", "second.md")
+    marks, links = _destinations(reader)
+    first = " ".join(reader.pages[0].extract_text().split())
+    for name in ("first.md", "second.md"):
+        where = marks[f"Writing and language: {name}"]
+        printed = re.search(r"Writing and language: " + re.escape(name) + r" (\d+)", first)
+        assert printed and int(printed.group(1)) == where[0] + 1, (name, where)
+        assert where in links(reader.pages[0])
+    assert marks["Writing and language: first.md"] != marks["Writing and language: second.md"]
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

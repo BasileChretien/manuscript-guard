@@ -172,6 +172,8 @@ ROUTES: dict[str, Route] = {
            "figure-file-size", "figure-font-", "figure-format", "figure-height",
            "figure-resolution", "figure-shrinks", "figure-text-clipped", "figure-text-small",
            "figure-line-thin", "legend-words"),
+    # Bars of means with no points: the skill advises points over the summary.
+    **_all("figure-design", None, "figure-bars-"),
     # -- the journal and the checklist ----------------------------------------------------
     **_all("journal-profile", ("journal",), "journal-", "no-journal-chosen",
            "over-journal-limit", "near-journal-limit", "missing-", "abstract-headings-missing",

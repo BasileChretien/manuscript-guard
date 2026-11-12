@@ -1,0 +1,146 @@
+schema: manuscript-guard/figure-bars/1
+
+# The calls that draw a bar, an error bar or the points of the data. A bar graph of
+# continuous data hides how the data are spread: many data sets give the same bar
+# (Weissgerber, Milic, Winham and Garovic, PLoS Biol 2015;13:e1002128,
+# doi:10.1371/journal.pbio.1002128). G3 reads a figure's script for them:
+#
+#   means    a bar whose height the plot computes as the mean of each group. With no points
+#            in the script, a warning (`figure-bars-of-means`).
+#   given    a bar drawn from the values the script was given. With error bars on it and no
+#            points in the script, a note (`figure-bars-with-errors`): it may be a proportion
+#            and its interval, which is right.
+#   errors   a layer that draws error bars, for a `given` bar in the same script.
+#   points   a layer that draws a point for each observation. One anywhere in the script
+#            stands both findings down.
+#
+# A reason in the figure's `<name>.guard.yaml`, under `allow_bars`, stands both down too.
+#
+# Each entry names its calls by the last part of the name ("barplot" is `sns.barplot`;
+# "bar" is `ax.bar`, `plt.bar` and `frame.plot.bar`). Then:
+#   what      what the call draws, read on the library's own reference page on the date in
+#             `read` (no date: the page was not fetched for this file);
+#   when      arguments the call must be given with one of these values to draw this kind;
+#             `null` in the list means the argument left out, so its default;
+#   unless    arguments that, given one of these values, make it not this kind;
+#   summary   for `means`, the arguments that name what the bar shows. Left out, it is the
+#             mean; given, it is a mean only when its value is one of `means` below;
+#   errors    for `given`, arguments of the call itself that draw error bars on its bars.
+# Values are compared without their quotation marks.
+
+means: [mean, nanmean, average, mean_se, mean_cl_boot, mean_cl_normal, mean_sdl]
+
+python:
+  - draws: means
+    names: [barplot]
+    what: >-
+      draws a bar at the mean of each group by default (estimator="mean")
+    read: seaborn.barplot reference page (seaborn 0.13.2), 2026-11-12
+    summary: [estimator]
+  - draws: means
+    names: [catplot]
+    what: >-
+      draws a bar at the mean of each group with kind="bar" (estimator="mean")
+    read: seaborn.catplot reference page (seaborn 0.13.2), 2026-11-12
+    when: {kind: [bar]}
+    summary: [estimator]
+  - draws: means
+    names: [stat_summary, stat_summary_bin]
+    what: >-
+      draws a bar at the bootstrapped mean of each group with geom="bar"
+      (fun_data="mean_cl_boot")
+    read: plotnine.stat_summary reference page (plotnine 0.15.9), 2026-11-12
+    when: {geom: [bar, col]}
+    summary: [fun_data, fun_y]
+  - draws: means
+    names: [geom_bar]
+    what: >-
+      draws a bar at the bootstrapped mean of each group with stat="summary"
+    read: plotnine.geom_bar and plotnine.stat_summary reference pages (plotnine 0.15.9), 2026-11-12
+    when: {stat: [summary]}
+    summary: [fun_data, fun_y]
+  - draws: given
+    names: [bar, barh]
+    what: draws a bar at each value it is given
+    read: matplotlib.axes.Axes.bar (matplotlib 3.11.2) and pandas.DataFrame.plot (pandas 3.1.1) reference pages, 2026-11-12
+    errors: [yerr, xerr]
+  - draws: given
+    names: [plot]
+    what: draws a bar at each value it is given with kind="bar" or kind="barh"
+    read: pandas.DataFrame.plot reference page (pandas 3.1.1), 2026-11-12
+    when: {kind: [bar, barh]}
+    errors: [yerr, xerr]
+  - draws: given
+    names: [geom_col]
+    what: draws a bar at each value it is given
+    read: plotnine reference index (plotnine 0.15.9), 2026-11-12
+  - draws: given
+    names: [geom_bar]
+    what: draws a bar at each value it is given with stat="identity"
+    read: plotnine.geom_bar reference page (plotnine 0.15.9), 2026-11-12
+    when: {stat: [identity]}
+  - draws: errors
+    names: [geom_errorbar, geom_linerange, geom_pointrange, geom_crossbar]
+    what: draws an interval at each value it is given
+    read: plotnine reference index (plotnine 0.15.9), 2026-11-12
+  - draws: points
+    names: [stripplot, swarmplot]
+    what: draws a point for each observation
+    read: seaborn reference pages for stripplot and swarmplot
+  - draws: points
+    names: [catplot]
+    what: draws a point for each observation with kind="strip", its default, or kind="swarm"
+    read: seaborn.catplot reference page (seaborn 0.13.2), 2026-11-12
+    when: {kind: [strip, swarm, null]}
+  - draws: points
+    names: [scatter, scatterplot]
+    what: draws a point at each pair of values it is given
+    read: matplotlib.axes.Axes.scatter and seaborn.scatterplot reference pages
+  - draws: points
+    names: [geom_point, geom_jitter, geom_dotplot, geom_sina]
+    what: draws a point for each observation, unless stat="summary" puts it at a summary
+    read: plotnine reference index (plotnine 0.15.9), 2026-11-12
+    unless: {stat: [summary]}
+
+r:
+  - draws: means
+    names: [stat_summary, stat_summary_bin]
+    what: >-
+      draws a bar at the mean of each group with geom = "bar" or "col", defaulting to
+      mean_se() when no summary function is given
+    read: ggplot2 reference page for stat_summary (ggplot2 4.0.3), 2026-11-12
+    when: {geom: [bar, col]}
+    summary: [fun, fun.data, fun.y]
+  - draws: means
+    names: [geom_bar]
+    what: >-
+      draws a bar at the mean of each group with stat = "summary", defaulting to mean_se()
+    read: ggplot2 reference pages for geom_bar and stat_summary (ggplot2 4.0.3), 2026-11-12
+    when: {stat: [summary]}
+    summary: [fun, fun.data, fun.y]
+  - draws: given
+    names: [geom_col]
+    what: draws a bar at each value it is given (stat_identity)
+    read: ggplot2 reference page for geom_bar and geom_col (ggplot2 4.0.3), 2026-11-12
+  - draws: given
+    names: [geom_bar]
+    what: draws a bar at each value it is given with stat = "identity"
+    read: ggplot2 reference page for geom_bar and geom_col (ggplot2 4.0.3), 2026-11-12
+    when: {stat: [identity]}
+  - draws: errors
+    names: [geom_errorbar, geom_errorbarh, geom_linerange, geom_pointrange, geom_crossbar]
+    what: draws an interval at each value it is given
+    read: ggplot2 reference page for geom_linerange (ggplot2 4.0.3), 2026-11-12
+  - draws: points
+    names: [geom_point, geom_jitter, geom_dotplot]
+    what: draws a point for each observation, unless stat = "summary" puts it at a summary
+    read: ggplot2 reference pages for geom_point, geom_jitter and geom_dotplot
+    unless: {stat: [summary]}
+  - draws: points
+    names: [geom_beeswarm, geom_quasirandom]
+    what: draws each observation as its own point, offset from those it would overlap
+    read: ggbeeswarm's README on GitHub, 2026-11-12
+  - draws: points
+    names: [geom_sina]
+    what: draws each observation as a point, spread by the density of the data
+    read: ggforce reference page for geom_sina (ggforce 0.5.0.9000), 2026-11-12

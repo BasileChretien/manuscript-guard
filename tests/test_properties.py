@@ -15003,6 +15003,156 @@ def _a_seed_given_as_nothing_is_taken_for_one(patch: pytest.MonkeyPatch) -> None
     patch.setattr(figure_estimates, "NOT_GIVEN", (None,))
 
 
+# ------------------------------------------------------------- bars of means and no points
+
+#: A summary that is no mean, in each language's spelling of an argument's value.
+_NOT_MEANS = ("median", "sum", "len", "max")
+
+
+def _quoted(draw: st.DrawFn, value: str) -> str:
+    """`value` bare, or in either quotation mark."""
+    return draw(st.sampled_from(("", '"', "'"))).join(("", value, ""))
+
+
+def _drawn_call(draw: st.DrawFn, rule, language: str, *extra: str) -> str:
+    """A call of `rule` with what its `when` asks for, and the arguments `extra`, in an
+    order drawn each time; in Python, a library's function by a name it is called by."""
+    equals = "=" if language == "python" else " = "
+    name = draw(st.sampled_from(rule.names))
+    if language == "python" and not name.startswith(("geom_", "stat_")):
+        name = draw(st.sampled_from(("sns.", "ax.", "plt.", "frame.plot."))) + name
+    given = ["d"]
+    for argument, values in rule.when.items():
+        value = draw(st.sampled_from(values))
+        if value is not None:
+            given.append(f"{argument}{equals}{_quoted(draw, value)}")
+    given.extend(extra)
+    return f"{name}({', '.join(draw(st.permutations(given)))})"
+
+
+@st.composite
+def _bar_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str]]]]:
+    """Scripts in each language that draw every kind of bar there is: each bar of means bare,
+    with a mean named as its summary and with another summary; each bar of given values with
+    its own error bars, given as nothing, and with none; a point at a summary; and each in a
+    comment. Three scripts a language: no points and no layer of error bars, a layer of error
+    bars, and a layer of points as well. With where each finding stands."""
+    from manuscript_guard.gates.figure_bars import rules
+
+    means, drawings = rules()
+    scripts = []
+    for language in ("python", "r"):
+        equals = "=" if language == "python" else " = "
+        nothing = "None" if language == "python" else "NULL"
+        kinds = {kind: [rule for rule in drawings[language] if rule.draws == kind]
+                 for kind in ("means", "given", "errors", "points")}  # fmt: skip
+        plans: list[tuple[str, str | None, bool]] = []  # line, code, whether layered counts
+        for rule in kinds["means"]:
+            plans.append((_drawn_call(draw, rule, language), "figure-bars-of-means", False))
+            summary = draw(st.sampled_from(rule.summary))
+            mean = _quoted(draw, draw(st.sampled_from(means)))
+            other = _quoted(draw, draw(st.sampled_from(_NOT_MEANS)))
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{mean}"),
+                          "figure-bars-of-means", False))  # fmt: skip
+            plans.append((_drawn_call(draw, rule, language, f"{summary}{equals}{other}"),
+                          None, False))  # fmt: skip
+        for rule in kinds["given"]:
+            plans.append((_drawn_call(draw, rule, language), "figure-bars-with-errors", True))
+            for errors in rule.errors:
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}se"),
+                              "figure-bars-with-errors", False))  # fmt: skip
+                plans.append((_drawn_call(draw, rule, language, f"{errors}{equals}{nothing}"),
+                              "figure-bars-with-errors", True))  # fmt: skip
+        for rule in kinds["points"]:
+            for argument, values in rule.unless.items():
+                value = _quoted(draw, values[0])
+                plans.append((_drawn_call(draw, rule, language, f"{argument}{equals}{value}"),
+                              None, False))  # fmt: skip
+        commented = draw(st.sampled_from(kinds["means"] + kinds["points"]))
+        plans.append(("# " + _drawn_call(draw, commented, language), None, False))
+        for layer, points in ((False, False), (True, False), (True, True)):
+            lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
+            extra = []
+            if layer:
+                extra.append((_drawn_call(draw, draw(st.sampled_from(kinds["errors"])), language),
+                              None, False))  # fmt: skip
+            if points:
+                extra.append((_drawn_call(draw, draw(st.sampled_from(kinds["points"])), language),
+                              None, False))  # fmt: skip
+            text, expected = "", []
+            for line, code, needs_layer in draw(st.permutations(plans + extra)):
+                lines.append(draw(st.sampled_from(_FIGURE_FILLER[language])))
+                text = "\n".join(lines) + "\n"
+                if code is not None and not points and (layer or not needs_layer):
+                    expected.append((len(text), code))
+                lines.append(line)
+            scripts.append((language, "\n".join(lines) + "\n", expected))
+    return scripts
+
+
+@holds(100, _bar_scripts())
+def test_a_bar_of_means_is_found_where_no_points_are_drawn(
+    scripts: list[tuple[str, str, list[tuple[int, str]]]],
+) -> None:
+    """Each bar the plot draws at a mean is found where it stands, in Python and R, whether
+    its summary is left to the default or named as a mean, and not where another summary is
+    named; each bar of given values is found where error bars are drawn on it, by its own
+    argument or by a layer in the script, and not where that argument is given as nothing.
+    None is found where the script draws the points of the data, and a point at a summary
+    or a call in a comment is none."""
+    from manuscript_guard.gates.figure_bars import bars_in
+
+    for language, text, expected in scripts:
+        found = [(bar.call.start, bar.code) for bar in bars_in(text, language)]
+        assert found == expected, (language, text)
+
+
+def _a_points_layer_stands_nothing_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+    patch.setattr(figure_bars.Drawing, "drawn_by",
+                  lambda rule, call: rule.draws != "points" and drawn_by(rule, call))  # fmt: skip
+
+
+def _a_point_at_a_summary_is_a_point_of_the_data(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    drawn_by = figure_bars.Drawing.drawn_by
+
+    def read(rule, call) -> bool:
+        return drawn_by(dataclasses.replace(rule, unless={}), call)
+
+    patch.setattr(figure_bars.Drawing, "drawn_by", read)
+
+
+def _a_bar_s_summary_is_always_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_shows_a_mean", lambda call, rule, means: True)
+
+
+def _an_argument_s_quotation_marks_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_QUOTES", "")
+
+
+def _a_bar_s_own_error_bars_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    patch.setattr(figure_bars, "_with_errors", lambda call, rule: False)
+
+
+def _a_bar_s_error_bars_given_as_nothing_are_error_bars(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_bars
+
+    def given(call, rule) -> bool:
+        return any(name in call.arguments for name in rule.errors)
+
+    patch.setattr(figure_bars, "_with_errors", given)
+
+
 # ------------------------------------------------------------- one work under two keys
 
 
@@ -24539,6 +24689,30 @@ BROKEN = {
     "a seed given as None or NA is taken for a seed": (
         _a_seed_given_as_nothing_is_taken_for_one,
         test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a figure's points layer stands no bar down": (
+        _a_points_layer_stands_nothing_down,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a point a figure puts at a summary is a point of the data": (
+        _a_point_at_a_summary_is_a_point_of_the_data,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's summary is a mean whatever it names": (
+        _a_bar_s_summary_is_always_a_mean,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "an argument's quotation marks are kept when a bar is read": (
+        _an_argument_s_quotation_marks_are_kept,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's own error bars are not read": (
+        _a_bar_s_own_error_bars_are_not_read,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
+    ),
+    "a bar's error bars given as None or NULL are error bars": (
+        _a_bar_s_error_bars_given_as_nothing_are_error_bars,
+        test_a_bar_of_means_is_found_where_no_points_are_drawn,
     ),
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,

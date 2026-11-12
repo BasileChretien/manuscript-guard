@@ -782,6 +782,140 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
+def _bars_said(report) -> list[tuple[str, str, str]]:
+    """Each bar finding, as (code, severity, the call it names)."""
+    return [(f.code, f.severity, f.message.split("(")[0]) for f in report.findings
+            if f.code.startswith("figure-bars-")]  # fmt: skip
+
+
+_MEANS, _ERRORS = "figure-bars-of-means", "figure-bars-with-errors"
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar=None)',
+         [(_MEANS, "warn", "sns.barplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=np.mean)',
+         [(_MEANS, "warn", "sns.barplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports")\n'
+         'sns.stripplot(data=frame, x="arm", y="reports", jitter=False)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports")\nsns.swarmplot(data=frame, x="arm")', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator="sum")', []),
+        ('sns.catplot(data=frame, kind="bar", x="arm", y="reports")',
+         [(_MEANS, "warn", "sns.catplot")]),
+        ('sns.catplot(data=frame, kind="bar")\nsns.catplot(data=frame, kind="swarm")', []),
+        ("ax.bar(arms, means, yerr=errors)", [(_ERRORS, "info", "ax.bar")]),
+        ("frame.plot.barh(xerr=errors)", [(_ERRORS, "info", "frame.plot.barh")]),
+        ('frame.plot(kind="bar", yerr=errors)', [(_ERRORS, "info", "frame.plot")]),
+        ("ax.bar(arms, means, yerr=errors)\nax.scatter(arms_each, values)", []),
+        # Known gaps: a mean the script computed itself is a bar of given values.
+        ('ax.bar(arms, frame.groupby("arm").reports.mean(), yerr=errors)',
+         [(_ERRORS, "info", "ax.bar")]),
+        ('ax.bar(arms, frame.groupby("arm").reports.mean())', []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ax.bar(arms, counts)", []),
+        ("ax.bar(arms, counts, yerr=None)", []),
+        ('sns.countplot(data=frame, x="arm")', []),
+        ('# sns.barplot(data=frame, x="arm", y="reports")', []),
+    ],
+)
+def test_bars_of_means_with_no_points_are_said(project: Path, added: str, said: list) -> None:
+    """A bar the plot draws at the mean of each group, with no points, is a warning: many
+    data sets give the same bar (Weissgerber et al. 2015). A bar drawn from values the script
+    was given, with error bars on it, is a note, since it may be a proportion and its
+    interval. A points layer anywhere in the script stands either down, and a bar of counts
+    says nothing."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _bars_said(gate_report(project)) == said
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar")', [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = mean, geom = "col")',
+         [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = "median", geom = "bar")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "pointrange")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar") + geom_jitter(width = 0.1)', []),
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary", fun = "mean")',
+         [(_MEANS, "warn", "geom_bar")]),
+        # A point the plot puts at the mean is no point of the data.
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary") + geom_point(stat = "summary")',
+         [(_MEANS, "warn", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar(aes(ymin = lo, ymax = hi))",
+         [(_ERRORS, "info", "geom_col")]),
+        ('ggplot(s, aes(arm, p)) + geom_bar(stat = "identity") + geom_linerange(aes(ymin = lo))',
+         [(_ERRORS, "info", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_beeswarm(data = d)", []),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_quasirandom()", []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ggplot(d, aes(arm)) + geom_bar()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col() # + geom_errorbar()", []),
+    ],
+)
+def test_an_r_figure_of_bars_of_means_with_no_points_is_said(
+    tmp_path: Path, script: str, said: list
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+@pytest.mark.parametrize(
+    ("reason", "said"),
+    [
+        ('"the bars are proportions, each with its Wilson interval"', []),
+        ('""', [_MEANS, _ERRORS]),
+        ("5", [_MEANS, _ERRORS]),
+        ("\n  - value: barplot\n    why: a list is no reason", [_MEANS, _ERRORS]),
+    ],
+)
+def test_a_reason_beside_the_figure_stands_its_bars_down(
+    tmp_path: Path, reason: str, said: list[str]
+) -> None:
+    """`allow_bars` in the figure's guard file, with a reason, stands down both findings of
+    the script beside it. An empty one, or one that is no sentence, stands down nothing."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\np <- ggplot(d, aes(arm, y)) + stat_summary(geom = 'bar')\n"
+                    "q <- ggplot(s, aes(arm, p)) + geom_col() + geom_errorbar()\n",
+                    encoding="utf-8")  # fmt: skip
+    (tmp_path / "bars.guard.yaml").write_text(f"allow_bars: {reason}\n", encoding="utf-8")
+    found = [code for code, _severity, _call in _bars_said(
+        check_figure_source(path, Classifier.load()))]  # fmt: skip
+    assert found == said
+    if not said:
+        return
+    hint = next(f.hint for f in check_figure_source(path, Classifier.load()).findings
+                if f.code == _MEANS)  # fmt: skip
+    assert "bars.guard.yaml under allow_bars" in hint, hint
+
+
+def test_a_supplementary_figure_s_bars_are_said_too(project: Path) -> None:
+    """A figure the supplement places is read as the paper's are: its script, in figures/,
+    draws bars from plotnine with error bars and no points."""
+    script = project / "figures" / "S1_doses.py"
+    script.write_bytes(
+        b"from plotnine import aes, geom_col, geom_errorbar, ggplot\n"
+        b"plot = ggplot(rates, aes('dose', 'rate')) + geom_col()"
+        b" + geom_errorbar(aes(ymin='low', ymax='high'))\n"
+    )
+    supplement = project / "manuscript" / "supplementary" / "S3_doses.md"
+    supplement.write_bytes(b"# Figure S1\n\n![Reports by dose](../../figures/S1_doses.svg)\n")
+    found = [(f.code, f.path.name, f.line) for f in gate_report(project).findings
+             if f.code.startswith("figure-bars-")]  # fmt: skip
+    assert found == [(_ERRORS, "S1_doses.py", 2)]
+
+
 def _divergent(project: Path) -> list[tuple[str, str]]:
     """The divergent-display findings of the project, as (severity, message)."""
     return [(f.severity, f.message) for f in gate_report(project).findings

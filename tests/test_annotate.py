@@ -243,6 +243,12 @@ def test_the_figure_sheet_lists_the_exemptions_the_figure_declares(project: Path
     sidecar.write_text(sidecar.read_text(encoding="utf-8") + extra, encoding="utf-8")
     sheet = figure_sheet(projekt, results)
     assert "| barplot | estimated by the figure's script | the bars show the raw means |" in sheet
+    # And bars drawn with no points, allowed with their reason under `allow_bars`.
+    extra = '\nallow_bars: "each bar is a proportion with its interval"\n'
+    sidecar.write_text(sidecar.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    sheet = figure_sheet(projekt, results)
+    assert ("| bars | drawn with no points of the data | each bar is a proportion with its "
+            "interval |") in sheet, sheet
 
 
 def test_the_figure_sheet_says_so_when_nothing_is_exempt(project: Path) -> None:

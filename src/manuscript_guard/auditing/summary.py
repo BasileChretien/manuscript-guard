@@ -88,7 +88,9 @@ def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) 
 QUOTING = frozenset({"G6"})
 #: How the report names the option that lists every place, on the command line and on the
 #: web page, which shows the same text.
-DETAILS = "--details (on the web page, the box \"List every place of every finding\")"
+#: Where every place of every finding is: the page shows the PDF, which lists them all
+#: (2026-11-12: the page draws no text report, and has no box for it).
+DETAILS = "--details (on the web page, the PDF of the report)"
 
 
 def _n(count: int, one: str, many: str | None = None) -> str:

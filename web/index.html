@@ -5,125 +5,193 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- What this page may do, enforced by the browser. It may load code and data only from
      where it is served ('self'), and send a request only there and to the five registries
-     named, which it does only when the reader ticks the box. It may not start a worker from
-     a file, load anything into a frame, send a form, or load an image or style from
-     elsewhere. Checked by web/test/ in Chrome and Firefox; docs/audit-page.md says what it
-     cannot stop. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
-<title>Paper audit</title>
-<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#161615" media="(prefers-color-scheme: dark)">
+     named, which it does only when the reader ticks the box. The one frame it may show is a
+     blob: address, the PDF of the report it made itself; it may not start a worker from a
+     file, send a form, or load a frame, an image or a style from elsewhere. Checked by
+     web/test/ in Chrome and Firefox; docs/audit-page.md says what it cannot stop. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Check your paper · manuscript-guard</title>
+<meta name="description" content="A friendly check-up for a scientific paper, run in your browser: numbers, abbreviations, spelling and references. Your paper is never uploaded.">
+<meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1728" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <main>
-  <h1>Check a paper's numbers on this computer</h1>
-  <p class="lead">This page runs manuscript-guard's <code>audit</code> inside your browser.
-    The paper you choose is read here and is not uploaded: there is no server behind this
-    page to receive it.</p>
-  <!-- Filled from manifest.json by app.js: the page is built again from each release. -->
-  <p id="version" class="version">manuscript-guard, rebuilt with each new release</p>
-  <p class="caution">Reviewing for a journal? Read its policy first: some forbid putting a
-    manuscript under review into any tool, even one that runs on your own computer.</p>
-
-  <div id="loading">
-    <p id="status" role="status">Loading the checker: about 26 MB the first time, nothing
-      after that.</p>
-    <div class="bar">
-      <progress id="progress" max="100" value="0" aria-label="Loading the checker">0%</progress>
-      <span id="amount" aria-hidden="true"></span>
+  <header class="hero">
+    <div class="hero-text">
+      <p class="kicker">manuscript-guard · paper check-up</p>
+      <h1>Give your paper a friendly check-up</h1>
+      <p class="lead">Drop your manuscript here. In a minute or two you get the report a careful
+        co-author would write: numbers that do not add up, abbreviations, spelling and
+        references.</p>
+      <p class="private"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="ink" d="M7 10V7a5 5 0 0 1 10 0v3"/><rect class="fill-teal" x="4" y="10" width="16" height="11" rx="2.5"/><circle class="fill-paper" cx="12" cy="15.5" r="1.8"/></svg>
+        It all runs on this computer. Your paper is never uploaded.</p>
+      <!-- Filled from manifest.json by app.js: the page is built again from each release. -->
+      <p id="version" class="version">manuscript-guard, rebuilt with each new release</p>
     </div>
-  </div>
+    <svg class="hero-art" viewBox="0 0 220 180" aria-hidden="true">
+      <rect class="fill-card stroke-line" x="38" y="14" width="120" height="152" rx="12"/>
+      <rect class="fill-line" x="58" y="38" width="80" height="8" rx="4"/>
+      <rect class="fill-line" x="58" y="58" width="64" height="6" rx="3"/>
+      <rect class="fill-line" x="58" y="74" width="72" height="6" rx="3"/>
+      <rect class="fill-brass" x="58" y="90" width="44" height="6" rx="3"/>
+      <rect class="fill-line" x="58" y="106" width="68" height="6" rx="3"/>
+      <rect class="fill-line" x="58" y="122" width="56" height="6" rx="3"/>
+      <circle class="fill-teal" cx="150" cy="120" r="34"/>
+      <circle class="fill-card" cx="150" cy="120" r="24"/>
+      <path class="stroke-teal thick" d="M140 120l7 7 14-15"/>
+      <path class="stroke-teal handle" d="M175 146l20 20"/>
+      <circle class="fill-coral" cx="34" cy="40" r="7"/>
+      <circle class="fill-brass" cx="190" cy="34" r="5"/>
+      <circle class="fill-teal-soft" cx="24" cy="132" r="10"/>
+    </svg>
+  </header>
 
-  <form id="form">
-    <label class="drop"><span class="field">The paper</span>
-      <span class="help">A .docx or .md file: choose it, or drop it on this box.</span>
-      <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
-    <label><span class="field">The analysis outputs, if you have them</span>
-      <span class="help">.json, .csv, .tsv, .txt or .yaml, to compare the paper's numbers
-        with. Without them the audit still reads the numbers against each other, the words
-        and the reference list.</span>
-      <input id="against" name="against" type="file" multiple
-        accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md" disabled></label>
-    <label><span class="field">English of the paper</span>
-      <span class="help">Its spelling is held to it.</span>
-      <select id="english" name="english" disabled>
-        <option value="">The one most of its words are in</option>
-        <option value="american">American</option>
-        <option value="british">British</option>
-      </select></label>
-    <label><span class="field">Words to leave alone</span>
-      <span class="help">Names, an author's initials, an institution's acronym, your field's
-        terms, separated by spaces or commas (CD, CHU, QR, licence). They are not reported as
-        abbreviations to define, nor for their spelling.</span>
-      <input id="known" name="known" type="text" autocomplete="off" spellcheck="false"
-        placeholder="CD, CHU, QR, licence…" disabled></label>
-    <label class="tick"><input id="lookup" type="checkbox" disabled>
-      <span><span class="field">Check the reference list for retracted and unregistered
-        works</span>
-        <span class="help">This sends the DOIs and PubMed IDs the paper cites, and nothing
-          else, to Crossref, OpenAlex, DataCite, doi.org and PubMed.</span></span></label>
-    <label class="tick"><input id="details" type="checkbox" disabled>
-      <span><span class="field">List every place of every finding</span>
-        <span class="help">With its context and what to do. Without it the report says what
-          each check found in a line, and groups the findings on the words by kind with their
-          first places. The PDF always has every place.</span></span></label>
-    <div class="go">
-      <button id="run" type="submit" disabled>Audit</button>
-      <div id="running" hidden>
-        <span id="runtext" role="status"></span>
-        <progress id="runbar" aria-label="Auditing" hidden></progress>
-        <span id="elapsed" aria-hidden="true"></span>
+  <ol class="how" aria-label="How it works">
+    <li><span class="num">1</span><span><strong>Drop your paper</strong>
+      A Word file (.docx) or Markdown (.md).</span></li>
+    <li><span class="num">2</span><span><strong>We read it here</strong>
+      On this computer, in this browser tab.</span></li>
+    <li><span class="num">3</span><span><strong>Read your report</strong>
+      Right on this page, as a PDF you can keep.</span></li>
+  </ol>
+
+  <section class="card start" aria-labelledby="starthead">
+    <h2 id="starthead" class="sr-only">Check a paper</h2>
+    <div id="loading">
+      <p id="status" role="status">Getting the checker ready: about 26 MB the first time,
+        nothing after that.</p>
+      <div class="bar">
+        <progress id="progress" max="100" value="0" aria-label="Getting the checker ready">0%</progress>
+        <span id="amount" aria-hidden="true"></span>
       </div>
     </div>
-  </form>
 
-  <section id="result" hidden>
-    <h2 id="reporthead" tabindex="-1">Report</h2>
-    <div class="actions">
-      <button id="openpdf" type="button" hidden>Open the report as a PDF</button>
-      <button id="savepdf" type="button" hidden>Save the PDF</button>
-      <button id="savecommented" type="button" hidden>Save the paper with the findings as Word
-        comments</button>
-      <button id="save" type="button">Save the report as text</button>
-    </div>
-    <pre id="notes" hidden></pre>
-    <div id="view"></div>
-    <details id="astext">
-      <summary>The report as text, as the command line prints it</summary>
-      <pre id="report"></pre>
-    </details>
+    <form id="form">
+      <label class="drop">
+        <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
+        <span class="field">The paper</span>
+        <span class="help">Drop your .docx or .md file here, or click to choose it.</span>
+        <span id="chosen" class="chosen" hidden></span>
+        <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
+
+      <details class="options">
+        <summary>More options <span class="help">(analysis outputs, English, words to
+          leave alone, reference check)</span></summary>
+        <div class="optionlist">
+          <label><span class="field">The analysis outputs, if you have them</span>
+            <span class="help">.json, .csv, .tsv, .txt or .yaml, to compare the paper's numbers
+              with. Without them the check still reads the numbers against each other, the
+              words and the reference list.</span>
+            <input id="against" name="against" type="file" multiple
+              accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md" disabled></label>
+          <label><span class="field">English of the paper</span>
+            <span class="help">Its spelling is held to it.</span>
+            <select id="english" name="english" disabled>
+              <option value="">The one most of its words are in</option>
+              <option value="american">American</option>
+              <option value="british">British</option>
+            </select></label>
+          <label><span class="field">Words to leave alone</span>
+            <span class="help">Names, an author's initials, an institution's acronym, your
+              field's terms, separated by spaces or commas (CD, CHU, QR, licence). They are not
+              reported as abbreviations to define, nor for their spelling.</span>
+            <input id="known" name="known" type="text" autocomplete="off" spellcheck="false"
+              placeholder="CD, CHU, QR, licence…" disabled></label>
+          <label class="tick"><input id="lookup" type="checkbox" disabled>
+            <span><span class="field">Check the reference list for retracted and unregistered
+              works</span>
+              <span class="help">This sends the DOIs and PubMed IDs the paper cites, and nothing
+                else, to Crossref, OpenAlex, DataCite, doi.org and PubMed.</span></span></label>
+        </div>
+      </details>
+
+      <div class="go">
+        <button id="run" type="submit" disabled>Check my paper</button>
+        <button id="example" type="button" class="quiet" disabled>Or try it with an example
+          paper</button>
+      </div>
+
+      <div id="running" hidden>
+        <div class="runhead">
+          <span id="runtext" role="status"></span>
+          <span id="eta" aria-hidden="true"></span>
+        </div>
+        <progress id="runbar" max="100" value="0" aria-label="Checking the paper"></progress>
+        <ol id="steps" class="steps" aria-label="What the check is doing"></ol>
+      </div>
+    </form>
   </section>
 
-  <h2>To see that nothing is uploaded</h2>
-  <ul>
-    <li>Once the page says <em>Ready</em>, turn off your network. Then choose your paper:
-      the audit still runs.</li>
-    <li>The page's own rules let it send requests only to the address it came from, and to
-      the five reference registries above when you tick the box. Your browser enforces them.
-      <button id="probe" type="button">Test the rules</button></li>
-    <li>Every file the page loads is listed with its SHA-256 in
-      <a href="files.sha256">files.sha256</a>, and its source is
-      <a id="source" href="https://github.com/BasileChretien/manuscript-guard">on GitHub</a>.</li>
-  </ul>
-  <pre id="probelog" hidden></pre>
+  <section id="result" class="card" hidden>
+    <h2 id="reporthead" tabindex="-1">Your report</h2>
+    <p id="done" class="done"></p>
+    <div class="actions">
+      <button id="savepdf" type="button" hidden>Download the PDF</button>
+      <button id="savecommented" type="button" class="quiet" hidden>Download your paper with
+        the findings as Word comments</button>
+      <button id="again" type="button" class="quiet">Check another paper</button>
+    </div>
+    <pre id="notes" hidden></pre>
+    <div id="pdfbox" class="pdfbox" hidden>
+      <iframe id="pdfview" title="Your report, as a PDF"></iframe>
+    </div>
+    <p id="pdfnote" class="pdfnote" hidden>This browser shows a PDF in a page of its own.
+      <button id="openpdf" type="button" hidden>Open the report</button></p>
+  </section>
 
-  <details>
-    <summary>What this page loaded and sent</summary>
-    <pre id="netlog"></pre>
-  </details>
-
-  <section class="limits">
-    <h2>What this page does not check</h2>
-    <ul>
-      <li>PDFs, LaTeX projects, figures and reproducibility packages. The command line reads
-        them, with the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
-      <li>Whether a number is right. A number found in the outputs may be there by chance,
-        and the report says how often that would happen.</li>
-    </ul>
-    <p>More: <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/audit-page.md">how
-      this page works and what its rules cannot stop</a>.</p>
+  <section class="faq" aria-labelledby="faqhead">
+    <h2 id="faqhead">Questions</h2>
+    <details>
+      <summary>Is my paper uploaded?</summary>
+      <p>No. This page runs manuscript-guard's <code>audit</code> inside your browser, and there
+        is no server behind it to receive a file. To see it for yourself:</p>
+      <ul>
+        <li>Once the page says <em>Ready</em>, turn off your network, then choose your paper:
+          the check still runs.</li>
+        <li>The page's own rules let it send requests only to the address it came from, and to
+          the five reference registries when you tick that box. Your browser enforces them.
+          <button id="probe" type="button" class="quiet small">Test the rules</button></li>
+        <li>Every file the page loads is listed with its SHA-256 in
+          <a href="files.sha256">files.sha256</a>, and its source is
+          <a id="source" href="https://github.com/BasileChretien/manuscript-guard">on GitHub</a>.</li>
+      </ul>
+      <pre id="probelog" hidden></pre>
+    </details>
+    <details>
+      <summary>What does the check look at?</summary>
+      <ul>
+        <li>The numbers: against your analysis outputs if you give them, and against each
+          other (sums, percentages, the Abstract against the Results, small counts that could
+          identify someone).</li>
+        <li>The writing: abbreviations, spelling in one English, how P values, intervals and
+          units are written, and phrasing to look at.</li>
+        <li>The reference list: each entry read, and with the box ticked, each DOI and PubMed
+          ID looked up for a retraction.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>What does it not check?</summary>
+      <ul>
+        <li>PDFs, LaTeX projects, figures and reproducibility packages. The command line reads
+          them, with the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
+        <li>Whether a number is right. A number found in the outputs may be there by chance,
+          and the report says how often that would happen.</li>
+      </ul>
+      <p>More: <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/audit-page.md">how
+        this page works and what its rules cannot stop</a>.</p>
+    </details>
+    <details>
+      <summary>Reviewing a paper for a journal?</summary>
+      <p>Read the journal's policy first: some forbid putting a manuscript under review into any
+        tool, even one that runs on your own computer.</p>
+    </details>
+    <details>
+      <summary>What did this page load and send?</summary>
+      <pre id="netlog"></pre>
+    </details>
   </section>
 
   <footer>

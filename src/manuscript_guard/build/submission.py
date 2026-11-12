@@ -426,8 +426,9 @@ def checklist_table(project: Project, completion: Path) -> str:
 
 def _addressed_in(project: Project, answered: dict[str, dict]) -> dict[str, str]:
     """Where each item is addressed, as the table prints it: its `where`, and the sentence its
-    `quote` gives, each binding filled in as the build prints it, so that an editor reads the
-    words the manuscript has and not `{{results.x}}`. An item with no quote is its `where`."""
+    `quote` gives, each binding with a value filled in as the build prints it, so that an
+    editor reads the words the manuscript has. A binding with no value stays as written, as
+    G2 fails it before a pack is made. An item with no quote is its `where`."""
     quoted = {key: str(entry.get("quote") or "").strip() for key, entry in answered.items()}
     rendered: dict[str, str] = {}
     if any("{{" in quote for quote in quoted.values()):

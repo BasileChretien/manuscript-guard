@@ -26801,9 +26801,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A book whose title names a publication of law, "A history of the Federal Register", is
     sorted as a legal text and not looked up, since a publication of law counts wherever it
-    is named; one whose title ends with a law's name is a legal text too where no person
-    with initials opens its authors. Pinned by
+    is named; one whose title ends with a law's name is a legal text too unless its authors
+    open with a family name and initials, "Smith J", "Smith, J." or "J. Smith", and not with
+    "U.S.", "U.K.", "E.U." or "U.N." or a name with "of" or "the" in it. Pinned by
     `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - "Smith, John.", "John Smith." and "Smith." are read as no person, so such a book whose
+    title ends with a law's name is a legal text; undotted initials first, "KL Ross", stay
+    in the family name read; "U.S. Congress" and a dotted given name first are not drawn in
+    every generated example. Accepted.
   - A law's name is read in the forms "Act 2018", "Act of 2010" and "Public Law 111-148"
     only: a chapter number, "2018 c. 12", and an Act named with no year are not read.
     Accepted.

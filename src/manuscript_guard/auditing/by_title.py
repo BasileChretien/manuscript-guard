@@ -207,10 +207,18 @@ def _ends_with_law(title: str) -> str:
 
 def _by_a_person(authors: str) -> bool:
     """Whether the authors open with a person's name and initials: "Smith J", "Smith, J." or
-    "J. Smith"; not "United Kingdom" or "US Congress"."""
-    first = re.split(r"[,;]|\s&\s|\sand\s", authors.strip(), maxsplit=1)[0].split()
-    return bool(_GIVEN_FIRST.match(authors.strip()) or re.match(r"[^,;]+,\s*[A-Z]\.", authors)
-                or (len(first) > 1 and _INITIAL.fullmatch(first[-1].rstrip("."))))
+    "J. Smith"; not "US Congress", "U.S. Congress", "Congress, U.S." or "Parliament of the UK"."""
+    authors = authors.strip()
+    if re.match(_DOTTED_BODY, authors):
+        return False
+    first = re.split(r"[,;]|\s&\s|\sand\s", authors, maxsplit=1)[0].split()
+    body = any(word.lower() in ("of", "the") for word in first[:-1])
+    return bool(_GIVEN_FIRST.match(authors)
+                or re.match(rf"[^,;]+,\s*(?!{_DOTTED_BODY})[A-Z]\.", authors)
+                or (len(first) > 1 and not body and _INITIAL.fullmatch(first[-1].rstrip("."))))
+
+
+_DOTTED_BODY = r"(?:U\.S|U\.K|E\.U|U\.N)\."
 
 
 def _legal_or_web(text: str) -> Sorted | None:

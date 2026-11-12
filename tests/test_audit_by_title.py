@@ -179,6 +179,10 @@ def test_the_author_s_seven_entries_are_sorted_by_their_shape(tmp_path: Path) ->
      "2010.", by_title.BOOK),
     ("Smith J. A practical guide to the Mental Capacity Act 2005. London: Example Press; 2006.",
      by_title.BOOK),
+    ("U.S. Congress. Public Law 111-148. Washington, DC: US Government Printing Office; 2010.",
+     by_title.LEGAL),
+    ("Parliament of the UK. Mental Health Act 1983. London: The Stationery Office; 1983.",
+     by_title.LEGAL),
 ])  # fmt: skip
 def test_each_shape_is_sorted(text: str, kind: str) -> None:
     assert by_title.sort(text).kind == kind

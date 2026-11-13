@@ -162,10 +162,10 @@ def _names_the_methods(title: str) -> bool:
 
 def _the_methods(sections: list[Section]) -> set[int]:
     """The headings that are the Methods to `_results_by_another_name`: a name the Methods
-    go by (`_names_the_methods`) over no Abstract, Introduction, Results or Discussion,
-    which a paper's title written as a heading over the paper is, "Methods and algorithms
-    for robust estimation" (round 3 of #672). A "Limitations" under the Methods leaves them
-    the Methods."""
+    go by (`_names_the_methods`) over no Abstract and no heading whose whole title is
+    "Introduction", which a paper's title written as a heading over the paper is, "Methods
+    and algorithms for robust estimation" (round 3 of #672). A "Limitations", a "Background"
+    or a "Discussion of assumptions" under the Methods leaves them the Methods."""
     found = set()
     for index, section in enumerate(sections):
         if not _names_the_methods(section.title):
@@ -175,8 +175,8 @@ def _the_methods(sections: list[Section]) -> set[int]:
             if later.level <= section.level:
                 break
             below.append(later.title)
-        if not any(names_abstract(t) or names_introduction(t) or names_results(t)
-                   or names_discussion(t) for t in below):  # fmt: skip
+        if not any(names_abstract(t) or re.fullmatch(r"introduction\W*", plain(t), re.I)
+                   for t in below):  # fmt: skip
             found.add(id(section))
     return found
 

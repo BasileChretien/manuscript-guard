@@ -2289,6 +2289,8 @@ def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompare
     ("## Method\n\n### Evaluation", False), ("## Materials and method\n\n### Experiments", False),
     ("## (3) Methods\n\n### Evaluation", False), ("## A. Methods\n\n### Evaluation", False),
     ("## Study design\n\n### Experiments", False),
+    ("## Methods\n\n### Background\n\nIt was.\n\n### Evaluation", False),
+    ("## Methods\n\n### Discussion of assumptions\n\nIt was.\n\n### Evaluation", False),
     ("## Methods\n\n### Simulation results", True),
     ("## Comparison with existing methods\n\n### Simulation results", True),
     ("## Comparison with existing methods\n\n### Experiments", True),

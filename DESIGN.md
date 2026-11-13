@@ -27305,10 +27305,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `gates/language.py`, from #663, the entry below). A test holds the three patterns to one
     another over the accessions, gaps, trails and cases the generated inputs draw, with each
     copy's escaped underscore; a form none of them draws could still be read two ways, and
-    what each gate does before its pattern is not compared. The space after the colon is not
-    one set: the copies take any white space but a line break, and `rrids.py` a space, a tab
-    or a no-break space, so "RRID:" before an em space or a `\r\n` is read by one side only.
-    Pinned by `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike`.
+    what each gate does before its pattern is not compared. Pinned by
+    `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike`.
+    - The space after the colon is not one set: the copies take any one white-space
+      character, and `rrids.py` a space, a tab, a no-break or narrow no-break space, or a
+      line break (`\r\n` too), so "RRID:" before an em space or a lone `\r` is read by the
+      copies only, and before a `\r\n` by `rrids.py` only. Accepted.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name

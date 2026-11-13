@@ -606,6 +606,7 @@ def _rrid_disagreements() -> list[tuple[str, str, str]]:
                     plain = f"Cells (RRID:{gap}{written}{trail}) were used."
                     escaped = f"Cells (RRID:{gap}{md}{trail}) were used."
                     nul = f"Cells (RRID:{gap}{tex}{trail}) were used."
+                    led = f"Cells (RRID:{gap}\x00{tex}{trail}) were used."  # a NUL before it too
                     g2 = read(structural, plain, 0)
                     g2_md = read(structural, escaped, 0)
                     said = {
@@ -613,6 +614,7 @@ def _rrid_disagreements() -> list[tuple[str, str, str]]:
                         ("G14", plain): (read(language._RRID, plain), written),
                         ("G14", escaped): (read(language._RRID, escaped), md),
                         ("G14", nul): (read(language._RRID, nul), tex),
+                        ("G14", led): (read(language._RRID, led), tex),
                         ("G2", plain): (g2 and g2.removeprefix("RRID:").lstrip(), written + tail),
                         ("G2", escaped): (g2_md and g2_md.removeprefix("RRID:").lstrip(),
                                           md + tail),

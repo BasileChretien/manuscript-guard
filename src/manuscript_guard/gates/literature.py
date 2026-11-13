@@ -34,7 +34,16 @@ from manuscript_guard.literature.sources import (
     states_value,
     words_beside,
 )
-from manuscript_guard.stats.granularity import as_mean, places, possible
+from manuscript_guard.stats.granularity import (
+    as_mean,
+    as_spread,
+    binary_described,
+    binary_possible,
+    places,
+    possible,
+    sd_described,
+    sd_possible,
+)
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.intervals import (
     ASYMMETRY,
@@ -170,6 +179,8 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             judged.add(quote)
             report = report.merge(_tests_in_quote(key, value, quote))
         report = report.merge(_whole_number_mean(key, value, detail))
+        report = report.merge(_whole_number_sd(key, value, detail))
+        report = report.merge(_binary_mean(key, value, detail))
         beside = words_beside(quote, value.display)
         if len(beside) < WORDS_BESIDE:
             report = report.with_findings(
@@ -300,6 +311,89 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
             message=f"{key}: whether it can be a mean of whole numbers is not assessable: {why}",
             path=value.source,
             hint=hint,
+        ),
+    ))  # fmt: skip
+
+
+def _whole_number_sd(key: str, value, detail: dict) -> Report:
+    """The SD a `mean_of_whole_numbers` detail gives beside its n, held to the value as its
+    mean by GRIMMER (`stats/granularity.py`). Not where GRIM finds the mean impossible,
+    which `_whole_number_mean` says, nor where the value is not a decimal, which it says
+    too."""
+    declared = detail.get("mean_of_whole_numbers")
+    if not isinstance(declared, dict) or declared.get("sd") is None:
+        return Report()
+    n, items = int(declared["n"]), int(declared.get("items", 1))
+    mean, sd = as_mean(value.display), as_spread(str(declared["sd"]))
+    if mean is None or possible(mean, n, items) is False:
+        return Report()
+    quote = str(detail.get("quote", ""))
+    why = _spread_unread(sd, quote, "mean_of_whole_numbers")
+    verdict = None if why else sd_possible(mean, sd, n, items)
+    if verdict is True:
+        return Report()
+    if verdict is False:
+        return _quote_finding(key, value, quote, "quote-sd-not-possible",
+                              f"in the source, {sd_described(mean, sd, n, items)}")  # fmt: skip
+    return _quote_note(key, value, "quote-sd-not-assessable", "whether its SD can go with it "
+                       f"for whole numbers is not assessable: {why or _TOO_MANY}")  # fmt: skip
+
+
+def _binary_mean(key: str, value, detail: dict) -> Report:
+    """A value the ledger says is the mean of numbers each 0 or 1 (`mean_of_binary_data`),
+    held with the SD it gives to each other and to its n by DEBIT
+    (`stats/granularity.py`): a pair no count of ones gives is a misprint in the source,
+    or n is not what it says."""
+    declared = detail.get("mean_of_binary_data")
+    if not isinstance(declared, dict):
+        return Report()
+    n = int(declared["n"])
+    mean, sd = as_mean(value.display), as_spread(str(declared.get("sd", "")))
+    quote = str(detail.get("quote", ""))
+    why = (f"{value.display!r} is not printed as a decimal number" if mean is None
+           else _spread_unread(sd, quote, "mean_of_binary_data"))  # fmt: skip
+    verdict = None if why else binary_possible(mean, sd, n)
+    if verdict is True:
+        return Report()
+    if verdict is False:
+        return _quote_finding(key, value, quote, "quote-binary-not-possible",
+                              f"in the source, {binary_described(mean, sd, n)}")  # fmt: skip
+    return _quote_note(key, value, "quote-binary-not-assessable", "whether it and its SD can "
+                       f"be those of numbers each 0 or 1 is not assessable: {why or _MANY_ONES}")
+
+
+#: Why a test that would try more than 100,000 totals or counts says nothing.
+_TOO_MANY = "more than 100,000 totals would be tried"
+_MANY_ONES = "more than 100,000 counts of ones would be tried"
+
+
+def _spread_unread(sd: str | None, quote: str, detail: str) -> str | None:
+    """Why an SD a detail gives cannot be held to anything: it is not printed as a decimal,
+    or the quote does not print it, so it is not the source's; None where it can."""
+    if sd is None:
+        return f"the SD {detail} gives is not printed as a decimal, \"1.20\" in quotes"
+    if not re.search(rf"(?<![\d.]){re.escape(sd)}(?![\d])", quote):
+        return f"the SD {detail} gives, {sd}, is not in the quote"
+    return None
+
+
+def _quote_finding(key: str, value, quote: str, code: str, said: str) -> Report:
+    return Report((
+        Finding(
+            gate=GATE, code=code, severity=WARN, message=f"{key}: {said}", path=value.source,
+            context=quote[:140],
+            hint="the source may carry a misprint, or the mean may be of fewer people than "
+            "its n (those with data); read its tables before citing it",
+        ),
+    ))  # fmt: skip
+
+
+def _quote_note(key: str, value, code: str, said: str) -> Report:
+    return Report((
+        Finding(
+            gate=GATE, code=code, severity=INFO, message=f"{key}: {said}", path=value.source,
+            hint="record the mean alone as the value's display, and the SD as the quote "
+            "prints it, in quotes (sd: \"1.20\"), to have them tested",
         ),
     ))  # fmt: skip
 

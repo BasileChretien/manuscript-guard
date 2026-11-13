@@ -6335,6 +6335,30 @@ taken for its means: with two columns it would name one of them. The rows are he
 generated tables (`mean_tables` in `tests/generated.py`), with a row of every kind in each
 and a pair of means half a unit from a total.
 
+An SD printed with such a mean goes further (GRIMMER: Anaya, *PeerJ Preprints* 2016,
+doi:10.7287/peerj.preprints.2400v1). The squares of n whole numbers add up to a whole number
+of the parity of their total, and to no less than the squares of the total spread as evenly
+as it can be, so only some SDs can be printed: 18 numbers whose mean is 3.44 have an SD of
+2.45 or 2.48, never 2.47. `sd_possible` is a port of rsprite2's `GRIMMER_test` (ATTRIBUTION.md
+has the version and the licence), its rounding rules kept and its arithmetic made exact.
+In `audit --whole-numbers` the SD of each mean GRIM leaves possible or cannot tell is held to
+it and its column's n: one that cannot be is `sd-not-possible`, a warning `--strict` does not
+count, as a mean that cannot be is a disagreement it does not count; the SD of a mean GRIM
+rules out is not said again. In the ledger, `mean_of_whole_numbers` takes `sd`, a string so
+that its noughts are kept, printed in the quote, and G7 says `quote-sd-not-possible` (a
+warning) or `quote-sd-not-assessable` (a note). The mean and SD of numbers each 0 or 1
+follow from how many are 1 (DEBIT: Heathers and Brown, 2019, osf.io/5vb3u, no DOI): k ones
+among n have the mean k/n and the sample SD sqrt(k(n - k) / (n(n - 1))), the one that paper
+uses. `audit --binary` names the rows of such means, or proportions, with their SDs, and each
+pair is held to the other and to its column's n (`binary-not-possible`); in the ledger,
+`mean_of_binary_data: {n, sd}` (`quote-binary-not-possible`). rsprite2 has no DEBIT, so it is
+written from the paper; both ends of each half unit are taken, as for GRIM and GRIMMER. A
+spread the row's label, the header over its column or the header's first cell names as no SD,
+"mean (SE)", is held to nothing (`auditing/spreads.py`). None of this reads an emitted
+result, which the analysis computed itself. The rows are held over generated tables
+(`sd_tables`), with an SD rounded down and one up from real answers, one between two
+that such numbers give, the population SD of binary data where the sample's differs, a
+standard error named in a label, over a column and over a table, and a row of the wrong n.
 A mean and its SD for a variable that cannot fall below a floor are read the same way in
 `check` and in `audit` (`stats/skew.py`). Altman and Bland (BMJ 1996;313:1200) note that
 for a variable that cannot be negative a mean less than twice its SD shows skewed data, and
@@ -17810,10 +17834,48 @@ Added by the adversarial review, verified and **not** fixed:
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so
   this passes nothing wrong, but lists a mean that is right for its items (round 1 of #331,
-  where this entry said the reverse). The ledger takes `items`. Whether an SD is possible for whole numbers with that mean and n is not
-  checked. In the ledger, n is what the author records from the source; nothing reads it from
-  the quote.
+  where this entry said the reverse). The ledger takes `items`. An SD printed with the mean is
+  held to it by GRIMMER, with the limits of the next entry. In the ledger, n is what the
+  author records from the source; nothing reads it from the quote.
   Pinned by `tests/test_corruption.py::test_a_header_of_two_rows_marks_the_means_below_uncertain`.
+- **An SD is held to its mean only as an SD the table names or leaves unnamed, and only as
+  far as GRIMMER and DEBIT go.** Each is held as `stats/granularity.py` and
+  `auditing/spreads.py` say, and nothing in a sentence is read. Accepted.
+  - A spread is read as an SD unless the row's label, the header over its column or the
+    header's first cell calls it something else (SE, SEM, standard error, IQR, CI, a range,
+    quartiles, percentiles). A table whose caption or note alone says "mean (SE)" has its
+    standard errors held as SDs, and one that cannot be is listed. Pinned by
+    `tests/test_corruption.py::test_a_spread_named_only_outside_the_table_is_read_as_an_sd`.
+  - Where the label or a header names an SD and another spread, "Pain score (range 0-10),
+    mean (SD)", the spread is held to nothing, though it is an SD. Pinned by
+    `tests/test_corruption.py::test_a_label_naming_an_sd_and_a_range_holds_its_spread_to_nothing`.
+  - A section row in the stub column that names its spread, "Pain, mean (SE)" over "Week 4"
+    and "Week 8", is not carried down to the rows under it: their standard errors are held
+    as SDs, and one that cannot be is listed (round 1 of #665). Pinned by
+    `tests/test_corruption.py::test_a_section_row_naming_its_spread_is_not_carried_down`.
+  - GRIMMER is a necessary condition only, as rsprite2 says of it: an SD it passes may still
+    be impossible for the scale's range, which a table does not give, so rsprite2's
+    `boundary_test` is not run. Accepted.
+  - In `audit` a mean of several items per person is read as one number each, as for GRIM, so
+    an SD that is right for its items can be listed; the ledger takes `items`. Accepted.
+  - DEBIT takes both ends of each half unit, where the paper takes an SD of 0.37 for 0.365 to
+    below 0.375: a pair a tie rounds into is passed, never listed. Accepted.
+  - `--binary` reads a mean or a proportion printed as a decimal from 0 to 1 with its SD; a
+    mean alone is not read, and a cell whose mean has no point or is outside 0 to 1, or
+    whose label or header names a percentage, is passed over with its reason (round 1 of
+    #665: "85 (52.1)", a count and its share, was said to be no mean of numbers each 0 or
+    1). An n (%) is held to its denominator already. A proportion in a row and column no
+    header calls percentages, typed as a decimal, is read as a mean. Accepted.
+  - A header that names "n (%) or mean (SD)" passes over every proportion under it, with its
+    reason; a percentage under 1 with its SD, "0.6 (7.8)", in a row and column no header
+    calls percentages, is read as a proportion and listed (round 2 of #665). Pinned by
+    `tests/test_corruption.py::test_binary_cells_go_by_their_headers`.
+  - A test that would try more than 100,000 totals or counts of ones says nothing, where
+    rsprite2 stops at a million (round 1 of #665: G7 took seconds over a million): in
+    `audit` the spread is counted as passed over, in the ledger it is
+    `quote-sd-not-assessable`. Accepted.
+  - The ledger's SD is held to be printed in the quote as a number, anywhere in it, not to
+    stand beside the mean. Accepted.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

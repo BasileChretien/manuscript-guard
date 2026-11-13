@@ -501,6 +501,26 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
+@pytest.mark.parametrize("n", [10_000_000, 999_990])
+def test_a_ledger_sd_of_millions_of_whole_numbers_is_said_quickly(n: int) -> None:
+    """Round 1 of #665: G7 holds a ledger SD to its mean by trying each whole total the mean
+    allows, a million of them for 3.4 of 10,000,000, in fractions, and again for the SDs
+    either side of one that cannot be. Past 100,000 totals the SD is not assessable, at
+    once; just under, the totals of an SD of nought are skipped in runs, two tried of each."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.gates.literature import _whole_number_sd
+
+    value = SimpleNamespace(display="3.4", source=Path("literature/ledger.yaml"))
+    detail = {"quote": "They rated it 3.4 (SD 0.0) on average.",
+              "mean_of_whole_numbers": {"n": n, "sd": "0.0"}}  # fmt: skip
+    started = time.perf_counter()
+    report = _whole_number_sd("background.mean", value, detail)
+    assert time.perf_counter() - started < 2.0
+    assert [f.code for f in report.findings] == (
+        ["quote-sd-not-assessable"] if n > 1_000_000 else ["quote-sd-not-possible"])
+
+
 def test_definitions_over_a_paragraph_are_passed_over_in_linear_time(assert_linear) -> None:
     """Each definition passed over looked at the rest of the block for a title on the next
     line by copying it: 40,000 definitions over a paragraph took 42 seconds, where the

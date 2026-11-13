@@ -1944,6 +1944,29 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("spreads of named means")
+def _spreads_of_named_means() -> Reading:
+    """Each mean in a pipe table's rows the auditor names for --whole-numbers, and each
+    printed with its spread in those named for --binary, as `audit` holds them: which test,
+    its line, the mean and the spread as printed, its column's n, and whether GRIMMER or
+    DEBIT passes it, None where it is held to nothing."""
+    from manuscript_guard.auditing.spreads import held_binary, held_sd
+    from manuscript_guard.stats.granularity import table_binary, table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        whole, binary = tuple(given["whole"]), tuple(given["binary"])
+        found = []
+        for table in markdown_tables(given["text"]):
+            found += [["whole", m.line, m.mean, m.spread, m.n, held_sd(m)]
+                      for m in table_means(table, whole)]  # fmt: skip
+            found += [["binary", m.line, m.mean, m.spread, m.n, held_binary(m)]
+                      for m in table_binary(table, binary)]  # fmt: skip
+        return found
+
+    return read
+
+
 @reading("means and SDs never negative")
 def _means_and_sds_never_negative() -> Reading:
     """Each mean and SD in a pipe table's rows the auditor names as never negative, as

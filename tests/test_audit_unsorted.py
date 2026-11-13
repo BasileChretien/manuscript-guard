@@ -212,8 +212,10 @@ def test_a_docx_s_two_entries_of_one_label_are_told_apart_by_their_paragraphs(
 def test_a_list_under_a_heading_of_its_own_is_not_in_the_census(tmp_path: Path,
                                                                 capsys) -> None:  # fmt: skip
     """Round 1 of #679 asked whether two lists numbered from 1, "References" and
-    "Supplementary references" under headings of their own, make one census: they do not,
-    the census ends at the second heading, so no label is repeated there."""
+    "Supplementary references" under headings of their own, make one census: here they do
+    not, as "Supplementary references" is not read as a bibliography's heading, so the
+    census ends there and no label is repeated. Two "References" headings with another
+    between do make one census (DESIGN.md, Known gaps)."""
     text = ("# Results\n\nIt rose [1-5].\n\n# References\n\n" + _typed(5)
             + "\n\n# Supplementary references\n\n" + _typed(3) + "\n")  # fmt: skip
     (one,) = _unsorted(_found(capsys, str(_docx(tmp_path, text))))

@@ -27538,9 +27538,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   (#673) and its one note on a paper's entries not sorted (decision 16) each name every
   form, name or entry in their message, and `compare` holds v2's finding to v1's word for
   word. One form, name or entry added, dropped or renumbered in v2 marks the whole note "new
-  in v2", those that stood in v1 among it; the comparison keeps what the note lists under it
+  in v2", those that stood in v1 among it, and so do the lines alone moving where the note
+  names two entries of one label by their places (a paragraph added above the list); the
+  comparison keeps what the note lists under it
   (`forms` or `entries`), for the reader to look through, and does not mark them one by one.
   Pinned by `tests/test_compare.py::test_a_one_line_note_reads_as_new_when_an_entry_in_it_is`.
+- **Two entries of one label are told apart only as far as their places differ.** The note
+  on a paper's entries not sorted names an entry whose label another has too by its place
+  (`auditing.unsorted`), and two places can read the same:
+  - In a .docx, two lists that each start at 1, each under a "References" heading with
+    another heading between (an Appendix), make one census, and a paragraph is counted
+    again from each heading and named by its title alone, so the note can read "entries 2
+    (References, paragraph 2) and 2 (References, paragraph 2)". Accepted.
+  - A LaTeX tree's place names no file, so two `\bibitem{x}` in two `\input` files can both
+    read "line 3". Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

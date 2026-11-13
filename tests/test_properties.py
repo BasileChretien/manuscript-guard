@@ -11569,7 +11569,7 @@ def _the_entries_not_sorted_are_one_note_for_all_papers(patch: pytest.MonkeyPatc
     from manuscript_guard.auditing import report, unsorted
 
     titles, one = report._title_items, unsorted.one_finding
-    patch.setattr(unsorted, "one_finding", lambda found: list(found))
+    patch.setattr(unsorted, "one_finding", lambda found, *at: list(found))
     patch.setattr(report, "_title_items", lambda audited: one(titles(audited)))
 
 
@@ -11580,14 +11580,14 @@ def _the_entries_not_sorted_stand_at_the_last(patch: pytest.MonkeyPatch) -> None
 
     made = unsorted._made
     patch.setattr(unsorted, "_made",
-                  lambda mine: replace(made(mine), line=mine[-1][1].line))  # fmt: skip
+                  lambda mine, *at: replace(made(mine, *at), line=mine[-1][1].line))  # fmt: skip
 
 
 def _the_entries_not_sorted_are_named_last_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import unsorted
 
     made = unsorted._made
-    patch.setattr(unsorted, "_made", lambda mine: made(list(reversed(mine))))
+    patch.setattr(unsorted, "_made", lambda mine, *at: made(list(reversed(mine)), *at))
 
 
 @holds(100, glued_intervals())

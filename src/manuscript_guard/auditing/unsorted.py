@@ -17,7 +17,10 @@ which `--json` gives under the note. The References line still counts the entrie
 from __future__ import annotations
 
 import re
+from collections import Counter
+from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 
 from manuscript_guard.auditing.by_title import CODES, UNSORTED
 from manuscript_guard.auditing.undefined import gathered
@@ -32,11 +35,18 @@ _SAID = re.compile(r"^(?P<entry>.+?): (?P<why>not sorted: .+): check it by hand$
 _NUMBERED = re.compile(r"^entry (?P<number>\d+)(?P<rest> of the list)?$")
 
 
-def one_finding(found: list) -> list:
+def one_finding(found: list, at: Callable[[Path | None, int | None], str] | None = None
+                ) -> list:  # fmt: skip
     """`found`, the report's items on one paper's reference list in the list's order, with
     its notes on the entries not sorted made one where the first stood. Any other item, and
-    a note whose message is not the report's for one entry, is left as it is."""
-    return gathered(found, _entry, _made)
+    a note whose message is not the report's for one entry, is left as it is. `at` says
+    where an entry stands, "line 12" or a .docx's "References, paragraph 7"
+    (`report._title_items`): the note says it of two entries with one label."""
+    return gathered(found, _entry, lambda mine: _made(mine, at or _line))
+
+
+def _line(_path: Path | None, line: int | None) -> str:
+    return f"line {line}"
 
 
 def _entry(item) -> str | None:
@@ -49,17 +59,19 @@ def _phrase(parts: list[str]) -> str:
     return ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 1 else "".join(parts)
 
 
-def _named(labels: list[str]) -> str:
+def _named(labels: list[tuple[str, str | None]]) -> str:
     """"entries 3, 7 and 12", "entries 1 and 4 of the list", "entry 2": the labels in their
     order, each run of numbers of one kind said once with them, a run of any other label,
     a LaTeX list's "\\bibitem{key}", label by label, and the runs one after another, "entries
     1, 2 and 5 of the list, then entries 34 and 38" (docx-psych-B2's list, read in part as
-    numbered and in part as not)."""
+    numbered and in part as not). Each label is given with its place where another entry has
+    the same label, "entries 2 (line 8) and 2 (line 13)", a list whose numbering starts
+    again (round 1 of #679), and with None where it is its own."""
     runs: list[tuple[str | None, list[str]]] = []
-    for label in labels:
+    for label, place in labels:
         numbered = _NUMBERED.match(label)
         kind = (numbered["rest"] or "") if numbered else None
-        said = numbered["number"] if numbered else label
+        said = (numbered["number"] if numbered else label) + (f" ({place})" if place else "")
         if runs and runs[-1][0] == kind:
             runs[-1][1].append(said)
         else:
@@ -70,24 +82,29 @@ def _named(labels: list[str]) -> str:
         for kind, said in runs)  # fmt: skip
 
 
-def _message(mine: list[tuple[str, object]]) -> str:
+def _message(mine: list[tuple[str, object]], at: Callable[[Path | None, int | None], str]
+             ) -> str:  # fmt: skip
     """"3 entries not sorted: ..., so not looked up: entries 1, 3 and 4 of the list; check
-    them by hand": each reason once, with its entries, in the order each is first met."""
-    reasons: dict[str, list[str]] = {}
+    them by hand": each reason once, with its entries, in the order each is first met, an
+    entry whose label another has too with where it stands (`at`)."""
+    labelled = Counter(label for label, _item in mine)
+    reasons: dict[str, list[tuple[str, str | None]]] = {}
     for label, item in mine:
-        reasons.setdefault(_SAID.match(item.message)["why"], []).append(label)
+        place = at(item.path, item.line) if labelled[label] > 1 else None
+        reasons.setdefault(_SAID.match(item.message)["why"], []).append((label, place))
     count = len(mine)
     said = "; ".join(f"{why}: {_named(labels)}" for why, labels in reasons.items())
     return (f"{count} entr{'y' if count == 1 else 'ies'} {said}; check "
             f"{'it' if count == 1 else 'them'} by hand")  # fmt: skip
 
 
-def _made(mine: list[tuple[str, object]]):
+def _made(mine: list[tuple[str, object]],
+          at: Callable[[Path | None, int | None], str] = _line):  # fmt: skip
     first = mine[0][1]
     entries = [{"entry": label, "message": item.message,
                 "path": None if item.path is None else str(item.path), "line": item.line}
                for label, item in mine]  # fmt: skip
-    return replace(first, message=_message(mine), listed={"entries": entries})
+    return replace(first, message=_message(mine, at), listed={"entries": entries})
 
 
 __all__ = ["CODE", "one_finding"]

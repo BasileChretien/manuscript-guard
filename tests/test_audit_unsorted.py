@@ -11,7 +11,11 @@ and no PMID stay one for each entry.
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from manuscript_guard.audit import audit
 from manuscript_guard.auditing import by_title, unsorted
@@ -149,3 +153,68 @@ def test_entries_of_each_kind_are_named_in_runs() -> None:
         ": \\bibitem{a} and \\bibitem{b}, then entry 3, then entries 1 and 2 of the list, then "
         "entries 34 and 38; check them by hand"), one.message  # fmt: skip
     assert one.message.startswith("7 entries not sorted") and one.line == 3
+
+
+# ------------------------------------------------------------ round 1 of the review of #679
+
+_ARTICLE = ("Ross KL. Ghosts in the classroom: passive disengagement. Teach Teach. "
+            "2019;25(3):312-25.")  # fmt: skip
+_NOT_SORTED = "Adams J. Field notes from the archive. 2018."
+
+
+def _typed(count: int) -> str:
+    """A list whose numbers are typed with the stop escaped, as Markdown keeps a number from
+    starting a list, entry 2 the one not sorted."""
+    escaped = chr(92) + "."
+    return "\n\n".join(f"{at}{escaped} {_NOT_SORTED if at == 2 else _ARTICLE}"
+                       for at in range(1, count + 1))  # fmt: skip
+
+
+#: One section whose typed numbers start again at 1: one census, two entries labelled
+#: "entry 2".
+RESTARTED = ("# Results\n\nIt rose [1-5].\n\n# References\n\n" + _typed(5) + "\n\n" + _typed(3)
+             + "\n")  # fmt: skip
+
+
+def test_two_entries_of_one_label_are_told_apart_by_their_places(tmp_path: Path,
+                                                                 capsys) -> None:  # fmt: skip
+    """A list whose numbering starts again holds two entries named "entry 2": each is said
+    with the line it stands at, and an entry whose label is its own is said as before."""
+    (one,) = _unsorted(_found(capsys, str(_paper(tmp_path, RESTARTED))))
+    lines = [entry["line"] for entry in one["entries"]]
+    assert [entry["entry"] for entry in one["entries"]] == ["entry 2", "entry 2"]
+    assert one["message"] == (f"2 entries {WHY}: entries 2 (line {lines[0]}) and 2 (line "
+                              f"{lines[1]}); check them by hand"), one["message"]  # fmt: skip
+
+
+needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+
+
+def _docx(folder: Path, text: str) -> Path:
+    _paper(folder, text)
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    return folder / "paper.docx"
+
+
+@needs_pandoc
+def test_a_docx_s_two_entries_of_one_label_are_told_apart_by_their_paragraphs(
+    tmp_path: Path, capsys
+) -> None:
+    """In a .docx each is said by its heading and paragraph, as the audit places things
+    there."""
+    (one,) = _unsorted(_found(capsys, str(_docx(tmp_path, RESTARTED))))
+    assert one["message"].endswith(": entries 2 (References, paragraph 2) and 2 (References, "
+                                   "paragraph 7); check them by hand"), one["message"]
+
+
+@needs_pandoc
+def test_a_list_under_a_heading_of_its_own_is_not_in_the_census(tmp_path: Path,
+                                                                capsys) -> None:  # fmt: skip
+    """Round 1 of #679 asked whether two lists numbered from 1, "References" and
+    "Supplementary references" under headings of their own, make one census: they do not,
+    the census ends at the second heading, so no label is repeated there."""
+    text = ("# Results\n\nIt rose [1-5].\n\n# References\n\n" + _typed(5)
+            + "\n\n# Supplementary references\n\n" + _typed(3) + "\n")  # fmt: skip
+    (one,) = _unsorted(_found(capsys, str(_docx(tmp_path, text))))
+    assert one["message"] == f"1 entry {WHY}: entry 2; check it by hand", one["message"]

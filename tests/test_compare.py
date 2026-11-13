@@ -800,3 +800,32 @@ def test_a_finding_whose_line_moved_reads_as_new(tmp_path: Path) -> None:
                 "The odds ratio was 2.1 (95% CI 1.5 to 3.2).\n")
     marks = [mark for item, mark in compare(old, new).items if item.code == "abstract-conflict"]
     assert marks == [NEW_IN_V2]
+
+
+# ------------------------------------------------------------ round 1 of the review of #679
+
+#: A list by author and year with two entries the audit cannot sort; v2 adds a third.
+_UNSORTED = ("# Results\n\nIt rose (Ross, 2019).\n\n# References\n\n"
+             "Adams, J. (2018). Field notes from the archive.\n\n"
+             "Brown, L. (2020). Personal communication.\n")  # fmt: skip
+
+
+def test_a_one_line_note_reads_as_new_when_an_entry_in_it_is(tmp_path: Path) -> None:
+    """The one note on a paper's entries not sorted, like the one on its short forms left
+    undefined and on its names from the code, stands in v1 only where v1's says the same
+    word for word: one entry more in v2 and the whole note reads as new, the two that stood
+    in v1 among it (DESIGN.md, Known gaps). The comparison keeps the entries it lists."""
+    from manuscript_guard.comparing.report import as_json
+
+    old = write(tmp_path, "v1.md", _UNSORTED)
+    new = write(tmp_path, "v2.md", _UNSORTED + "\nClark, M. (2021). Interview transcripts.\n")
+    found = compare(old, new)
+    marks = [mark for item, mark in found.items if item.code == "reference-not-sorted"]
+    assert marks == [NEW_IN_V2]
+    same = compare(old, old)
+    assert [mark for item, mark in same.items if item.code == "reference-not-sorted"] == [
+        STOOD_IN_V1]
+    (said,) = [f for f in json.loads(as_json(found))["findings"]
+               if f["code"] == "reference-not-sorted"]  # fmt: skip
+    assert [entry["entry"] for entry in said["entries"]] == [
+        "entry 1 of the list", "entry 2 of the list", "entry 3 of the list"], said

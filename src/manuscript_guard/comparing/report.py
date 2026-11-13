@@ -121,8 +121,10 @@ def audited(old: Version, new: Version,
         key = (item.gate, item.code, item.message)
         mark = STOOD_IN_V1 if stood[key] > 0 else NEW_IN_V2
         stood[key] -= 1 if stood[key] > 0 else 0
+        # With what `--json` lists under a one-line note, its forms, names or entries.
         found.append((Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",
-                           item.severity, False, item.path, item.line, item.context, item.hint),
+                           item.severity, False, item.path, item.line, item.context, item.hint,
+                           listed=item.listed),
                       mark))  # fmt: skip
         if item.counted and exact is not None:
             exact.append(found[-1])

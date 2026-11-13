@@ -242,7 +242,14 @@ def _title_items(report) -> list[Item]:
             found.append(Item(REFERENCES, "G7", by_title.CODES[why],
                               f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
                               where, entry.line))  # fmt: skip
-    return [item for found in papers.values() for item in unsorted.one_finding(found)]
+    placers = report.placers
+
+    def at(path: Path | None, line: int | None) -> str:
+        # A .docx's entry by its heading and paragraph, as the audit places things there.
+        placer = placers.get(path) if path is not None else None
+        return placer.said(line) if placer is not None else f"line {line}"
+
+    return [item for found in papers.values() for item in unsorted.one_finding(found, at)]
 
 
 def _non_negative_items(report) -> list[Item]:

@@ -27533,6 +27533,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Results, and "Simulation studies" holds a study's design as well. The comparison never
   falls back to the whole body, and no other gate reads the list. Pinned by
   `tests/test_audit.py::test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared`.
+- **`compare` marks a one-line note new when anything it lists changes.** The audit's one
+  finding on the short forms left undefined (#640), its one on the names from the code
+  (#673) and its one note on a paper's entries not sorted (decision 16) each name every
+  form, name or entry in their message, and `compare` holds v2's finding to v1's word for
+  word. One form, name or entry added, dropped or renumbered in v2 marks the whole note "new
+  in v2", those that stood in v1 among it; the comparison keeps what the note lists under it
+  (`forms` or `entries`), for the reader to look through, and does not mark them one by one.
+  Pinned by `tests/test_compare.py::test_a_one_line_note_reads_as_new_when_an_entry_in_it_is`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

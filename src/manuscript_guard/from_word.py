@@ -7,9 +7,10 @@ changed in the tree before pandoc writes it as Markdown, and nothing else:
   section's name alone, in bold or not, numbered or not, in capitals or not, "**Abstract**",
   "ABSTRACT", "3. RESULTS", "**[References]{.underline}**", is made a heading
   (`typed_headings`), as many Word papers title their sections; by the closed list a PDF's
-  lines are read by, so a title that names no section stays a paragraph. Where those
-  cannot be placed, the paragraphs wholly in bold alone are, where they can be; else
-  every typed title is a heading of level 1.
+  lines are read by, so a title that names no section stays a paragraph. A title Word
+  numbers, the lone paragraph of a top-level numbered list's item, is one too, and its
+  list is split there. Where those cannot be placed, the paragraphs wholly in bold alone
+  are, where they can be; else every typed title is a heading of level 1.
 - Each table whose cells hold only paragraphs is written as a pipe table, which every reader
   here reads as rows of cells: a cell's paragraphs and line breaks are joined with spaces, a
   merged cell's text stands in its first row and column with the cells it covered left
@@ -555,9 +556,16 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     alone are made headings, where it can place those, as the audit places them, and a
     plain title is left a paragraph; else every typed title is made a heading of level 1,
     and the Abstract ends at its first. A heading is titled with the paragraph's words, its
-    number kept and a colon or a stop after it left out, "2. Methods"."""
+    number kept and a colon or a stop after it left out, "2. Methods".
+    A top-level numbered list's item that is one paragraph naming a section alone is read
+    as such a paragraph, a title Word numbers, "1. INTRODUCTION" (Basile, 2026-11-14); made
+    a heading, it splits its list there, the items before and after it lists of their own.
+    Its heading is titled with its words alone: pandoc numbers a list's items by its own
+    count, not Word's, and gave "5. METHODS" where Word prints "2. METHODS" (docx-educ-A3 of
+    the real-paper corpus), so the number is not written."""
     from manuscript_guard.text.section_names import section_levels, section_name_alone
 
+    blocks, lists = _opened_lists(blocks, section_name_alone)
     found: list[tuple[int, str, str]] = []
     for at, block in enumerate(blocks):
         if block.get("t") != "Para" or not _words_only(block["c"]):
@@ -567,7 +575,7 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
         if name is not None:
             found.append((at, name, typed.rstrip(" :.")))
     if not found:
-        return blocks, ()
+        return _closed_lists(blocks, lists), ()
     levels = _levels(blocks, found, section_levels)
     bold = [one for one in found if _in_bold(blocks[one[0]]["c"])]
     if levels is None and bold and (placed := _levels(blocks, bold, section_levels)):
@@ -576,7 +584,76 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     out = list(blocks)
     for (at, _name, typed), level in zip(found, levels, strict=True):
         out[at] = _heading(typed, level, identifier="")
-    return out, tuple(typed for _at, _name, typed in found)
+    return _closed_lists(out, lists), tuple(typed for _at, _name, typed in found)
+
+
+def _opened_lists(blocks: list, named) -> tuple[list, list]:
+    """`blocks` with each top-level numbered list opened at each item that is one paragraph
+    of words naming a section alone (`named`), that item a paragraph standing where it was,
+    and the items between such items a list each; and for each block, None, or the list it
+    came from by its place and attributes, with its items as `(place, item)`."""
+    opened: list = []
+    lists: list = []
+    for at, block in enumerate(blocks):
+        items = block["c"][1] if block.get("t") == "OrderedList" else []
+        titles = [_titles_a_section(item, named) for item in items]
+        if not any(titles):
+            opened.append(block)
+            lists.append(None)
+            continue
+        attributes = block["c"][0]
+        run: list = []
+        for place, (item, title) in enumerate(zip(items, titles, strict=True)):
+            if title and run:
+                opened.append(_numbered(attributes, run))
+                lists.append((at, attributes, run))
+            if title:
+                opened.append({"t": "Para", "c": item[0]["c"]})
+                lists.append((at, attributes, [(place, item)]))
+                run = []
+            else:
+                run.append((place, item))
+        if run:
+            opened.append(_numbered(attributes, run))
+            lists.append((at, attributes, run))
+    return opened, lists
+
+
+def _numbered(attributes: list, items: list) -> dict:
+    """A numbered list of `items`, `(place, item)`, numbered from where the first stood in
+    the list of `attributes`."""
+    start, style, delimiter = attributes
+    return {"t": "OrderedList", "c": [[start + items[0][0], style, delimiter],
+                                      [item for _place, item in items]]}  # fmt: skip
+
+
+def _titles_a_section(item: list, named) -> bool:
+    """Whether a list's item is one paragraph whose words name a section alone."""
+    if len(item) != 1 or item[0].get("t") not in ("Para", "Plain") or not _words_only(
+            item[0]["c"]):  # fmt: skip
+        return False
+    return named(" ".join(text_of(item[0]["c"]).split())) is not None
+
+
+def _closed_lists(blocks: list, lists: list) -> list:
+    """`blocks` with each list `_opened_lists` opened closed again around what was made a
+    heading in it: the items between two headings, or before or after one, a list, each
+    numbered from where it stood in pandoc's."""
+    out: list = []
+    held: tuple[int, list, list] | None = None
+    for block, came in zip(blocks, lists, strict=True):
+        if held is not None and (came is None or block["t"] == "Header" or came[0] != held[0]):
+            out.append(_numbered(held[1], held[2]))
+            held = None
+        if came is None or block["t"] == "Header":
+            out.append(block)
+            continue
+        if held is None:
+            held = (came[0], came[1], [])
+        held[2].extend(came[2])
+    if held is not None:
+        out.append(_numbered(held[1], held[2]))
+    return out
 
 
 def _title_page(blocks: list, typed: tuple[str, ...] = ()) -> tuple[list, list, str]:

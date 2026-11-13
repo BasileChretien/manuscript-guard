@@ -25175,8 +25175,21 @@ Open, recorded as each change landed:
     to both readers, and what stands under it is placed under it, the Results' or another
     section's: nothing tells the label from a title in a paper with no heading style.
     Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
-  - A title numbered by Word's own numbering is a list's item to pandoc and a numbered
-    line to the audit, and no heading to either; a title holding a link or a note's mark
+  - A title Word numbers itself, "1. INTRODUCTION" with Word's "1.", is a typed title to
+    both readers where pandoc reads it as the lone item of a numbered list in no other
+    (Basile, 2026-11-14); the audit reads the paragraph's numbering as pandoc does, its
+    numbering and level from its own `w:numPr` or else its style's, a subtitle whose
+    style names a level and no numbering read beside its base's title, where Word numbers
+    it under it (`Numbering.pandoc_item`). One with its subsections numbered straight
+    under it, as docx-psych-B1 of the real-paper corpus has its Methods and Results, or
+    with a paragraph pandoc joins to it, a numbering's with no level, is an item holding
+    more than its line and a heading to neither, and so its Results is none. `init --from`
+    titles the heading with its name alone, the list's number not written: pandoc counts
+    each numbering apart and a subtitle at its base's level, and gave "5. METHODS" where
+    Word prints "2. METHODS" (docx-educ-A3), so its count is not Word's. Pinned by
+    `tests/test_audit.py::test_a_title_word_numbers_holding_more_than_its_line_is_no_heading`,
+    `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_word_numbers`.
+  - A title holding a link or a note's mark
     is none, as pandoc reads the link or the note in it, nor is one in a text box to the
     audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
     to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a

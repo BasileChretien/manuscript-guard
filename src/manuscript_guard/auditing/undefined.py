@@ -24,6 +24,7 @@ neither: its warnings are G14's, one for each form.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -52,39 +53,80 @@ HINT = ("define each at its first use, the long form then the short form in brac
 
 
 @dataclass(frozen=True)
-class Undefined(Finding):
-    """G14's warnings on the short forms a paper uses and does not define, as one finding.
-    `forms` holds each warning with its form, in the order the paper first uses the forms;
-    `passed_over` the forms on the list of journals' style guides, which are not listed."""
+class Listed(Finding):
+    """G14's warnings of one kind on a paper audited, one for each word, said as one finding:
+    `forms` holds each warning with its word, in the order G14 gave them. The short forms
+    used and not defined are one (`Undefined`), the names from the code another
+    (`auditing.code_names`, decision 13 of 2026-11-13). `each` titles the list of them that
+    `--details` gives."""
 
     forms: tuple[tuple[str, Finding], ...] = ()
-    passed_over: tuple[str, ...] = ()
+    each: str = ""
 
     @property
     def counted(self) -> int:
-        """How many short forms it lists: each once, though G14 reads the abstract apart;
-        none for the note on forms passed over (`PASSED`), which asks nothing."""
+        """How many words it lists: each once, though G14 reads the abstract apart; none for
+        the note on forms passed over (`PASSED`), which asks nothing."""
         return len({form for form, _warning in self.forms})
 
     def as_dict(self) -> dict:
         out = {key: value for key, value in super().as_dict().items()
-               if key not in ("forms", "passed_over")}  # fmt: skip
+               if key not in ("forms", "passed_over", "each")}  # fmt: skip
         return {**out, **listed(self)}
 
 
+#: What `--details` titles the short forms' list with.
+EACH = "Each short form used and not defined, where it is first used:"
+
+
+@dataclass(frozen=True)
+class Undefined(Listed):
+    """G14's warnings on the short forms a paper uses and does not define, as one finding.
+    `forms` holds each warning with its form, in the order the paper first uses the forms;
+    `passed_over` the forms on the list of journals' style guides, which are not listed."""
+
+    each: str = EACH
+    passed_over: tuple[str, ...] = ()
+
+
 def listed(finding: Finding) -> dict:
-    """What `--json` gives beside the finding: each form with the warning G14 gave it, where
-    it is first used, and the forms passed over by the list. Nothing for any other finding."""
-    if not isinstance(finding, Undefined):
+    """What `--json` gives beside the finding: each word with the warning G14 gave it and
+    where it is first used, and for the short forms the forms passed over by the list.
+    Nothing for any other finding."""
+    if not isinstance(finding, Listed):
         return {}
-    return {
+    out: dict = {
         "forms": [{"form": form, "message": warning.message,
                    "path": None if warning.path is None else str(warning.path),
                    "line": warning.line, "context": warning.context}
                   for form, warning in finding.forms],
-        "passed_over": list(finding.passed_over),
-        "passed_over_by": LIST.name,
     }  # fmt: skip
+    if isinstance(finding, Undefined):
+        out |= {"passed_over": list(finding.passed_over), "passed_over_by": LIST.name}
+    return out
+
+
+def gathered(
+    found: list[Finding],
+    word: Callable[[Finding], str | None],
+    made: Callable[[list[tuple[str, Finding]]], Finding],
+) -> list[Finding]:
+    """`found` with the findings `word` names a word for made one by `made`, where the first
+    of them stood, the rest dropped; `made` is given each with its word, in `found`'s order.
+    Every other finding is left as it is, and with none named `found` is as it was."""
+    mine = [(said, finding) for finding in found if (said := word(finding)) is not None]
+    if not mine:
+        return list(found)
+    taken = {id(finding) for _word, finding in mine}
+    first = id(mine[0][1])
+    one = made(mine)
+    out: list[Finding] = []
+    for finding in found:
+        if id(finding) not in taken:
+            out.append(finding)
+        elif id(finding) == first:
+            out.append(one)
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -144,27 +186,22 @@ def one_finding(found: list[Finding]) -> list[Finding]:
     of them stood, the forms on the list (`exempt`) passed over. A warning whose message is
     not G14's for one form is left as it is. Where every form is on the list, a note says
     which were passed over (`PASSED`) in their place."""
-    mine = []
-    for finding in found:
-        said = _SAID.match(finding.message) if finding.code == CODE else None
-        if said and finding.gate == "G14":
-            mine.append((said["form"], finding))
-    if not mine:
-        return list(found)
+    return gathered(found, _form, _one)
+
+
+def _form(finding: Finding) -> str | None:
+    """The form G14's warning on one short form used and not defined names; None for any
+    other finding."""
+    said = _SAID.match(finding.message) if finding.code == CODE else None
+    return said["form"] if said and finding.gate == "G14" else None
+
+
+def _one(mine: list[tuple[str, Finding]]) -> Undefined:
     mine = _ordered(mine)
     on_list = exempt()
     kept = [(form, finding) for form, finding in mine if form not in on_list]
     passed = list(dict.fromkeys(form for form, _finding in mine if form in on_list))
-    taken = {id(finding) for _form, finding in mine}
-    first = id(mine[0][1])
-    made = _made(kept, passed) if kept else _noted(mine, passed)
-    out: list[Finding] = []
-    for finding in found:
-        if id(finding) not in taken:
-            out.append(finding)
-        elif id(finding) == first:
-            out.append(made)
-    return out
+    return _made(kept, passed) if kept else _noted(mine, passed)
 
 
 def _ordered(mine: list[tuple[str, Finding]]) -> list[tuple[str, Finding]]:
@@ -195,4 +232,5 @@ def _noted(mine: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
                      hint=None, forms=(), passed_over=tuple(passed))  # fmt: skip
 
 
-__all__ = ["CODE", "LIST", "PASSED", "Undefined", "exempt", "listed", "one_finding"]
+__all__ = ["CODE", "EACH", "LIST", "PASSED", "Listed", "Undefined", "exempt", "gathered",
+           "listed", "one_finding"]

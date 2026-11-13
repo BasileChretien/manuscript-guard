@@ -326,12 +326,21 @@ TABLES = frozenset(
      "gathered", "alignedat"}
 )  # fmt: skip
 
+#: optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also starred, with `!`
+#: and with `e`: optidef.sty (3.1, 2019) sets the variables, the objective and each
+#: `\\addConstraint` in maths, as an `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's
+#: `w_{min}` was read as prose).
+OPTIMISATION = frozenset(
+    f"{problem}{mark}" for problem in ("mini", "maxi", "argmini", "argmaxi")
+    for mark in ("", "*", "!", "e")
+)  # fmt: skip
+
 #: Environments that are maths.
 MATHS = frozenset(
     {"equation", "equation*", "align", "align*", "gather", "gather*", "multline", "multline*",
      "eqnarray", "eqnarray*", "displaymath", "math", "flalign", "flalign*", "alignat",
      "alignat*"}
-)  # fmt: skip
+) | OPTIMISATION  # fmt: skip
 
 #: amsmath's environments, whose `\\\\` takes a length only where it follows at once: its
 #: cases and matrices too, which set amsmath's `\\\\` before their array (round 4 of #380).

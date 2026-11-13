@@ -632,7 +632,8 @@ def caption_spans(source: Source) -> list[tuple[int, int]]:
 
 
 #: A caption, numbered or starred, with the short form a list of figures prints.
-_ANY_CAPTION_ARGUMENT = re.compile(r"\\caption\*?(?![A-Za-z])\s*(?:\[[^\[\]]*\]\s*)?\{")
+_ANY_CAPTION_ARGUMENT = re.compile(
+    r"\\caption\*?(?![A-Za-z])\s*(?:\[(?:[^\[\]]|\[[^\[\]]*\])*\]\s*)?\{")
 
 
 def _arguments(text: str, pattern: re.Pattern[str], start: int, end: int, comments: dict):

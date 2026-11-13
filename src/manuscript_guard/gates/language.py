@@ -70,11 +70,12 @@ from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
-from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
+from manuscript_guard.text.tables import table_lines
 from manuscript_guard.text.title_page import title_page_end
 
 if TYPE_CHECKING:
@@ -1307,6 +1308,10 @@ class _File:
     #: The text of the code spans, everything else NUL, which the code names are read in
     #: beside `printed`.
     code: str = ""
+    #: Where its tables' cells run, which the code names are not read in: a Markdown table of
+    #: the four kinds pandoc reads (`text.tables.table_lines`), a LaTeX `tabular` and its kin
+    #: less its captions and footnotes (`_latex_cells`).
+    tables: tuple[tuple[int, int], ...] = ()
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
     #: The stretch of the file this reads, where a LaTeX file is read in stretches, the text
@@ -1380,9 +1385,23 @@ def _file(
         captions=tuple(glossary.markdown_captions(prose)),
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
+        tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
         title_page=title_page,
     )  # fmt: skip
+
+
+def _markdown_tables(text: str) -> tuple[tuple[int, int], ...]:
+    """Where the lines of a Markdown file's tables run, each line from its start to its
+    break: a pipe, a grid, a simple and a multiline table (`text.tables.table_lines`), read
+    from the masked text, so that one in a fenced block or a comment is none."""
+    lines = table_lines(kept_breaks(text, mask(text)))
+    spans, at = [], 0
+    for number, line in enumerate(text.split("\n")):
+        if number in lines:
+            spans.append((at, at + len(line)))
+        at += len(line) + 1
+    return tuple(spans)
 
 
 #: The statements whose capitals are the authors' initials, by a word of the heading or the
@@ -1513,7 +1532,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
-                initials=whole.initials,
+                tables=whole.cells, initials=whole.initials,
             ))  # fmt: skip
     return files
 
@@ -1538,6 +1557,40 @@ class _LatexFile:
     code: str = ""
     #: The authors' initials its contributions statement names (`_initials`).
     initials: frozenset[str] = frozenset()
+    #: Where its tables' cells run (`_latex_cells`).
+    cells: tuple[tuple[int, int], ...] = ()
+
+
+#: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
+_NOTE_ARGUMENT = re.compile(
+    r"\\(?:table)?footnote(?:text)?(?![A-Za-z])\s*(?:\[[^\[\]]*\]\s*)?\{")
+
+
+def _latex_cells(
+    source: Source, captions: Iterable[tuple[int, int]]
+) -> tuple[tuple[int, int], ...]:
+    """Where a LaTeX file's tables run (the reader's `tables`: a `tabular` and its kin), less
+    the text of each caption and each footnote in them, which is prose: only the cells are no
+    sentence (round 1 of #673, finding 2)."""
+    from manuscript_guard.text.latex.printed import _arguments, _passed_over
+
+    read, comments = _passed_over(source.reading)
+    notes = [(opened + 1, closed) for begun, opened, closed
+             in _arguments(source.text, _NOTE_ARGUMENT, 0, len(source.text), comments)
+             if read(begun)]  # fmt: skip
+    holes = sorted([*captions, *notes])
+    cells: list[tuple[int, int]] = []
+    for start, end in source.reading.tables:
+        at = start
+        for low, high in holes:
+            if high <= at or low >= end:
+                continue
+            if low > at:
+                cells.append((at, low))
+            at = max(at, high)
+        if at < end:
+            cells.append((at, end))
+    return tuple(cells)
 
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
@@ -1557,6 +1610,7 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
                    if regions[bisect_right(starts, span[0]) - 1].scope is not None)  # fmt: skip
     # An RRID's accession is read neither as words nor as a name from the code.
     accessions = _rrids(source.reading.masked)
+    captions = tuple(glossary.latex_captions(source))
     return _LatexFile(
         view=_hide(markdown_view(source, bindings(source)[0]), accessions),
         words=_hide(seen.text, accessions),
@@ -1564,7 +1618,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
-        captions=tuple(glossary.latex_captions(source)),
+        captions=captions,
+        cells=_latex_cells(source, captions),
         glossaries=tuple(glossary.sections(titled, len(source.text))),
         initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
@@ -1945,7 +2000,7 @@ def check_language(
     analysis's, read from the project where they are not given."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
-    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of)
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
              for file in files]  # fmt: skip
     # A contributions statement names its roles as CRediT spells them and a funding
     # statement is worded by the funder, so the spelling is read without those sections.

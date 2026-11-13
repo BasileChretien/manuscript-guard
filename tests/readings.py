@@ -1584,7 +1584,6 @@ def _spelling_edits() -> Reading:
 @reading("code names")
 def _code_names() -> Reading:
     from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
-    from manuscript_guard.gates.language import _latex_read
 
     def code_names(given: dict[str, Any]) -> dict[str, Any]:
         """The names from the code G14 finds in a Markdown file and in a LaTeX file, with the
@@ -1592,20 +1591,55 @@ def _code_names() -> Reading:
         The LaTeX file is read from a folder made for this one run, as G14 reads a LaTeX
         manuscript, and is named `main.tex`."""
         names = Names(frozenset(given["keys"]), dict(given["labels"]), frozenset(given["kept"]))
-        file = _file(given["markdown"])
-        markdown = [Prose(file.path, file.text, file.printed, file.code, file.line_of)]
-        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
-        try:
-            (folder / "main.tex").write_text(given["latex"], encoding="utf-8", newline="")
-            latex = [Prose(Path(read.path.name), read.text, read.printed, read.code, read.line_of)
-                     for read in _latex_read(folder, None)]  # fmt: skip
-        finally:
-            shutil.rmtree(folder, ignore_errors=True)
         return {form: _told(judge_code_names(passages, names, given["stage"]))
-                for form, passages in (("markdown", markdown), ("latex", latex))}  # fmt: skip
+                for form, passages in _code_name_passages(Prose, given).items()}  # fmt: skip
 
     _file("")
     return code_names
+
+
+def _code_name_passages(prose: Any, given: dict[str, Any]) -> dict[str, list[Any]]:
+    """The Markdown file and the LaTeX file of `given` as the code names are read in them:
+    `Prose`, with where its tables run where the source has them (decision 13; the base's
+    `Prose` has no tables). The LaTeX file is read from a folder made for this one run, as
+    G14 reads a LaTeX manuscript, and is named `main.tex`."""
+    from manuscript_guard.gates.language import _latex_read
+
+    def made(path: Path, read: Any) -> Any:
+        tables = {"tables": read.tables} if hasattr(read, "tables") else {}
+        return prose(path, read.text, read.printed, read.code, read.line_of, **tables)
+
+    file = _file(given["markdown"])
+    folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+    try:
+        (folder / "main.tex").write_text(given["latex"], encoding="utf-8", newline="")
+        latex = [made(Path(read.path.name), read) for read in _latex_read(folder, None)]
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    return {"markdown": [made(file.path, file)], "latex": latex}
+
+
+@reading("audit code names")
+def _audit_code_names() -> Reading:
+    """G14's findings on the names from the code, in a Markdown file and in a LaTeX file, as
+    the audit gives them: one finding, with each name's warning (`auditing.code_names`)."""
+    from manuscript_guard.auditing.code_names import one_finding
+    from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
+
+    def audited(given: dict[str, Any]) -> dict[str, Any]:
+        names = Names(frozenset(given["keys"]), dict(given["labels"]), frozenset(given["kept"]))
+        out = {}
+        for form, passages in _code_name_passages(Prose, given).items():
+            found = list(judge_code_names(passages, names, given["stage"]).findings)
+            out[form] = [{"code": f.code, "line": f.line, "message": f.message,
+                          "severity": f.severity, "hint": f.hint,
+                          "forms": [[name, warning.line, warning.message]
+                                    for name, warning in getattr(f, "forms", ())]}
+                         for f in one_finding(found)]  # fmt: skip
+        return out
+
+    _file("")
+    return audited
 
 
 @reading("software")

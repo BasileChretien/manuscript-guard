@@ -31,7 +31,13 @@ expected:
       optidef's problems, mini, maxi, argmini and argmaxi with their starred, `!` and `e`
       forms, are maths (decision 13, 2026-11-13, after tex-econ-em-A2's 98 findings in its
       tabulars and tex-qbio-pe-A2's `w_{min}`); the generated inputs now hold a name in a
-      pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports
+      pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports;
+      a table's caption and a footnote in a tabular's cell are read still (round 1 of #673)
+  - reading: latex words
+    why: >-
+      optidef's problems, `mini!`, `maxi` and the rest, are maths, which G14 reads no word
+      of, where the base read their arguments and constraints as prose (decision 13); the
+      LaTeX inputs now hold a `mini!` and a `maxi` (round 1 of #673, finding 5)
   - reading: written shares
     why: >-
       new with this pull request: a share a sentence writes beside both its counts, "12 of
@@ -287,20 +293,14 @@ expected:
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex printed
     why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+      optidef's problems, `mini!`, `maxi` and the rest, are maths (decision 13), so the
+      printed view no longer holds a problem's arguments and constraints as text; the LaTeX
+      inputs now hold a `mini!` and a `maxi` (round 1 of #673, finding 5)
   - reading: latex places
     why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+      optidef's problems, `mini!`, `maxi` and the rest, are maths (decision 13), so the lines
+      of a problem's arguments and constraints are no longer lines of prose; the LaTeX inputs
+      now hold a `mini!` and a `maxi` (round 1 of #673, finding 5)
   - reading: latex displays cited
     why: >-
       a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
@@ -311,20 +311,9 @@ expected:
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex writing
     why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex words
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+      optidef's problems, `mini!`, `maxi` and the rest, are maths (decision 13), so G6 reads
+      no word of a problem's arguments and constraints; the LaTeX inputs now hold a `mini!`
+      and a `maxi` (round 1 of #673, finding 5)
   - reading: latex pointers
     why: >-
       a construct left open, `{` or `$` among the inputs, is refused where it opens, at the

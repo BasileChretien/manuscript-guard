@@ -10611,6 +10611,12 @@ def _a_longtable_is_no_table_to_the_code_names(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(mask, "TYPED_TABLES", mask.TYPED_TABLES - {"longtable"})
 
 
+def _a_latex_table_s_caption_and_notes_are_cells(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_latex_cells", lambda source, captions: source.reading.tables)
+
+
 def _optidef_s_problems_are_prose(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text.latex import commands, mask
 
@@ -24313,6 +24319,10 @@ BROKEN = {
     ),
     "a longtable is no table to the code names": (
         _a_longtable_is_no_table_to_the_code_names,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a LaTeX table's caption and notes are its cells": (
+        _a_latex_table_s_caption_and_notes_are_cells,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "optidef's problems are prose": (

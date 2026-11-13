@@ -100,8 +100,9 @@ class Prose:
     """One manuscript file as this reading takes it: `printed` is the text G14 reads as
     sentences and headings, NUL elsewhere; `code` is the text of its code spans, NUL
     elsewhere. Both have the file's length, so an offset is the file's. `tables` are where
-    its tables run, whose cells are not read: a Markdown table of the four kinds pandoc
-    reads, a LaTeX `tabular` and its kin (`language._File.tables`)."""
+    its tables' cells run, which are not read: a Markdown table's lines, of the four kinds
+    pandoc reads, and a LaTeX `tabular` and its kin less its captions and footnotes
+    (`language._File.tables`)."""
 
     path: Path
     text: str

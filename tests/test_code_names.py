@@ -357,6 +357,27 @@ def test_a_name_in_a_latex_tabular_s_cell_is_no_name_in_the_prose(project: Path)
     assert [message.split("'")[1] for _name, message in coded(report)] == ["hr_adj_main"]
 
 
+def test_a_latex_table_s_caption_and_footnote_are_read(project: Path) -> None:
+    """Only a table's cells are set aside: a `longtable`'s `\\caption`, which is prose, and a
+    `\\footnote` in a tabular's cell, which LaTeX prints at the foot of the page, are read as
+    they were before the cells were set aside (round 1 of #673, finding 2)."""
+    report = _latex(project, OPEN + (
+        "\\begin{longtable}{ll}\\caption{Loadings of hr\\_adj\\_main}\\\\\na & 1 \\\\\n"
+        "CPI\\_ALL & 2 \\\\\n\\end{longtable}\n"
+        "\\begin{tabular}{ll}\nIOP\\_MANU\\footnote{As age\\_band is coded.} & 1 \\\\\n"
+        "\\end{tabular}\n"
+    ) + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "hr_adj_main", "age_band"]
+
+
+def test_a_markdown_table_s_caption_is_read() -> None:
+    """A pipe table's caption, pandoc's `Table:` line before it or after it, is prose."""
+    text = ("# Results\n\nTable: Loadings of hr_adj_main\n\n| Series | n |\n|---|---|\n"
+            "| CPI_ALL | 2 |\n\n: Loadings by age_band\n")  # fmt: skip
+    assert named(text) == ["hr_adj_main", "age_band"]
+
+
 def test_optidef_s_problems_are_maths(project: Path) -> None:
     """tex-qbio-pe-A2 set its problem in optidef's `mini!`, whose arguments and constraints
     are maths (optidef.sty sets each environment's body in an `align`); the reader took them

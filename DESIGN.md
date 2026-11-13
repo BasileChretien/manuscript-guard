@@ -5917,11 +5917,14 @@ folders), a file's name (a dotted word whose last part reads as an extension,
 div's line, an HTML tag, an attribute with an `=`, a TeX command, a reference link's
 definition, and the label of a reference link the file defines (one nothing defines is
 printed as typed). Each of these was checked against what `pandoc -t plain` prints. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
-`hr\_adj`, is the underscore it prints. A table's cells are not read either: a Markdown table
-of the four kinds pandoc reads (`text.tables.table_lines`), and so a Word table converted to
-one, and a LaTeX `tabular`, `tabular*`, `tabularx`, `tabulary` or `longtable`. A name there
-labels a row or a column, the series' mnemonics of a data paper (decision 13, 2026-11-13:
-tex-econ-em-A2's 98 findings were all in its tabulars). An RRID's accession,
+`hr\_adj`, is the underscore it prints. A table's cells are not read either, and only its
+cells: a Markdown table of the four kinds pandoc reads (`text.tables.table_lines`), and so a
+Word table converted to one, and a LaTeX `tabular`, `tabular*`, `tabularx`, `tabulary` or
+`longtable`. A name there labels a row or a column, the series' mnemonics of a data paper
+(decision 13, 2026-11-13: tex-econ-em-A2's 98 findings were all in its tabulars). A table's
+caption is prose and is read, pandoc's `Table:` line and a `longtable`'s `\caption`, and so
+is a `\footnote` typed in a cell, which LaTeX prints at the foot of the page (round 1 of
+#673). An RRID's accession,
 `RRID:SCR_006571`, is an identifier, and G14 reads it nowhere (#663).
 
 **The audit says them in one finding** (decision 13). `audit` makes G14's warnings on a
@@ -26986,6 +26989,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   configuration file a conversion flattened into prose (`secret_key = "..."`). Each would be
   told from a name in code only by a guess at its shape or its neighbours, and `--known` (or
   `code_names_kept:` in a project) is their remedy. Accepted.
+  - Prose typed in a table's cell is not read for a name either: a Word "Box 1" laid out as a
+    table of one cell, or a note set across a LaTeX table's columns with `\multicolumn`. A
+    cell is not told from a sentence in a cell, so a name there passes. Accepted.
+  - A setext heading whose title holds a pipe, "Ratio p|q of hr_adj" over a line of `---`,
+    is read as a table of one column, since the rule of a pipe table (`text/tables.py`'s
+    `_TABLE_RULE`) takes a bare `---`; its name is then not read. That rule is shared with
+    the other gates that read tables, and stays as it is. Accepted.
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later

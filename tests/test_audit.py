@@ -2202,6 +2202,34 @@ def test_a_latex_footnote_under_the_results_is_searched(tmp_path: Path) -> None:
     assert read is not None and read.compared and read.not_found == []
 
 
+#: The shape of tex-qbio-pe-A1 (decision 17, 2026-11-14): LaTeXTemplates' Stylish Article,
+#: whose class defines `\Abstract` and prints it in its title, and the paper's abstract
+#: written as `\Abstract{...}` in its preamble.
+_STYLISH_CLASS = (
+    "@NeedsTeXFormat{LaTeX2e}\n@ProvidesClass{stylish}\n@LoadClass{article}\n"
+    "@newcommand{@Abstract}[1]{@def@@Abstract{#1}}\n"
+    "@renewcommand{@@maketitle}{{@textbf{@abstractname}@@Abstract}}\n"
+)
+_STYLISH_PAPER = (
+    "@documentclass{stylish}\n@title{A model}\n"
+    "@Abstract{We followed 45 patients for 12 months.}\n@begin{document}\n@maketitle\n"
+    "@section{Introduction}\nIt matters.\n@section{Results}\nWe followed 54 patients for 12 "
+    "months.\n@end{document}\n"
+)
+
+
+def test_a_template_s_abstract_command_has_the_abstract_compared(tmp_path: Path) -> None:
+    """Decision 17 (tex-qbio-pe-A1): a class that defines `\\Abstract` and prints what it is
+    given, the paper's abstract written in it. The audit said no file had a heading that names
+    the Abstract; it now compares it with the Results, and finds 45 nowhere they report."""
+    (tmp_path / "stylish.cls").write_text(_STYLISH_CLASS.replace("@", chr(92)), encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_STYLISH_PAPER.replace("@", chr(92)), encoding="utf-8")
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared
+    assert [c.text for c in read.not_found] == ["45"] and [c.text for c in read.found] == ["12"]
+
+
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not
 #: defined, one word in British spelling and six in American, enough for a paper declared
 #: British to be told it is not (`spelling.MANY`), and a name written as code writes it.

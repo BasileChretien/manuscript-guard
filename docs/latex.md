@@ -146,7 +146,12 @@ page the classes write outside such an environment is passed over too: the runni
 short title in
 `\title[short]{...}`, Springer's `\author*`, Elsevier's `\author{...}[orcid=...]`, its marks
 and CRediT roles, and acmart's CCS concepts, `CCSXML` and `\ccsdesc`. The title itself is
-read.
+read. So is the abstract, under the heading Abstract, which the `audit` compares with the
+Results: the `abstract` environment, a class's `\abstract{...}`, or `\Abstract{...}`, which
+LaTeXTemplates' Stylish Article defines and prints in its title, in the body or in the
+preamble the class prints it from. A class or a preamble that defines `\abstract` or
+`\Abstract` again has it read all the same. No other command's case is folded: `\Section`
+is not `\section`, and an environment `Abstract` is no abstract.
 A TikZ picture's options, coordinates and paths are passed over, as a picture's file is, with
 `\tikzset` and `\tikzstyle`; the text it prints is read: a node's, a label's, a pin's, a
 matrix of nodes' cells and pgfplots' axis labels and legend. So a count typed in a flow

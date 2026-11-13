@@ -1657,6 +1657,8 @@ LATEX_PLACES = (
      "\\end{{abstract}}\\begin{{highlights}}\\item Of {}\\end{{highlights}}"
      "\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
      (False, False, True, True, False)),
+    # A template's `\\Abstract` in the body, which the preamble defines (decision 17).
+    ("\\Abstract{{Of {}}} ", (True,)),
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
@@ -1725,6 +1727,9 @@ LATEX_PREAMBLE_PLACES = (
     # (round 2 of #385: the first was refused, and so was the second).
     ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
     ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+    # A template's `\\Abstract`, which LaTeXTemplates' Stylish Article defines and prints, here
+    # defined by the paper itself, and used in the body too (decision 17, tex-qbio-pe-A1).
+    ("\\newcommand{{\\Abstract}}[1]{{#1}}\n\\Abstract{{Of {}}}\n", (True,)),
     # An encoding other than UTF-8 in a file all of ASCII, and the author's `\\unit` where
     # siunitx is not loaded (2026-10-23).
     ("\\usepackage[latin9]{{inputenc}}\n", ()),
@@ -2458,7 +2463,9 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     drawn, after an abstract with text of its own and words after it, under a title in the
     preamble; and each word, with what the printed view makes of it. Every place is in every
     document, so that a rule broken for one is seen in each. The abstract is in the body or,
-    as a class that prints it from there allows, in the preamble (round 1 of step 6)."""
+    as a class that prints it from there allows, in the preamble (round 1 of step 6). Every
+    document also gives a template's `\\Abstract{...}` in its preamble, which its class
+    defines and the paper does not (decision 17; round 1 of #680)."""
     filler = [*_spaced(FILLER)]
     order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
     between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
@@ -2471,6 +2478,7 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 
     preamble = draw(st.booleans())
     text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    text += f"\\Abstract{{abs {key('abstract')}}}\n"
     abstract = f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\n"
     text += (abstract + "\\begin{document}\n") if preamble else ("\\begin{document}\n" + abstract)
     text += f"after {key('after')}\n"

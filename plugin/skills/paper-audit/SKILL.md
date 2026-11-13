@@ -175,7 +175,8 @@ Discussion with its limitations, a conclusion, a summary of the paper, the title
 back matter and the notes, which may be a stale value or one the paper never reports (or
 one only those give, which are not searched), and
 those matched only as a rounding, and ends with its own chance-match rate; where it says
-"not compared" the paper has no Abstract or no Results heading it could find. Small cells lists
+"not compared" the paper has no Abstract or no Results heading it could find, under that name
+or another it lists ("Experiments", "Numerical results"). Small cells lists
 each count held back ("<5") that a total gives away, with the count it can only be: a
 disclosure to report to the author before the paper goes anywhere, never to work round. Report each section apart; a finding of G6 or G14 is about the words, and
 no evidence about the numbers.

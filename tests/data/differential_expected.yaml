@@ -109,16 +109,14 @@ expected:
       author did not understand (the author's audit, 2026-11-10)
   - reading: abstract against results
     why: >-
-      a percentage of the Abstract written beside both its counts, "164 out of 250 (66%)",
-      "164/250 (65.6%)", "164 of 250 patients (66%)", "66% (n = 164/250)", is held to them
-      and not looked for: one they give is listed as given by them ("from counts"), where it
-      was not found, and one they do not give is listed apart ("off counts") with its
-      arithmetic finding, where it was not found; one beside a count with no denominator,
-      "n = 164 (66%)", is not found as before (the author, 2026-11-11), and so is one beside
-      a count over its denominator, a share over 100 or a year and the next, "45%
-      (2019/20)" (round 1 of #664); the reading lists the three, which the base has not,
-      and its inputs now hold each shape. The entry it
-      replaces, for the sections an Abstract's number is looked for in (#641), is spent
+      a heading whose whole title is one of the names the Results go by elsewhere,
+      "Experiments", "4. Numerical results", "Empirical analysis" and the rest of
+      `RESULTS_LIKE`, is the Results to the Abstract against Results where the section
+      searches, so the Abstract is compared where the base said "no file has a Results
+      heading outside the Abstract"; where it still is not, the reason names those headings
+      (Basile, 2026-11-13, after tex-astro-ga-A2, tex-cs-lg-A1 and tex-stat-ap-B1 of the
+      real-paper corpus); the inputs now hold a paper for each name and each near miss. The
+      entry it replaces, for the percentages beside their counts (#664), is spent
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the

@@ -21540,6 +21540,88 @@ def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) 
     patch.setattr(reader, "_NESTED", 1)
 
 
+# ------------------------------------------------------------------------------- RRIDs
+
+from generated import rrid_papers  # noqa: E402
+
+
+@holds(50, rrid_papers())
+def test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else(
+    drawn: tuple[dict[str, str], dict[str, str], list, list],
+) -> None:
+    """An RRID of each form, in the main text and the supplement, Markdown and its LaTeX twin,
+    is read at its file and line, its accession in the case it is written, a space or a
+    line break or nothing after the colon, the mark after it left out; one in a comment or
+    in code is not read (`rrids.typed`)."""
+    markdown, latex, read_markdown, read_latex = drawn
+    read = READINGS["rrids typed"]()
+    assert read(markdown) == read_markdown
+    assert read(latex) == read_latex
+
+
+def _an_rrid_keeps_the_mark_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    inner = rrids._ACCESSION.removeprefix("(?P<accession>").removesuffix(")")
+    accession = rf"(?P<accession>(?:{inner})[.,;:)]?)"
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
+
+
+def _an_rrid_is_case_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "rrid_of", lambda found: "RRID:" + found.group("accession").casefold())
+
+
+def _the_supplement_s_rrids_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "PARTS", (False,))
+
+
+def _an_rrid_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+    shown = rrids.latex_view
+
+    def with_comments(source) -> str:
+        chars = list(shown(source))
+        for start, end in source.reading.comments:
+            chars[start:end] = source.text[start:end]
+        return "".join(chars)
+
+    patch.setattr(rrids, "latex_view", with_comments)
+
+
+def _any_word_after_a_hyphen_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    # Round 1's joiner, which cut an accession typed in small letters (round 2 of #658).
+    accession = rrids._ACCESSION.replace(rrids._JOIN, r"(?:[_:.]|-(?![a-z]+(?![A-Za-z0-9])))")
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
+
+
+def _a_dot_before_a_letter_joins_rrids_parts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids  # the old `[_:.]` joiner (round 3 of #658)
+
+    joined = rrids._ACCESSION.replace(r"[_:]|\.(?=[0-9])", "[_:.]")
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + joined))
+
+
+def _an_rrid_in_a_code_span_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans", lambda text: [])
+
+
+def _no_space_is_read_after_the_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._ACCESSION))
+
+
 from generated import TRACKED_KINDS, tracked_documents  # noqa: E402
 
 #: Why each correction a `tracked_documents` document holds and the copy cannot is left out.
@@ -21615,6 +21697,38 @@ def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "an RRID keeps the punctuation after it": (
+        _an_rrid_keeps_the_mark_after_it,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID's accession is case-folded": (
+        _an_rrid_is_case_folded,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "the supplement's RRIDs are not read": (
+        _the_supplement_s_rrids_are_not_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID in a comment is read": (
+        _an_rrid_in_a_comment_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "a dot before a letter joins an RRID's parts": (
+        _a_dot_before_a_letter_joins_rrids_parts,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "any word of small letters after a hyphen ends an RRID": (
+        _any_word_after_a_hyphen_ends_an_rrid,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID in a code span is read": (
+        _an_rrid_in_a_code_span_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "no space is read after an RRID's colon": (
+        _no_space_is_read_after_the_colon,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
     "a typed table's cells inside maths are maths": (
         _a_table_inside_maths_is_maths,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,

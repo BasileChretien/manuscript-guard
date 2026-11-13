@@ -921,6 +921,7 @@ NAMED_NOWHERE = {
     "checks/decisions.csv": "written by `checker` when the answers come back",
     "checks/bundles.csv": "written by `checker build`, a row for each page",
     "checks/recap.md": "written by `checker recap`",
+    "literature/rrids/": "written by `lookup --resources`",
     "profiles/journals/journal-of-examples.yaml": "an example of a profile's name",
     "profiles/journals/styles/": "written by `style`",
     "supplementary/S1.md": "an example of a supplement's file",

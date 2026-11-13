@@ -399,6 +399,8 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
     (empty / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
     for argv in (
         ("review", "{project}"), ("lookup", "{project}", "--journals"),
+        # The RRIDs a LaTeX manuscript types are read as G7 reads them.
+        ("lookup", "{project}", "--resources"),
         # A design round reads the plan, and a design override is no G15 finding (round 1 of
         # #404).
         ("review", "{project}", "--design", "--run"),

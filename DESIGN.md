@@ -8885,6 +8885,63 @@ the population, the exposure and the analysis are the registered ones, and that 
 for a change is a good one: these are the co-authors' and the panel's, read against the record
 kept. A remit for the panel and the co-author checker's items that put the record beside the
 Methods are the next step, not yet built.
+
+## A typed RRID is looked up once, and the answer kept
+
+A Research Resource Identifier names an antibody, a cell line, an organism, a plasmid or a
+tool, and a paper cites one as "RRID:AB_2298772". An RRID mistyped points the reader at
+another resource or at nothing, and a cell line cited by its RRID may be one Cellosaurus has
+long recorded as contaminated or misidentified. Basile decided on 2026-11-12 that only the
+RRIDs a manuscript types are checked: a resource named with none is not looked for, since a
+check for presence would have to guess which nouns are resources.
+
+**The reading.** `rrids.typed` reads "RRID:" in capitals, a space, a no-break space, a line
+break or nothing after the colon, then the accession: the authority's prefix and what it
+issued, its parts joined by `_`, `:`, `.` (before a digit only) or `-`, each joining mark
+followed by a letter or a digit, so that the full stop, comma, colon, semicolon or bracket
+after it is left out, and a hyphen before a word of four small letters or more, with no `:`,
+`_` or `-` after it, ending it ("RRID:CVCL_0030-derived cells"); or a
+single part of letters then digits (`SAMN12345678`). The form is written from the resolver's
+syntax, identifiers.org's `^RRID:[a-zA-Z]+.+$` for the namespace `rrid`, and from the forms
+its authorities issue (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`,
+`ZFIN_ZDB-GENO-…`, `BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-…`, `NXR_0.0005`,
+`SAMN…`; round 1 of #658 added the last two and the hyphen's rule). The accession is kept in
+the case it is written. Both documents are read,
+Markdown as `masking.mask` leaves it with its code spans blanked too, LaTeX as its reader
+masks it with each `\verb` and `\texttt` blanked and `AB\_1` read as `AB_1`, a table's cells
+included. The generated inputs hold an RRID of every form, gap, trailing mark and case in
+both documents, and an RRID in a comment and in code in each, in Markdown and as its LaTeX
+twin (`tests/generated.py`, `rrid_papers`).
+
+**The lookup.** `manuscript-guard lookup --resources` asks the RRID resolver,
+`https://scicrunch.org/resolver/RRID:<accession>.json`, once for each RRID, and Cellosaurus,
+`https://api.cellosaurus.org/cell-line/<CVCL_…>?format=json&fields=ac,id,cc`, for a cell line.
+Neither needs a key; Cellosaurus's data are CC BY 4.0, and RRIDs.org states no licence for the
+resolver's answers but that the identifiers are free to use. The shapes, read on 2026-11-12:
+the resolver answers HTTP 200 with `hits.total`, a number, and `hits.hits[]._source` with
+`item.name`, `item.types[].name` and `rrid.curie` and `rrid.properCitation`, several hits for
+one RRID where several vendors sell it (two for RRID:AB_2298772, thirty for RRID:CVCL_0030);
+one it does not know is HTTP 404. Cellosaurus answers `Cellosaurus.cell-line-list[]`, each
+line with `accession-list`, `name-list` and `comment-list[]` of `category` and `value`, a
+problematic line with a comment of category "Problematic cell line" ("Contaminated. Shown to
+be a HeLa derivative ..." for KB, CVCL_0372); an accession it does not have is HTTP 404. The
+record, `literature/rrids/<accession>.yaml` (`rrid.schema.json`), keeps the RRID as written,
+the day, whether the resolver knew it, its `total` and up to fifty of its records (name,
+types, proper citation), Cellosaurus's line, name and problems with its licence, and an
+`answers_sha256`. An outage, a timeout, a 429 or an answer of another shape records nothing
+for that RRID, and the command says so and exits 1: an RRID the resolver did not answer for is
+never written down as unknown. Each request has the lookup's time limit, at most one a second
+goes to each host, and the RRID is the whole of what is sent, with a User-Agent of
+"manuscript-guard/<version>".
+
+**The findings**, G7's, each at the first place the RRID is typed and a warning at every stage,
+as G7's `lookup-missing` is: `rrid-not-looked-up` (no record, which is also what an outage
+leaves), `rrid-unresolved` (the resolver does not know it) and `cell-line-problematic`
+(Cellosaurus's comment quoted). A record changed by hand, or one that is another RRID's, is
+not read and is said (`rrid-record-edited`, `rrid-record-misfiled`, warnings); one that is no
+record fails as every contract does. A record of an RRID the manuscript no longer types is not
+read. `next` sends the three to `methods-writer`, with `lookup --resources`.
+
 ## The data dictionary is one contract with three readers
 
 A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
@@ -27203,6 +27260,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the rest. The text report, which a screen reader reads well, is shown only where the PDF
   could not be made. Accepted.
 
+- **Only an RRID typed with its label is read, and the resolver's answer is taken as it
+  is.** Basile decided on 2026-11-12 that only the RRIDs the manuscript types are checked
+  (`rrids.py`, `gates/rrids.py`). Pinned by
+  `tests/test_properties.py::test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else`.
+  - An RRID written without "RRID:" in capitals and its colon is not read: "AB_2298772"
+    alone, "RRIDs: AB_1, AB_2", "rrid:AB_1", "RRID AB_1", and one with two spaces after the
+    colon. Accepted.
+  - The gap after the colon is one whitespace character or one line break, and the accession
+    has to follow it: a wrapped line with an indent, "(RRID:" then "  AB_2298772)", one in
+    bold, "**RRID:**AB_2298772", and one in a link, "RRID:[AB_2298772](...)", are not read.
+    Accepted.
+  - An accession whose last part is four small letters or more after a hyphen, with no `:`,
+    `_` or `-` after it, is read without it: "RRID:Addgene_12345-abcd" is RRID:Addgene_12345,
+    the rule that leaves "-derived" out. Such a word with `-`, `_` or `:` after it joins
+    ("RRID:CVCL_0030-cell-derived" is CVCL_0030-cell), and one of three small letters or
+    fewer ("-ish", "-ko", "-wt") or of capitals ("-GFP", "-KO") is read into it. Accepted.
+  - A citation number typed straight after an RRID's full stop, "RRID:AB_2298772.12", is read
+    into the accession, since a dot before a digit joins its parts. Accepted.
+  - A "Problematic cell line" comment whose value is no string, or blank, is dropped, and the
+    line is recorded with no problem, as before round 1 of #658. Accepted.
+  - The resolver's answer is taken as it gives it: `found` says only that it gave a record,
+    and a record whose `curie` is another RRID than the one asked, an old identifier it maps
+    to a new one or one written in other case, is kept and not compared. Accepted.
+  - One hit of the resolver's without a usable `_source` makes the whole answer no answer,
+    so an RRID whose answer always holds one is never recorded and stays not looked up.
+    Accepted.
+  - A line Cellosaurus marks problematic only after the record was written is not known until
+    `lookup --resources --again` asks again: an RRID record does not age, and no finding says
+    it is old. Accepted.
+  - Two RRIDs that differ only in case, or in a `:` or a `.` against a `-`, share one record
+    file, and the one whose record is not there is said to be misfiled
+    (`rrid-record-misfiled`); each run of `lookup --resources` asks for that one again and
+    writes its record over the other's, so the two rewrite each other's record on every run.
+    Pinned by `tests/test_rrid_lookup.py::test_a_record_edited_or_of_another_rrid_is_not_read`.
+  - In Markdown, an RRID in an indented code block, or in a `~~~` block that `_code_spans`
+    pairs with prose, is read as prose. Accepted.
+  - In LaTeX, nothing is read past where the reader stopped in a file: `lookup --resources`
+    names the file and the line, and `check` says nothing of an RRID after it, where BUILD
+    reports the refusal. An RRID in a float's cells is read, as in prose. Accepted.
+  - G2 and G14 read a typed RRID with a copy of this reading (`data/structural.yaml`,
+    `gates/language.py`, from #663, the entry below), which changes with `rrids.py` until one
+    imports the other. Accepted.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name

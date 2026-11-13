@@ -12838,6 +12838,8 @@ _READS_LATEX = (
     # It reads each figure a document places, `\includegraphics` through `\graphicspath`
     # as a Markdown image is (#630).
     "check_placed",
+    # It reads the RRIDs each `.tex` file types, as the reader masks it, `AB\_1` as `AB_1`.
+    "check_rrids",
     # It reads each table of each document with its float's caption, a `tabular` as a pipe
     # table is (`text/captioned.py`).
     "check_baseline",
@@ -33911,6 +33913,127 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     _ai_use_required(project)
     _ai_use_stated(project, "## Use of AI\n\nNo AI tool was used.")
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
+
+
+# -------------------------------------------------------------------- RRIDs (G7, typed only)
+#
+# An RRID the manuscript types is held to what `lookup --resources` recorded of it: one the
+# resolver does not know, a cell line Cellosaurus marks problematic, and one with no record,
+# in the main text, the supplement and a LaTeX manuscript alike. Each is a warning at every
+# stage, as G7's `lookup-missing` is. An outage records nothing, so it leaves the RRID with
+# no record rather than one the resolver "does not know".
+
+_KB_PROBLEM = "Contaminated. Shown to be a HeLa derivative (PubMed=4864103)."
+
+
+def _rrid_record(root: Path, rrid: str, *, known: bool = True, problems: tuple = ()) -> None:
+    from manuscript_guard.rrids import SCHEMA, answers_digest, write_record
+
+    record: dict = {"schema": SCHEMA, "rrid": rrid, "asked_on": "2026-11-12",
+                    "status": "found" if known else "absent", "total": int(known),
+                    "hits": [{"curie": rrid, "name": "KB", "types": ["cell line"]}] if known
+                    else []}  # fmt: skip
+    if rrid.startswith("RRID:CVCL_"):
+        record["cellosaurus"] = {"status": "found", "accession": rrid[5:], "name": "KB",
+                                 "problems": list(problems), "licence": "CC BY 4.0"}  # fmt: skip
+        if not problems:
+            del record["cellosaurus"]["problems"]
+    write_record(load_project(root)[0], {**record, "answers_sha256": answers_digest(record)})
+
+
+def _rrid_typed(root: Path, text: str, *, supplement: bool = False) -> None:
+    folder = root / "manuscript"
+    path = folder / "supplementary" / "S1_code_lists.md" if supplement else folder / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + f"\n{text}\n", encoding="utf-8")
+
+
+def _rrid_findings(root: Path, stage: str = "drafting") -> list[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.severity, Path(f.path).name) for f in report.findings
+                  if f.code.startswith("rrid-") or f.code == "cell-line-problematic")  # fmt: skip
+
+
+def test_an_rrid_the_resolver_does_not_know_warns_at_every_stage(project: Path) -> None:
+    _rrid_typed(project, "Neurons were stained with anti-NeuN (RRID:AB_0000000000).")
+    _rrid_record(project, "RRID:AB_0000000000", known=False)
+    for stage in ("drafting", "submission"):
+        assert _rrid_findings(project, stage) == [("rrid-unresolved", "warn", "main.md")]
+
+
+def test_a_cell_line_cellosaurus_marks_problematic_warns_and_quotes_it(project: Path) -> None:
+    from manuscript_guard.gates.rrids import check_rrids
+
+    _rrid_typed(project, "KB cells (RRID:CVCL_0372) were used.")
+    _rrid_record(project, "RRID:CVCL_0372", problems=(_KB_PROBLEM,))
+    assert _rrid_findings(project, "submission") == [("cell-line-problematic", "warn", "main.md")]
+    [said] = check_rrids(load_project(project)[0]).findings
+    assert _KB_PROBLEM in said.message
+
+
+def test_an_rrid_with_no_record_warns(project: Path) -> None:
+    _rrid_typed(project, "Analyses used GraphPad Prism (RRID: SCR_002798).")
+    assert _rrid_findings(project, "submission") == [("rrid-not-looked-up", "warn", "main.md")]
+    _rrid_record(project, "RRID:SCR_002798")
+    assert _rrid_findings(project, "submission") == []
+
+
+def test_an_rrid_in_the_supplement_is_held_to_its_record(project: Path) -> None:
+    _rrid_typed(project, "HeLa (RRID:CVCL_0030) and KB (RRID:CVCL_0372).", supplement=True)
+    _rrid_record(project, "RRID:CVCL_0372", problems=(_KB_PROBLEM,))
+    assert _rrid_findings(project) == [
+        ("cell-line-problematic", "warn", "S1_code_lists.md"),
+        ("rrid-not-looked-up", "warn", "S1_code_lists.md"),
+    ]
+
+
+def test_an_rrid_in_a_latex_manuscript_is_held_to_its_record(project: Path) -> None:
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\nKB cells (RRID:CVCL\\_0372) and "
+        "anti-NeuN (RRID:~AB\\_0000000000). % RRID:SCR\\_002798\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    supplement = project / "manuscript" / "supplementary"
+    supplement.mkdir(exist_ok=True)
+    (supplement / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nPrism, RRID:SCR\\_002798.\n"
+        "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    _rrid_record(project, "RRID:CVCL_0372", problems=(_KB_PROBLEM,))
+    _rrid_record(project, "RRID:AB_0000000000", known=False)
+    assert _rrid_findings(project) == [
+        ("cell-line-problematic", "warn", "main.tex"),
+        ("rrid-not-looked-up", "warn", "main.tex"),
+        ("rrid-unresolved", "warn", "main.tex"),
+    ]
+    found = {f.code: f.path.relative_to(project).as_posix()
+             for f in _rrid_report(project)}  # fmt: skip
+    assert found["rrid-not-looked-up"] == "manuscript/supplementary/main.tex"
+
+
+def _rrid_report(root: Path) -> list:
+    from manuscript_guard.gates.rrids import check_rrids
+
+    return list(check_rrids(load_project(root)[0]).findings)
+
+
+def test_an_outage_records_nothing_and_leaves_the_rrid_not_looked_up(project: Path) -> None:
+    from manuscript_guard.lookup import resources
+    from manuscript_guard.lookup.http import NoAnswer
+    from manuscript_guard.lookup.run import Pacer
+    from manuscript_guard.rrids import record_path
+
+    def down(request, timeout):
+        raise NoAnswer(f"no answer within {timeout:g} s")
+
+    _rrid_typed(project, "Neurons were stained with anti-NeuN (RRID:AB_2298772).")
+    loaded = load_project(project)[0]
+    written, late = resources.run(loaded, resources.plan(loaded), transport=down,
+                                  pacer=Pacer(sleep=lambda s: None), said=lambda s: None)
+    assert written == [] and len(late) == 1
+    assert not record_path(loaded, "RRID:AB_2298772").exists()
+    assert _rrid_findings(project, "submission") == [("rrid-not-looked-up", "warn", "main.md")]
 
 
 # ---------------------------------------------------------- an RRID is an identifier (G2, G14)

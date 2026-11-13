@@ -111,6 +111,7 @@ from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_ma
 from manuscript_guard.gates.placed_figures import check_placed
 from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
+from manuscript_guard.gates.rrids import check_rrids
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.software import check_software
 from manuscript_guard.gates.software_methods import check_software_cited
@@ -216,6 +217,8 @@ def _gate_run(
         ("G7", lambda: check_currency(project, chosen, literature)),
         ("G7", lambda: check_weak_sources(project)),
         ("G7", lambda: check_recycling(project, chosen)),
+        # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
+        ("G7", lambda: check_rrids(project)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_boxes(project, namespace, chosen)),
         ("G4", lambda: check_shortlist(project)),
@@ -5437,10 +5440,12 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     from manuscript_guard.lookup import run as lookup
 
     project, _ = load_project(args.path)
-    if sum(map(bool, (args.journals, args.registrations, args.paper))) > 1:
-        print("manuscript-guard: ask for one of --journals, --registrations and --paper",
-              file=sys.stderr)  # fmt: skip
+    if sum(map(bool, (args.journals, args.registrations, args.paper, args.resources))) > 1:
+        print("manuscript-guard: ask for one of --journals, --registrations, --paper and "
+              "--resources", file=sys.stderr)  # fmt: skip
         return 2
+    if args.resources:
+        return _lookup_resources(project, args)
     if args.paper:
         return _lookup_paper(project, args)
     if args.journals:
@@ -5798,6 +5803,53 @@ def _lookup_registrations(project, args: argparse.Namespace) -> int:
     if late:
         print(f"{late} had an answer that did not come; `lookup --registrations` asks again "
               "for those")  # fmt: skip
+        return 1
+    return 0
+
+
+def _lookup_resources(project, args: argparse.Namespace) -> int:
+    """`lookup --resources`: each RRID the manuscript types asked of the RRID resolver, and a
+    cell line of Cellosaurus too; an answer that did not come is not recorded."""
+    from manuscript_guard.contracts._schema import Unreadable
+    from manuscript_guard.gates.numbers import _is_latex
+    from manuscript_guard.lookup import resources
+    from manuscript_guard.rrids import is_cell_line, unread_parts
+
+    empty = None if _is_latex(project) else why_no_manuscript(project)
+    if empty:
+        print(f"manuscript-guard: nothing to look up: {empty}", file=sys.stderr)
+        return 2
+    try:
+        planned = resources.plan(project, again=args.again)
+    except Unreadable as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    for path, line, why in unread_parts(project):
+        try:
+            shown = path.relative_to(project.root).as_posix()
+        except ValueError:  # `paths:` can put the manuscript outside the project
+            shown = str(path)
+        print(f"{shown}: not read past line {line} ({why}), so an RRID after it is not looked "
+              "up")  # fmt: skip
+    if not planned:
+        print("the manuscript types no RRID, so nothing was looked up")
+        return 0
+    for one in planned:
+        if one.skipped and one.skipped != "up to date":
+            print(f"{one.rrid}: not looked up: {one.skipped}")
+    due = [one for one in planned if not one.skipped]
+    if args.dry_run:
+        for one in due:
+            also = ", and Cellosaurus" if is_cell_line(one.rrid) else ""
+            print(f"{one.rrid}: would ask the RRID resolver{also} ({one.why})")
+        print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
+        return 0
+    written, late = resources.run(project, planned)
+    up_to_date = sum(1 for one in planned if one.skipped == "up to date")
+    print(f"{len(written)} looked up, {up_to_date} up to date; records in literature/rrids/")
+    if late:
+        print(f"{len(late)} were not recorded (no answer, or an answer of another shape); "
+              "`lookup --resources` asks again for those")  # fmt: skip
         return 1
     return 0
 
@@ -8136,6 +8188,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask Crossref about the paper's own DOI, paper.yaml's publication.doi, instead, "
         "and keep the answer in communication/lookups/ for `communicate check`",
+    )
+    lookup.add_argument(
+        "--resources",
+        action="store_true",
+        help="ask the RRID resolver about each RRID the manuscript types, and Cellosaurus "
+        "about each cell line among them, instead, and keep the answers in literature/rrids/",
     )
     lookup.set_defaults(func=cmd_lookup)
 

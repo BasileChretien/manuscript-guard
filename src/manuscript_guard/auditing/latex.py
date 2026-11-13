@@ -113,6 +113,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     folders: dict[Path, tuple[dict, dict, dict, frozenset, str | None]] = {}
     decoded: dict[tuple[Path, str], tuple[dict, dict, dict, frozenset, str | None]] = {}
     unfollowed: dict[Path, list[str]] = {}
+    inside: dict[Path, list[str]] = {}
     for entry in entries:
         folder = entry.parent
         if folder not in folders:
@@ -149,6 +150,8 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             ]
         read.trees.append(Tree(entry, folder, document, tuple(mine), named))
         unfollowed = {**_unfollowed(document, files, name, folder), **unfollowed}
+        for path, blocks in _inside_blocks(document, files, name, folder).items():
+            inside.setdefault(path, []).extend(blocks)
         classed.update(folder / path for path in document.classes)
         # A refusal counts only in a file the entry reads. One that holds a document of its
         # own is an entry, or passed over, and so is one nothing inputs: refused there, each
@@ -161,6 +164,11 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 continue
             text = texts[where]
             line = text.count("\n", 0, refusal.offset) + 1
+            if refusal.end >= 0:
+                # A block skipped to its end, and the file read on past it (2026-11-13).
+                read.unreadable.append(f"{where}: {_lines(text, refusal)} skipped, which no "
+                                       f"check read: {refusal.message}")  # fmt: skip
+                continue
             # One the tree makes, an input it cannot follow or an encoding, leaves the file
             # read past it (round 1 of #637: it was said not to be).
             read.unreadable.append(
@@ -189,6 +197,14 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"{path.as_posix()}: no file the audit read inputs it, so it was not read; "
                 f"{', and '.join(dict.fromkeys(stopped_in))}, and what a file inputs past "
                 "where it stopped is not followed"
+            )
+        elif blocks := inside.get(path):
+            # The paper inputs it, from a block no check reads (round 1 of #674: the advice
+            # was to input it, which the paper did).
+            read.passed_over.append(
+                f"{path.as_posix()}: it is input only from inside a block the reader skipped "
+                f"({', '.join(dict.fromkeys(blocks))}), so it was not read; input it outside "
+                "the block, or name it"
             )
         else:
             read.passed_over.append(
@@ -221,6 +237,36 @@ def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> di
     return said
 
 
+#: An `\\input` or an `\\include` with its path in braces, as a skipped block holds one.
+_BLOCK_INPUT = re.compile(r"\\(?:input|include)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
+#: A comment, to its line's end, which inputs nothing.
+_BLOCK_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+
+
+def _inside_blocks(document: Document, files: dict, entry: str,
+                   folder: Path) -> dict[Path, list[str]]:  # fmt: skip
+    """Each file an `\\input` or an `\\include` inside a block the reader skipped names, by
+    its path, with the block, as `file, lines A-B`: no check read the block, so the reader
+    followed none of them (round 1 of #674)."""
+    from manuscript_guard.text.latex.mask import Input
+
+    said: dict[Path, list[str]] = {}
+    for source in document.sources:
+        if source.loose:
+            continue
+        for block in source.reading.skipped:
+            held = _BLOCK_COMMENT.sub(lambda found: " " * len(found.group(0)),
+                                      source.text[block.offset : block.end])  # fmt: skip
+            for put in _BLOCK_INPUT.finditer(held):
+                at = block.offset + put.start()
+                target = _target(entry, Input(at, at + len(put.group(0)), put.group(1).strip(),
+                                              True, ()), "", files)[0]  # fmt: skip
+                if target is not None:
+                    said.setdefault(folder / target, []).append(
+                        f"{source.path}, {_lines(source.text, block)}")
+    return said
+
+
 def _stops(document: Document) -> set[tuple[str, Refusal]]:
     """Each refusal of `document` at which its file's reading stopped, with the file's path:
     not one the tree makes, which leaves the file read past it."""
@@ -242,6 +288,29 @@ def stopped(trees: list[Tree]) -> list[tuple[str, int]]:
             one = (where, texts[where].count("\n", 0, refusal.offset) + 1)
             if one not in said:
                 said.append(one)
+    return said
+
+
+def _lines(text: str, block: Refusal) -> str:
+    """The lines a skipped block runs over, its first to the one its end stands on: "line 4"
+    or "lines 4-9"."""
+    first = text.count("\n", 0, block.offset) + 1
+    last = text.count("\n", 0, max(block.end - 1, block.offset)) + 1
+    return f"line {first}" if first == last else f"lines {first}-{last}"
+
+
+def skipped(trees: list[Tree]) -> list[tuple[str, str]]:
+    """Each block a tree's reader skipped in a file it reads, by the file's path in the folder,
+    with the lines it runs over, once: what the audit's summary says beside where a file
+    stopped, since no check read those lines (2026-11-13)."""
+    said: list[tuple[str, str]] = []
+    for tree in trees:
+        texts = {source.path: source.text for _path, source in tree.files}
+        for where, refusal in tree.document.refusals:
+            if where in texts and refusal.end >= 0:
+                one = (where, _lines(texts[where], refusal))
+                if one not in said:
+                    said.append(one)
     return said
 
 

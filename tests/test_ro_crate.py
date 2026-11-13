@@ -591,6 +591,24 @@ def test_a_row_past_a_refusal_says_no_heading_is_known(project: Path) -> None:
     assert f"manuscript/main.tex, {PAST_REFUSAL} |" in rows
 
 
+def test_a_row_past_a_skipped_block_keeps_its_heading(project: Path) -> None:
+    """Round 1 of #674: a block the reader skips in the body, read on past, was taken for the
+    first refusal, and every row after it said no heading was known."""
+    from manuscript_guard.deposit.bound import bound_rows
+
+    ready(project)
+    _latex(project)
+    (project / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nOf "
+        "\\mg{results.cohort.n_reports} reports.\n\\makeatletter\\makeatother\n"
+        "\\section{Results}\nAn odds ratio of \\mg{results.ror.point}.\n\\end{document}\n",
+        encoding="utf-8")  # fmt: skip
+    loaded, _ = load_project(project)
+    found = [(row.key, row.section, row.past_refusal) for row in bound_rows(loaded)
+             if not row.supplement]  # fmt: skip
+    assert found == [("cohort.n_reports", "Methods", False), ("ror.point", "Results", False)]
+
+
 def test_a_file_nothing_inputs_is_not_in_bound_md(project: Path) -> None:
     """Nor warned of where nothing is refused: a draft kept beside the paper, which `check`
     already warns of, is no binding BOUND.md failed to place."""

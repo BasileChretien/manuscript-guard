@@ -18,7 +18,10 @@ audit it alone. A file no paper inputs is named under "Passed over" and not read
 a file a class or a package inputs. A `thebibliography` is cut as a reference list is. Where
 the LaTeX reader refuses a construct in a file the paper reads, nothing of that file past it
 is read by any check: the file is named under "Could not read", which `--strict` counts, and
-the summary's line for the words says it was not read past that line. A paper that declares
+the summary's line for the words says it was not read past that line. A `\makeatletter` in
+the body, or a conditional, is skipped to its `\makeatother` or its `\fi` rather than stopping
+the reading: no check reads the lines it skips, which are named there in the same way, and
+the file is read on past them. A paper that declares
 latin1, latin9, cp1252 or ansinew as its input encoding is read in it.
 
 A PDF named is read through `pdftotext`, its running heads, page numbers and margin line

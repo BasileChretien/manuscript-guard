@@ -551,7 +551,10 @@ def _read_tree(
         place = len(sources)
         sources.append(Source(path, text, reading, under, environments=environments,
                               imported=imported))  # fmt: skip
-        refusals.extend((path, refusal) for refusal in reading.refusals)
+        # A block skipped is the tree's refusal: the file is read on past it, and the paper,
+        # whose gates read nothing of it, still fails BUILD (Basile, 2026-11-13).
+        refusals.extend((path, refusal) for refusal in sorted(
+            (*reading.skipped, *reading.refusals), key=lambda refusal: refusal.offset))
         for _at, name in reading.packages:
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
             if name != VALUES and style in packages and style not in seen:

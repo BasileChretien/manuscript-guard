@@ -67,15 +67,18 @@ def test_explain_refuses_a_tex_the_gates_do_not_read(
     assert "Markdown manuscript" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("above", ["", "\\makeatletter\\makeatother\n"],
+                         ids=["plain", "past-a-skipped-block"])  # fmt: skip
 def test_bind_offers_and_writes_a_latex_binding(
-    project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
+    project: Path, twin: Path, capsys: pytest.CaptureFixture[str], above: str
 ) -> None:
     """A typed number that reads as one published value is offered as `\\mg{...}`, and
     `--apply` writes that; one in a siunitx command, where the reader refuses a binding, is
-    left as typed."""
+    left as typed, below a block the reader skips too, which is no refusal that stops the
+    reading (round 1 of #674: it was taken for the file's first, and the binding written)."""
     point = _display(project, "results.ror.point")
     _typed_before(twin, "\\begin{document}", "\\usepackage{siunitx}")
-    typed = f"The estimate was {point} again, and \\num{{{point}}} in siunitx.\n"
+    typed = f"{above}The estimate was {point} again, and \\num{{{point}}} in siunitx.\n"
     _typed_before(twin, "\\section{Discussion}", typed)
     assert main(["bind", str(project)]) == 1
     said = capsys.readouterr().out
@@ -98,9 +101,11 @@ def test_bind_writes_nothing_past_a_files_first_refusal(
     project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Past a refusal the reader reads nothing of the file: a number typed there is named,
-    and not offered, nor written (round 1 of step 12; Basile, 2026-11-11)."""
+    and not offered, nor written (round 1 of step 12; Basile, 2026-11-11). A conditional with
+    no `\\fi` in the file is one: with its `\\fi`, it is skipped, and the file read on past it
+    (2026-11-13)."""
     point = _display(project, "results.ror.point")
-    typed = f"\\ifdefined\\x\\fi\nThe estimate was {point} again.% old: {point}\n"
+    typed = f"\\ifdefined\\x\nThe estimate was {point} again.% old: {point}\n"
     _typed_before(twin, "\\section{Discussion}", typed)
     before = twin.read_text(encoding="utf-8")
     main(["bind", str(project)])

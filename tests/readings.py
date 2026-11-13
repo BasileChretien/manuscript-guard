@@ -153,6 +153,20 @@ def _latex_refusals() -> Reading:
     return lambda text: [[r.code, r.offset] for r in read(text).refusals]
 
 
+@reading("latex skipped")
+def _latex_skipped() -> Reading:
+    # `_block_end` came with the blocks skipped, so that a base without them has no such
+    # reading (2026-11-13).
+    from manuscript_guard.text.latex.mask import _block_end, read  # noqa: F401
+
+    def skipped(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"skipped": [[s.offset, s.end, s.message] for s in reading.skipped],
+                "refusals": [[r.offset, r.message] for r in reading.refusals]}  # fmt: skip
+
+    return skipped
+
+
 @reading("latex sections")
 def _latex_sections() -> Reading:
     # `Heading` came with the headings, so that a base without them has no such reading.

@@ -182,7 +182,8 @@ def test_tex_in_the_markdown_the_reader_refuses_is_not_built(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Raw TeX the Word writer drops reaches the `.tex` and takes effect: a conditional in the
-    body is refused there as in a LaTeX manuscript (step 11, check 2)."""
+    body is refused there as in a LaTeX manuscript (step 11, check 2), though the reader skips
+    it to its `\\fi` and reads on, since no check reads what it holds (2026-11-13)."""
     _typed_into_results(project, "\\ifdefined\\something kept\\fi")
     assert main(["build", str(project), "--latex", "--skip-checks"]) == 1
     said = capsys.readouterr().err

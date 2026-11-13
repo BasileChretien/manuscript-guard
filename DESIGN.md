@@ -1596,12 +1596,41 @@ Refused:
   is loaded (above);
 - a use, where it prints, of a command the preamble defines again or defines with delimited
   parameters (above), and a use that what its parameter text holds does not follow;
-- anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
-  `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
-  active, but in a reference list's header and a preamble's `\expandafter` that only
-  redefines (above);
-- in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
-  branches are its arguments and are both read, and those of a reference list's header.
+- anything that changes how characters are read: `\catcode`, `\makeatletter` in the body
+  but a block skipped (below), `\csname`, `\expandafter`, and `babel` with a
+  language whose shorthands make a character active, but in a reference list's header and a
+  preamble's `\expandafter` that only redefines (above);
+- in the body, a conditional but a block skipped (below).
+
+Skipped: in the body, two blocks with a bounded end, neither read, where they keep to a
+conservative rule (Basile, 2026-11-13: the reading stopped at one in three real papers, and
+with it 61 true findings past it; the rule kept simple after round 2 of #674, rather than
+following `@` through each branch):
+
+- a `\makeatletter` to its `\makeatother`, where everything it defines is a command whose
+  name holds `@` and is not `\@` alone, by `\def`, `\edef`, `\gdef`, `\xdef`, `\let`,
+  `\newcommand`, `\renewcommand` or `\providecommand`, starred forms too, tex-qbio-pe-B1's
+  `\long\def\@ifdim` say, the name defined being no conditional; and where it holds no
+  environment definition (`\newenvironment`, `\renewenvironment`, xparse's
+  `\NewDocumentEnvironment` and its kin), no `\@namedef`, no other definer
+  (`\DeclareRobustCommand`, xparse's command definers, etoolbox's `\newrobustcmd` and its
+  kin, `\newif`), no `\catcode` and no TeX conditional;
+- any conditional but a plain `\iffalse` block, `\ifthenelse`, whose branches are its
+  arguments, and those of a reference list's header, to its matching `\fi`, where it holds
+  no definition of any kind, by any command above or `\@namedef`, no `\makeatletter`, no
+  `\makeatother` and no `\catcode`. Each conditional inside opens a `\fi` of its own, TeX's
+  `\ifx`, `\ifdefined`, `\ifnum` and the others and one `\newif` makes.
+
+A block that breaks its rule is refused as one with no end is, with the same message. So is
+one whose braces close a group opened before it, or open one it does not close by its end:
+TeX ends a `\makeatletter` with its group, and the reader's groups would no longer be the
+file's. A `\fi` or a `\makeatother` in a comment counts for nothing. The name a `\newif` the
+reader reads in the body defines opens no block, though one in a comment or a `\verb`
+defines nothing. Nothing in a block is read, and the reading goes on past it. A block
+skipped is a
+refusal of the tree, so BUILD fails it, its hint saying the rest of the file is read, and
+`audit` names its lines under "Could not read", where `--strict` counts it as it counted the
+stop, and in its summary's line for G6 and G14.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1634,7 +1663,7 @@ G6 and G14 (Basile, 2026-11-11: read as prose, a template's commented-out text w
 findings, and the summary said "nothing reported"). `bind` still names each number typed
 past it, and offers none. A refusal the tree makes, an `\input` it cannot follow, a file that
 inputs itself or an encoding refused for another file, leaves the file read past it, and
-`audit` and BUILD's hint say so (round 1 of #637).
+`audit` and BUILD's hint say so (round 1 of #637), and so does a block skipped (above).
 
 ### Bindings
 
@@ -2117,7 +2146,8 @@ The result is compiled and packed by the code above, and checked three times:
 - Past a refusal G14 and G6 read nothing more of a LaTeX file, its comments no more than its
   prose, and what the file says there is not checked; `check` fails on the refusal already,
   and `audit` says the file was not read past that line (round 1 of step 7; Basile,
-  2026-11-11).
+  2026-11-11). Nor do they read a block skipped in the body, which `audit` names by its
+  lines (2026-11-13).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
   which is then not read (round 1 of step 7).
 - G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
@@ -16641,6 +16671,29 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
+- **A block the LaTeX reader skips in the body is matched by its text, and nothing in it is
+  read.** A `\makeatletter` runs to the first `\makeatother` and a conditional to its
+  matching `\fi`, counted from the tokens typed, not from what TeX runs, and a block is
+  skipped only where it keeps to the rule above (Basile, 2026-11-13).
+  Pinned by `tests/test_latex_mask.py::test_a_block_is_skipped_to_its_matching_end_or_refused`
+  and `tests/test_audit_reading_said.py::test_a_file_input_past_a_skipped_block_s_own_inputs_keeps_the_old_advice`.
+  - A `\fi` or a `\makeatother` in a `\verb` or a listing inside the block ends it there,
+    and the reader reads on from it. Accepted.
+  - A command the author names with `if` by a command outside the block, `\def\ifyes{...}`
+    or `\let\ifyes\iftrue`, is counted as opening a conditional inside it, and only `\newif`
+    is read as defining one. Accepted.
+  - A definition the block holds by a command the rule does not name, `\DeclareMathOperator`
+    or `\newtheorem` say, is not seen, and a use of what it defines past the block is read
+    as the reader reads it. Accepted.
+  - A comment between a `\newif` and its name, `\newif % note` over `\iffoo`, leaves the
+    name a conditional to the reader, which skips a block at it where TeX defines it, as the
+    base refused it there. Accepted.
+  - What a block holds is read by no check, the branch TeX prints among it: a heading, a
+    citation or a binding in it is not seen. A file the paper inputs only from inside a
+    block, by `\input{...}` or `\include{...}`, is passed over and said to be (round 1 of
+    #674); one it inputs by `\input name`, without braces, or one that file inputs in turn,
+    is passed over with the advice for a file nothing inputs. `check` fails BUILD on the
+    block, so a project's paper is not built with it in the body. Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
   but in two exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it

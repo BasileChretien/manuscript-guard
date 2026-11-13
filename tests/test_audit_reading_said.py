@@ -77,6 +77,71 @@ def test_the_summary_says_a_latex_file_was_not_read_past_where_the_reader_stoppe
     assert "paper.tex: not read past line 2" in said and "TODO" not in said, said
 
 
+def test_a_block_skipped_in_the_body_is_said_by_its_lines_and_the_rest_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Basile, 2026-11-13: the reading of three real papers stopped at a `\\makeatletter` in
+    the body (tex-stat-ap-B2, tex-qbio-pe-B1) or a conditional (tex-stat-ap-A1), and no check
+    read the rest. Each block is skipped, the report names its lines and why where it said
+    "not read past line N", and what follows is read: compared, and G6's."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\makeatletter \\pdfbookmark[0]{\\@title}{title} \\makeatother\n"
+                     "\\if0\\blind\n{\\title{Blind 55}\n\\maketitle}\n\\fi\n"
+                     "Then 77 died. % TODO: fill in\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,k\n4100,77\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert sorted(c.text for c in report.matched) == ["4100", "77"]
+    first, second = report.unreadable
+    assert first.startswith("paper.tex: line 4 skipped, which no check read: \\makeatletter "
+                            "in the body"), first  # fmt: skip
+    assert first.endswith("up to its \\makeatother"), first
+    assert second.startswith("paper.tex: lines 5-8 skipped") and second.endswith("\\fi"), second
+    assert main(["audit", str(paper), "--against", str(outputs)]) == 0
+    said = capsys.readouterr().out
+    line = next(line for line in said.splitlines() if line.strip().startswith("Writing"))
+    assert line.endswith("; line 4 of paper.tex skipped, lines 5-8 of paper.tex skipped"), line
+    assert "not read past" not in said and "TODO" in said, said
+    # One with no end in the file stops the reading there, as before.
+    paper.write_text(paper.read_text(encoding="utf-8").replace("\\fi\n", ""), encoding="utf-8")
+    (stop,) = [one for one in audit([paper], [outputs]).unreadable if "not read past" in one]
+    assert stop.startswith("paper.tex: not read past line 5"), stop
+
+
+def test_a_file_input_only_from_a_skipped_block_is_said_so(tmp_path: Path) -> None:
+    """Round 1 of #674: a file the paper inputs only inside a block the reader skips was
+    passed over with the advice to input it from the paper's main file, which it does."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\if0\\blind\n\\input{names}\n\\fi\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    (tmp_path / "names.tex").write_text("Ada Example.\n", encoding="utf-8")
+    (said,) = [one for one in audit([paper], None).passed_over if "names.tex" in one]
+    assert "inside a block the reader skipped" in said and "paper.tex, lines 4-6" in said, said
+    assert "\\input it" not in said, said
+
+
+def test_a_file_input_past_a_skipped_block_s_own_inputs_keeps_the_old_advice(
+    tmp_path: Path,
+) -> None:
+    """Known gaps (round 2 of #674): only a braced `\\input` or `\\include` a skipped block
+    holds is said to be inside it. A braceless one, and a file the file it names inputs, are
+    given the advice for a file nothing inputs."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\if0\\blind\n\\input{names}\n\\input bare\n\\fi\nThen 77 died.\n"
+                     "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    (tmp_path / "names.tex").write_text("Ada Example.\n\\input{deeper}\n", encoding="utf-8")
+    (tmp_path / "deeper.tex").write_text("Mary Ann.\n", encoding="utf-8")
+    (tmp_path / "bare.tex").write_text("Sean.\n", encoding="utf-8")
+    passed = audit([paper], None).passed_over
+    for name in ("deeper.tex", "bare.tex"):
+        (said,) = [one for one in passed if one.split(": ")[0].endswith(name)]
+        assert "\\input it from the paper's main file" in said, said
+
+
 def test_a_pdf_in_which_no_heading_was_read_is_said_to_be_read_as_one_text() -> None:
     """A PDF with no line that holds a section's name alone places no heading (2509.01351's
     small capitals, corpus run of 2026-11-11), and was said nothing of: it is read as one

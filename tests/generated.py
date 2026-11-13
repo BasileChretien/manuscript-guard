@@ -1692,14 +1692,16 @@ LATEX_PLACES = (
     ("\\IEEEcompsocitemizethanks{{Unit {}}} \\excite{{{} volts}} \\citeproc{{ref-a}}{{Smith {}}} ",
      (True, True, False)),
     # a reference list BibTeX wrote, its header's machinery and REVTeX's `\\makeatletter`
-    # in it, past which `@` is no letter;
+    # in it, past which `@` is no letter, so that `\\iffalse@` prints its `\\else` branch, which
+    # a conditional skipped would not (2026-11-13);
     ("\\begin{{thebibliography}}{{9}}\n\\providecommand{{\\url}}[1]{{\\texttt{{#1}}}}\n"
      "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\\else\\fi\n\\makeatletter\n"
      "\\providecommand \\@ifx [1]{{\\ifx #1\\expandafter\\@firstoftwo\\fi}}%\n"
      "\\providecommand \\@clean [0]{{\\catcode `\\$12}}%\n"
      "\\bibitem[{{\\citenamefont{{Smith}}(2011)}}]{{a}} Smith {}.\n"
-     "\\bibitem[\\citeproctext]{{b}} Jones.\n\\end{{thebibliography}}\n\\iffalse@ {} \\fi ",
-     (True, False)),
+     "\\bibitem[\\citeproctext]{{b}} Jones.\n\\end{{thebibliography}}\n"
+     "\\iffalse@ {} \\else {} \\fi ",
+     (True, False, True)),
     # a comment between a command and its argument, passed over with its line's break, but
     # not a blank line, which ends the paragraph;
     ("\\newenvironment{{refs}}[2] % #1 hanging\n{{\\begin{{list}}{{x}}{{y}}\\item Of {}}}\n"
@@ -1917,6 +1919,98 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
         first = len(text) if first < 0 else first
         text += use + after + "\n"
     return text + "\\begin{document}\nBody.\n\\end{document}\n", first
+
+
+#: What a real paper's `\\makeatletter` in the body holds, up to its `\\makeatother` (corpus
+#: run of 2026-11-13): tex-stat-ap-B2's bookmark, tex-qbio-pe-B1's definition, and a test.
+LATEX_AT_BLOCKS = ("\\pdfbookmark[0]{\\@title}{title 55}", "\\long\\def\\@ifdim#1#2#3{#2 55}",
+                   "\\@ifundefined{c@x}{55}{56}")  # fmt: skip
+#: What opens a conditional that a `\\fi` closes: TeX's primitives, tex-stat-ap-A1's
+#: `\\if0\\blind`, and `\\ifmine`, which the preamble's `\\newif` makes.
+LATEX_CONDITIONALS = ("\\if0\\blind", "\\ifx\\a\\b", "\\ifdefined\\x", "\\ifnum\\c>2",
+                      "\\ifcsname e\\endcsname", "\\ifmine", "\\iftrue",
+                      "\\ifdim\\y>1pt")  # fmt: skip
+#: What a conditional skipped holds besides words, each `{}` where a conditional of its own
+#: goes: one nested, an `\\else` and a `\\fi` in a comment.
+LATEX_IN_CONDITIONALS = ("{} 57 \\fi", "\\else 58", "% \\fi 59\n")
+#: What stops the reading as before, each drawn after every block skipped: a block with no
+#: end in the file, of each kind, and one whose end is past a brace that closes a group
+#: opened before it;
+LATEX_UNENDED = ("\\makeatletter 61", "{} 61", "{{\\makeatletter 61}} \\makeatother",
+                 # and one whose end is in the file, but which breaks the rule a block is
+                 # skipped by (Basile, 2026-11-13): a `\\makeatletter` that defines a name
+                 # with no `@`, defines an environment, or holds a conditional; a conditional
+                 # that holds a `\\catcode`, a definition, or a `\\makeatletter`.
+                 "\\makeatletter\\renewcommand{{\\emph}}[1]{{#1}}\\makeatother 61",
+                 "\\makeatletter\\newenvironment{{a@b}}{{x}}{{y}}\\makeatother 61",
+                 "\\makeatletter {} x \\makeatother \\else 61 \\fi",
+                 "{} \\catcode`\\@=11 61\\fi",
+                 "{} \\def\\emph@x{{z}} 61 \\fi",
+                 "{} \\makeatletter 61\\makeatother \\fi")  # fmt: skip
+
+
+@st.composite
+def latex_skipped_blocks(
+    draw: st.DrawFn,
+) -> list[tuple[str, list[tuple[int, int]], list[tuple[int, int]], int]]:
+    """LaTeX documents in whose body the reader skips each block of every kind, in an order
+    drawn, among words with a number: a `\\makeatletter` to its `\\makeatother`, in a figure
+    or not, and a conditional to its matching `\\fi`, which holds one of everything of
+    `LATEX_IN_CONDITIONALS` and follows a comment that names `\\newif`; and a `\\newif` in the
+    body, which opens nothing; then, one document for each, what of `LATEX_UNENDED` stops the
+    reading (Basile, 2026-11-13; round 1 of #674). For each, the text, the blocks skipped,
+    the stretches read between them, and where the reading stops."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    def conditional() -> str:
+        opener = draw(st.sampled_from(LATEX_CONDITIONALS))
+        inside = [piece.replace("{}", draw(st.sampled_from(LATEX_CONDITIONALS)))
+                  for piece in draw(st.permutations(LATEX_IN_CONDITIONALS))]  # fmt: skip
+        return opener + " " + words() + " " + " ".join(inside) + " \\fi"
+
+    def at_block() -> str:
+        block = "\\makeatletter " + draw(st.sampled_from(LATEX_AT_BLOCKS)) + "\\makeatother"
+        if draw(st.booleans()):
+            return "\\begin{figure}\n" + block + "\n\\caption{" + words() + "}\n\\end{figure}"
+        return block
+
+    head = "\\documentclass{article}\n\\newif\\ifmine\n\\begin{document}\n"
+    body, skipped, read = head, [], []
+    for kind in draw(st.permutations(("at", "conditional", "newif"))):
+        start = len(body)
+        body += words() + " 4100.\n"
+        read.append((start, len(body)))
+        if kind == "newif":
+            # A `\\newif` in the body defines its conditional, and opens nothing: the words
+            # after it are read (round 1 of #674).
+            body += "\\newif\\ifseen "
+            start = len(body)
+            body += words() + " 4200.\n"
+            read.append((start, len(body)))
+            continue
+        if kind == "conditional":
+            # A `\\newif` in a comment defines nothing.
+            body += "% see \\newif\n"
+        block = at_block() if kind == "at" else conditional()
+        if kind == "at":
+            ends = block.index("\\makeatother") + len("\\makeatother")
+            skipped.append((len(body) + block.index("\\makeatletter"), len(body) + ends))
+        else:
+            skipped.append((len(body), len(body) + len(block)))
+        body += block + "\n"
+    start = len(body)
+    body += words() + " 77.\n"
+    read.append((start, len(body)))
+    cases = []
+    for unended in LATEX_UNENDED:
+        written = unended.replace("{}", draw(st.sampled_from(LATEX_CONDITIONALS)))
+        written = written.replace("{{", "{").replace("}}", "}")
+        stop = len(body) + written.index("\\")
+        cases.append((body + written + " " + words() + " 88.\n\\end{document}\n", skipped,
+                      read, stop))
+    return cases
 
 
 #: A small LaTeX manuscript and what the reader owes it: its files, the author's packages,
@@ -15989,6 +16083,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
+    "latex skipped": st.one_of(
+        latex_texts(),
+        latex_skipped_blocks().flatmap(lambda cases: st.sampled_from([c[0] for c in cases])),
+    ),
     "latex sections": latex_texts(),
     "latex documents": st.one_of(latex_trees().map(lambda drawn: drawn[0]),
                                  latex_folders().map(lambda drawn: drawn[0])),  # fmt: skip

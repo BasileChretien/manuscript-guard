@@ -138,6 +138,7 @@ from generated import (
     latex_quotations,
     latex_reference_lists,
     latex_refusal_trees,
+    latex_skipped_blocks,
     latex_straight_quotes,
     latex_table_rows,
     latex_texts,
@@ -1031,6 +1032,66 @@ def test_a_command_with_delimited_parameters_is_refused_in_a_hook_s_body(
     text, first = drawn
     refusals = latex_mask.read(text).refusals
     assert [(r.code, r.offset) for r in refusals] == [("tex-refused", first)], (refusals, text)
+
+
+@holds(60, latex_skipped_blocks())
+def test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on(
+    drawn: list[tuple[str, list[tuple[int, int]], list[tuple[int, int]], int]],
+) -> None:
+    """Basile, 2026-11-13: a `\\makeatletter` in the body is skipped to its `\\makeatother`,
+    and a conditional to its matching `\\fi`, each conditional inside opening a `\\fi` of its
+    own, an `\\else` and a `\\fi` in a comment closing none; nothing in a block is read, the
+    words and numbers between are, and a block with no end in the file, or past a brace that
+    closes a group opened before it, stops the reading as before. So does a `\\makeatletter`
+    that defines a name with no `@` or an environment, or holds a conditional, and a
+    conditional that holds a `\\catcode`, a definition or a `\\makeatletter`; a `\\newif` in
+    the body opens nothing, and one in a comment defines nothing (#674). The tree refuses each
+    block skipped where the reader skipped it, so that BUILD fails it."""
+    for text, skipped, read, stop in drawn:
+        reading = latex_mask.read(text)
+        assert [(s.offset, s.end) for s in reading.skipped] == skipped, (reading.skipped, text)
+        assert [r.offset for r in reading.refusals] == [stop], (reading.refusals, text)
+        for start, end in skipped:
+            assert set(reading.masked[start:end]) <= {NUL, "\n"}, (reading.masked, text)
+        for start, end in read:
+            assert reading.masked[start:end] == text[start:end], (reading.masked, text)
+        document = latex_structure.read_tree({"main.tex": text})
+        assert [r.offset for _path, r in document.refusals] == [*(s for s, _ in skipped), stop]
+
+
+def _nesting_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    block_end = latex_mask._block_end
+
+    def broken(text: str, start: int, closer: str) -> int:
+        with pytest.MonkeyPatch.context() as inner:
+            inner.setattr(latex_mask, "_opens_conditional", lambda name: False)
+            return block_end(text, start, closer)
+
+    patch.setattr(latex_mask, "_block_end", broken)
+
+
+def _a_commented_fi_closes_a_block(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BLOCK_TOKEN", re.compile(r"\\(?:[A-Za-z]+|.)|[{}]", re.DOTALL))
+
+
+def _a_block_may_define_an_environment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_OTHER_DEFINERS", frozenset())
+
+
+def _a_block_is_skipped_across_a_group(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BLOCK_TOKEN", re.compile(r"\\(?:[A-Za-z]+|.)|%[^\n]*", re.DOTALL))
+
+
+def _a_bounded_block_stops_the_reading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_block_end", lambda text, start, closer: -1)
+
+
+def _a_newif_in_the_body_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_named_by_newif", lambda self, at: False)
+
+
+def _a_definition_in_a_block_is_skipped(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BLOCK_DEFINERS", frozenset())
 
 
 def _a_delimited_use_is_refused_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
@@ -21857,6 +21918,34 @@ def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a conditional inside a skipped block opens no fi of its own": (
+        _nesting_is_not_counted,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a fi in a comment closes a skipped block": (
+        _a_commented_fi_closes_a_block,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a skipped block may define an environment": (
+        _a_block_may_define_an_environment,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a block is skipped past a brace that closes a group opened before it": (
+        _a_block_is_skipped_across_a_group,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a newif in the body opens a conditional": (
+        _a_newif_in_the_body_defines_nothing,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a skipped block may define a name with no at sign": (
+        _a_definition_in_a_block_is_skipped,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a bounded block in the body stops the reading": (
+        _a_bounded_block_stops_the_reading,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
     "a Results name is read by its opening words": (
         _a_results_name_is_read_by_its_opening_words,
         test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,

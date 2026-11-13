@@ -285,6 +285,8 @@ def _latex_typed(source) -> str:
     # Past a refusal nothing is read, a comment no more than the rest (Basile, 2026-11-11:
     # read as typed, a template's commented-out text was G6's findings).
     unread = [(refusal.offset, len(typed)) for refusal in reading.refusals]
+    # Nor is anything in a block skipped, a `\makeatletter`'s or a conditional's (2026-11-13).
+    unread += [(block.offset, block.end) for block in reading.skipped]
     return _blank(typed, [*reading.references, *unread])
 
 

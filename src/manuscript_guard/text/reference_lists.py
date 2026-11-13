@@ -353,6 +353,13 @@ def _printed(paragraph: str) -> str:
     return without_spans(paragraph)
 
 
+def is_no_entry(line: str) -> bool:
+    """Whether a line is by its shape no entry of a reference list (`_NO_ENTRY`): a figure's,
+    a table's, a box's or an appendix's caption, a pipe or a grid table's line, an image or
+    a binding of a display. A list under a heading ends at one (`audit.bibliography_spans`)."""
+    return bool(_NO_ENTRY.match(line))
+
+
 def ends_a_list_alone(paragraph: str) -> bool:
     """Whether a paragraph written on one line, as each of a .docx's is read, ends a
     reference list under a line that is no heading, by the rules `_ends_a_list` holds a

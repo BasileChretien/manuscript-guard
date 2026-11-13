@@ -20600,13 +20600,24 @@ Open, recorded as each change landed:
   data, and a citation in the Introduction to the abstract as a finding passes. The covering
   letter is in no file, so what it declares is not checked; `submit` only lists what to put
   there. Accepted.
-- **A table cell styled as a heading ends a reference list.** A cell never starts one,
-  since "References" there is a column header, but a heading-styled cell after the list's
-  heading ends it, as it would anywhere: Word lists such a cell as a heading in its
-  navigation pane. A reference list laid out as a table, with a heading-styled cell among
-  its rows, is cut there, and the entries after it are reported as numbers not found.
-  Letting cells run the list on would instead leave a table placed after the references,
-  under no heading of its own, silently unaudited as part of them.
+- **A table, a caption or a heading-styled cell ends a reference list.** A cell never
+  starts one, since "References" there is a column header, but a heading-styled cell after
+  the list's heading ends it, as it would anywhere: Word lists such a cell as a heading in
+  its navigation pane. Once the list holds an entry, the first table ends it too, and so do
+  the first paragraph in a caption style and the first line by its shape no entry
+  (`reference_lists._NO_ENTRY`): a caption typed, "Fig 1.", "S4 Table.", "Supplementary
+  Table 3", and also "Box 1", "Appendix A" or "Additional file 1"; in Markdown a pipe or a
+  grid table and an image as well (Basile, 2026-11-14). With no heading after the
+  references, the list ran over the figures' captions and the supplementary tables to the
+  end of the file, every number in them hidden as a reference's (docx-sport-A3 and
+  docx-socio-B2 of the corpus run of 2026-11-13). A reference list laid out as a table
+  starts as one, right under its heading, and reads on to its end; one with a
+  heading-styled cell among its rows is still cut there, and one whose first entries are
+  paragraphs and the rest a table is cut at the table. An entry that opens with a caption's
+  shape, which no style writes, cuts the list as well. Either way the entries after the
+  cut are reported as numbers not found, the cheaper mistake: running on hides the tables.
+  A PDF's list ends at its headings alone. Pinned by
+  `tests/test_properties.py::test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry`.
 - **A table row is read as gone only when it is marked the way Word 16 marks one.** That
   is its properties marking it deleted, or every paragraph in it, a nested table's
   included, having its mark moved away. A text box anchored in the moved text is not

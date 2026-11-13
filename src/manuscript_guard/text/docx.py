@@ -73,8 +73,11 @@ _BOLD_MARK = "\x17"
 # style, no caption style and not numbered by Word, that holds words and no link or note's
 # mark: a line a section's title can be typed as (`DocxText.typed`). Before the bold mark.
 _TYPED_MARK = "\x16"
+# After the bold mark, on the line of a body paragraph outside a table and a text box, in no
+# heading style and not numbered by Word, that is in a caption style (`_caption_styles`).
+_CAPTION_MARK = "\x15"
 _MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
-          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK)  # fmt: skip
+          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK, _CAPTION_MARK)  # fmt: skip
 #: The names of the paragraph styles pandoc reads as a caption, in small letters: Word's own,
 #: named "caption" in every language as "heading 1" is the heading's, and the two pandoc
 #: writes (3.9.0.2: a paragraph in one beside a table is the table's caption to it, and one
@@ -136,6 +139,10 @@ class DocxText:
     #: table's, an indented paragraph in a block quote and a picture's paragraph as an image
     #: beside words, and a list's item and a cell are no paragraph of the text.
     typed: frozenset[int] = frozenset()
+    #: Each 0-based line of `body` whose paragraph is outside a table and a text box, in no
+    #: heading style, not numbered by Word, and in a style pandoc reads as a caption
+    #: (`_caption_styles`): what ends a reference list, as a table does (`audit`).
+    captions: frozenset[int] = frozenset()
 
     @property
     def text(self) -> str:
@@ -592,10 +599,13 @@ def _part_text(
     for owner, line in lines.items():
         if line[0] != "\n" or _inside(owner, parents, W + "txbxContent"):
             continue
-        typed = (worded.get(id(line)) and styled.get(id(line)) not in captions
+        # Only a line with words: a mark on an empty one would keep it from `_tidy`.
+        captioned = id(line) in worded and styled.get(id(line)) in captions
+        typed = (worded.get(id(line)) and not captioned
                  and id(line) not in quoted | pictured)  # fmt: skip
         line[0] = ("\n" + (_TYPED_MARK if typed else "")
-                   + (_BOLD_MARK if weights.get(id(line)) else ""))  # fmt: skip
+                   + (_BOLD_MARK if weights.get(id(line)) else "")
+                   + (_CAPTION_MARK if captioned else ""))  # fmt: skip
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
 
@@ -660,6 +670,7 @@ def read_docx_text(path: Path) -> DocxText:
     cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
     bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2])
     typed = frozenset(i for i, line in enumerate(lines) if line.startswith(_TYPED_MARK))
+    captioned = frozenset(i for i, line in enumerate(lines) if _CAPTION_MARK in line[:2])
     # The notes keep what they always had, the cell mark of a table in a note among it; the
     # marks the tables are read by go from both.
     notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
@@ -671,7 +682,8 @@ def read_docx_text(path: Path) -> DocxText:
                     heading_levels=heading_levels,
                     levels=tuple((line, count[3]) for line, count in numbering
                                  if count[3] is not None),
-                    boxed=_boxes(body_root, fonts), bold=bold, typed=typed)  # fmt: skip
+                    boxed=_boxes(body_root, fonts), bold=bold, typed=typed,
+                    captions=captioned)  # fmt: skip
 
 
 def typed_titles(document: DocxText) -> list[tuple[int, str]]:

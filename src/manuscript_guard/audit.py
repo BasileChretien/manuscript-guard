@@ -59,7 +59,11 @@ from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text, typed_heading_levels
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
-from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliography_heading
+from manuscript_guard.text.reference_lists import (
+    ends_a_list_alone,
+    is_bibliography_heading,
+    is_no_entry,
+)
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
@@ -648,6 +652,7 @@ def bibliography_spans(
     text: str,
     headings: frozenset[int] | None = None,
     cells: frozenset[int] = frozenset(),
+    displays: frozenset[int] | None = None,
 ) -> list[tuple[int, int]]:
     """Where the reference lists are, as 0-based lines `[start, end)`.
 
@@ -655,14 +660,21 @@ def bibliography_spans(
     or a thematic break (`thematic_breaks`), or to the end if there is none. The first
     version ran to the end regardless, so an appendix after the references was never
     audited, and it used only the first heading, so an appendix's own reference list was
-    read as prose.
+    read as prose. Once it holds an entry it ends sooner, at a display: a table, a caption
+    or an image (`_end_at_a_display`). A paper with no heading after its references ran
+    the list on over the figures' captions and the supplementary tables after it, every
+    number in them hidden as a reference's (docx-sport-A3 and docx-socio-B2 of the corpus
+    run of 2026-11-13; Basile, 2026-11-14).
 
     `headings` says which lines are headings when the text cannot: a .docx read as plain text
     knows them only from paragraph styles. Omitted, they are read as Markdown, and a line in
     a fenced block, an HTML comment or the front matter does not start a list, whatever it
     says: it is code, a note or metadata. `cells` are lines inside a table, where
     "References" is a column header and not a heading. Given `headings`, the marks are not
-    Markdown's, so a heading keeps any `#` it prints.
+    Markdown's, so a heading keeps any `#` it prints. `displays` are a .docx's lines that
+    open a display, each table's first and each paragraph in a caption style
+    (`docx_displays`); given, a list ends there and at a caption typed. A PDF gives none,
+    and its list ends at its headings alone.
     """
     lines = text.split("\n")
     markdown = headings is None
@@ -695,10 +707,59 @@ def bibliography_spans(
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )
         end = next(after, last)
+        if markdown or displays is not None:
+            end = _end_at_a_display(lines, start, end, cells, displays)
         if not markdown and start not in headings:
             end = _end_under_no_heading(lines, start, end)
         spans.append((start, end))
     return spans
+
+
+def _end_at_a_display(
+    lines: list[str], start: int, end: int, cells: frozenset[int],
+    displays: frozenset[int] | None,
+) -> int:  # fmt: skip
+    """Where a list from `start` ends at a display, before `end`, once it holds an entry: a
+    .docx's table or paragraph in a caption style (`displays`), and in either reader a line
+    by its shape no entry (`is_no_entry`), "Fig 1.", "S4 Table.", "Supplementary Table 3",
+    in Markdown a pipe or a grid table's line or an image too. In Markdown such a line opens
+    a paragraph; in a .docx it is outside a table, and not the line ` | ` a table's row
+    opens with. A list laid out as a table starts as one, right under its heading, and so
+    reads on to its end as before. A line of dashes or equals signs, a setext heading's
+    underline, is no entry."""
+    held = False
+    for at in range(start + 1, end):
+        line = lines[at]
+        if held and (
+            (at in displays or (at not in cells and line.strip() != "|" and is_no_entry(line)))
+            if displays is not None
+            else not lines[at - 1].strip() and is_no_entry(line)
+        ):
+            return at
+        held = held or bool(line.strip().strip("=-").strip())
+    return end
+
+
+def docx_displays(document) -> frozenset[int]:
+    """The 0-based lines of a .docx's body that open a display, as `bibliography_spans`
+    ends a list at one: each table's first, the line ` | ` its first row opens with where
+    there is one, and each paragraph in a caption style (`DocxText.captions`)."""
+    lines = document.body.split("\n")
+    opens = set(document.captions)
+    for table in document.tables:
+        if not table or not table[0]:
+            continue
+        first = table[0][0].line - 1
+        if first and first - 1 not in document.cells and lines[first - 1].strip() == "|":
+            first -= 1
+        opens.add(first)
+    return frozenset(opens)
+
+
+def docx_bibliography_spans(document) -> list[tuple[int, int]]:
+    """`bibliography_spans` of a .docx read (`text.docx.read_docx_text`)."""
+    return bibliography_spans(document.body, document.headings, document.cells,
+                              docx_displays(document))  # fmt: skip
 
 
 def _end_under_no_heading(lines: list[str], start: int, end: int) -> int:
@@ -707,8 +768,8 @@ def _end_under_no_heading(lines: list[str], start: int, end: int) -> int:
     (`ends_a_list_alone`), a caption, a back-matter title or a table, whose rows the reader
     opens with a line of their own, ` | `, which is a pipe table's shape. With no heading
     styles in the document the cut ran to the end of the body, and what came after the list
-    was never audited. A list under a styled heading runs on to the next, as one under
-    `# References` does in Markdown."""
+    was never audited. A list under a styled heading runs on to the next or to a display
+    (`_end_at_a_display`), as one under `# References` does in Markdown."""
     return next((i for i in range(start + 1, end) if ends_a_list_alone(lines[i])), end)
 
 
@@ -771,7 +832,7 @@ def read_paper(
         blanked = _blank(text, spans)
         return blanked, spans, markdown_tables(blanked), text, {}
     document = document or read_docx_text(path)
-    spans = bibliography_spans(document.body, document.headings, document.cells)
+    spans = docx_bibliography_spans(document)
     body = _blank(document.body, spans)
     tables = [
         table for table in document.tables

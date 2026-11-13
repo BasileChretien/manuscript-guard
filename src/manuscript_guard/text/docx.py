@@ -133,7 +133,7 @@ class DocxText:
     bold: frozenset[int] = frozenset()
     #: Each 0-based line of `body` whose paragraph is outside a table and a text box, in no
     #: heading style, not in Word's caption style, not indented as pandoc quotes a paragraph
-    #: (`_quoted`), holds words and no link, picture or note's mark, bold or not, and that
+    #: (`_block_quote`), holds words and no link, picture or note's mark, bold or not, and that
     #: pandoc reads as no list's item but the lone item of a numbered list in no other
     #: (`_in_lists`): a line a section's title can be typed as in a document with no heading
     #: style (`typed_heading_levels`), as `init --from` reads a top-level paragraph of words
@@ -309,6 +309,14 @@ def _quoted(paragraph: ET.Element) -> bool:
         return False
     left = indent.get(W + "left", indent.get(W + "start"))
     return _twips(left) - _twips(indent.get(W + "hanging")) > 0
+
+
+def _block_quote(paragraph: ET.Element, shape: tuple[str, int, str] | None) -> bool:
+    """Whether pandoc (3.9.0.2) sets a paragraph in a block quote: by its own indent
+    (`_quoted`), where it names no numbering (`Numbering.pandoc_item`). One that names one is
+    read by its numbering whatever its indent, an item indented as Word indents a list's,
+    and a numbering of 0 or of no level a paragraph (round 1 of #682)."""
+    return shape is None and _quoted(paragraph)
 
 
 #: What holds a picture in a paragraph, whose words pandoc reads beside an image: no title's.
@@ -603,7 +611,8 @@ def _part_text(
     # (`_in_lists`); and all in bold. A numbered line's marks go after its numbering's.
     styled = {id(line): _paragraph_style(owner) for owner, line in lines.items()
               if owner not in joins}  # fmt: skip
-    quoted = {id(line) for owner, line in lines.items() if owner not in joins and _quoted(owner)}
+    quoted = {id(line) for owner, line in lines.items()
+              if owner not in joins and _block_quote(owner, listed.get(id(line)))}  # fmt: skip
     pictured = {id(line) for owner, line in lines.items() if _pictured(owner)}
     listed_in = _in_lists(pieces, listed, pictured)
     for owner, line in lines.items():

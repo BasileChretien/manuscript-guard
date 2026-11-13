@@ -15386,12 +15386,14 @@ def bold_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
     return body, sorted(bold)
 
 
-def numbered(level: int = 0, num: int = 1, style: str = "") -> str:
+def numbered(level: int = 0, num: int = 1, style: str = "", indent: bool = False) -> str:
     """A Word paragraph numbered by its own `w:numPr`, at `level` of numbering `num` of
-    `TYPED_PARAGRAPH_NUMBERING`, in `style` if one is given, with `{}` for its words."""
+    `TYPED_PARAGRAPH_NUMBERING`, in `style` if one is given, indented from the left more
+    than it hangs with `indent`, as Word indents a list's item, with `{}` for its words."""
     styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    indented = '<w:ind w:left="720" w:hanging="360"/>' if indent else ""
     return (f'<w:p><w:pPr>{styled}<w:numPr><w:ilvl w:val="{level}"/><w:numId w:val="{num}"/>'
-            "</w:numPr></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>")
+            f"</w:numPr>{indented}</w:pPr><w:r><w:t>{{}}</w:t></w:r></w:p>")
 
 
 #: The numberings `numbered` names, as `word/numbering.xml` holds them: 1 counts "1.", and
@@ -15415,6 +15417,8 @@ NUMBERED_STYLES = (
     '<w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr></w:style>'
     '<w:style w:type="paragraph" w:styleId="NumSub"><w:name w:val="Num sub"/>'
     '<w:basedOn w:val="NumTitle"/><w:pPr><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/>'
     "</w:style>"
 )
 
@@ -15453,6 +15457,11 @@ TYPED_PARAGRAPHS = {
         '<w:p><w:pPr><w:pStyle w:val="NumSub"/></w:pPr><w:r><w:t>{0}</w:t></w:r></w:p>', True),
     "numbered by an unknown numbering": (numbered(0, 77), True),
     "its numbering taken off": (numbered(0, 0), True),
+    # pandoc reads a paragraph naming a numbering by its numbering whatever its own indent,
+    # where it sets one naming none in a block quote (round 1 of #682).
+    "numbered and indented, in List Paragraph": (numbered(style="ListParagraph",
+                                                          indent=True), True),
+    "its numbering taken off, indented": (numbered(0, 0, indent=True), True),
     "bulleted by Word": (numbered(0, 2), False),
     "numbered with an item under it": (numbered() + numbered(1).format("Under it"), False),
     "numbered with a paragraph joined to it": (numbered() + numbered(0, 0).format("Joined"),

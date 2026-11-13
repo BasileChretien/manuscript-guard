@@ -21310,6 +21310,14 @@ def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(docx_module, "_caption_styles", lambda archive, names, what: frozenset())
 
 
+def _a_numbered_paragraph_indented_is_quoted(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #682: a list's item indented as Word indents one was read as a quote."""
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_block_quote", lambda paragraph, shape: docx_module._quoted(
+        paragraph))
+
+
 def _a_line_word_numbers_is_never_typed(patch: pytest.MonkeyPatch) -> None:
     """As before 2026-11-14: a title Word numbers was a list's item, and no title."""
     from manuscript_guard.text import docx as docx_module
@@ -22272,6 +22280,10 @@ BROKEN = {
     ),
     "a paragraph in a caption style is typed": (
         _a_caption_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered paragraph indented is quoted": (
+        _a_numbered_paragraph_indented_is_quoted,
         test_a_word_paragraph_is_typed_as_a_title_can_be,
     ),
     "a line Word numbers is never typed": (

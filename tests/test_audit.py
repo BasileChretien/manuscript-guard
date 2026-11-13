@@ -1891,11 +1891,23 @@ def test_pandoc_reads_a_numbered_paragraph_as_the_audit_takes_it(tmp_path: Path)
     no level, or an empty item a level deeper; items at one level and numbering in one list,
     an empty paragraph between them; a list for each numbering; a subtitle whose style names
     a level and no numbering beside its base's title; a paragraph naming a numbering pandoc
-    reads no level of, on its own; a bulleted item."""
+    reads no level of, on its own; a bulleted item. Round 1 of #682: an item in List
+    Paragraph indented from the left more than it hangs, an item to pandoc whatever its own
+    indent, and so is a paragraph naming no level or a numbering of 0, a paragraph and no
+    block quote; a level with no `w:numFmt` or no `w:lvlText`, which pandoc reads as no
+    level, a paragraph on its own and joined to the item before it."""
     from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
 
     shapes = {
         "lone": (numbered().format("A"), [["A"]]),
+        "indented, in List Paragraph": (numbered(style="ListParagraph", indent=True).format(
+            "A"), [["A"]]),
+        "no level, indented": (numbered(0, 77, indent=True).format("A"), "a paragraph"),
+        "numbering 0, indented": (numbered(0, 0, indent=True).format("A"), "a paragraph"),
+        "no format, alone": (numbered(0, 4).format("A"), "a paragraph"),
+        "no text, alone": (numbered(0, 5).format("A"), "a paragraph"),
+        "holding no format": (numbered().format("A") + numbered(0, 4).format("B"), [["A", "B"]]),
+        "holding no text": (numbered().format("A") + numbered(0, 5).format("B"), [["A", "B"]]),
         "holding an item": (numbered().format("A") + numbered(1).format("B"), [["A", ["B"]]]),
         "holding numbering 0": (numbered().format("A") + numbered(0, 0).format("B"),
                                 [["A", "B"]]),
@@ -1912,8 +1924,24 @@ def test_pandoc_reads_a_numbered_paragraph_as_the_audit_takes_it(tmp_path: Path)
         "no level, alone": (numbered(0, 77).format("A"), "a paragraph"),
         "bulleted": (numbered(0, 2).format("A"), "bulleted"),
     }  # fmt: skip
-    numbering = TYPED_PARAGRAPH_NUMBERING.replace(
-        "</w:numbering>", '<w:num w:numId="3"><w:abstractNumId w:val="0"/></w:num></w:numbering>')
+    # 3 a second numbering of 1's count; 4 a level with no format, 5 one with no text.
+    numbering = TYPED_PARAGRAPH_NUMBERING.replace('<w:num w:numId="1">', (
+        '<w:abstractNum w:abstractNumId="4"><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+        '<w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="5">'
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/></w:lvl>'
+        '</w:abstractNum><w:num w:numId="1">')).replace("</w:numbering>", (
+        '<w:num w:numId="3"><w:abstractNumId w:val="0"/></w:num>'
+        '<w:num w:numId="4"><w:abstractNumId w:val="4"/></w:num>'
+        '<w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num></w:numbering>'))
+    from manuscript_guard.text.docx import read_docx_text
+
+    def titles(blocks: list) -> set[str]:
+        """What `init --from` reads a title from: a top-level paragraph, and a numbered
+        list's item that is one paragraph."""
+        said = [item[0]["c"] for block in blocks if block["t"] in ("Para", "OrderedList")
+                for item in (block["c"][1] if block["t"] == "OrderedList" else [[block]])
+                if len(item) == 1 and item[0]["t"] in ("Para", "Plain")]  # fmt: skip
+        return {" ".join(from_word.text_of(inlines).split()) for inlines in said}
 
     def items(blocks: list) -> list:
         return [[" ".join(from_word.text_of(block["c"]).split()) if block["t"] == "Para"
@@ -1933,6 +1961,11 @@ def test_pandoc_reads_a_numbered_paragraph_as_the_audit_takes_it(tmp_path: Path)
             assert kinds == ["BulletList"], name
         else:
             assert kinds == ["OrderedList"] and items(middle[0]["c"][1]) == expected, (name, middle)
+        # The audit takes as a line a title can be typed as what pandoc reads as one.
+        document = read_docx_text(path)
+        lines = document.body.split("\n")
+        typed = {lines[at] for at in document.typed} - {"Before.", "After."}
+        assert typed == titles(middle), (name, typed, middle)
 
 
 @needs_pandoc

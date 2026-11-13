@@ -174,7 +174,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
         # Read with styles, a document with no heading runs on past where its typed title
         # ended the title page here: the two are compared up to there.
         run = _styled_run(path)
-        aside, styled = _abstract_styled(aside, run[: len(aside)] if typed else run)
+        aside, styled = _abstract_styled(aside, _cut_as(aside, run) if typed else run)
         abstract = [*abstract, *styled]
     if abstract:
         body = [_heading("Abstract"), *abstract, *body]
@@ -469,6 +469,24 @@ def _unstyled(node: object) -> object:
         attr, words, (_target, title) = node["c"]
         return {"t": "Image", "c": [_unstyled(attr), _unstyled(words), ["", title]]}
     return {key: _unstyled(value) for key, value in node.items()}
+
+
+def _cut_as(aside: list, run: list[tuple[dict, str | None]]) -> list[tuple[dict, str | None]]:
+    """The reading with styles up to where the title page `aside` ends, and where a typed
+    title made the first heading of a list's item, with that list cut where the title page
+    cut it: the items before the title, which end the title page, and none after
+    (`typed_headings`; round 1 of #682). A list there that does not begin with those items
+    is left whole, and the two readings then differ, as they did."""
+    cut = run[: len(aside)]
+    if not cut or aside[-1].get("t") != "OrderedList":
+        return cut
+    block, style = cut[-1]
+    kept = _unstyled(aside[-1])
+    items = kept["c"][1]
+    if block.get("t") == "OrderedList" and block["c"][0] == kept["c"][0] and \
+            block["c"][1][: len(items)] == items:  # fmt: skip
+        cut[-1] = (kept, style)
+    return cut
 
 
 def _abstract_styled(aside: list, styled: list[tuple[dict, str | None]]) -> tuple[list, list]:

@@ -622,6 +622,26 @@ def test_an_abstract_styled_paragraph_before_the_first_heading_is_the_abstract(
 
 
 @needs_pandoc
+def test_an_abstract_styled_paragraph_before_a_title_word_numbers_is_the_abstract(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #682: where the first heading is made of a title Word numbers, with an
+    item of its list before it, an affiliation numbered "1.", the title page ends in that
+    list cut where the heading was. The reading with styles was compared whole, and the
+    paragraphs in the Abstract style were left in the comment."""
+    paper = word(tmp_path / "word", ABSTRACT_LATER.replace(
+        "# Introduction\n\nFalls are common.\n",
+        "1. Somewhere University\n2. INTRODUCTION\n\nFalls are common.\n"))
+    converted = from_word.convert(paper)
+    assert converted.typed_headings[:1] == ("INTRODUCTION",)
+    comment = converted.text[: converted.text.index("-->")]
+    assert "Somewhere University" in comment and "Corresponding author" in comment
+    assert "120 patients" not in comment and "41 fell" not in comment
+    assert "# Abstract\n\nWe followed 120 patients.\n\nOf them, 41 fell again.\n\n# INTRODUCTION" \
+        in converted.text.replace("\r\n", "\n"), converted.text
+
+
+@needs_pandoc
 def test_an_abstract_styled_paragraph_under_a_heading_stays_where_it_is(tmp_path: Path) -> None:
     """Only what is set aside as the title page is looked at: under a heading, a paragraph
     in the Abstract style is in the text already."""
@@ -844,10 +864,11 @@ def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) ->
     """A title Word numbers as a list's item is a heading to both readers where pandoc reads
     it as the lone item of a numbered list in no other (Basile, 2026-11-14): by its own
     numbering or its style's, at any level, in capitals with a colon, in bold, after an
-    empty paragraph, with a subtitle its style numbers "1.1." beside it, which pandoc reads
-    as an item beside it, and named by a numbering pandoc reads no level of, a paragraph to
-    it. One with an item under it or a paragraph pandoc joins to it, one Word bullets, a
-    list's sentence, "Results of the survey", and the subtitle are a heading to neither.
+    empty paragraph, indented in List Paragraph as Word indents an item, with a subtitle its
+    style numbers "1.1." beside it, which pandoc reads as an item beside it, and named by a
+    numbering pandoc reads no level of, a paragraph to it. One with an item under it or a
+    paragraph pandoc joins to it, one Word bullets, a list's sentence, "Results of the
+    survey", and the subtitle are a heading to neither.
     What the audit places is what `init --from` makes, at the same levels, its name alone."""
     from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
 
@@ -868,10 +889,12 @@ def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) ->
         "bulleted": (numbered(0, 2), False),
         "a sentence": (numbered().format("Results were clear."), False),
         "a name opening an item": (numbered().format("Results of the survey"), False),
+        # Round 1 of #682: an item indented as Word indents one, in List Paragraph.
+        "indented, in List Paragraph": (numbered(style="ListParagraph", indent=True), True),
     }  # fmt: skip
     names = ("INTRODUCTION:", "Methods", "Results", "Discussion", "Conclusions", "Funding",
              "Ethics", "Limitations", "Declarations", "Appendix", "Abbreviations",
-             "References")  # fmt: skip
+             "References", "Acknowledgements")  # fmt: skip
     body, expected = "", []
     for (kind, (shape, heading)), name in zip(shapes.items(), names, strict=True):
         body += (shape.format(name) if "{}" in shape else shape) + (

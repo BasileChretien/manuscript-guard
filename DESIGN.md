@@ -25193,9 +25193,10 @@ Open, recorded as each change landed:
     is none, as pandoc reads the link or the note in it, nor is one in a text box to the
     audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
     to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
-    test, so there the two readers may differ). A paragraph indented from the left by its
-    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
-    and so is one that holds a picture; an indent its style gives it is not read by the
+    test, so there the two readers may differ). A paragraph naming no numbering indented
+    from the left by its own `w:ind` more than it hangs is a block quote to pandoc and no
+    title to the audit, and so is one that holds a picture; one naming a numbering is read
+    by it whatever its indent, a list's item indented as Word indents one among them; an indent its style gives it is not read by the
     audit, and what pandoc makes of it is not held by a test. Accepted.
   - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
     Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a

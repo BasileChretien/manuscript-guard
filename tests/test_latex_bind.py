@@ -98,9 +98,11 @@ def test_bind_writes_nothing_past_a_files_first_refusal(
     project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Past a refusal the reader reads nothing of the file: a number typed there is named,
-    and not offered, nor written (round 1 of step 12; Basile, 2026-11-11)."""
+    and not offered, nor written (round 1 of step 12; Basile, 2026-11-11). A conditional with
+    no `\\fi` in the file is one: with its `\\fi`, it is skipped, and the file read on past it
+    (2026-11-13)."""
     point = _display(project, "results.ror.point")
-    typed = f"\\ifdefined\\x\\fi\nThe estimate was {point} again.% old: {point}\n"
+    typed = f"\\ifdefined\\x\nThe estimate was {point} again.% old: {point}\n"
     _typed_before(twin, "\\section{Discussion}", typed)
     before = twin.read_text(encoding="utf-8")
     main(["bind", str(project)])

@@ -17,7 +17,9 @@ papers of the real-paper corpus whose Abstract a reader sees and the audit did n
 
 The Abstract ends where any section does, at the next heading, which it is given the level
 of. Before that heading it ends at a title typed on a line of its own that is no part of it,
-as `section_levels` places a structured abstract's parts (`section_names.abstract_end`): in
+as `section_levels` places a structured abstract's parts (`section_names.abstract_end`),
+the next heading's title read after them, so that a styled Introduction ends the parts
+(`_closing`): in
 the corpus, the next heading was a title page's line or an empty paragraph in a heading style,
 and the Introduction, the Abbreviations or the Acknowledgments typed in bold before it ended
 the Abstract for a reader. That title is a heading too, at the same level, and the text
@@ -93,12 +95,22 @@ def _abstract(document, body: list[str], found: list[Heading]) -> list[Heading]:
     ends = [at for at, _name in titles] + [limit]
     worded = [opened.run_in or _worded(body, opened.line, ends[0])] + [
         _worded(body, at, end) for (at, _name), end in zip(titles, ends[1:], strict=True)]
-    end = abstract_end(["Abstract", *(name for _at, name in titles)], worded)
+    closing = _closing([heading.title for heading in later[:1]])
+    end = abstract_end(["Abstract", *(name for _at, name in titles), *closing],
+                       worded + [False] * len(closing))  # fmt: skip
     heading = Heading(opened.line, level, opened.title, opened.run_in)
     if end is not None and end <= len(titles):
         at = titles[end - 1][0]
         return [heading, Heading(at, level, body[at])]
     return [heading] if later else []
+
+
+def _closing(titles: list[str]) -> list[str]:
+    """The next heading's title, the name it holds alone where it holds one, read after the
+    typed titles: a structured abstract's parts end at a styled Introduction as at a typed
+    one. Read up to it alone, they ended nowhere, and the Abstract at its first part named,
+    its own "Results" the paper's (round 1 of #683)."""
+    return [section_name_alone(title) or title for title in titles]
 
 
 def _worded(body: list[str], at: int, end: int) -> bool:

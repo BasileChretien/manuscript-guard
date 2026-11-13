@@ -15594,11 +15594,18 @@ WORD_ABSTRACT_SHAPES = {
 #: What comes after the Abstract, and the headings it adds after the Abstract's where the
 #: Abstract is read: the next heading; a title typed in bold before it, which ends the
 #: Abstract and is a heading too; a structured abstract's parts in bold, which are the
-#: Abstract's, up to that title; and no heading after the Abstract, nor a typed title, so that
-#: nothing ends it and it is not read, the heading styles on the authors' line before it
-#: (docx-psych-A1).
+#: Abstract's, up to that title; such parts up to the next heading, a styled Introduction,
+#: which ends them as a typed one does, theirs named as sections or as JAMA's, of which only
+#: "Results" names one (round 1 of #683: they were cut at their first part named); and no
+#: heading after the Abstract, nor a typed title, so that nothing ends it and it is not read,
+#: the heading styles on the authors' line before it (docx-psych-A1).
 WORD_ABSTRACT_ENDS = ("the next heading", "a typed title", "its parts, then a typed title",
-                      "nothing")  # fmt: skip
+                      "its parts, then the next heading", "nothing")  # fmt: skip
+#: A structured abstract's parts in bold, each over words: parts that name sections, and
+#: JAMA's.
+_WORD_ABSTRACT_PARTS = (("Background", "Results", "Conclusions"),
+                        ("Importance", "Objective", "Design, Setting, and Participants",
+                         "Results", "Conclusions and Relevance"))  # fmt: skip
 
 
 @st.composite
@@ -15622,6 +15629,10 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
         if end == "its parts, then a typed title":
             body += (_w_para("Background", True) + _w_para(f"{words.capitalize()} harm.")
                      + _w_para("Results", True) + _w_para("Of 412, 77 fell."))  # fmt: skip
+        if end == "its parts, then the next heading":
+            for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
+                body += _w_para(part, True) + _w_para(f"Of 412 {words}, 77 fell.")
+            body += _w_heading("Introduction") + _w_para(f"{words.capitalize()} harm.")
         # A structured abstract's parts end at an Introduction (`section_levels`).
         typed = draw(st.sampled_from(("Introduction", "1. Introduction") + (
             () if end == "its parts, then a typed title" else ("Acknowledgments",))))
@@ -15634,8 +15645,10 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
             continue
         body += _w_heading("Methods") + _w_para("We read 412.") + _w_heading("Results")
         body += _w_para("Of 412, 77 fell.")
-        ended = [typed] if end != "the next heading" else []
-        out.append((body, [first, *([title, *ended] if title else []), "Methods", "Results"]))
+        ended = [typed] if end in ("a typed title", "its parts, then a typed title") else []
+        introduced = ["Introduction"] if end == "its parts, then the next heading" else []
+        out.append((body, [first, *([title, *ended] if title else []), *introduced, "Methods",
+                           "Results"]))  # fmt: skip
     return out
 
 
@@ -15655,6 +15668,11 @@ ABSTRACT_BLOCKS = {
                                                    _str("{}")]}], ["Abstract"]),
     "run-in, bold run on": ([{"t": "Para", "c": [_strong(_str("Abstract."), _GAP, _str("{}"))]}],
                             ["Abstract"]),
+    # pandoc keeps a no-break or a thin space inside one piece of text (round 1 of #683).
+    "run-in, a no-break space": ([{"t": "Para", "c": [_str("Abstract:\N{NO-BREAK SPACE}{}")]}],
+                                 ["Abstract"]),
+    "run-in, a thin space": ([{"t": "Para", "c": [_strong(_str("Abstract.\N{THIN SPACE}{}"))]}],
+                             ["Abstract"]),
     "run-in, quoted": ([{"t": "BlockQuote", "c": [
         {"t": "Para", "c": [_str("Its"), _GAP, _str("words.")]},
         {"t": "Para", "c": [_str("ABSTRACT:"), _GAP, _str("{}")]}]}], ["ABSTRACT"]),
@@ -15682,26 +15700,44 @@ def _filled(node: object, words: str) -> object:
     return node.replace("{}", words) if isinstance(node, str) else node
 
 
+#: What comes after the Abstract in `abstract_blocks`: the next heading; an "Introduction"
+#: typed in bold before it, which is made a heading; and a structured abstract's parts in
+#: bold up to a heading "Introduction", which ends them (round 1 of #683).
+ABSTRACT_BLOCK_ENDS = ("the next heading", "a typed title", "its parts, then the next heading")
+
+
 @st.composite
-def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str]]:
+def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, list[str]]]:
     """Pandoc's blocks of a styled Word paper for every shape of `ABSTRACT_BLOCKS`, its title
-    a heading, then the Abstract, a typed "Introduction" or none before its Methods; with the
-    titles of its headings once `abstract_headings` has made them, and the Abstract's words."""
+    a heading, then the Abstract, then an end of `ABSTRACT_BLOCK_ENDS` before its Methods,
+    every end among the shapes made headings; with the titles of its headings once
+    `abstract_headings` has made them, the Abstract's words, and the titles it made."""
     out = []
     word = st.sampled_from(FILLER)
+    made_ones = [kind for kind, (_shape, made) in ABSTRACT_BLOCKS.items() if made]
+    ends = list(draw(st.permutations(ABSTRACT_BLOCK_ENDS)))
+    ends += [draw(st.sampled_from(ABSTRACT_BLOCK_ENDS)) for _ in range(len(made_ones) - 3)]
+    paired = dict(zip(draw(st.permutations(made_ones)), ends, strict=True))
     for kind in draw(st.permutations(list(ABSTRACT_BLOCKS))):
         shape, made = ABSTRACT_BLOCKS[kind]
+        end = paired.get(kind) or draw(st.sampled_from(ABSTRACT_BLOCK_ENDS))
         words = draw(st.sampled_from(("Of", "In"))) + " " + " ".join(
             draw(st.lists(word, min_size=1, max_size=3)))
         level = draw(st.sampled_from((1, 2)))
         blocks = [{"t": "Header", "c": [1, ["", [], []], [_str("Falls")]]}, *_filled(shape, words)]
-        ended = draw(st.booleans())
-        if ended:
+        if end == "a typed title":
             blocks += [{"t": "Para", "c": [_strong(_str("Introduction"))]},
                        {"t": "Para", "c": [_str("Text.")]}]
+        named = [*made, *(["Introduction"] if made and end == "a typed title" else [])]
+        if end == "its parts, then the next heading":
+            for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
+                blocks += [{"t": "Para", "c": [_strong(_str(part))]},
+                           {"t": "Para", "c": [_str("Of"), _GAP, _str("412.")]}]
+            blocks.append({"t": "Header", "c": [level, ["", [], []], [_str("Introduction")]]})
         blocks.append({"t": "Header", "c": [level, ["", [], []], [_str("Methods")]]})
-        titles = ["Falls", *made, *(["Introduction"] if made and ended else []), "Methods"]
-        out.append((json.loads(json.dumps(blocks)), titles, words))
+        titles = ["Falls", *named, *(["Introduction"] if end.startswith("its parts") else []),
+                  "Methods"]  # fmt: skip
+        out.append((json.loads(json.dumps(blocks)), titles, words, named))
     return out
 
 

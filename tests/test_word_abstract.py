@@ -133,6 +133,75 @@ def test_the_abstract_ends_at_a_typed_title_before_the_next_heading(tmp_path: Pa
     assert read.compared and read.numbers == read.matched == 2, read
 
 
+#: Structured Abstracts whose parts are typed in bold and run up to the Introduction, a
+#: heading styled as one, with `{}` for the number their Results give: parts that name
+#: sections and one that does not, "Objective"; JAMA's, of which only "Results" names one;
+#: and a run-in label over parts (round 1 of #683: each was cut at its first part named, and
+#: its Results' number was the paper's, found where it differed).
+STRUCTURED = {
+    "parts in bold": (bold("Abstract") + bold("Objective") + para("To count falls.")
+                      + bold("Methods") + para("We read records.") + bold("Results")
+                      + para("Of 412, {} fell.") + bold("Conclusion")
+                      + para("Falls are common.")),
+    "JAMA's parts": (bold("Abstract") + bold("Importance") + para("Falls harm.")
+                     + bold("Objective") + para("To count falls.")
+                     + bold("Design, Setting, and Participants") + para("A cohort.")
+                     + bold("Results") + para("Of 412, {} fell.")
+                     + bold("Conclusions and Relevance") + para("Falls are common.")),
+    "run-in, then parts": (para("Abstract: Falls harm the old.") + bold("Methods")
+                           + para("We read records.") + bold("Results")
+                           + para("Of 412, {} fell.") + bold("Conclusions")
+                           + para("Falls are common.")),
+}  # fmt: skip
+#: The main text after them, opening on a heading styled as its Introduction.
+INTRODUCED = (heading("Introduction") + para("Falls harm.") + heading("Methods")
+              + para("We read 412 records.") + heading("Results") + para("Of 412, 77 fell."))
+
+
+@pytest.mark.parametrize("kind", list(STRUCTURED))
+def test_a_structured_abstract_s_parts_in_bold_run_to_the_next_heading(
+    tmp_path: Path, kind: str,
+) -> None:
+    """The next heading's title is read with the parts: a styled Introduction ends them, as a
+    typed one does, and the Abstract's own Results are the Abstract's, compared with the
+    paper's. Cut at its first part named, the Abstract's "Results" was the paper's."""
+    expected = ["Falls in older patients", "Abstract", "Introduction", "Methods", "Results"]
+    for number in (77, 78):
+        path = paper(tmp_path, STRUCTURED[kind].format(number), f"{number}.docx", INTRODUCED)
+        assert titles(path) == expected
+        read = audit([path], None).abstract
+        assert read.compared, read
+        assert [c.text for c in read.not_found] == ([] if number == 77 else ["78"]), read
+
+
+@needs_pandoc
+@pytest.mark.parametrize("kind", list(STRUCTURED))
+def test_init_from_runs_a_structured_abstract_to_the_next_heading(
+    tmp_path: Path, kind: str,
+) -> None:
+    path = paper(tmp_path, STRUCTURED[kind].format(78), after=INTRODUCED)
+    converted = from_word.convert(path)
+    assert _headings(converted.text) == [
+        "Falls in older patients", "Abstract", "Introduction", "Methods", "Results"]
+    assert converted.abstract_headings == ("Abstract",)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("space", ["\N{NO-BREAK SPACE}", "\N{THIN SPACE}"],
+                         ids=["no-break", "thin"])
+def test_a_run_in_label_before_a_space_pandoc_keeps_keeps_the_words_after_it(
+    tmp_path: Path, space: str,
+) -> None:
+    """pandoc keeps a no-break space or a thin space inside one piece of text, "Abstract:",
+    the space and "412" together: taken off as the label's word, the 412 went with it, which
+    the audit still reads (round 1 of #683)."""
+    path = paper(tmp_path, para(f"Abstract:{space}412 patients were followed, and 77 fell."))
+    converted = from_word.convert(path)
+    body = converted.text[converted.text.find("-->") + 1 :]
+    assert _headings(converted.text)[:2] == ["Falls in older patients", "Abstract"]
+    assert "412 patients were followed, and 77 fell." in body and "Abstract:" not in body
+
+
 def test_an_abstract_that_nothing_ends_is_not_read(tmp_path: Path) -> None:
     """docx-psych-A1 puts its only heading styles on its authors' lines, before the Abstract:
     with no heading after it, the Abstract ends at its Method typed in bold. With neither a

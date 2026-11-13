@@ -8,14 +8,18 @@ abstract's parts; with neither after it, nothing is made.
 
 pandoc reads an indented paragraph as a block quote: a run-in label opening one is read in
 it, and the rest of the quote is kept a quote. The label is taken off the paragraph's words
-where it ends where a word does; one that runs on into a note's mark, a link or the rest of
-the paragraph's words in one piece of text is left as it is (DESIGN.md, "Known gaps").
+where it ends where a word does, a no-break or a thin space pandoc keeps inside one piece of
+text among the places a word ends (round 1 of #683); one that runs on into a note's mark, a
+link or the rest of the paragraph's words in one piece of text is left as it is (DESIGN.md,
+"Known gaps").
 """
 
 from __future__ import annotations
 
 import json
+import re
 
+from manuscript_guard.text.docx_abstract import _closing
 from manuscript_guard.text.section_names import (
     abstract_alone,
     abstract_end,
@@ -47,7 +51,10 @@ def abstract_headings(blocks: list, styled: bool) -> tuple[list, tuple[str, ...]
     worded = [run_in or _worded(blocks[at + 1 : ends[0]])] + [
         _worded(blocks[one + 1 : end])
         for (one, _name, _typed), end in zip(titles, ends[1:], strict=True)]  # fmt: skip
-    end = abstract_end(["Abstract", *(name for _one, name, _typed in titles)], worded)
+    # The next heading's title read after them, as the audit reads it (`_closing`).
+    closing = _closing([text_of(blocks[limit]["c"][2])] if later else [])
+    end = abstract_end(["Abstract", *(name for _one, name, _typed in titles), *closing],
+                       worded + [False] * len(closing))  # fmt: skip
     if end is not None and end <= len(titles):
         closing = (titles[end - 1][0], titles[end - 1][2])
     elif later:
@@ -143,7 +150,9 @@ def _cut(inlines: list, state: _Cut) -> list | None:
             state.done = True
             out.append(node)
         elif kind == "Str":
-            state.started = True
+            rest = _cut_text(node["c"], state)
+            if rest:
+                out.append({"t": "Str", "c": rest})
         elif kind in _LOOKS:
             place = _LOOKS[kind]
             kept = _cut(node["c"][place] if place is not None else node["c"], state)
@@ -158,6 +167,30 @@ def _cut(inlines: list, state: _Cut) -> list | None:
         else:
             return None
     return out
+
+
+#: A space pandoc keeps inside one piece of text, a no-break or a thin one, which the label's
+#: pattern reads as a space (`section_names._RUN_IN_ABSTRACT`).
+_SPACED = re.compile(r"(\s+)")
+
+
+def _cut_text(text: str, state: _Cut) -> str:
+    """What is left of one piece of text once the label's words still to be taken off are:
+    split at the spaces pandoc keeps in it, "Abstract:", a no-break space and "412" in one
+    piece, so that the 412 stays (round 1 of #683: it went with the label)."""
+    pieces = _SPACED.split(text)
+    for at, piece in enumerate(pieces):
+        if not piece:
+            continue
+        if piece.isspace():
+            if state.started:
+                state.words, state.started = state.words - 1, False
+        elif state.words == 0:
+            state.done = True
+            return "".join(pieces[at:])
+        else:
+            state.started = True
+    return ""
 
 
 def _titles(blocks: list, start: int, limit: int) -> list[tuple[int, str, str]]:

@@ -25225,13 +25225,18 @@ Open, recorded as each change landed:
     paper is text, as its other typed titles are: docx-ecol-B2 keeps no Abstract to the
     audit. The Abstract ends at the next heading, whose level it takes, or before it at a
     title typed on a line of its own that is no part of it, as `section_levels` places a
-    structured abstract's parts, that title a heading too: in the corpus the next heading
+    structured abstract's parts, the next heading's title read after them, so that a styled
+    Introduction ends the parts as a typed one does (round 1 of #683: read up to it alone,
+    a structured Abstract was cut at its first part named, and its own Results' number was
+    found as the paper's), that title a heading too: in the corpus the next heading
     was a title page's line, an empty paragraph in a heading style or an introduction's
     paragraph in one, and an "Introduction", an "Abbreviations", an "Acknowledgments" or a
     "Method" typed in bold ended the Abstract for a reader. With neither after it, where it
     ends is not read, and the shape is not read either. Pinned by
     `tests/test_word_abstract.py::test_a_run_in_abstract_label_in_a_styled_paper_is_its_heading`,
     `tests/test_word_abstract.py::test_the_abstract_ends_at_a_typed_title_before_the_next_heading`,
+    `tests/test_word_abstract.py::test_a_structured_abstract_s_parts_in_bold_run_to_the_next_heading`,
+    `tests/test_word_abstract.py::test_a_run_in_label_before_a_space_pandoc_keeps_keeps_the_words_after_it`,
     `tests/test_word_abstract.py::test_an_abstract_that_nothing_ends_is_not_read`,
     `tests/test_word_abstract.py::test_the_audit_and_init_take_the_same_abstract_headings`.
   - What stands between such an Abstract and its end is the Abstract's, whatever it is: a
@@ -25245,6 +25250,12 @@ Open, recorded as each change landed:
     titles the audit cannot place, which the audit then places by nothing; and a label in
     a text box is read by the audit, and what pandoc makes of it is not held by a test.
     Accepted.
+  - The two shapes are looked for in every file with no heading that names the Abstract,
+    a supplement's too: a supplement with "Abstract" alone on a line in bold, or a line
+    opening on "Abstract: …", has an Abstract, and its lines above that line are not
+    searched for the paper's Abstract's numbers, nor is the Abstract's own text. That is the
+    rule a heading in a heading style that names the Abstract already follows in a
+    supplement (review of #683). Accepted.
   - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a

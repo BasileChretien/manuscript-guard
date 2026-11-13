@@ -6535,11 +6535,12 @@ def test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing
 ) -> None:
     """Basile, 2026-11-13: a heading whose whole title is one of the names the Results go by
     in machine learning, statistics and astronomy, "4. Experiments", "Numerical results",
-    numbered, in capitals or bold, is the Results to the Abstract against Results, in
-    Markdown and in LaTeX, and the Abstract is compared. One with words before or after the
-    name, one under the Discussion or among the Abstract's own parts, and a name as often
-    the Methods' as the Results', is not: the Abstract is not compared, never against the
-    whole body, and the reason names every heading that would have been read."""
+    numbered, in capitals or bold, "&" for "and", is the Results to the Abstract against
+    Results, in Markdown and in LaTeX, and the Abstract is compared. One with words before
+    or after the name, one under the Discussion, the Methods or among the Abstract's own
+    parts, and a name as often the Methods' as the Results', is not: the Abstract is not
+    compared, never against the whole body, and the reason names every heading that would
+    have been read (round 1 of #672 added the Methods and "&")."""
     for kind, markdown, latex, compared in drawn:
         for text, suffix in ((markdown, ".md"), (latex, ".tex")):
             read = _abstract_read(text, "Nothing.\n", suffix)
@@ -6577,6 +6578,21 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         return where, has, results
 
     patch.setattr(abstract, "placed", placed)
+
+
+def _a_results_name_under_the_methods_counts(patch: pytest.MonkeyPatch) -> None:
+    """As in round 0 of #672: "### Evaluation" under "## Methods" was the Results."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "methods_sections", lambda sections: [])
+
+
+def _an_ampersand_is_no_and_in_a_results_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import _whole
+
+    patch.setattr(abstract, "names_results_like",
+                  lambda title: _whole(title) in abstract.RESULTS_LIKE)
 
 
 def _no_heading_is_the_results_by_another_name(patch: pytest.MonkeyPatch) -> None:
@@ -21606,6 +21622,14 @@ BROKEN = {
     ),
     "a Results name counts wherever it stands": (
         _a_results_name_counts_wherever_it_stands,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "a Results name under the Methods counts": (
+        _a_results_name_under_the_methods_counts,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "an ampersand is no and in a Results name": (
+        _an_ampersand_is_no_and_in_a_results_name,
         test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
     ),
     "no heading is the Results by another name": (

@@ -9627,29 +9627,40 @@ NOT_THE_RESULTS = ("Analysis", "Data analysis", "Statistical analysis", "Experim
 RESULTS_NAME_WRITTEN = ("{}", "4. {}", "{upper}", "{}:", "**{}**")
 #: Where a heading that is not the Results stands or how it is written, one of each in every
 #: example: a Results name with words after it or before it, one under the Discussion, one
-#: under the Abstract as a part of it, and a title of `NOT_THE_RESULTS`.
+#: under the Abstract as a part of it, one under the Methods as a part of the set-up (round
+#: 1 of #672), and a title of `NOT_THE_RESULTS`.
 RESULTS_NAME_MISSES = ("words after", "words before", "under the discussion",
-                       "in the abstract", "not the results")  # fmt: skip
+                       "in the abstract", "under the methods", "not the results")  # fmt: skip
+#: A name of `RESULTS_BY_ANOTHER_NAME` with "and" in it, written with "&" (round 1 of #672).
+RESULTS_NAME_AMPERSAND = "Experiments & results"
 
 
-def _results_named(title: str, *, under: str = "", in_abstract: str = "") -> tuple[str, str]:
+def _results_named(title: str, *, under: str = "", in_abstract: str = "",
+                   in_methods: str = "") -> tuple[str, str]:  # fmt: skip
     """A paper in Markdown and in LaTeX with an Abstract, an Introduction, a Model and the
     section `title` after it, the Abstract's number reported there; with `under` as a
-    subsection of the Discussion, and `in_abstract` as a part of the Abstract."""
+    subsection of the Discussion, `in_abstract` as a part of the Abstract, and with
+    `in_methods`, Methods in the Model's place with that subsection."""
     part = f"### {in_abstract}\n\n" if in_abstract else ""
     sub = f"### {under}\n\nIt held.\n\n" if under else ""
+    model = (f"## Methods\n\nWe fit it.\n\n### {in_methods}\n\nWe judged it so.\n\n"
+             if in_methods else "## Model\n\nWe fit it.\n\n")  # fmt: skip
     markdown = (f"# A study\n\n## Abstract\n\n{part}The value was 812.5 here.\n\n"
-                "## Introduction\n\nIt matters.\n\n## Model\n\nWe fit it.\n\n"
+                f"## Introduction\n\nIt matters.\n\n{model}"
                 f"## {title}\n\nIt was 812.5 then.\n\n## Discussion\n\nIt was so.\n\n{sub}")
     bold = re.fullmatch(r"\*\*(.*)\*\*", title)
-    tex_title = f"{BACKSLASH}textbf{{{bold[1]}}}" if bold else title
+    tex_title = (f"{BACKSLASH}textbf{{{bold[1]}}}" if bold else title).replace(
+        "&", f"{BACKSLASH}&")  # fmt: skip
     tex_part = f"{BACKSLASH}subsection*{{{in_abstract}}}\n" if in_abstract else ""
     tex_sub = f"{BACKSLASH}subsection{{{under}}}\nIt held.\n" if under else ""
+    tex_model = (f"{BACKSLASH}section{{Methods}}\nWe fit it.\n{BACKSLASH}subsection{{"
+                 f"{in_methods}}}\nWe judged it so." if in_methods
+                 else f"{BACKSLASH}section{{Model}}\nWe fit it.")  # fmt: skip
     latex = "\n".join((
         f"{BACKSLASH}documentclass{{article}}", f"{BACKSLASH}begin{{document}}",
         f"{BACKSLASH}begin{{abstract}}", f"{tex_part}The value was 812.5 here.",
         f"{BACKSLASH}end{{abstract}}", f"{BACKSLASH}section{{Introduction}}", "It matters.",
-        f"{BACKSLASH}section{{Model}}", "We fit it.", f"{BACKSLASH}section{{{tex_title}}}",
+        tex_model, f"{BACKSLASH}section{{{tex_title}}}",
         "It was 812.5 then.", f"{BACKSLASH}section{{Discussion}}", "It was so.",
         f"{tex_sub}{BACKSLASH}end{{document}}",
     )) + "\n"  # fmt: skip
@@ -9661,14 +9672,16 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     """Papers whose Results heading is called something else, each with what it is, its
     Markdown and its LaTeX, and whether the Abstract against Results compares it: one for
     each name of `RESULTS_BY_ANOTHER_NAME`, written in a way of `RESULTS_NAME_WRITTEN` drawn,
-    which is; one called "Results", which is; and one of each of `RESULTS_NAME_MISSES`, its
-    name drawn, which is not, and the body then has no section that is the Results."""
+    which is; one called "Results", and one called `RESULTS_NAME_AMPERSAND`, which are; and
+    one of each of `RESULTS_NAME_MISSES`, its name drawn, which is not, and the body then
+    has no section that is the Results."""
     papers = []
     for name in RESULTS_BY_ANOTHER_NAME:
         shape = draw(st.sampled_from(RESULTS_NAME_WRITTEN))
         papers.append((name, *_results_named(shape.format(name, upper=name.upper())), True))
     papers.append(("results", *_results_named(draw(st.sampled_from(
         ("Results", "3. Results")))), True))  # fmt: skip
+    papers.append(("ampersand", *_results_named(RESULTS_NAME_AMPERSAND), True))
     for miss in RESULTS_NAME_MISSES:
         name = draw(st.sampled_from(RESULTS_BY_ANOTHER_NAME))
         if miss == "words after":
@@ -9681,6 +9694,8 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
             made = _results_named("Data", under=name)
         elif miss == "in the abstract":
             made = _results_named("Data", in_abstract=name)
+        elif miss == "under the methods":
+            made = _results_named("Data", in_methods=name)
         else:
             made = _results_named(draw(st.sampled_from(NOT_THE_RESULTS)))
         papers.append((miss, *made, False))

@@ -59,6 +59,7 @@ from manuscript_guard.stats.intervals import ReportedInterval, reported_interval
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
 from manuscript_guard.text.section_names import (
     _whole,
+    methods_sections,
     names_abstract,
     names_conclusion,
     names_discussion,
@@ -142,9 +143,28 @@ def in_abstract(place: object) -> bool:
 
 
 def names_results_like(title: str) -> bool:
-    """Whether a heading's whole title, numbered, marked or not, is one of `RESULTS_LIKE`:
-    "Experiments", "5. Numerical results"."""
-    return _whole(title) in RESULTS_LIKE
+    """Whether a heading's whole title, numbered, marked or not, "&" read as "and", is one
+    of `RESULTS_LIKE`: "Experiments", "5. Numerical results", "Experiments & Results"."""
+    return " ".join(_whole(title).replace("&", " and ").split()) in RESULTS_LIKE
+
+
+def _results_by_another_name(sections: list[Section],
+                             searched: Callable[[int], object]) -> bool:  # fmt: skip
+    """Whether a heading of `RESULTS_LIKE` stands where the section searches and under no
+    Methods (`methods_sections`): "### Evaluation" under "## Methods" tells how a model was
+    judged (round 1 of #672)."""
+    from manuscript_guard.gates.reported import REPORTED
+
+    methods = {id(one) for one in methods_sections(sections)}
+    chain: list[Section] = []
+    for section in sections:
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        if (names_results_like(section.title) and searched(section.line) is REPORTED
+                and not any(id(one) in methods for one in chain)):  # fmt: skip
+            return True
+        chain.append(section)
+    return False
 
 
 def placed(sections: list[Section], notes: frozenset[int] = frozenset()
@@ -162,17 +182,17 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset()
 
     The Results are a heading G8 reads as them where it reports, or one whose whole title is
     the Results by another name (`RESULTS_LIKE`) standing where the section searches: not in
-    the Abstract, nor under a Discussion (Basile, 2026-11-13)."""
+    the Abstract, nor under a Discussion (Basile, 2026-11-13), nor under the Methods
+    (`_results_by_another_name`)."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
     walk = Walk()
     place = walk.placing(sections)
-    where = _searched(sections, place, walk, notes)
+    searched = _searched(sections, place, walk, notes)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     results = (any(place(s.line) is REPORTED for s in sections if names_results(s.title))
-               or any(where(s.line) is REPORTED for s in sections
-                      if names_results_like(s.title)))  # fmt: skip
-    return where, abstract, results
+               or _results_by_another_name(sections, searched))  # fmt: skip
+    return searched, abstract, results
 
 
 def _reports_nothing(section: Section, walk) -> bool:

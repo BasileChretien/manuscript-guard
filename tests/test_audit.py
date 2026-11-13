@@ -2249,7 +2249,8 @@ _RESULTS_ELSEWHERE = (
 
 
 @pytest.mark.parametrize("heading", ["Numerical Results", "Experiments and Results",
-                                     "Empirical analysis", "4. Experiments", "Evaluation"])
+                                     "Empirical analysis", "4. Experiments", "Evaluation",
+                                     "Experiments @& Results"])
 def test_a_heading_that_is_the_results_by_another_name_has_the_abstract_compared(
     tmp_path: Path, heading: str
 ) -> None:
@@ -2280,3 +2281,19 @@ def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompare
     read = audit([paper], []).abstract
     assert read is not None and not read.compared, heading
     assert all(name in read.why_not.lower() for name in RESULTS_LIKE), read.why_not
+
+
+@pytest.mark.parametrize("heading", ["Evaluation", "Experiments"])
+def test_a_results_name_under_the_methods_leaves_the_abstract_uncompared(
+    tmp_path: Path, heading: str
+) -> None:
+    """Round 1 of #672: a heading of the list under the Methods is a part of the set-up, as
+    "### Evaluation" of how a model was judged, and the paper's results stand under a title
+    of no name the list holds: the Abstract is not compared, as one under a Discussion is
+    not."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# A study\n\n## Abstract\n\nThe value was 812.5 here.\n\n## Methods\n\n"
+                     f"We fit it.\n\n### {heading}\n\nWe judged it so.\n\n"
+                     "## Outcomes in context\n\nIt was 812.5 then.\n", encoding="utf-8")
+    read = audit([paper], []).abstract
+    assert read is not None and not read.compared, heading

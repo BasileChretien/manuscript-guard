@@ -15692,11 +15692,12 @@ ABSTRACT_BLOCKS = {
 }  # fmt: skip
 
 
-def _filled(node: object, words: str) -> object:
+def _abstract_block_filled(node: object, words: str) -> object:
+    """`node`, a piece of pandoc's tree of `ABSTRACT_BLOCKS`, with `words` for each `{}`."""
     if isinstance(node, list):
-        return [_filled(one, words) for one in node]
+        return [_abstract_block_filled(one, words) for one in node]
     if isinstance(node, dict):
-        return {key: _filled(value, words) for key, value in node.items()}
+        return {key: _abstract_block_filled(value, words) for key, value in node.items()}
     return node.replace("{}", words) if isinstance(node, str) else node
 
 
@@ -15724,7 +15725,8 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
         words = draw(st.sampled_from(("Of", "In"))) + " " + " ".join(
             draw(st.lists(word, min_size=1, max_size=3)))
         level = draw(st.sampled_from((1, 2)))
-        blocks = [{"t": "Header", "c": [1, ["", [], []], [_str("Falls")]]}, *_filled(shape, words)]
+        title = {"t": "Header", "c": [1, ["", [], []], [_str("Falls")]]}
+        blocks = [title, *_abstract_block_filled(shape, words)]
         if end == "a typed title":
             blocks += [{"t": "Para", "c": [_strong(_str("Introduction"))]},
                        {"t": "Para", "c": [_str("Text.")]}]

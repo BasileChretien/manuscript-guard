@@ -1657,6 +1657,8 @@ LATEX_PLACES = (
      "\\end{{abstract}}\\begin{{highlights}}\\item Of {}\\end{{highlights}}"
      "\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
      (False, False, True, True, False)),
+    # A template's `\\Abstract` in the body, which the preamble defines (decision 17).
+    ("\\Abstract{{Of {}}} ", (True,)),
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
@@ -1725,6 +1727,9 @@ LATEX_PREAMBLE_PLACES = (
     # (round 2 of #385: the first was refused, and so was the second).
     ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
     ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+    # A template's `\\Abstract`, which LaTeXTemplates' Stylish Article defines and prints, here
+    # defined by the paper itself, and used in the body too (decision 17, tex-qbio-pe-A1).
+    ("\\newcommand{{\\Abstract}}[1]{{#1}}\n\\Abstract{{Of {}}}\n", (True,)),
     # An encoding other than UTF-8 in a file all of ASCII, and the author's `\\unit` where
     # siunitx is not loaded (2026-10-23).
     ("\\usepackage[latin9]{{inputenc}}\n", ()),

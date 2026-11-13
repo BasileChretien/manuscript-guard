@@ -2707,6 +2707,30 @@ def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
         assert main(["audit", str(paper), "--strict"]) == failed, heading
 
 
+def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """Decision 17 (tex-qbio-pe-A1 of the real-paper corpus): a class that defines `!Abstract`
+    and prints it in its title, LaTeXTemplates' Stylish Article, and the paper's abstract
+    written in it in the preamble. Its interval that differs from the Results' fails
+    --strict, where no heading named the Abstract and it was not compared."""
+    from manuscript_guard.cli import main
+
+    (tmp_path / "stylish.cls").write_text(
+        "!NeedsTeXFormat{LaTeX2e}\n!ProvidesClass{stylish}\n!LoadClass{article}\n"
+        "!newcommand{!Abstract}[1]{!def!@Abstract{#1}}\n".replace("!", chr(92)),
+        encoding="utf-8")  # fmt: skip
+    latex = ("!documentclass{stylish}\n!Abstract{The OR was 1.52 (95!% CI 1.21--1.89).}\n"
+             "!begin{document}\n!section{Methods}\nWe did.\n"
+             "!section{Results}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(latex.replace("1.89).}", "1.90).}").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:

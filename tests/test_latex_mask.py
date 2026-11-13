@@ -373,6 +373,40 @@ def test_a_classs_front_matter_is_passed_over_and_its_abstract_read() -> None:
     assert "Of 4100." in read(grouped, body=True).masked
 
 
+def test_a_template_s_capitalised_abstract_command_is_the_abstract() -> None:
+    """LaTeXTemplates' Stylish Article, SelfArx.cls, takes the abstract as `\\Abstract{...}`
+    in the preamble and prints it in `\\maketitle` (decision 17, tex-qbio-pe-A1: no heading
+    named the Abstract). It is read as `\\abstract{...}` is, in the preamble and in the body,
+    under Abstract; the class's own definition of it is no known command defined again. Case
+    is not folded beyond it: `\\Section` and an environment `Abstract` are no headings."""
+    for preamble in ("", "\\makeatletter\n\\newcommand{\\Abstract}[1]{\\def\\@Abstract{#1}}\n"
+                         "\\makeatother\n"):  # fmt: skip
+        text = ("\\documentclass{article}\n" + preamble + "\\Abstract{Of 4100 reports, 12 "
+                "were fatal.}\n\\begin{document}\n\\section{Results}\nx\n\\Abstract{Of 7.}\n"
+                "\\end{document}\n")  # fmt: skip
+        reading = read(text)
+        assert reading.refusals == () and "Of 4100 reports, 12 were fatal." in reading.masked
+        at, again = text.index("\\Abstract{"), text.index("\\Abstract{Of 7")
+        assert [(h.start, h.title) for h in reading.headings] == [
+            (at, "Abstract"), (text.index("\\section"), "Results"), (again, "Abstract")
+        ], preamble
+        assert reading.abstracts == ((at, text.index("}\n\\begin{document}") + 1),
+                                     (again, text.index("}\n\\end{document}") + 1))
+        assert "Of 7." in reading.masked
+    body = "\\section{Intro}\n\\Abstract{We found 12.}\n"
+    reading = read(body, body=True)
+    assert [(h.start, h.title) for h in reading.headings] == [
+        (0, "Intro"), (body.index("\\Abstract"), "Abstract")
+    ]
+    assert reading.abstracts == ((body.index("\\Abstract"), len(body) - 1),)
+    others = read("\\Section{Methods 2}\n\\begin{Abstract}Of 12.\\end{Abstract}\n", body=True)
+    assert others.headings == () and others.abstracts == ()
+    # One a `filecontents` holds is written to a file, and printed by nothing.
+    kept = ("\\documentclass{article}\n\\begin{filecontents}{a.tex}\n\\Abstract{Of 12.}\n"
+            "\\end{filecontents}\n\\begin{document}\nx\n\\end{document}\n")  # fmt: skip
+    assert "12" not in read(kept).masked and read(kept).headings == ()
+
+
 def test_a_file_input_inside_the_front_matter_is_read_as_it_is() -> None:
     """A file input from inside `frontmatter` starts there: passed over, but an abstract."""
     reading = read("\\address{Unit 1181}\n\\begin{abstract}Of 4100.\\end{abstract}\n",

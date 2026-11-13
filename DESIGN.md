@@ -1422,6 +1422,10 @@ order is `printed_order`.
   design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
   of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
   only names the command. Where a class does not print it, the compile fails (step 9).
+  `\Abstract{…}` is read as `\abstract{…}` is, in the preamble and in the body: LaTeXTemplates'
+  Stylish Article (SelfArx.cls) defines it and prints it in `\maketitle`, and tex-qbio-pe-A1
+  of the real-paper corpus had no Abstract to compare (decision 17, 2026-11-14). No other
+  case is folded, and the environment is `abstract` alone.
 - A class's front matter in the body is passed over, as Markdown's YAML header is: Elsevier's
   `frontmatter` and BMC's `fmbox`, with the title, the authors and the addresses they hold,
   and a list of keywords, `keyword`, `keywords` or `IEEEkeywords`. An abstract in the front
@@ -1982,7 +1986,8 @@ The result is compiled and packed by the code above, and checked three times:
   TeX's `\input name` without braces is refused as before: only the preamble's is followed
   (2026-10-27).
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
-  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
+  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385), and
+  so does `\Abstract{…}` after the paper's own `\newcommand{\Abstract}` (decision 17).
 - The Abstract an abstract opens stays in force to the next heading of its level, so text
   between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
   case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it

@@ -1682,6 +1682,14 @@ def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
 
 
+def _a_template_s_abstract_command_is_blanked_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"Abstract"})
+
+
+def _a_template_s_abstract_command_defined_again_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_REDEFINABLE", latex_mask._REDEFINABLE - {"Abstract"})
+
+
 @holds(100, latex_bound())
 def test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else(
     drawn: tuple[str, list[tuple[str, str]]],
@@ -23556,6 +23564,14 @@ BROKEN = {
     ),
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a template's \\Abstract in the preamble is blanked": (
+        _a_template_s_abstract_command_is_blanked_in_the_preamble,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a paper's own \\Abstract is refused as a known command defined again": (
+        _a_template_s_abstract_command_defined_again_is_refused,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a binding is read wherever it is typed, in a comment too": (

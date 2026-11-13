@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 
 from manuscript_guard.text.latex import pictures
 from manuscript_guard.text.latex.commands import (
+    ABSTRACT_COMMANDS,
     AMSMATH,
     CATEGORY,
     CITATIONS,
@@ -72,12 +73,13 @@ PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: note, and a definition's default argument, printed at each use that omits it (round 1 of
 #: #380: `\\newcommand{\\ci}[1][95]{...}` hid the 95). The abstract, as a command or an
 #: environment, which a class such as PNAS's prints from the preamble (round 2 of #385: it
-#: was refused, and so was `\\let\\oldabstract\\abstract`, which only names it).
+#: was refused, and so was `\\let\\oldabstract\\abstract`, which only names it), and a template's
+#: `\\Abstract` (decision 17).
 PRINTED_IN_PREAMBLE = frozenset(
     {"title", "thanks", "newcommand", "renewcommand", "providecommand", "newenvironment",
      "renewenvironment", "DeclareRobustCommand", "NewDocumentCommand", "RenewDocumentCommand",
-     "ProvideDocumentCommand", "DeclareDocumentCommand", "abstract"}
-)  # fmt: skip
+     "ProvideDocumentCommand", "DeclareDocumentCommand"}
+) | ABSTRACT_COMMANDS  # fmt: skip
 #: Names that open no conditional though they start with `if`: a symbol and a command whose
 #: branches are its arguments, both read.
 NOT_CONDITIONALS = frozenset({"iff", "ifthenelse"})
@@ -202,7 +204,8 @@ class Reading:
     refusals: tuple[Refusal, ...]
     inputs: tuple[Input, ...] = ()
     headings: tuple[Heading, ...] = ()
-    #: Where each abstract runs, `\\begin{abstract}` to its `\\end`, or `\\abstract{...}`.
+    #: Where each abstract runs, `\\begin{abstract}` to its `\\end`, or `\\abstract{...}`, or a
+    #: template's `\\Abstract{...}` (`ABSTRACT_COMMANDS`).
     abstracts: tuple[tuple[int, int], ...] = ()
     #: Each package loaded, where its `\\usepackage` stands.
     packages: tuple[tuple[int, str], ...] = ()
@@ -281,10 +284,12 @@ _BARE_PATH = re.compile(r"[ \t]+([^\s{}\\%]+)")
 #: The options before `\\includestandalone`'s path, a few hundred characters at most.
 _PLACE_OPTIONS = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\[[^\]]{0,300}\]")
 #: Commands the reader knows that an author may define again, which it then reads as before:
-#: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
+#: `\abstract` was an unknown command, its arguments read, until it was given a heading, and
+#: so was `\Abstract`, which the template that takes it defines in its class and prints as it
+#: is given (decision 17: SelfArx.cls's `\newcommand{\Abstract}[1]{\def\@Abstract{#1}}`); a
 #: class's front matter, `\keywords` among it, is passed over however it is defined; and
 #: pandoc's citeproc commands, which its template defines; and a table's rules and colours.
-_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS | CITEPROC | TABLE_COMMANDS
+_REDEFINABLE = ABSTRACT_COMMANDS | FRONT_MATTER_COMMANDS | CITEPROC | TABLE_COMMANDS
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
@@ -1034,7 +1039,7 @@ class _Reader:
         frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d",
                        siunitx=self.command in SIUNITX if siunitx is None else siunitx)  # fmt: skip
         self.siunitx += frame.siunitx
-        heads = self.command in LEVELS or self.command == "abstract"
+        heads = self.command in LEVELS or self.command in ABSTRACT_COMMANDS
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
             frame.origin = self.heading_at
@@ -1209,7 +1214,7 @@ class _Reader:
         if frame.kind in ("arg", "opt"):
             self.pending, self.command = frame.rest, frame.command
         if frame.heading is not None:
-            if frame.command == "abstract":
+            if frame.command in ABSTRACT_COMMANDS:
                 self.headings.append(Heading(frame.origin, 1, "Abstract"))
                 self.abstracts.append((frame.origin, at + width))
             else:
@@ -1349,7 +1354,7 @@ class _Reader:
             self.pos = style.end()
             self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS and name not in self.own:
-            if name in LEVELS or name == "abstract":
+            if name in LEVELS or name in ABSTRACT_COMMANDS:
                 self.heading_at = at
             if name in CITATIONS:
                 self.citation_at = at
@@ -1752,7 +1757,7 @@ class _Reader:
         """Whether what `name` takes is printed though it stands in the preamble: the title
         and a definition's default anywhere there, an abstract only outside any environment
         or argument (round 3 of #385: one in `filecontents` was read, and nothing prints it)."""
-        if name != "abstract":
+        if name not in ABSTRACT_COMMANDS:
             return name in PRINTED_IN_PREAMBLE
         return name in PRINTED_IN_PREAMBLE and all(f.kind == "group" for f in self.stack)
 
@@ -1835,7 +1840,8 @@ class _Reader:
             if name in PICTURES and self._role() == PROSE:
                 self._picture_printed(self.pos, self._picture_end(name))
             role = self._entered(name, self._role())
-            if role == PREAMBLE and self._printed_from_preamble(name):
+            # Of the environments only `abstract` prints from the preamble, not `Abstract`.
+            if role == PREAMBLE and name == "abstract" and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             # A reference list is a group, which puts back what `\makeatletter` in it changed.

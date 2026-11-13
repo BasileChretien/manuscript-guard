@@ -1528,6 +1528,9 @@ _LATEX_WHOLE = (
     "\\section{Results 2}\n", "\\unknown{4 days} ", "``quoted 6'' ", "$\\beta = 0.42$ ",
     "\\begin{tabular}{lc}a & 7 \\\\ b & 8 \\\\\\end{tabular}\n", "\\iffalse 9 \\fi ",
     "\\begin{verbatim}\nx <- 55\n\\end{verbatim}\n", "\\[ x = 1 \\] ", "10\\,000 ", "\n\n",
+    # optidef's problems, maths (decision 13).
+    "\\begin{mini!}{w}{f_{min}(w) + 4}{}{}\n\\addConstraint{w}{\\le 9}{}\n\\end{mini!}\n",
+    "\\begin{maxi}{x}{x_{max} - 6}{}{}\\end{maxi}\n",
 )  # fmt: skip
 #: The signs of LaTeX bare, opened and closed by nobody: what a scanner mishandles.
 _LATEX_SIGNS = (
@@ -2907,8 +2910,11 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 #: backslash before its folder, a file's name, an address, maths, a comment, a listing, a word
 #: the paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a
 #: fenced div's attribute, a figure's caption, a key in code in one, a reference link's label
-#: and its definition, and a word of no letter. The title and the reference list hold a key
-#: in code too.
+#: and its definition, and a word of no letter; a table's cell, a pipe table's and a simple
+#: table's in Markdown, a `tabular`'s and a `longtable`'s in LaTeX, and an optidef problem in
+#: LaTeX, which is maths (decision 13). Read again: a table's caption, pandoc's `Table:` line
+#: and a `longtable`'s `\caption`, and a `\footnote` in a tabular's cell (round 1 of #673).
+#: The title and the reference list hold a key in code too.
 CODE_NAME_PLACES = (
     ("snake", "{n} ", "{e} ", "prose"),
     ("snake", "{e} ", "{e} ", "prose"),
@@ -2948,6 +2954,17 @@ CODE_NAME_PLACES = (
      "\n\\begin{{figure}}\\caption{{By \\texttt{{{e}}}}}\\end{{figure}}\n", None),
     ("snake", "[the portal][{n}]\n\n[{n}]: https://example.org\n\n", "words ", None),
     ("digits", "{n} ", "{e} ", None),
+    ("snake", "\n\n| Name | n |\n|---|---|\n| {n} | 2 |\n\n",
+     "\n\\begin{{tabular}}{{ll}}\nName & n \\\\\n{e} & 2 \\\\\n\\end{{tabular}}\n", None),
+    ("snake", "\n\n  Name                 n\n  ---------------- ---\n  {n}  2\n\n",
+     "\n\\begin{{longtable}}{{ll}}\n{e} & 2 \\\\\n\\end{{longtable}}\n", None),
+    ("snake", "words ", "\n\\begin{{mini!}}{{x}}{{{n}(x)}}{{}}{{}}\n"
+     "\\addConstraint{{{n}}}{{\\le 1}}{{}}\n\\end{{mini!}}\n", None),
+    ("snake", "\n\nTable: The {n}\n\n| Name | n |\n|---|---|\n| a | 2 |\n\n",
+     "\n\\begin{{longtable}}{{ll}}\\caption{{The {e}}}\\\\\na & 2 \\\\\n\\end{{longtable}}\n",
+     "prose"),
+    ("snake", "{n} ",
+     "\n\\begin{{tabular}}{{ll}}\na\\footnote{{The {e}.}} & 2 \\\\\n\\end{{tabular}}\n", "prose"),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
 #: writes one and `doseQab` as camelCase.
@@ -16012,6 +16029,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
             "stage": None}),
     ),  # fmt: skip
+    "audit code names": code_names().map(lambda drawn: drawn[0]),
     "model names": model_statements().map(lambda drawn: drawn[0]),
     "reply numbers": texts(NOTATED),
     "quoted": texts(),

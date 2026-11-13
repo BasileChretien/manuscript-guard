@@ -140,6 +140,13 @@ over, which, and by which list. `check` reads no such list and still gives
 one warning for each form, which a project's author answers one at a time (the corpus run
 of 2026-11-11: 354 of 427 of these warnings that judges read on 52 preprints were false,
 the field's own terms, and the true ones were lost among them).
+The names written the way names in code are, `community_action_importance`, are one finding
+in the same way: "3 names are written the way names in code are, as G14 reads the paper:
+'community_action_importance' here, then ...", at the first use of the first, with `--known`
+as its remedy, each name's warning under it in `--json` (`forms`) and listed by `--details`,
+the summary counting the names. A name in a table's cell, in maths or right after `RRID:` is
+not read at all, in the audit or in `check`, which still gives one warning for each name
+(decision 13, 2026-11-13: 369 such warnings on 52 preprints, 82% of those judged false).
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
 

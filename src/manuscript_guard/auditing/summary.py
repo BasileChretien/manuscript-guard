@@ -58,7 +58,8 @@ def kinds_of(found: list[Finding]) -> dict[tuple[str, str], list[Finding]]:
 
 def counted(found: list[Finding]) -> int:
     """How many things a kind's findings report: a finding each, but the one on the short
-    forms used and not defined, which counts its forms (`auditing.undefined`)."""
+    forms used and not defined and the one on the names from the code, which count their
+    words (`auditing.undefined`, `auditing.code_names`)."""
     return sum(getattr(finding, "counted", 1) for finding in found)
 
 

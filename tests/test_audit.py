@@ -2283,17 +2283,22 @@ def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompare
     assert all(name in read.why_not.lower() for name in RESULTS_LIKE), read.why_not
 
 
-@pytest.mark.parametrize("heading", ["Evaluation", "Experiments"])
+@pytest.mark.parametrize(("heading", "compared"), [
+    ("## Methods\n\n### Evaluation", False), ("## Methods\n\n### Experiments", False),
+    ("## Methods\n\n### Evaluation\n\nWe judged it so.\n\n### Limitations", False),
+    ("## Methods\n\n### Simulation results", True),
+    ("## Comparison with existing methods\n\n### Simulation results", True),
+    ("## Comparison with existing methods\n\n### Experiments", True),
+])  # fmt: skip
 def test_a_results_name_under_the_methods_leaves_the_abstract_uncompared(
-    tmp_path: Path, heading: str
+    tmp_path: Path, heading: str, compared: bool
 ) -> None:
-    """Round 1 of #672: a heading of the list under the Methods is a part of the set-up, as
-    "### Evaluation" of how a model was judged, and the paper's results stand under a title
-    of no name the list holds: the Abstract is not compared, as one under a Discussion is
-    not."""
+    """Rounds 1 and 2 of #672: a heading of the list under a heading whose whole title names
+    the Methods is a part of the set-up, as "### Evaluation" of how a model was judged,
+    unless its name says "results"; under "Comparison with existing methods" it counts."""
     paper = tmp_path / "paper.md"
-    paper.write_text(f"# A study\n\n## Abstract\n\nThe value was 812.5 here.\n\n## Methods\n\n"
-                     f"We fit it.\n\n### {heading}\n\nWe judged it so.\n\n"
-                     "## Outcomes in context\n\nIt was 812.5 then.\n", encoding="utf-8")
+    paper.write_text(f"# A study\n\n## Abstract\n\nThe value was 812.5 here.\n\n{heading}\n\n"
+                     "We judged it so.\n\n## Outcomes in context\n\nIt was 812.5 then.\n",
+                     encoding="utf-8")  # fmt: skip
     read = audit([paper], []).abstract
-    assert read is not None and not read.compared, heading
+    assert read is not None and read.compared == compared, heading

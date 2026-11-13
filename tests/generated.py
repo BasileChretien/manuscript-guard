@@ -9682,6 +9682,9 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     papers.append(("results", *_results_named(draw(st.sampled_from(
         ("Results", "3. Results")))), True))  # fmt: skip
     papers.append(("ampersand", *_results_named(RESULTS_NAME_AMPERSAND), True))
+    papers.append(("results under the methods", *_results_named("Data", in_methods=draw(
+        st.sampled_from([one for one in RESULTS_BY_ANOTHER_NAME if "results" in one.lower()]))),
+        True))  # fmt: skip
     for miss in RESULTS_NAME_MISSES:
         name = draw(st.sampled_from(RESULTS_BY_ANOTHER_NAME))
         if miss == "words after":
@@ -9695,7 +9698,8 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
         elif miss == "in the abstract":
             made = _results_named("Data", in_abstract=name)
         elif miss == "under the methods":
-            made = _results_named("Data", in_methods=name)
+            made = _results_named("Data", in_methods=draw(st.sampled_from(
+                [one for one in RESULTS_BY_ANOTHER_NAME if "results" not in one.lower()])))
         else:
             made = _results_named(draw(st.sampled_from(NOT_THE_RESULTS)))
         papers.append((miss, *made, False))

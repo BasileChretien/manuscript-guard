@@ -6584,7 +6584,7 @@ def _a_results_name_under_the_methods_counts(patch: pytest.MonkeyPatch) -> None:
     """As in round 0 of #672: "### Evaluation" under "## Methods" was the Results."""
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "methods_sections", lambda sections: [])
+    patch.setattr(abstract, "_names_the_methods", lambda title: False)
 
 
 def _an_ampersand_is_no_and_in_a_results_name(patch: pytest.MonkeyPatch) -> None:

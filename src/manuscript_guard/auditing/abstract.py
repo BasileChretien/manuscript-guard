@@ -59,7 +59,6 @@ from manuscript_guard.stats.intervals import ReportedInterval, reported_interval
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
 from manuscript_guard.text.section_names import (
     _whole,
-    methods_sections,
     names_abstract,
     names_conclusion,
     names_discussion,
@@ -148,20 +147,28 @@ def names_results_like(title: str) -> bool:
     return " ".join(_whole(title).replace("&", " and ").split()) in RESULTS_LIKE
 
 
+def _names_the_methods(title: str) -> bool:
+    from manuscript_guard.classify import METHODS_SECTIONS
+
+    return METHODS_SECTIONS.match(plain(title).replace("&", " and ")) is not None
+
+
 def _results_by_another_name(sections: list[Section],
                              searched: Callable[[int], object]) -> bool:  # fmt: skip
-    """Whether a heading of `RESULTS_LIKE` stands where the section searches and under no
-    Methods (`methods_sections`): "### Evaluation" under "## Methods" tells how a model was
-    judged (round 1 of #672)."""
+    """Whether a heading of `RESULTS_LIKE` stands where the section searches, and, where its
+    name does not say "results", under no heading whose whole title names the Methods
+    (`classify.METHODS_SECTIONS`, "&" read as "and"): "### Evaluation" under "## Methods"
+    tells how a model was judged, and "Comparison with existing methods" is no Methods
+    (rounds 1 and 2 of #672)."""
     from manuscript_guard.gates.reported import REPORTED
 
-    methods = {id(one) for one in methods_sections(sections)}
     chain: list[Section] = []
     for section in sections:
         while chain and chain[-1].level >= section.level:
             chain.pop()
+        methods = any(_names_the_methods(one.title) for one in chain)
         if (names_results_like(section.title) and searched(section.line) is REPORTED
-                and not any(id(one) in methods for one in chain)):  # fmt: skip
+                and ("results" in _whole(section.title) or not methods)):  # fmt: skip
             return True
         chain.append(section)
     return False

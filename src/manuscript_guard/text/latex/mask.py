@@ -276,10 +276,10 @@ class Reading:
 #: chapter (round 1 of #385: both were 0, and a chapter closed its part).
 LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3,
           "paragraph": 4, "subparagraph": 5}  # fmt: skip
-#: A path in braces after `\input`, which TeX finds past spaces and one line break.
 #: The commands whose prose argument opens a heading: the sectioning commands, and the abstract
 #: given as a command, titled Abstract (`_close`).
 _HEADING_COMMANDS = frozenset(LEVELS) | ABSTRACT_COMMANDS
+#: A path in braces after `\input`, which TeX finds past spaces and one line break.
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: TeX's `\\input name` without braces: the name runs to a space, a brace, a command or a
 #: comment, as `structure._LOADS` reads it in a class.

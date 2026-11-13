@@ -1866,6 +1866,7 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
     abstracts, (after,) = ([k for k, kind in planted if kind == which]
                            for which in ("abstract", "after"))  # fmt: skip
     assert len(under) == len(abstracts) == 2, view
+    assert all(sum(key in body for key in abstracts) == 1 for body in under), view
     assert all(any(key in body for body in under) for key in abstracts), view
     assert not any(after in body for body in under), view
     # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).

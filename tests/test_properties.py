@@ -1045,7 +1045,8 @@ def test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_
     closes a group opened before it, stops the reading as before. So does a `\\makeatletter`
     that defines a name with no `@` or an environment, or holds a conditional, and a
     conditional that holds a `\\catcode`, a definition or a `\\makeatletter`; a `\\newif` in
-    the body opens nothing, and one in a comment defines nothing (#674). The tree refuses each
+    the body opens nothing, and one in a comment defines nothing (#674). A name a block
+    defines is read with its definer, `\\def\\fi@x` closing nothing. The tree refuses each
     block skipped where the reader skipped it, so that BUILD fails it."""
     for text, skipped, read, stop in drawn:
         reading = latex_mask.read(text)
@@ -1092,6 +1093,12 @@ def _a_newif_in_the_body_defines_nothing(patch: pytest.MonkeyPatch) -> None:
 
 def _a_definition_in_a_block_is_skipped(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_BLOCK_DEFINERS", frozenset())
+
+
+def _a_defined_name_is_read_apart_from_its_definer(patch: pytest.MonkeyPatch) -> None:
+    name_end = latex_mask._at_definition_end
+    patch.setattr(latex_mask, "_at_definition_end",
+                  lambda text, end, name: min(end, name_end(text, end, name)))  # fmt: skip
 
 
 def _a_delimited_use_is_refused_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
@@ -21940,6 +21947,10 @@ BROKEN = {
     ),
     "a skipped block may define a name with no at sign": (
         _a_definition_in_a_block_is_skipped,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a name a block defines is read apart from its definer": (
+        _a_defined_name_is_read_apart_from_its_definer,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
     ),
     "a bounded block in the body stops the reading": (

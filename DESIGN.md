@@ -16685,6 +16685,10 @@ been sorted yet.
   - A definition the block holds by a command the rule does not name, `\DeclareMathOperator`
     or `\newtheorem` say, is not seen, and a use of what it defines past the block is read
     as the reader reads it. Accepted.
+  - A command that changes a character's category with no `\catcode` written, LaTeX's
+    `\@makeother\%` say, is not seen: the block is skipped, and past it a `%` that TeX
+    prints is read as a comment, so the rest of its line is not read (final check of
+    #674). Accepted.
   - A comment between a `\newif` and its name, `\newif % note` over `\iffoo`, leaves the
     name a conditional to the reader, which skips a block at it where TeX defines it, as the
     base refused it there. Accepted.

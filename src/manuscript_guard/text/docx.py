@@ -444,20 +444,18 @@ def _line_start(
     keeps it on accepting the change, and when Word deletes a mark itself it first copies
     the first paragraph's style onto the second. A heading style ends a reference list. Its
     numbering is the last paragraph's too, which is in its properties, beside its style.
-    A heading's level goes in `levels`, in the order of the headings' lines outside a table;
-    and with each count, the level of the list the line is an item of, None for a heading or
-    a line in a text box. A table's cell in a heading style still ends a reference list, and
-    places nothing (`read_docx_text`).
+    A heading's level goes in `levels`, in the order of the headings' lines; and with each
+    count, the level of the list the line is an item of, None for a heading or a line in a
+    text box.
     """
     last = paragraph
     while last in joins:
         last = joins[last]
-    cell = _inside(paragraph, parents, W + "tc")
     level = _heading_level(last, headings)
     heading = _HEADING_MARK if level is not None else ""
-    if heading and levels is not None and not cell:
+    if heading and levels is not None:
         levels.append(level)
-    if not cell:
+    if not _inside(paragraph, parents, W + "tc"):
         numbered = numbering.of_paragraph(last) if numbering is not None else None
         if numbered is None or counts is None:
             return "\n" + heading
@@ -655,15 +653,18 @@ def read_docx_text(path: Path) -> DocxText:
     numbering = tuple(zip(marked_lines, counts, strict=True)) if same else ()
     heading_lines = [i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK)]
     headings = frozenset(heading_lines)
-    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
-    # A table's cell in a heading style places nothing, as pandoc keeps it in the cell: a
-    # paper whose only paragraphs in a heading style were cells was placed by them, and its
-    # typed titles left unread (docx-med-A3 of the corpus run of 2026-11-13).
-    placing = [i for i in heading_lines if i not in cells]
     # A level for each heading's line, in order; were they ever to differ, every heading is
     # said to be at level 1 rather than a level given to the wrong line.
-    heading_levels = tuple(zip(placing, heads if len(heads) == len(placing)
-                               else [1] * len(placing), strict=True))  # fmt: skip
+    heading_levels = tuple(zip(heading_lines, heads if len(heads) == len(heading_lines)
+                               else [1] * len(heading_lines), strict=True))  # fmt: skip
+    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
+    if headings and headings <= cells:
+        # Where a table's cells are the only paragraphs in a heading style, they place
+        # nothing, and the paper is placed by its typed titles: pandoc keeps them in their
+        # cells, and `init --from` makes no heading of them (docx-med-A3 of the corpus run of
+        # 2026-11-13). Beside a heading outside a table they place as before: a boxed
+        # Abstract titled in its cell. Either way they end a reference list.
+        heading_levels = ()
     bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2])
     typed = frozenset(i for i, line in enumerate(lines) if line.startswith(_TYPED_MARK))
     # The notes keep what they always had, the cell mark of a table in a note among it; the
@@ -681,10 +682,11 @@ def read_docx_text(path: Path) -> DocxText:
 
 
 def typed_titles(document: DocxText) -> list[tuple[int, str]]:
-    """In a document with no paragraph in a heading style, each line a title can be typed
-    as (`DocxText.typed`) whose words are a section's name alone (`section_name_alone`), in
-    bold or not, numbered or not, in capitals or not, "ABSTRACT", "3. RESULTS", by 0-based
-    line, with its name; none in a document with a heading style, read by its styles."""
+    """In a document with no paragraph in a heading style but a table's cells, each line a
+    title can be typed as (`DocxText.typed`) whose words are a section's name alone
+    (`section_name_alone`), in bold or not, numbered or not, in capitals or not, "ABSTRACT",
+    "3. RESULTS", by 0-based line, with its name; none in a document with a heading style
+    outside a table, read by its styles."""
     from manuscript_guard.text.section_names import section_name_alone
 
     if document.heading_levels:

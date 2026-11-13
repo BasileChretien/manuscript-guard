@@ -13493,6 +13493,49 @@ def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, st
     return draw(st.permutations(drawn))
 
 
+#: Entries the audit cannot sort (`auditing.by_title.sort`): neither an article, a book, a web
+#: page nor a legal text by their shape, as `{a}` the first author, `{i}` an initial and
+#: `{year}` its year. A personal communication, field notes, and an author-year entry with
+#: nothing after its title (the shapes docx-educ-A2 and docx-socio-A1 have).
+UNSORTED_ENTRIES = (
+    "{a} {i}. Personal communication. {year}.",
+    "{a} {i}. Field notes from the archive. {year}.",
+    "{a}, {i}. ({year}). Interview transcripts of the second wave.",
+)
+
+
+@st.composite
+def unsorted_references(draw: st.DrawFn) -> tuple[list[list[str]], list[dict[str, Any]]]:
+    """Two Markdown papers audited together, in an order drawn, each `[name, text]`, with what
+    each holds: one paper with a single entry the audit cannot sort, the other with one of
+    each of `UNSORTED_ENTRIES`, both among entries it sorts (`unidentified_entries`, shared
+    out between them), at places drawn. One list is numbered, "1. ...", and the other is
+    not, an entry a paragraph, so that every example holds a paper with one entry and one
+    with several, and a numbered list and an unnumbered one. Each paper's `unsorted` is the
+    1-based place of each entry not sorted, in the list's order, and `numbered` its style."""
+    sorted_ = [text for text, *_rest in draw(unidentified_entries())]
+    cut = draw(st.integers(1, len(sorted_) - 1))
+    numbered = draw(st.booleans())
+    papers = []
+    for many, others in ((False, sorted_[:cut]), (True, sorted_[cut:])):
+        shapes = UNSORTED_ENTRIES if many else (draw(st.sampled_from(UNSORTED_ENTRIES)),)
+        unsorted = [shape.format(a=draw(st.sampled_from(UNIDENTIFIED_FAMILIES)),
+                                 i=draw(st.sampled_from(_INITIALS)),
+                                 year=draw(st.integers(1970, 2024)))
+                    for shape in shapes]  # fmt: skip
+        entries = draw(st.permutations([(text, False) for text in others]
+                                       + [(text, True) for text in unsorted]))  # fmt: skip
+        listed = numbered == many
+        typed = [f"{at}. {text}" if listed else text for at, (text, _not) in enumerate(entries, 1)]
+        text = ("# Results\n\nIt rose, as before.\n\n# References\n\n"
+                + ("\n" if listed else "\n\n").join(typed) + "\n")  # fmt: skip
+        papers.append({"name": "several.md" if many else "one.md", "text": text,
+                       "numbered": listed,
+                       "unsorted": [at for at, (_text, not_) in enumerate(entries, 1) if not_]})
+    papers = draw(st.permutations(papers))
+    return [[paper["name"], paper["text"]] for paper in papers], papers
+
+
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
 #: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
 INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
@@ -16458,6 +16501,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
+    "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),

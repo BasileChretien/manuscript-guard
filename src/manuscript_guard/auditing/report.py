@@ -107,7 +107,8 @@ class Item:
     placer: object = None
     #: What `--json` gives beside it: for the short forms used and not defined, and for the
     #: names from the code, each with G14's warning on it and its place
-    #: (`auditing.undefined.listed`).
+    #: (`auditing.undefined.listed`); for a paper's entries not sorted, each with its note
+    #: and its place (`auditing.unsorted`).
     listed: dict | None = None
 
     def as_dict(self) -> dict:
@@ -224,14 +225,16 @@ def _title_items(report) -> list[Item]:
     a dry run would ask of Crossref, and, with `--lookup` or without it, each one to check by
     hand, a note with why (`by_title.reason`). The tile counts the same entries (round 1 of
     #650). One found is said as the DOI it gave is asked about (`by_title.look_up_all`); a
-    web page or a legal text no DOI is expected of is listed in the section only."""
-    from manuscript_guard.auditing import by_title
+    web page or a legal text no DOI is expected of is listed in the section only. The entries
+    not sorted are one note for each paper (`auditing.unsorted`, decision 16)."""
+    from manuscript_guard.auditing import by_title, unsorted
 
     looked_up = report.lookups is not None
-    found = []
+    papers: dict[Path, list[Item]] = {}
     for one in by_title.without_identifier(report):
         entry, where = one.entry, one.entry.path or one.path
         why = by_title.reason(one, looked_up)
+        found = papers.setdefault(one.path, [])
         if looked_up and one.asked and not one.came:
             found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
                               f"{one.asked}", INFO, False, where, entry.line))  # fmt: skip
@@ -239,7 +242,14 @@ def _title_items(report) -> list[Item]:
             found.append(Item(REFERENCES, "G7", by_title.CODES[why],
                               f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
                               where, entry.line))  # fmt: skip
-    return found
+    placers = report.placers
+
+    def at(path: Path | None, line: int | None) -> str:
+        # A .docx's entry by its heading and paragraph, as the audit places things there.
+        placer = placers.get(path) if path is not None else None
+        return placer.said(line) if placer is not None else f"line {line}"
+
+    return [item for found in papers.values() for item in unsorted.one_finding(found, at)]
 
 
 def _non_negative_items(report) -> list[Item]:
@@ -628,11 +638,13 @@ def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) 
     """A finding as JSON, its line given as a page and a line where it is a PDF's
     (`auditing.pdf.Place`), as a section and a paragraph where it is a .docx's
     (`auditing.paragraphs.Paragraph`). Each short form a finding lists, the same, at its
-    own line (`auditing.undefined.listed`)."""
-    if item_dict.get("forms"):
-        item_dict = {**item_dict, "forms": [
-            placed(form, path if form["path"] is None else Path(form["path"]), form["line"],
-                   placers) for form in item_dict["forms"]]}  # fmt: skip
+    own line (`auditing.undefined.listed`), and each entry the note on a paper's entries not
+    sorted lists (`auditing.unsorted`)."""
+    for key in ("forms", "entries"):
+        if item_dict.get(key):
+            item_dict = {**item_dict, key: [
+                placed(form, path if form["path"] is None else Path(form["path"]),
+                       form["line"], placers) for form in item_dict[key]]}  # fmt: skip
     placer = placers.get(path) if path is not None else None
     place = placer.place(line) if placer is not None else None
     return item_dict if place is None else {**item_dict, **place.as_dict()}

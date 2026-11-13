@@ -32,6 +32,12 @@ expected:
       that names the Abstract; it ends at the next heading, or before it at a title typed on
       a line of its own that is no part of it (Basile, 2026-11-14, four papers of the
       real-paper corpus)
+  - reading: audit references not sorted
+    why: >-
+      a paper's entries the audit cannot sort are one note, at the first of them, naming
+      each entry and its reason once and listing each with its line, where the base gave a
+      note for each entry; the other notes on an entry with no DOI and no PMID are as they
+      were (Basile, 2026-11-14, decision 16: 1,405 such notes on 22 real preprints)
   - reading: latex refusals
     why: >-
       a `\makeatletter` in the body is skipped to its `\makeatother`, and a conditional in

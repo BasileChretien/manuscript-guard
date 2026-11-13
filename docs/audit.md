@@ -174,7 +174,12 @@ counts as asked.
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no
 DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
-journal); or not sorted, to check by hand. With `--lookup`, each article, book and chapter is
+journal); or not sorted, to check by hand. The entries not sorted are one note for the paper,
+not a note each: "3 entries not sorted: neither an article, a book, a web page nor a legal
+text by its shape, so not looked up: entries 1, 3 and 4 of the list; check them by hand", at
+the first entry's place, and `--json` keeps each entry under it with its note and its line
+(`entries`); the summary still counts the entries, and the section still lists each one.
+With `--lookup`, each article, book and chapter is
 looked up in Crossref by its title, its first author and its year, and a work is taken only
 when it is a near-exact match: the same title once case, punctuation and accents are folded,
 the same first author's family name, and the same year where the entry gives one. A work taken

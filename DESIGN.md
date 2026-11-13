@@ -10681,11 +10681,21 @@ no change. The summary's line counts the works found by their title among those 
 the entries with no DOI expected and those to check by hand, by why each is (`by_title.reason`:
 none found by its title, more than one found, Crossref not answering, a title too short to
 look up or not read, not sorted). Each entry to check by hand is a note of its own, with a
-code for its reason, and puts the References tile at "to look at", with `--lookup` and
+code for its reason, but the entries not sorted, which are one note for each paper (decision
+16, 2026-11-14: 1,405 such notes on 22 of 52 real preprints, 598 on one, most of them from a
+list that runs on into tables): "3 entries not sorted: ..., so not looked up: entries 1, 3
+and 4 of the list; check them by hand", at the first entry's place, each reason said once
+with its entries, and each entry with its note and its line under it in `--json`
+(`entries`), as the short forms left undefined and the names from the code are one finding
+(`auditing.unsorted`, reusing `undefined.gathered`). The References line still counts the
+entries, and the section still lists each one. A note on an entry not sorted
+puts the References tile at "to look at", and so does any other, with `--lookup` and
 without it; the report draft says how many titles were looked up in Crossref, and, where no
 entry gives a DOI or a PMID and no title was found, says that too. The rules read text, so they are held over generated
 entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
-reading "reference sorting").
+reading "reference sorting"); the one note for each paper over two papers audited together,
+one with an entry not sorted and one with several, one list numbered and one not
+(`tests/generated.py::unsorted_references`, the reading "audit references not sorted").
 
 ## The audit page runs in the reader's browser
 
@@ -27557,6 +27567,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Results, and "Simulation studies" holds a study's design as well. The comparison never
   falls back to the whole body, and no other gate reads the list. Pinned by
   `tests/test_audit.py::test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared`.
+- **`compare` marks a one-line note new when anything it lists changes.** The audit's one
+  finding on the short forms left undefined (#640), its one on the names from the code
+  (#673) and its one note on a paper's entries not sorted (decision 16) each name every
+  form, name or entry in their message, and `compare` holds v2's finding to v1's word for
+  word. One form, name or entry added, dropped or renumbered in v2 marks the whole note "new
+  in v2", those that stood in v1 among it, and so do the lines alone moving where the note
+  names two entries of one label by their places (a paragraph added above the list); the
+  comparison keeps what the note lists under it
+  (`forms` or `entries`), for the reader to look through, and does not mark them one by one.
+  Pinned by `tests/test_compare.py::test_a_one_line_note_reads_as_new_when_an_entry_in_it_is`.
+- **Two entries of one label are told apart only as far as their places differ.** The note
+  on a paper's entries not sorted names an entry whose label another has too by its place
+  (`auditing.unsorted`), and two places can read the same. Accepted.
+  - In a .docx, two lists that each start at 1, each under a "References" heading with
+    another heading between (an Appendix), make one census, and a paragraph is counted
+    again from each heading and named by its title alone, so the note can read "entries 2
+    (References, paragraph 2) and 2 (References, paragraph 2)". Accepted.
+  - A LaTeX tree's place names no file, so two `\bibitem{x}` in two `\input` files can both
+    read "line 3". Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

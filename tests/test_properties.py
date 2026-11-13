@@ -70,6 +70,7 @@ from generated import (
     PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
+    RESULTS_BY_ANOTHER_NAME,
     SHORT_QUOTATION,
     SIGNS_TYPED,
     SOURCE_GAPS,
@@ -175,6 +176,7 @@ from generated import (
     quoted_references,
     reference_titled,
     response_letters,
+    results_named_papers,
     revisions,
     set_hazards,
     share_tables,
@@ -6525,6 +6527,90 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
         assert sorted(d.line for d in read.arithmetic) == off, text
     for heading, other in (("## Abstract", "## Summary of it"), ("## Results", "## Data")):
         assert not _abstract_read(paper.replace(heading, other), supplement).compared
+
+
+@holds(10, results_named_papers())
+def test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them(
+    drawn: list[tuple[str, str, str, bool]],
+) -> None:
+    """Basile, 2026-11-13: a heading whose whole title is one of the names the Results go by
+    in machine learning, statistics and astronomy, "4. Experiments", "Numerical results",
+    numbered, in capitals or bold, "&" for "and", is the Results to the Abstract against
+    Results, in Markdown and in LaTeX, and the Abstract is compared. One with words before
+    or after the name, one under the Discussion, the Methods or among the Abstract's own
+    parts, and a name as often the Methods' as the Results', is not: the Abstract is not
+    compared, never against the whole body, and the reason names every heading that would
+    have been read (round 1 of #672 added the Methods and "&"). Under a Methods named in
+    any way, "Method" or "(3) Methods", only a name that says "results" is the Results, and
+    a paper's title over it that holds "methods" is no Methods (rounds 2 and 3)."""
+    for kind, markdown, latex, compared in drawn:
+        for text, suffix in ((markdown, ".md"), (latex, ".tex")):
+            read = _abstract_read(text, "Nothing.\n", suffix)
+            assert read.compared == compared, (kind, text)
+            if compared:
+                assert read.matched == read.numbers == 1, (kind, text)
+                continue
+            assert all(f'"{name.capitalize()}"' in read.why_not
+                       for name in RESULTS_BY_ANOTHER_NAME), read.why_not  # fmt: skip
+
+
+def _a_results_name_is_read_by_its_opening_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import _whole
+
+    patch.setattr(abstract, "names_results_like",
+                  lambda title: _whole(title).startswith(abstract.RESULTS_LIKE))
+
+
+def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
+    """Placed as G8 places the Results, and not where the section searches: "Experiments"
+    under the Discussion or in the Abstract was the Results."""
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.gates.reported import REPORTED, Walk
+
+    def placed(sections, notes=frozenset()):
+        walk = Walk()
+        place = walk.placing(sections)
+        where = abstract._searched(sections, place, walk, notes)
+        has = any(abstract.in_abstract(place(s.line)) for s in sections
+                  if abstract.names_abstract(s.title))  # fmt: skip
+        results = (any(place(s.line) is REPORTED for s in sections
+                       if abstract.names_results(s.title))
+                   or any(abstract.names_results_like(s.title) for s in sections))
+        return where, has, results
+
+    patch.setattr(abstract, "placed", placed)
+
+
+def _a_results_name_under_the_methods_counts(patch: pytest.MonkeyPatch) -> None:
+    """As in round 0 of #672: "### Evaluation" under "## Methods" was the Results."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_names_the_methods", lambda title: False)
+
+
+def _a_results_name_saying_results_is_refused_under_the_methods(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """Without the exemption of round 2 of #672: "### Simulation results" under the Methods
+    was no Results."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_says_results", lambda title: False)
+
+
+def _an_ampersand_is_no_and_in_a_results_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import _whole
+
+    patch.setattr(abstract, "names_results_like",
+                  lambda title: _whole(title) in abstract.RESULTS_LIKE)
+
+
+def _no_heading_is_the_results_by_another_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "RESULTS_LIKE", ("experiments",))
 
 
 def _a_share_is_not_read_beside_its_counts(patch: pytest.MonkeyPatch) -> None:
@@ -21771,6 +21857,30 @@ def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a Results name is read by its opening words": (
+        _a_results_name_is_read_by_its_opening_words,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "a Results name counts wherever it stands": (
+        _a_results_name_counts_wherever_it_stands,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "a Results name under the Methods counts": (
+        _a_results_name_under_the_methods_counts,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "a Results name saying results is refused under the Methods": (
+        _a_results_name_saying_results_is_refused_under_the_methods,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "an ampersand is no and in a Results name": (
+        _an_ampersand_is_no_and_in_a_results_name,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "no heading is the Results by another name": (
+        _no_heading_is_the_results_by_another_name,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
     "an RRID keeps the punctuation after it": (
         _an_rrid_keeps_the_mark_after_it,
         test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,

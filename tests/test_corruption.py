@@ -2687,6 +2687,26 @@ def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differ
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-11-13: a paper whose Results are headed "Numerical results" or "4.
+    Experiments" (tex-astro-ga-A2 and tex-cs-lg-A1 of the real-paper corpus) has its Abstract
+    compared with them, so an interval that differs fails --strict, where it was not
+    compared; under "Data analysis", which is as often the Methods, it is still not."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.90).\n!end{abstract}\n!section{Model}\nWe did.\n"
+             "!section{HEADING}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    for heading, failed in (("Numerical results", 1), ("4. Experiments", 1),
+                            ("Data analysis", 0)):  # fmt: skip
+        paper.write_text(latex.replace("HEADING", heading).replace("!", chr(92)),
+                         encoding="utf-8")  # fmt: skip
+        assert main(["audit", str(paper), "--strict"]) == failed, heading
+
+
 def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:

@@ -9628,6 +9628,115 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             latex, supplement_tex + "\n", in_latex)  # fmt: skip
 
 
+#: The headings that are the Results by another name to the Abstract against Results, each a
+#: whole title (Basile, 2026-11-13, after tex-astro-ga-A2, tex-cs-lg-A1 and tex-stat-ap-B1 of
+#: the real-paper corpus); and the titles that are not: names as often the Methods' as the
+#: Results', and two that open like the Results and are a study's set-up or design.
+RESULTS_BY_ANOTHER_NAME = (
+    "Experiments", "Experiments and results", "Experimental results", "Empirical results",
+    "Empirical analysis", "Main results", "Evaluation", "Numerical results",
+    "Simulation results",
+)  # fmt: skip
+NOT_THE_RESULTS = ("Analysis", "Data analysis", "Statistical analysis", "Experimental setup",
+                   "Simulation studies")  # fmt: skip
+#: How such a heading is written, `{}` its name: as it is, numbered, in capitals, closed by a
+#: colon, and in bold.
+RESULTS_NAME_WRITTEN = ("{}", "4. {}", "{upper}", "{}:", "**{}**")
+#: Where a heading that is not the Results stands or how it is written, one of each in every
+#: example: a Results name with words after it or before it, one under the Discussion, one
+#: under the Abstract as a part of it, one under the Methods as a part of the set-up (round
+#: 1 of #672), and a title of `NOT_THE_RESULTS`.
+RESULTS_NAME_MISSES = ("words after", "words before", "under the discussion",
+                       "in the abstract", "under the methods", "not the results")  # fmt: skip
+#: A name of `RESULTS_BY_ANOTHER_NAME` with "and" in it, written with "&" (round 1 of #672).
+RESULTS_NAME_AMPERSAND = "Experiments & results"
+#: The names of the Methods a set-up's heading stands under, numbered or not, the singular
+#: among them; and a paper's title written as a heading over it that holds "methods", no
+#: Methods since an Introduction stands under it (round 3 of #672).
+METHODS_HEADINGS = ("Methods", "Method", "2. Materials and methods", "(3) Methods")
+METHODS_PAPER_TITLE = "Methods and algorithms for robust estimation"
+
+
+def _results_named(title: str, *, under: str = "", in_abstract: str = "",
+                   in_methods: str = "", methods: str = "Methods",
+                   paper: str = "A study") -> tuple[str, str]:  # fmt: skip
+    """A paper in Markdown and in LaTeX with an Abstract, an Introduction, a Model and the
+    section `title` after it, the Abstract's number reported there; with `under` as a
+    subsection of the Discussion, `in_abstract` as a part of the Abstract, and with
+    `in_methods`, `methods` in the Model's place with that subsection. The Markdown paper's
+    title, a heading over it, is `paper`."""
+    part = f"### {in_abstract}\n\n" if in_abstract else ""
+    sub = f"### {under}\n\nIt held.\n\n" if under else ""
+    model = (f"## {methods}\n\nWe fit it.\n\n### {in_methods}\n\nWe judged it so.\n\n"
+             if in_methods else "## Model\n\nWe fit it.\n\n")  # fmt: skip
+    markdown = (f"# {paper}\n\n## Abstract\n\n{part}The value was 812.5 here.\n\n"
+                f"## Introduction\n\nIt matters.\n\n{model}"
+                f"## {title}\n\nIt was 812.5 then.\n\n## Discussion\n\nIt was so.\n\n{sub}")
+    bold = re.fullmatch(r"\*\*(.*)\*\*", title)
+    tex_title = (f"{BACKSLASH}textbf{{{bold[1]}}}" if bold else title).replace(
+        "&", f"{BACKSLASH}&")  # fmt: skip
+    tex_part = f"{BACKSLASH}subsection*{{{in_abstract}}}\n" if in_abstract else ""
+    tex_sub = f"{BACKSLASH}subsection{{{under}}}\nIt held.\n" if under else ""
+    tex_model = (f"{BACKSLASH}section{{{methods}}}\nWe fit it.\n{BACKSLASH}subsection{{"
+                 f"{in_methods}}}\nWe judged it so." if in_methods
+                 else f"{BACKSLASH}section{{Model}}\nWe fit it.")  # fmt: skip
+    latex = "\n".join((
+        f"{BACKSLASH}documentclass{{article}}", f"{BACKSLASH}begin{{document}}",
+        f"{BACKSLASH}begin{{abstract}}", f"{tex_part}The value was 812.5 here.",
+        f"{BACKSLASH}end{{abstract}}", f"{BACKSLASH}section{{Introduction}}", "It matters.",
+        tex_model, f"{BACKSLASH}section{{{tex_title}}}",
+        "It was 812.5 then.", f"{BACKSLASH}section{{Discussion}}", "It was so.",
+        f"{tex_sub}{BACKSLASH}end{{document}}",
+    )) + "\n"  # fmt: skip
+    return markdown, latex
+
+
+@st.composite
+def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
+    """Papers whose Results heading is called something else, each with what it is, its
+    Markdown and its LaTeX, and whether the Abstract against Results compares it: one for
+    each name of `RESULTS_BY_ANOTHER_NAME`, written in a way of `RESULTS_NAME_WRITTEN` drawn,
+    which is; one called "Results", one called `RESULTS_NAME_AMPERSAND`, one whose name says
+    "results" under a Methods of `METHODS_HEADINGS`, and one under `METHODS_PAPER_TITLE`
+    over the paper, which are; and
+    one of each of `RESULTS_NAME_MISSES`, its name drawn, which is not, and the body then
+    has no section that is the Results."""
+    papers = []
+    for name in RESULTS_BY_ANOTHER_NAME:
+        shape = draw(st.sampled_from(RESULTS_NAME_WRITTEN))
+        papers.append((name, *_results_named(shape.format(name, upper=name.upper())), True))
+    papers.append(("results", *_results_named(draw(st.sampled_from(
+        ("Results", "3. Results")))), True))  # fmt: skip
+    papers.append(("ampersand", *_results_named(RESULTS_NAME_AMPERSAND), True))
+    says = [one for one in RESULTS_BY_ANOTHER_NAME if "results" in one.lower()]
+    papers.append(("results under the methods", *_results_named(
+        "Data", in_methods=draw(st.sampled_from(says)),
+        methods=draw(st.sampled_from(METHODS_HEADINGS))), True))  # fmt: skip
+    papers.append(("under a title naming methods", *_results_named(
+        draw(st.sampled_from([one for one in RESULTS_BY_ANOTHER_NAME if one not in says])),
+        paper=METHODS_PAPER_TITLE), True))  # fmt: skip
+    for miss in RESULTS_NAME_MISSES:
+        name = draw(st.sampled_from(RESULTS_BY_ANOTHER_NAME))
+        if miss == "words after":
+            words = draw(st.sampled_from(("on synthetic data", "of the model", "in detail")))
+            made = _results_named(f"{name} {words}")
+        elif miss == "words before":
+            words = draw(st.sampled_from(("Further", "Our", "Two")))
+            made = _results_named(f"{words} {name.lower()}")
+        elif miss == "under the discussion":
+            made = _results_named("Data", under=name)
+        elif miss == "in the abstract":
+            made = _results_named("Data", in_abstract=name)
+        elif miss == "under the methods":
+            made = _results_named("Data", in_methods=draw(st.sampled_from(
+                [one for one in RESULTS_BY_ANOTHER_NAME if one not in says])),
+                methods=draw(st.sampled_from(METHODS_HEADINGS)))  # fmt: skip
+        else:
+            made = _results_named(draw(st.sampled_from(NOT_THE_RESULTS)))
+        papers.append((miss, *made, False))
+    return papers
+
+
 def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list], ...],
                     front: tuple[str, list]) -> tuple[str, dict[str, list]]:
     """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
@@ -16080,9 +16189,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "written shares": prose_share_papers().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),
-    "abstract against results": abstract_papers().map(
-        lambda drawn: {"paper": drawn[0], "supplement": drawn[1]}
-    ),
+    "abstract against results": st.one_of(
+        abstract_papers().map(lambda drawn: {"paper": drawn[0], "supplement": drawn[1]}),
+        results_named_papers().flatmap(lambda drawn: st.sampled_from(
+            [{"paper": markdown, "supplement": "Nothing.\n"} for _k, markdown, _t, _c in drawn])),
+    ),  # fmt: skip
     "causal words": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),
                               texts().map(lambda text: {"paper": text})),
     "cited sentences": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),

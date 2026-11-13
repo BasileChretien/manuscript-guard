@@ -377,7 +377,24 @@ and statistic whose P cannot be the same. Two numbers agree where one value coul
 printed as both: 1.5 and 1.52 agree, 1.90 and 1.89 do not. A conflict is counted by
 `--strict`. Where two intervals or tests could be the counterpart, none is said. Where no
 file has an Abstract heading, or none a Results heading, the section says nothing was
-compared. Each file is placed by its own headings, so a paper split into files has a
+compared. A heading whose whole title, numbered or not, "&" read as "and", is the Results by
+another name is a Results heading here: "Experiments", "Experiments and results",
+"Experimental results", "Empirical results", "Empirical analysis", "Main results",
+"Evaluation", "Numerical results" or "Simulation results", besides those that open with
+"Results" or "Findings". It counts only where the search reaches: not inside the Abstract,
+not under a Discussion, and, unless its name says "results", not under the Methods, where
+"Evaluation" tells how a model was judged. The Methods here are a heading whose whole title,
+numbered or not, is a name the Methods go by, such as "Methods", "Method", "Methodology",
+"Materials and methods", "Patients and methods", "Methods: data sources", "Design", "Study
+design", "Protocol", "Statistical analysis", "Statistical methods", "Sensitivity analysis"
+or "Analysis plan"; and only where no Abstract and no "Introduction" stands under it, as
+one does under a paper's title written as a heading, "Methods and algorithms
+for robust estimation". A listed name under them is refused, "Simulation results" there
+counts, and under "Comparison with existing methods", no Methods, every listed name counts.
+Not "Experiments on synthetic data", nor "Analysis", "Data analysis" or
+"Statistical analysis", which as often head the Methods; and with none of them, nothing is
+compared, never the whole body. The list is the audit's alone: no gate takes "Experiments"
+for the Results. Each file is placed by its own headings, so a paper split into files has a
 Discussion in a file of its own read as reported whole, as a supplement is; give the audit
 the paper in one file where it can be.
 

@@ -2235,3 +2235,90 @@ def test_a_known_word_with_a_stop_inside_it_is_matched(tmp_path: Path) -> None:
                      encoding="utf-8")  # fmt: skip
     assert ("abbreviation-undefined", "L.AS") in _found(run_gates(paper))
     assert not run_gates(paper, known=("L.AS",)).language
+
+
+#: The shape of the real-paper corpus's papers whose Abstract was not compared for want of a
+#: Results heading: tex-astro-ga-A2 ("Numerical Results"), tex-cs-lg-A1 ("Experiments and
+#: Results") and tex-stat-ap-B1 ("Empirical analysis"), 2026-11-13.
+_RESULTS_ELSEWHERE = (
+    "@documentclass{article}\n@begin{document}\n@begin{abstract}\n"
+    "The OR was 1.52 (95@% CI 1.21--1.89).\n@end{abstract}\n@section{Introduction}\n"
+    "It matters.\n@section{Model}\nWe fit it.\n@section{HEADING}\n"
+    "The OR was 1.52 (95@% CI 1.21--1.89).\n@section{Conclusions}\nIt held.\n@end{document}\n"
+)
+
+
+@pytest.mark.parametrize("heading", ["Numerical Results", "Experiments and Results",
+                                     "Empirical analysis", "4. Experiments", "Evaluation",
+                                     "Experiments @& Results"])
+def test_a_heading_that_is_the_results_by_another_name_has_the_abstract_compared(
+    tmp_path: Path, heading: str
+) -> None:
+    """Basile, 2026-11-13: a heading whose whole title is one of the names the Results go by
+    in machine learning, statistics and astronomy is the Results to the Abstract against
+    Results, and the Abstract is held to what it reports."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_RESULTS_ELSEWHERE.replace("HEADING", heading).replace("@", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared and read.matched == read.numbers > 0, heading
+
+
+@pytest.mark.parametrize("heading", ["Analysis", "Data analysis", "Statistical analysis",
+                                     "Experimental setup", "Experiments on synthetic data",
+                                     "Simulation studies"])
+def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared(
+    tmp_path: Path, heading: str
+) -> None:
+    """A title that is none of those names whole, or one as often the Methods' as the
+    Results', is no Results: the Abstract is not compared, the comparison does not fall back
+    to the whole body, and the reason names the headings that would have been read."""
+    from manuscript_guard.auditing.abstract import RESULTS_LIKE
+
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_RESULTS_ELSEWHERE.replace("HEADING", heading).replace("@", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and not read.compared, heading
+    assert all(name in read.why_not.lower() for name in RESULTS_LIKE), read.why_not
+
+
+@pytest.mark.parametrize(("heading", "compared"), [
+    ("## Methods\n\n### Evaluation", False), ("## Methods\n\n### Experiments", False),
+    ("## Methods\n\n### Evaluation\n\nWe judged it so.\n\n### Limitations", False),
+    ("## Method\n\n### Evaluation", False), ("## Materials and method\n\n### Experiments", False),
+    ("## (3) Methods\n\n### Evaluation", False), ("## A. Methods\n\n### Evaluation", False),
+    ("## Study design\n\n### Experiments", False),
+    ("## Methods\n\n### Background\n\nIt was.\n\n### Evaluation", False),
+    ("## Methods\n\n### Discussion of assumptions\n\nIt was.\n\n### Evaluation", False),
+    ("## Methods\n\n### Simulation results", True),
+    ("## Comparison with existing methods\n\n### Simulation results", True),
+    ("## Comparison with existing methods\n\n### Experiments", True),
+])  # fmt: skip
+def test_a_results_name_under_the_methods_leaves_the_abstract_uncompared(
+    tmp_path: Path, heading: str, compared: bool
+) -> None:
+    """Rounds 1 and 2 of #672: a heading of the list under a heading whose whole title names
+    the Methods is a part of the set-up, as "### Evaluation" of how a model was judged,
+    unless its name says "results"; under "Comparison with existing methods" it counts."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# A study\n\n## Abstract\n\nThe value was 812.5 here.\n\n{heading}\n\n"
+                     "We judged it so.\n\n## Outcomes in context\n\nIt was 812.5 then.\n",
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared == compared, heading
+
+
+def test_a_paper_s_title_naming_methods_is_no_methods_over_a_results_name(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #672: a paper's title written as a heading over the whole paper, "Methods
+    and algorithms for robust estimation", is no Methods, since an Introduction stands under
+    it: "## Experiments" under it is the Results, and the Abstract is compared."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods and algorithms for robust estimation\n\n## Abstract\n\n"
+                     "The value was 812.5 here.\n\n## Introduction\n\nIt matters.\n\n"
+                     "## Experiments\n\nIt was 812.5 then.\n\n## Discussion\n\nIt was so.\n",
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared

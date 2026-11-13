@@ -12,7 +12,9 @@ read back to the `.tex` lines (`printed`, `place_line`, `place_lines`). Each fil
 by its own headings, unlike G8, which carries a project's headings from file to file: a
 paper split into files has a Discussion in a file of its own reported whole, as a
 supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abstract
-heading, or none a Results heading, nothing is compared, and the report says so.
+heading, or none a Results heading, nothing is compared, and the report says so: a heading
+that is the Results by another name, "Experiments", "Numerical results" (`RESULTS_LIKE`), is
+one here, and the comparison never falls back to the whole body (Basile, 2026-11-13).
 
 * **Not found.** A number of the Abstract the classifier leaves unexplained, not found in
   the tables or any section that reports (`placed`), is said.
@@ -56,6 +58,8 @@ from pathlib import Path
 from manuscript_guard.stats.intervals import ReportedInterval, reported_intervals
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
 from manuscript_guard.text.section_names import (
+    _METHOD_TITLE,
+    _whole,
     names_abstract,
     names_conclusion,
     names_discussion,
@@ -69,9 +73,27 @@ from manuscript_guard.text.sections import Section
 from manuscript_guard.text.tokens import Atom
 
 NUL = "\x00"
+#: The headings that are the Results by another name, to the Abstract against Results alone,
+#: each a whole title in small letters, numbered, marked or not, and nothing else: "4.
+#: Experiments", not "Experiments on synthetic data". The names machine-learning, statistics
+#: and astronomy papers give their Results, and those of the real-paper corpus whose Abstract
+#: was not compared for want of a Results heading, "Numerical Results" (tex-astro-ga-A2),
+#: "Experiments and Results" (tex-cs-lg-A1) and "Empirical analysis" (tex-stat-ap-B1)
+#: (Basile, 2026-11-13). "Findings" and "Results and discussion" are the Results already
+#: (`names_results`). Not "Analysis", "Data analysis" or "Statistical analysis", as often
+#: the Methods as the Results, nor "Simulation studies", which holds a study's design with
+#: what it found. No gate reads these: G2's and G9's Results, `init --from` and the order
+#: of the sections keep to `names_results`. A closed list.
+RESULTS_LIKE = (
+    "experiments", "experiments and results", "experimental results", "empirical results",
+    "empirical analysis", "main results", "evaluation", "numerical results",
+    "simulation results",
+)  # fmt: skip
 #: What the section is called in the report.
 NO_ABSTRACT = "no file has a heading that names the Abstract"
-NO_RESULTS = "no file has a Results heading outside the Abstract"
+NO_RESULTS = ("no file has a Results heading outside the Abstract, nor a heading whose whole "
+              "title is one of the names the Results go by elsewhere: "
+              + ", ".join(f'"{name.capitalize()}"' for name in RESULTS_LIKE))  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -120,6 +142,71 @@ def in_abstract(place: object) -> bool:
     return isinstance(place, str) and names_abstract(place)
 
 
+def names_results_like(title: str) -> bool:
+    """Whether a heading's whole title, numbered, marked or not, "&" read as "and", is one
+    of `RESULTS_LIKE`: "Experiments", "5. Numerical results", "Experiments & Results"."""
+    return " ".join(_whole(title).replace("&", " and ").split()) in RESULTS_LIKE
+
+
+def _names_the_methods(title: str) -> bool:
+    """Whether a heading's whole title, numbered or not ("2.", "(3)", "A.", "IV."), "&" read
+    as "and", is a name the Methods go by: one of `classify.METHODS_SECTIONS`' ("Methods",
+    "Materials and methods", "Design", "Study design", "Protocol", "Statistical analysis",
+    "Analysis plan") or a singular `names_methods` takes whole ("Method", "Materials and
+    method", `_METHOD_TITLE`)."""
+    from manuscript_guard.classify import METHODS_SECTIONS
+
+    whole = " ".join(_whole(title).replace("&", " and ").split())
+    return bool(METHODS_SECTIONS.match(whole) or _METHOD_TITLE.fullmatch(whole))
+
+
+def _the_methods(sections: list[Section]) -> set[int]:
+    """The headings that are the Methods to `_results_by_another_name`: a name the Methods
+    go by (`_names_the_methods`) over no Abstract and no heading whose whole title is
+    "Introduction", which a paper's title written as a heading over the paper is, "Methods
+    and algorithms for robust estimation" (round 3 of #672). A "Limitations", a "Background"
+    or a "Discussion of assumptions" under the Methods leaves them the Methods."""
+    found = set()
+    for index, section in enumerate(sections):
+        if not _names_the_methods(section.title):
+            continue
+        below = []
+        for later in sections[index + 1 :]:
+            if later.level <= section.level:
+                break
+            below.append(later.title)
+        if not any(names_abstract(t) or re.fullmatch(r"introduction\W*", plain(t), re.I)
+                   for t in below):  # fmt: skip
+            found.add(id(section))
+    return found
+
+
+def _says_results(title: str) -> bool:
+    return "results" in _whole(title)
+
+
+def _results_by_another_name(sections: list[Section],
+                             searched: Callable[[int], object]) -> bool:  # fmt: skip
+    """Whether a heading of `RESULTS_LIKE` stands where the section searches, and, where its
+    name does not say "results" (`_says_results`), under no Methods (`_the_methods`):
+    "### Evaluation" under "## Methods" tells how a model was judged, "### Simulation
+    results" there reports, and "Comparison with existing methods" is no Methods (rounds 1
+    to 3 of #672)."""
+    from manuscript_guard.gates.reported import REPORTED
+
+    methods = _the_methods(sections)
+    chain: list[Section] = []
+    for section in sections:
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        under = any(id(one) in methods for one in chain)
+        if (names_results_like(section.title) and searched(section.line) is REPORTED
+                and (_says_results(section.title) or not under)):  # fmt: skip
+            return True
+        chain.append(section)
+    return False
+
+
 def placed(sections: list[Section], notes: frozenset[int] = frozenset()
            ) -> tuple[Callable[[int], object], bool, bool]:  # fmt: skip
     """Where each line of one document stands, given its headings and the lines of its
@@ -131,14 +218,21 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset()
     A line is REPORTED, searched for the Abstract's numbers, as G8 reads the Methods and the
     Results (`gates.reported.Walk`), and under any other section too that reports
     (`_searched`): a paper that reports a number under "Participants", "Study design" or an
-    appendix had it said not found (Basile, 2026-11-11, after 52 real preprints)."""
+    appendix had it said not found (Basile, 2026-11-11, after 52 real preprints).
+
+    The Results are a heading G8 reads as them where it reports, or one whose whole title is
+    the Results by another name (`RESULTS_LIKE`) standing where the section searches, not in
+    the Abstract nor under a Discussion (Basile, 2026-11-13), unless it stands under the
+    Methods and its name does not say "results" (`_results_by_another_name`)."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
     walk = Walk()
     place = walk.placing(sections)
+    searched = _searched(sections, place, walk, notes)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
-    results = any(place(s.line) is REPORTED for s in sections if names_results(s.title))
-    return _searched(sections, place, walk, notes), abstract, results
+    results = (any(place(s.line) is REPORTED for s in sections if names_results(s.title))
+               or _results_by_another_name(sections, searched))  # fmt: skip
+    return searched, abstract, results
 
 
 def _reports_nothing(section: Section, walk) -> bool:

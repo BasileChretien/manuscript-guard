@@ -78,6 +78,10 @@ REASONS = (NOT_FOUND, AMBIGUOUS, UNANSWERED, UNSEARCHED, UNSORTED)
 CODES = {NOT_FOUND: "not-found-by-title", AMBIGUOUS: "found-twice-by-title",
          UNANSWERED: "title-search-unanswered", UNSEARCHED: "title-not-searchable",
          UNSORTED: "reference-not-sorted"}  # fmt: skip
+#: Why an entry not sorted was not looked up, as `said` gives it before "check it by hand",
+#: and as the one note on a paper's entries not sorted says it once (`auditing.unsorted`).
+UNSORTED_SAID = ("not sorted: neither an article, a book, a web page nor a legal text by its "
+                 "shape, so not looked up")  # fmt: skip
 
 _URL = re.compile(r"https?://\S+|\bwww\.\S+", re.IGNORECASE)
 _YEAR = r"(?:1[5-9]\d{2}|20\d{2})"
@@ -733,8 +737,7 @@ def said(one: Searched, looked_up: bool) -> str:
     if kind in NO_DOI_EXPECTED:
         return f"no DOI expected: {noun} ({one.sorted.why})"
     if kind not in SEARCHED:
-        return ("not sorted: neither an article, a book, a web page nor a legal text by its "
-                "shape, so not looked up: check it by hand")  # fmt: skip
+        return f"{UNSORTED_SAID}: check it by hand"
     if one.unsearched:
         return f"{noun} with no DOI given, not looked up by its title, as {one.unsearched}: " \
                "check it by hand"
@@ -757,6 +760,6 @@ def said(one: Searched, looked_up: bool) -> str:
 
 __all__ = ["AMBIGUOUS", "ARTICLE", "BOOK", "CHAPTER", "CODES", "EXPECTED", "FOUND", "LEGAL",
            "NOT_FOUND", "NO_DOI_EXPECTED", "OTHER", "PENDING", "REASONS", "SEARCHED", "TO_CHECK",
-           "UNANSWERED", "UNSEARCHED", "UNSORTED", "WEB", "Cited", "Searched", "Sorted", "cited",
-           "fold", "look_up_all", "matches", "near_exact", "outcome", "reason", "said", "search",
-           "sort", "unasked", "without_identifier"]  # fmt: skip
+           "UNANSWERED", "UNSEARCHED", "UNSORTED", "UNSORTED_SAID", "WEB", "Cited", "Searched",
+           "Sorted", "cited", "fold", "look_up_all", "matches", "near_exact", "outcome",
+           "reason", "said", "search", "sort", "unasked", "without_identifier"]  # fmt: skip

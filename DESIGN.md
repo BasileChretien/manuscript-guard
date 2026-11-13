@@ -10681,11 +10681,21 @@ no change. The summary's line counts the works found by their title among those 
 the entries with no DOI expected and those to check by hand, by why each is (`by_title.reason`:
 none found by its title, more than one found, Crossref not answering, a title too short to
 look up or not read, not sorted). Each entry to check by hand is a note of its own, with a
-code for its reason, and puts the References tile at "to look at", with `--lookup` and
+code for its reason, but the entries not sorted, which are one note for each paper (decision
+16, 2026-11-14: 1,405 such notes on 22 of 52 real preprints, 598 on one, most of them from a
+list that runs on into tables): "3 entries not sorted: ..., so not looked up: entries 1, 3
+and 4 of the list; check them by hand", at the first entry's place, each reason said once
+with its entries, and each entry with its note and its line under it in `--json`
+(`entries`), as the short forms left undefined and the names from the code are one finding
+(`auditing.unsorted`, reusing `undefined.gathered`). The References line still counts the
+entries, and the section still lists each one. A note on an entry not sorted
+puts the References tile at "to look at", and so does any other, with `--lookup` and
 without it; the report draft says how many titles were looked up in Crossref, and, where no
 entry gives a DOI or a PMID and no title was found, says that too. The rules read text, so they are held over generated
 entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
-reading "reference sorting").
+reading "reference sorting"); the one note for each paper over two papers audited together,
+one with an entry not sorted and one with several, one list numbered and one not
+(`tests/generated.py::unsorted_references`, the reading "audit references not sorted").
 
 ## The audit page runs in the reader's browser
 

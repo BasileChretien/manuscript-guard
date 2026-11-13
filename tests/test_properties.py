@@ -11521,6 +11521,75 @@ def _the_title_is_not_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(by_title_module, "_same_title", lambda said, work: True)
 
 
+from generated import unsorted_references  # noqa: E402
+
+#: What the note on an entry not sorted says of why (`by_title.UNSORTED_SAID`).
+_NOT_SORTED = ("not sorted: neither an article, a book, a web page nor a legal text by its "
+               "shape, so not looked up")  # fmt: skip
+
+
+@holds(60, unsorted_references())
+def test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note(
+    drawn: tuple[list[list[str]], list[dict[str, Any]]],
+) -> None:
+    """Each paper audited has one note on its entries the audit cannot sort, at the first of
+    them: the paper with one entry and the paper with several alike, a numbered list and an
+    unnumbered one alike, whatever the order of the papers and of the entries. It names each
+    entry in the list's order, its reason once, and lists each with its line; the other
+    notes are one for each entry, as they were (decision 16, 2026-11-14)."""
+    from manuscript_guard.audit import census_of_markdown
+
+    given, papers = drawn
+    answered = answer(READINGS["audit references not sorted"](), given)
+    assert "raised" not in answered, answered
+    said = answered["answer"]
+    notes = [one for one in said if one[1] == "reference-not-sorted"]
+    assert [path for path, *_rest in notes] == [paper["name"] for paper in papers], said
+    for (_path, _code, line, message, entries), paper in zip(notes, papers, strict=True):
+        census = census_of_markdown(Path(paper["name"]), paper["text"])
+        lines = [entry.line for entry in census.entries]
+        places = paper["unsorted"]
+        of = "" if paper["numbered"] else " of the list"
+        assert [entry for entry, _line in entries] == [f"entry {at}{of}" for at in places], said
+        assert [at for _entry, at in entries] == [lines[at - 1] for at in places], said
+        assert line == lines[places[0] - 1], (said, paper)
+        count = len(places)
+        numbers = [str(at) for at in places]
+        named = ", ".join(numbers[:-1]) + f" and {numbers[-1]}" if count > 1 else numbers[0]
+        assert message == (f"{count} entr{'y' if count == 1 else 'ies'} {_NOT_SORTED}: "
+                           f"entr{'y' if count == 1 else 'ies'} {named}{of}; check "
+                           f"{'it' if count == 1 else 'them'} by hand"), message
+    others = [one for one in said if one[1] != "reference-not-sorted"]
+    assert all(not entries and message.startswith("entry ") for *_rest, message, entries
+               in others), others  # fmt: skip
+
+
+def _the_entries_not_sorted_are_one_note_for_all_papers(patch: pytest.MonkeyPatch) -> None:
+    """One note for every paper audited, at the first paper's first entry."""
+    from manuscript_guard.auditing import report, unsorted
+
+    titles, one = report._title_items, unsorted.one_finding
+    patch.setattr(unsorted, "one_finding", lambda found: list(found))
+    patch.setattr(report, "_title_items", lambda audited: one(titles(audited)))
+
+
+def _the_entries_not_sorted_stand_at_the_last(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.auditing import unsorted
+
+    made = unsorted._made
+    patch.setattr(unsorted, "_made",
+                  lambda mine: replace(made(mine), line=mine[-1][1].line))  # fmt: skip
+
+
+def _the_entries_not_sorted_are_named_last_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import unsorted
+
+    made = unsorted._made
+    patch.setattr(unsorted, "_made", lambda mine: made(list(reversed(mine))))
+
+
 @holds(100, glued_intervals())
 def test_an_interval_after_a_value_in_any_format_is_told_from_a_citation(
     drawn: tuple[str, list[tuple[int, int]]],
@@ -24641,6 +24710,18 @@ BROKEN = {
     "the audit orders the short forms left undefined by their files' paths": (
         _the_short_forms_are_ordered_by_path,
         test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit says every paper's entries not sorted in one note": (
+        _the_entries_not_sorted_are_one_note_for_all_papers,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
+    ),
+    "the audit's note on the entries not sorted stands at the last": (
+        _the_entries_not_sorted_stand_at_the_last,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
+    ),
+    "the audit names the entries not sorted last first": (
+        _the_entries_not_sorted_are_named_last_first,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
     ),
     "a word with underscores in code is read as a sentence's": (
         _code_is_read_as_prose,

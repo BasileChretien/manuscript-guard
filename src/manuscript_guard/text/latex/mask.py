@@ -277,6 +277,9 @@ class Reading:
 LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3,
           "paragraph": 4, "subparagraph": 5}  # fmt: skip
 #: A path in braces after `\input`, which TeX finds past spaces and one line break.
+#: The commands whose prose argument opens a heading: the sectioning commands, and the abstract
+#: given as a command, titled Abstract (`_close`).
+_HEADING_COMMANDS = frozenset(LEVELS) | ABSTRACT_COMMANDS
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: TeX's `\\input name` without braces: the name runs to a space, a brace, a command or a
 #: comment, as `structure._LOADS` reads it in a class.
@@ -1039,7 +1042,7 @@ class _Reader:
         frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d",
                        siunitx=self.command in SIUNITX if siunitx is None else siunitx)  # fmt: skip
         self.siunitx += frame.siunitx
-        heads = self.command in LEVELS or self.command in ABSTRACT_COMMANDS
+        heads = self.command in _HEADING_COMMANDS
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
             frame.origin = self.heading_at
@@ -1354,7 +1357,7 @@ class _Reader:
             self.pos = style.end()
             self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS and name not in self.own:
-            if name in LEVELS or name in ABSTRACT_COMMANDS:
+            if name in _HEADING_COMMANDS:
                 self.heading_at = at
             if name in CITATIONS:
                 self.citation_at = at
@@ -1840,8 +1843,8 @@ class _Reader:
             if name in PICTURES and self._role() == PROSE:
                 self._picture_printed(self.pos, self._picture_end(name))
             role = self._entered(name, self._role())
-            # Of the environments only `abstract` prints from the preamble, not `Abstract`.
-            if role == PREAMBLE and name == "abstract" and self._printed_from_preamble(name):
+            # `Abstract` is a template's command, and no environment printed from the preamble.
+            if role == PREAMBLE and name != "Abstract" and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             # A reference list is a group, which puts back what `\makeatletter` in it changed.

@@ -1988,6 +1988,11 @@ The result is compiled and packed by the code above, and checked three times:
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
   section titled Abstract, though LaTeX prints what the author defined (round 2 of #385), and
   so does `\Abstract{…}` after the paper's own `\newcommand{\Abstract}` (decision 17).
+  - Either command defined again with two arguments, `\newcommand{\Abstract}[2]{…}` and then
+    `\Abstract{english}{We followed 45 patients.}`, has its first argument read as the
+    Abstract, "english". The second is read as text after the Abstract in the body, and is
+    not read at all in the preamble. The reader does not count the arguments a definition
+    takes (round 1 of #680). Accepted.
 - The Abstract an abstract opens stays in force to the next heading of its level, so text
   between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
   case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it

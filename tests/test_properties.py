@@ -1860,13 +1860,26 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
             written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]",
                        "tight": "({{results.%s}})."}  # fmt: skip
             assert written[kind] % key in view, (key, view)
-    sections = {section.title: section.body for section in split_sections(view)}
-    ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
-                               for which in ("abstract", "after"))  # fmt: skip
-    assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
+    # Each abstract, the environment and a template's `\\Abstract`, is under a heading of its
+    # own titled Abstract, and the text after them under none (round 1 of #680).
+    under = [section.body for section in split_sections(view) if section.title == "Abstract"]
+    abstracts, (after,) = ([k for k, kind in planted if kind == which]
+                           for which in ("abstract", "after"))  # fmt: skip
+    assert len(under) == len(abstracts) == 2, view
+    assert all(any(key in body for body in under) for key in abstracts), view
+    assert not any(after in body for body in under), view
     # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
     spans = "".join(re.findall(r"`[^`\n]+`", view))
     assert not [k for k, kind in planted if kind == "prose" and k in spans], view
+
+
+def _a_template_s_abstract_command_opens_no_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_HEADING_COMMANDS", latex_mask._HEADING_COMMANDS - {"Abstract"})
+
+
+def _a_template_s_abstract_command_is_titled_by_its_text(patch: pytest.MonkeyPatch) -> None:
+    # `_close` titles a heading Abstract, and records its span, only for these commands.
+    patch.setattr(latex_mask, "ABSTRACT_COMMANDS", latex_mask.ABSTRACT_COMMANDS - {"Abstract"})
 
 
 def _the_printed_view_drops_an_accent_s_mark(patch: pytest.MonkeyPatch) -> None:
@@ -24180,6 +24193,14 @@ BROKEN = {
     ),
     "in LaTeX's printed view, an abstract runs on to the next heading": (
         _an_abstract_runs_on_to_the_next_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a template's \\Abstract opens no heading": (
+        _a_template_s_abstract_command_opens_no_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a template's \\Abstract is titled by its text": (
+        _a_template_s_abstract_command_is_titled_by_its_text,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
     "in LaTeX's printed view, a prose binding is printed with spaces round it": (

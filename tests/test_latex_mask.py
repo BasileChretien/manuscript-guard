@@ -401,6 +401,13 @@ def test_a_template_s_capitalised_abstract_command_is_the_abstract() -> None:
     assert reading.abstracts == ((body.index("\\Abstract"), len(body) - 1),)
     others = read("\\Section{Methods 2}\n\\begin{Abstract}Of 12.\\end{Abstract}\n", body=True)
     assert others.headings == () and others.abstracts == ()
+    # In the preamble an environment `Abstract` is not printed, and the environments named
+    # after the commands printed from there are, as before (round 1 of #680: `thanks` was
+    # blanked).
+    for name, printed in (("Abstract", False), ("thanks", True), ("abstract", True)):
+        text = (f"\\documentclass{{article}}\n\\begin{{{name}}}Of 45.\\end{{{name}}}\n"
+                "\\begin{document}\nx\n\\end{document}\n")  # fmt: skip
+        assert ("Of 45." in read(text).masked) == printed, name
     # One a `filecontents` holds is written to a file, and printed by nothing.
     kept = ("\\documentclass{article}\n\\begin{filecontents}{a.tex}\n\\Abstract{Of 12.}\n"
             "\\end{filecontents}\n\\begin{document}\nx\n\\end{document}\n")  # fmt: skip

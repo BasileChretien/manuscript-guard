@@ -2463,7 +2463,9 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     drawn, after an abstract with text of its own and words after it, under a title in the
     preamble; and each word, with what the printed view makes of it. Every place is in every
     document, so that a rule broken for one is seen in each. The abstract is in the body or,
-    as a class that prints it from there allows, in the preamble (round 1 of step 6)."""
+    as a class that prints it from there allows, in the preamble (round 1 of step 6). Every
+    document also gives a template's `\\Abstract{...}` in its preamble, which its class
+    defines and the paper does not (decision 17; round 1 of #680)."""
     filler = [*_spaced(FILLER)]
     order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
     between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
@@ -2476,6 +2478,7 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 
     preamble = draw(st.booleans())
     text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    text += f"\\Abstract{{abs {key('abstract')}}}\n"
     abstract = f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\n"
     text += (abstract + "\\begin{document}\n") if preamble else ("\\begin{document}\n" + abstract)
     text += f"after {key('after')}\n"

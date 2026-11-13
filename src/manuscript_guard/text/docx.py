@@ -444,18 +444,20 @@ def _line_start(
     keeps it on accepting the change, and when Word deletes a mark itself it first copies
     the first paragraph's style onto the second. A heading style ends a reference list. Its
     numbering is the last paragraph's too, which is in its properties, beside its style.
-    A heading's level goes in `levels`, in the order of the headings' lines; and with each
-    count, the level of the list the line is an item of, None for a heading or a line in a
-    text box.
+    A heading's level goes in `levels`, in the order of the headings' lines outside a table;
+    and with each count, the level of the list the line is an item of, None for a heading or
+    a line in a text box. A table's cell in a heading style still ends a reference list, and
+    places nothing (`read_docx_text`).
     """
     last = paragraph
     while last in joins:
         last = joins[last]
+    cell = _inside(paragraph, parents, W + "tc")
     level = _heading_level(last, headings)
     heading = _HEADING_MARK if level is not None else ""
-    if heading and levels is not None:
+    if heading and levels is not None and not cell:
         levels.append(level)
-    if not _inside(paragraph, parents, W + "tc"):
+    if not cell:
         numbered = numbering.of_paragraph(last) if numbering is not None else None
         if numbered is None or counts is None:
             return "\n" + heading
@@ -653,11 +655,15 @@ def read_docx_text(path: Path) -> DocxText:
     numbering = tuple(zip(marked_lines, counts, strict=True)) if same else ()
     heading_lines = [i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK)]
     headings = frozenset(heading_lines)
+    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
+    # A table's cell in a heading style places nothing, as pandoc keeps it in the cell: a
+    # paper whose only paragraphs in a heading style were cells was placed by them, and its
+    # typed titles left unread (docx-med-A3 of the corpus run of 2026-11-13).
+    placing = [i for i in heading_lines if i not in cells]
     # A level for each heading's line, in order; were they ever to differ, every heading is
     # said to be at level 1 rather than a level given to the wrong line.
-    heading_levels = tuple(zip(heading_lines, heads if len(heads) == len(heading_lines)
-                               else [1] * len(heading_lines), strict=True))  # fmt: skip
-    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
+    heading_levels = tuple(zip(placing, heads if len(heads) == len(placing)
+                               else [1] * len(placing), strict=True))  # fmt: skip
     bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2])
     typed = frozenset(i for i, line in enumerate(lines) if line.startswith(_TYPED_MARK))
     # The notes keep what they always had, the cell mark of a table in a note among it; the

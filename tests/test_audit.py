@@ -1850,6 +1850,32 @@ def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_headi
     assert typed_heading_levels(document) == ()
 
 
+def test_a_heading_style_in_a_table_s_cell_makes_no_heading(tmp_path: Path) -> None:
+    """A paragraph in a heading style in a table's cell places nothing, as pandoc keeps it in
+    the cell and `init --from` makes no heading of it: a paper whose only paragraphs in a
+    heading style are a table's is placed by its typed titles. It was placed by its cells,
+    and its typed "ABSTRACT" went unfound (docx-med-A3 of the corpus run of 2026-11-13).
+    The cell still ends a reference list (DESIGN.md, "Known gaps")."""
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    cell = ('<w:tc><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Sr. No</w:t>'
+            "</w:r></w:p></w:tc>")  # fmt: skip
+    body = (para("ABSTRACT") + para("Of 412 patients, 77 had it.") + para("INTRODUCTION")
+            + para("Drugs cause harm.") + f"<w:tbl><w:tr>{cell}</w:tr>{row('1')}</w:tbl>"
+            + para("RESULTS") + para("Of 412 patients, 77 had it."))  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", body, styles)
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    assert document.heading_levels == ()
+    assert [lines[at] for at in document.headings] == ["Sr. No"]
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "INTRODUCTION", "RESULTS"]  # fmt: skip
+    read = audit([path], []).abstract
+    assert read and read.compared, read
+
+
 def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
     """A structured abstract's parts in bold straight under its Abstract, with no
     Introduction after them and none of their names again: which Results are the paper's is

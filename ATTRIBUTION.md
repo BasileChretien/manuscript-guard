@@ -166,6 +166,49 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## rsprite2: the GRIMMER test
+
+`sd_possible` in `src/manuscript_guard/stats/granularity.py`, which `audit --whole-numbers`
+and G7 hold an SD printed with a mean of whole numbers to, is a port to Python of
+`GRIMMER_test` of [rsprite2](https://github.com/LukasWallrich/rsprite2) by Lukas Wallrich,
+with Aurélien Allard and Lukas Jung (`R/core-functions.R` at commit
+`78231f75751eb5f34cd53f5d8391a4baf7b2cb3b` of 2026-09-09, version 0.2.1.9002, read on
+2026-11-12; CRAN has 0.2.1, whose `GRIMMER_test` tries one total only). Taken from it: the
+totals the mean allows, centred on its whole part; the bounds on each total's sum of
+squares from the SD's half unit, the lower never below nought; the parity of the sum and its
+least value for the total; both ends of each half unit taken; and one number failing. Its
+floating-point tolerance is not taken: the port works in whole numbers and fractions, and
+stops past 100,000 totals where rsprite2 stops past a million. The test is Anaya's
+(*PeerJ Preprints* 2016, doi:10.7287/peerj.preprints.2400v1), in the analytic form of
+Allard (2018). The DEBIT test beside it is written from Heathers and Brown's paper; rsprite2
+has none.
+
+rsprite2 is under the MIT licence:
+
+```text
+MIT License
+
+Copyright (c) 2021 rsprite2 authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 # Third-party data
 
 Three files in the package are made from somebody else's work and **are** redistributed. The
@@ -313,6 +356,28 @@ recognise it by. Whoever places a work on a level reads the table itself, with i
 introductory document, which the Centre asks that it be read with. A level there is a guide
 to where the likely best evidence lies, not a verdict on one study's quality, and the table's
 note lets a reader grade a level down or up.
+
+## Cellosaurus and the RRID resolver
+
+Not in the package: `manuscript-guard lookup --resources` writes into a paper's project, in
+`literature/rrids/`, what two services said of each Research Resource Identifier the
+manuscript types, and G7 quotes it.
+
+- **Cellosaurus**, of the SIB Swiss Institute of Bioinformatics, for a cell line: its name,
+  its accession, and each comment it files under "Problematic cell line", quoted whole. Its
+  data are under the Creative Commons Attribution 4.0 licence (CC BY 4.0), which each record
+  that quotes it states (`licence: CC BY 4.0`), as the finding that quotes it does.
+  Cellosaurus asks to be cited as: Bairoch A. The Cellosaurus, a cell-line knowledge
+  resource. *J Biomol Tech* 2018;29(2):25–38. doi:10.7171/jbt.18-2902-002.
+  https://www.cellosaurus.org
+- **The RRID resolver**, of SciCrunch (scicrunch.org/resolver), for every RRID: whether it
+  knows it, and for each record it gives the resource's name, its types and the citation it
+  proposes. No licence is stated for its answers; RRIDs.org says the identifiers are free to
+  cite, resolve and reuse (rrids.org, read 2026-11-12).
+
+This repository keeps only the shapes of their answers, in `tests/test_rrid_lookup.py`, with
+the identifiers and names those answers had and a shortened copy of Cellosaurus's comment on
+the KB line (CVCL_0372), under CC BY 4.0 and credited here.
 
 ## The palettes
 

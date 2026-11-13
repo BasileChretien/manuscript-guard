@@ -6335,6 +6335,30 @@ taken for its means: with two columns it would name one of them. The rows are he
 generated tables (`mean_tables` in `tests/generated.py`), with a row of every kind in each
 and a pair of means half a unit from a total.
 
+An SD printed with such a mean goes further (GRIMMER: Anaya, *PeerJ Preprints* 2016,
+doi:10.7287/peerj.preprints.2400v1). The squares of n whole numbers add up to a whole number
+of the parity of their total, and to no less than the squares of the total spread as evenly
+as it can be, so only some SDs can be printed: 18 numbers whose mean is 3.44 have an SD of
+2.45 or 2.48, never 2.47. `sd_possible` is a port of rsprite2's `GRIMMER_test` (ATTRIBUTION.md
+has the version and the licence), its rounding rules kept and its arithmetic made exact.
+In `audit --whole-numbers` the SD of each mean GRIM leaves possible or cannot tell is held to
+it and its column's n: one that cannot be is `sd-not-possible`, a warning `--strict` does not
+count, as a mean that cannot be is a disagreement it does not count; the SD of a mean GRIM
+rules out is not said again. In the ledger, `mean_of_whole_numbers` takes `sd`, a string so
+that its noughts are kept, printed in the quote, and G7 says `quote-sd-not-possible` (a
+warning) or `quote-sd-not-assessable` (a note). The mean and SD of numbers each 0 or 1
+follow from how many are 1 (DEBIT: Heathers and Brown, 2019, osf.io/5vb3u, no DOI): k ones
+among n have the mean k/n and the sample SD sqrt(k(n - k) / (n(n - 1))), the one that paper
+uses. `audit --binary` names the rows of such means, or proportions, with their SDs, and each
+pair is held to the other and to its column's n (`binary-not-possible`); in the ledger,
+`mean_of_binary_data: {n, sd}` (`quote-binary-not-possible`). rsprite2 has no DEBIT, so it is
+written from the paper; both ends of each half unit are taken, as for GRIM and GRIMMER. A
+spread the row's label, the header over its column or the header's first cell names as no SD,
+"mean (SE)", is held to nothing (`auditing/spreads.py`). None of this reads an emitted
+result, which the analysis computed itself. The rows are held over generated tables
+(`sd_tables`), with an SD rounded down and one up from real answers, one between two
+that such numbers give, the population SD of binary data where the sample's differs, a
+standard error named in a label, over a column and over a table, and a row of the wrong n.
 A mean and its SD for a variable that cannot fall below a floor are read the same way in
 `check` and in `audit` (`stats/skew.py`). Altman and Bland (BMJ 1996;313:1200) note that
 for a variable that cannot be negative a mean less than twice its SD shows skewed data, and
@@ -8861,6 +8885,63 @@ the population, the exposure and the analysis are the registered ones, and that 
 for a change is a good one: these are the co-authors' and the panel's, read against the record
 kept. A remit for the panel and the co-author checker's items that put the record beside the
 Methods are the next step, not yet built.
+
+## A typed RRID is looked up once, and the answer kept
+
+A Research Resource Identifier names an antibody, a cell line, an organism, a plasmid or a
+tool, and a paper cites one as "RRID:AB_2298772". An RRID mistyped points the reader at
+another resource or at nothing, and a cell line cited by its RRID may be one Cellosaurus has
+long recorded as contaminated or misidentified. Basile decided on 2026-11-12 that only the
+RRIDs a manuscript types are checked: a resource named with none is not looked for, since a
+check for presence would have to guess which nouns are resources.
+
+**The reading.** `rrids.typed` reads "RRID:" in capitals, a space, a no-break space, a line
+break or nothing after the colon, then the accession: the authority's prefix and what it
+issued, its parts joined by `_`, `:`, `.` (before a digit only) or `-`, each joining mark
+followed by a letter or a digit, so that the full stop, comma, colon, semicolon or bracket
+after it is left out, and a hyphen before a word of four small letters or more, with no `:`,
+`_` or `-` after it, ending it ("RRID:CVCL_0030-derived cells"); or a
+single part of letters then digits (`SAMN12345678`). The form is written from the resolver's
+syntax, identifiers.org's `^RRID:[a-zA-Z]+.+$` for the namespace `rrid`, and from the forms
+its authorities issue (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`,
+`ZFIN_ZDB-GENO-…`, `BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-…`, `NXR_0.0005`,
+`SAMN…`; round 1 of #658 added the last two and the hyphen's rule). The accession is kept in
+the case it is written. Both documents are read,
+Markdown as `masking.mask` leaves it with its code spans blanked too, LaTeX as its reader
+masks it with each `\verb` and `\texttt` blanked and `AB\_1` read as `AB_1`, a table's cells
+included. The generated inputs hold an RRID of every form, gap, trailing mark and case in
+both documents, and an RRID in a comment and in code in each, in Markdown and as its LaTeX
+twin (`tests/generated.py`, `rrid_papers`).
+
+**The lookup.** `manuscript-guard lookup --resources` asks the RRID resolver,
+`https://scicrunch.org/resolver/RRID:<accession>.json`, once for each RRID, and Cellosaurus,
+`https://api.cellosaurus.org/cell-line/<CVCL_…>?format=json&fields=ac,id,cc`, for a cell line.
+Neither needs a key; Cellosaurus's data are CC BY 4.0, and RRIDs.org states no licence for the
+resolver's answers but that the identifiers are free to use. The shapes, read on 2026-11-12:
+the resolver answers HTTP 200 with `hits.total`, a number, and `hits.hits[]._source` with
+`item.name`, `item.types[].name` and `rrid.curie` and `rrid.properCitation`, several hits for
+one RRID where several vendors sell it (two for RRID:AB_2298772, thirty for RRID:CVCL_0030);
+one it does not know is HTTP 404. Cellosaurus answers `Cellosaurus.cell-line-list[]`, each
+line with `accession-list`, `name-list` and `comment-list[]` of `category` and `value`, a
+problematic line with a comment of category "Problematic cell line" ("Contaminated. Shown to
+be a HeLa derivative ..." for KB, CVCL_0372); an accession it does not have is HTTP 404. The
+record, `literature/rrids/<accession>.yaml` (`rrid.schema.json`), keeps the RRID as written,
+the day, whether the resolver knew it, its `total` and up to fifty of its records (name,
+types, proper citation), Cellosaurus's line, name and problems with its licence, and an
+`answers_sha256`. An outage, a timeout, a 429 or an answer of another shape records nothing
+for that RRID, and the command says so and exits 1: an RRID the resolver did not answer for is
+never written down as unknown. Each request has the lookup's time limit, at most one a second
+goes to each host, and the RRID is the whole of what is sent, with a User-Agent of
+"manuscript-guard/<version>".
+
+**The findings**, G7's, each at the first place the RRID is typed and a warning at every stage,
+as G7's `lookup-missing` is: `rrid-not-looked-up` (no record, which is also what an outage
+leaves), `rrid-unresolved` (the resolver does not know it) and `cell-line-problematic`
+(Cellosaurus's comment quoted). A record changed by hand, or one that is another RRID's, is
+not read and is said (`rrid-record-edited`, `rrid-record-misfiled`, warnings); one that is no
+record fails as every contract does. A record of an RRID the manuscript no longer types is not
+read. `next` sends the three to `methods-writer`, with `lookup --resources`.
+
 ## The data dictionary is one contract with three readers
 
 A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
@@ -11034,7 +11115,9 @@ between runs (`tracked._write_comment`) and no text moves; the comments part, it
 relationship and its content type are added where missing, and every namespace the
 document's root declared is declared again (`_declared_again`): ElementTree writes only
 those its elements use, and without the ones Word names in `mc:Ignorable` Word 16 said the
-author's copy was damaged (2026-11-10). Held by
+author's copy was damaged (2026-11-10). A run split where a comment begins carries a
+recorded change of its formatting into both halves, and the second is given an id of its
+own (`tracked_copy.distinct`). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
 
@@ -17811,10 +17894,48 @@ Added by the adversarial review, verified and **not** fixed:
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so
   this passes nothing wrong, but lists a mean that is right for its items (round 1 of #331,
-  where this entry said the reverse). The ledger takes `items`. Whether an SD is possible for whole numbers with that mean and n is not
-  checked. In the ledger, n is what the author records from the source; nothing reads it from
-  the quote.
+  where this entry said the reverse). The ledger takes `items`. An SD printed with the mean is
+  held to it by GRIMMER, with the limits of the next entry. In the ledger, n is what the
+  author records from the source; nothing reads it from the quote.
   Pinned by `tests/test_corruption.py::test_a_header_of_two_rows_marks_the_means_below_uncertain`.
+- **An SD is held to its mean only as an SD the table names or leaves unnamed, and only as
+  far as GRIMMER and DEBIT go.** Each is held as `stats/granularity.py` and
+  `auditing/spreads.py` say, and nothing in a sentence is read. Accepted.
+  - A spread is read as an SD unless the row's label, the header over its column or the
+    header's first cell calls it something else (SE, SEM, standard error, IQR, CI, a range,
+    quartiles, percentiles). A table whose caption or note alone says "mean (SE)" has its
+    standard errors held as SDs, and one that cannot be is listed. Pinned by
+    `tests/test_corruption.py::test_a_spread_named_only_outside_the_table_is_read_as_an_sd`.
+  - Where the label or a header names an SD and another spread, "Pain score (range 0-10),
+    mean (SD)", the spread is held to nothing, though it is an SD. Pinned by
+    `tests/test_corruption.py::test_a_label_naming_an_sd_and_a_range_holds_its_spread_to_nothing`.
+  - A section row in the stub column that names its spread, "Pain, mean (SE)" over "Week 4"
+    and "Week 8", is not carried down to the rows under it: their standard errors are held
+    as SDs, and one that cannot be is listed (round 1 of #665). Pinned by
+    `tests/test_corruption.py::test_a_section_row_naming_its_spread_is_not_carried_down`.
+  - GRIMMER is a necessary condition only, as rsprite2 says of it: an SD it passes may still
+    be impossible for the scale's range, which a table does not give, so rsprite2's
+    `boundary_test` is not run. Accepted.
+  - In `audit` a mean of several items per person is read as one number each, as for GRIM, so
+    an SD that is right for its items can be listed; the ledger takes `items`. Accepted.
+  - DEBIT takes both ends of each half unit, where the paper takes an SD of 0.37 for 0.365 to
+    below 0.375: a pair a tie rounds into is passed, never listed. Accepted.
+  - `--binary` reads a mean or a proportion printed as a decimal from 0 to 1 with its SD; a
+    mean alone is not read, and a cell whose mean has no point or is outside 0 to 1, or
+    whose label or header names a percentage, is passed over with its reason (round 1 of
+    #665: "85 (52.1)", a count and its share, was said to be no mean of numbers each 0 or
+    1). An n (%) is held to its denominator already. A proportion in a row and column no
+    header calls percentages, typed as a decimal, is read as a mean. Accepted.
+  - A header that names "n (%) or mean (SD)" passes over every proportion under it, with its
+    reason; a percentage under 1 with its SD, "0.6 (7.8)", in a row and column no header
+    calls percentages, is read as a proportion and listed (round 2 of #665). Pinned by
+    `tests/test_corruption.py::test_binary_cells_go_by_their_headers`.
+  - A test that would try more than 100,000 totals or counts of ones says nothing, where
+    rsprite2 stops at a million (round 1 of #665: G7 took seconds over a million): in
+    `audit` the spread is counted as passed over, in the ledger it is
+    `quote-sd-not-assessable`. Accepted.
+  - The ledger's SD is held to be printed in the quote as a number, anywhere in it, not to
+    stand beside the mean. Accepted.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
@@ -27142,6 +27263,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the rest. The text report, which a screen reader reads well, is shown only where the PDF
   could not be made. Accepted.
 
+- **Only an RRID typed with its label is read, and the resolver's answer is taken as it
+  is.** Basile decided on 2026-11-12 that only the RRIDs the manuscript types are checked
+  (`rrids.py`, `gates/rrids.py`). Pinned by
+  `tests/test_properties.py::test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else`.
+  - An RRID written without "RRID:" in capitals and its colon is not read: "AB_2298772"
+    alone, "RRIDs: AB_1, AB_2", "rrid:AB_1", "RRID AB_1", and one with two spaces after the
+    colon. Accepted.
+  - The gap after the colon is one whitespace character or one line break, and the accession
+    has to follow it: a wrapped line with an indent, "(RRID:" then "  AB_2298772)", one in
+    bold, "**RRID:**AB_2298772", and one in a link, "RRID:[AB_2298772](...)", are not read.
+    Accepted.
+  - An accession whose last part is four small letters or more after a hyphen, with no `:`,
+    `_` or `-` after it, is read without it: "RRID:Addgene_12345-abcd" is RRID:Addgene_12345,
+    the rule that leaves "-derived" out. Such a word with `-`, `_` or `:` after it joins
+    ("RRID:CVCL_0030-cell-derived" is CVCL_0030-cell), and one of three small letters or
+    fewer ("-ish", "-ko", "-wt") or of capitals ("-GFP", "-KO") is read into it. Accepted.
+  - A citation number typed straight after an RRID's full stop, "RRID:AB_2298772.12", is read
+    into the accession, since a dot before a digit joins its parts. Accepted.
+  - A "Problematic cell line" comment whose value is no string, or blank, is dropped, and the
+    line is recorded with no problem, as before round 1 of #658. Accepted.
+  - The resolver's answer is taken as it gives it: `found` says only that it gave a record,
+    and a record whose `curie` is another RRID than the one asked, an old identifier it maps
+    to a new one or one written in other case, is kept and not compared. Accepted.
+  - One hit of the resolver's without a usable `_source` makes the whole answer no answer,
+    so an RRID whose answer always holds one is never recorded and stays not looked up.
+    Accepted.
+  - A line Cellosaurus marks problematic only after the record was written is not known until
+    `lookup --resources --again` asks again: an RRID record does not age, and no finding says
+    it is old. Accepted.
+  - Two RRIDs that differ only in case, or in a `:` or a `.` against a `-`, share one record
+    file, and the one whose record is not there is said to be misfiled
+    (`rrid-record-misfiled`); each run of `lookup --resources` asks for that one again and
+    writes its record over the other's, so the two rewrite each other's record on every run.
+    Pinned by `tests/test_rrid_lookup.py::test_a_record_edited_or_of_another_rrid_is_not_read`.
+  - In Markdown, an RRID in an indented code block, or in a `~~~` block that `_code_spans`
+    pairs with prose, is read as prose. Accepted.
+  - In LaTeX, nothing is read past where the reader stopped in a file: `lookup --resources`
+    names the file and the line, and `check` says nothing of an RRID after it, where BUILD
+    reports the refusal. An RRID in a float's cells is read, as in prose. Accepted.
+  - G2 and G14 read a typed RRID with a copy of this reading (`data/structural.yaml`,
+    `gates/language.py`, from #663, the entry below), which changes with `rrids.py` until one
+    imports the other. Accepted.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name

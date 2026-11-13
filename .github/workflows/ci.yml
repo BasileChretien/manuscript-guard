@@ -213,9 +213,10 @@ jobs:
     # push to main the base is main as it was before the push.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    # About two minutes when the source changed and seconds when it did not; a reading
+    # About twelve minutes for main, and up to twenty for a change that adds readings, on a
+    # busy runner (2026-11-12: five runs of three pull requests stopped at twenty); a reading
     # that never answers is stopped by the test itself long before this.
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       MANUSCRIPT_GUARD_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
     steps:

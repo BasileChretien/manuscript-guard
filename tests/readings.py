@@ -1309,6 +1309,30 @@ def _registration_identifiers() -> Reading:
     return NAMED_IN_TEXT.findall
 
 
+@reading("rrids typed")
+def _rrids_typed() -> Reading:
+    from types import SimpleNamespace
+
+    from manuscript_guard.rrids import typed
+
+    def read(files: dict[str, str]) -> list[list[Any]]:
+        """Each RRID a manuscript folder types, as G7 and `lookup --resources` read it: the
+        RRID, the file, its line and whether it is the supplement's. Given as the files of
+        `manuscript/`, Markdown or LaTeX."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manuscript = root / "manuscript"
+            for name, text in files.items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(text.encode("utf-8"))
+            project = SimpleNamespace(root=root, path=lambda name: root / name)
+            return [[one.rrid, one.path.relative_to(root).as_posix(), one.line,
+                     one.supplementary] for one in typed(project)]  # fmt: skip
+
+    return read
+
+
 @reading("retrospective said")
 def _retrospective_said() -> Reading:
     from manuscript_guard.gates.registration import says_retrospective
@@ -1940,6 +1964,29 @@ def _whole_number_means() -> Reading:
             [m.line, m.printed, m.mean, m.n, m.label, m.uncertain, possible(m.mean, m.n)]
             for table in markdown_tables(given["text"]) for m in table_means(table, labels)
         ]  # fmt: skip
+
+    return read
+
+
+@reading("spreads of named means")
+def _spreads_of_named_means() -> Reading:
+    """Each mean in a pipe table's rows the auditor names for --whole-numbers, and each
+    printed with its spread in those named for --binary, as `audit` holds them: which test,
+    its line, the mean and the spread as printed, its column's n, and whether GRIMMER or
+    DEBIT passes it, None where it is held to nothing."""
+    from manuscript_guard.auditing.spreads import held_binary, held_sd
+    from manuscript_guard.stats.granularity import table_binary, table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        whole, binary = tuple(given["whole"]), tuple(given["binary"])
+        found = []
+        for table in markdown_tables(given["text"]):
+            found += [["whole", m.line, m.mean, m.spread, m.n, held_sd(m)]
+                      for m in table_means(table, whole)]  # fmt: skip
+            found += [["binary", m.line, m.mean, m.spread, m.n, held_binary(m)]
+                      for m in table_binary(table, binary)]  # fmt: skip
+        return found
 
     return read
 

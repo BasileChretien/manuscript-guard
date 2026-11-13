@@ -69,6 +69,29 @@
               "type": "integer",
               "minimum": 1,
               "description": "Where the mean is of each person's mean over several items, how many items each answered. One where absent."
+            },
+            "sd": {
+              "type": "string",
+              "pattern": "^(?:\\d+(?:\\.\\d+)?|\\.\\d+)$",
+              "description": "The SD the source prints beside the mean, as the quote prints it and in quotes, \"1.20\", so that its last places are kept. G7 then checks that it can be the SD of n whole numbers with that mean (GRIMMER)."
+            }
+          }
+        },
+        "mean_of_binary_data": {
+          "type": "object",
+          "required": ["n", "sd"],
+          "additionalProperties": false,
+          "description": "The value is the mean, or the proportion, of numbers each 0 or 1, as the source says: a binary variable whose mean and SD it reports. G7 then checks that the value and the SD can be those of n such numbers (the DEBIT test).",
+          "properties": {
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many people, or units, the mean is of, as the source gives it."
+            },
+            "sd": {
+              "type": "string",
+              "pattern": "^(?:\\d+(?:\\.\\d+)?|\\.\\d+)$",
+              "description": "The SD the source prints beside the mean, as the quote prints it and in quotes, \"0.35\"."
             }
           }
         }

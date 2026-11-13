@@ -2949,6 +2949,42 @@ def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
     assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
 
 
+@pytest.mark.parametrize("shape", ["run-in label", "bold line"])
+def test_a_styled_word_paper_s_abstract_number_unlike_its_results_is_reported(
+    tmp_path: Path, shape: str,
+) -> None:
+    """A Word paper with heading styles whose Abstract is titled by a run-in "Abstract:"
+    (docx-med-B3 of the real-paper corpus) or by "Abstract" alone on a line in bold
+    (docx-med-A2, docx-psych-A1, docx-socio-A2) had no Abstract to the audit, and a number
+    of its Abstract the Results do not report went unsaid (Basile, 2026-11-14). It is said."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str, style: str = "", props: str = "") -> str:
+        style = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        props = f"<w:rPr>{props}</w:rPr>" if props else ""
+        return f'<w:p>{style}<w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+    def docx(abstract: str) -> Path:
+        opening = (para(f"Abstract: {abstract}") if shape == "run-in label"
+                   else para("Abstract", props="<w:b/>") + para(abstract))  # fmt: skip
+        body = (para("Falls in older patients", "Heading1") + opening
+                + para("Methods", "Heading1") + para("We read 412 records.")
+                + para("Results", "Heading1") + para("Of 412 patients, 77 fell."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        return path
+
+    read = audit([docx("Of 412 patients, 77 fell.")], None).abstract
+    assert read.compared and read.not_found == []
+    read = audit([docx("Of 412 patients, 78 fell.")], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["78"]
+
+
 def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
     """An Abstract that names a data release or a variant the Methods do not, "v7" for the
     Methods' "v8", is told apart from one that names the Methods' own: each identifier was

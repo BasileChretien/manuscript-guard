@@ -24,6 +24,14 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: word abstract
+    why: >-
+      a Word paper that uses heading styles and titles its Abstract by a run-in "Abstract:"
+      or "Abstract." opening its paragraph, or by "Abstract" alone on a line in bold, has
+      that Abstract compared with its Results, where the base said no file has a heading
+      that names the Abstract; it ends at the next heading, or before it at a title typed on
+      a line of its own that is no part of it (Basile, 2026-11-14, four papers of the
+      real-paper corpus)
   - reading: latex refusals
     why: >-
       a `\makeatletter` in the body is skipped to its `\makeatother`, and a conditional in

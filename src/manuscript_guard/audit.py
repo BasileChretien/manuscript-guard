@@ -1045,14 +1045,21 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         lists = markdown_lists(text, hidden)
         boxed = 0
         notes = footnote_lines(text)
+        run_in: frozenset[int] = frozenset()
     else:
+        from manuscript_guard.text.docx_abstract import placed_headings
+
         body = document.body.split("\n")
         # A document with no heading style is placed by its typed titles, where they name
-        # its sections and can be placed (`text.docx.typed_heading_levels`).
-        levels = document.heading_levels or typed_heading_levels(document) or ()
-        sections = [Section(body[at], level, "", at + 1) for at, level in levels]
+        # its sections and can be placed (`text.docx.typed_heading_levels`); and either by
+        # its Abstract's run-in label or bold line where no heading names it.
+        headings = placed_headings(document)
+        sections = [Section(one.title, one.level, "", one.line + 1) for one in headings]
+        # A run-in label's line is a paragraph's too, whose sentences are read.
+        run_in = frozenset(one.line + 1 for one in headings if one.run_in)
         lines = frozenset(at + 1 for at in document.cells)
-        lists = docx_lists(body, dict(document.levels), {at + 1: level for at, level in levels})
+        lists = docx_lists(body, dict(document.levels), {one.line + 1: one.level
+                                                          for one in headings})  # fmt: skip
         boxed = boxed_counts(document.boxed)
         # The notes, read after the body, under its last heading (`read_paper`).
         last = document.body.count("\n") + 1
@@ -1061,7 +1068,7 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(
-                text, sections)}  # fmt: skip
+                text, sections) - run_in}  # fmt: skip
 
 
 def _parts(sections: list, document) -> Callable[[int], object] | None:

@@ -105,12 +105,14 @@ def _title(title: str) -> str:
 
 def counted(lines: list[str], headings: dict[int, str], tables: frozenset[int] = frozenset(),
             notes_from: int | None = None,
-            continued: frozenset[int] = frozenset()) -> Paragraphs:  # fmt: skip
+            continued: frozenset[int] = frozenset(),
+            run_in: frozenset[int] = frozenset()) -> Paragraphs:  # fmt: skip
     """The places of `lines`, under `headings` (each title by its line, from 1; one with no
     words is no heading): every line in `tables` (from 1) one paragraph with the lines of the
     table next to it, a blank one among them, as an empty cell is, keeping the table open
-    (review of #616); every line in `continued` the paragraph of the line before it; and
-    every line from `notes_from` on under `NOTES`."""
+    (review of #616); every line in `continued` the paragraph of the line before it; every
+    line in `run_in`, a heading's run-in label's, the first paragraph under it; and every
+    line from `notes_from` on under `NOTES`."""
     places: list[Paragraph | None] = []
     section: str | None = None
     number = 0
@@ -118,6 +120,10 @@ def counted(lines: list[str], headings: dict[int, str], tables: frozenset[int] =
     for at, text in enumerate(lines, 1):
         if notes_from is not None and at == notes_from:
             section, number, in_table = NOTES, 0, False
+        if at in run_in and at in headings:
+            section, number, in_table = _title(headings[at]), 1, False
+            places.append(Paragraph(section, 1))
+            continue
         if at in headings and headings[at].strip():
             section, number, in_table = _title(headings[at]), 0, False
             places.append(Paragraph(section, 0))
@@ -167,15 +173,18 @@ def of_markdown(text: str) -> Paragraphs:
 def of_docx(document, text: str) -> Paragraphs:
     """The places of `text`, a .docx's body then its notes as the audit reads them
     (`audit.read_paper`): its headings by their styles, or by its typed titles where it
-    has no heading style (`text.docx.typed_heading_levels`), as the audit places its
-    Abstract; its tables by their cells."""
-    from manuscript_guard.text.docx import typed_heading_levels
+    has no heading style, and by its Abstract's run-in label or bold line where no heading
+    names it (`text.docx_abstract.placed_headings`), as the audit places its Abstract; its
+    tables by their cells. A run-in label's line is the first paragraph under it."""
+    from manuscript_guard.text.docx_abstract import placed_headings
 
     body = document.body.split("\n")
-    levels = document.heading_levels or typed_heading_levels(document) or ()
-    headings = {at + 1: body[at] for at, _level in levels if at < len(body)}
+    placed = [one for one in placed_headings(document) if one.line < len(body)]
+    headings = {one.line + 1: one.title for one in placed}
+    run_in = frozenset(one.line + 1 for one in placed if one.run_in)
     notes = len(body) + 1 if document.notes else None
-    return counted(text.split("\n"), headings, _tables(body, document.cells), notes)
+    return counted(text.split("\n"), headings, _tables(body, document.cells), notes,
+                   run_in=run_in)  # fmt: skip
 
 
 #: A line of a table in the document's own text that holds no cell's words: where a row

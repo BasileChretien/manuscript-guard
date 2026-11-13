@@ -1921,6 +1921,28 @@ def _abstract_against_results() -> Reading:
     return read
 
 
+@reading("word abstract")
+def _word_abstract() -> Reading:
+    """What `audit` says of a Word paper's Abstract against its Results, the paper's body
+    given as `w:body` XML in Word's default heading styles: whether they were compared, why
+    not, how many of the Abstract's numbers were read and matched, and each not found."""
+    from manuscript_guard.audit import audit
+
+    def read(given: str) -> dict[str, Any]:
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "paper.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>"
+                                                      f"{given}</w:body></w:document>")  # fmt: skip
+            found = audit([path], None).abstract
+            return {"compared": found.compared, "why not": found.why_not,
+                    "numbers": found.numbers, "matched": found.matched,
+                    "not found": [[c.line, c.text] for c in found.not_found]}  # fmt: skip
+
+    return read
+
+
 @reading("word paragraphs")
 def _word_paragraphs() -> Reading:
     """Where each line of the Markdown a .docx converts to stands, as the audit names a

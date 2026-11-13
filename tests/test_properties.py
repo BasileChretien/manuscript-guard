@@ -21355,6 +21355,146 @@ def _a_title_also_underlined_is_none(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(from_word, "_LOOKS", {"Strong": None, "Emph": None})
 
 
+from generated import abstract_blocks, word_abstract_papers  # noqa: E402
+
+
+@holds(30, word_abstract_papers())
+def test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in(
+    drawn: list[tuple[str, list[str]]],
+) -> None:
+    """A styled Word paper whose Abstract no heading style marks is placed under it where it
+    opens on a run-in label, "Abstract:", "Abstract.", "ABSTRACT:", its label in bold or
+    not, or where "Abstract" stands alone on a line in bold; not where it stands alone in
+    plain type, a sentence in bold or not opens with "Abstracts", the label stands alone, or
+    the label is in a table's cell. It ends at the next heading, or before it at a title typed
+    in bold that is no part of it, a heading too, past a structured abstract's parts; with
+    neither after it, it is not read (`text.docx_abstract.placed_headings`; Basile,
+    2026-11-14, after the real-paper corpus)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+    from manuscript_guard.text.docx_abstract import placed_headings
+
+    with tempfile.TemporaryDirectory() as folder:
+        for at, (body, titles) in enumerate(drawn):
+            path = Path(folder) / f"paper-{at}.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                      f"{body}</w:body></w:document>")  # fmt: skip
+            found = [one.title.strip() for one in placed_headings(read_docx_text(path))]
+            assert found == titles, body
+
+
+def _a_run_in_label_is_no_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx_abstract
+
+    patch.setattr(docx_abstract, "run_in_abstract", lambda text: None)
+
+
+def _a_plain_abstract_line_is_a_heading_too(patch: pytest.MonkeyPatch) -> None:
+    """As docx-ecol-B2 would be read, which Basile's decision leaves out."""
+    from manuscript_guard.text import docx_abstract
+
+    real = docx_abstract._opened
+
+    def opened(document, body: list[str], styled: bool):
+        plain = next((docx_abstract.Heading(at, 0, line) for at, line in enumerate(body)
+                      if at in document.typed and docx_abstract.abstract_alone(line)), None)
+        found = [one for one in (real(document, body, styled), plain) if one is not None]
+        return min(found, key=lambda one: one.line) if found else None
+
+    patch.setattr(docx_abstract, "_opened", opened)
+
+
+def _the_abstract_ends_only_at_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx_abstract
+
+    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded: len(titles))
+
+
+def _the_abstract_ends_at_its_first_typed_title(patch: pytest.MonkeyPatch) -> None:
+    """A structured abstract's parts in bold are not read as its own: it ends at the first."""
+    from manuscript_guard.text import docx_abstract
+
+    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded: 1)
+
+
+def _an_abstract_nothing_ends_runs_to_the_end(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx_abstract
+
+    real = docx_abstract._abstract
+
+    def run_on(document, body: list[str], found: list) -> list:
+        made = real(document, body, found)
+        opened = docx_abstract._opened(document, body, bool(document.heading_levels))
+        return made or ([docx_abstract.Heading(opened.line, 1, opened.title)] if opened else [])
+
+    patch.setattr(docx_abstract, "_abstract", run_on)
+
+
+def _abstracts_opening_a_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx_abstract
+
+    patch.setattr(docx_abstract, "run_in_abstract", lambda text: (
+        "Abstract:" if text.lstrip().startswith(("Abstract", "ABSTRACT")) and len(text.split()) > 1
+        else None))  # fmt: skip
+
+
+@holds(40, abstract_blocks())
+def test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads(
+    drawn: list[tuple[list[dict], list[str], str]],
+) -> None:
+    """In a styled Word paper, `init --from` makes a run-in label a heading of its name over
+    the paragraph's other words, with a colon, a space before it, in bold, in bold with the
+    words after it, in a block quote; and a paragraph wholly in bold whose words are "Abstract"
+    alone a heading; at the level of the next heading, and the typed title before it that ends
+    it a heading too. Not a label that runs on into the words in one piece, one with a note's
+    mark, "Abstract" plain, a sentence in bold, or the label alone
+    (`from_word_abstract.abstract_headings`)."""
+    from manuscript_guard.from_word import text_of
+    from manuscript_guard.from_word_abstract import abstract_headings
+
+    for blocks, titles, words in drawn:
+        made, named = abstract_headings(blocks, styled=True)
+        headers = [block for block in made if block["t"] == "Header"]
+        assert [" ".join(text_of(one["c"][2]).split()) for one in headers] == titles, blocks
+        assert list(named) == titles[1:-1]
+        if len(titles) > 2:
+            # Each at the level of the next heading, and the Abstract's words under its own,
+            # with no label left on them.
+            assert {one["c"][0] for one in headers[1:]} == {headers[-1]["c"][0]}
+            opened = next(at for at, block in enumerate(made) if block["t"] == "Header"
+                          and text_of(block["c"][2]).casefold() == "abstract")  # fmt: skip
+            assert text_of(made[opened + 1 :]).lstrip().startswith(words), made
+
+
+def _a_run_in_label_is_left_on_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word_abstract
+
+    real = from_word_abstract._split
+    patch.setattr(from_word_abstract, "_split", lambda block: None if real(block) is None else [
+        real(block)[0], block])  # fmt: skip
+
+
+def _a_label_s_words_are_counted_as_one(patch: pytest.MonkeyPatch) -> None:
+    """"Abstract :" taken off as one word, its colon left on the paragraph."""
+    from manuscript_guard import from_word_abstract
+
+    real = from_word_abstract.run_in_abstract
+    patch.setattr(from_word_abstract, "run_in_abstract",
+                  lambda text: (real(text) or "").replace(" ", "") or None)
+
+
+def _a_quoted_label_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word_abstract
+
+    real = from_word_abstract._opened
+    patch.setattr(from_word_abstract, "_opened", lambda blocks, styled: real(
+        [block if block.get("t") != "BlockQuote" else {"t": "HorizontalRule"}
+         for block in blocks], styled))  # fmt: skip
+
+
 from generated import word_paragraphs  # noqa: E402
 
 
@@ -22168,6 +22308,42 @@ BROKEN = {
     "any typed title is a section's": (
         _any_bold_title_is_a_section_s,
         test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a run-in Abstract label is no heading": (
+        _a_run_in_label_is_no_heading,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "a plain Abstract line in a styled paper is a heading": (
+        _a_plain_abstract_line_is_a_heading_too,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "a shaped Abstract ends only at the next heading": (
+        _the_abstract_ends_only_at_the_next_heading,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "a shaped Abstract ends at its first typed title": (
+        _the_abstract_ends_at_its_first_typed_title,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "a shaped Abstract nothing ends runs to the end": (
+        _an_abstract_nothing_ends_runs_to_the_end,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "a sentence opening on Abstracts is a run-in label": (
+        _abstracts_opening_a_sentence_is_a_label,
+        test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "init leaves a run-in label on its words": (
+        _a_run_in_label_is_left_on_its_words,
+        test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads,
+    ),
+    "init takes a run-in label off as one word": (
+        _a_label_s_words_are_counted_as_one,
+        test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads,
+    ),
+    "init reads no run-in label in a block quote": (
+        _a_quoted_label_is_not_read,
+        test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads,
     ),
     "only a title in bold is typed": (
         _only_a_title_in_bold_is_typed,

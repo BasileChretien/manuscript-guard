@@ -169,6 +169,20 @@ def test_a_finding_s_own_words_are_a_number_an_abbreviation_or_what_it_quotes(
     assert words_of(message, context) == words
 
 
+def test_a_split_run_s_recorded_change_has_an_id_of_its_own(tmp_path: Path) -> None:
+    """A comment inside a run whose formatting change Word recorded splits it in three."""
+    import re
+
+    from manuscript_guard.auditing.commented import Note
+
+    body = ("<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id='5' w:author='Ada'><w:rPr/></w:rPrChange>"
+            "</w:rPr><w:t>Of 40 patients.</w:t></w:r></w:p>")
+    written, said = _written(tmp_path, body, [Note("40", "Of 40 patients.", "ours")])
+    with zipfile.ZipFile(tmp_path / "commented.docx") as archive:
+        ids = re.findall(r'rPrChange w:id="(\d+)"', archive.read("word/document.xml").decode())
+    assert written.placed == 1 and said["ours"] == "40" and len(set(ids)) == len(ids) == 3
+
+
 @pytest.mark.parametrize("rels", [
     # A part with nothing in it, as one empty element.
     '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.'

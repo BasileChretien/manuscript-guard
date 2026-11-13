@@ -54,6 +54,20 @@ reads:
       was the YAML loader taking seconds to give up on them.
     headroom: 0.5 to 16 ms against 1 s, 63x or more.
 
+  - where: tests/test_robustness.py::test_a_ledger_sd_of_millions_of_whole_numbers_is_said_quickly
+    kind: budget
+    budget: 2.0
+    why: >-
+      Two fixed ledger entries, a mean of 3.4 with an SD of 0.0 of 10,000,000 and of 999,990
+      whole numbers: GRIMMER tries the whole totals the mean allows, so its time is set by
+      the count of totals, capped at 100,000, and by the runs of them it skips, not by any
+      input that grows. The regression is the cap gone or every total tried in fractions:
+      a million took seconds, twice over for the message (round 1 of #665).
+    headroom: >-
+      Measured 2026-11-12 beside other sessions' suites: under 1 ms for 10,000,000, which
+      the cap refuses at once, and under 5 ms for 999,990, whose 99,999 totals are skipped
+      in runs, about 400x. Tried one by one in whole numbers they took 1.2 s.
+
   - where: tests/test_robustness.py::test_a_link_definition_is_recognised_quickly
     kind: budget
     budget: 2.0

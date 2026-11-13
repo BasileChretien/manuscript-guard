@@ -141,7 +141,10 @@ scale or a count, add `mean_of_whole_numbers: {n: 28}` with the n the source giv
 `items: 3` where it is the mean of each person's mean over 3 items). `check` then says
 `quote-mean-not-possible` where no whole total over n prints as that mean: a misprint in
 the source, or a mean of fewer people than n. Add it only where the source says what the
-numbers are; do not guess it from a label.
+numbers are; do not guess it from a label. Where the quote prints the SD beside the mean, add
+it in quotes, `sd: "1.20"`, and the SD is held to the mean (`quote-sd-not-possible`). For
+the mean or proportion of numbers each 0 or 1 with its SD, add
+`mean_of_binary_data: {n: 163, sd: "0.35"}` instead (`quote-binary-not-possible`).
 
 `quote-not-in-source` means the quote was retyped rather than copied, or the stored file is
 not the one it was taken from. `value-not-in-quote` means the sentence quoted does not

@@ -8475,6 +8475,79 @@ def _a_named_row_is_never_read_for_its_n(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(granularity, "table_means", blind)
 
 
+# ---------------------------------------------------- a table's SDs: GRIMMER and DEBIT
+
+from generated import sd_tables  # noqa: E402
+
+
+@holds(100, sd_tables())
+def test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n(
+    drawn: tuple[str, list[str], list[str], list[tuple[Any, ...]]],
+) -> None:
+    """An SD printed with a mean in a row named for --whole-numbers, in brackets or after a
+    plus-minus sign, can go with it where some sum of squares of n whole numbers with that
+    total gives it to its places (GRIMMER): an SD of real answers does, rounded down or up,
+    and one between two that such numbers give does not. A mean and SD in a row named for
+    --binary can go together where some count of ones among n gives both (DEBIT): the
+    sample SD does, a wrong one does not, and the SD over n where no count gives it over
+    n - 1 does not; a count and its share, or a percentage and its SD, is no proportion
+    and is held to nothing. Each is held to its column's n. A spread the row's label, the header
+    over its column or the header's first cell names a standard error is held to nothing,
+    and so is a mean alone; a row nobody names is not read."""
+    text, whole, binary, expected = drawn
+    found = READINGS["spreads of named means"]()({"text": text, "whole": whole,
+                                                  "binary": binary})  # fmt: skip
+    assert [tuple(each) for each in found] == expected, text
+
+
+def _an_sd_is_taken_to_be_rounded_up(patch: pytest.MonkeyPatch) -> None:
+    """A printed SD read as the true one rounded up, a unit below it to itself, rather than
+    rounded to the nearest."""
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def rounded_up(printed: str) -> tuple[Fraction, Fraction]:
+        value = Fraction(granularity.Decimal(printed))
+        return value - Fraction(1, 10 ** granularity.places(printed)), value
+
+    patch.setattr(granularity, "_interval", rounded_up)
+
+
+def _a_column_s_n_is_its_neighbour_s(patch: pytest.MonkeyPatch) -> None:
+    """A header's n set over the column after its own."""
+    from manuscript_guard.stats import granularity
+
+    read = granularity._header
+    patch.setattr(granularity, "_header",
+                  lambda cell, column, over: read(cell, column + 1, over))  # fmt: skip
+
+
+def _a_standard_error_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_spread_named", lambda text: None)
+
+
+def _an_n_percent_cell_is_a_binary_mean(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #665: every "number (number)" cell of a row --binary named was read as a
+    mean and its SD, a count and its share among them."""
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_not_a_proportion", lambda mean, label, column, table: None)
+
+
+def _a_binary_sd_is_over_n(patch: pytest.MonkeyPatch) -> None:
+    """The population variance of numbers each 0 or 1, k(n - k) / n squared, for the
+    sample's, k(n - k) / (n(n - 1)), which Heathers and Brown's DEBIT uses."""
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_binary_variance",
+                  lambda ones, n: Fraction(ones * (n - ones), n * n))  # fmt: skip
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -21532,6 +21605,88 @@ def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) 
     patch.setattr(reader, "_NESTED", 1)
 
 
+# ------------------------------------------------------------------------------- RRIDs
+
+from generated import rrid_papers  # noqa: E402
+
+
+@holds(50, rrid_papers())
+def test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else(
+    drawn: tuple[dict[str, str], dict[str, str], list, list],
+) -> None:
+    """An RRID of each form, in the main text and the supplement, Markdown and its LaTeX twin,
+    is read at its file and line, its accession in the case it is written, a space or a
+    line break or nothing after the colon, the mark after it left out; one in a comment or
+    in code is not read (`rrids.typed`)."""
+    markdown, latex, read_markdown, read_latex = drawn
+    read = READINGS["rrids typed"]()
+    assert read(markdown) == read_markdown
+    assert read(latex) == read_latex
+
+
+def _an_rrid_keeps_the_mark_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    inner = rrids._ACCESSION.removeprefix("(?P<accession>").removesuffix(")")
+    accession = rf"(?P<accession>(?:{inner})[.,;:)]?)"
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
+
+
+def _an_rrid_is_case_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "rrid_of", lambda found: "RRID:" + found.group("accession").casefold())
+
+
+def _the_supplement_s_rrids_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "PARTS", (False,))
+
+
+def _an_rrid_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+    shown = rrids.latex_view
+
+    def with_comments(source) -> str:
+        chars = list(shown(source))
+        for start, end in source.reading.comments:
+            chars[start:end] = source.text[start:end]
+        return "".join(chars)
+
+    patch.setattr(rrids, "latex_view", with_comments)
+
+
+def _any_word_after_a_hyphen_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    # Round 1's joiner, which cut an accession typed in small letters (round 2 of #658).
+    accession = rrids._ACCESSION.replace(rrids._JOIN, r"(?:[_:.]|-(?![a-z]+(?![A-Za-z0-9])))")
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
+
+
+def _a_dot_before_a_letter_joins_rrids_parts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids  # the old `[_:.]` joiner (round 3 of #658)
+
+    joined = rrids._ACCESSION.replace(r"[_:]|\.(?=[0-9])", "[_:.]")
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + joined))
+
+
+def _an_rrid_in_a_code_span_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans", lambda text: [])
+
+
+def _no_space_is_read_after_the_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids
+
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._ACCESSION))
+
+
 from generated import TRACKED_KINDS, tracked_documents  # noqa: E402
 
 #: Why each correction a `tracked_documents` document holds and the copy cannot is left out.
@@ -21634,6 +21789,38 @@ BROKEN = {
     "a bounded block in the body stops the reading": (
         _a_bounded_block_stops_the_reading,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "an RRID keeps the punctuation after it": (
+        _an_rrid_keeps_the_mark_after_it,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID's accession is case-folded": (
+        _an_rrid_is_case_folded,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "the supplement's RRIDs are not read": (
+        _the_supplement_s_rrids_are_not_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID in a comment is read": (
+        _an_rrid_in_a_comment_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "a dot before a letter joins an RRID's parts": (
+        _a_dot_before_a_letter_joins_rrids_parts,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "any word of small letters after a hyphen ends an RRID": (
+        _any_word_after_a_hyphen_ends_an_rrid,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "an RRID in a code span is read": (
+        _an_rrid_in_a_code_span_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "no space is read after an RRID's colon": (
+        _no_space_is_read_after_the_colon,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
     ),
     "a typed table's cells inside maths are maths": (
         _a_table_inside_maths_is_maths,
@@ -24815,6 +25002,26 @@ BROKEN = {
     "a row a label names is never read for its n, though it is the header": (
         _a_named_row_is_never_read_for_its_n,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a printed SD is taken to be rounded up, not to the nearest": (
+        _an_sd_is_taken_to_be_rounded_up,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "an SD is held to the n of the column beside its own": (
+        _a_column_s_n_is_its_neighbour_s,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "a standard error is read as an SD": (
+        _a_standard_error_is_read_as_an_sd,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "an n (%) cell is read as a binary mean": (
+        _an_n_percent_cell_is_a_binary_mean,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "the SD of numbers each 0 or 1 is taken over n, not n - 1": (
+        _a_binary_sd_is_over_n,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
     ),
     "a share is held to its printed value, not half a unit either side": (
         _a_share_is_held_to_its_printed_value,

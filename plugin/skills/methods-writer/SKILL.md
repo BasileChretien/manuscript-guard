@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed or software-uncited, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -224,6 +224,11 @@ computed from the data is emitted as a number, and is not.
 Use the name the source has in `design/data_sources.yaml` where the project keeps one:
 `check` warns of a dataset whose name is none of the sources the record chose
 (`dataset-not-chosen`).
+
+## Naming the resources by their RRIDs
+
+Cite each resource as its RRID and run `manuscript-guard lookup --resources`; read
+[references/rrids.md](references/rrids.md) for its findings.
 
 ## Describing a model
 

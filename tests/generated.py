@@ -42,7 +42,7 @@ import re
 import textwrap
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta, timezone
-from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal, localcontext
 from fractions import Fraction
 from functools import cache
 from typing import Any, NamedTuple, TypeVar
@@ -10846,6 +10846,214 @@ def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], lis
     return values, floors, expected
 
 
+# --------------------------------------------- a table's SDs: GRIMMER and DEBIT
+
+#: Rows of numbers each 0 or 1 an auditor names with --binary.
+BINARY_LABELS = ("Male sex", "Current smoker", "Diabetes", "Employed", "Married",
+                 "Lives alone")  # fmt: skip
+#: The kinds of row each first table of `sd_tables` holds one of: of whole numbers, an
+#: SD printed below its true value and one above, an SD no such numbers give, a spread the
+#: label names a standard error, and means alone; of numbers each 0 or 1, a right SD, a
+#: wrong one, the population SD (over n, not n - 1), a standard error, a count and its share,
+#: "85 (52.1)", and a percentage and its SD, "52.1 (50.1)", which are no proportions (round
+#: 1 of #665); and a row nobody names, whose SD would be wrong.
+SD_ROWS = ("down", "up", "wrong", "se", "alone", "binary right", "binary wrong",
+               "binary population", "binary se", "binary count", "binary percent",
+               "unnamed")  # fmt: skip
+#: How a row of counts and their shares labels them, and how a row of percentages does.
+COUNT_LABELS = ("{name}", "{name}, n (%)")
+PERCENT_LABELS = ("{name}", "{name}, %")
+#: How a row of SDs labels them, and how a row of standard errors does.
+SD_LABELS = ("{name}", "{name}, mean (SD)", "{name}, mean \N{PLUS-MINUS SIGN} SD")
+SE_LABELS = ("{name}, mean (SE)", "{name}, mean \N{PLUS-MINUS SIGN} SEM",
+             "{name}, mean (standard error)")  # fmt: skip
+#: How a cell prints a mean with its spread.
+SPREAD_CELLS = ("{m} ({s})", "{m} [{s}]", "{m} \N{PLUS-MINUS SIGN} {s}")
+
+#: An SD as the reading holds it: which test, its line, the mean and the spread as printed,
+#: its n, and the verdict, None where it is held to nothing.
+Spread = tuple[str, int, str, "str | None", int, "bool | None"]
+
+
+def _root_to(square: Fraction, places: int) -> str:
+    """The square root of `square`, rounded half up to `places`, by Decimal at fifty
+    digits: worked out apart from the package's own rounding."""
+    with localcontext() as context:
+        context.prec = 50
+        root = (Decimal(square.numerator) / Decimal(square.denominator)).sqrt()
+        return str(root.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
+
+
+def _half_about(printed: str) -> tuple[Fraction, Fraction]:
+    value = Fraction(Decimal(printed))
+    half = Fraction(1, 2 * 10 ** len(printed.partition(".")[2]))
+    return max(value - half, Fraction(0)), value + half
+
+
+def _squares_fit(total: int, count: int, printed: str) -> bool:
+    """Whether some sum of squares of `count` whole numbers totalling `total` has an SD
+    within half a unit of `printed`: whole, of the total's parity, and no less than that of
+    the total spread evenly, tried one by one."""
+    low, high = _half_about(printed)
+    mean_square = Fraction(total * total, count)
+    whole, over = divmod(total, count)
+    least = (count - over) * whole**2 + over * (whole + 1) ** 2
+    first = math.ceil((count - 1) * low**2 + mean_square)
+    last = math.floor((count - 1) * high**2 + mean_square)
+    return any((square - total) % 2 == 0 and square >= least
+               for square in range(first, last + 1))  # fmt: skip
+
+
+def _ones_fit(mean: str, count: int, printed: str) -> bool:
+    """Whether some count of ones among `count` gives `mean` and a sample SD within half a
+    unit of `printed`, count by count."""
+    low, high = _half_about(printed)
+    centre, half = Fraction(Decimal(mean)), Fraction(1, 2 * 10 ** len(mean.partition(".")[2]))
+    return any(abs(Fraction(ones, count) - centre) <= half
+               and low**2 <= Fraction(ones * (count - ones), count * (count - 1)) <= high**2
+               for ones in range(count + 1))  # fmt: skip
+
+
+def _away_from(draw: st.DrawFn, start: str, fits: Callable[[str], bool]) -> str:
+    """A printed SD near `start`, to its places, that `fits` refuses."""
+    places = len(start.partition(".")[2])
+    step = Decimal(1).scaleb(-places)
+    way = draw(st.sampled_from((1, -1)))
+    for moved in range(1, 400):
+        for side in (way, -way):
+            printed = str((Decimal(start) + side * moved * step).quantize(step))
+            if not printed.startswith("-") and not fits(printed):
+                return printed
+    raise AssertionError(f"every SD near {start} fits")  # pragma: no cover
+
+
+def _whole_spread(draw: st.DrawFn, count: int, kind: str) -> tuple[str, str, bool]:
+    """A mean of `count` answers from 1 to 7 at two places with an SD of `kind`, and whether
+    GRIMMER passes it: "down" an SD printed below its true value, "up" above, "wrong" one no
+    such numbers give (and "se" and "unnamed" the same)."""
+    drawn = draw(st.lists(st.integers(1, 7), min_size=count, max_size=count))
+    # The answers drawn, then with the first two changed, until the SD is not printed
+    # exactly: a shrunk draw, every answer 1 but one of 16, has an SD of 0.25 a step.
+    for first, second in [tuple(drawn[:2]), *((a, b) for a in range(1, 8) for b in range(1, 8))]:
+        answers = [first, second, *drawn[2:]]
+        total = sum(answers)
+        variance = (sum(a * a for a in answers) - Fraction(total * total, count)) / (count - 1)
+        if variance == 0:
+            continue
+        mean = _a_mean(total, count, 2)
+        if kind not in ("down", "up"):
+            start = _root_to(variance, draw(st.integers(2, 3)))
+            wrong = _away_from(draw, start, lambda sd, total=total: _squares_fit(total, count, sd))
+            return mean, wrong, False
+        for places in (3, 4, 2, 1):
+            printed = _root_to(variance, places)
+            square = Fraction(Decimal(printed)) ** 2
+            if (square < variance) if kind == "down" else (square > variance):
+                return mean, printed, True
+    raise AssertionError("no SD rounded that way")  # pragma: no cover
+
+
+def _binary_spread(draw: st.DrawFn, count: int, kind: str) -> tuple[str, str, bool]:
+    """A mean of `count` numbers each 0 or 1 at two places with an SD of `kind`, and whether
+    DEBIT passes it: "binary right" the sample SD, "binary population" the SD over n where no
+    count of ones gives it over n - 1, "binary wrong" (and "binary se") one no count gives."""
+    ones = draw(st.integers(1, count - 1))
+    mean = _a_mean(ones, count, 2)
+    sample = Fraction(ones * (count - ones), count * (count - 1))
+    if kind == "binary right":
+        return mean, _root_to(sample, draw(st.integers(2, 3))), True
+    if kind == "binary population":
+        population = Fraction(ones * (count - ones), count * count)
+        for places in (2, 3, 4):
+            printed = _root_to(population, places)
+            if not _ones_fit(mean, count, printed):
+                return mean, printed, False
+        raise AssertionError("the population SD fits")  # pragma: no cover
+    start = _root_to(sample, 2)
+    return mean, _away_from(draw, start, lambda sd: _ones_fit(mean, count, sd)), False
+
+
+@st.composite
+def sd_tables(draw: st.DrawFn) -> tuple[str, list[str], list[str], list[Spread]]:
+    """A paper with a table of two arms whose header names each one's n, different, a row of
+    each kind of `SD_ROWS` in an order drawn, each cell made for its column's n. Then a
+    table whose second column's header names its spread a standard error, and one whose
+    header's first cell does, each with a row of SDs no whole numbers give. With the labels
+    an auditor names for --whole-numbers and for --binary, as they would type them, and
+    each mean with a spread the reading finds (`Spread`): per table, the rows of whole
+    numbers in order, then the rows of numbers each 0 or 1."""
+    sizes = [draw(st.integers(6, 30)), draw(st.integers(31, 60))]
+    whole = list(draw(st.permutations(WHOLE_LABELS)))
+    binary = list(draw(st.permutations(BINARY_LABELS)))
+    named = dict(zip(("down", "up", "wrong", "se", "alone"), whole, strict=False))
+    named |= dict(zip(("binary right", "binary wrong", "binary population", "binary se",
+                       "binary count", "binary percent"), binary, strict=True))  # fmt: skip
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Spread] = []
+
+    def table(first: str, headers: list[str]) -> None:
+        lines.extend(["", f"| {first} | " + " | ".join(headers) + " |", "|---|---|---|"])
+
+    def row(label: str, cells: list[str]) -> None:
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+
+    def spread_row(label: str, kind: str, test: str, held: list[bool]) -> list[Spread]:
+        """A row of `kind`, one cell a column; what the reading finds in it, where
+        `held[column]` says whether the cell is held to anything."""
+        made = [(_binary_spread if test == "binary" else _whole_spread)(draw, n, kind)
+                for n in sizes]  # fmt: skip
+        row(label, [draw(st.sampled_from(SPREAD_CELLS)).format(m=mean, s=sd)
+                    for mean, sd, _fits in made])  # fmt: skip
+        return [(test, len(lines), mean, sd, n, fits if keep else None)
+                for (mean, sd, fits), n, keep in zip(made, sizes, held, strict=True)]
+
+    first = draw(st.sampled_from(("Characteristic", "Characteristic, mean (SD)")))
+    table(first, [draw(st.sampled_from(HEADED)).format(arm=arm, n=n)
+                  for arm, n in zip(("Treated", "Control"), sizes, strict=True)])  # fmt: skip
+    of_whole: list[Spread] = []
+    of_binary: list[Spread] = []
+    for kind in draw(st.permutations(SD_ROWS)):
+        test = "binary" if kind.startswith("binary") else "whole"
+        found = of_binary if test == "binary" else of_whole
+        if kind == "alone":
+            means = [_a_mean(draw(st.integers(n, 7 * n)), n, 2) for n in sizes]
+            row(draw(st.sampled_from(SD_LABELS)).format(name=named[kind]), means)
+            of_whole += [("whole", len(lines), m, None, n, None)
+                         for m, n in zip(means, sizes, strict=True)]  # fmt: skip
+        elif kind == "unnamed":
+            spread_row(draw(st.sampled_from(MEASURES)), "wrong", "whole", [True, True])
+        elif kind in ("binary count", "binary percent"):
+            # A count and its share, or a percentage and its SD: no proportion, held to
+            # nothing whatever its label (round 1 of #665).
+            labels = COUNT_LABELS if kind == "binary count" else PERCENT_LABELS
+            cells = []
+            for n in sizes:
+                ones = draw(st.integers(1, n - 1))
+                share = _a_mean(100 * ones, n, 1)
+                spread = _root_to(Fraction(10_000 * ones * (n - ones), n * (n - 1)), 1)
+                mean, sd = (str(ones), share) if kind == "binary count" else (share, spread)
+                cells.append((mean, sd, n))
+            row(draw(st.sampled_from(labels)).format(name=named[kind]),
+                [f"{mean} ({sd})" for mean, sd, _n in cells])  # fmt: skip
+            of_binary += [("binary", len(lines), mean, sd, n, None) for mean, sd, n in cells]
+        else:
+            labels = SE_LABELS if kind.endswith("se") else SD_LABELS
+            label = draw(st.sampled_from(labels)).format(name=named[kind])
+            held = not kind.endswith("se")
+            found += spread_row(label, kind, test, [held, held])
+    expected += of_whole + of_binary
+    # The header over the first column names a standard error; over the second, nothing.
+    table(whole[5], [f"First (n = {sizes[0]}), mean (SE)", f"Second (n = {sizes[1]})"])
+    expected += spread_row(whole[5], "wrong", "whole", [False, True])
+    # The header's first cell names a standard error over every column.
+    table("Characteristic, mean (SE)", [f"First (n = {sizes[0]})", f"Second (n = {sizes[1]})"])
+    expected += spread_row(whole[5], "wrong", "whole", [False, False])
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    return ("\n".join(lines), [label.lower() for label in whole],
+            [label.lower() for label in binary], expected)  # fmt: skip
+
+
 # ------------------------------------------------- a number an earlier output printed
 
 #: The ways a paper prints one number that this one prints otherwise: as it is, its
@@ -15577,6 +15785,101 @@ def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
     return parts
 
 
+# ------------------------------------------------------------------------------- RRIDs
+
+#: One accession of each form the resolver's authorities issue (`rrids.py`): an antibody, a
+#: cell line, a tool, a mouse strain, a plasmid, a mouse gene, a fish genotype, a fly stock, a
+#: worm strain, a mouse line with its centre, an old identifier of the registry's, a frog
+#: line whose parts a dot joins, and a biosample of one part (round 1 of #658).
+RRID_ACCESSIONS = (
+    "AB_2298772", "CVCL_0030", "SCR_002798", "IMSR_JAX:000664", "Addgene_12345",
+    "MGI:3840442", "ZFIN_ZDB-GENO-960809-7", "BDSC_8848", "WB-STRAIN:WBStrain00000001",
+    "MMRRC_000006-UCD", "nif-0000-30467", "NXR_0.0005", "SAMN12345678",
+)  # fmt: skip
+#: What may stand between "RRID:" and the accession: nothing, a space, a no-break space, or
+#: a line break.
+RRID_GAPS = ("", " ", "\u00a0", "\n")
+#: What may follow an RRID, which is not part of it: a mark, or a word of small letters
+#: after a hyphen, "CVCL_0030-derived cells", or after a stop, ".Version" (rounds 1, 3 of #658).
+RRID_TRAILS = ("", ".", ",", ";", ")", ":", "-derived", ".Version")
+#: The case an accession is written in: as the authority lists it, or in small letters.
+RRID_CASES = ("as listed", "lowered")
+#: The documents an RRID may stand in.
+RRID_PARTS = (False, True)
+#: RRIDs that stand in a comment and in code, which are not read. They hold no underscore, so
+#: that a LaTeX comment, which the reader does not unescape, would show them if read.
+RRID_UNREAD = ("MGI:9000001", "MGI:9000002")
+
+
+def _each_once(draw: st.DrawFn, kinds: tuple, count: int) -> list:
+    """`count` kinds, every one of `kinds` among them where `count` allows, in an order
+    drawn: a kind drawn first among several is otherwise one some seeds never draw."""
+    first = draw(st.permutations(list(kinds)))
+    rest = [draw(st.sampled_from(kinds)) for _more in range(count - len(kinds))]
+    return draw(st.permutations(first + rest))
+
+
+@st.composite
+def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, list]:
+    """A manuscript that types an RRID of each form, in Markdown and as its LaTeX twin, and
+    what each reads: `(markdown files, latex files, markdown read, latex read)`, a read
+    `[rrid, path, line, supplementary]` in file and line order. Every example holds every
+    form, every gap, every trailing mark, both cases and both documents, and a comment and a
+    code span in each document whose RRIDs are not read."""
+    count = len(RRID_ACCESSIONS)
+    accessions = draw(st.permutations(list(RRID_ACCESSIONS)))
+    gaps = _each_once(draw, RRID_GAPS, count)
+    trails = _each_once(draw, RRID_TRAILS, count)
+    cases = _each_once(draw, RRID_CASES, count)
+    parts = _each_once(draw, RRID_PARTS, count)
+    word = st.sampled_from(FILLER)
+    lines: dict[bool, list[tuple[str, str, str | None, str]]] = {False: [], True: []}
+    for at, written in enumerate(accessions):
+        kept = written if cases[at] == "as listed" else written.lower()
+        before = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
+        after = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
+        lines[parts[at]].append((before, f"RRID:{gaps[at]}", kept + trails[at] + " " + after,
+                                 kept))  # fmt: skip
+    for part in RRID_PARTS:
+        for decoy in ("comment", "code"):
+            where = draw(st.integers(0, len(lines[part])))
+            lines[part].insert(where, (decoy, "", None, ""))
+    markdown: dict[str, str] = {}
+    latex: dict[str, str] = {}
+    read_md: list = []
+    read_tex: list = []
+    names = {False: ("main.md", "main.tex"), True: ("supplementary/S1.md",
+                                                   "supplementary/main.tex")}  # fmt: skip
+    for part in RRID_PARTS:
+        md_lines: list[str] = []
+        tex_lines: list[str] = ["\\documentclass{article}", "\\begin{document}"]
+        for before, label, rest, accession in lines[part]:
+            for _filler in range(draw(st.integers(0, 2))):
+                said = " ".join(draw(st.lists(word, min_size=2, max_size=5)))
+                md_lines.append(said)
+                tex_lines.append(said)
+            if rest is None:
+                unread = RRID_UNREAD[0] if before == "comment" else RRID_UNREAD[1]
+                if before == "comment":
+                    md_lines.append(f"the reports <!-- RRID:{unread} --> were")
+                    tex_lines.append(f"the reports % RRID:{unread}")
+                else:
+                    md_lines.append(f"the reports `RRID:{unread}` were")
+                    tex_lines.append(f"the reports \\verb|RRID:{unread}| were")
+                continue
+            rrid = "RRID:" + accession
+            md_name, tex_name = (f"manuscript/{name}" for name in names[part])
+            read_md.append([rrid, md_name, len(md_lines) + 1, part])
+            read_tex.append([rrid, tex_name, len(tex_lines) + 1, part])
+            typed = f"{before} {label}{rest}"
+            md_lines.extend(typed.split("\n"))
+            tex_lines.extend(typed.replace("_", "\\_").split("\n"))
+        tex_lines.append("\\end{document}")
+        markdown[names[part][0]] = "\n".join(md_lines) + "\n"
+        latex[names[part][1]] = "\n".join(tex_lines) + "\n"
+    return markdown, latex, read_md, read_tex
+
+
 # ------------------------------------------------------------- RRIDs as G14 reads them
 
 #: An accession for each way G14's reading of an RRID joins its parts (`gates/language.py`,
@@ -15735,6 +16038,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED
     ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
+    "rrids typed": st.one_of(
+        rrid_papers().map(lambda drawn: drawn[0]),
+        rrid_papers().map(lambda drawn: drawn[1]),
+        texts().map(lambda text: {"main.md": text}),
+    ),
     "registered quote": registered_quotes().map(
         lambda drawn: {"record": drawn[0], "quote": drawn[1]}
     ),
@@ -15862,6 +16170,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
+    "spreads of named means": sd_tables().map(
+        lambda drawn: {"text": drawn[0], "whole": drawn[1], "binary": drawn[2]}
     ),
     "means and SDs never negative": spread_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}

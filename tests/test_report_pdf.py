@@ -120,8 +120,8 @@ def test_where_each_check_stands_is_read_from_what_it_found() -> None:
                               recovered=[], recovered_by_n=[], abstract=None, gates=[],
                               references=[], lookups=None, journal=None, causal=None,
                               baseline=None, cited=None, self_citation=None, package=None,
-                              examined=12,
-                              unreadable=[], reference_like=[])  # fmt: skip
+                              examined=12, unreadable=[], reference_like=[], sds_off=[],
+                              binary_off=[])  # fmt: skip
     said = standings(nothing)
     assert said == {"Numbers in the outputs": NOT_RUN, "Arithmetic": CLEAR,
                     "Small cells": CLEAR}  # fmt: skip
@@ -129,6 +129,9 @@ def test_where_each_check_stands_is_read_from_what_it_found() -> None:
                                "over_n_rounding": [1], "recovered_by_n": [1]})
     assert standings(worse) == {"Numbers in the outputs": COUNTED, "Arithmetic": LOOK,
                                 "Small cells": LOOK}  # fmt: skip
+    # An SD that cannot go with its mean is to look at, as a mean that cannot be is.
+    for off in ("sds_off", "binary_off"):
+        assert standings(SimpleNamespace(**{**vars(nothing), off: [1]}))["Arithmetic"] == LOOK
     beside = SimpleNamespace(**{**vars(nothing), "compared": True, "reference_like": [1]})
     assert standings(beside)["Numbers in the outputs"] == LOOK
     none_read = SimpleNamespace(**{**vars(nothing), "compared": True, "examined": 0})

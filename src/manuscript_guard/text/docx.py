@@ -113,7 +113,8 @@ class DocxText:
     #: number Word prints for each entry.
     numbering: tuple[tuple[int, str, bool, int], ...] = ()
     #: The level of each line in `headings`, 1 for "heading 1": by 0-based line, what the
-    #: audit's Abstract against Results places a line under (`gates.reported.Walk`).
+    #: audit's Abstract against Results places a line under (`gates.reported.Walk`). None
+    #: where every line of `headings` is a table's cell, which then place nothing.
     heading_levels: tuple[tuple[int, int], ...] = ()
     #: Each line of `body` outside a table and a text box that is an item of a list Word
     #: numbers or bullets, and not a heading, 1-based, with its level, 0 the outermost

@@ -273,7 +273,9 @@ def _checked(body: str, markdown: str, cited: Citations, name: str):
 
     citeproc = cited.kind == "citeproc"
     reading = read(_without_citeproc_keys(body) if citeproc else body, body=True)
-    for refusal in reading.refusals:
+    # A block the reader skips is refused here too: what it holds is read by no check
+    # (2026-11-13).
+    for refusal in sorted((*reading.refusals, *reading.skipped), key=lambda one: one.offset):
         line = body.count("\n", 0, refusal.offset) + 1
         raise MisreadError(f"pandoc writes LaTeX for {name} that the LaTeX reader refuses, at "
                            f"line {line} of its body: {refusal.message}. The text that makes "

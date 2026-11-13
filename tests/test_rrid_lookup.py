@@ -569,13 +569,18 @@ def test_the_pace_is_one_request_a_second_to_each_host() -> None:
 #
 # G2 (`data/structural.yaml`, `rrid`) and G14 (`gates/language.py`, `_RRID`) each carry a
 # copy of `rrids.py`'s reading, which a YAML rule and a masked view cannot import. These
-# tests hold the three to one another over every accession, gap, trail and case the
-# generated inputs draw, so that a change to one that is not made to the others fails here.
+# tests run the three patterns over every accession, gap, trail and case the generated
+# inputs draw, with an underscore as Markdown escapes it (G2, G14) and as the LaTeX reader
+# leaves it (G14), a trail ".V9" that a dot joining before a letter would read in, and
+# "-cell", a word of exactly four small letters, which a hyphen's rule must end at. A
+# change to one copy's joiner that changes what it reads of these, not made to the others,
+# fails here; what each gate does before its pattern (G2's printed atoms, G14's masked view,
+# rrids.py's unescaping) is not compared.
 
 
 def _rrid_disagreements() -> list[tuple[str, str, str]]:
     """Each typed RRID whose accession the three readings do not read alike."""
-    from generated import RRID_ACCESSIONS, RRID_JOINED, RRID_TRAILS
+    from generated import RRID_ACCESSIONS, RRID_GAPS, RRID_JOINED, RRID_TRAILS
 
     from manuscript_guard import rrids
     from manuscript_guard.classify import STRUCTURAL, _load_rules
@@ -585,26 +590,36 @@ def _rrid_disagreements() -> list[tuple[str, str, str]]:
                                                            STRUCTURAL) if rule.id == "rrid")
     accessions = {a.removesuffix(".Version") for a in (*RRID_ACCESSIONS, *RRID_JOINED)}
     wrong = []
+
+    def read(pattern, text: str, group: str | int = "accession") -> str | None:
+        found = pattern.search(text)
+        return found[group] if found else None
+
     for accession in sorted(accessions):
         for written in (accession, accession.lower()):
-            for gap in ("", " ", "\n"):
-                for trail in RRID_TRAILS:
-                    text = f"Cells (RRID:{gap}{written}{trail}) were used."
-                    typed = rrids.TYPED.search(text)
-                    g14 = language._RRID.search(text)
-                    g2 = structural.search(text)
+            md = written.replace("_", "\\_")  # as Markdown escapes it
+            tex = written.replace("_", "_\x00")  # as the LaTeX reader leaves it
+            for gap in RRID_GAPS:
+                for trail in (*RRID_TRAILS, ".V9", "-cell"):
+                    tail = {"-derived": trail, ".Version": trail, ".V9": ".V",
+                            "-cell": trail}.get(trail, "")  # fmt: skip
+                    plain = f"Cells (RRID:{gap}{written}{trail}) were used."
+                    escaped = f"Cells (RRID:{gap}{md}{trail}) were used."
+                    nul = f"Cells (RRID:{gap}{tex}{trail}) were used."
+                    g2 = read(structural, plain, 0)
+                    g2_md = read(structural, escaped, 0)
                     said = {
-                        "rrids.py": typed["accession"] if typed else None,
-                        "G14": g14["accession"] if g14 else None,
-                        "G2": g2[0].removeprefix("RRID:").lstrip() if g2 else None,
+                        ("rrids.py", plain): (read(rrids.TYPED, plain), written),
+                        ("G14", plain): (read(language._RRID, plain), written),
+                        ("G14", escaped): (read(language._RRID, escaped), md),
+                        ("G14", nul): (read(language._RRID, nul), tex),
+                        ("G2", plain): (g2 and g2.removeprefix("RRID:").lstrip(), written + tail),
+                        ("G2", escaped): (g2_md and g2_md.removeprefix("RRID:").lstrip(),
+                                          md + tail),
                     }
-                    covered = written + trail if trail in ("-derived", ".Version") else written
-                    if said["rrids.py"] != written:
-                        wrong.append((text, "rrids.py", str(said["rrids.py"])))
-                    if said["G14"] != written:
-                        wrong.append((text, "G14", str(said["G14"])))
-                    if said["G2"] != covered:
-                        wrong.append((text, "G2", str(said["G2"])))
+                    for (where, text), (got, expected) in said.items():
+                        if got != expected:
+                            wrong.append((text, where, str(got)))
     return wrong
 
 

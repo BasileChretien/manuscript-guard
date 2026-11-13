@@ -27545,7 +27545,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Pinned by `tests/test_compare.py::test_a_one_line_note_reads_as_new_when_an_entry_in_it_is`.
 - **Two entries of one label are told apart only as far as their places differ.** The note
   on a paper's entries not sorted names an entry whose label another has too by its place
-  (`auditing.unsorted`), and two places can read the same:
+  (`auditing.unsorted`), and two places can read the same. Accepted.
   - In a .docx, two lists that each start at 1, each under a "References" heading with
     another heading between (an Appendix), make one census, and a paragraph is counted
     again from each heading and named by its title alone, so the note can read "entries 2

@@ -27302,16 +27302,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     names the file and the line, and `check` says nothing of an RRID after it, where BUILD
     reports the refusal. An RRID in a float's cells is read, as in prose. Accepted.
   - G2 and G14 read a typed RRID with a copy of this reading (`data/structural.yaml`,
-    `gates/language.py`, from #663, the entry below), which changes with `rrids.py` until one
-    imports the other. Accepted.
+    `gates/language.py`, from #663, the entry below), held to `rrids.py` by a test over the
+    forms the generated inputs draw; a form none of them draws could still be read two ways.
+    Pinned by `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike`.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
   from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
   (#658) as its round 2 left it, a `.` joining only before a digit and a `-` ending the
   accession only before a word of four small letters or more with no `:`, `_` or `-` after
-  it; it is copied into `data/structural.yaml` and `gates/language.py` while that module is
-  not on main, and each copy changes with it until one imports the other. Pinned by
+  it; it is copied into `data/structural.yaml` and `gates/language.py`, which a YAML rule and a
+  masked view cannot import, and
+  `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike` holds the three to
+  one another over every form, gap, trail and case the generated inputs draw. Pinned by
   `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
   - An accession typed without "RRID:" in capitals and its colon right before it, one space
     or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",

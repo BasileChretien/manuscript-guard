@@ -158,8 +158,8 @@ structural:
       or a tool, "RRID:AB_2298772", "RRID: CVCL_0030": its digits are an identifier's, as an
       ORCID's are, and measure nothing. Only after "RRID:", so a number beside one, "diluted
       1:500 (RRID:AB_2298772)", is still a number.
-    # The reading is `rrids.py`'s (#658), copied here and in `gates/language.py` (`_RRID`)
-    # since that module is not on main: it must change with it until one imports the other.
+    # The reading is `rrids.py`'s, copied here and in `gates/language.py` (`_RRID`), as a
+    # YAML rule cannot import it: tests/test_rrid_lookup.py holds the three to one another.
     # One space or one line break after the colon, then parts joined by `_`, `:`, a `.`
     # before a digit (NXR_0.0005), or a `-` that is not before a word of four small letters
     # or more with no `:`, `_` or `-` after it ("RRID:CVCL_0030-derived" ends at the hyphen,

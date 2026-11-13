@@ -563,3 +563,64 @@ def test_the_pace_is_one_request_a_second_to_each_host() -> None:
     assert {urlsplit(base).hostname for base in (resources.Services().resolver,
                                                  resources.Services().cellosaurus)} == set(
         resources.INTERVALS)  # fmt: skip
+
+
+# ------------------------------------------- one reading of an RRID, in three places (#663)
+#
+# G2 (`data/structural.yaml`, `rrid`) and G14 (`gates/language.py`, `_RRID`) each carry a
+# copy of `rrids.py`'s reading, which a YAML rule and a masked view cannot import. These
+# tests hold the three to one another over every accession, gap, trail and case the
+# generated inputs draw, so that a change to one that is not made to the others fails here.
+
+
+def _rrid_disagreements() -> list[tuple[str, str, str]]:
+    """Each typed RRID whose accession the three readings do not read alike."""
+    from generated import RRID_ACCESSIONS, RRID_JOINED, RRID_TRAILS
+
+    from manuscript_guard import rrids
+    from manuscript_guard.classify import STRUCTURAL, _load_rules
+    from manuscript_guard.gates import language
+
+    structural = next(rule.pattern for rule in _load_rules("structural.yaml", "structural",
+                                                           STRUCTURAL) if rule.id == "rrid")
+    accessions = {a.removesuffix(".Version") for a in (*RRID_ACCESSIONS, *RRID_JOINED)}
+    wrong = []
+    for accession in sorted(accessions):
+        for written in (accession, accession.lower()):
+            for gap in ("", " ", "\n"):
+                for trail in RRID_TRAILS:
+                    text = f"Cells (RRID:{gap}{written}{trail}) were used."
+                    typed = rrids.TYPED.search(text)
+                    g14 = language._RRID.search(text)
+                    g2 = structural.search(text)
+                    said = {
+                        "rrids.py": typed["accession"] if typed else None,
+                        "G14": g14["accession"] if g14 else None,
+                        "G2": g2[0].removeprefix("RRID:").lstrip() if g2 else None,
+                    }
+                    covered = written + trail if trail in ("-derived", ".Version") else written
+                    if said["rrids.py"] != written:
+                        wrong.append((text, "rrids.py", str(said["rrids.py"])))
+                    if said["G14"] != written:
+                        wrong.append((text, "G14", str(said["G14"])))
+                    if said["G2"] != covered:
+                        wrong.append((text, "G2", str(said["G2"])))
+    return wrong
+
+
+def test_g2_g14_and_rrids_py_read_an_rrid_alike() -> None:
+    """The copies of the reading agree with `rrids.py` on each accession: G2's covers the
+    word after it too ("-derived", ".Version"), which measures nothing, as its rule says."""
+    assert _rrid_disagreements() == []
+
+
+def test_a_copy_of_the_rrid_reading_that_drifts_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    """G14's copy given round 1's joiner, where a `.` joined before a letter too, is caught."""
+    import re
+
+    from manuscript_guard.gates import language
+
+    drifted = language._RRID.pattern.replace(r"\.(?=[0-9])", r"\.")
+    assert drifted != language._RRID.pattern
+    monkeypatch.setattr(language, "_RRID", re.compile(drifted))
+    assert any(where == "G14" for _text, where, _said in _rrid_disagreements())

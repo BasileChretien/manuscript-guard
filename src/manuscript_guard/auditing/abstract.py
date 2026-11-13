@@ -58,6 +58,7 @@ from pathlib import Path
 from manuscript_guard.stats.intervals import ReportedInterval, reported_intervals
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
 from manuscript_guard.text.section_names import (
+    _METHOD_TITLE,
     _whole,
     names_abstract,
     names_conclusion,
@@ -148,27 +149,59 @@ def names_results_like(title: str) -> bool:
 
 
 def _names_the_methods(title: str) -> bool:
+    """Whether a heading's whole title, numbered or not ("2.", "(3)", "A.", "IV."), "&" read
+    as "and", is a name the Methods go by: one of `classify.METHODS_SECTIONS`' ("Methods",
+    "Materials and methods", "Design", "Study design", "Protocol", "Statistical analysis",
+    "Analysis plan") or a singular `names_methods` takes whole ("Method", "Materials and
+    method", `_METHOD_TITLE`)."""
     from manuscript_guard.classify import METHODS_SECTIONS
 
-    return METHODS_SECTIONS.match(plain(title).replace("&", " and ")) is not None
+    whole = " ".join(_whole(title).replace("&", " and ").split())
+    return bool(METHODS_SECTIONS.match(whole) or _METHOD_TITLE.fullmatch(whole))
+
+
+def _the_methods(sections: list[Section]) -> set[int]:
+    """The headings that are the Methods to `_results_by_another_name`: a name the Methods
+    go by (`_names_the_methods`) over no Abstract, Introduction, Results or Discussion,
+    which a paper's title written as a heading over the paper is, "Methods and algorithms
+    for robust estimation" (round 3 of #672). A "Limitations" under the Methods leaves them
+    the Methods."""
+    found = set()
+    for index, section in enumerate(sections):
+        if not _names_the_methods(section.title):
+            continue
+        below = []
+        for later in sections[index + 1 :]:
+            if later.level <= section.level:
+                break
+            below.append(later.title)
+        if not any(names_abstract(t) or names_introduction(t) or names_results(t)
+                   or names_discussion(t) for t in below):  # fmt: skip
+            found.add(id(section))
+    return found
+
+
+def _says_results(title: str) -> bool:
+    return "results" in _whole(title)
 
 
 def _results_by_another_name(sections: list[Section],
                              searched: Callable[[int], object]) -> bool:  # fmt: skip
     """Whether a heading of `RESULTS_LIKE` stands where the section searches, and, where its
-    name does not say "results", under no heading whose whole title names the Methods
-    (`classify.METHODS_SECTIONS`, "&" read as "and"): "### Evaluation" under "## Methods"
-    tells how a model was judged, and "Comparison with existing methods" is no Methods
-    (rounds 1 and 2 of #672)."""
+    name does not say "results" (`_says_results`), under no Methods (`_the_methods`):
+    "### Evaluation" under "## Methods" tells how a model was judged, "### Simulation
+    results" there reports, and "Comparison with existing methods" is no Methods (rounds 1
+    to 3 of #672)."""
     from manuscript_guard.gates.reported import REPORTED
 
+    methods = _the_methods(sections)
     chain: list[Section] = []
     for section in sections:
         while chain and chain[-1].level >= section.level:
             chain.pop()
-        methods = any(_names_the_methods(one.title) for one in chain)
+        under = any(id(one) in methods for one in chain)
         if (names_results_like(section.title) and searched(section.line) is REPORTED
-                and ("results" in _whole(section.title) or not methods)):  # fmt: skip
+                and (_says_results(section.title) or not under)):  # fmt: skip
             return True
         chain.append(section)
     return False
@@ -188,9 +221,9 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset()
     appendix had it said not found (Basile, 2026-11-11, after 52 real preprints).
 
     The Results are a heading G8 reads as them where it reports, or one whose whole title is
-    the Results by another name (`RESULTS_LIKE`) standing where the section searches: not in
-    the Abstract, nor under a Discussion (Basile, 2026-11-13), nor under the Methods
-    (`_results_by_another_name`)."""
+    the Results by another name (`RESULTS_LIKE`) standing where the section searches, not in
+    the Abstract nor under a Discussion (Basile, 2026-11-13), unless it stands under the
+    Methods and its name does not say "results" (`_results_by_another_name`)."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
     walk = Walk()

@@ -9633,19 +9633,26 @@ RESULTS_NAME_MISSES = ("words after", "words before", "under the discussion",
                        "in the abstract", "under the methods", "not the results")  # fmt: skip
 #: A name of `RESULTS_BY_ANOTHER_NAME` with "and" in it, written with "&" (round 1 of #672).
 RESULTS_NAME_AMPERSAND = "Experiments & results"
+#: The names of the Methods a set-up's heading stands under, numbered or not, the singular
+#: among them; and a paper's title written as a heading over it that holds "methods", no
+#: Methods since an Introduction stands under it (round 3 of #672).
+METHODS_HEADINGS = ("Methods", "Method", "2. Materials and methods", "(3) Methods")
+METHODS_PAPER_TITLE = "Methods and algorithms for robust estimation"
 
 
 def _results_named(title: str, *, under: str = "", in_abstract: str = "",
-                   in_methods: str = "") -> tuple[str, str]:  # fmt: skip
+                   in_methods: str = "", methods: str = "Methods",
+                   paper: str = "A study") -> tuple[str, str]:  # fmt: skip
     """A paper in Markdown and in LaTeX with an Abstract, an Introduction, a Model and the
     section `title` after it, the Abstract's number reported there; with `under` as a
     subsection of the Discussion, `in_abstract` as a part of the Abstract, and with
-    `in_methods`, Methods in the Model's place with that subsection."""
+    `in_methods`, `methods` in the Model's place with that subsection. The Markdown paper's
+    title, a heading over it, is `paper`."""
     part = f"### {in_abstract}\n\n" if in_abstract else ""
     sub = f"### {under}\n\nIt held.\n\n" if under else ""
-    model = (f"## Methods\n\nWe fit it.\n\n### {in_methods}\n\nWe judged it so.\n\n"
+    model = (f"## {methods}\n\nWe fit it.\n\n### {in_methods}\n\nWe judged it so.\n\n"
              if in_methods else "## Model\n\nWe fit it.\n\n")  # fmt: skip
-    markdown = (f"# A study\n\n## Abstract\n\n{part}The value was 812.5 here.\n\n"
+    markdown = (f"# {paper}\n\n## Abstract\n\n{part}The value was 812.5 here.\n\n"
                 f"## Introduction\n\nIt matters.\n\n{model}"
                 f"## {title}\n\nIt was 812.5 then.\n\n## Discussion\n\nIt was so.\n\n{sub}")
     bold = re.fullmatch(r"\*\*(.*)\*\*", title)
@@ -9653,7 +9660,7 @@ def _results_named(title: str, *, under: str = "", in_abstract: str = "",
         "&", f"{BACKSLASH}&")  # fmt: skip
     tex_part = f"{BACKSLASH}subsection*{{{in_abstract}}}\n" if in_abstract else ""
     tex_sub = f"{BACKSLASH}subsection{{{under}}}\nIt held.\n" if under else ""
-    tex_model = (f"{BACKSLASH}section{{Methods}}\nWe fit it.\n{BACKSLASH}subsection{{"
+    tex_model = (f"{BACKSLASH}section{{{methods}}}\nWe fit it.\n{BACKSLASH}subsection{{"
                  f"{in_methods}}}\nWe judged it so." if in_methods
                  else f"{BACKSLASH}section{{Model}}\nWe fit it.")  # fmt: skip
     latex = "\n".join((
@@ -9672,7 +9679,9 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     """Papers whose Results heading is called something else, each with what it is, its
     Markdown and its LaTeX, and whether the Abstract against Results compares it: one for
     each name of `RESULTS_BY_ANOTHER_NAME`, written in a way of `RESULTS_NAME_WRITTEN` drawn,
-    which is; one called "Results", and one called `RESULTS_NAME_AMPERSAND`, which are; and
+    which is; one called "Results", one called `RESULTS_NAME_AMPERSAND`, one whose name says
+    "results" under a Methods of `METHODS_HEADINGS`, and one under `METHODS_PAPER_TITLE`
+    over the paper, which are; and
     one of each of `RESULTS_NAME_MISSES`, its name drawn, which is not, and the body then
     has no section that is the Results."""
     papers = []
@@ -9682,9 +9691,13 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     papers.append(("results", *_results_named(draw(st.sampled_from(
         ("Results", "3. Results")))), True))  # fmt: skip
     papers.append(("ampersand", *_results_named(RESULTS_NAME_AMPERSAND), True))
-    papers.append(("results under the methods", *_results_named("Data", in_methods=draw(
-        st.sampled_from([one for one in RESULTS_BY_ANOTHER_NAME if "results" in one.lower()]))),
-        True))  # fmt: skip
+    says = [one for one in RESULTS_BY_ANOTHER_NAME if "results" in one.lower()]
+    papers.append(("results under the methods", *_results_named(
+        "Data", in_methods=draw(st.sampled_from(says)),
+        methods=draw(st.sampled_from(METHODS_HEADINGS))), True))  # fmt: skip
+    papers.append(("under a title naming methods", *_results_named(
+        draw(st.sampled_from([one for one in RESULTS_BY_ANOTHER_NAME if one not in says])),
+        paper=METHODS_PAPER_TITLE), True))  # fmt: skip
     for miss in RESULTS_NAME_MISSES:
         name = draw(st.sampled_from(RESULTS_BY_ANOTHER_NAME))
         if miss == "words after":
@@ -9699,7 +9712,8 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
             made = _results_named("Data", in_abstract=name)
         elif miss == "under the methods":
             made = _results_named("Data", in_methods=draw(st.sampled_from(
-                [one for one in RESULTS_BY_ANOTHER_NAME if "results" not in one.lower()])))
+                [one for one in RESULTS_BY_ANOTHER_NAME if one not in says])),
+                methods=draw(st.sampled_from(METHODS_HEADINGS)))  # fmt: skip
         else:
             made = _results_named(draw(st.sampled_from(NOT_THE_RESULTS)))
         papers.append((miss, *made, False))

@@ -6540,7 +6540,9 @@ def test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing
     or after the name, one under the Discussion, the Methods or among the Abstract's own
     parts, and a name as often the Methods' as the Results', is not: the Abstract is not
     compared, never against the whole body, and the reason names every heading that would
-    have been read (round 1 of #672 added the Methods and "&")."""
+    have been read (round 1 of #672 added the Methods and "&"). Under a Methods named in
+    any way, "Method" or "(3) Methods", only a name that says "results" is the Results, and
+    a paper's title over it that holds "methods" is no Methods (rounds 2 and 3)."""
     for kind, markdown, latex, compared in drawn:
         for text, suffix in ((markdown, ".md"), (latex, ".tex")):
             read = _abstract_read(text, "Nothing.\n", suffix)
@@ -6585,6 +6587,16 @@ def _a_results_name_under_the_methods_counts(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
     patch.setattr(abstract, "_names_the_methods", lambda title: False)
+
+
+def _a_results_name_saying_results_is_refused_under_the_methods(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """Without the exemption of round 2 of #672: "### Simulation results" under the Methods
+    was no Results."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_says_results", lambda title: False)
 
 
 def _an_ampersand_is_no_and_in_a_results_name(patch: pytest.MonkeyPatch) -> None:
@@ -21626,6 +21638,10 @@ BROKEN = {
     ),
     "a Results name under the Methods counts": (
         _a_results_name_under_the_methods_counts,
+        test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "a Results name saying results is refused under the Methods": (
+        _a_results_name_saying_results_is_refused_under_the_methods,
         test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
     ),
     "an ampersand is no and in a Results name": (

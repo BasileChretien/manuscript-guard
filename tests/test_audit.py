@@ -2286,6 +2286,9 @@ def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompare
 @pytest.mark.parametrize(("heading", "compared"), [
     ("## Methods\n\n### Evaluation", False), ("## Methods\n\n### Experiments", False),
     ("## Methods\n\n### Evaluation\n\nWe judged it so.\n\n### Limitations", False),
+    ("## Method\n\n### Evaluation", False), ("## Materials and method\n\n### Experiments", False),
+    ("## (3) Methods\n\n### Evaluation", False), ("## A. Methods\n\n### Evaluation", False),
+    ("## Study design\n\n### Experiments", False),
     ("## Methods\n\n### Simulation results", True),
     ("## Comparison with existing methods\n\n### Simulation results", True),
     ("## Comparison with existing methods\n\n### Experiments", True),
@@ -2302,3 +2305,18 @@ def test_a_results_name_under_the_methods_leaves_the_abstract_uncompared(
                      encoding="utf-8")  # fmt: skip
     read = audit([paper], []).abstract
     assert read is not None and read.compared == compared, heading
+
+
+def test_a_paper_s_title_naming_methods_is_no_methods_over_a_results_name(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #672: a paper's title written as a heading over the whole paper, "Methods
+    and algorithms for robust estimation", is no Methods, since an Introduction stands under
+    it: "## Experiments" under it is the Results, and the Abstract is compared."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods and algorithms for robust estimation\n\n## Abstract\n\n"
+                     "The value was 812.5 here.\n\n## Introduction\n\nIt matters.\n\n"
+                     "## Experiments\n\nIt was 812.5 then.\n\n## Discussion\n\nIt was so.\n",
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared

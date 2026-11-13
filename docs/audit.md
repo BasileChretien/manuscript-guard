@@ -375,9 +375,16 @@ another name is a Results heading here: "Experiments", "Experiments and results"
 "Experimental results", "Empirical results", "Empirical analysis", "Main results",
 "Evaluation", "Numerical results" or "Simulation results", besides those that open with
 "Results" or "Findings". It counts only where the search reaches: not inside the Abstract,
-not under a Discussion, and, unless its name says "results", not under a heading whose whole
-title names the Methods ("Methods", "Materials and methods"), where "Evaluation" tells how a
-model was judged; under "Comparison with existing methods" it counts. Not "Experiments on synthetic data", nor "Analysis", "Data analysis" or
+not under a Discussion, and, unless its name says "results", not under the Methods, where
+"Evaluation" tells how a model was judged. The Methods here are a heading whose whole title,
+numbered or not, is a name the Methods go by: "Methods", "Method", "Methodology",
+"Materials and methods", "Patients and methods", "Methods: data sources", "Design", "Study
+design", "Protocol", "Statistical analysis", "Statistical methods", "Sensitivity analysis"
+or "Analysis plan"; and only where no Abstract, Introduction, Results or Discussion stands
+under it, as one does under a paper's title written as a heading, "Methods and algorithms
+for robust estimation". A listed name under them is refused, "Simulation results" there
+counts, and under "Comparison with existing methods", no Methods, every listed name counts.
+Not "Experiments on synthetic data", nor "Analysis", "Data analysis" or
 "Statistical analysis", which as often head the Methods; and with none of them, nothing is
 compared, never the whole body. The list is the audit's alone: no gate takes "Experiments"
 for the Results. Each file is placed by its own headings, so a paper split into files has a

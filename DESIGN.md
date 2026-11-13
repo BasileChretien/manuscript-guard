@@ -27254,9 +27254,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   them, or where its whole title, numbered, marked or not, "&" read as "and", is one of
   `auditing.abstract.RESULTS_LIKE` ("Experiments", "Numerical results", "Empirical
   analysis" and six more) and it stands where the section searches, and, unless its name
-  says "results", under no heading whose whole title names the Methods (Basile,
-  2026-11-13, after 13 of the real-paper corpus's 52 preprints had no Results heading; the
-  Methods and "&", rounds 1 and 2 of #672). A paper whose
+  says "results", under no Methods: a heading whose whole title, numbered or not, is a name
+  of `classify.METHODS_SECTIONS` ("Study design", "Protocol", "Statistical analysis" among
+  them) or "Method" alone, with no Abstract, Introduction, Results or Discussion under it
+  (Basile, 2026-11-13, after 13 of the real-paper corpus's 52 preprints had no Results
+  heading; the Methods and "&", rounds 1 to 3 of #672). A paper whose
   Results are headed otherwise has its Abstract not compared, and the reason names the
   list: "Simulation studies" and "Empirical validation on datasets from finance
   applications" (tex-econ-em-B2), "Inference" (tex-stat-ap-A2), a listed name with words

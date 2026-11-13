@@ -1038,13 +1038,13 @@ def test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_
 ) -> None:
     """Basile, 2026-11-13: a `\\makeatletter` in the body is skipped to its `\\makeatother`,
     and a conditional to its matching `\\fi`, each conditional inside opening a `\\fi` of its
-    own, an `\\else`, a `\\fi` in a comment and a `\\newif` closing and opening none; nothing
-    in a block is read, the words and numbers between are, and a block with no end in the
-    file, or past a brace that closes a group opened before it, stops the reading as before.
-    So does one that defines a name with no `@`, holds a `\\catcode`, or ends a
-    `\\makeatletter` inside a conditional it opened; a `\\newif` in the body opens nothing,
-    and one in a comment defines nothing (round 1 of #674). The tree refuses each block
-    skipped where the reader skipped it, so that BUILD fails it."""
+    own, an `\\else` and a `\\fi` in a comment closing none; nothing in a block is read, the
+    words and numbers between are, and a block with no end in the file, or past a brace that
+    closes a group opened before it, stops the reading as before. So does a `\\makeatletter`
+    that defines a name with no `@` or an environment, or holds a conditional, and a
+    conditional that holds a `\\catcode`, a definition or a `\\makeatletter`; a `\\newif` in
+    the body opens nothing, and one in a comment defines nothing (#674). The tree refuses each
+    block skipped where the reader skipped it, so that BUILD fails it."""
     for text, skipped, read, stop in drawn:
         reading = latex_mask.read(text)
         assert [(s.offset, s.end) for s in reading.skipped] == skipped, (reading.skipped, text)
@@ -1072,12 +1072,8 @@ def _a_commented_fi_closes_a_block(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_BLOCK_TOKEN", re.compile(r"\\(?:[A-Za-z]+|.)|[{}]", re.DOTALL))
 
 
-def _a_conditional_newif_names_opens_one(patch: pytest.MonkeyPatch) -> None:
-    block_end = latex_mask._block_end
-    # `\relax` is as long as `\newif`, so every offset stays.
-    patch.setattr(latex_mask, "_block_end",
-                  lambda text, start, closer: block_end(text.replace("\\newif", "\\relax"),
-                                                        start, closer))  # fmt: skip
+def _a_block_may_define_an_environment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_OTHER_DEFINERS", frozenset())
 
 
 def _a_block_is_skipped_across_a_group(patch: pytest.MonkeyPatch) -> None:
@@ -21770,8 +21766,8 @@ BROKEN = {
         _a_commented_fi_closes_a_block,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
     ),
-    "a conditional newif names opens a fi of its own in a skipped block": (
-        _a_conditional_newif_names_opens_one,
+    "a skipped block may define an environment": (
+        _a_block_may_define_an_environment,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
     ),
     "a block is skipped past a brace that closes a group opened before it": (

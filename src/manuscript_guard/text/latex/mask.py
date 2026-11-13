@@ -552,60 +552,66 @@ def _opens_conditional(name: str) -> bool:
     return name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS
 
 
-#: The commands whose definition in a block of a command whose name has no `@` changes how the
-#: rest of the file reads, which the reader would not see: TeX's, LaTeX's and xparse's
-#: (rounds 1 and 2 of #674).
+#: The commands that may define in a `\\makeatletter` block a command whose name holds `@`,
+#: and not `\\@` alone, which the body never calls (Basile, 2026-11-13, after round 2 of
+#: #674: the rule kept simple, rather than `@` followed through each branch).
 _BLOCK_DEFINERS = frozenset({"def", "edef", "gdef", "xdef", "let", "newcommand", "renewcommand",
-                             "providecommand", "DeclareRobustCommand", "NewDocumentCommand",
-                             "RenewDocumentCommand", "ProvideDocumentCommand",
-                             "DeclareDocumentCommand"})  # fmt: skip
-#: The commands that define an environment, its name in braces.
-_BLOCK_ENVIRONMENTS = frozenset({"newenvironment", "renewenvironment"})
+                             "providecommand"})  # fmt: skip
+#: The commands whose definition refuses any block: what they define, an environment among
+#: it, the body may call whatever its name, so that the reader would not see what changed.
+#: With `\\@namedef`, `\\@` followed by `namedef` (`_block_end`).
+_OTHER_DEFINERS = frozenset({
+    "DeclareRobustCommand", "NewDocumentCommand", "RenewDocumentCommand",
+    "ProvideDocumentCommand", "DeclareDocumentCommand", "newenvironment", "renewenvironment",
+    "NewDocumentEnvironment", "RenewDocumentEnvironment", "ProvideDocumentEnvironment",
+    "DeclareDocumentEnvironment", "newrobustcmd", "renewrobustcmd", "providerobustcmd",
+    "newif",
+})  # fmt: skip
 #: The name a command of `_BLOCK_DEFINERS` defines, past a star and a brace,
-#: `\\newcommand*{\\x}`: with `@` a letter in it inside a `\\makeatletter`, and outside one
-#: no letter, so that `\\def\\emph@x` defines `\\emph` (round 2 of #674).
-_BLOCK_DEFINED = re.compile(r"\s*\*?\s*\{?\s*\\([A-Za-z]+|.)")
-_BLOCK_DEFINED_AT = re.compile(r"\s*\*?\s*\{?\s*\\([A-Za-z@]+|.)")
-#: The name an environment's definition, or LaTeX's `\\@namedef`, gives in braces.
-_BLOCK_ENVIRONMENT = re.compile(r"\s*\*?\s*\{([^{}]*)\}")
-_BLOCK_NAMEDEF = re.compile(r"namedef(?![A-Za-z@])\s*\{([^{}]*)\}")
+#: `\\newcommand*{\\x}`, with `@` a letter in it, as it is in a `\\makeatletter` block.
+_BLOCK_DEFINED = re.compile(r"\s*\*?\s*\{?\s*\\([A-Za-z@]+|.)")
 
 
-def _defines_unseen(text: str, end: int, name: str, letters: bool) -> bool:
-    """Whether the command `name`, ending at `end` in a block, defines a command or an
-    environment whose name has no `@`, read with `@` a letter where `letters` says so:
-    `\\@namedef{emph}` is one where it is, and `\\@` followed by letters where it is not."""
-    if name in _BLOCK_DEFINERS:
-        defined = (_BLOCK_DEFINED_AT if letters else _BLOCK_DEFINED).match(text, end)
-    elif name in _BLOCK_ENVIRONMENTS:
-        defined = _BLOCK_ENVIRONMENT.match(text, end)
-    elif name == "@" and letters and text.startswith("namedef", end):
-        defined = _BLOCK_NAMEDEF.match(text, end)
-    else:
-        return False
-    return defined is None or "@" not in defined.group(1)
+def _defines(text: str, end: int, name: str) -> bool:
+    """Whether the control word or symbol `name`, ending at `end`, defines anything: a
+    command of `_BLOCK_DEFINERS` or of `_OTHER_DEFINERS`, or LaTeX's `\\@namedef`."""
+    return (name in _BLOCK_DEFINERS or name in _OTHER_DEFINERS
+            or (name == "@" and text.startswith("namedef", end)))  # fmt: skip
+
+
+def _at_definition_end(text: str, end: int, name: str) -> int:
+    """Where the name a definition in a `\\makeatletter` block defines ends, past it, where
+    that name holds `@` and is not `\\@`, and the command is one of `_BLOCK_DEFINERS`; -1
+    where the definition refuses the block."""
+    if name not in _BLOCK_DEFINERS:
+        return -1
+    defined = _BLOCK_DEFINED.match(text, end)
+    if defined is None or "@" not in defined.group(1) or defined.group(1) == "@":
+        return -1
+    return defined.end()
 
 
 def _block_end(text: str, start: int, closer: str) -> int:
-    """Where a block opened just before `start` ends, past its `closer`: a `\\makeatother`
-    outside any conditional the block opened, or the `\\fi` that matches, each conditional
-    inside opening a `\\fi` of its own but one `\\newif` names, which it defines. A comment
-    counts for nothing. -1, and the block is refused, where the file holds no such end; where
-    a brace in the block closes a group opened before it, or one it opens is not closed by its
-    end, since TeX ends a `\\makeatletter` with the group it stands in and the reader's groups
-    would no longer be the file's (Basile, 2026-11-13); and where what the block holds changes
-    how the rest of the file reads, which the reader would not see (rounds 1 and 2 of #674):
-    a `\\catcode`, a definition of a name with no `@` (`_defines_unseen`), a `\\makeatother`
-    inside a conditional it opened, and a conditional whose branches leave `@` a letter in
-    one and not another, or, the block's own, leave it a letter.
+    """Where a block opened just before `start` ends, past its `closer`, or -1, and the block
+    is refused as before, where it is not one the reader skips (Basile, 2026-11-13):
 
-    `letters` is whether `@` is a letter where the scan stands, and each conditional open
-    is the state it opened in, which each of its branches starts from, with the states its
-    branches have ended in."""
-    letters = closer == "makeatother"
-    opened: list[tuple[bool, set[bool]]] = [(False, set())] if closer == "fi" else []
-    braces, defining = 0, False
+    - a `\\makeatletter` runs to its `\\makeatother`, and holds no `\\catcode`, no TeX
+      conditional, and no definition but of a command whose name holds `@`, not `\\@`
+      alone, by a command of `_BLOCK_DEFINERS`, `\\long\\def\\@ifdim` say, whose name is
+      no conditional;
+    - a conditional runs to its matching `\\fi`, each conditional inside opening a `\\fi` of
+      its own, and holds no definition of any kind (`_defines`), no `\\makeatletter`, no
+      `\\makeatother` and no `\\catcode`.
+
+    A comment counts for nothing. A brace in the block that closes a group opened before
+    it, or one it opens that it does not close by its end, refuses it too: TeX ends a
+    `\\makeatletter` with the group it stands in, and the reader's groups would no longer be
+    the file's. The file holding no such end refuses it."""
+    at_block = closer == "makeatother"
+    depth, braces, past = 0, 0, start
     for token in _BLOCK_TOKEN.finditer(text, start):
+        if token.start() < past:
+            continue  # the name a definition defines, read with it
         found = token.group(0)
         if found == "{":
             braces += 1
@@ -615,26 +621,27 @@ def _block_end(text: str, start: int, closer: str) -> int:
                 return -1
         elif found[0] == "\\":
             name = found[1:]
-            if name == "catcode" or _defines_unseen(text, token.end(), name, letters):
+            if name == "catcode":
                 return -1
-            if name == "fi":
-                if not opened:
-                    return -1  # it closes a conditional opened before the block
-                _began, ended = opened.pop()
-                if len(ended | {letters}) > 1:
+            if _defines(text, token.end(), name):
+                past = _at_definition_end(text, token.end(), name) if at_block else -1
+                if past < 0:
                     return -1
-                if not opened and closer == "fi":
-                    return token.end() if braces == 0 and not letters else -1
-            elif name in ("else", "or") and opened:
-                opened[-1][1].add(letters)
-                letters = opened[-1][0]
-            elif _opens_conditional(name) and not defining:
-                opened.append((letters, set()))
-            elif name == "makeatother" and closer == "makeatother":
-                return token.end() if braces == 0 and not opened else -1
+                # The brace a name is written in, `\newcommand{\my@x}`, opens a group.
+                braces += text.count("{", token.end(), past)
+            elif at_block:
+                if name == "makeatother":
+                    return token.end() if braces == 0 else -1
+                if name == "fi" or _opens_conditional(name):
+                    return -1
             elif name in ("makeatletter", "makeatother"):
-                letters = name == "makeatletter"
-            defining = name == "newif"
+                return -1
+            elif name == "fi":
+                if depth == 0:
+                    return token.end() if braces == 0 else -1
+                depth -= 1
+            elif _opens_conditional(name):
+                depth += 1
     return -1
 
 

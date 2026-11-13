@@ -176,53 +176,60 @@ def test_a_bounded_block_in_the_body_is_skipped_and_the_rest_read(block: str) ->
         # made it; `\else` and a `\fi` in a comment close nothing.
         ("\\ifx\\a\\b 1\\ifnum\\c>2 3\\else 4\\fi\\ifdefined\\d 5\\fi\\fi", True),
         ("\\ifmine 1 % \\fi\n\\iffalse 2\\fi\\ifcsname e\\endcsname 3\\fi\\fi", True),
-        # A `\newif` inside defines its conditional, which opens nothing.
-        ("\\ifx\\a\\b \\newif\\iffound 1\\fi", True),
+        ("\\ifcase\\c 1 \\or 2 \\else 3 \\fi", True),
         # No end in the file, or one past a brace that closes a group opened before the
         # block, or before a group it opens is closed: refused, as before.
         ("\\ifx\\a\\b 1 \\ifnum\\c>2 3\\fi", False),
         ("{\\makeatletter 1} \\makeatother", False),
         ("\\ifx\\a\\b {1 \\fi}", False),
         ("\\makeatletter 1 \\makeatotherwise", False),
-        # Round 1 of #674: a block that defines a name with no `@`, which changes how the
-        # rest of the file reads, or changes a character's category, is refused as before;
-        # one that defines an internal `@` name, tex-qbio-pe-B1's, is skipped.
-        ("\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}\\makeatother", False),
-        ("\\makeatletter\\let\\x\\relax\\makeatother", False),
-        ("\\ifx\\a\\b \\def\\x{1}\\fi", False),
-        ("\\ifx\\a\\b \\newcommand*{\\y}{2}\\fi", False),
-        ("\\ifx\\a\\b \\DeclareRobustCommand\\z{2}\\fi", False),
-        ("\\ifx\\a\\b \\catcode`\\@=11 \\fi", False),
+        # A `\makeatletter` block is skipped where all it defines is an `@` name, not `\@`
+        # alone, by `\def` and its kin, `\let`, `\newcommand`, `\renewcommand` or
+        # `\providecommand`, the name defined being no conditional; and it holds no
+        # conditional, no `\catcode` and no other definition (Basile, 2026-11-13).
         ("\\makeatletter\\long\\def\\@ifdim#1#2#3{#2}\\makeatother", True),
         ("\\makeatletter\\def\\@x{1}\\let\\@y\\@x\\makeatother", True),
-        # A `\makeatother` inside a conditional the block opened ends nothing, and a
-        # `\makeatletter` a conditional opens and does not close outlives its `\fi`.
-        ("\\makeatletter \\ifx\\a\\b x \\makeatother \\else Hidden 55 \\fi", False),
-        ("\\ifx\\a\\b \\makeatletter \\fi", False),
-        ("\\ifx\\a\\b \\makeatletter x\\makeatother \\fi", True),
-        # Round 2 of #674: the name a definition defines is read with `@` a letter only
-        # inside a `\makeatletter`; `\@namedef`, xparse's commands and the environments'
-        # are definitions too, of an `@` name skipped; and branches that leave `@` in other
-        # states refuse their conditional.
-        ("\\ifx\\a\\b \\def\\emph@x{}\\fi", False),
         ("\\makeatletter\\def\\emph@x{}\\makeatother", True),
+        ("\\makeatletter\\newcommand*{\\my@x}{1}\\providecommand\\my@y{2}\\makeatother", True),
+        ("\\makeatletter\\gdef\\if@mine{1}\\makeatother", True),
+        ("\\makeatletter\\pdfbookmark[0]{\\@title}{title}\\makeatother", True),
+        ("\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}\\makeatother", False),
+        ("\\makeatletter\\let\\x\\relax\\makeatother", False),
+        ("\\makeatletter\\def\\@{Hidden 55}\\makeatother", False),
+        ("\\makeatletter\\DeclareRobustCommand\\my@x{1}\\makeatother", False),
         ("\\makeatletter\\@namedef{emph}{x}\\makeatother", False),
-        ("\\makeatletter\\@namedef{@foo}{x}\\makeatother", True),
+        ("\\makeatletter\\@namedef{@foo}{x}\\makeatother", False),
+        ("\\makeatletter\\newenvironment{a@b}{\\iffalse}{\\fi}\\makeatother", False),
+        ("\\makeatletter\\renewenvironment{@panel}{}{}\\makeatother", False),
+        ("\\makeatletter\\NewDocumentEnvironment{p@nel}{}{}{}\\makeatother", False),
+        ("\\makeatletter\\newrobustcmd\\my@x{1}\\makeatother", False),
+        ("\\makeatletter\\catcode`\\@=11 \\makeatother", False),
+        ("\\makeatletter \\ifx\\a\\b x\\fi \\makeatother", False),
+        ("\\makeatletter \\ifx\\a\\b x \\makeatother \\else Hidden 55 \\fi", False),
+        ("\\makeatletter\\let\\if@mine\\iftrue\\makeatother", False),
+        ("\\makeatletter\\def\\fi@x{}\\makeatother", True),
+        # A conditional is skipped where it holds no definition of any kind, no
+        # `\makeatletter`, no `\makeatother` and no `\catcode`.
+        ("\\ifx\\a\\b \\title{A}\\author{B\\thanks{C}} \\href{a}{b}\\url{c}\\fi", True),
+        ("\\ifx\\a\\b \\def\\x{1}\\fi", False),
+        ("\\ifx\\a\\b \\def\\emph@x{}\\fi", False),
+        ("\\ifx\\a\\b \\def\\@{Hidden 55}\\fi", False),
+        ("\\ifx\\a\\b \\newcommand*{\\y}{2}\\fi", False),
+        ("\\ifx\\a\\b \\DeclareRobustCommand\\z{2}\\fi", False),
         ("\\ifx\\a\\b \\NewDocumentCommand\\y{m}{x}\\fi", False),
         ("\\ifx\\a\\b \\ProvideDocumentCommand{\\y}{m}{x}\\fi", False),
         ("\\ifx\\a\\b \\DeclareDocumentCommand{\\y}{m}{x}\\fi", False),
         ("\\ifx\\a\\b \\newenvironment{panel}{}{}\\fi", False),
         ("\\ifx\\a\\b \\renewenvironment*{panel}{}{}\\fi", False),
-        ("\\makeatletter\\renewenvironment{@panel}{}{}\\makeatother", True),
+        ("\\ifx\\a\\b \\newif\\iffound 1\\fi", False),
+        ("\\ifx\\a\\b \\catcode`\\@=11 \\fi", False),
+        ("\\ifx\\a\\b \\makeatletter \\fi", False),
+        ("\\ifx\\a\\b \\makeatletter x\\makeatother \\fi", False),
         ("\\ifx\\a\\b \\makeatletter \\else \\makeatother \\fi", False),
-        ("\\ifx\\a\\b \\makeatletter x\\makeatother \\else y \\fi", True),
-        ("\\ifcase\\c 1 \\or \\makeatletter \\or 3 \\fi", False),
-        # Known gaps: four rare blocks that TeX would end where the reader skips, which the
-        # reader's tokens read otherwise, and refuse as before (round 2 of #674).
-        ("\\makeatletter\\let\\if@mine\\iftrue\\makeatother", False),
-        ("\\makeatletter\\def\\let@x{}\\makeatother", False),
-        ("\\makeatletter\\def\\fi@x{}\\makeatother", False),
         ("\\ifx\\a\\b {\\makeatletter x} \\fi", False),
+        ("\\ifx\\a\\b \\ifx\\c\\d\\makeatletter\\fi \\def\\emph@x{}\\makeatother \\fi", False),
+        ("\\ifcase\\c \\makeatletter \\or \\def\\emph@x{}\\makeatother \\fi", False),
+        ("\\if0\\blind {\\makeatletter} \\def\\emph@x{} \\makeatother \\fi", False),
     ],
 )
 def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: bool) -> None:

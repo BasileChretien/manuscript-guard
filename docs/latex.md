@@ -109,8 +109,8 @@ The reader reads LaTeX under TeX's default category codes, one pass per file, th
 include tree that `\input`, `\include`, the import package's `\import` and `\subimport`,
 `\subfile` and `\includestandalone` make; in the preamble, TeX's `\input macros` without
 braces is followed too. What it cannot read exactly, it refuses, naming the line. A conditional in the body
-and `\makeatletter` in the body are refused, and skipped to their end where the file has one
-(below). A citation command the reader does not know, one whose name holds `cite` such as
+and `\makeatletter` in the body are refused, but skipped to their end where they keep to the
+rule below. A citation command the reader does not know, one whose name holds `cite` such as
 `\mycitep`, is refused: cite with `\cite` or natbib's, biblatex's, apacite's or chicago's
 commands. So
 is a command defined with `\def` and delimited parameters, `\def\x#1.{...}`, where the
@@ -163,17 +163,21 @@ construct to the preamble. Two constructs in the body have a bounded end, and ar
 it rather than stopping the reading: a `\makeatletter` to its `\makeatother`, and a
 conditional, `\ifx`, `\if0\blind` or one `\newif` made, to its matching `\fi`, neither branch
 read. Nothing in the block is read, and the file is read on past it; `check` still fails on
-the block, and `audit` names the lines it skipped. One with no such end in the file stops the
-reading as any refusal does, and so does one that holds what would change how the rest of
-the file reads: a `\catcode`; a command whose name has no `@` defined by `\def`, `\edef`,
-`\gdef`, `\xdef`, `\let`, `\newcommand`, `\renewcommand`, `\providecommand`,
-`\DeclareRobustCommand`, xparse's `\NewDocumentCommand`, `\RenewDocumentCommand`,
-`\ProvideDocumentCommand` or `\DeclareDocumentCommand`, or `\@namedef` inside a
-`\makeatletter`; an environment whose name has no `@` defined by `\newenvironment` or
-`\renewenvironment`; and a
-conditional whose branches leave `\makeatletter` in force in one and not another. Move the
-definition to the preamble. A definition by another command, `\DeclareMathOperator` say, is
-not looked for.
+the block, and `audit` names the lines it skipped. The rule is kept conservative:
+
+- A `\makeatletter` block is skipped only where everything it defines is a command whose name
+  holds `@` and is not `\@` alone, by `\def`, `\edef`, `\gdef`, `\xdef`, `\let`,
+  `\newcommand`, `\renewcommand` or `\providecommand` (starred forms too), and it holds no
+  environment definition (`\newenvironment`, `\renewenvironment`, xparse's
+  `\NewDocumentEnvironment` and its kin), no `\@namedef`, no other definer
+  (`\DeclareRobustCommand`, xparse's command definers, etoolbox's `\newrobustcmd` and its
+  kin, `\newif`), no `\catcode` and no conditional.
+- A conditional is skipped only where it holds no definition of any kind, by any of those
+  commands or `\@namedef`, no `\makeatletter`, no `\makeatother` and no `\catcode`.
+
+Any other, and one with no end in the file, stops the reading as any refusal does: move the
+definition or the `\makeatletter` to the preamble. A definition by a command the rule does
+not name, `\DeclareMathOperator` say, is not looked for.
 
 ## Building and submitting
 

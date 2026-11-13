@@ -1928,19 +1928,22 @@ LATEX_CONDITIONALS = ("\\if0\\blind", "\\ifx\\a\\b", "\\ifdefined\\x", "\\ifnum\
                       "\\ifcsname e\\endcsname", "\\ifmine", "\\iftrue",
                       "\\ifdim\\y>1pt")  # fmt: skip
 #: What a conditional skipped holds besides words, each `{}` where a conditional of its own
-#: goes: one nested, an `\\else`, a `\\fi` in a comment, and a `\\newif`, which defines one
-#: and opens nothing.
-LATEX_IN_CONDITIONALS = ("{} 57 \\fi", "\\else 58", "% \\fi 59\n", "\\newif\\iffound 60")
+#: goes: one nested, an `\\else` and a `\\fi` in a comment.
+LATEX_IN_CONDITIONALS = ("{} 57 \\fi", "\\else 58", "% \\fi 59\n")
 #: What stops the reading as before, each drawn after every block skipped: a block with no
 #: end in the file, of each kind, and one whose end is past a brace that closes a group
-#: opened before it.
+#: opened before it;
 LATEX_UNENDED = ("\\makeatletter 61", "{} 61", "{{\\makeatletter 61}} \\makeatother",
-                 # and one whose end is in the file, but which holds what changes how the rest
-                 # of it reads: a definition of a name with no `@`, a `\\catcode`, and a
-                 # `\\makeatother` inside a conditional it opened (round 1 of #674).
+                 # and one whose end is in the file, but which breaks the rule a block is
+                 # skipped by (Basile, 2026-11-13): a `\\makeatletter` that defines a name
+                 # with no `@`, defines an environment, or holds a conditional; a conditional
+                 # that holds a `\\catcode`, a definition, or a `\\makeatletter`.
                  "\\makeatletter\\renewcommand{{\\emph}}[1]{{#1}}\\makeatother 61",
+                 "\\makeatletter\\newenvironment{{a@b}}{{x}}{{y}}\\makeatother 61",
+                 "\\makeatletter {} x \\makeatother \\else 61 \\fi",
                  "{} \\catcode`\\@=11 61\\fi",
-                 "\\makeatletter {} x \\makeatother \\else 61 \\fi")  # fmt: skip
+                 "{} \\def\\emph@x{{z}} 61 \\fi",
+                 "{} \\makeatletter 61\\makeatother \\fi")  # fmt: skip
 
 
 @st.composite

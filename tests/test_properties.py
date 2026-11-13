@@ -169,6 +169,7 @@ from generated import (
     printings,
     profile_tables,
     proofs,
+    prose_share_papers,
     published_texts,
     quotations,
     quoted_references,
@@ -6629,6 +6630,99 @@ def _an_atom_closed_up_is_not_its_share(patch: pytest.MonkeyPatch) -> None:
         (None, parts) if len(parts) != 1 else real(atom, parts, written)))  # fmt: skip
 
 
+def _written_shares_found(text: str, suffix: str) -> list[list[Any]]:
+    """Where `audit` says a paper's share is off its counts, as `prose_share_papers` says it:
+    each finding's line, and "Abstract", the heading its message names, or "table"."""
+    from manuscript_guard.audit import audit
+
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        found = []
+        for said in audit([paper], None).disagreements:
+            named = re.match(r"in (?:the )?(?P<title>[^,]+), n \(%\)", said.message)
+            found.append([said.line, "table" if named is None else named["title"]])
+        return sorted(found)
+
+
+@holds(30, prose_share_papers())
+def test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it(
+    drawn: tuple[str, list, str, list],
+) -> None:
+    """Basile, 2026-11-13, after #664: a share a sentence writes beside both its counts, "12
+    of 40 patients (50%)", in any section and in a footnote, is held to them as the
+    Abstract's is, and one off them is said once, by the heading it is under, in each shape
+    the reader takes; one they give says nothing, nor does a season, a date, a share over
+    100, a range written with a slash, "Grade 3/4 neutropenia (12%)" (round 1 of #668), or a
+    share the reader does not take. A table's share is said once, as the table
+    reader says it; and the Abstract's is the Abstract's, unless no Results heading lets the
+    Abstract against Results compare, when it is said as any other section's. In Markdown
+    and in LaTeX."""
+    markdown, in_markdown, latex, in_latex = drawn
+    for text, expected, suffix in ((markdown, in_markdown, ".md"), (latex, in_latex, ".tex")):
+        assert _written_shares_found(text, suffix) == expected, text
+    alone = markdown.replace("## Results", "## Data")
+    assert _written_shares_found(alone, ".md") == sorted(
+        [line, "Data" if where == "Results" else where] for line, where in in_markdown), alone
+
+
+def _a_share_in_a_sentence_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """As at #664: only the Abstract's shares were held to their counts."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: [])
+
+
+def _a_share_in_a_table_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        report, [dataclasses.replace(source, table_lines=frozenset()) for source in sources],
+        pieces))  # fmt: skip
+
+
+def _compared_as(patch: pytest.MonkeyPatch, compared: bool) -> None:
+    """`_written_shares` told the Abstract against Results compared, or did not, whatever
+    it did."""
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        dataclasses.replace(report, abstract=dataclasses.replace(report.abstract,
+                                                                 compared=compared)),
+        sources, pieces))  # fmt: skip
+
+
+def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    _compared_as(patch, False)
+
+
+def _the_abstract_s_share_is_never_read_as_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    _compared_as(patch, True)
+
+
+def _a_range_after_its_word_is_a_share(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #668: "Grade 1/3 trials (40%)" was 1 of 3, not 40."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_named_range", lambda text, match: False)
+
+
+def _two_numbers_in_a_row_are_a_share(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_consecutive", lambda text, match: False)
+
+
+def _a_share_names_no_heading(patch: pytest.MonkeyPatch) -> None:
+    import manuscript_guard.audit as audit
+
+    real = audit._written_shares
+    patch.setattr(audit, "_written_shares", lambda report, sources, pieces: real(
+        report, [dataclasses.replace(source, part=None) for source in sources], pieces))
+
+
 def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
@@ -12287,11 +12381,13 @@ def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_i
     """A paper converted from Word keeps its correspondence line, and `check` and the audit
     alike read "someone1989@example.org", "IL-4" and "interleukin-4" as numbers. An e-mail
     address is structural and an interleukin a term, for `check` and for the audit; a count
-    beside them, and digits round an `@` with no domain, are numbers still."""
+    beside them, and digits round an `@` with no domain, are numbers still. So is an RRID
+    structural, "RRID:AB_2298772", and "1:500" beside it a number."""
     from manuscript_guard.classify import STRUCTURAL, TERM, UNCLASSIFIED
 
     text, kinds = drawn
-    expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
+    expected = {"address": STRUCTURAL, "identifier": STRUCTURAL, "name": TERM,
+                "number": UNCLASSIFIED}  # fmt: skip
     atoms = find_atoms(text, mask(text))
     assert sorted(atom.text for atom in atoms) == sorted(kinds), text
     declared = DECLARED_TERMS
@@ -12318,6 +12414,135 @@ def _shipped_with(patch: pytest.MonkeyPatch, structural=None, terms=None) -> Non
 def _an_email_address_is_a_number(patch: pytest.MonkeyPatch) -> None:
     _shipped_with(patch, structural=lambda rules: tuple(
         rule for rule in rules if rule.id != "email-address"))  # fmt: skip
+
+
+def _an_rrid_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    _shipped_with(patch, structural=lambda rules: tuple(
+        rule for rule in rules if rule.id != "rrid"))  # fmt: skip
+
+
+from generated import RRID_BESIDE, rrid_sentences  # noqa: E402
+
+
+def _g14_of_rrids(files: list, root: Path) -> list[tuple[str, str]]:
+    """What G14's abbreviations and code names say of files read: each finding's code and the
+    word its message opens with."""
+    from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    exact, lowered = _shipped()
+    said = list(_judge(files, _Known(exact, lowered), root).findings)
+    prose = [Prose(one.path, one.text, one.printed, one.code, one.line_of) for one in files]
+    said += judge_code_names(prose, Names(), "drafting").findings
+    return sorted((f.code, f.message.split(" ", 1)[0].strip("'")) for f in said
+                  if f.code in ("abbreviation-undefined", "code-name-in-prose"))  # fmt: skip
+
+
+def _hidden_in(files: list, spans: list) -> list[str]:
+    """Each accession's letters and digits that a view of G14's still shows."""
+    shown = []
+    for start, end in spans:
+        for one in files:
+            for view in (one.prose, one.printed):
+                kept = "".join(c for c in view[start:end] if c.isalnum())
+                if kept:
+                    shown.append(kept)
+    return shown
+
+
+@holds(50, rrid_sentences())
+def test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14(
+    drawn: tuple[str, str, list, list],
+) -> None:
+    """Round 1 of #663: an RRID's accession, joined by hyphens, colons, a dot or underscores
+    or of one part, after a space, a line break or nothing, with its underscore escaped, is
+    hidden from G14's views in Markdown and LaTeX alike, and is neither an abbreviation
+    undefined nor a name from the code; a short form and a code name beside it still are."""
+    from manuscript_guard.gates.language import _file, _latex_read
+
+    markdown, latex, spans_md, spans_tex = drawn
+    expected = [("abbreviation-undefined", "HPLC"), ("code-name-in-prose", "dose_mg")]
+    assert RRID_BESIDE == ("HPLC", "dose_mg")
+    read = [_file(0, MAIN, markdown, [], False)]
+    assert _hidden_in(read, spans_md) == [] and "Version" in read[0].printed, markdown
+    assert _g14_of_rrids(read, Path(".")) == expected, markdown
+    folder = Path(tempfile.mkdtemp(prefix="mg-rrid-"))
+    try:
+        (folder / "main.tex").write_text(latex, encoding="utf-8", newline="")
+        read = _latex_read(folder, None)
+        assert _hidden_in(read, spans_tex) == [], latex
+        assert any("Version" in one.printed for one in read), latex
+        assert _g14_of_rrids(read, folder) == expected, latex
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def _g14_rrid_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
+    """G14's reading of an RRID with one piece of its pattern written otherwise."""
+    from manuscript_guard.gates import language
+
+    assert was in language._RRID.pattern
+    patch.setattr(language, "_RRID", re.compile(language._RRID.pattern.replace(was, now)))
+
+
+def _g14_reads_no_hyphen_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"|-(?![a-z]{4,}(?![A-Za-z0-9_:\-]))", "")
+
+
+def _g14_reads_no_colon_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"[_:]", r"[_]")
+
+
+def _g14_reads_no_dot_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"|\.(?=[0-9])", "")
+
+
+def _g14_reads_no_latex_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"\x00?", "")
+
+
+def _g14_reads_no_escaped_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"\\?[_:]", r"[_:]")
+
+
+def _a_word_of_any_length_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, "{4,}", "+")
+    _rrid_rule_changed(patch, "{4,}", "+")
+
+
+def _a_dot_before_a_letter_joins_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, r"\.(?=[0-9])", r"\.")
+    _rrid_rule_changed(patch, r"\.(?=[0-9])", r"\.")
+
+
+def _rrid_rule_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
+    """G2's `rrid` rule with one piece of its pattern written otherwise."""
+    from manuscript_guard import classify
+
+    [rule] = [rule for rule in classify._shipped()[1] if rule.id == "rrid"]
+    assert was in rule.pattern.pattern
+    changed = re.compile(rule.pattern.pattern.replace(was, now))
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(one, pattern=changed) if one.id == "rrid" else one
+        for one in rules
+    ))  # fmt: skip
+
+
+def _no_line_break_after_an_rrid_s_colon(patch: pytest.MonkeyPatch) -> None:
+    _rrid_rule_changed(patch, r"(?:[^\S\n]|\n)?", r"[^\S\n]?")
+
+
+def _an_rrid_s_escaped_underscore_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _rrid_rule_changed(patch, r"\\?[_:]", r"[_:]")
+
+
+def _any_number_after_rrid_is_an_identifier(patch: pytest.MonkeyPatch) -> None:
+    # The label's reach widened to the next number on the line: "RRID:AB_1 diluted 1:500".
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(rule, pattern=re.compile(r"RRID:[^\n]*\d+(?::\d+)?"))
+        if rule.id == "rrid" else rule
+        for rule in rules
+    ))  # fmt: skip
 
 
 def _any_at_sign_makes_an_address(patch: pytest.MonkeyPatch) -> None:
@@ -25099,6 +25324,42 @@ BROKEN = {
         _a_year_and_the_next_are_a_share,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
+    "a share in a sentence is not held to its counts": (
+        _a_share_in_a_sentence_is_not_read,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a table's share is read again as a sentence's": (
+        _a_share_in_a_table_is_read_as_written,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "the Abstract's share is read again as a sentence's": (
+        _the_abstract_s_share_is_read_again,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "the Abstract's share is not read as a sentence's where the Abstract is not compared": (
+        _the_abstract_s_share_is_never_read_as_a_section_s,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's share off its counts names no heading": (
+        _a_share_names_no_heading,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a slash gives a sentence's share no denominator": (
+        _a_slash_gives_no_denominator,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's range after a grade or a phase is a share": (
+        _a_range_after_its_word_is_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's two numbers in a row with a slash are a share": (
+        _two_numbers_in_a_row_are_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a sentence's count over its denominator is a share": (
+        _a_count_over_its_denominator_is_a_share,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
     "an Abstract's share closed up against its counts is not its share": (
         _an_atom_closed_up_is_not_its_share,
         test_the_abstract_is_held_to_what_the_paper_reports,
@@ -26489,6 +26750,50 @@ BROKEN = {
     ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an RRID is a number": (
+        _an_rrid_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "G14 reads no hyphen in an RRID": (
+        _g14_reads_no_hyphen_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no colon in an RRID": (
+        _g14_reads_no_colon_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no dot in an RRID": (
+        _g14_reads_no_dot_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no underscore the LaTeX reader leaves in an RRID": (
+        _g14_reads_no_latex_underscore_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no escaped underscore in an RRID": (
+        _g14_reads_no_escaped_underscore_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a word of any length after a hyphen ends an RRID for G2 and G14": (
+        _a_word_of_any_length_ends_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a dot before a letter joins an RRID for G2 and G14": (
+        _a_dot_before_a_letter_joins_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "no line break is read after an RRID's colon": (
+        _no_line_break_after_an_rrid_s_colon,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an RRID's escaped underscore is not read": (
+        _an_rrid_s_escaped_underscore_is_not_read,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "any number after RRID: is an identifier": (
+        _any_number_after_rrid_is_an_identifier,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "any at sign makes an address": (

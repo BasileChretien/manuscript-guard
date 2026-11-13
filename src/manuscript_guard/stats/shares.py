@@ -44,7 +44,9 @@ to three words between the counts and the bracket, "164 of 250 patients (66%)"; 
 share, "(66%, 95% CI 60-72)". The "%" is needed: a number in brackets in a sentence is as
 often anything else. A count with no denominator beside it, "n = 164 (66%)", gives no
 share to check, and nor does a count over its denominator, "45% (2019/20)", a share over
-100, or a year and the next, "the 2019/2020 season (45%)". The share is held to its
+100, a year and the next, "the 2019/2020 season (45%)", or a range written with a slash,
+after a grade, a stage, a phase and the like, "Grade 3/4 neutropenia (12%)", or of two
+numbers in a row up to 10, "3/4". The share is held to its
 counts as a table's is: within half a unit of its last printed place, so a share exactly
 half way, 1 of 8 printed "12%" or "13%", fits either way, and one cut short, 164 of 250
 printed "65%", does not.
@@ -406,15 +408,51 @@ def _no_share(count: int, over: int, percent: str) -> bool:
     return count > over or Decimal(percent) > 100 or _a_year_pair(count, over)
 
 
+#: The words a range of grades, stages, phases and the like follows: "grade 3/4", "phase
+#: 1/2" (round 1 of #668).
+_RANGE_NAMED = re.compile(
+    r"(?i)\b(?:grades?|stages?|phases?|types?|class(?:es)?|levels?|steps?|lines?|cycles?)"
+    r"\s*\Z"
+)
+_SLASH = re.compile(r"\s*/\s*")
+
+
+def _named_range(text: str, match: re.Match[str]) -> bool:
+    """Whether a count and its denominator are written with a slash after a word a range
+    follows, its second number no more than 10, as a grade's, a stage's or a phase's is:
+    "Grade 3/4 neutropenia (12%)", not "troponin levels 12/40 (30%)"."""
+    return bool(_SLASH.fullmatch(text, match.end("count"), match.start("over"))) and \
+        _whole(match["over"]) <= 10 and \
+        bool(_RANGE_NAMED.search(text, max(0, match.start("count") - 12),
+                                 match.start("count")))  # fmt: skip
+
+
+def _consecutive(text: str, match: re.Match[str]) -> bool:
+    """Whether a count and its denominator are written with a slash and are two numbers in
+    a row, the second no more than 10: "3/4 neutropenia (12%)", a range whatever word is
+    before it. A share of three in four written so, "3/4 (75%)", is lost with it."""
+    count, over = _whole(match["count"]), _whole(match["over"])
+    return bool(_SLASH.fullmatch(text, match.end("count"), match.start("over"))) and \
+        over == count + 1 <= 10  # fmt: skip
+
+
+def _a_range(text: str, match: re.Match[str]) -> bool:
+    """Whether what reads as a count and its denominator is a range written with a slash
+    (round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, not 12). Counts
+    in brackets after their share, "75% (3/4)", are never a range (round 2)."""
+    return _named_range(text, match) or (match.re is _COUNTS_FIRST and _consecutive(text, match))
+
+
 def written_shares(text: str) -> list[tuple[Share, int]]:
     """Each share `text` writes in a sentence with both its counts, in reading order, and
     the offset its percentage starts at; the line is the percentage's. A count over its
-    denominator, a share over 100 and a year with the next are no share (`_no_share`)."""
+    denominator, a share over 100 and a year with the next are no share (`_no_share`), nor
+    is a range written with a slash (`_a_range`)."""
     found = []
     for pattern in (_COUNTS_FIRST, _SHARE_FIRST):
         for match in pattern.finditer(text):
             count, over = _whole(match["count"]), _whole(match["over"])
-            if _no_share(count, over, match["percent"]):
+            if _no_share(count, over, match["percent"]) or _a_range(text, match):
                 continue
             printed = " ".join(text[match.start() : match.start("close")].split())
             printed += match["close"] if match["close"] in ")]" else \

@@ -4502,8 +4502,24 @@ DECLARED_TERMS = ("CO2",)
 SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
 NOT_NAMES = (
     "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
-    *SUNK_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL, "1:500",
 )  # fmt: skip
+#: RRIDs, whose digits are an identifier's (structural): one of each form, with a space, a
+#: line break or nothing after the colon, an underscore escaped as Markdown escapes it, dotted,
+#: of one part, hyphenated more than once, with a word of small letters after it, typed
+#: straight after a bracket, and opening a line (round 1 of #663). Each as typed, and the atom
+#: it is read as: the classifier's atom of "RRID: CVCL_0030" is the accession alone.
+NAMED_RESOURCES = {
+    "RRID:AB_2298772": "RRID:AB_2298772", "RRID: CVCL_0030": "CVCL_0030",
+    "RRID:\nAB_2400000": "AB_2400000", "RRID:AB\\_2500000": "RRID:AB\\_2500000",
+    "RRID:IMSR_JAX:000664": "RRID:IMSR_JAX:000664", "RRID:NXR_0.0005": "RRID:NXR_0.0005",
+    "RRID:SAMN12345678": "RRID:SAMN12345678", "RRID:MMRRC_000231-UNC": "RRID:MMRRC_000231-UNC",
+    "RRID:CVCL_0372-derived": "RRID:CVCL_0372-derived",
+    "RRID:mmrrc_000231-unc": "RRID:mmrrc_000231-unc",
+    "(RRID:SCR_002798.Version)": "RRID:SCR_002798.Version",  # bracketed: "Version 12" is one
+    "(RRID:Addgene_12345)": "RRID:Addgene_12345",
+    "\nRRID:ZFIN_ZDB-GENO-960809-7": "RRID:ZFIN_ZDB-GENO-960809-7",
+}  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -4511,10 +4527,11 @@ _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "a
 
 @st.composite
 def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
-    """Every address, interleukin and number above in a sentence, in an order drawn, with
-    words and a separator drawn between them; and what each is: "address", "name" or
-    "number"."""
+    """Every address, interleukin, RRID and number above in a sentence, in an order drawn,
+    with words and a separator drawn between them; and what each is, by its atom:
+    "address", "identifier", "name" or "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
+    planted += [(text, "identifier") for text in NAMED_RESOURCES]
     planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
@@ -4524,7 +4541,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
     # An atom is cut before the `~` that closes its last subscript.
-    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
+    return text.strip() + "\n", {NAMED_RESOURCES.get(piece, piece).removesuffix("~"): kind
+                                 for piece, kind in planted}  # fmt: skip
 
 
 # -------------------------------------------------------------------------- quotations
@@ -9638,6 +9656,134 @@ def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list],
 
 def _hundredths_of(p: Decimal) -> str:
     return str(p.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+# ------------------------------------------------- a share beside its counts, anywhere
+
+#: The sections a paper of `prose_share_papers` writes its shares under, after its Abstract.
+PROSE_SECTIONS = ("Introduction", "Methods", "Results", "Discussion")
+
+
+def _written_share(draw: st.DrawFn, n: int, shape: str, off: bool) -> str:
+    """A share of a count of `n` in `shape` (`SHARE_SHAPES`), to none, one or two places,
+    which its counts give or, `off`, do not."""
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    places = draw(st.integers(0, 2))
+    p = (Decimal(100 * k) / n).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    if off:
+        p += draw(st.integers(2, 9)) * draw(st.sampled_from((1, -1)))
+    return SHARE_SHAPES[shape].format(k=k, n=n, p=p, words=draw(st.sampled_from(SHARE_WORDS)))
+
+
+@st.composite
+def prose_share_papers(draw: st.DrawFn) -> tuple[str, str, list, list]:
+    """A paper, in Markdown and in LaTeX, that writes shares beside their counts in its
+    Abstract, under each of `PROSE_SECTIONS`, in a footnote under a section drawn and in a
+    table under its Results; and where `audit` says each share is off its counts, by line,
+    as "Abstract", the title of the heading it is under, or "table", in each. Each section
+    holds a share off its counts and one they give, each in a shape drawn; each shape of
+    `SHARE_SHAPES` is off its counts in a section drawn; and each of `NO_SHARE_SHAPES`,
+    `SHARE_UNREAD` and `RANGE_SHAPES` stands in a section drawn, its percentage drawn from
+    anything, and is said of nowhere (Basile, 2026-11-13, after #664)."""
+    shapes = sorted(SHARE_SHAPES)
+    n = iter(range(2000, 9000, 37))
+    blocks: dict[str, list[tuple[str, str | None]]] = {"Abstract": []}
+    for section in PROSE_SECTIONS:
+        blocks[section] = []
+    for section in blocks:
+        for off in (True, False):
+            shape = draw(st.sampled_from(shapes))
+            said = _written_share(draw, next(n), shape, off)
+            blocks[section].append((f"Then {said} were seen.", section if off else None))
+    for shape in shapes:
+        section = draw(st.sampled_from(PROSE_SECTIONS))
+        said = _written_share(draw, next(n), shape, True)
+        blocks[section].append((f"Then {said} were seen.", section))
+    for kind, (shape, _base) in {**NO_SHARE_SHAPES, **SHARE_UNREAD}.items():
+        y = draw(st.integers(2000, 2030))
+        count = next(n)
+        p = draw(st.integers(101, 199) if kind == "share over a hundred" else st.integers(1, 99))
+        said = shape.format(p=p, k=count // 3, n=count, y=y,
+                            yy=(y + 1) % 100, next=y + 1, d=draw(st.integers(13, 28)),
+                            m=draw(st.integers(1, 12)), a=draw(st.integers(11, 99)),
+                            b=draw(st.integers(1, 9)))  # fmt: skip
+        blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
+    for shape in RANGE_SHAPES:
+        said = _a_range_written(draw, shape)
+        blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
+    order = {section: draw(st.permutations(blocks[section])) for section in blocks}
+    note = (_written_share(draw, next(n), draw(st.sampled_from(shapes)), True),
+            draw(st.sampled_from(PROSE_SECTIONS)))  # fmt: skip
+    # A table's share in the one shape the table reader takes with its own denominator,
+    # "k/n (p)": in another, "k of n (p%)", it is read by neither reader (Known gaps).
+    cell = _written_share(draw, next(n), "share slash", True)
+    return (*_prose_share_markdown(order, note, cell), *_prose_share_latex(order, note, cell))
+
+
+#: A range of grades, stages, phases and the like written with a slash beside a percentage,
+#: which is no count and its denominator: `{word}` one of `RANGE_WORDS`, `{a}` a number and
+#: `{a1}` the next, `{a2}` the one after; after its word and of two numbers in a row, after
+#: its word alone, and of two numbers in a row alone (round 1 of #668).
+RANGE_SHAPES = ("{word} {a}/{a1} neutropenia ({p}%)", "{word} {a}/{a2} trials ({p}%)",
+                "{a}/{a1} of them ({p}%)")  # fmt: skip
+RANGE_WORDS = ("Grade", "grades", "stage", "Phase", "type", "class", "level", "step", "line",
+               "cycle")  # fmt: skip
+
+
+def _a_range_written(draw: st.DrawFn, shape: str) -> str:
+    """A range of `RANGE_SHAPES`, its percentage a whole number more than one off the share
+    its two numbers would be, so that read as one, it is off."""
+    a = draw(st.integers(1, 4))
+    over = a + 2 if "{a2}" in shape else a + 1
+    p = draw(st.integers(1, 99))
+    if abs(p - 100 * a / over) <= 1:
+        p = (p + 40) % 100 or 1
+    return shape.format(word=draw(st.sampled_from(RANGE_WORDS)), a=a, a1=a + 1, a2=a + 2, p=p)
+
+
+def _prose_share_markdown(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
+    lines, expected = ["# A study", ""], []
+    for section, said in order.items():
+        lines += [f"## {section}", ""]
+        for text, where in said:
+            lines += [text, ""]
+            if where is not None:
+                expected.append([len(lines) - 1, where])
+        if section == note[1]:
+            lines += ["It was so.[^s1]", "", f"[^s1]: Then {note[0]} were seen.", ""]
+            expected.append([len(lines) - 1, section])
+        if section == "Results":
+            lines += ["| Group | Value |", "|---|---|", f"| A | {cell} |", ""]
+            expected.append([len(lines) - 1, "table"])
+    return "\n".join(lines) + "\n", sorted(expected)
+
+
+def _prose_share_latex(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
+    def tex(text: str) -> str:
+        return text.replace("%", BACKSLASH + "%")
+
+    lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}"]
+    expected = []
+    for section, said in order.items():
+        lines += [BACKSLASH + "begin{abstract}" if section == "Abstract" else
+                  f"{BACKSLASH}section{{{section}}}", ""]  # fmt: skip
+        for text, where in said:
+            lines += [tex(text), ""]
+            if where is not None:
+                expected.append([len(lines) - 1, where])
+        if section == "Abstract":
+            lines += [BACKSLASH + "end{abstract}", ""]
+        if section == note[1]:
+            said = tex(f"Then {note[0]} were seen.")
+            lines += [f"It was so.{BACKSLASH}footnote{{{said}}}", ""]
+            expected.append([len(lines) - 1, section])
+        if section == "Results":
+            lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
+                      f"A & {tex(cell)} " + BACKSLASH * 2]  # fmt: skip
+            expected.append([len(lines), "table"])
+            lines += [BACKSLASH + "end{tabular}", ""]
+    lines.append(BACKSLASH + "end{document}")
+    return "\n".join(lines) + "\n", sorted(expected)
 
 
 # ------------------------------------------ causal words, and each citation beside its sentence
@@ -15548,6 +15694,61 @@ def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
     return parts
 
 
+# ------------------------------------------------------------- RRIDs as G14 reads them
+
+#: An accession for each way G14's reading of an RRID joins its parts (`gates/language.py`,
+#: `_RRID`): hyphens, colons, a dot, an underscore and one part. Each holds capitals side by
+#: side or an underscore, so a part left unread is an abbreviation or a name from the code.
+RRID_JOINED = (
+    "ZFIN_ZDB-GENO-960809-7", "MMRRC_000231-UNC", "MGI:3840442", "IMSR_JAX:000664",
+    "NXR_0.0005", "CVCL_0030", "SAMN12345678", "mmrrc_000231-unc", "SCR_002798.Version",
+)  # fmt: skip
+#: What stands between "RRID:" and the accession: nothing, a space, a line break.
+RRID_JOINED_GAPS = ("", " ", "\n")
+#: A short form never defined, and a name written as code, which G14 still reads beside them.
+RRID_BESIDE = ("HPLC", "dose_mg")
+
+
+@st.composite
+def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
+    """A Methods paragraph typing every accession of `RRID_JOINED`, each gap among them, one
+    accession with its underscore escaped as Markdown escapes it, and the forms of
+    `RRID_BESIDE`, in Markdown and as its LaTeX twin, every `_` there `\\_`:
+    `(markdown, latex, markdown spans, latex spans)`, each span an accession's start and
+    end in its file."""
+    accessions = draw(st.permutations([*RRID_JOINED, "AB\\_2298772"]))
+    first = draw(st.permutations(list(RRID_JOINED_GAPS)))
+    gaps = first + [draw(st.sampled_from(RRID_JOINED_GAPS))
+                    for _more in range(len(accessions) - len(first))]  # fmt: skip
+    gaps = draw(st.permutations(gaps))
+    pieces = [("rrid", accession, gap) for accession, gap in zip(accessions, gaps, strict=True)]
+    pieces += [("beside", form, "") for form in RRID_BESIDE]
+    word = st.sampled_from(FILLER)
+    markdown, latex = "# Methods\n\n", "\\documentclass{article}\n\\begin{document}\n"
+    read_md: list = []
+    read_tex: list = []
+    for kind, typed, gap in draw(st.permutations(pieces)):
+        said = " ".join(draw(st.lists(word, min_size=1, max_size=3))) + " "
+        markdown += said
+        latex += said
+        if kind == "beside":
+            markdown += typed
+            latex += typed.replace("_", "\\_")
+        else:
+            markdown += f"RRID:{gap}"
+            latex += f"RRID:{gap}"
+            kept = len(typed.removesuffix(".Version"))  # the word after the stop is no part
+            read_md.append([len(markdown), len(markdown) + kept])
+            markdown += typed
+            written = typed.replace("\\_", "_").replace("_", "\\_")
+            read_tex.append([len(latex), len(latex) + len(written.removesuffix(".Version"))])
+            latex += written
+        markdown += draw(st.sampled_from((" ", ", ", "; ", ") ")))
+        latex += " "
+    return markdown + "were counted.\n", latex + "were counted.\n\\end{document}\n", read_md, \
+        read_tex  # fmt: skip
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),
@@ -15758,6 +15959,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval words": st.one_of(interval_wordings().map(lambda drawn: drawn[0]),
                                 texts(ESTIMATES)),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
+    "written shares": prose_share_papers().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),
     "abstract against results": abstract_papers().map(

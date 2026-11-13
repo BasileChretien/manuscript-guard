@@ -25542,9 +25542,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A percentage its counts give is explained by them, whatever the paper reports: it is
     not compared with the share the Results print for the same counts. Accepted.
-  - A share written in a sentence anywhere but the Abstract, "164 of 250 (75%)" in the
-    Results, is not held to its counts: only a table's n (%) and the Abstract's are.
+  - A share written in a sentence under any heading is held to its counts as the
+    Abstract's is, and one off them is said under Arithmetic (Basile, 2026-11-13). Only
+    `audit` holds it: `check` binds a project's shares to the analysis, and a share typed
+    there is an unbound number already. Accepted.
+  - The finding names the heading the share stands under, "in Results, ", "in the
+    Abstract, ", a title with a comma in it quoted; in a .docx it names none but the
+    Abstract, since its place in the report, "Results, paragraph 3", names the section
+    (the coordinator's choice on round 1 of #668, not yet Basile's). A note is named by the heading over its
+    definition as the audit reads headings, the reference list's set apart: a Markdown note
+    defined at the end of the file by the last heading before the reference list, wherever
+    it is referenced; a .docx's notes are placed as "the notes". Accepted.
+  - A table's share is the table reader's alone, and the Abstract's the Abstract against
+    Results', where it compares; where no Results heading lets it, the Abstract's share is
+    said as any section's. Pinned by
+    `tests/test_properties.py::test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it`,
+    `tests/test_corruption.py::test_a_word_paper_s_share_off_its_counts_is_said_once_and_its_table_s_as_a_table_s`.
+  - A table cell written as a sentence writes a share, "12 of 40 (50%)", is read by
+    neither reader: the table reader takes "12 (30.0)" and "12/40 (30.0)" alone, and the
+    sentence reader leaves a table's lines out. A figure's text is not read for shares.
     Accepted.
+  - A range written with a slash is no count and its denominator: after "grade", "stage",
+    "phase", "type", "class", "level", "step", "line" or "cycle", singular or plural, in
+    any case, up to 10 ("troponin levels 12/40" is read), and two numbers in a row up to
+    10 before a share, never in brackets after one, "75% (3/4)" (round 1 of #668: "Grade 3/4
+    neutropenia (12%)" was said to be 3 of 4). A real share of such numbers, "3/4 (50%)",
+    is not held to its counts, and a range after another word, "toxicity 2/4 (10%)", is
+    read as one. Accepted.
+  - A share the Introduction or the Discussion quotes from another paper is held to its
+    counts all the same: a wrong one is said, though it is not this paper's. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of
@@ -27177,6 +27203,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the rest. The text report, which a screen reader reads well, is shown only where the PDF
   could not be made. Accepted.
 
+- **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
+  "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
+  G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
+  from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
+  (#658) as its round 2 left it, a `.` joining only before a digit and a `-` ending the
+  accession only before a word of four small letters or more with no `:`, `_` or `-` after
+  it; it is copied into `data/structural.yaml` and `gates/language.py` while that module is
+  not on main, and each copy changes with it until one imports the other. Pinned by
+  `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
+  - An accession typed without "RRID:" in capitals and its colon right before it, one space
+    or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",
+    "rrid:AB_1", "**RRID:**AB_1" and "RRID:  AB_1" leave a number to bind and a name from
+    the code. Accepted.
+  - A number typed straight after an RRID, with a dot, a hyphen or a colon and no space, is
+    read into its accession, and G2 calls it structural with the rest: "RRID:AB_123.4 mg",
+    "RRID:CVCL_0030-1", "RRID:AB_2298772:500", and after a word of four small letters or more
+    and a `-` or a `:`, "RRID:CVCL_0030-derived-12". "RRID:SCR_002798.v9" leaves the 9 out of
+    what G2 covers, so G2 reports it, as main does. Pinned by
+    `tests/test_corruption.py::test_a_number_typed_against_an_rrid_is_read_into_it`.
 - **A correction the copy in Track Changes cannot give exactly stays a comment** (`audit
   --tracked`). One whose words hold a mark Markdown writes and the document does not print
   (emphasis, a link, a raised or lowered piece, a table's cell), a quotation mark or an

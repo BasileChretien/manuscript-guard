@@ -9658,6 +9658,134 @@ def _hundredths_of(p: Decimal) -> str:
     return str(p.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+# ------------------------------------------------- a share beside its counts, anywhere
+
+#: The sections a paper of `prose_share_papers` writes its shares under, after its Abstract.
+PROSE_SECTIONS = ("Introduction", "Methods", "Results", "Discussion")
+
+
+def _written_share(draw: st.DrawFn, n: int, shape: str, off: bool) -> str:
+    """A share of a count of `n` in `shape` (`SHARE_SHAPES`), to none, one or two places,
+    which its counts give or, `off`, do not."""
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    places = draw(st.integers(0, 2))
+    p = (Decimal(100 * k) / n).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    if off:
+        p += draw(st.integers(2, 9)) * draw(st.sampled_from((1, -1)))
+    return SHARE_SHAPES[shape].format(k=k, n=n, p=p, words=draw(st.sampled_from(SHARE_WORDS)))
+
+
+@st.composite
+def prose_share_papers(draw: st.DrawFn) -> tuple[str, str, list, list]:
+    """A paper, in Markdown and in LaTeX, that writes shares beside their counts in its
+    Abstract, under each of `PROSE_SECTIONS`, in a footnote under a section drawn and in a
+    table under its Results; and where `audit` says each share is off its counts, by line,
+    as "Abstract", the title of the heading it is under, or "table", in each. Each section
+    holds a share off its counts and one they give, each in a shape drawn; each shape of
+    `SHARE_SHAPES` is off its counts in a section drawn; and each of `NO_SHARE_SHAPES`,
+    `SHARE_UNREAD` and `RANGE_SHAPES` stands in a section drawn, its percentage drawn from
+    anything, and is said of nowhere (Basile, 2026-11-13, after #664)."""
+    shapes = sorted(SHARE_SHAPES)
+    n = iter(range(2000, 9000, 37))
+    blocks: dict[str, list[tuple[str, str | None]]] = {"Abstract": []}
+    for section in PROSE_SECTIONS:
+        blocks[section] = []
+    for section in blocks:
+        for off in (True, False):
+            shape = draw(st.sampled_from(shapes))
+            said = _written_share(draw, next(n), shape, off)
+            blocks[section].append((f"Then {said} were seen.", section if off else None))
+    for shape in shapes:
+        section = draw(st.sampled_from(PROSE_SECTIONS))
+        said = _written_share(draw, next(n), shape, True)
+        blocks[section].append((f"Then {said} were seen.", section))
+    for kind, (shape, _base) in {**NO_SHARE_SHAPES, **SHARE_UNREAD}.items():
+        y = draw(st.integers(2000, 2030))
+        count = next(n)
+        p = draw(st.integers(101, 199) if kind == "share over a hundred" else st.integers(1, 99))
+        said = shape.format(p=p, k=count // 3, n=count, y=y,
+                            yy=(y + 1) % 100, next=y + 1, d=draw(st.integers(13, 28)),
+                            m=draw(st.integers(1, 12)), a=draw(st.integers(11, 99)),
+                            b=draw(st.integers(1, 9)))  # fmt: skip
+        blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
+    for shape in RANGE_SHAPES:
+        said = _a_range_written(draw, shape)
+        blocks[draw(st.sampled_from(PROSE_SECTIONS))].append((f"Then {said} were seen.", None))
+    order = {section: draw(st.permutations(blocks[section])) for section in blocks}
+    note = (_written_share(draw, next(n), draw(st.sampled_from(shapes)), True),
+            draw(st.sampled_from(PROSE_SECTIONS)))  # fmt: skip
+    # A table's share in the one shape the table reader takes with its own denominator,
+    # "k/n (p)": in another, "k of n (p%)", it is read by neither reader (Known gaps).
+    cell = _written_share(draw, next(n), "share slash", True)
+    return (*_prose_share_markdown(order, note, cell), *_prose_share_latex(order, note, cell))
+
+
+#: A range of grades, stages, phases and the like written with a slash beside a percentage,
+#: which is no count and its denominator: `{word}` one of `RANGE_WORDS`, `{a}` a number and
+#: `{a1}` the next, `{a2}` the one after; after its word and of two numbers in a row, after
+#: its word alone, and of two numbers in a row alone (round 1 of #668).
+RANGE_SHAPES = ("{word} {a}/{a1} neutropenia ({p}%)", "{word} {a}/{a2} trials ({p}%)",
+                "{a}/{a1} of them ({p}%)")  # fmt: skip
+RANGE_WORDS = ("Grade", "grades", "stage", "Phase", "type", "class", "level", "step", "line",
+               "cycle")  # fmt: skip
+
+
+def _a_range_written(draw: st.DrawFn, shape: str) -> str:
+    """A range of `RANGE_SHAPES`, its percentage a whole number more than one off the share
+    its two numbers would be, so that read as one, it is off."""
+    a = draw(st.integers(1, 4))
+    over = a + 2 if "{a2}" in shape else a + 1
+    p = draw(st.integers(1, 99))
+    if abs(p - 100 * a / over) <= 1:
+        p = (p + 40) % 100 or 1
+    return shape.format(word=draw(st.sampled_from(RANGE_WORDS)), a=a, a1=a + 1, a2=a + 2, p=p)
+
+
+def _prose_share_markdown(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
+    lines, expected = ["# A study", ""], []
+    for section, said in order.items():
+        lines += [f"## {section}", ""]
+        for text, where in said:
+            lines += [text, ""]
+            if where is not None:
+                expected.append([len(lines) - 1, where])
+        if section == note[1]:
+            lines += ["It was so.[^s1]", "", f"[^s1]: Then {note[0]} were seen.", ""]
+            expected.append([len(lines) - 1, section])
+        if section == "Results":
+            lines += ["| Group | Value |", "|---|---|", f"| A | {cell} |", ""]
+            expected.append([len(lines) - 1, "table"])
+    return "\n".join(lines) + "\n", sorted(expected)
+
+
+def _prose_share_latex(order: dict, note: tuple[str, str], cell: str) -> tuple[str, list]:
+    def tex(text: str) -> str:
+        return text.replace("%", BACKSLASH + "%")
+
+    lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}"]
+    expected = []
+    for section, said in order.items():
+        lines += [BACKSLASH + "begin{abstract}" if section == "Abstract" else
+                  f"{BACKSLASH}section{{{section}}}", ""]  # fmt: skip
+        for text, where in said:
+            lines += [tex(text), ""]
+            if where is not None:
+                expected.append([len(lines) - 1, where])
+        if section == "Abstract":
+            lines += [BACKSLASH + "end{abstract}", ""]
+        if section == note[1]:
+            said = tex(f"Then {note[0]} were seen.")
+            lines += [f"It was so.{BACKSLASH}footnote{{{said}}}", ""]
+            expected.append([len(lines) - 1, section])
+        if section == "Results":
+            lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
+                      f"A & {tex(cell)} " + BACKSLASH * 2]  # fmt: skip
+            expected.append([len(lines), "table"])
+            lines += [BACKSLASH + "end{tabular}", ""]
+    lines.append(BACKSLASH + "end{document}")
+    return "\n".join(lines) + "\n", sorted(expected)
+
+
 # ------------------------------------------ causal words, and each citation beside its sentence
 
 #: The parts of a paper `causal_papers` writes, each with the titles it may have, and whether
@@ -15723,6 +15851,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval words": st.one_of(interval_wordings().map(lambda drawn: drawn[0]),
                                 texts(ESTIMATES)),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
+    "written shares": prose_share_papers().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),
     "abstract against results": abstract_papers().map(

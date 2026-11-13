@@ -25537,9 +25537,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A percentage its counts give is explained by them, whatever the paper reports: it is
     not compared with the share the Results print for the same counts. Accepted.
-  - A share written in a sentence anywhere but the Abstract, "164 of 250 (75%)" in the
-    Results, is not held to its counts: only a table's n (%) and the Abstract's are.
+  - A share written in a sentence under any heading is held to its counts as the
+    Abstract's is, and one off them is said under Arithmetic (Basile, 2026-11-13). Only
+    `audit` holds it: `check` binds a project's shares to the analysis, and a share typed
+    there is an unbound number already. Accepted.
+  - The finding names the heading the share stands under, "in Results, ", "in the
+    Abstract, ", a title with a comma in it quoted; in a .docx it names none but the
+    Abstract, since its place in the report, "Results, paragraph 3", names the section
+    (the coordinator's choice on round 1 of #668, not yet Basile's). A note is named by the heading over its
+    definition as the audit reads headings, the reference list's set apart: a Markdown note
+    defined at the end of the file by the last heading before the reference list, wherever
+    it is referenced; a .docx's notes are placed as "the notes". Accepted.
+  - A table's share is the table reader's alone, and the Abstract's the Abstract against
+    Results', where it compares; where no Results heading lets it, the Abstract's share is
+    said as any section's. Pinned by
+    `tests/test_properties.py::test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it`,
+    `tests/test_corruption.py::test_a_word_paper_s_share_off_its_counts_is_said_once_and_its_table_s_as_a_table_s`.
+  - A table cell written as a sentence writes a share, "12 of 40 (50%)", is read by
+    neither reader: the table reader takes "12 (30.0)" and "12/40 (30.0)" alone, and the
+    sentence reader leaves a table's lines out. A figure's text is not read for shares.
     Accepted.
+  - A range written with a slash is no count and its denominator: after "grade", "stage",
+    "phase", "type", "class", "level", "step", "line" or "cycle", singular or plural, in
+    any case, up to 10 ("troponin levels 12/40" is read), and two numbers in a row up to
+    10 before a share, never in brackets after one, "75% (3/4)" (round 1 of #668: "Grade 3/4
+    neutropenia (12%)" was said to be 3 of 4). A real share of such numbers, "3/4 (50%)",
+    is not held to its counts, and a range after another word, "toxicity 2/4 (10%)", is
+    read as one. Accepted.
+  - A share the Introduction or the Discussion quotes from another paper is held to its
+    counts all the same: a wrong one is said, though it is not this paper's. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of

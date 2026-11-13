@@ -113,6 +113,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     folders: dict[Path, tuple[dict, dict, dict, frozenset, str | None]] = {}
     decoded: dict[tuple[Path, str], tuple[dict, dict, dict, frozenset, str | None]] = {}
     unfollowed: dict[Path, list[str]] = {}
+    inside: dict[Path, list[str]] = {}
     for entry in entries:
         folder = entry.parent
         if folder not in folders:
@@ -149,6 +150,8 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             ]
         read.trees.append(Tree(entry, folder, document, tuple(mine), named))
         unfollowed = {**_unfollowed(document, files, name, folder), **unfollowed}
+        for path, blocks in _inside_blocks(document, files, name, folder).items():
+            inside.setdefault(path, []).extend(blocks)
         classed.update(folder / path for path in document.classes)
         # A refusal counts only in a file the entry reads. One that holds a document of its
         # own is an entry, or passed over, and so is one nothing inputs: refused there, each
@@ -195,6 +198,14 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"{', and '.join(dict.fromkeys(stopped_in))}, and what a file inputs past "
                 "where it stopped is not followed"
             )
+        elif blocks := inside.get(path):
+            # The paper inputs it, from a block no check reads (round 1 of #674: the advice
+            # was to input it, which the paper did).
+            read.passed_over.append(
+                f"{path.as_posix()}: it is input only from inside a block the reader skipped "
+                f"({', '.join(dict.fromkeys(blocks))}), so it was not read; input it outside "
+                "the block, or name it"
+            )
         else:
             read.passed_over.append(
                 f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
@@ -223,6 +234,36 @@ def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> di
                 said[folder / target] = [f"{source.path} was not read past line {line}"]
                 pending += read(files[target], body=put.body,
                                 environments=put.environments).inputs  # fmt: skip
+    return said
+
+
+#: An `\\input` or an `\\include` with its path in braces, as a skipped block holds one.
+_BLOCK_INPUT = re.compile(r"\\(?:input|include)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
+#: A comment, to its line's end, which inputs nothing.
+_BLOCK_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+
+
+def _inside_blocks(document: Document, files: dict, entry: str,
+                   folder: Path) -> dict[Path, list[str]]:  # fmt: skip
+    """Each file an `\\input` or an `\\include` inside a block the reader skipped names, by
+    its path, with the block, as `file, lines A-B`: no check read the block, so the reader
+    followed none of them (round 1 of #674)."""
+    from manuscript_guard.text.latex.mask import Input
+
+    said: dict[Path, list[str]] = {}
+    for source in document.sources:
+        if source.loose:
+            continue
+        for block in source.reading.skipped:
+            held = _BLOCK_COMMENT.sub(lambda found: " " * len(found.group(0)),
+                                      source.text[block.offset : block.end])  # fmt: skip
+            for put in _BLOCK_INPUT.finditer(held):
+                at = block.offset + put.start()
+                target = _target(entry, Input(at, at + len(put.group(0)), put.group(1).strip(),
+                                              True, ()), "", files)[0]  # fmt: skip
+                if target is not None:
+                    said.setdefault(folder / target, []).append(
+                        f"{source.path}, {_lines(source.text, block)}")
     return said
 
 

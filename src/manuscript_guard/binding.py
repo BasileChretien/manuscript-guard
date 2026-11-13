@@ -183,7 +183,10 @@ def _first_refusal(item: Unbound, text: str) -> int | None:
                 if source.path.lower().endswith(".sty")}  # fmt: skip
     (packages if relative in packages else files)[relative] = text
     tree = read_tree(files, SUPPLEMENT_ENTRY if supplementary else ENTRY, packages=packages)
-    return next((refusal.offset for path, refusal in tree.refusals if path == relative), None)
+    # Not a block the reader skipped, past which it reads on (round 1 of #674: one above the
+    # number was taken for the first, and a binding the reader refuses was written).
+    return next((refusal.offset for path, refusal in tree.refusals
+                 if path == relative and refusal.end < 0), None)  # fmt: skip
 
 
 def typed_pointers(project: Project) -> list[Unbound]:

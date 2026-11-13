@@ -774,6 +774,21 @@ def test_a_latex_paper_read_only_up_to_a_refusal_is_not_looked_up(tmp_path, caps
     assert not (root / "literature" / "lookups").exists()
 
 
+def test_a_latex_paper_with_a_block_skipped_says_its_citations_are_not_read(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    """Round 1 of #674: past a block the reader skips the file is read on, and only the
+    citations in the block are not read; the refusal said those after it were not."""
+    root = _latex_paper(tmp_path, between="\\ifx\\a\\b As \\cite{other2018} said.\\fi")
+    monkeypatch.setattr(lookup, "default_transport", _refused)
+    capsys.readouterr()
+    assert main(["lookup", str(root)]) == 2
+    said = capsys.readouterr()
+    assert "manuscript/main.tex:5 is skipped" in said.err, said
+    assert "the citations in it are not read" in said.err, said
+    assert "after it" not in said.err, said
+
+
 # ------------------------------------------------------- a reference with no identifier
 
 #: The example's first reference, as the registries would hold it: answers in the shapes

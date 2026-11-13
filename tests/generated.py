@@ -1934,7 +1934,13 @@ LATEX_IN_CONDITIONALS = ("{} 57 \\fi", "\\else 58", "% \\fi 59\n", "\\newif\\iff
 #: What stops the reading as before, each drawn after every block skipped: a block with no
 #: end in the file, of each kind, and one whose end is past a brace that closes a group
 #: opened before it.
-LATEX_UNENDED = ("\\makeatletter 61", "{} 61", "{{\\makeatletter 61}} \\makeatother")
+LATEX_UNENDED = ("\\makeatletter 61", "{} 61", "{{\\makeatletter 61}} \\makeatother",
+                 # and one whose end is in the file, but which holds what changes how the rest
+                 # of it reads: a definition of a name with no `@`, a `\\catcode`, and a
+                 # `\\makeatother` inside a conditional it opened (round 1 of #674).
+                 "\\makeatletter\\renewcommand{{\\emph}}[1]{{#1}}\\makeatother 61",
+                 "{} \\catcode`\\@=11 61\\fi",
+                 "\\makeatletter {} x \\makeatother \\else 61 \\fi")  # fmt: skip
 
 
 @st.composite
@@ -1944,9 +1950,10 @@ def latex_skipped_blocks(
     """LaTeX documents in whose body the reader skips each block of every kind, in an order
     drawn, among words with a number: a `\\makeatletter` to its `\\makeatother`, in a figure
     or not, and a conditional to its matching `\\fi`, which holds one of everything of
-    `LATEX_IN_CONDITIONALS`; then, one document for each, what of `LATEX_UNENDED` stops the
-    reading (Basile, 2026-11-13). For each, the text, the blocks skipped, the stretches read
-    between them, and where the reading stops."""
+    `LATEX_IN_CONDITIONALS` and follows a comment that names `\\newif`; and a `\\newif` in the
+    body, which opens nothing; then, one document for each, what of `LATEX_UNENDED` stops the
+    reading (Basile, 2026-11-13; round 1 of #674). For each, the text, the blocks skipped,
+    the stretches read between them, and where the reading stops."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -1965,10 +1972,21 @@ def latex_skipped_blocks(
 
     head = "\\documentclass{article}\n\\newif\\ifmine\n\\begin{document}\n"
     body, skipped, read = head, [], []
-    for kind in draw(st.permutations(("at", "conditional"))):
+    for kind in draw(st.permutations(("at", "conditional", "newif"))):
         start = len(body)
         body += words() + " 4100.\n"
         read.append((start, len(body)))
+        if kind == "newif":
+            # A `\\newif` in the body defines its conditional, and opens nothing: the words
+            # after it are read (round 1 of #674).
+            body += "\\newif\\ifseen "
+            start = len(body)
+            body += words() + " 4200.\n"
+            read.append((start, len(body)))
+            continue
+        if kind == "conditional":
+            # A `\\newif` in a comment defines nothing.
+            body += "% see \\newif\n"
         block = at_block() if kind == "at" else conditional()
         if kind == "at":
             ends = block.index("\\makeatother") + len("\\makeatother")

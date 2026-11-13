@@ -176,7 +176,9 @@ def _refuse_unread(folder: Path, read_document) -> None:
         for path, refusal in read_document(folder, supplementary=supplementary).refusals:
             text = (folder / path).read_text(encoding="utf-8", errors="replace")
             line = text.count("\n", 0, refusal.offset) + 1
+            # A block skipped is read past: only what it holds is unread (round 1 of #674).
+            unread = ("is skipped", "in it") if refusal.end >= 0 else ("is refused", "after it")
             raise CitationsUnknown(
-                f"manuscript/{path}:{line} is refused ({refusal.message}), so the citations "
-                "after it are not read: put it right, then run this again"
+                f"manuscript/{path}:{line} {unread[0]} ({refusal.message}), so the citations "
+                f"{unread[1]} are not read: put it right, then run this again"
             )

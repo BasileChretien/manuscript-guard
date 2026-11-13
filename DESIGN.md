@@ -1605,11 +1605,18 @@ plain `\iffalse` block, `\ifthenelse`, whose branches are its arguments, and tho
 reference list's header, to its matching `\fi`, neither branch read (Basile, 2026-11-13: the
 reading stopped at one in three real papers, and with it 61 true findings past it). Each
 conditional inside opens a `\fi` of its own, TeX's `\ifx`, `\ifdefined`, `\ifnum` and the
-others and one `\newif` makes, and the name `\newif` defines opens none; a `\fi` or a
-`\makeatother` in a comment counts for nothing. Nothing in the block is read, and the
+others and one `\newif` makes, and the name a `\newif` the reader reads defines opens none,
+in the block or in the body, though one in a comment or a `\verb` defines nothing; a `\fi`
+or a `\makeatother` in a comment counts for nothing. Nothing in the block is read, and the
 reading goes on past it. A block whose braces close a group opened before it, or open one it
 does not close by its end, is refused as one with no end is: TeX ends a `\makeatletter` with
-its group, and the reader's groups would no longer be the file's. A block skipped is a
+its group, and the reader's groups would no longer be the file's. So is one that holds what
+changes how the rest of the file reads, which the reader would not see (round 1 of #674): a
+`\catcode`; a definition of a name with no `@` by `\def`, `\edef`, `\gdef`, `\xdef`, `\let`,
+`\newcommand`, `\renewcommand`, `\providecommand` or `\DeclareRobustCommand`, their starred
+forms too, where an internal `@` name, tex-qbio-pe-B1's `\long\def\@ifdim`, is skipped; a
+`\makeatother` inside a conditional the block opened; and a conditional that opens a
+`\makeatletter` and does not close it. A block skipped is a
 refusal of the tree, so BUILD fails it, its hint saying the rest of the file is read, and
 `audit` names its lines under "Could not read", where `--strict` counts it as it counted the
 stop, and in its summary's line for G6 and G14.
@@ -16560,12 +16567,17 @@ been sorted yet.
   Pinned by `tests/test_latex_mask.py::test_a_block_is_skipped_to_its_matching_end_or_refused`.
   - A `\fi` or a `\makeatother` in a `\verb` or a listing inside the block ends it there,
     and the reader reads on from it. Accepted.
-  - A command the author names with `if`, `\def\ifyes{...}` or `\let\ifyes\iftrue`, is
-    counted as opening a conditional, and only `\newif` is read as defining one. Accepted.
+  - A command the author names with `if` by a command outside the block, `\def\ifyes{...}`
+    or `\let\ifyes\iftrue`, is counted as opening a conditional inside it, and only `\newif`
+    is read as defining one. Accepted.
+  - A definition the block holds by a command not in the list, `\NewDocumentCommand` or
+    `\newenvironment`, is not seen, and a use of what it defines past the block is read as
+    the reader reads it. Accepted.
   - What a block holds is read by no check, the branch TeX prints among it: a heading, a
-    citation, a binding or an `\input` in it is not seen, and a file input only from inside
-    a block is named as input by no file. `check` fails BUILD on the block, so a project's
-    paper is not built with it in the body. Accepted.
+    citation or a binding in it is not seen, and a file the paper inputs only from inside a
+    block, by `\input{...}` or `\include{...}`, is passed over and said to be (round 1 of
+    #674). `check` fails BUILD on the block, so a project's paper is not built with it in
+    the body. Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
   but in two exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it

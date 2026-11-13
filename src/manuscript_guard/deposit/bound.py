@@ -103,9 +103,11 @@ def _first_refusal(document) -> tuple[tuple[int, ...], str] | None:
     read at all."""
     read = {source.path: source for source in document.sources if not source.loose}
     keys = _printed_at(list(read.values()))
+    # Not a block the reader skipped, past which it reads on and the headings with it (round
+    # 1 of #674: every row after one said no heading was known).
     found = sorted(
         (((*keys[at], refusal.offset), at, refusal) for at, refusal in document.refusals
-         if at in read and at in keys and at.lower().endswith(".tex")),
+         if at in read and at in keys and at.lower().endswith(".tex") and refusal.end < 0),
         key=lambda one: (one[0], one[1]),
     )  # fmt: skip
     if not found:

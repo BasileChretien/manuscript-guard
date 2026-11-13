@@ -164,7 +164,9 @@ it rather than stopping the reading: a `\makeatletter` to its `\makeatother`, an
 conditional, `\ifx`, `\if0\blind` or one `\newif` made, to its matching `\fi`, neither branch
 read. Nothing in the block is read, and the file is read on past it; `check` still fails on
 the block, and `audit` names the lines it skipped. One with no such end in the file stops the
-reading as any refusal does.
+reading as any refusal does, and so does one that holds a `\catcode` or defines a command
+whose name has no `@`, `\renewcommand{\emph}` say, which would change how the rest of the
+file reads: move the definition to the preamble.
 
 ## Building and submitting
 

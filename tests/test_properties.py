@@ -1041,7 +1041,10 @@ def test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_
     own, an `\\else`, a `\\fi` in a comment and a `\\newif` closing and opening none; nothing
     in a block is read, the words and numbers between are, and a block with no end in the
     file, or past a brace that closes a group opened before it, stops the reading as before.
-    The tree refuses each block skipped where the reader skipped it, so that BUILD fails it."""
+    So does one that defines a name with no `@`, holds a `\\catcode`, or ends a
+    `\\makeatletter` inside a conditional it opened; a `\\newif` in the body opens nothing,
+    and one in a comment defines nothing (round 1 of #674). The tree refuses each block
+    skipped where the reader skipped it, so that BUILD fails it."""
     for text, skipped, read, stop in drawn:
         reading = latex_mask.read(text)
         assert [(s.offset, s.end) for s in reading.skipped] == skipped, (reading.skipped, text)
@@ -1083,6 +1086,14 @@ def _a_block_is_skipped_across_a_group(patch: pytest.MonkeyPatch) -> None:
 
 def _a_bounded_block_stops_the_reading(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_block_end", lambda text, start, closer: -1)
+
+
+def _a_newif_in_the_body_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_named_by_newif", lambda self, at: False)
+
+
+def _a_definition_in_a_block_is_skipped(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BLOCK_DEFINERS", frozenset())
 
 
 def _a_delimited_use_is_refused_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
@@ -21610,6 +21621,14 @@ BROKEN = {
     ),
     "a block is skipped past a brace that closes a group opened before it": (
         _a_block_is_skipped_across_a_group,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a newif in the body opens a conditional": (
+        _a_newif_in_the_body_defines_nothing,
+        test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
+    ),
+    "a skipped block may define a name with no at sign": (
+        _a_definition_in_a_block_is_skipped,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,
     ),
     "a bounded block in the body stops the reading": (

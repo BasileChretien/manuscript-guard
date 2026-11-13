@@ -184,6 +184,22 @@ def test_a_bounded_block_in_the_body_is_skipped_and_the_rest_read(block: str) ->
         ("{\\makeatletter 1} \\makeatother", False),
         ("\\ifx\\a\\b {1 \\fi}", False),
         ("\\makeatletter 1 \\makeatotherwise", False),
+        # Round 1 of #674: a block that defines a name with no `@`, which changes how the
+        # rest of the file reads, or changes a character's category, is refused as before;
+        # one that defines an internal `@` name, tex-qbio-pe-B1's, is skipped.
+        ("\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}\\makeatother", False),
+        ("\\makeatletter\\let\\x\\relax\\makeatother", False),
+        ("\\ifx\\a\\b \\def\\x{1}\\fi", False),
+        ("\\ifx\\a\\b \\newcommand*{\\y}{2}\\fi", False),
+        ("\\ifx\\a\\b \\DeclareRobustCommand\\z{2}\\fi", False),
+        ("\\ifx\\a\\b \\catcode`\\@=11 \\fi", False),
+        ("\\makeatletter\\long\\def\\@ifdim#1#2#3{#2}\\makeatother", True),
+        ("\\makeatletter\\def\\@x{1}\\let\\@y\\@x\\makeatother", True),
+        # A `\makeatother` inside a conditional the block opened ends nothing, and a
+        # `\makeatletter` a conditional opens and does not close outlives its `\fi`.
+        ("\\makeatletter \\ifx\\a\\b x \\makeatother \\else Hidden 55 \\fi", False),
+        ("\\ifx\\a\\b \\makeatletter \\fi", False),
+        ("\\ifx\\a\\b \\makeatletter x\\makeatother \\fi", True),
     ],
 )
 def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: bool) -> None:
@@ -197,9 +213,27 @@ def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: 
     else:
         assert reading.skipped == () and [r.offset for r in reading.refusals] == [at], block
         assert set(reading.masked[at:]) <= {NUL, "\n"}
-    # A `\newif` in the body defines a conditional, and is no block.
+    # A `\newif` in the body defines a conditional, and is no block; one in a comment or a
+    # `\verb` defines nothing (round 1 of #674).
     defined = read("\\newif\\iffound Then 77 died.", body=True)
     assert defined.refusals == defined.skipped == () and "77" in defined.masked
+    for written in ("% see \\newif\n", "\\verb|\\newif|"):
+        conditional = read(f"{written}\\ifx\\a\\b Hidden 55\\fi Then 77.", body=True)
+        assert len(conditional.skipped) == 1 and "55" not in conditional.masked, written
+        assert "77" in conditional.masked
+
+
+def test_a_redefinition_in_a_block_stops_the_reading_as_before() -> None:
+    """Round 1 of #674: skipped, a `\\renewcommand{\\emph}` in a `\\makeatletter` block was
+    lost, and `\\emph` past it read as LaTeX's, where the base refused the block."""
+    text = ("\\begin{document}\n\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}"
+            "\\makeatother\nSee \\emph{12 cases}.")  # fmt: skip
+    reading = read(text)
+    at = text.index("\\makeatletter")
+    assert reading.skipped == () and [r.offset for r in reading.refusals] == [at]
+    assert reading.refusals[0].message == ("\\makeatletter in the body changes how characters "
+                                           "are read")  # fmt: skip
+    assert "12" not in reading.masked
 
 
 def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -> None:

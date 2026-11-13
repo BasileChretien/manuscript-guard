@@ -110,6 +110,19 @@ def test_a_block_skipped_in_the_body_is_said_by_its_lines_and_the_rest_read(
     assert stop.startswith("paper.tex: not read past line 5"), stop
 
 
+def test_a_file_input_only_from_a_skipped_block_is_said_so(tmp_path: Path) -> None:
+    """Round 1 of #674: a file the paper inputs only inside a block the reader skips was
+    passed over with the advice to input it from the paper's main file, which it does."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\if0\\blind\n\\input{names}\n\\fi\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    (tmp_path / "names.tex").write_text("Ada Example.\n", encoding="utf-8")
+    (said,) = [one for one in audit([paper], None).passed_over if "names.tex" in one]
+    assert "inside a block the reader skipped" in said and "paper.tex, lines 4-6" in said, said
+    assert "\\input it" not in said, said
+
+
 def test_a_pdf_in_which_no_heading_was_read_is_said_to_be_read_as_one_text() -> None:
     """A PDF with no line that holds a section's name alone places no heading (2509.01351's
     small capitals, corpus run of 2026-11-11), and was said nothing of: it is read as one

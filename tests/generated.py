@@ -1925,6 +1925,11 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
 #: run of 2026-11-13): tex-stat-ap-B2's bookmark, tex-qbio-pe-B1's definition, and a test.
 LATEX_AT_BLOCKS = ("\\pdfbookmark[0]{\\@title}{title 55}", "\\long\\def\\@ifdim#1#2#3{#2 55}",
                    "\\@ifundefined{c@x}{55}{56}")  # fmt: skip
+#: A definition each such block holds as well, of a name that opens with a command the block
+#: is refused at, `\\fi`, `\\if` or `\\let`: with `@` a letter it is one name, read with its
+#: definer (final check of #674).
+LATEX_AT_NAMES = ("\\def\\fi@x{55}", "\\gdef\\if@mine{1}", "\\let\\let@x\\relax",
+                  "\\newcommand{\\iftrue@y}{57}")  # fmt: skip
 #: What opens a conditional that a `\\fi` closes: TeX's primitives, tex-stat-ap-A1's
 #: `\\if0\\blind`, and `\\ifmine`, which the preamble's `\\newif` makes.
 LATEX_CONDITIONALS = ("\\if0\\blind", "\\ifx\\a\\b", "\\ifdefined\\x", "\\ifnum\\c>2",
@@ -1971,7 +1976,8 @@ def latex_skipped_blocks(
         return opener + " " + words() + " " + " ".join(inside) + " \\fi"
 
     def at_block() -> str:
-        block = "\\makeatletter " + draw(st.sampled_from(LATEX_AT_BLOCKS)) + "\\makeatother"
+        held = draw(st.sampled_from(LATEX_AT_BLOCKS)) + " " + draw(st.sampled_from(LATEX_AT_NAMES))
+        block = "\\makeatletter " + held + "\\makeatother"
         if draw(st.booleans()):
             return "\\begin{figure}\n" + block + "\n\\caption{" + words() + "}\n\\end{figure}"
         return block

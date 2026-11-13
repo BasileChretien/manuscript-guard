@@ -25191,8 +25191,11 @@ Open, recorded as each change landed:
     audit does not; a caption whose words are a section's name alone and nothing else is
     rare. Accepted.
   - A paper that uses a heading style anywhere is read by its styles alone, its typed
-    titles text. Where the titles cannot be placed, a structured abstract's parts with no
-    Introduction after them, the order of its parts never starting again and no title it
+    titles text, unless its only paragraphs in a heading style are a table's cells, which
+    then place nothing (#678). A paragraph in a heading style in a text box counts as one
+    outside a table, so a paper whose other heading styles are cells is read by its styles
+    and its typed titles stay text, as before #678 (check of #678). Where the titles
+    cannot be placed, a structured abstract's parts with no Introduction after them, the order of its parts never starting again and no title it
     cannot hold among them, the audit places nothing and says so, and `init --from` makes
     each a heading of level 1, so the Abstract ends at its first part. Where the typed
     titles cannot be placed for any reason, both readers place those in bold alone where

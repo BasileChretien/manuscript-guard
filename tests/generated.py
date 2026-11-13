@@ -13676,51 +13676,88 @@ def docx_reference_ends(draw: st.DrawFn) -> tuple[list[str | tuple[str, str]], l
 #: What ends a reference list under a styled heading in a .docx once it holds an entry, with
 #: no heading after it (Basile, 2026-11-14): `("text", line)` a plain paragraph, `("caption",
 #: line)` one in a caption style, `("table", label, value, ...)` a table of a row to each
-#: pair. `{n}` is the
-#: number after the end that is to be listed, `{k}` a caption's number.
+#: pair. `{n}` is the number after the end that is to be listed, `{k}` a caption's number.
+#: The audit lists "A{k}" of "Table A{k}." as it does anywhere: no cross-reference it knows.
 DOCX_DISPLAY_ENDS = {
     "a table": (("table", "Serious", "{n}"),),
     "a caption style": (("caption", "Reports by year"), ("text", "Of them {n} were serious.")),
     "Fig 1.": (("text", "Fig {k}."), ("text", "Of them {n} were serious.")),
     "Figure 2:": (("text", "Figure {k}: of them {n} were serious."),),
+    "Figure IV.": (("text", "Figure IV. Of them {n} were serious."),),
     "Table S1.": (("text", "Table S{k}. Sites; {n} were serious."),),
     "S4 Table.": (("text", "S{k} Table. Sites; {n} were serious."),),
     "Supplementary Table 3": (("text", "Supplementary Table {k}"), ("table", "Serious", "{n}")),
+    "Table A1.": (("text", "Table A{k}. Sites; {n} were serious."),),
 }
-#: A reference list laid out as a table right under its heading: it reads on to its end,
-#: and then ends at the display after it.
-LIST_AS_A_TABLE = "a list laid out as a table"
+#: The ways a reference list is laid out as tables, which hold no entry outside a table and
+#: so read on to the next heading (round 1 of #681): right under the heading, under its
+#: caption, under a note, and as tables of one cell with a note between.
+LISTS_AS_TABLES = ("right under its heading", "under its caption", "under a note",
+                   "one-cell tables")  # fmt: skip
+#: Entries no style writes with a caption's shape, though one opens with "Fig": an author
+#: named Figi, whose "i" `_NO_ENTRY` read as a Roman numeral (round 1 of #681).
+_FIGI = "Figi M, Roe A. Title. BMJ {year};{vol}:m{page}."
+#: An entry with a reference's shape, which a list must hold before a display ends it.
+_SHAPED = _CUT_ENTRIES[0]
+#: A note between a list's heading and its entries.
+_LIST_NOTE = "Numbered in order of citation."
+
+
+def _entries(draw: st.DrawFn) -> list[str]:
+    """A list's entries: one with a reference's shape, others of `_CUT_ENTRIES`, one with no
+    reference's shape among them or not, in an order drawn, and `_FIGI` after the first
+    with a reference's shape, where a caption's end would cut it."""
+    drawn = draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=0, max_size=2))
+    order = draw(st.permutations([_SHAPED, *drawn]))
+    shaped = order.index(_SHAPED)
+    order.insert(draw(st.integers(shaped + 1, len(order))), _FIGI)
+    return [entry.format(year=draw(st.integers(1990, 2025)), vol=draw(st.integers(1, 400)),
+                         page=draw(st.integers(1, 99)))
+            for entry in order]  # fmt: skip
+
+
+def _planted(numbers) -> str:
+    drawn = next(numbers)
+    return f"{drawn // 100}.{drawn % 100:02d}"
 
 
 @st.composite
 def docx_reference_displays(draw: st.DrawFn) -> tuple[list[tuple[str, ...]], list[str]]:
     """The paragraphs of a .docx, `("heading", "References")` a heading-styled one: a list under
-    each heading ended by each of `DOCX_DISPLAY_ENDS` and a list laid out as a table, in an
-    order drawn, an empty paragraph under the heading or not; and the numbers after each end,
-    which are to be listed. Every entry's numbers are cut, a table's too."""
-    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=10, max_size=10, unique=True)))
+    each heading ended by each of `DOCX_DISPLAY_ENDS`, and one laid out in tables each way of
+    `LISTS_AS_TABLES`, ended by the heading "Appendix", in an order drawn; an empty paragraph
+    or a note under the heading or neither; and the numbers after each end, which are to be
+    listed. Every entry's numbers are cut, a table's too."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=20, max_size=20, unique=True)))
     paragraphs: list[tuple[str, ...]] = [("text", "We saw what was reported.")]
     planted: list[str] = []
-    for kind in draw(st.permutations([*DOCX_DISPLAY_ENDS, LIST_AS_A_TABLE])):
+    for kind in draw(st.permutations([*DOCX_DISPLAY_ENDS, *LISTS_AS_TABLES])):
         paragraphs.append(("heading", "References"))
-        if draw(st.booleans()):
-            paragraphs.append(("text", ""))
-        entries = [entry.format(year=draw(st.integers(1990, 2025)), vol=draw(st.integers(1, 400)),
-                                page=draw(st.integers(1, 99)))
-                   for entry in draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=1,
-                                              max_size=3))]  # fmt: skip
-        if kind == LIST_AS_A_TABLE:
-            paragraphs.append(("table", *(cell for at, entry in enumerate(entries, 1)
-                                          for cell in (str(at), entry))))  # fmt: skip
-            ends = DOCX_DISPLAY_ENDS["Fig 1."]
-        else:
-            paragraphs += [("text", entry) for entry in entries]
-            ends = DOCX_DISPLAY_ENDS[kind]
-        drawn = next(numbers)
-        number = f"{drawn // 100}.{drawn % 100:02d}"
+        entries = _entries(draw)
+        number, k = _planted(numbers), draw(st.integers(1, 9))
         planted.append(number)
-        k = draw(st.integers(1, 9))
-        paragraphs += [tuple(part.format(n=number, k=k) for part in end) for end in ends]
+        if kind in LISTS_AS_TABLES:
+            if kind == "under its caption":
+                paragraphs.append(("text", f"Table {k}. References"))
+            elif kind == "under a note":
+                paragraphs.append(("text", _LIST_NOTE))
+            if kind == "one-cell tables":
+                for at, entry in enumerate(entries):
+                    if at:
+                        paragraphs.append(("text", draw(st.sampled_from(("", _LIST_NOTE)))))
+                    paragraphs.append(("table", entry))
+            else:
+                paragraphs.append(("table", *(cell for at, entry in enumerate(entries, 1)
+                                              for cell in (str(at), entry))))  # fmt: skip
+            paragraphs += [("heading", "Appendix"), ("text", f"Of them {number} were serious.")]
+            continue
+        paragraphs += [("text", draw(st.sampled_from(("", _LIST_NOTE))))] if draw(
+            st.booleans()) else []  # fmt: skip
+        paragraphs += [("text", entry) for entry in entries]
+        if kind == "Table A1.":
+            planted.append(f"A{k}")
+        paragraphs += [tuple(part.format(n=number, k=k) for part in end)
+                       for end in DOCX_DISPLAY_ENDS[kind]]  # fmt: skip
     return paragraphs, planted
 
 
@@ -13730,41 +13767,59 @@ MARKDOWN_DISPLAY_ENDS = {
     "a pipe table": "| Reports | n |\n|---|---|\n| Serious | {n} |",
     "a grid table": "+---------+------+\n| Serious | {n} |\n+---------+------+",
     "Fig 1.": "**Fig {k}.** Of them {n} were serious.",
+    "Figure IV.": "Figure IV. Of them {n} were serious.",
     "an image": "![A chart](figure{k}.png)**Fig {k}.**\n\nOf them {n} were serious.",
     "Table S1.": "Table S{k}. Sites; {n} were serious.",
     "S4 Table.": "**S{k} Table.** Sites; {n} were serious.",
     "Supplementary Table 3": "Supplementary Table {k}\n\n| Reports | n |\n|---|---|\n"
                              "| Serious | {n} |",
+    "Table A1.": "Table A{k}. Sites; {n} were serious.",
 }  # fmt: skip
 
 
 @st.composite
 def markdown_reference_displays(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A Markdown paper with a list under each title of `REFERENCE_HEADINGS` ended by each of
-    `MARKDOWN_DISPLAY_ENDS` and a list laid out as a pipe table, in an order drawn; and the
-    numbers after each end, which are to be listed. Every entry's numbers are cut."""
-    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=10, max_size=10, unique=True)))
+    `MARKDOWN_DISPLAY_ENDS`, its entries numbered as pandoc writes a Word list's, as typed or
+    not at all, and
+    one laid out in pipe tables each way of `LISTS_AS_TABLES`, ended by `# Appendix`, in an
+    order drawn; and the numbers after each end, which are to be listed. Every entry's
+    numbers are cut."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=20, max_size=20, unique=True)))
     blocks = ["We saw what was reported."]
     planted: list[str] = []
     headings = draw(st.permutations(REFERENCE_HEADINGS))
-    for index, kind in enumerate(draw(st.permutations([*MARKDOWN_DISPLAY_ENDS,
-                                                         LIST_AS_A_TABLE]))):  # fmt: skip
+    kinds = draw(st.permutations([*MARKDOWN_DISPLAY_ENDS, *LISTS_AS_TABLES]))
+    displayed = 0
+    for index, kind in enumerate(kinds):
         blocks.append("\n".join(headings[index % len(headings)]))
-        entries = [entry.format(year=draw(st.integers(1990, 2025)), vol=draw(st.integers(1, 400)),
-                                page=draw(st.integers(1, 99)))
-                   for entry in draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=1,
-                                              max_size=3))]  # fmt: skip
-        if kind == LIST_AS_A_TABLE:
-            blocks.append("| | Entry |\n|---|---|\n" + "\n".join(
-                f"| {at} | {entry} |" for at, entry in enumerate(entries, 1)))
-            end = MARKDOWN_DISPLAY_ENDS["Fig 1."]
-        else:
-            blocks += [f"{at}. {entry}" for at, entry in enumerate(entries, 1)]
-            end = MARKDOWN_DISPLAY_ENDS[kind]
-        drawn = next(numbers)
-        number = f"{drawn // 100}.{drawn % 100:02d}"
+        entries = _entries(draw)
+        number, k = _planted(numbers), draw(st.integers(1, 9))
         planted.append(number)
-        blocks.append(end.format(n=number, k=draw(st.integers(1, 9))))
+        if kind in LISTS_AS_TABLES:
+            if kind == "under its caption":
+                blocks.append(f"Table {k}. References")
+            elif kind == "under a note":
+                blocks.append(_LIST_NOTE)
+            if kind == "one-cell tables":
+                for at, entry in enumerate(entries):
+                    if at and draw(st.booleans()):
+                        blocks.append(_LIST_NOTE)
+                    blocks.append(f"| {entry} |\n|---|")
+            else:
+                blocks.append("| | Entry |\n|---|---|\n" + "\n".join(
+                    f"| {at} | {entry} |" for at, entry in enumerate(entries, 1)))
+            blocks += ["# Appendix", f"Of them {number} were serious."]
+            continue
+        # Numbered with the stop escaped, numbered as typed, and not numbered, in turn, so
+        # that every draw holds lists of each: "Figi M," opens a line only in the last.
+        stop = ("\\.", ".", None)[displayed % 3]
+        displayed += 1
+        blocks += [entry if stop is None else f"{at}{stop} {entry}"
+                   for at, entry in enumerate(entries, 1)]  # fmt: skip
+        if kind == "Table A1.":
+            planted.append(f"A{k}")
+        blocks.append(MARKDOWN_DISPLAY_ENDS[kind].format(n=number, k=k))
     return "\n\n".join(blocks) + "\n", planted
 
 

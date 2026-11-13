@@ -160,10 +160,15 @@ def reference_lists(text: str) -> list[tuple[int, int]]:
     return sorted(_lists(text, marked=True, ends=True) + _lists(text, marked=False, ends=True))
 
 
-#: A footnote's definition, `[^1]:`, at the start of a line; and a caption numbered with
-#: a letter, as an appendix numbers its displays, "Table A1.", "Figure B.2:", "Figure A2 Rates".
-_NOTE = re.compile(r"[ ]{0,3}(?:\[\^[^\]\s]+\]:|[*_]{0,3}(?:supplementa(?:ry|l)\s+)?"
-                   r"(?:fig(?:ure)?\.?|table)\s*[a-z]\.?[0-9]+(?:\s*\\?[.:|]|\s))", re.IGNORECASE)
+#: A caption numbered with a letter, as an appendix numbers its displays, "Table A1.",
+#: "Figure B.2:", "Figure A2 Rates".
+_LETTERED = (r"[*_]{0,3}(?:supplementa(?:ry|l)\s+)?"
+             r"(?:fig(?:ure)?\.?|table)\s*[a-z]\.?[0-9]+(?:\s*\\?[.:|]|\s)")  # fmt: skip
+#: A footnote's definition, `[^1]:`, at the start of a line; and a caption numbered with a
+#: letter (`_LETTERED`).
+_NOTE = re.compile(rf"[ ]{{0,3}}(?:\[\^[^\]\s]+\]:|{_LETTERED})", re.IGNORECASE)
+#: A caption numbered with a letter alone, at the start of a line.
+_LETTERED_CAPTION = re.compile(rf"[ ]{{0,3}}{_LETTERED}", re.IGNORECASE)
 
 
 def _ends_here(lines: list[str], number: int) -> bool:
@@ -291,10 +296,13 @@ _LABEL = re.compile(r"[ ]{0,3}(\*\*|__)(?=[^\s*_])[^*_\n]{1,80}?(?:\1[ \t]*:|:[ 
 #: file 1"; a table, a pipe or a grid one; an image; a binding of a table or a figure. A
 #: caption's number is needed, so that "Fig trees and ..." and an author named Box are
 #: entries; an appendix's may be a letter, and a figure's or a table's a Roman numeral
-#: ("TABLE I."), but not a box's: "Box I, Jenkins GM." is an entry.
+#: ("TABLE I."), but not a box's: "Box I, Jenkins GM." is an entry. A figure's Roman
+#: numeral follows "Fig." or a space and has a stop or a colon after it, "Figure IV.": "Figi
+#: M," is an entry (round 1 of #681).
 _NO_ENTRY = re.compile(
     r"[ ]{0,3}(?:!\[|\||\+[-=]|\{\{|table:|[*_]{0,3}(?:"
-    r"(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?)\s*[ivx]+\b"
+    r"(?:supplementa(?:ry|l)\s+|online\s+|e)?"
+    r"(?:fig(?:ure)?s?(?:\.\s*|\s+(?=[ivx]+[.:]))|tables?\s*)[ivx]+\b"
     r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?|box)\s*s?[0-9]"
     r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?appendi(?:x|ces)\s*(?:[0-9]|[a-z]\b|[ivx]+\b)"
     r"|additional\s+files?\s*[0-9]"
@@ -356,8 +364,9 @@ def _printed(paragraph: str) -> str:
 def is_no_entry(line: str) -> bool:
     """Whether a line is by its shape no entry of a reference list (`_NO_ENTRY`): a figure's,
     a table's, a box's or an appendix's caption, a pipe or a grid table's line, an image or
-    a binding of a display. A list under a heading ends at one (`audit.bibliography_spans`)."""
-    return bool(_NO_ENTRY.match(line))
+    a binding of a display; or a caption numbered with a letter, "Table A1.", which ends a
+    list for G2 (`_NOTE`). A list under a heading ends at one (`audit.bibliography_spans`)."""
+    return bool(_NO_ENTRY.match(line) or _LETTERED_CAPTION.match(line))
 
 
 def ends_a_list_alone(paragraph: str) -> bool:

@@ -1278,6 +1278,9 @@ def test_a_styled_reference_heading_in_a_docx_runs_to_the_next_heading_or_a_disp
 #: A paragraph style pandoc reads as a caption, by its name, with an id of its own.
 _CAPTION_STYLE = ('<w:style w:type="paragraph" w:styleId="Legend"><w:name w:val="caption"/>'
                   "</w:style>")  # fmt: skip
+#: The numbers of the captions numbered with a letter below, which the audit lists as it
+#: lists "Table A1" anywhere in the text: no cross-reference it knows.
+_LETTERED = ("A1", "B.2")
 #: The entries of a reference list, whose years, volumes and pages are cut with it.
 _ENTRIES = (para("Smith J, Jones K. Title. Lancet. 2019;393:100-10.")
             + para("Doe A. Title. BMJ 2021;372:m71."))  # fmt: skip
@@ -1295,9 +1298,12 @@ _ENTRIES = (para("Smith J, Jones K. Title. Lancet. 2019;393:100-10.")
         para("S4 Table. Of them 9.99 and 4.44."),
         para("Supplementary Table 3") + f"<w:tbl>{row('Serious', '9.99')}</w:tbl>"
         + para("and 4.44."),
+        para("Table A1. Of them 9.99 and 4.44."),
+        para("Figure B.2: of them 9.99 and 4.44."),
+        para("Figure IV. Of them 9.99 and 4.44."),
     ],
     ids=["a table", "a caption style", "Fig 1.", "Figure 2:", "Table S1.", "S4 Table.",
-         "Supplementary Table 3"],  # fmt: skip
+         "Supplementary Table 3", "Table A1.", "Figure B.2:", "Figure IV."],  # fmt: skip
 )
 def test_a_docx_reference_list_with_no_heading_after_it_ends_at_a_display(
     tmp_path: Path, after: str
@@ -1313,27 +1319,64 @@ def test_a_docx_reference_list_with_no_heading_after_it_ends_at_a_display(
     body = para("We saw 77.") + heading("References") + _ENTRIES + after
     paper = make_docx(tmp_path / "paper.docx", body, _CAPTION_STYLE)
     report = audit([paper], [outputs])
-    assert sorted(c.text for c in report.unmatched) == ["4.44", "9.99"], report.not_audited
+    assert sorted(c.text for c in report.unmatched if c.text not in _LETTERED) == [
+        "4.44", "9.99"], report.not_audited  # fmt: skip
     assert report.not_audited == ["paper.docx: References, paragraphs 1-2, read as the "
                                   "reference list"]  # fmt: skip
 
 
-def test_a_docx_reference_list_laid_out_as_a_table_reads_as_before(tmp_path: Path) -> None:
-    """A reference list laid out as a table starts as one, right under its heading, so it is
-    read to its end as before, its rows' years and pages cut; the caption after it ends it."""
+#: Entries of a list laid out in a table's rows, their years, volumes and pages cut with it.
+_TABLED = (("1", "Smith J, Jones K. Title. Lancet. 2019;393:100-10."),
+           ("2", "Doe A. Title. BMJ 2021;372:m71."))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        f"<w:tbl>{row(*_TABLED[0])}{row(*_TABLED[1])}</w:tbl>",
+        para("Table 1. References") + f"<w:tbl>{row(*_TABLED[0])}{row(*_TABLED[1])}</w:tbl>",
+        para("Numbered in order of citation.")
+        + f"<w:tbl>{row(*_TABLED[0])}{row(*_TABLED[1])}</w:tbl>",
+        f"<w:tbl>{row(_TABLED[0][1])}</w:tbl>{para('')}<w:tbl>{row(_TABLED[1][1])}</w:tbl>",
+        f"<w:tbl>{row(_TABLED[0][1])}</w:tbl>{para('Numbered in order of citation.')}"
+        f"<w:tbl>{row(_TABLED[1][1])}</w:tbl>",
+    ],
+    ids=["right under its heading", "under its caption", "under a note",
+         "one-cell tables", "one-cell tables with a note between"],  # fmt: skip
+)
+def test_a_docx_reference_list_laid_out_as_a_table_reads_as_before(
+    tmp_path: Path, listed: str
+) -> None:
+    """A reference list laid out as a table, right under its heading or under a caption or
+    a note, or as tables of one cell with paragraphs between, is read to its end as before,
+    its rows' years and pages cut: no entry is outside a table, and no table ends a list
+    whose entries are in tables. A note above ended it at its own first row, and every
+    year, volume and page in it was reported as not found (round 1 of #681)."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
-    table = (f"<w:tbl>{row('1', 'Smith J, Jones K. Title. Lancet. 2019;393:100-10.')}"
-             f"{row('2', 'Doe A. Title. BMJ 2021;372:m71.')}</w:tbl>")  # fmt: skip
-    body = (para("We saw 77.") + heading("References") + table
-            + para("Figure 1. Of them 9.99."))  # fmt: skip
+    body = (para("We saw 77.") + heading("References") + listed + heading("Appendix")
+            + para("It was 9.99."))  # fmt: skip
     paper = make_docx(tmp_path / "paper.docx", body)
-    document = read_docx_text(paper)
-    from manuscript_guard.audit import docx_bibliography_spans
-
-    [(start, end)] = docx_bibliography_spans(document)
-    assert document.body.split("\n")[end] == "Figure 1. Of them 9.99."
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
+def test_an_entry_by_an_author_named_figi_ends_no_reference_list(tmp_path: Path) -> None:
+    """"Figi M," opens an entry, not a figure's caption numbered "i": `_NO_ENTRY` took it for
+    one, and the list ended there, its years and pages read (round 1 of #681). A figure
+    numbered in Roman needs a dot after "Fig", or a space before the numeral and a stop
+    after it."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    body = (para("We saw 77.") + heading("References") + _ENTRIES
+            + para("Figi M, Roe A. Title. BMJ 2020;370:m1.")
+            + f"<w:tbl>{row('Serious', '9.99')}</w:tbl>")  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", body)
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+    markdown = tmp_path / "paper.md"
+    markdown.write_text("We saw 77.\n\n# References\n\n1. Smith J, Jones K. Title. Lancet. "
+                        "2019;393:100-10.\n\n2. Figi M, Roe A. Title. BMJ 2020;370:m1.\n\n"
+                        "| Reports | n |\n|---|---|\n| Serious | 9.99 |\n", encoding="utf-8")
+    assert [c.text for c in audit([markdown], [outputs]).unmatched] == ["9.99"]
 
 
 def test_a_paragraph_in_a_caption_style_is_a_caption_line_and_an_empty_one_is_none(
@@ -1365,9 +1408,11 @@ def test_a_paragraph_in_a_caption_style_is_a_caption_line_and_an_empty_one_is_no
         "Table S1. Of them 9.99 and 4.44.",
         "**S4 Table.** Of them 9.99 and 4.44.",
         "Supplementary Table 3\n\n| Serious | 9.99 |\n|---|---|\n| Fatal | 4.44 |",
+        "Table A1. Of them 9.99 and 4.44.",
+        "Figure B.2: of them 9.99 and 4.44.",
     ],
     ids=["a pipe table", "a grid table", "Fig 1.", "an image", "Table S1.", "S4 Table.",
-         "Supplementary Table 3"],  # fmt: skip
+         "Supplementary Table 3", "Table A1.", "Figure B.2:"],  # fmt: skip
 )
 @pytest.mark.parametrize("title", ["# References", "References\n----------"])
 def test_a_markdown_reference_list_with_no_heading_after_it_ends_at_a_display(
@@ -1385,21 +1430,39 @@ def test_a_markdown_reference_list_with_no_heading_after_it_ends_at_a_display(
                      f"2019;393:100-10.\n\n2. Doe A. Title. BMJ 2021;372:m71.\n\n{after}\n",
                      encoding="utf-8")  # fmt: skip
     report = audit([paper], [outputs])
-    assert sorted(c.text for c in report.unmatched) == ["4.44", "9.99"], report.not_audited
+    assert sorted(c.text for c in report.unmatched if c.text not in _LETTERED) == [
+        "4.44", "9.99"], report.not_audited  # fmt: skip
 
 
+#: A reference list laid out as a pipe table.
+_PIPED = ("| | Entry |\n|---|---|\n| 1 | Smith J, Jones K. Title. Lancet. 2019;393:100-10. |\n"
+          "| 2 | Doe A. Title. BMJ 2021;372:m71. |")
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        _PIPED,
+        f"Table 1. References\n\n{_PIPED}",
+        f"Numbered in order of citation.\n\n{_PIPED}",
+        "| Smith J, Jones K. Title. Lancet. 2019;393:100-10. |\n|---|\n\n"
+        "| Doe A. Title. BMJ 2021;372:m71. |\n|---|",
+        "| Smith J, Jones K. Title. Lancet. 2019;393:100-10. |\n|---|\n\n"
+        "Numbered in order of citation.\n\n| Doe A. Title. BMJ 2021;372:m71. |\n|---|",
+    ],
+    ids=["right under its heading", "under its caption", "under a note",
+         "one-cell tables", "one-cell tables with a note between"],  # fmt: skip
+)
 @pytest.mark.parametrize("title", ["# References", "References\n=========="])
 def test_a_markdown_reference_list_laid_out_as_a_table_reads_as_before(
-    tmp_path: Path, title: str
+    tmp_path: Path, title: str, listed: str
 ) -> None:
-    """A Markdown reference list laid out as a pipe table, right under its heading, under a
-    setext underline too, is read to its end as before; the caption after it ends it."""
+    """A Markdown reference list laid out as pipe tables, under a setext title too, right
+    under it or under a caption or a note, is read to its end as before, as the .docx's is."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     paper = tmp_path / "paper.md"
-    paper.write_text(f"We saw 77.\n\n{title}\n\n| | Entry |\n|---|---|\n"
-                     "| 1 | Smith J, Jones K. Title. Lancet. 2019;393:100-10. |\n"
-                     "| 2 | Doe A. Title. BMJ 2021;372:m71. |\n\nFigure 1. Of them 9.99.\n",
+    paper.write_text(f"We saw 77.\n\n{title}\n\n{listed}\n\n# Appendix\n\nIt was 9.99.\n",
                      encoding="utf-8")  # fmt: skip
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 

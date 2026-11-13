@@ -722,11 +722,16 @@ def _end_at_a_display(
     """Where a list from `start` ends at a display, before `end`, once it holds an entry: a
     .docx's table or paragraph in a caption style (`displays`), and in either reader a line
     by its shape no entry (`is_no_entry`), "Fig 1.", "S4 Table.", "Supplementary Table 3",
-    in Markdown a pipe or a grid table's line or an image too. In Markdown such a line opens
-    a paragraph; in a .docx it is outside a table, and not the line ` | ` a table's row
-    opens with. A list laid out as a table starts as one, right under its heading, and so
-    reads on to its end as before. A line of dashes or equals signs, a setext heading's
-    underline, is no entry."""
+    "Table A1.", in Markdown a pipe or a grid table's line or an image too. In Markdown such
+    a line opens a paragraph; in a .docx it is outside a table, and not the line ` | ` a
+    table's row opens with.
+
+    An entry is a line outside a table with a reference's shape (`looks_like_reference`), in
+    Markdown as pandoc prints its escapes, `82\\.`. So a list laid out as a table, right
+    under its heading or under a caption or a note, or as tables of one cell with
+    paragraphs between, holds no entry and reads on to its end as before: a note above the
+    table ended the list at its own first row (round 1 of #681). A list none of whose
+    entries has a reference's shape is not ended here either."""
     held = False
     for at in range(start + 1, end):
         line = lines[at]
@@ -736,8 +741,13 @@ def _end_at_a_display(
             else not lines[at - 1].strip() and is_no_entry(line)
         ):
             return at
-        held = held or bool(line.strip().strip("=-").strip())
+        if not held and at not in cells:
+            held = looks_like_reference(_ESCAPED.sub(r"\1", line) if displays is None else line)
     return end
+
+
+#: A character Markdown escapes with a backslash, as pandoc writes "82\." of a Word list.
+_ESCAPED = re.compile(r"\\([^\w\s])")
 
 
 def docx_displays(document) -> frozenset[int]:

@@ -11698,7 +11698,7 @@ from generated import docx_reference_displays, markdown_reference_displays  # no
 def _styled_docx_of(path: Path, paragraphs: list[tuple[str, ...]]) -> Path:
     """A .docx of `paragraphs` (`generated.DOCX_DISPLAY_ENDS`): a heading in Word's built-in
     "Heading1", a caption in a style named "caption" with an id of its own, and a table of
-    a row to each pair of cells."""
+    a row to each pair of cells, or of one cell."""
     import zipfile
     from xml.sax.saxutils import escape
 
@@ -11708,9 +11708,9 @@ def _styled_docx_of(path: Path, paragraphs: list[tuple[str, ...]]) -> Path:
                 "</w:p>")  # fmt: skip
 
     def table(cells: tuple[str, ...]) -> str:
-        rows = "".join(f"<w:tr><w:tc>{paragraph(cells[at])}</w:tc><w:tc>"
-                       f"{paragraph(cells[at + 1])}</w:tc></w:tr>"
-                       for at in range(0, len(cells), 2))  # fmt: skip
+        pairs = [cells[at : at + 2] for at in range(0, len(cells), 2)]
+        rows = "".join("<w:tr>" + "".join(f"<w:tc>{paragraph(cell)}</w:tc>" for cell in pair)
+                       + "</w:tr>" for pair in pairs)  # fmt: skip
         return f"<w:tbl>{rows}</w:tbl>"
 
     styles = {"heading": "Heading1", "caption": "Legend", "text": ""}
@@ -11731,10 +11731,12 @@ def test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry(
 ) -> None:
     """With no heading after it, a list under a styled References ends, once it holds an
     entry, at a table, a paragraph in a caption style and a caption typed in each shape, and
-    every number after it is listed; a list laid out as a table right under its heading is
-    read to its end, and the entries' numbers are not (`_end_at_a_display`). It ran to the
-    end of the file over the tables and captions after it (docx-sport-A3 and docx-socio-B2
-    of the corpus run of 2026-11-13)."""
+    every number after it is listed; the entries' numbers are not, an entry by Figi among
+    them (`_end_at_a_display`). It ran to the end of the file over the tables and captions
+    after it (docx-sport-A3 and docx-socio-B2 of the corpus run of 2026-11-13). A list laid
+    out in tables, right under its heading, under its caption or a note, or in tables of
+    one cell, holds no entry outside a table and is read to the next heading (round 1 of
+    #681)."""
     import tempfile
 
     paragraphs, planted = drawn
@@ -11747,9 +11749,10 @@ def test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry(
 def test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry(
     drawn: tuple[str, list[str]],
 ) -> None:
-    """The same in Markdown, as `init --from` writes such a paper: once it holds an entry, a
-    list under `# References` or a setext title ends at a pipe or a grid table, an image and
-    a caption typed in each shape, and a list laid out as a pipe table is read to its end."""
+    """The same in Markdown, as `init --from` writes such a paper, its entries' stops escaped
+    as pandoc writes them or not: once it holds an entry, a list under `# References` or a
+    setext title ends at a pipe or a grid table, an image and a caption typed in each shape,
+    and a list laid out in pipe tables each way is read to the next heading."""
     import tempfile
 
     text, planted = drawn
@@ -11783,6 +11786,50 @@ def _a_caption_style_ends_no_list(patch: pytest.MonkeyPatch) -> None:
 
 def _a_table_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(audit_module, "docx_displays", lambda document: document.captions)
+
+
+def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
+    """6e2f8b1d7, round 1 of #681: any line but a rule armed the end, a note too."""
+
+    def ended(lines, start, end, cells, displays):
+        held = False
+        for at in range(start + 1, end):
+            line = lines[at]
+            if held and (
+                (at in displays or (at not in cells and line.strip() != "|"
+                                    and audit_module.is_no_entry(line)))
+                if displays is not None
+                else not lines[at - 1].strip() and audit_module.is_no_entry(line)
+            ):  # fmt: skip
+                return at
+            held = held or bool(line.strip().strip("=-").strip())
+        return end
+
+    patch.setattr(audit_module, "_end_at_a_display", ended)
+
+
+def _an_entry_in_a_cell_arms_the_end(patch: pytest.MonkeyPatch) -> None:
+    real = audit_module._end_at_a_display
+    patch.setattr(audit_module, "_end_at_a_display",
+                  lambda lines, start, end, cells, displays: real(
+                      lines, start, end, frozenset(), displays))  # fmt: skip
+
+
+def _markdown_escapes_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_ESCAPED", re.compile("(?!)(.)"))
+
+
+def _a_caption_numbered_with_a_letter_ends_no_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_LETTERED_CAPTION", re.compile("(?!)"))
+
+
+def _figi_is_a_roman_figure(patch: pytest.MonkeyPatch) -> None:
+    """The figure's Roman numeral before round 1 of #681: "Figi M," a caption."""
+    now = reference_lists_module._NO_ENTRY
+    part = r"(?:fig(?:ure)?s?(?:\.\s*|\s+(?=[ivx]+[.:]))|tables?\s*)"
+    assert now.pattern.count(part) == 1, now.pattern
+    patch.setattr(reference_lists_module, "_NO_ENTRY", re.compile(
+        now.pattern.replace(part, r"(?:fig(?:ure)?s?\.?|tables?)\s*"), now.flags))  # fmt: skip
 
 
 def _a_typed_caption_ends_no_list(patch: pytest.MonkeyPatch) -> None:
@@ -27274,6 +27321,38 @@ BROKEN = {
     ),
     "a caption typed ends no Markdown list under a heading": (
         _a_typed_caption_ends_no_list,
+        test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "any line of a .docx list arms its end at a display, a note too": (
+        _any_line_is_an_entry,
+        test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "any line of a Markdown list arms its end at a display, a note too": (
+        _any_line_is_an_entry,
+        test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "an entry in a table's cell arms a .docx list's end": (
+        _an_entry_in_a_cell_arms_the_end,
+        test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "an escaped Markdown entry is no entry": (
+        _markdown_escapes_are_read_as_typed,
+        test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "a caption numbered with a letter ends no .docx list": (
+        _a_caption_numbered_with_a_letter_ends_no_list,
+        test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "a caption numbered with a letter ends no Markdown list": (
+        _a_caption_numbered_with_a_letter_ends_no_list,
+        test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "an entry by Figi ends a .docx list": (
+        _figi_is_a_roman_figure,
+        test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
+    ),
+    "an entry by Figi ends a Markdown list": (
+        _figi_is_a_roman_figure,
         test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry,
     ),
     "a section knows a reference list's English titles only": (

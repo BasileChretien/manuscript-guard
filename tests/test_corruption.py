@@ -31435,11 +31435,14 @@ def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, 
         "Box I, Jenkins GM. The color of time series. Wiley; 2015.",
         "Tables and the color of tumor registries. 2nd ed. Oxford; 2018.",
         "Figueroa A. The color of a tumor. BMC Med. 2020;18:1.",
+        # Round 1 of #681: `fig\s*[ivx]+\b` took "Figi" for a figure numbered "i".
+        "Figi M, Roe A. The color of a tumor. BMJ 2020;370:m1.",
         "\n\n\n3. Doe J. The color of a tumor. Lancet. 2019;393:1-2.",
     ],
     ids=["bold text in an entry", "Fig as a title's word", "an author named Box",
          "an author named Box with one initial", "Tables as a title's word",
-         "an author named Figueroa", "blank lines between entries"],  # fmt: skip
+         "an author named Figueroa", "an author named Figi",
+         "blank lines between entries"],  # fmt: skip
 )
 def test_an_entry_shaped_a_little_like_a_caption_ends_no_reference_list(
     project: Path, entry: str

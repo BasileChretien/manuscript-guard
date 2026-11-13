@@ -164,9 +164,16 @@ it rather than stopping the reading: a `\makeatletter` to its `\makeatother`, an
 conditional, `\ifx`, `\if0\blind` or one `\newif` made, to its matching `\fi`, neither branch
 read. Nothing in the block is read, and the file is read on past it; `check` still fails on
 the block, and `audit` names the lines it skipped. One with no such end in the file stops the
-reading as any refusal does, and so does one that holds a `\catcode` or defines a command
-whose name has no `@`, `\renewcommand{\emph}` say, which would change how the rest of the
-file reads: move the definition to the preamble.
+reading as any refusal does, and so does one that holds what would change how the rest of
+the file reads: a `\catcode`; a command whose name has no `@` defined by `\def`, `\edef`,
+`\gdef`, `\xdef`, `\let`, `\newcommand`, `\renewcommand`, `\providecommand`,
+`\DeclareRobustCommand`, xparse's `\NewDocumentCommand`, `\RenewDocumentCommand`,
+`\ProvideDocumentCommand` or `\DeclareDocumentCommand`, or `\@namedef` inside a
+`\makeatletter`; an environment whose name has no `@` defined by `\newenvironment` or
+`\renewenvironment`; and a
+conditional whose branches leave `\makeatletter` in force in one and not another. Move the
+definition to the preamble. A definition by another command, `\DeclareMathOperator` say, is
+not looked for.
 
 ## Building and submitting
 

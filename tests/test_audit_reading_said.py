@@ -123,6 +123,25 @@ def test_a_file_input_only_from_a_skipped_block_is_said_so(tmp_path: Path) -> No
     assert "\\input it" not in said, said
 
 
+def test_a_file_input_past_a_skipped_block_s_own_inputs_keeps_the_old_advice(
+    tmp_path: Path,
+) -> None:
+    """Known gaps (round 2 of #674): only a braced `\\input` or `\\include` a skipped block
+    holds is said to be inside it. A braceless one, and a file the file it names inputs, are
+    given the advice for a file nothing inputs."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\if0\\blind\n\\input{names}\n\\input bare\n\\fi\nThen 77 died.\n"
+                     "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    (tmp_path / "names.tex").write_text("Ada Example.\n\\input{deeper}\n", encoding="utf-8")
+    (tmp_path / "deeper.tex").write_text("Mary Ann.\n", encoding="utf-8")
+    (tmp_path / "bare.tex").write_text("Sean.\n", encoding="utf-8")
+    passed = audit([paper], None).passed_over
+    for name in ("deeper.tex", "bare.tex"):
+        (said,) = [one for one in passed if one.split(": ")[0].endswith(name)]
+        assert "\\input it from the paper's main file" in said, said
+
+
 def test_a_pdf_in_which_no_heading_was_read_is_said_to_be_read_as_one_text() -> None:
     """A PDF with no line that holds a section's name alone places no heading (2509.01351's
     small capitals, corpus run of 2026-11-11), and was said nothing of: it is read as one

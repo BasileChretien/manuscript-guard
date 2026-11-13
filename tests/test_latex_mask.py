@@ -200,6 +200,29 @@ def test_a_bounded_block_in_the_body_is_skipped_and_the_rest_read(block: str) ->
         ("\\makeatletter \\ifx\\a\\b x \\makeatother \\else Hidden 55 \\fi", False),
         ("\\ifx\\a\\b \\makeatletter \\fi", False),
         ("\\ifx\\a\\b \\makeatletter x\\makeatother \\fi", True),
+        # Round 2 of #674: the name a definition defines is read with `@` a letter only
+        # inside a `\makeatletter`; `\@namedef`, xparse's commands and the environments'
+        # are definitions too, of an `@` name skipped; and branches that leave `@` in other
+        # states refuse their conditional.
+        ("\\ifx\\a\\b \\def\\emph@x{}\\fi", False),
+        ("\\makeatletter\\def\\emph@x{}\\makeatother", True),
+        ("\\makeatletter\\@namedef{emph}{x}\\makeatother", False),
+        ("\\makeatletter\\@namedef{@foo}{x}\\makeatother", True),
+        ("\\ifx\\a\\b \\NewDocumentCommand\\y{m}{x}\\fi", False),
+        ("\\ifx\\a\\b \\ProvideDocumentCommand{\\y}{m}{x}\\fi", False),
+        ("\\ifx\\a\\b \\DeclareDocumentCommand{\\y}{m}{x}\\fi", False),
+        ("\\ifx\\a\\b \\newenvironment{panel}{}{}\\fi", False),
+        ("\\ifx\\a\\b \\renewenvironment*{panel}{}{}\\fi", False),
+        ("\\makeatletter\\renewenvironment{@panel}{}{}\\makeatother", True),
+        ("\\ifx\\a\\b \\makeatletter \\else \\makeatother \\fi", False),
+        ("\\ifx\\a\\b \\makeatletter x\\makeatother \\else y \\fi", True),
+        ("\\ifcase\\c 1 \\or \\makeatletter \\or 3 \\fi", False),
+        # Known gaps: four rare blocks that TeX would end where the reader skips, which the
+        # reader's tokens read otherwise, and refuse as before (round 2 of #674).
+        ("\\makeatletter\\let\\if@mine\\iftrue\\makeatother", False),
+        ("\\makeatletter\\def\\let@x{}\\makeatother", False),
+        ("\\makeatletter\\def\\fi@x{}\\makeatother", False),
+        ("\\ifx\\a\\b {\\makeatletter x} \\fi", False),
     ],
 )
 def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: bool) -> None:
@@ -221,18 +244,35 @@ def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: 
         conditional = read(f"{written}\\ifx\\a\\b Hidden 55\\fi Then 77.", body=True)
         assert len(conditional.skipped) == 1 and "55" not in conditional.masked, written
         assert "77" in conditional.masked
+    # Known gaps: a comment between a `\newif` and its name, where TeX defines the name, and
+    # the reader opens a block at it (round 2 of #674).
+    noted = read("\\newif % note\n\\iffoo Hidden 55\\fi Then 77.", body=True)
+    assert len(noted.skipped) == 1 and "55" not in noted.masked and "77" in noted.masked
 
 
-def test_a_redefinition_in_a_block_stops_the_reading_as_before() -> None:
+@pytest.mark.parametrize(
+    "block",
+    [
+        "\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}\\makeatother",
+        # Round 2 of #674: LaTeX's `\@namedef` and xparse's definitions, and `\def\emph@x`
+        # in a conditional, where `@` is no letter and the name it defines is `\emph`.
+        "\\makeatletter\\@namedef{emph}#1{\\textbf{#1}}\\makeatother",
+        "\\ifx\\a\\b \\RenewDocumentCommand{\\emph}{m}{x}\\fi",
+        "\\ifx\\a\\b \\def\\emph@x{}\\fi",
+    ],
+    ids=["renewcommand", "namedef", "RenewDocumentCommand", "def-at-delimited"],
+)
+def test_a_redefinition_in_a_block_stops_the_reading_as_before(block: str) -> None:
     """Round 1 of #674: skipped, a `\\renewcommand{\\emph}` in a `\\makeatletter` block was
     lost, and `\\emph` past it read as LaTeX's, where the base refused the block."""
-    text = ("\\begin{document}\n\\makeatletter\\renewcommand{\\emph}[1]{\\textbf{#1}}"
-            "\\makeatother\nSee \\emph{12 cases}.")  # fmt: skip
+    text = f"\\begin{{document}}\n{block}\nSee \\emph{{12 cases}}."
     reading = read(text)
-    at = text.index("\\makeatletter")
-    assert reading.skipped == () and [r.offset for r in reading.refusals] == [at]
-    assert reading.refusals[0].message == ("\\makeatletter in the body changes how characters "
-                                           "are read")  # fmt: skip
+    at = text.index("\\", len("\\begin{document}"))
+    assert reading.skipped == () and [r.offset for r in reading.refusals] == [at], block
+    said = ("\\makeatletter in the body changes how characters are read" if "makeat" in block
+            else "\\ifx is not read: a conditional in the body prints one branch, and which "
+            "is not read")  # fmt: skip
+    assert reading.refusals[0].message == said
     assert "12" not in reading.masked
 
 

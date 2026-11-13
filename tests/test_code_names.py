@@ -371,6 +371,18 @@ def test_a_latex_table_s_caption_and_footnote_are_read(project: Path) -> None:
         "hr_adj_main", "age_band"]
 
 
+@pytest.mark.parametrize(("table", "found"), [  # round 2 of #673
+    ("\\resizebox{\\linewidth}{!}{\\begin{tabular}{l}\n% a\\footnote{old\nCPI\\_ALL\\\\\n"
+     "\\end{tabular}}\n", []),
+    ("\\begin{longtable}{l}\\caption[Short $[a,b]$]{Long hr\\_adj}\\\\\na\\\\\\end{longtable}\n",
+     ["hr_adj"]),
+    ("\\begin{tabular}{l}a\\tablefootnote{The age\\_band.}\\\\\\end{tabular}\n", ["age_band"]),
+])  # fmt: skip
+def test_a_note_or_caption_in_a_table_is_read_where_it_prints(project: Path, table, found) -> None:
+    report = _latex(project, OPEN + table + CLOSE)
+    assert [message.split("'")[1] for _name, message in coded(report)] == found
+
+
 def test_a_markdown_table_s_caption_is_read() -> None:
     """A pipe table's caption, pandoc's `Table:` line before it or after it, is prose."""
     text = ("# Results\n\nTable: Loadings of hr_adj_main\n\n| Series | n |\n|---|---|\n"

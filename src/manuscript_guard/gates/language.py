@@ -1561,8 +1561,9 @@ class _LatexFile:
     cells: tuple[tuple[int, int], ...] = ()
 
 
-#: A note's text, which LaTeX prints at the foot of the page from a table's cell too.
-_NOTE_ARGUMENT = re.compile(r"\\footnote(?:text)?(?![A-Za-z])\s*(?:\[[^\[\]]*\]\s*)?\{")
+#: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
+_NOTE_ARGUMENT = re.compile(
+    r"\\(?:table)?footnote(?:text)?(?![A-Za-z])\s*(?:\[[^\[\]]*\]\s*)?\{")
 
 
 def _latex_cells(
@@ -1573,9 +1574,10 @@ def _latex_cells(
     sentence (round 1 of #673, finding 2)."""
     from manuscript_guard.text.latex.printed import _arguments, _passed_over
 
-    _read, comments = _passed_over(source.reading)
-    notes = [(opened + 1, closed) for _begun, opened, closed
-             in _arguments(source.text, _NOTE_ARGUMENT, 0, len(source.text), comments)]  # fmt: skip
+    read, comments = _passed_over(source.reading)
+    notes = [(opened + 1, closed) for begun, opened, closed
+             in _arguments(source.text, _NOTE_ARGUMENT, 0, len(source.text), comments)
+             if read(begun)]  # fmt: skip
     holes = sorted([*captions, *notes])
     cells: list[tuple[int, int]] = []
     for start, end in source.reading.tables:

@@ -405,8 +405,8 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
         comments.append(_comment(identifier, _placement(Note("", "", _listing(listed)), "",
                                                         date)))  # fmt: skip
     taken = tracked_copy.write_changes(paragraphs, changes, ids, date)
-    if corrections is not None:
-        tracked_copy.distinct(document, ids)
+    # A run a comment splits carries a change of its formatting, and its id, into both halves.
+    tracked_copy.distinct(document, ids)
     parts[_DOCUMENT] = _declared_again(_written(document, declared), declared)
     tracked_copy.check(parts[_DOCUMENT], taken, original,
                        tracked_copy.expected(original, changes))  # fmt: skip

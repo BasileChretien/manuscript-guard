@@ -11115,7 +11115,9 @@ between runs (`tracked._write_comment`) and no text moves; the comments part, it
 relationship and its content type are added where missing, and every namespace the
 document's root declared is declared again (`_declared_again`): ElementTree writes only
 those its elements use, and without the ones Word names in `mc:Ignorable` Word 16 said the
-author's copy was damaged (2026-11-10). Held by
+author's copy was damaged (2026-11-10). A run split where a comment begins carries a
+recorded change of its formatting into both halves, and the second is given an id of its
+own (`tracked_copy.distinct`). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
 

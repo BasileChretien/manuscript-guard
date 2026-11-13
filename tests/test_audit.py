@@ -2043,6 +2043,55 @@ def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_headi
     assert typed_heading_levels(document) == ()
 
 
+def test_a_heading_style_in_a_table_s_cell_makes_no_heading(tmp_path: Path) -> None:
+    """A paragraph in a heading style in a table's cell places nothing where the cells are a
+    paper's only such paragraphs, as pandoc keeps them in their cells and `init --from` makes
+    no heading of them: the paper is placed by its typed titles, and the audit says its only
+    heading styles are in a table. It was placed by its cells, and its typed "ABSTRACT" went
+    unfound (docx-med-A3 of the corpus run of 2026-11-13). Beside a heading outside a table,
+    a cell places as before: a boxed Abstract titled in its cell is compared (round 1 of
+    #678). Either way the cell ends a reference list (DESIGN.md, "Known gaps")."""
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+
+    def heading(text: str) -> str:
+        return f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>'
+
+    table = f"<w:tbl><w:tr><w:tc>{heading('Sr. No')}</w:tc></w:tr>{row('1')}</w:tbl>"
+    body = (para("ABSTRACT") + para("Of 412 patients, 77 had it.") + para("INTRODUCTION")
+            + para("Drugs cause harm.") + para("RESULTS") + para("Of 412 patients, 77 had it.")
+            + para("REFERENCES") + para("Smith J. A study. Lancet. 2019;393:100-9.") + table
+            + para("Of 9, 4 were."))  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", body, styles)
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    assert document.heading_levels == ()
+    (cell,) = document.headings
+    assert lines[cell] == "Sr. No"
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "INTRODUCTION", "RESULTS", "REFERENCES"]  # fmt: skip
+    report = audit([path], [])
+    assert report.abstract and report.abstract.compared, report.abstract
+    (said,) = report.headings
+    assert "no paragraph outside a table is in a heading style" in said, said
+    boxed = (f"<w:tbl><w:tr><w:tc>{heading('Abstract')}{para('Of 412 patients, 77 had it.')}"
+             f"</w:tc></w:tr></w:tbl>{heading('Introduction')}{para('Drugs cause harm.')}"
+             f"{heading('Results')}{para('Of 412 patients, 77 had it.')}{heading('References')}"
+             f"{para('Smith J. A study. Lancet. 2019;393:100-9.')}{table}"
+             f"{para('Of 9, 4 were.')}")  # fmt: skip
+    path = make_docx(tmp_path / "boxed.docx", boxed, styles)
+    report = audit([path], [])
+    assert report.abstract and report.abstract.compared, report.abstract
+    assert report.headings == []
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    spans = bibliography_spans(document.body, document.headings, document.cells)
+    assert [lines[end] for _start, end in spans] == ["Sr. No"], spans
+
+
 def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
     """A structured abstract's parts in bold straight under its Abstract, with no
     Introduction after them and none of their names again: which Results are the paper's is

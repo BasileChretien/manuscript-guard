@@ -286,6 +286,10 @@ SECTION_NAMES = frozenset({
     # Back matter that docx-socio-A2 of the real-paper corpus types in bold between its
     # Abstract and its Acknowledgments, its authors' addresses under it (Basile, 2026-11-14).
     "author information",
+    # The Results in the singular, as "Method" stands beside "Methods": "RESULT:" in
+    # docx-med-A3 and "Result:" in docx-med-A2, typed, and "3. Result" in pdf-psych-B3 of the
+    # real-paper corpus (Basile, 2026-11-15). A structured abstract's part too.
+    "result",
     # The back matter as BMC's journals title it: one "Declarations" over its statements.
     "declarations", "declaration", "list of abbreviations", "authors' contributions",
     "authors\N{RIGHT SINGLE QUOTATION MARK} contributions", "consent for publication",
@@ -296,7 +300,7 @@ SECTION_NAMES = frozenset({
 ABSTRACT_PARTS = frozenset({
     "background", "methods", "method", "methodology", "materials and methods",
     "material and methods", "methods and materials", "patients and methods",
-    "subjects and methods", "participants and methods", "results", "findings",
+    "subjects and methods", "participants and methods", "results", "result", "findings",
     "results and discussion", "discussion", "conclusion", "conclusions", "limitations",
 })  # fmt: skip
 #: Where each of `ABSTRACT_PARTS` stands in the order a structured abstract's parts keep, and
@@ -306,9 +310,9 @@ ABSTRACT_PARTS = frozenset({
 _PART_ORDER = {
     "background": 1, "methods": 2, "method": 2, "methodology": 2, "materials and methods": 2,
     "material and methods": 2, "methods and materials": 2, "patients and methods": 2,
-    "subjects and methods": 2, "participants and methods": 2, "results": 3, "findings": 3,
-    "results and discussion": 3, "discussion": 4, "limitations": 4.5, "conclusion": 5,
-    "conclusions": 5,
+    "subjects and methods": 2, "participants and methods": 2, "results": 3, "result": 3,
+    "findings": 3, "results and discussion": 3, "discussion": 4, "limitations": 4.5,
+    "conclusion": 5, "conclusions": 5,
 }  # fmt: skip
 # "Limitations" after the Discussion goes on in the order: at one place, it started the
 # order again, and a main text's Background to Discussion were the Abstract's (round 2 of

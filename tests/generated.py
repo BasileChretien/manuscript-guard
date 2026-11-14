@@ -15474,7 +15474,8 @@ def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
 #: paragraph over the main text's "Background"; a structured abstract up to an Introduction;
 #: one up to the main text's second "Background", as BMC's journals set them; the BMJ's,
 #: whose "Objectives" and "Design" name no section and stand under its Abstract as words; a
-#: structured abstract with neither after it; a name twice in the main text; no abstract.
+#: structured abstract with neither after it; a name twice in the main text; no abstract;
+#: and "Result", the singular, among a structured abstract's parts and as its first.
 PLACED_PAPERS = {
     "one paragraph": ([("Abstract", True), ("Background", None), ("Methods", None),
                        ("Results", None), ("Discussion", None), ("References", None)],
@@ -15520,6 +15521,16 @@ PLACED_PAPERS = {
                                          (1, 1, 1, 1, 1, 1, 1, 1)),
     "no abstract": ([("Introduction", None), ("Methods", None), ("Results", None),
                      ("Discussion", None)], (1, 1, 1, 1)),
+    # The Results in the singular, as a structured abstract's first part and in its order
+    # of parts, and as the main text's (Basile, 2026-11-15).
+    "parts from Result": ([("Abstract", True), ("Result", None), ("Conclusion", None),
+                           ("Background", None), ("Method", None), ("Result", None),
+                           ("Discussion", None)],
+                          (1, 2, 2, 1, 1, 1, 1)),
+    "Result among the parts": ([("Abstract", False), ("Background", None), ("Method", None),
+                                ("Result", None), ("Conclusion", None), ("Background", None),
+                                ("Method", None), ("Result", None), ("Discussion", None)],
+                               (1, 2, 2, 2, 2, 1, 1, 1, 1)),
 }  # fmt: skip
 
 
@@ -15732,7 +15743,8 @@ def _listed(*items: list[dict], start: int = 3) -> dict:
 #: `from_word.typed_headings` makes of it, or None: a name in bold; also underlined, inside
 #: the bold or around it; in a span; numbered; with a colon; a name only half in bold; one
 #: in italics only; one typed plain, in capitals, numbered in capitals (the real-paper
-#: corpus, 2026-11-11); and none of a bold title that names no section, a name in bold
+#: corpus, 2026-11-11), "RESULT:" in the singular; and none of a bold title that names no
+#: section, "Result of the survey", a name in bold
 #: opening a sentence, a plain one opening a sentence, one in a list's item, one in a link.
 #: Each title names its section once, so that they can be placed: a name twice falls back to
 #: the titles in bold (`tests/test_from_word.py::test_a_name_typed_twice_keeps_the_bold_titles`).
@@ -15765,6 +15777,12 @@ TYPED_BLOCKS = {
                            "Author information"),
     "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
                                                       _str("clear.")]}, None),
+    # The Results in the singular, "RESULT:" in docx-med-A3 of the real-paper corpus, and
+    # the word opening a title's words (Basile, 2026-11-15).
+    "the singular, in capitals": ({"t": "Para", "c": [_str("RESULT:")]}, "RESULT"),
+    "the singular opening words": ({"t": "Para", "c": [_str("Result"), _GAP, _str("of"), _GAP,
+                                                        _str("the"), _GAP, _str("survey")]},
+                                   None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
         _str("Background"))]}]]}, None),
     "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [

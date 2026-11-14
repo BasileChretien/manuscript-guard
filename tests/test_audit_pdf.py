@@ -97,6 +97,9 @@ def test_a_line_that_holds_a_sections_name_alone_is_a_heading(name: str) -> None
 @pytest.mark.parametrize("line", [
     "results", "Results of the trial", "The results", "Results were mixed.", "Methodsx",
     "12 patients", "", "References 1. Smith A.", "Table 1. Results",
+    # The singular as a heading's words alone (Basile, 2026-11-15): not in small letters, not
+    # opening a sentence, and not in a table's row read as a line.
+    "result", "Result of the survey", "Outcome Result 95% CI P",
 ])
 def test_any_other_line_is_none(line: str) -> None:
     """Exact: a section's name and nothing else, a capital first; a wrapped line that happens
@@ -223,6 +226,58 @@ def test_a_structured_abstract_before_an_introduction_is_the_abstracts(
     assert not found(report, "abstract-not-compared")
     assert [f["context"] for f in found(report, "abstract-not-found")] == [
         "The rate was 21.4% in the exposed."]
+
+
+@needs_pdftotext
+def test_a_results_section_numbered_in_the_singular_is_the_results(
+    tmp_path: Path, capsys
+) -> None:
+    """"3. Result" over "3.1. Preliminary Analyses", as pdf-psych-B3 of the real-paper corpus
+    numbers its Results (Basile, 2026-11-15): "Result" named no section, its lines were the
+    Methods', and the Abstract was compared with nothing. It is the Results' heading now,
+    and the Abstract is compared with what it holds."""
+    lines = [("3. Result" if line == "Results" else line) for line in PAPER]
+    at = lines.index("3. Result") + 1
+    lines[at:at] = ["3.1. Preliminary Analyses"]
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines))
+    assert [title for _line, title in pdf.headings] == [
+        "Abstract", "Introduction", "Methods", "Result", "Discussion", "References"]
+    _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
+    assert not found(report, "abstract-not-compared")
+    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+        "The rate was 21.4% in the exposed."]
+
+
+def _set(rows: list[str | tuple[tuple[float, str], ...]]) -> bytes:
+    """A page of `rows`, a line of text or a table's row, each of its cells set at its own
+    left edge on one line, as a journal sets a table."""
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
+
+    pieces = []
+    for at, row in enumerate(rows):
+        y = TOP - LEADING * at
+        cells = ((0.0, row),) if isinstance(row, str) else row
+        pieces += [Piece(LEFT + x, y, text) for x, text in cells]
+    return pdf([pieces])
+
+
+@needs_pdftotext
+def test_a_table_s_column_headed_result_is_read_as_a_heading(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a table's column headed "Result" whose header
+    stands on a line of its own holds a section's name alone, and is a heading, as a column
+    headed "Results" is: a PDF marks no table. Poppler's layout order sets each of a row's
+    cells on a line of its own (pdftotext 24.04.0), so its header row's "Result" is such a
+    line too. In the drawing order a row is one line, and none of it a heading."""
+    long = "Of 412 patients enrolled at three centres, 77 had the event during follow-up."
+    rows = ["Abstract", long, "Introduction", long, "Methods", long, "Results", long,
+            "Table 1. Outcomes", ((120, "Result"),),
+            *(((0, f"Outcome {k}"), (120, f"{7 * k}"), (220, f"1.{k}-2.{k}"))
+              for k in range(1, 7)), "Discussion", long]  # fmt: skip
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(_set(rows))
+    titles = [title for _line, title in reading.read_pdf(path).headings]
+    assert titles[:4] == ["Abstract", "Introduction", "Methods", "Results"], titles
+    assert "Result" in titles and "Discussion" in titles, titles
 
 
 @needs_pdftotext

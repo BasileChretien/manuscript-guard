@@ -283,6 +283,9 @@ SECTION_NAMES = frozenset({
     "ethics statement", "ethical approval", "abbreviations", "appendix",
     "supplementary material", "supplementary materials", "tables", "figures",
     "figure legends", "figure captions",
+    # Back matter that docx-socio-A2 of the real-paper corpus types in bold between its
+    # Abstract and its Acknowledgments, its authors' addresses under it (Basile, 2026-11-14).
+    "author information",
     # The back matter as BMC's journals title it: one "Declarations" over its statements.
     "declarations", "declaration", "list of abbreviations", "authors' contributions",
     "authors\N{RIGHT SINGLE QUOTATION MARK} contributions", "consent for publication",

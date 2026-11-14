@@ -15528,6 +15528,10 @@ TYPED_BLOCKS = {
     "in capitals": ({"t": "Para", "c": [_str("LIMITATIONS")]}, "LIMITATIONS"),
     "numbered in capitals": ({"t": "Para", "c": [_str("4."), _GAP, _str("ACKNOWLEDGEMENTS")]},
                              "4. ACKNOWLEDGEMENTS"),
+    # Back matter docx-socio-A2 types in bold (Basile, 2026-11-14).
+    "author information": ({"t": "Para", "c": [_strong(_str("Author"), _GAP,
+                                                       _str("information"))]},
+                           "Author information"),
     "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
                                                       _str("clear.")]}, None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
@@ -15571,9 +15575,9 @@ def _w_para(text: str, bold: bool = False) -> str:
 #: Abstract's words, and the heading the audit reads of it, or None: a run-in label, with a
 #: colon, with a stop, in capitals, in bold before plain words (docx-med-B3 of the real-paper
 #: corpus); "Abstract" alone on a line in bold, in capitals too (docx-med-A2, docx-psych-A1,
-#: docx-socio-A2); and none of "Abstract" alone in plain type (docx-ecol-B2), a sentence in
-#: bold or not that opens with "Abstracts", the label alone with nothing after it, and a
-#: run-in label in a table's cell.
+#: docx-socio-A2), in plain type (docx-ecol-B2), with a colon after it; and none of a
+#: sentence in bold or not that opens with "Abstracts", a run-in label in a table's cell and
+#: "Abstract" alone in one.
 WORD_ABSTRACT_SHAPES = {
     "run-in, a colon": (lambda words: _w_para(f"Abstract: {words}"), "Abstract"),
     "run-in, a stop": (lambda words: _w_para(f"Abstract. {words}"), "Abstract"),
@@ -15583,13 +15587,15 @@ WORD_ABSTRACT_SHAPES = {
         f'"preserve"> {words}</w:t></w:r></w:p>'), "Abstract"),
     "in bold": (lambda words: _w_para("Abstract", True) + _w_para(words), "Abstract"),
     "in bold, capitals": (lambda words: _w_para("ABSTRACT", True) + _w_para(words), "ABSTRACT"),
-    "plain": (lambda words: _w_para("Abstract") + _w_para(words), None),
+    "plain": (lambda words: _w_para("Abstract") + _w_para(words), "Abstract"),
+    "plain, a colon": (lambda words: _w_para("Abstract:") + _w_para(words), "Abstract"),
     "a sentence in bold": (lambda words: _w_para("Abstracts were screened by two reviewers.",
                                                  True) + _w_para(words), None),
     "a sentence": (lambda words: _w_para(f"Abstracts of {words}"), None),
-    "the label alone": (lambda words: _w_para("Abstract:") + _w_para(words), None),
     "in a cell": (lambda words: "<w:tbl><w:tr><w:tc>" + _w_para(f"Abstract: {words}")
                   + "</w:tc></w:tr></w:tbl>", None),
+    "alone in a cell": (lambda words: "<w:tbl><w:tr><w:tc>" + _w_para("Abstract")
+                        + "</w:tc></w:tr></w:tbl>" + _w_para(words), None),
 }  # fmt: skip
 #: What comes after the Abstract, and the headings it adds after the Abstract's where the
 #: Abstract is read: the next heading; a title typed in bold before it, which ends the
@@ -15635,7 +15641,8 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
             body += _w_heading("Introduction") + _w_para(f"{words.capitalize()} harm.")
         # A structured abstract's parts end at an Introduction (`section_levels`).
         typed = draw(st.sampled_from(("Introduction", "1. Introduction") + (
-            () if end == "its parts, then a typed title" else ("Acknowledgments",))))
+            () if end == "its parts, then a typed title" else ("Acknowledgments",
+                                                                "Author Information"))))
         if end in ("a typed title", "its parts, then a typed title"):
             body += _w_para(typed, True) + _w_para(f"In 2019, 15 {words} died.")
         if end == "nothing":
@@ -15656,9 +15663,10 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
 #: for the Abstract's words, and the headings `from_word_abstract.abstract_headings` makes of
 #: them, or none: a run-in label, with a colon, a space before it, in bold, in bold with the
 #: words after it, in a block quote after another paragraph of it (pandoc reads an indented
-#: paragraph as one, docx-med-B3); "Abstract" in bold alone, in capitals; and none of a label
-#: that runs on into the words in one piece, one with a note's mark, "Abstract" plain, a
-#: sentence in bold that opens with "Abstracts", and the label alone.
+#: paragraph as one, docx-med-B3), before a no-break or a thin space; "Abstract" alone in
+#: bold, in capitals, in plain type, with a colon; and none of a label that runs on into the
+#: words in one piece, one with a note's mark, a sentence in bold that opens with
+#: "Abstracts", and "Abstract" alone in a list's item.
 ABSTRACT_BLOCKS = {
     "run-in, a colon": ([{"t": "Para", "c": [_str("Abstract:"), _GAP, _str("{}")]}],
                         ["Abstract"]),
@@ -15683,12 +15691,16 @@ ABSTRACT_BLOCKS = {
     "run on in one piece": ([{"t": "Para", "c": [_str("Abstract:{}")]}], []),
     "with a note's mark": ([{"t": "Para", "c": [_str("Abstract:"), {"t": "Note", "c": [
         {"t": "Para", "c": [_str("A note.")]}]}, _GAP, _str("{}")]}], []),
-    "plain": ([{"t": "Para", "c": [_str("Abstract")]}, {"t": "Para", "c": [_str("{}")]}], []),
+    # docx-ecol-B2 (Basile, 2026-11-14).
+    "plain": ([{"t": "Para", "c": [_str("Abstract")]}, {"t": "Para", "c": [_str("{}")]}],
+              ["Abstract"]),
+    "plain, a colon": ([{"t": "Para", "c": [_str("Abstract:")]},
+                        {"t": "Para", "c": [_str("{}")]}], ["Abstract"]),
     "a sentence in bold": ([{"t": "Para", "c": [_strong(_str("Abstracts"), _GAP, _str("were"),
                                                         _GAP, _str("read."))]},
                             {"t": "Para", "c": [_str("{}")]}], []),
-    "the label alone": ([{"t": "Para", "c": [_str("Abstract:")]},
-                         {"t": "Para", "c": [_str("{}")]}], []),
+    "in a list": ([{"t": "BulletList", "c": [[{"t": "Plain", "c": [_str("Abstract")]}]]},
+                   {"t": "Para", "c": [_str("{}")]}], []),
 }  # fmt: skip
 
 

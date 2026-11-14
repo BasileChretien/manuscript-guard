@@ -77,12 +77,14 @@ def test_a_run_in_abstract_label_in_a_styled_paper_is_its_heading(
     assert read.not_found == []
 
 
-def test_a_bold_abstract_line_in_a_styled_paper_is_its_heading(tmp_path: Path) -> None:
+@pytest.mark.parametrize("typed", [bold, para], ids=["bold", "plain"])
+def test_an_abstract_line_in_a_styled_paper_is_its_heading(tmp_path: Path, typed) -> None:
     """docx-med-A2, docx-psych-A1, docx-socio-A2: "Abstract" alone on a line in bold, in a
-    paper whose heading styles are elsewhere. Its paragraph is compared with the Results."""
-    for at, line in enumerate(("Abstract", "ABSTRACT", "Abstract ", "1. Abstract")):
-        path = paper(tmp_path, bold(line) + para("Of 412 patients, 77 fell."), f"{at}.docx")
-        assert titles(path)[1].strip() == line.strip()
+    paper whose heading styles are elsewhere; and docx-ecol-B2, the same line in plain type
+    (Basile, 2026-11-14). Its paragraph is compared with the Results."""
+    for at, line in enumerate(("Abstract", "ABSTRACT", "Abstract ", "1. Abstract", "Abstract:")):
+        path = paper(tmp_path, typed(line) + para("Of 412 patients, 77 fell."), f"{at}.docx")
+        assert titles(path)[1] == line.strip().rstrip(":")
         read = audit([path], None).abstract
         assert read.compared and read.numbers == read.matched == 2, (line, read)
 
@@ -91,12 +93,13 @@ def test_a_bold_abstract_line_in_a_styled_paper_is_its_heading(tmp_path: Path) -
     bold("Abstracts were screened by two reviewers.") + para("Of 412 patients, 77 fell."),
     para("Abstracts of 412 patients were read: 77 fell."),
     para("The abstract: of 412 patients, 77 fell."),
-    para("Abstract:") + para("Of 412 patients, 77 fell."),
-    # docx-ecol-B2: "Abstract" alone on a line in plain type, in a styled paper. Not read.
-    para("Abstract") + para("Of 412 patients, 77 fell."),
+    para("Structured abstract") + para("Of 412 patients, 77 fell."),
     "<w:tbl><w:tr><w:tc>" + para("Abstract: Of 412 patients, 77 fell.") + "</w:tc></w:tr></w:tbl>",
-], ids=["bold sentence", "a sentence", "after a word", "label alone", "plain line", "in a cell"])
-def test_abstract_in_a_sentence_or_in_plain_type_is_no_heading(
+    "<w:tbl><w:tr><w:tc>" + para("Abstract") + "</w:tc></w:tr></w:tbl>"
+    + para("Of 412 patients, 77 fell."),
+], ids=["bold sentence", "a sentence", "after a word", "another name", "label in a cell",
+        "line in a cell"])  # fmt: skip
+def test_abstract_in_a_sentence_or_a_cell_is_no_heading(
     tmp_path: Path, abstract: str,
 ) -> None:
     path = paper(tmp_path, abstract)
@@ -131,6 +134,25 @@ def test_the_abstract_ends_at_a_typed_title_before_the_next_heading(tmp_path: Pa
                             "Results"]  # fmt: skip
     read = audit([path], None).abstract
     assert read.compared and read.numbers == read.matched == 2, read
+
+
+def test_author_information_typed_in_bold_ends_the_abstract(tmp_path: Path) -> None:
+    """docx-socio-A2: an "Author Information" in bold, the authors' addresses and telephone
+    under it, stood between the Abstract and its "Acknowledgments", and five of their numbers
+    were the Abstract's, not found. "Author information" is a section's name (Basile,
+    2026-11-14), and ends the Abstract."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    assert section_name_alone("Author Information") == "Author Information"
+    assert section_name_alone("AUTHOR INFORMATION:") == "AUTHOR INFORMATION"
+    assert section_name_alone("author information") is None
+    block = (bold("Author Information") + para("Oxford Road, Manchester M13 9PL")
+             + para("+44 (0) 161 275 3797") + bold("Acknowledgments") + para("We thank them."))
+    path = paper(tmp_path, bold("Abstract") + para("Of 412 patients, 77 fell.") + block)
+    assert titles(path) == ["Falls in older patients", "Abstract", "Author Information",
+                            "Methods", "Results"]  # fmt: skip
+    read = audit([path], None).abstract
+    assert read.compared and read.not_found == [] and read.numbers == read.matched == 2, read
 
 
 #: Structured Abstracts whose parts are typed in bold and run up to the Introduction, a
@@ -265,8 +287,14 @@ SHAPES = {
     "in bold": (bold("Abstract") + para("Of 412 patients, 77 fell."), ["Abstract"]),
     "in bold, ended": (bold("ABSTRACT") + para("Of 412 patients, 77 fell.") + bold("Introduction")
                        + para("In 2019, 15 died."), ["ABSTRACT", "Introduction"]),
-    "plain": (para("Abstract") + para("Of 412 patients, 77 fell."), []),
+    # docx-ecol-B2 (Basile, 2026-11-14).
+    "plain": (para("Abstract") + para("Of 412 patients, 77 fell."), ["Abstract"]),
+    "plain, a colon, ended": (para("Abstract:") + para("Of 412 patients, 77 fell.")
+                              + bold("Author Information") + para("Tel 161 275 3797."),
+                              ["Abstract", "Author Information"]),
     "a bold sentence": (bold("Abstracts were screened by two reviewers."), []),
+    "in a cell": ("<w:tbl><w:tr><w:tc>" + para("Abstract") + "</w:tc></w:tr></w:tbl>"
+                  + para("Of 412 patients, 77 fell."), []),
 }  # fmt: skip
 
 
@@ -274,9 +302,9 @@ SHAPES = {
 @pytest.mark.parametrize("kind", list(SHAPES))
 def test_the_audit_and_init_take_the_same_abstract_headings(tmp_path: Path, kind: str) -> None:
     """`init --from` makes the same headings of each shape as the audit places the paper by:
-    a run-in label a heading "Abstract" over the paragraph's text, a bold "Abstract" line a
-    heading, and the title typed after it that ends it; a plain "Abstract" and a sentence in
-    bold neither."""
+    a run-in label a heading "Abstract" over the paragraph's text, an "Abstract" line in bold
+    or plain a heading, and the title typed after it that ends it; a sentence in bold and a
+    line in a table's cell neither."""
     abstract, made = SHAPES[kind]
     path = paper(tmp_path, abstract)
     expected = ["Falls in older patients", *made, "Methods", "Results"]

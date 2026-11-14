@@ -119,8 +119,8 @@ class Converted:
     #: In a document with no paragraph in a heading style, the titles of the paragraphs that
     #: name a section alone, which were made its headings (`typed_headings`).
     typed_headings: tuple[str, ...] = ()
-    #: Where no heading named the Abstract, the headings made of its run-in label or its line
-    #: in bold, and of the typed title that ends it (`from_word_abstract`).
+    #: Where no heading named the Abstract, the headings made of its run-in label or the line
+    #: that names it alone, and of the typed title that ends it (`from_word_abstract`).
     abstract_headings: tuple[str, ...] = ()
     #: What `init --from` made of the typed reference list and citations (`typed_references`).
     references: TypedReferences | None = None
@@ -788,9 +788,10 @@ def what_was_done(docx: Path, converted: Converted) -> str:
     lines.append(f"  title page: {converted.title_page}")
     lines.append(f"  headings: {converted.headings}")
     if converted.abstract_headings:
-        lines.append("    no heading named the Abstract, so its run-in label or its line in "
-                     "bold, and a title typed after it that ends it, were made headings, as the "
-                     "audit reads them: " + ", ".join(converted.abstract_headings))  # fmt: skip
+        lines.append("    no heading named the Abstract, so its run-in label or the line that "
+                     "names it alone, and a title typed after it that ends it, were made "
+                     "headings, as the audit reads them: "
+                     + ", ".join(converted.abstract_headings))  # fmt: skip
     lines.append(f"  tables: {converted.tables} written as pipe tables")
     if converted.tables_left:
         lines.append("  tables left as pandoc writes them: check reads a grid table's rows, "

@@ -1052,7 +1052,7 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         body = document.body.split("\n")
         # A document with no heading style is placed by its typed titles, where they name
         # its sections and can be placed (`text.docx.typed_heading_levels`); and either by
-        # its Abstract's run-in label or bold line where no heading names it.
+        # its Abstract's run-in label or the line naming it alone where no heading names it.
         headings = placed_headings(document)
         sections = [Section(one.title, one.level, "", one.line + 1) for one in headings]
         # A run-in label's line is a paragraph's too, whose sentences are read.

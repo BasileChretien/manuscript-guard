@@ -21433,9 +21433,9 @@ def test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in(
 ) -> None:
     """A styled Word paper whose Abstract no heading style marks is placed under it where it
     opens on a run-in label, "Abstract:", "Abstract.", "ABSTRACT:", its label in bold or
-    not, or where "Abstract" stands alone on a line in bold; not where it stands alone in
-    plain type, a sentence in bold or not opens with "Abstracts", the label stands alone, or
-    the label is in a table's cell. It ends at the next heading, or before it at a title typed
+    not, or where "Abstract" stands alone on a line, in bold or not, a colon after it or
+    not; not where a sentence in bold or not opens with "Abstracts", or the label or the
+    name alone is in a table's cell. It ends at the next heading, or before it at a title typed
     in bold that is no part of it, a heading too, past a structured abstract's parts, which a
     styled Introduction ends as a typed one does, JAMA's among them; with neither after it,
     it is not read (`text.docx_abstract.placed_headings`; Basile, 2026-11-14, after the
@@ -21462,17 +21462,17 @@ def _a_run_in_label_is_no_heading(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(docx_abstract, "run_in_abstract", lambda text: None)
 
 
-def _a_plain_abstract_line_is_a_heading_too(patch: pytest.MonkeyPatch) -> None:
-    """As docx-ecol-B2 would be read, which Basile's decision leaves out."""
+def _only_a_bold_abstract_line_is_a_heading(patch: pytest.MonkeyPatch) -> None:
+    """As before docx-ecol-B2 (Basile, 2026-11-14): a plain "Abstract" line was text."""
     from manuscript_guard.text import docx_abstract
 
     real = docx_abstract._opened
 
     def opened(document, body: list[str], styled: bool):
-        plain = next((docx_abstract.Heading(at, 0, line) for at, line in enumerate(body)
-                      if at in document.typed and docx_abstract.abstract_alone(line)), None)
-        found = [one for one in (real(document, body, styled), plain) if one is not None]
-        return min(found, key=lambda one: one.line) if found else None
+        found = real(document, body, styled)
+        if found is not None and not found.run_in and found.line not in document.bold:
+            return None
+        return found
 
     patch.setattr(docx_abstract, "_opened", opened)
 
@@ -21526,11 +21526,11 @@ def test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads(
     """In a styled Word paper, `init --from` makes a run-in label a heading of its name over
     the paragraph's other words, with a colon, a space before it, in bold, in bold with the
     words after it, before a no-break or a thin space pandoc keeps in one piece of text, in a
-    block quote; and a paragraph wholly in bold whose words are "Abstract" alone a heading;
+    block quote; and a paragraph whose words are "Abstract" alone, in bold or not, a heading;
     at the level of the next heading, and the typed title before it that ends it a heading
     too; a structured abstract's parts in bold are its own up to a heading "Introduction"
     (round 1 of #683). Not a label that runs on into the words in one piece, one with a note's
-    mark, "Abstract" plain, a sentence in bold, or the label alone
+    mark, a sentence in bold, or "Abstract" alone in a list's item
     (`from_word_abstract.abstract_headings`)."""
     from manuscript_guard.from_word import text_of
     from manuscript_guard.from_word_abstract import abstract_headings
@@ -21564,6 +21564,21 @@ def _a_label_s_words_are_counted_as_one(patch: pytest.MonkeyPatch) -> None:
     real = from_word_abstract.run_in_abstract
     patch.setattr(from_word_abstract, "run_in_abstract",
                   lambda text: (real(text) or "").replace(" ", "") or None)
+
+
+def _init_makes_only_a_bold_abstract_line_a_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word_abstract
+    from manuscript_guard.from_word import _in_bold
+
+    real = from_word_abstract._opened
+
+    def opened(blocks: list, styled: bool):
+        found = real(blocks, styled)
+        if found is not None and not found[2] and not _in_bold(blocks[found[0]]["c"]):
+            return None
+        return found
+
+    patch.setattr(from_word_abstract, "_opened", opened)
 
 
 def _init_s_next_heading_ends_no_parts(patch: pytest.MonkeyPatch) -> None:
@@ -22414,9 +22429,13 @@ BROKEN = {
         _a_run_in_label_is_no_heading,
         test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
     ),
-    "a plain Abstract line in a styled paper is a heading": (
-        _a_plain_abstract_line_is_a_heading_too,
+    "a plain Abstract line in a styled paper is no heading": (
+        _only_a_bold_abstract_line_is_a_heading,
         test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "init makes no heading of a plain Abstract line in a styled paper": (
+        _init_makes_only_a_bold_abstract_line_a_heading,
+        test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads,
     ),
     "a shaped Abstract ends only at the next heading": (
         _the_abstract_ends_only_at_the_next_heading,

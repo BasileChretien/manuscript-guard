@@ -25165,8 +25165,8 @@ Open, recorded as each change landed:
   document with its styles is, the styles taken off, its ordinary reading block for block;
   where the two differ, it is left in the comment with the rest of the title page, and
   nothing says so. An abstract in another style stays in the comment, and its numbers are
-  read by no gate until it is moved out; one under a line "Abstract" in bold in a paper that
-  uses a heading style elsewhere, or opening on a run-in "Abstract:", has that line made a
+  read by no gate until it is moved out; one under a line "Abstract" alone, in bold or not,
+  in a paper that uses a heading style elsewhere, or opening on a run-in "Abstract:", has that line made a
   heading (below, "A Word paper's typed titles are headings only by a closed list of names").
 - **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
@@ -25220,30 +25220,35 @@ Open, recorded as each change landed:
     real-paper corpus): a paragraph that opens on a run-in "Abstract:" or "Abstract." and
     goes on, in a styled paper and in one placed by its typed titles, the label the heading
     and the rest of the paragraph, numbers and all, the Abstract's first paragraph
-    (docx-med-B3); and, in a styled paper, "Abstract" alone on a line wholly in bold
-    (docx-med-A2, docx-psych-A1, docx-socio-A2). "Abstract" alone in plain type in a styled
-    paper is text, as its other typed titles are: docx-ecol-B2 keeps no Abstract to the
-    audit. The Abstract ends at the next heading, whose level it takes, or before it at a
+    (docx-med-B3); and, in a styled paper, "Abstract" alone on a line of its own, wholly in
+    bold (docx-med-A2, docx-psych-A1, docx-socio-A2) or in plain type (docx-ecol-B2; Basile,
+    2026-11-14), a colon after it or not, in no table's cell, no list Word numbers and no
+    heading style, though the paper's other typed titles stay text. The Abstract ends at the next heading, whose level it takes, or before it at a
     title typed on a line of its own that is no part of it, as `section_levels` places a
     structured abstract's parts, the next heading's title read after them, so that a styled
     Introduction ends the parts as a typed one does (round 1 of #683: read up to it alone,
     a structured Abstract was cut at its first part named, and its own Results' number was
     found as the paper's), that title a heading too: in the corpus the next heading
     was a title page's line, an empty paragraph in a heading style or an introduction's
-    paragraph in one, and an "Introduction", an "Abbreviations", an "Acknowledgments" or a
-    "Method" typed in bold ended the Abstract for a reader. With neither after it, where it
+    paragraph in one, and an "Introduction", an "Abbreviations", an "Author Information" or
+    a "Method" typed in bold ended the Abstract for a reader. "Author information" joined the
+    names of `SECTION_NAMES` for docx-socio-A2 (Basile, 2026-11-14), so it is a typed title
+    too in a paper with no heading style and a PDF's heading. With neither after it, where it
     ends is not read, and the shape is not read either. Pinned by
     `tests/test_word_abstract.py::test_a_run_in_abstract_label_in_a_styled_paper_is_its_heading`,
+    `tests/test_word_abstract.py::test_an_abstract_line_in_a_styled_paper_is_its_heading`,
+    `tests/test_word_abstract.py::test_author_information_typed_in_bold_ends_the_abstract`,
     `tests/test_word_abstract.py::test_the_abstract_ends_at_a_typed_title_before_the_next_heading`,
     `tests/test_word_abstract.py::test_a_structured_abstract_s_parts_in_bold_run_to_the_next_heading`,
     `tests/test_word_abstract.py::test_a_run_in_label_before_a_space_pandoc_keeps_keeps_the_words_after_it`,
     `tests/test_word_abstract.py::test_an_abstract_that_nothing_ends_is_not_read`,
     `tests/test_word_abstract.py::test_the_audit_and_init_take_the_same_abstract_headings`.
   - What stands between such an Abstract and its end is the Abstract's, whatever it is: a
-    "Keywords:" line, a table, and in docx-socio-A2 an "Author Information" in bold with
-    addresses and telephone numbers before its "Acknowledgments", five of whose numbers are
-    then the Abstract's, not found where the paper reports. A line in bold that names no
-    section, or a run-in "Keywords:", ends nothing: no rule says which do. `init --from`
+    "Keywords:" line, a table, and a title numbered by Word's own numbering, a list's item
+    and no typed title: docx-ecol-B2's "Introduction" is one, so its Abstract runs on over
+    the Introduction to the next heading, and three of the Introduction's numbers are then
+    the Abstract's, not found where the paper reports. A line in bold that names no section,
+    or a run-in "Keywords:", ends nothing: no rule says which do. `init --from`
     leaves a run-in label on its paragraph where the label does not end where a word does
     (it runs on into a note's mark, a link or the paragraph's next word in one piece of
     text), which the audit still reads; it makes the label a heading in a paper whose typed
@@ -25251,7 +25256,7 @@ Open, recorded as each change landed:
     a text box is read by the audit, and what pandoc makes of it is not held by a test.
     Accepted.
   - The two shapes are looked for in every file with no heading that names the Abstract,
-    a supplement's too: a supplement with "Abstract" alone on a line in bold, or a line
+    a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line
     opening on "Abstract: …", has an Abstract, and its lines above that line are not
     searched for the paper's Abstract's numbers, nor is the Abstract's own text. That is the
     rule a heading in a heading style that names the Abstract already follows in a

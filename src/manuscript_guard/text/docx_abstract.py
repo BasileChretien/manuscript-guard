@@ -10,21 +10,23 @@ papers of the real-paper corpus whose Abstract a reader sees and the audit did n
   (`section_names.run_in_abstract`), in no heading style, outside a table and not numbered by
   Word: the label is the heading, and the paragraph's own text, numbers and all, the first
   of the Abstract's. In a paper with heading styles and in one placed by its typed titles.
-* **A line in bold.** In a paper with heading styles, a line of its own wholly in bold whose
-  words are the Abstract's name alone (`section_names.abstract_alone`), on a line a title
-  can be typed as (`DocxText.typed`). A paper with no heading style reads it as a typed title
-  already. One in plain type is text, as every typed title of a styled paper is.
+* **A line of its own.** In a paper with heading styles, a line whose words are the
+  Abstract's name alone (`section_names.abstract_alone`), in bold or not, on a line a title
+  can be typed as (`DocxText.typed`), so in no table's cell and no list Word numbers. A
+  paper with no heading style reads it as a typed title already. The paper's other typed
+  titles stay text; "Abstract" in plain type was one of them until docx-ecol-B2 (Basile,
+  2026-11-14).
 
 The Abstract ends where any section does, at the next heading, which it is given the level
 of. Before that heading it ends at a title typed on a line of its own that is no part of it,
 as `section_levels` places a structured abstract's parts (`section_names.abstract_end`),
 the next heading's title read after them, so that a styled Introduction ends the parts
-(`_closing`): in
-the corpus, the next heading was a title page's line or an empty paragraph in a heading style,
-and the Introduction, the Abbreviations or the Acknowledgments typed in bold before it ended
-the Abstract for a reader. That title is a heading too, at the same level, and the text
-under it is under it up to the next. With neither after it, where it ends is not read, and
-the shape is not read either: the Abstract would run to the end of the paper.
+(`_closing`): in the corpus, the next heading was a title page's line or an empty paragraph
+in a heading style, and the Introduction, the Abbreviations, the Author information or the
+Acknowledgments typed in bold before it ended the Abstract for a reader. That title is a
+heading too, at the same level, and the text under it is under it up to the next. With
+neither after it, where it ends is not read, and the shape is not read either: the Abstract
+would run to the end of the paper.
 """
 
 from __future__ import annotations
@@ -76,8 +78,8 @@ def _opened(document, body: list[str], styled: bool) -> Heading | None:
         label = run_in_abstract(line) if at not in numbered else None
         if label is not None:
             return Heading(at, 0, label.rstrip(" :."), run_in=True)
-        if styled and at in document.bold and at in document.typed and abstract_alone(line):
-            return Heading(at, 0, line)
+        if styled and at in document.typed and abstract_alone(line):
+            return Heading(at, 0, _titled(line))
     return None
 
 
@@ -101,8 +103,14 @@ def _abstract(document, body: list[str], found: list[Heading]) -> list[Heading]:
     heading = Heading(opened.line, level, opened.title, opened.run_in)
     if end is not None and end <= len(titles):
         at = titles[end - 1][0]
-        return [heading, Heading(at, level, body[at])]
+        return [heading, Heading(at, level, _titled(body[at]))]
     return [heading] if later else []
+
+
+def _titled(line: str) -> str:
+    """A typed title as a heading's, as `init --from` writes it: its words, less a colon or a
+    stop after them, "Abstract:" as "Abstract"."""
+    return " ".join(line.split()).rstrip(" :.")
 
 
 def _closing(titles: list[str]) -> list[str]:

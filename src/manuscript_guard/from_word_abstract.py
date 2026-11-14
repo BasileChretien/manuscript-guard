@@ -1,7 +1,7 @@
 """`init --from`'s reading of a Word paper's Abstract in the two shapes the audit reads where
 no heading names it (`text.docx_abstract`), so that the two take the same headings: a run-in
 label, "Abstract: text", made a heading "Abstract" over a paragraph "text"; and, in a paper
-with heading styles, a paragraph wholly in bold whose words are "Abstract" alone, made a
+with heading styles, a paragraph whose words are "Abstract" alone, in bold or not, made a
 heading. Each is given the level of the next heading, and ends at a typed title that is no
 part of it before that heading, made a heading too, as `section_levels` places a structured
 abstract's parts; with neither after it, nothing is made.
@@ -31,7 +31,7 @@ from manuscript_guard.text.section_names import (
 
 def abstract_headings(blocks: list, styled: bool) -> tuple[list, tuple[str, ...]]:
     """`blocks`, which hold a heading, with the Abstract's heading made of a run-in label or,
-    where `styled`, of a paragraph in bold that names it alone, and the typed title that
+    where `styled`, of a paragraph that names it alone, and the typed title that
     ends it; and the titles of the headings made. As they came where a heading names the
     Abstract, or where neither shape is found or ends."""
     from manuscript_guard.from_word import text_of
@@ -86,7 +86,7 @@ def _made(blocks: list, at: int, made: list, level: int,
 def _opened(blocks: list, styled: bool) -> tuple[int, list, bool] | None:
     """The first block that is the Abstract's heading in one of the two shapes: its index,
     the blocks it is made into, and whether it was a run-in label."""
-    from manuscript_guard.from_word import _heading, _in_bold, _words_only, text_of
+    from manuscript_guard.from_word import _heading, _words_only, text_of
 
     for at, block in enumerate(blocks):
         kind = block.get("t")
@@ -103,7 +103,7 @@ def _opened(blocks: list, styled: bool) -> tuple[int, list, bool] | None:
                     made = ([{"t": "BlockQuote", "c": before}] if before else []) + [
                         split[0], {"t": "BlockQuote", "c": after}]
                     return at, made, True
-        if styled and kind == "Para" and _words_only(block["c"]) and _in_bold(block["c"]) \
+        if styled and kind == "Para" and _words_only(block["c"]) \
                 and abstract_alone(text_of(block["c"])):  # fmt: skip
             typed = " ".join(text_of(block["c"]).split()).rstrip(" :.")
             return at, [_heading(typed, 1, identifier="")], False

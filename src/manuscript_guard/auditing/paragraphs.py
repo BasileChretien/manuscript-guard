@@ -173,7 +173,7 @@ def of_markdown(text: str) -> Paragraphs:
 def of_docx(document, text: str) -> Paragraphs:
     """The places of `text`, a .docx's body then its notes as the audit reads them
     (`audit.read_paper`): its headings by their styles, or by its typed titles where it
-    has no heading style, and by its Abstract's run-in label or bold line where no heading
+    has no heading style, and by its Abstract's run-in label or a line naming it where no heading
     names it (`text.docx_abstract.placed_headings`), as the audit places its Abstract; its
     tables by their cells. A run-in label's line is the first paragraph under it."""
     from manuscript_guard.text.docx_abstract import placed_headings

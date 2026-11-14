@@ -1422,6 +1422,10 @@ order is `printed_order`.
   design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
   of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
   only names the command. Where a class does not print it, the compile fails (step 9).
+  `\Abstract{…}` is read as `\abstract{…}` is, in the preamble and in the body: LaTeXTemplates'
+  Stylish Article (SelfArx.cls) defines it and prints it in `\maketitle`, and tex-qbio-pe-A1
+  of the real-paper corpus had no Abstract to compare (decision 17, 2026-11-14). No other
+  case is folded, and the environment is `abstract` alone.
 - A class's front matter in the body is passed over, as Markdown's YAML header is: Elsevier's
   `frontmatter` and BMC's `fmbox`, with the title, the authors and the addresses they hold,
   and a list of keywords, `keyword`, `keywords` or `IEEEkeywords`. An abstract in the front
@@ -1982,7 +1986,13 @@ The result is compiled and packed by the code above, and checked three times:
   TeX's `\input name` without braces is refused as before: only the preamble's is followed
   (2026-10-27).
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
-  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
+  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385), and
+  so does `\Abstract{…}` after the paper's own `\newcommand{\Abstract}` (decision 17).
+  - Either command defined again with two arguments, `\newcommand{\Abstract}[2]{…}` and then
+    `\Abstract{english}{We followed 45 patients.}`, has its first argument read as the
+    Abstract, "english". The second is read as text after the Abstract in the body, and is
+    not read at all in the preamble. The reader does not count the arguments a definition
+    takes (round 1 of #680). Accepted.
 - The Abstract an abstract opens stays in force to the next heading of its level, so text
   between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
   case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it
@@ -10681,11 +10691,21 @@ no change. The summary's line counts the works found by their title among those 
 the entries with no DOI expected and those to check by hand, by why each is (`by_title.reason`:
 none found by its title, more than one found, Crossref not answering, a title too short to
 look up or not read, not sorted). Each entry to check by hand is a note of its own, with a
-code for its reason, and puts the References tile at "to look at", with `--lookup` and
+code for its reason, but the entries not sorted, which are one note for each paper (decision
+16, 2026-11-14: 1,405 such notes on 22 of 52 real preprints, 598 on one, most of them from a
+list that runs on into tables): "3 entries not sorted: ..., so not looked up: entries 1, 3
+and 4 of the list; check them by hand", at the first entry's place, each reason said once
+with its entries, and each entry with its note and its line under it in `--json`
+(`entries`), as the short forms left undefined and the names from the code are one finding
+(`auditing.unsorted`, reusing `undefined.gathered`). The References line still counts the
+entries, and the section still lists each one. A note on an entry not sorted
+puts the References tile at "to look at", and so does any other, with `--lookup` and
 without it; the report draft says how many titles were looked up in Crossref, and, where no
 entry gives a DOI or a PMID and no title was found, says that too. The rules read text, so they are held over generated
 entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
-reading "reference sorting").
+reading "reference sorting"); the one note for each paper over two papers audited together,
+one with an entry not sorted and one with several, one list numbered and one not
+(`tests/generated.py::unsorted_references`, the reading "audit references not sorted").
 
 ## The audit page runs in the reader's browser
 
@@ -25198,14 +25218,28 @@ Open, recorded as each change landed:
     to both readers, and what stands under it is placed under it, the Results' or another
     section's: nothing tells the label from a title in a paper with no heading style.
     Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
-  - A title numbered by Word's own numbering is a list's item to pandoc and a numbered
-    line to the audit, and no heading to either; a title holding a link or a note's mark
+  - A title Word numbers itself, "1. INTRODUCTION" with Word's "1.", is a typed title to
+    both readers where pandoc reads it as the lone item of a numbered list in no other
+    (Basile, 2026-11-14); the audit reads the paragraph's numbering as pandoc does, its
+    numbering and level from its own `w:numPr` or else its style's, a subtitle whose
+    style names a level and no numbering read beside its base's title, where Word numbers
+    it under it (`Numbering.pandoc_item`). One with its subsections numbered straight
+    under it, as docx-psych-B1 of the real-paper corpus has its Methods and Results, or
+    with a paragraph pandoc joins to it, a numbering's with no level, is an item holding
+    more than its line and a heading to neither, and so its Results is none. `init --from`
+    titles the heading with its name alone, the list's number not written: pandoc counts
+    each numbering apart and a subtitle at its base's level, and gave "5. METHODS" where
+    Word prints "2. METHODS" (docx-educ-A3), so its count is not Word's. Pinned by
+    `tests/test_audit.py::test_a_title_word_numbers_holding_more_than_its_line_is_no_heading`,
+    `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_word_numbers`.
+  - A title holding a link or a note's mark
     is none, as pandoc reads the link or the note in it, nor is one in a text box to the
     audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
     to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
-    test, so there the two readers may differ). A paragraph indented from the left by its
-    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
-    and so is one that holds a picture; an indent its style gives it is not read by the
+    test, so there the two readers may differ). A paragraph naming no numbering indented
+    from the left by its own `w:ind` more than it hangs is a block quote to pandoc and no
+    title to the audit, and so is one that holds a picture; one naming a numbering is read
+    by it whatever its indent, a list's item indented as Word indents one among them; an indent its style gives it is not read by the
     audit, and what pandoc makes of it is not held by a test. Accepted.
   - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
     Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a
@@ -27421,16 +27455,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
     names the file and the line, and `check` says nothing of an RRID after it, where BUILD
     reports the refusal. An RRID in a float's cells is read, as in prose. Accepted.
   - G2 and G14 read a typed RRID with a copy of this reading (`data/structural.yaml`,
-    `gates/language.py`, from #663, the entry below), which changes with `rrids.py` until one
-    imports the other. Accepted.
+    `gates/language.py`, from #663, the entry below). A test holds the three patterns to one
+    another over the accessions, gaps, trails and cases the generated inputs draw, with each
+    copy's escaped underscore; a form none of them draws could still be read two ways, and
+    what each gate does before its pattern is not compared. Pinned by
+    `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike`.
+    - The space after the colon is not one set: the copies take any one white-space
+      character, and `rrids.py` a space, a tab, a no-break or narrow no-break space, or a
+      line break (`\r\n` too), so "RRID:" before an em space or a lone `\r` is read by the
+      copies only, and before a `\r\n` by `rrids.py` only. Accepted.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
   from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
   (#658) as its round 2 left it, a `.` joining only before a digit and a `-` ending the
   accession only before a word of four small letters or more with no `:`, `_` or `-` after
-  it; it is copied into `data/structural.yaml` and `gates/language.py` while that module is
-  not on main, and each copy changes with it until one imports the other. Pinned by
+  it; it is copied into `data/structural.yaml` and `gates/language.py`, which a YAML rule and a
+  masked view cannot import, and
+  `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike` holds the three
+  patterns to one another, as the point above says. Pinned by
   `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
   - An accession typed without "RRID:" in capitals and its colon right before it, one space
     or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",
@@ -27549,6 +27592,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Results, and "Simulation studies" holds a study's design as well. The comparison never
   falls back to the whole body, and no other gate reads the list. Pinned by
   `tests/test_audit.py::test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared`.
+- **`compare` marks a one-line note new when anything it lists changes.** The audit's one
+  finding on the short forms left undefined (#640), its one on the names from the code
+  (#673) and its one note on a paper's entries not sorted (decision 16) each name every
+  form, name or entry in their message, and `compare` holds v2's finding to v1's word for
+  word. One form, name or entry added, dropped or renumbered in v2 marks the whole note "new
+  in v2", those that stood in v1 among it, and so do the lines alone moving where the note
+  names two entries of one label by their places (a paragraph added above the list); the
+  comparison keeps what the note lists under it
+  (`forms` or `entries`), for the reader to look through, and does not mark them one by one.
+  Pinned by `tests/test_compare.py::test_a_one_line_note_reads_as_new_when_an_entry_in_it_is`.
+- **Two entries of one label are told apart only as far as their places differ.** The note
+  on a paper's entries not sorted names an entry whose label another has too by its place
+  (`auditing.unsorted`), and two places can read the same. Accepted.
+  - In a .docx, two lists that each start at 1, each under a "References" heading with
+    another heading between (an Appendix), make one census, and a paragraph is counted
+    again from each heading and named by its title alone, so the note can read "entries 2
+    (References, paragraph 2) and 2 (References, paragraph 2)". Accepted.
+  - A LaTeX tree's place names no file, so two `\bibitem{x}` in two `\input` files can both
+    read "line 3". Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -2707,6 +2707,30 @@ def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
         assert main(["audit", str(paper), "--strict"]) == failed, heading
 
 
+def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """Decision 17 (tex-qbio-pe-A1 of the real-paper corpus): a class that defines `!Abstract`
+    and prints it in its title, LaTeXTemplates' Stylish Article, and the paper's abstract
+    written in it in the preamble. Its interval that differs from the Results' fails
+    --strict, where no heading named the Abstract and it was not compared."""
+    from manuscript_guard.cli import main
+
+    (tmp_path / "stylish.cls").write_text(
+        "!NeedsTeXFormat{LaTeX2e}\n!ProvidesClass{stylish}\n!LoadClass{article}\n"
+        "!newcommand{!Abstract}[1]{!def!@Abstract{#1}}\n".replace("!", chr(92)),
+        encoding="utf-8")  # fmt: skip
+    latex = ("!documentclass{stylish}\n!Abstract{The OR was 1.52 (95!% CI 1.21--1.89).}\n"
+             "!begin{document}\n!section{Methods}\nWe did.\n"
+             "!section{Results}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(latex.replace("1.89).}", "1.90).}").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:
@@ -2943,6 +2967,40 @@ def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
                                                   "</w:body></w:document>")  # fmt: skip
+        return path
+
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
+
+
+def test_an_abstract_that_differs_in_a_paper_titled_by_word_s_numbering_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """A Word paper with no heading style whose titles are items of a list Word numbers,
+    "1. INTRODUCTION:" with Word's "1.", had no Results heading to the audit, and its
+    Abstract was compared with nothing: four of six such papers of the real-paper corpus
+    (2026-11-14). Its list-item titles are its headings now, and a Results number other than
+    the Abstract's is counted by --strict."""
+    import zipfile
+
+    from generated import TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.cli import main
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def docx(abstract: str) -> Path:
+        body = (para("ABSTRACT") + para(abstract) + numbered().format("INTRODUCTION:")
+                + para("Falls are common.") + numbered().format("Methods")
+                + para("We did it.") + numbered().format("RESULTS")
+                + para("The odds ratio was 1.52 (95% CI 1.21-1.89)."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/numbering.xml", TYPED_PARAGRAPH_NUMBERING)
         return path
 
     assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0

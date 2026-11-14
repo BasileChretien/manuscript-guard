@@ -125,8 +125,9 @@ COMMANDS = _specs(
         # from 2112.07039, which read the title twice, and 2604.24157).
         "title": "[b]{p}",
         "thanks": "{p}",
-        # A class's `\\abstract{...}`: a section titled Abstract, as the environment is.
-        "abstract": "{p}",
+        # A class's `\\abstract{...}`: a section titled Abstract, as the environment is; and a
+        # template's `\\Abstract{...}`, LaTeXTemplates' Stylish Article's (`ABSTRACT_COMMANDS`).
+        **dict.fromkeys(("abstract", "Abstract"), "{p}"),
         "caption": "[p]{p}",
         "footnote": "[b]{p}",
         "footnotetext": "[b]{p}",
@@ -260,6 +261,11 @@ COMMANDS = _specs(
     }
 )  # fmt: skip
 
+#: The commands whose argument is the paper's abstract, a section titled Abstract: a class's
+#: `\\abstract{...}`, and `\\Abstract{...}`, which LaTeXTemplates' Stylish Article
+#: (SelfArx.cls) defines and prints in its title (decision 17, 2026-11-14). The environment is
+#: `abstract` alone: no case is folded, as `\\Section` is no `\\section`.
+ABSTRACT_COMMANDS = frozenset({"abstract", "Abstract"})
 #: The front matter of the major journals' classes, which the title page prints: Elsevier's
 #: `frontmatter` and BMC's `fmbox`, whose content is passed over but for an abstract, as
 #: Markdown passes over its YAML header and reads the abstract; and a list of keywords

@@ -175,6 +175,36 @@ class Numbering:
                 level = self._style_level(num, style_level, source)[0]
         return int(level) if level and level.isascii() and level.isdigit() else 0
 
+    def pandoc_item(self, paragraph: ET.Element) -> tuple[str, int, str] | None:
+        """What pandoc (3.9.0.2) reads a paragraph as where it names a numbering: its numId,
+        its level and "ordered" or "bullet" for a list's item; "plain" where pandoc finds no
+        level of it with a format and a text, a numId of 0 or one it does not know, which it
+        reads as a paragraph joined to the list's item before it, where there is one, and as
+        a paragraph of its own where not; None where it names none. pandoc takes the numId and
+        the level together, from the paragraph's own `w:numPr` where that names a numId, else
+        from the first style it is based on whose numbering does, a level left out 0: a style
+        whose numbering names a level and no numId, as a subsection's often does, numbers its
+        paragraphs at the level of its base's to pandoc, where Word numbers them at its own.
+        Read from what pandoc made of each shape (`tests/test_audit.py`); what a flow is read
+        from is Word's level (`level_of`)."""
+        props = paragraph.find(W + "pPr")
+        own = props.find(W + "numPr") if props is not None else None
+        num, level = _val(own, "numId"), _val(own, "ilvl")
+        style, seen = (_val(props, "pStyle") if props is not None else None), set()
+        while num is None and style in self.styles and style not in seen:
+            seen.add(style)
+            style, num, level = self.styles[style]
+        if num is None:
+            return None
+        level = level or "0"
+        abstract, overridden, _starts = self.nums.get(num, ("", {}, {}))
+        levels = self.abstracts.get(abstract)
+        chosen = None if levels is None else overridden.get(level, levels.get(level))
+        form, text = _val(chosen, "numFmt"), _val(chosen, "lvlText")
+        if form is None or text is None or not (level.isascii() and level.isdigit()):
+            return (num, 0, "plain")
+        return (num, int(level), "bullet" if form == "bullet" else "ordered")
+
     def _style_level(self, num: str, level: str | None, source: str) -> tuple[str, bool]:
         """The level a style's numbering numbers its paragraphs at, and whether that is
         sure: the one level of the abstract numbering linked to the style by `w:pStyle`, or

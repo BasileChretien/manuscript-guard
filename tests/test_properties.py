@@ -1682,6 +1682,14 @@ def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
 
 
+def _a_template_s_abstract_command_is_blanked_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"Abstract"})
+
+
+def _a_template_s_abstract_command_defined_again_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_REDEFINABLE", latex_mask._REDEFINABLE - {"Abstract"})
+
+
 @holds(100, latex_bound())
 def test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else(
     drawn: tuple[str, list[tuple[str, str]]],
@@ -1852,13 +1860,27 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
             written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]",
                        "tight": "({{results.%s}})."}  # fmt: skip
             assert written[kind] % key in view, (key, view)
-    sections = {section.title: section.body for section in split_sections(view)}
-    ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
-                               for which in ("abstract", "after"))  # fmt: skip
-    assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
+    # Each abstract, the environment and a template's `\\Abstract`, is under a heading of its
+    # own titled Abstract, and the text after them under none (round 1 of #680).
+    under = [section.body for section in split_sections(view) if section.title == "Abstract"]
+    abstracts, (after,) = ([k for k, kind in planted if kind == which]
+                           for which in ("abstract", "after"))  # fmt: skip
+    assert len(under) == len(abstracts) == 2, view
+    assert all(sum(key in body for key in abstracts) == 1 for body in under), view
+    assert all(any(key in body for body in under) for key in abstracts), view
+    assert not any(after in body for body in under), view
     # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
     spans = "".join(re.findall(r"`[^`\n]+`", view))
     assert not [k for k, kind in planted if kind == "prose" and k in spans], view
+
+
+def _a_template_s_abstract_command_opens_no_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_HEADING_COMMANDS", latex_mask._HEADING_COMMANDS - {"Abstract"})
+
+
+def _a_template_s_abstract_command_is_titled_by_its_text(patch: pytest.MonkeyPatch) -> None:
+    # `_close` titles a heading Abstract, and records its span, only for these commands.
+    patch.setattr(latex_mask, "ABSTRACT_COMMANDS", latex_mask.ABSTRACT_COMMANDS - {"Abstract"})
 
 
 def _the_printed_view_drops_an_accent_s_mark(patch: pytest.MonkeyPatch) -> None:
@@ -11519,6 +11541,75 @@ def _a_retracted_work_s_flag_stays_in_its_title(patch: pytest.MonkeyPatch) -> No
 
 def _the_title_is_not_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(by_title_module, "_same_title", lambda said, work: True)
+
+
+from generated import unsorted_references  # noqa: E402
+
+#: What the note on an entry not sorted says of why (`by_title.UNSORTED_SAID`).
+_NOT_SORTED = ("not sorted: neither an article, a book, a web page nor a legal text by its "
+               "shape, so not looked up")  # fmt: skip
+
+
+@holds(60, unsorted_references())
+def test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note(
+    drawn: tuple[list[list[str]], list[dict[str, Any]]],
+) -> None:
+    """Each paper audited has one note on its entries the audit cannot sort, at the first of
+    them: the paper with one entry and the paper with several alike, a numbered list and an
+    unnumbered one alike, whatever the order of the papers and of the entries. It names each
+    entry in the list's order, its reason once, and lists each with its line; the other
+    notes are one for each entry, as they were (decision 16, 2026-11-14)."""
+    from manuscript_guard.audit import census_of_markdown
+
+    given, papers = drawn
+    answered = answer(READINGS["audit references not sorted"](), given)
+    assert "raised" not in answered, answered
+    said = answered["answer"]
+    notes = [one for one in said if one[1] == "reference-not-sorted"]
+    assert [path for path, *_rest in notes] == [paper["name"] for paper in papers], said
+    for (_path, _code, line, message, entries), paper in zip(notes, papers, strict=True):
+        census = census_of_markdown(Path(paper["name"]), paper["text"])
+        lines = [entry.line for entry in census.entries]
+        places = paper["unsorted"]
+        of = "" if paper["numbered"] else " of the list"
+        assert [entry for entry, _line in entries] == [f"entry {at}{of}" for at in places], said
+        assert [at for _entry, at in entries] == [lines[at - 1] for at in places], said
+        assert line == lines[places[0] - 1], (said, paper)
+        count = len(places)
+        numbers = [str(at) for at in places]
+        named = ", ".join(numbers[:-1]) + f" and {numbers[-1]}" if count > 1 else numbers[0]
+        assert message == (f"{count} entr{'y' if count == 1 else 'ies'} {_NOT_SORTED}: "
+                           f"entr{'y' if count == 1 else 'ies'} {named}{of}; check "
+                           f"{'it' if count == 1 else 'them'} by hand"), message
+    others = [one for one in said if one[1] != "reference-not-sorted"]
+    assert all(not entries and message.startswith("entry ") for *_rest, message, entries
+               in others), others  # fmt: skip
+
+
+def _the_entries_not_sorted_are_one_note_for_all_papers(patch: pytest.MonkeyPatch) -> None:
+    """One note for every paper audited, at the first paper's first entry."""
+    from manuscript_guard.auditing import report, unsorted
+
+    titles, one = report._title_items, unsorted.one_finding
+    patch.setattr(unsorted, "one_finding", lambda found, *at: list(found))
+    patch.setattr(report, "_title_items", lambda audited: one(titles(audited)))
+
+
+def _the_entries_not_sorted_stand_at_the_last(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.auditing import unsorted
+
+    made = unsorted._made
+    patch.setattr(unsorted, "_made",
+                  lambda mine, *at: replace(made(mine, *at), line=mine[-1][1].line))  # fmt: skip
+
+
+def _the_entries_not_sorted_are_named_last_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import unsorted
+
+    made = unsorted._made
+    patch.setattr(unsorted, "_made", lambda mine, *at: made(list(reversed(mine)), *at))
 
 
 @holds(100, glued_intervals())
@@ -21417,11 +21508,15 @@ def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
 @holds(40, typed_paragraphs())
 def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]]) -> None:
     """A paragraph of words outside a table, in no caption style pandoc reads ("caption",
-    "Table Caption", "Image Caption", by name) and not numbered by Word is a line a title can
-    be typed as, in bold or not; one in a table's cell, in a link, in a caption style, Word
-    numbers or with a note's mark is not (`text.docx.DocxText.typed`)."""
+    "Table Caption", "Image Caption", by name), and that pandoc reads as a paragraph or as
+    the lone item of a numbered list in no other, is a line a title can be typed as, in bold
+    or not; one in a table's cell, in a link, in a caption style, with a note's mark, Word
+    bullets, or an item holding another or a paragraph is not
+    (`text.docx.DocxText.typed`)."""
     import tempfile
     import zipfile
+
+    from generated import TYPED_PARAGRAPH_NUMBERING
 
     from manuscript_guard.text.docx import read_docx_text
 
@@ -21433,6 +21528,7 @@ def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]
                                                   f"{body}</w:body></w:document>")  # fmt: skip
             archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
                                                 f"{TYPED_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+            archive.writestr("word/numbering.xml", TYPED_PARAGRAPH_NUMBERING)
         document = read_docx_text(path)
     lines = document.body.split("\n")
     assert sorted(lines[at] for at in document.typed) == typed
@@ -21450,27 +21546,86 @@ def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(docx_module, "_caption_styles", lambda archive, names, what: frozenset())
 
 
+def _a_numbered_paragraph_indented_is_quoted(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #682: a list's item indented as Word indents one was read as a quote."""
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_block_quote", lambda paragraph, shape: docx_module._quoted(
+        paragraph))
+
+
+def _a_line_word_numbers_is_never_typed(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-14: a title Word numbers was a list's item, and no title."""
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._in_lists
+    patch.setattr(docx_module, "_in_lists", lambda pieces, listed, pictured: real(
+        pieces, listed, pictured) | {line for line, shape in listed.items() if shape})
+
+
+def _an_item_holding_more_is_typed(patch: pytest.MonkeyPatch) -> None:
+    """An item with an item under it, or with a paragraph pandoc joins to it, read as lone."""
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_list_run", lambda run: {
+        line for line, _num, _level, kind, _joined in run if kind != "ordered"})
+
+
+def _word_s_level_is_pandoc_s(patch: pytest.MonkeyPatch) -> None:
+    """A numbered paragraph read at the level Word numbers it at, not pandoc's."""
+    from manuscript_guard.text.word_numbering import Numbering
+
+    real = Numbering.pandoc_item
+
+    def item(self: Numbering, paragraph: object) -> tuple[str, int, str] | None:
+        found = real(self, paragraph)
+        if found is None or found[2] == "plain":
+            return found
+        return (found[0], self.level_of(paragraph) or 0, found[2])
+
+    patch.setattr(Numbering, "pandoc_item", item)
+
+
 @holds(60, typed_blocks())
 def test_a_paragraph_that_names_a_section_alone_is_made_a_heading(
     drawn: tuple[list[dict], list[str]],
 ) -> None:
     """In a Word paper with no heading style, a paragraph whose words name a section is made
     a heading of its name, in bold or not, also underlined, in a span, in italics, numbered,
-    with a colon, in capitals, half in bold; a bold title that names none, a word in bold or
-    not opening a sentence, a name in a list's item or in a link stays text
-    (`from_word.typed_headings`; the real-paper corpus, 2026-11-11)."""
+    with a colon, in capitals, half in bold, and a numbered list's item that is one such
+    paragraph, its list split there; a bold title that names none, a word in bold or not
+    opening a sentence, a name in a bulleted list's item or in a link, a numbered item with a
+    list under it or of a sentence stays text (`from_word.typed_headings`; the real-paper
+    corpus, 2026-11-11 and 2026-11-14). Every word stays where it stood."""
     from manuscript_guard.from_word import typed_headings
 
     blocks, titles = drawn
+    before = _words_in_order(blocks)
     made, named = typed_headings(blocks)
     assert list(named) == titles
     assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
+    assert _words_in_order(made) == before
 
 
 def _text_of_heading(block: dict) -> str:
     from manuscript_guard.from_word import text_of
 
     return " ".join(text_of(block["c"][2]).split())
+
+
+def _words_in_order(blocks: list[dict]) -> list[str]:
+    """The words of `blocks`, a list's item by item, each without a colon or a stop at its end,
+    which a heading made of it leaves out."""
+    from manuscript_guard.from_word import text_of
+
+    said: list[str] = []
+    for block in blocks:
+        if block["t"] == "OrderedList":
+            said += [" ".join(text_of(item).split()) for item in block["c"][1]]
+        else:
+            said.append(" ".join(text_of(block["c"][2] if block["t"] == "Header"
+                                         else block["c"]).split()))  # fmt: skip
+    return [words.rstrip(" :.") for words in said]
 
 
 def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
@@ -21486,6 +21641,35 @@ def _only_a_title_in_bold_is_typed(patch: pytest.MonkeyPatch) -> None:
     real = from_word._words_only
     patch.setattr(from_word, "_words_only", lambda inlines: real(inlines) and any(
         node.get("t") == "Strong" for node in inlines))  # fmt: skip
+
+
+def _a_list_s_item_is_never_a_title(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-14: a numbered list's item stayed a list's item."""
+    from manuscript_guard import from_word
+
+    patch.setattr(from_word, "_titles_a_section", lambda item, named: False)
+
+
+def _an_item_with_a_list_under_it_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._titles_a_section
+    patch.setattr(from_word, "_titles_a_section", lambda item, named: real(item[:1], named))
+
+
+def _a_split_list_loses_its_items_after_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._opened_lists
+
+    def opened(blocks: list, named: object) -> tuple[list, list]:
+        out, lists = real(blocks, named)
+        kept = [(block, came) for at, (block, came) in enumerate(zip(out, lists, strict=True))
+                if not (block["t"] == "OrderedList" and at and lists[at - 1] is not None
+                        and lists[at - 1][0] == (came or [None])[0])]  # fmt: skip
+        return [block for block, _came in kept], [came for _block, came in kept]
+
+    patch.setattr(from_word, "_opened_lists", opened)
 
 
 def _a_number_before_a_title_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
@@ -22333,6 +22517,34 @@ BROKEN = {
     "a paragraph in a caption style is typed": (
         _a_caption_is_typed,
         test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered paragraph indented is quoted": (
+        _a_numbered_paragraph_indented_is_quoted,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a line Word numbers is never typed": (
+        _a_line_word_numbers_is_never_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "an item holding more than its line is typed": (
+        _an_item_holding_more_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered paragraph is at Word's level": (
+        _word_s_level_is_pandoc_s,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered list's item is never a title": (
+        _a_list_s_item_is_never_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "an item with a list under it is a title": (
+        _an_item_with_a_list_under_it_is_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a list split at a title loses the items after it": (
+        _a_split_list_loses_its_items_after_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,
@@ -23703,6 +23915,14 @@ BROKEN = {
         _an_abstract_in_the_preamble_is_blanked,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
+    "in LaTeX, a template's \\Abstract in the preamble is blanked": (
+        _a_template_s_abstract_command_is_blanked_in_the_preamble,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a paper's own \\Abstract is refused as a known command defined again": (
+        _a_template_s_abstract_command_defined_again_is_refused,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
     "in LaTeX, a binding is read wherever it is typed, in a comment too": (
         _a_latex_binding_is_read_wherever_it_is_typed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
@@ -24311,6 +24531,14 @@ BROKEN = {
         _an_abstract_runs_on_to_the_next_heading,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
+    "in LaTeX's printed view, a template's \\Abstract opens no heading": (
+        _a_template_s_abstract_command_opens_no_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a template's \\Abstract is titled by its text": (
+        _a_template_s_abstract_command_is_titled_by_its_text,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
     "in LaTeX's printed view, a prose binding is printed with spaces round it": (
         _a_prose_binding_is_printed_with_spaces_round_it,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
@@ -24786,6 +25014,18 @@ BROKEN = {
     "the audit orders the short forms left undefined by their files' paths": (
         _the_short_forms_are_ordered_by_path,
         test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit says every paper's entries not sorted in one note": (
+        _the_entries_not_sorted_are_one_note_for_all_papers,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
+    ),
+    "the audit's note on the entries not sorted stands at the last": (
+        _the_entries_not_sorted_stand_at_the_last,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
+    ),
+    "the audit names the entries not sorted last first": (
+        _the_entries_not_sorted_are_named_last_first,
+        test_the_audit_says_a_paper_s_entries_not_sorted_in_one_note,
     ),
     "a word with underscores in code is read as a sentence's": (
         _code_is_read_as_prose,

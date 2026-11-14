@@ -174,7 +174,12 @@ counts as asked.
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no
 DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
-journal); or not sorted, to check by hand. With `--lookup`, each article, book and chapter is
+journal); or not sorted, to check by hand. The entries not sorted are one note for the paper,
+not a note each: "3 entries not sorted: neither an article, a book, a web page nor a legal
+text by its shape, so not looked up: entries 1, 3 and 4 of the list; check them by hand", at
+the first entry's place, and `--json` keeps each entry under it with its note and its line
+(`entries`); the summary still counts the entries, and the section still lists each one.
+With `--lookup`, each article, book and chapter is
 looked up in Crossref by its title, its first author and its year, and a work is taken only
 when it is a near-exact match: the same title once case, punctuation and accents are folded,
 the same first author's family name, and the same year where the entry gives one. A work taken
@@ -514,7 +519,12 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   capitals or not, "Abstract", "ABSTRACT", "2. Methods", "3. RESULTS", "References",
   "Declarations", is made a heading, and the title page before the first is set aside as
   above; the audit reads the .docx's sections the same way, and says so in the report. A
-  sentence that opens with "Results", a list's item, a table's cell and a caption beside a
+  title Word numbers itself, "1. INTRODUCTION" as an item of a numbered list, is one too
+  where the item holds that line alone, and its heading is titled with its name alone,
+  since pandoc's count of a list's items is not always Word's; the list is split there,
+  and its other items stay a list. An item with its subsections numbered straight under
+  it, or with a paragraph joined to it, is not. A sentence that opens with "Results", a
+  bulleted list's item, a numbered list's sentence, a table's cell and a caption beside a
   table, an indented paragraph and one beside a picture are not titles. The names are a
   closed list, the one a PDF's lines are read by: a
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a

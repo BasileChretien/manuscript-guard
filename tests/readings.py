@@ -2134,6 +2134,28 @@ def _reference_sorting() -> Reading:
     return read
 
 
+@reading("audit references not sorted")
+def _audit_references_not_sorted() -> Reading:
+    """The notes the audit gives on Markdown papers' entries with no DOI and no PMID, nothing
+    looked up: each with its paper, its code, its line and what it says, and, for a paper's
+    entries not sorted, each entry it lists with its line (`auditing.unsorted`, decision 16;
+    the base gives a note for each)."""
+    from manuscript_guard.audit import AuditReport, census_of_markdown
+    from manuscript_guard.auditing.by_title import CODES
+    from manuscript_guard.auditing.report import items
+
+    codes = set(CODES.values())
+
+    def read(papers: list[list[str]]) -> list[Any]:
+        report = AuditReport(references=[census_of_markdown(Path(name), text)
+                                         for name, text in papers])  # fmt: skip
+        return [[str(item.path), item.code, item.line, item.message,
+                 [[one["entry"], one["line"]] for one in (item.listed or {}).get("entries", [])]]
+                for item in items(report) if item.code in codes]  # fmt: skip
+
+    return read
+
+
 @reading("printed value")
 def _printed_value() -> Reading:
     """Whether a value an earlier output printed is this paper's, as G8 compares one read

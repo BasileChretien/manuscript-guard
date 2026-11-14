@@ -1657,6 +1657,8 @@ LATEX_PLACES = (
      "\\end{{abstract}}\\begin{{highlights}}\\item Of {}\\end{{highlights}}"
      "\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
      (False, False, True, True, False)),
+    # A template's `\\Abstract` in the body, which the preamble defines (decision 17).
+    ("\\Abstract{{Of {}}} ", (True,)),
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
@@ -1725,6 +1727,9 @@ LATEX_PREAMBLE_PLACES = (
     # (round 2 of #385: the first was refused, and so was the second).
     ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
     ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+    # A template's `\\Abstract`, which LaTeXTemplates' Stylish Article defines and prints, here
+    # defined by the paper itself, and used in the body too (decision 17, tex-qbio-pe-A1).
+    ("\\newcommand{{\\Abstract}}[1]{{#1}}\n\\Abstract{{Of {}}}\n", (True,)),
     # An encoding other than UTF-8 in a file all of ASCII, and the author's `\\unit` where
     # siunitx is not loaded (2026-10-23).
     ("\\usepackage[latin9]{{inputenc}}\n", ()),
@@ -2458,7 +2463,9 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     drawn, after an abstract with text of its own and words after it, under a title in the
     preamble; and each word, with what the printed view makes of it. Every place is in every
     document, so that a rule broken for one is seen in each. The abstract is in the body or,
-    as a class that prints it from there allows, in the preamble (round 1 of step 6)."""
+    as a class that prints it from there allows, in the preamble (round 1 of step 6). Every
+    document also gives a template's `\\Abstract{...}` in its preamble, which its class
+    defines and the paper does not (decision 17; round 1 of #680)."""
     filler = [*_spaced(FILLER)]
     order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
     between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
@@ -2471,6 +2478,7 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 
     preamble = draw(st.booleans())
     text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    text += f"\\Abstract{{abs {key('abstract')}}}\n"
     abstract = f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\n"
     text += (abstract + "\\begin{document}\n") if preamble else ("\\begin{document}\n" + abstract)
     text += f"after {key('after')}\n"
@@ -13493,6 +13501,49 @@ def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, st
     return draw(st.permutations(drawn))
 
 
+#: Entries the audit cannot sort (`auditing.by_title.sort`): neither an article, a book, a web
+#: page nor a legal text by their shape, as `{a}` the first author, `{i}` an initial and
+#: `{year}` its year. A personal communication, field notes, and an author-year entry with
+#: nothing after its title (the shapes docx-educ-A2 and docx-socio-A1 have).
+UNSORTED_ENTRIES = (
+    "{a} {i}. Personal communication. {year}.",
+    "{a} {i}. Field notes from the archive. {year}.",
+    "{a}, {i}. ({year}). Interview transcripts of the second wave.",
+)
+
+
+@st.composite
+def unsorted_references(draw: st.DrawFn) -> tuple[list[list[str]], list[dict[str, Any]]]:
+    """Two Markdown papers audited together, in an order drawn, each `[name, text]`, with what
+    each holds: one paper with a single entry the audit cannot sort, the other with one of
+    each of `UNSORTED_ENTRIES`, both among entries it sorts (`unidentified_entries`, shared
+    out between them), at places drawn. One list is numbered, "1. ...", and the other is
+    not, an entry a paragraph, so that every example holds a paper with one entry and one
+    with several, and a numbered list and an unnumbered one. Each paper's `unsorted` is the
+    1-based place of each entry not sorted, in the list's order, and `numbered` its style."""
+    sorted_ = [text for text, *_rest in draw(unidentified_entries())]
+    cut = draw(st.integers(1, len(sorted_) - 1))
+    numbered = draw(st.booleans())
+    papers = []
+    for many, others in ((False, sorted_[:cut]), (True, sorted_[cut:])):
+        shapes = UNSORTED_ENTRIES if many else (draw(st.sampled_from(UNSORTED_ENTRIES)),)
+        unsorted = [shape.format(a=draw(st.sampled_from(UNIDENTIFIED_FAMILIES)),
+                                 i=draw(st.sampled_from(_INITIALS)),
+                                 year=draw(st.integers(1970, 2024)))
+                    for shape in shapes]  # fmt: skip
+        entries = draw(st.permutations([(text, False) for text in others]
+                                       + [(text, True) for text in unsorted]))  # fmt: skip
+        listed = numbered == many
+        typed = [f"{at}. {text}" if listed else text for at, (text, _not) in enumerate(entries, 1)]
+        text = ("# Results\n\nIt rose, as before.\n\n# References\n\n"
+                + ("\n" if listed else "\n\n").join(typed) + "\n")  # fmt: skip
+        papers.append({"name": "several.md" if many else "one.md", "text": text,
+                       "numbered": listed,
+                       "unsorted": [at for at, (_text, not_) in enumerate(entries, 1) if not_]})
+    papers = draw(st.permutations(papers))
+    return [[paper["name"], paper["text"]] for paper in papers], papers
+
+
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
 #: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
 INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
@@ -15536,12 +15587,53 @@ def bold_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
     return body, sorted(bold)
 
 
+def numbered(level: int = 0, num: int = 1, style: str = "", indent: bool = False) -> str:
+    """A Word paragraph numbered by its own `w:numPr`, at `level` of numbering `num` of
+    `TYPED_PARAGRAPH_NUMBERING`, in `style` if one is given, indented from the left more
+    than it hangs with `indent`, as Word indents a list's item, with `{}` for its words."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    indented = '<w:ind w:left="720" w:hanging="360"/>' if indent else ""
+    return (f'<w:p><w:pPr>{styled}<w:numPr><w:ilvl w:val="{level}"/><w:numId w:val="{num}"/>'
+            f"</w:numPr>{indented}</w:pPr><w:r><w:t>{{}}</w:t></w:r></w:p>")
+
+
+#: The numberings `numbered` names, as `word/numbering.xml` holds them: 1 counts "1.", and
+#: "1.1." a level deeper; 2 bullets; 77 and 0 are none, 0 taking a numbering off.
+TYPED_PARAGRAPH_NUMBERING = (
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+    '<w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1">'
+    '<w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>'
+    '</w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0">'
+    '<w:numFmt w:val="bullet"/><w:lvlText w:val="o"/></w:lvl></w:abstractNum>'
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+    '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>'
+)
+#: The styles that number their paragraphs: a title's, by numbering 1, and a subtitle's
+#: based on it, which names level 1 and no numbering, as docx-educ-A3 of the real-paper
+#: corpus has them. Word numbers a subtitle "1.1."; pandoc (3.9.0.2) reads it at its base's
+#: level, an item beside the title's, not under it.
+NUMBERED_STYLES = (
+    '<w:style w:type="paragraph" w:styleId="NumTitle"><w:name w:val="Num title"/>'
+    '<w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr></w:style>'
+    '<w:style w:type="paragraph" w:styleId="NumSub"><w:name w:val="Num sub"/>'
+    '<w:basedOn w:val="NumTitle"/><w:pPr><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/>'
+    "</w:style>"
+)
+
+
 #: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether it is a
 #: line a title can be typed as (`text.docx.DocxText.typed`): every shape of
 #: `BOLD_PARAGRAPHS` but a table's cell and a link, bold or not; a plain one; one in a style
-#: whose id is "Caption" and whose name is another, which pandoc reads as no caption; and none
-#: in a style named "caption", "Table Caption" or "Image Caption", numbered by Word, or with
-#: a note's mark.
+#: whose id is "Caption" and whose name is another, which pandoc reads as no caption; one
+#: Word numbers that pandoc reads as the lone item of a numbered list in no other, at any
+#: level, by its own numbering or its style's; one numbered by a numbering pandoc reads no
+#: level of, or with its numbering taken off, which pandoc reads as a paragraph; and none in
+#: a style named "caption", "Table Caption" or "Image Caption", with a note's mark, that Word
+#: bullets, or numbered with an item under it or a paragraph pandoc joins to it, nor that
+#: item or paragraph (Basile, 2026-11-14: a title Word numbers is a typed title).
 TYPED_PARAGRAPHS = {
     **{kind: (shape, kind not in ("in a cell", "in a link"))
        for kind, (shape, _bold) in BOLD_PARAGRAPHS.items()},
@@ -15554,8 +15646,27 @@ TYPED_PARAGRAPHS = {
                                "<w:t>{}</w:t></w:r></w:p>", False),
     "pandoc's image caption": ('<w:p><w:pPr><w:pStyle w:val="ImageCaption"/></w:pPr><w:r>'
                                "<w:t>{}</w:t></w:r></w:p>", False),
-    "numbered by Word": ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/>'
-                         "</w:numPr></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>", False),
+    "numbered by Word": (numbered(), True),
+    "numbered a level deeper": (numbered(1), True),
+    "numbered by its style": ('<w:p><w:pPr><w:pStyle w:val="NumTitle"/></w:pPr><w:r>'
+                              "<w:t>{}</w:t></w:r></w:p>", True),
+    "numbered by its style's base": ('<w:p><w:pPr><w:pStyle w:val="NumSub"/></w:pPr><w:r>'
+                                     "<w:t>{}</w:t></w:r></w:p>", True),
+    # Word numbers the second "1.1.", under the first; pandoc reads the two side by side.
+    "numbered by its style, a subtitle after it": (
+        '<w:p><w:pPr><w:pStyle w:val="NumTitle"/></w:pPr><w:r><w:t>{0}</w:t></w:r></w:p>'
+        '<w:p><w:pPr><w:pStyle w:val="NumSub"/></w:pPr><w:r><w:t>{0}</w:t></w:r></w:p>', True),
+    "numbered by an unknown numbering": (numbered(0, 77), True),
+    "its numbering taken off": (numbered(0, 0), True),
+    # pandoc reads a paragraph naming a numbering by its numbering whatever its own indent,
+    # where it sets one naming none in a block quote (round 1 of #682).
+    "numbered and indented, in List Paragraph": (numbered(style="ListParagraph",
+                                                          indent=True), True),
+    "its numbering taken off, indented": (numbered(0, 0, indent=True), True),
+    "bulleted by Word": (numbered(0, 2), False),
+    "numbered with an item under it": (numbered() + numbered(1).format("Under it"), False),
+    "numbered with a paragraph joined to it": (numbered() + numbered(0, 0).format("Joined"),
+                                               False),
     "with a note's mark": ('<w:p><w:r><w:t>{}</w:t></w:r><w:r><w:footnoteReference w:id="1"/>'
                            "</w:r></w:p>", False),
     # pandoc 3.9.0.2 reads one indented from the left more than it hangs as a block quote,
@@ -15574,15 +15685,16 @@ TYPED_PARAGRAPH_STYLES = BOLD_PARAGRAPH_STYLES + (
     '<w:style w:type="paragraph" w:styleId="TableCaption"><w:name w:val="Table Caption"/>'
     "</w:style>"
     '<w:style w:type="paragraph" w:styleId="ImageCaption"><w:name w:val="Image Caption"/>'
-    "</w:style>"
+    "</w:style>" + NUMBERED_STYLES
 )
 
 
 @st.composite
 def typed_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A .docx body with a paragraph of every kind of `TYPED_PARAGRAPHS`, twice over in an
-    order drawn, each with words of its own between plain paragraphs; and the words of those
-    a title can be typed as, the plain paragraphs' among them, sorted."""
+    order drawn, each with words of its own between plain paragraphs, once for each of its
+    paragraphs that holds them; and the words of those a title can be typed as, the plain
+    paragraphs' among them, sorted."""
     kinds = draw(st.permutations(list(TYPED_PARAGRAPHS) * 2))
     body, typed = "", []
     for number, kind in enumerate(kinds):
@@ -15591,7 +15703,8 @@ def typed_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
         body += f"<w:p><w:r><w:t>Plain {number}.</w:t></w:r></w:p>" + shape.format(words)
         typed.append(f"Plain {number}.")
         if is_typed:
-            typed.append(f"{words} and more" if kind == "half" else words)
+            typed += [f"{words} and more" if kind == "half" else words] * (
+                shape.count("{}") + shape.count("{0}"))  # fmt: skip
     return body, sorted(typed)
 
 
@@ -15604,6 +15717,15 @@ def _strong(*inlines: dict) -> dict:
 
 
 _GAP = {"t": "Space"}
+
+
+def _listed(*items: list[dict], start: int = 3) -> dict:
+    """A numbered list, as pandoc reads one of Word's, of an item for each of `items`, each
+    the inlines of a paragraph, numbered from `start` with a stop."""
+    return {"t": "OrderedList", "c": [[start, {"t": "Decimal"}, {"t": "Period"}],
+                                      [[{"t": "Para", "c": inlines}] for inlines in items]]}
+
+
 #: A pandoc paragraph of each kind, as Word papers are read, and the heading
 #: `from_word.typed_headings` makes of it, or None: a name in bold; also underlined, inside
 #: the bold or around it; in a span; numbered; with a colon; a name only half in bold; one
@@ -15641,7 +15763,21 @@ TYPED_BLOCKS = {
         _str("Background"))]}]]}, None),
     "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [
         _str("Methods")], ["#m", ""]]})]}, None),
+    # A title Word numbers, a numbered list's item (Basile, 2026-11-14): alone in its list,
+    # in capitals with a colon; among a list's items, which split there; and none of one with
+    # a list under it, a sentence, nor a name opening an item's words.
+    "a numbered list's item": (_listed([_str("DECLARATIONS:")]), "DECLARATIONS"),
+    "among a list's items": (_listed([_str("One"), _GAP, _str("aim.")], [_str("Appendix")],
+                                     [_str("A"), _GAP, _str("last.")]), "Appendix"),
+    "an item with a list under it": (_listed([_str("Ethics")]), None),
+    "a numbered list's sentence": (_listed([_str("Results"), _GAP, _str("were"), _GAP,
+                                            _str("clear.")]), None),
+    "a name opening an item": (_listed([_str("Funding"), _GAP, _str("of"), _GAP,
+                                        _str("the"), _GAP, _str("survey")]), None),
 }  # fmt: skip
+# The item with a list under it holds one.
+TYPED_BLOCKS["an item with a list under it"][0]["c"][1][0].append(
+    _listed([_str("Approval"), _GAP, _str("given.")]))
 
 
 @st.composite
@@ -16456,6 +16592,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
+    "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),

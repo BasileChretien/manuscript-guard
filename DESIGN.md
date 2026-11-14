@@ -25223,8 +25223,13 @@ Open, recorded as each change landed:
   (Basile, 2026-11-11, after 52 real preprints: "ABSTRACT" and "3. RESULTS" typed as plain
   paragraphs left 79% of the Abstracts judged unfound), whose words are a section's name
   alone from the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`), its
-  first letter a capital. `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
-  holds the two readings together. Pinned by
+  first letter a capital. "Result", the Results in the singular, joined the list as
+  "Method" stands beside "Methods", and the parts a structured abstract is placed by
+  (Basile, 2026-11-15: docx-med-A3's "RESULT:", docx-med-A2's "Result:" and pdf-psych-B3's
+  "3. Result" left their Abstracts compared with nothing).
+  `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
+  and `tests/test_from_word.py::test_the_audit_and_init_take_result_in_the_singular_alike`
+  hold the two readings together. Pinned by
   `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`,
   `tests/test_from_word.py::test_a_word_paper_with_typed_titles_has_them_made_headings`.
   - A "Study design and setting", a "Statistical analysis", a "Participants" or a "2.1
@@ -25233,8 +25238,12 @@ Open, recorded as each change landed:
   - A one-word paragraph that is a section's name, typed as a run-in label in the middle
     of a section, "Results" over the results of one analysis among several, is a heading
     to both readers, and what stands under it is placed under it, the Results' or another
-    section's: nothing tells the label from a title in a paper with no heading style.
-    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+    section's: nothing tells the label from a title in a paper with no heading style. So is
+    a bold "Result" over a worked example inside the Methods, since the singular is a name
+    of the list (Basile, 2026-11-15, told of this risk): the example's lines are the
+    Results', and the Abstract is compared with them.
+    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`,
+    `tests/test_audit.py::test_a_bold_result_over_an_example_in_the_methods_is_a_heading`.
   - A title Word numbers itself, "1. INTRODUCTION" with Word's "1.", is a typed title to
     both readers where pandoc reads it as the lone item of a numbered list in no other
     (Basile, 2026-11-14); the audit reads the paragraph's numbering as pandoc does, its
@@ -26433,6 +26442,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     study's own "Discussion" is a name twice under it, and no study's line is then a
     heading. A study's heading wrapped over two lines is read by its first. A study named
     otherwise ("Study 1a:", "Pilot study:", "Experiment One:") is no heading. Accepted.
+  - "Result", the singular, joined the names for pdf-psych-B3's "3. Result" (Basile,
+    2026-11-15), and in a PDF it is a heading only after a section's number, "3. Result",
+    "3 Result", "III. Result" (`auditing.pdf.NUMBERED_ONLY`; round 1 of #687): poppler's
+    layout order (pdftotext 24.04.0) sets each of a table's cells on a line of its own, its
+    header row's too, so a column headed "Result" was a line holding the name alone, a
+    Results opened in the Discussion, and with "3. Result" or a second such column it left
+    the PDF unplaced. A Results titled "Result" alone, unnumbered, is no heading in a PDF,
+    and its lines are the section before's. A column headed "Results" is still a heading
+    where its header stands on a line of its own, as it was before. Pinned by
+    `tests/test_audit_pdf.py::test_a_table_s_column_headed_result_is_no_heading`,
+    `tests/test_audit_pdf.py::test_a_numbered_result_beside_a_column_headed_result_is_placed`,
+    `tests/test_audit_pdf.py::test_a_column_headed_result_in_the_discussion_opens_no_results`.
   - A reference list whose entries are not told apart is counted by its identifiers, and its
     citations are held to nothing; one numbered entry that holds two DOIs (an article and its
     data, say) makes the whole list so. A wrapped line inside an entry that starts with the

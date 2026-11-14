@@ -18,7 +18,8 @@ and `compare` give in a PDF is that page and line.
 
 A PDF marks no heading. A line is read as one only where it holds a section's name and
 nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"), from the closed list
-`HEADINGS`, its first letter a capital. A structured abstract's own headings set on lines
+`HEADINGS`, its first letter a capital; the singular "Result" only numbered
+(`NUMBERED_ONLY`). A structured abstract's own headings set on lines
 of their own are its, up to an Introduction or to where the order of its parts starts
 again (`text.section_names.section_levels`). Where one name stands on two such lines otherwise,
 which section is the paper's is not read, and the PDF's sections are not used to place its
@@ -195,11 +196,25 @@ def can_read() -> bool:
     return shutil.which("pdftotext") is not None
 
 
+#: The names a line of a PDF is a heading by only after a section's number, "3. Result", "3
+#: Result", "III. Result": the singular alone on a line is as often a table's column header,
+#: which poppler's layout order sets on a line of its own (round 1 of #687: two such lines,
+#: or one beside "3. Result", left a PDF unplaced, and one in the Discussion opened a
+#: Results there). A Word paper's typed "Result:" is a title (`text.docx`).
+NUMBERED_ONLY = frozenset({"result"})
+#: A section's number in front of a line's words, as `section_name_alone` takes one off.
+_SECTION_NUMBER = re.compile(r"(?:\d{1,2}(?:\.\d{1,2})*\.?|[IVX]{1,5}\.)\s")
+
+
 def heading_title(line: str) -> str | None:
     """The section's name a line of a PDF holds alone, its number taken off, or None: the
     whole line, less a number in front and a colon or a stop after, is one of `HEADINGS`,
-    and its first letter is a capital (`text.section_names.section_name_alone`)."""
-    return section_name_alone(line)
+    and its first letter is a capital (`text.section_names.section_name_alone`); one of
+    `NUMBERED_ONLY` only with a number in front."""
+    title = section_name_alone(line)
+    if title is not None and " ".join(title.casefold().split()) in NUMBERED_ONLY:
+        return title if _SECTION_NUMBER.match(" ".join(line.split())) else None
+    return title
 
 
 #: A line that opens on a study's number, Arabic or Roman, and a colon: "Experiment 1:
@@ -497,6 +512,7 @@ __all__ = [
     "AUTHOR_FIELD",
     "HEADINGS",
     "NO_PDFTOTEXT",
+    "NUMBERED_ONLY",
     "UNPLACED",
     "PdfText",
     "Place",

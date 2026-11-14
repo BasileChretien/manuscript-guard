@@ -16007,6 +16007,102 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
     return out
 
 
+# --------------------------------------- a Word paper's heading styles on lines naming no section
+
+
+#: Lines a Word paper puts in a heading style that name no section (Basile, 2026-11-15): its
+#: authors' line and an "equal contribution" note (docx-psych-A1 of the real-paper corpus),
+#: prose (docx-med-A2), an address, and a sentence that opens with a section's name.
+STRAY_STYLED = ("Ana Martin, Paul Girard, PhD", "*contributed equally to this paper",
+                "Falls are common in older patients.", "Department of Medicine, Caen",
+                "Results of an earlier survey were mixed.")  # fmt: skip
+#: A heading-styled line that names a section alone, which keeps the styles.
+NAMED_STYLED = ("Methods", "2. Results", "INTRODUCTION", "Funding")
+#: The papers of `stray_styled_papers`, and whether each has its styles set aside: its
+#: stray styled lines before its Abstract; inside its Introduction; and kept, its typed
+#: titles naming no Results, naming no Abstract, a structured abstract's parts that cannot
+#: be placed, and a styled line beside them that names a section.
+STRAY_STYLED_KINDS = {"before the Abstract": True, "in the Introduction": True,
+                      "no Results": False, "no Abstract": False, "not placed": False,
+                      "a styled name": False}  # fmt: skip
+#: The shapes a typed title is drawn in: in bold, plain, in capitals, numbered as typed.
+_TYPED_SHAPES = ("bold", "plain", "capitals", "numbered")
+
+
+@st.composite
+def stray_styled_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple], bool]]:
+    """A Word paper for every kind of `STRAY_STYLED_KINDS`, in an order drawn, as its
+    paragraphs: `("styled", words, level)` in a heading style, `("title", words, bold)` a
+    typed title, `("words", text)` a paragraph; with whether its styles are set aside. Each
+    holds one or two lines of `STRAY_STYLED` in a heading style of a level drawn."""
+    word = st.sampled_from(FILLER)
+    out = []
+    for kind in draw(st.permutations(list(STRAY_STYLED_KINDS))):
+        shape = draw(st.sampled_from(_TYPED_SHAPES))
+
+        def title(name: str, number: int, *, shape: str = shape) -> tuple:
+            typed = {"capitals": name.upper(), "numbered": f"{number}. {name}"}.get(shape, name)
+            return ("title", typed, shape == "bold")
+
+        def words() -> tuple:
+            return ("words", f"Of 412 {' '.join(draw(st.lists(word, min_size=1, max_size=3)))}.")
+
+        stray = [("styled", line, draw(st.integers(1, 4)))
+                 for line in draw(st.lists(st.sampled_from(STRAY_STYLED), min_size=1,
+                                           max_size=2, unique=True))]  # fmt: skip
+        names = ["Abstract", "Introduction", "Methods", "Results", "Discussion"]
+        if kind == "no Results":
+            names[3] = draw(st.sampled_from(("Outcomes", "Our cohort")))
+        if kind == "no Abstract":
+            names[0] = draw(st.sampled_from(("Summary", "Overview")))
+        if kind == "not placed":
+            # A structured abstract's parts, no Introduction after them: nothing places them.
+            paper = [title("Abstract", 1, shape="bold"), *(
+                item for at, name in enumerate(("Background", "Results", "Discussion"), 2)
+                for item in (title(name, at, shape="bold"), words()))]
+        else:
+            paper = [item for at, name in enumerate(names, 1) for item in (title(name, at),
+                                                                         words())]
+        if kind == "in the Introduction":
+            paper[4:4] = stray
+        else:
+            paper[:0] = stray
+        if kind == "a styled name":
+            paper.insert(draw(st.integers(len(stray), len(paper))),
+                         ("styled", draw(st.sampled_from(NAMED_STYLED)), 1))
+        out.append((kind, paper, STRAY_STYLED_KINDS[kind]))
+    return out
+
+
+def stray_styled_body(paper: list[tuple]) -> str:
+    """A paper of `stray_styled_papers` as `w:body` XML, its heading styles Word's own."""
+    out = ""
+    for item in paper:
+        if item[0] == "styled":
+            out += (f'<w:p><w:pPr><w:pStyle w:val="Heading{item[2]}"/></w:pPr><w:r><w:t '
+                    f'xml:space="preserve">{item[1]}</w:t></w:r></w:p>')  # fmt: skip
+        else:
+            out += _w_para(item[1], item[0] == "title" and item[2])
+    return out
+
+
+def stray_styled_blocks(paper: list[tuple]) -> list[dict]:
+    """A paper of `stray_styled_papers` as pandoc reads it: a heading for each paragraph in a
+    heading style, and a paragraph for the rest, a title in bold in a Strong."""
+    out: list[dict] = []
+    for item in paper:
+        inlines: list = []
+        for word in item[1].split():
+            inlines += [_GAP, _str(word)] if inlines else [_str(word)]
+        if item[0] == "styled":
+            out.append({"t": "Header", "c": [item[2], ["", [], []], inlines]})
+        elif item[0] == "title" and item[2]:
+            out.append({"t": "Para", "c": [_strong(*inlines)]})
+        else:
+            out.append({"t": "Para", "c": inlines})
+    return out
+
+
 #: A heading of the Markdown pandoc converts a .docx to, as it is typed and as a place names
 #: it (`auditing.paragraphs`): plain; with its attributes; in bold; with an escape.
 WORD_HEADINGS = {
@@ -16567,8 +16663,11 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
-    "word abstract": word_abstract_papers().flatmap(
-        lambda drawn: st.sampled_from([body for body, _titles in drawn])),
+    "word abstract": st.one_of(
+        word_abstract_papers().flatmap(
+            lambda drawn: st.sampled_from([body for body, _titles in drawn])),
+        stray_styled_papers().flatmap(
+            lambda drawn: st.sampled_from([stray_styled_body(paper) for _k, paper, _a in drawn]))),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),

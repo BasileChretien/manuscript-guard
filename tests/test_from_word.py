@@ -859,6 +859,70 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == expected
 
 
+#: Word's heading styles at levels 2 and 4, as pandoc reads them by their names.
+_HEADING_STYLES = "".join(
+    f'<w:style w:type="paragraph" w:styleId="Heading{n}"><w:name w:val="heading {n}"/>'
+    "</w:style>" for n in (1, 2, 4))  # fmt: skip
+
+
+def _styled(text: str, level: int) -> str:
+    return (f'<w:p><w:pPr><w:pStyle w:val="Heading{level}"/></w:pPr><w:r><w:t>{text}</w:t>'
+            "</w:r></w:p>")  # fmt: skip
+
+
+def _paragraph(text: str, bold: bool = False) -> str:
+    props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+    return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+
+@needs_pandoc
+@pytest.mark.parametrize("shape", ["authors and a note", "two paragraphs of prose", "no Results",
+                                   "a styled Methods"])  # fmt: skip
+def test_the_audit_and_init_set_the_same_heading_styles_aside(tmp_path: Path, shape: str) -> None:
+    """Where no paragraph in a heading style names a section alone and the typed titles can
+    be placed and name an Abstract and a Results, both readers set the styles aside and take
+    the typed titles for headings (Basile, 2026-11-15): styles on the authors' line and a
+    note (docx-psych-A1 of the real-paper corpus), on two paragraphs of prose
+    (docx-med-A2). `init --from` makes each styled paragraph a paragraph of its own words.
+    With no Results among the titles, or beside a styled "Methods", both read the styles."""
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+
+    prose =("Falls are common in older patients.", "Some of them are harmed by them.")
+    results = "Outcomes" if shape == "no Results" else "Results"
+    methods = (_styled("Methods", 1) if shape == "a styled Methods"
+               else _paragraph("Methods", True))  # fmt: skip
+    authors = (_styled("Ana Martin, Paul Girard", 4) + _styled("Both wrote it equally.", 4)
+               if shape != "two paragraphs of prose" else _paragraph("Ana Martin, Paul Girard"))
+    introduction = (_paragraph(prose[0]) + _paragraph(prose[1]) if shape != "two paragraphs "
+                    "of prose" else _styled(prose[0], 2) + _styled(prose[1], 2))  # fmt: skip
+    body = (authors + _paragraph("Abstract", True) + _paragraph("Of 412 patients, 77 fell.")
+            + _paragraph("Introduction", True) + introduction + methods
+            + _paragraph("We read 412 records.") + _paragraph(results, True)
+            + _paragraph("Of 412 patients, 77 fell.") + _paragraph("Discussion", True)
+            + _paragraph("It was so."))  # fmt: skip
+    paper = _package(tmp_path / "paper.docx", body, _HEADING_STYLES)
+    converted = from_word.convert(paper)
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    if shape in ("no Results", "a styled Methods"):
+        assert converted.typed_headings == ()
+        assert document.heading_levels != ()
+        from manuscript_guard.text.docx_abstract import placed_headings
+
+        assert converted.headings == len(placed_headings(document))
+        return
+    titles = ("Abstract", "Introduction", "Methods", "Results", "Discussion")
+    assert converted.typed_headings == titles
+    assert _headings(converted.text) == [f"# {title}" for title in titles]
+    assert document.heading_levels == ()
+    assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == titles
+    styled = [lines[at] for at in sorted(document.headings)]
+    # Each styled paragraph is a paragraph of its own words, in the text or the title page.
+    written = {line.rstrip("\r") for line in converted.text.split("\n")}
+    assert len(styled) == 2 and set(styled) <= written, converted.text
+    assert "paragraphs in a heading style names a section alone" in converted.title_page
+
+
 @needs_pandoc
 def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) -> None:
     """A title Word numbers as a list's item is a heading to both readers where pandoc reads

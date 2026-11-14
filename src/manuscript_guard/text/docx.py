@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -120,7 +121,8 @@ class DocxText:
     numbering: tuple[tuple[int, str, bool, int], ...] = ()
     #: The level of each line in `headings`, 1 for "heading 1": by 0-based line, what the
     #: audit's Abstract against Results places a line under (`gates.reported.Walk`). None
-    #: where every line of `headings` is a table's cell, which then place nothing.
+    #: where every line of `headings` is a table's cell, which then place nothing, or where
+    #: they name no section and the typed titles are read instead (`styles_set_aside`).
     heading_levels: tuple[tuple[int, int], ...] = ()
     #: Each line of `body` outside a table and a text box that is an item of a list Word
     #: numbers or bullets, and not a heading, 1-based, with its level, 0 the outermost
@@ -764,18 +766,63 @@ def read_docx_text(path: Path) -> DocxText:
     notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
                       _MARKS[2:])  # fmt: skip
     body = _unmarked(marked, _MARKS)
-    return DocxText(body=body, notes=notes, headings=headings, cells=cells,
-                    tables=_tables(lines),
-                    numbering=tuple((line, *count[:3]) for line, count in numbering),
-                    heading_levels=heading_levels,
-                    levels=tuple((line, count[3]) for line, count in numbering
-                                 if count[3] is not None),
-                    boxed=_boxes(body_root, fonts), bold=bold, typed=typed,
-                    captions=captioned)  # fmt: skip
+    return _stray_styles_set_aside(DocxText(
+        body=body, notes=notes, headings=headings, cells=cells, tables=_tables(lines),
+        numbering=tuple((line, *count[:3]) for line, count in numbering),
+        heading_levels=heading_levels,
+        levels=tuple((line, count[3]) for line, count in numbering if count[3] is not None),
+        boxed=_boxes(body_root, fonts), bold=bold, typed=typed, captions=captioned))
+
+
+def names_no_section(styled: Sequence[str]) -> bool:
+    """Whether none of `styled`, the words of a paper's paragraphs in a heading style, names
+    a section alone (`section_name_alone`, the closed list)."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    return all(section_name_alone(words) is None for words in styled)
+
+
+def names_abstract_and_results(titles: Sequence[str]) -> bool:
+    """Whether `titles`, a paper's typed titles as placed, include an Abstract and a
+    Results (`names_abstract`, `names_results`)."""
+    from manuscript_guard.text.section_names import names_abstract, names_results
+
+    return any(names_abstract(title) for title in titles) and any(
+        names_results(title) for title in titles)
+
+
+def styles_set_aside(styled: Sequence[str], titles: Sequence[str], placed: bool) -> bool:
+    """Whether a Word paper that uses a heading style is read by its typed titles instead,
+    as the audit and `init --from` both decide it (Basile, 2026-11-15, "Yes, narrowly"):
+    only where no paragraph in a heading style names a section alone, `styled` their words;
+    its typed titles, `titles` their words, can be `placed`; and they include an Abstract
+    and a Results. A paper whose heading styles are on its authors' line and a note
+    (docx-psych-A1 of the real-paper corpus) or on two paragraphs of prose (docx-med-A2)
+    had its Abstract compared with nothing, its typed titles text."""
+    return bool(styled) and names_no_section(styled) and placed and \
+        names_abstract_and_results(titles)  # fmt: skip
+
+
+def _stray_styles_set_aside(document: DocxText) -> DocxText:
+    """`document` placed by its typed titles where its heading styles are set aside
+    (`styles_set_aside`): its `heading_levels` emptied, as for a table's cells (#678), and
+    its `headings` kept, which still end a reference list."""
+    from dataclasses import replace
+
+    if not document.heading_levels:
+        return document
+    lines = document.body.split("\n")
+    unstyled = replace(document, heading_levels=())
+    levels = typed_heading_levels(unstyled)
+    titles = [lines[at] for at, _title in typed_titles(unstyled)] if levels is None else [
+        lines[at] for at, _level in levels]
+    styled = [lines[at] for at in sorted(document.headings)]
+    return unstyled if styles_set_aside(styled, titles, levels is not None) else document
 
 
 def typed_titles(document: DocxText) -> list[tuple[int, str]]:
-    """In a document with no paragraph in a heading style but a table's cells, each line a
+    """In a document with no paragraph in a heading style but a table's cells or ones set
+    aside (`styles_set_aside`), each line a
     title can be typed as (`DocxText.typed`) whose words are a section's name alone
     (`section_name_alone`), in bold or not, numbered as typed or by Word or not, in capitals
     or not, "ABSTRACT", "3. RESULTS", by 0-based line, with its name; none in a document

@@ -215,3 +215,59 @@ def test_the_audit_and_init_take_the_same_end_at_the_keywords(tmp_path: Path, ki
     assert converted.keywords_heading == keywords
     if keywords:
         assert f"{keywords}:" not in written and "falls" in written
+
+
+#: The paper of round 1 of #689's review: a styled Abstract that defines COPD, its keywords
+#: listing it, a further paragraph, and an Introduction that defines it again.
+COPD = (heading("Abstract")
+        + para("In chronic obstructive pulmonary disease (COPD), 77 of 412 fell.")
+        + para("Keywords: COPD; falls") + para("Falls harm older people.")
+        + heading("Introduction") + para("Chronic obstructive pulmonary disease (COPD) is common.")
+        + para("COPD harms."))  # fmt: skip
+
+
+def _abbreviations(findings) -> list[tuple[str, str]]:
+    return sorted((f.code, f.message.split()[0]) for f in findings
+                  if f.code.startswith("abbreviation"))  # fmt: skip
+
+
+@needs_pandoc
+def test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them(
+    tmp_path: Path, capsys,
+) -> None:
+    """`init --from` makes a run-in "Keywords:" that ends the Abstract a heading "Keywords",
+    which put the keywords in the main text's scope for G14: COPD, which the Abstract and the
+    Introduction each define, was reported used before it was defined, at the keywords'
+    line, where the base was clean (round 1 of #689). Through `check` on the project made,
+    and through the audit of the .docx, it is not."""
+    import json
+
+    from manuscript_guard.auditing.gates import run_gates
+    from manuscript_guard.cli import main
+
+    path = _package(tmp_path / "paper.docx", COPD, STYLES)
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(path)]) == 0
+    assert "# Keywords" in (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    main(["check", str(root), "--json"])
+    said = json.loads(capsys.readouterr().out)
+    codes = [(one["code"], one["message"].split()[0]) for one in said["findings"]
+             if one["code"].startswith("abbreviation")]  # fmt: skip
+    assert codes == [], codes
+    assert _abbreviations(run_gates(path).language) == []
+
+
+def test_a_references_line_in_a_cover_s_contents_list_blanks_the_abstract(
+    tmp_path: Path,
+) -> None:
+    """docx-psych-B2's cover lists its contents, "References" among them, in plain type: a
+    typed reference list is read from that line on, over the Abstract, as at the base, so
+    the paper is compared with none of its Abstract's numbers read. Pinned as it stands
+    (DESIGN.md, "Known gaps"; round 1 of #689)."""
+    cover = (para("The present document contains the following:") + para("Abstract")
+             + para("Introduction") + para("References"))  # fmt: skip
+    path = _package(tmp_path / "paper.docx", cover + b2() + bold("References")
+                    + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."), "")  # fmt: skip
+    read = audit([path], None).abstract
+    assert read.compared and read.numbers == 0, read

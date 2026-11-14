@@ -21550,6 +21550,50 @@ def test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does(
                                  if title.casefold().startswith("key")), None)  # fmt: skip
 
 
+from generated import keywords_sections  # noqa: E402
+
+
+@holds(30, keywords_sections())
+def test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14(
+    drawn: list[tuple[str, str, set[str]]],
+) -> None:
+    """The paragraph under a heading "Keywords" after the Abstract, as `init --from` writes a
+    run-in "Keywords:" that ends it, is a list of the Abstract's terms: G14 reads it in the
+    Abstract's scope, so a short form it lists is no use in the main text before the
+    Introduction defines it, nor is the Abstract's definition unused; what follows the list
+    is the main text's; and under a heading that only opens with the word, the list is the
+    main text's as before (round 1 of #689)."""
+    from manuscript_guard.gates.language import _file, _judge, _Known, _shipped
+
+    exact, lowered = _shipped()
+    for text, shorts, codes in drawn:
+        found = _judge([_file(0, MAIN, text, [], False)], _Known(exact, lowered), Path("."))
+        said = {f.code for f in found.findings if f.code.startswith("abbreviation")
+                and f.message.split()[0] in shorts.split()}  # fmt: skip
+        assert said == codes, (text, [f.message for f in found.findings])
+
+
+def _g14_reads_no_keywords_list(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #689: the list was the main text's."""
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_keywords_lists", lambda text, hidden, headings: {})
+
+
+def _g14_reads_the_whole_keywords_section_with_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    """The text after the list, an Introduction with no heading, read as the Abstract's."""
+    from manuscript_guard.gates import language
+
+    real = language._keywords_lists
+
+    def whole(text: str, hidden: str, headings: list) -> dict[int, int]:
+        starts = sorted(heading.start for heading in headings)
+        return {start: next((one for one in starts if one > start), len(text))
+                for start in real(text, hidden, headings)}  # fmt: skip
+
+    patch.setattr(language, "_keywords_lists", whole)
+
+
 def _init_makes_no_keywords_heading(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import from_word_abstract
 
@@ -22870,6 +22914,14 @@ BROKEN = {
     "init makes no heading of the keywords": (
         _init_makes_no_keywords_heading,
         test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does,
+    ),
+    "G14 reads a keywords list as the main text's": (
+        _g14_reads_no_keywords_list,
+        test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14,
+    ),
+    "G14 reads the whole keywords section as the Abstract's": (
+        _g14_reads_the_whole_keywords_section_with_the_abstract,
+        test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14,
     ),
     "a PDF's line Result alone is a heading": (
         _the_singular_is_a_heading_unnumbered,

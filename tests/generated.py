@@ -16063,7 +16063,7 @@ def keywords_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple[int, str]]]]:
     return out
 
 
-def _inlines(text: str) -> list[dict]:
+def _keywords_inlines(text: str) -> list[dict]:
     """`text` as pandoc's inlines, a word to each piece and a gap between."""
     out: list[dict] = []
     for word in text.split():
@@ -16081,10 +16081,58 @@ def keywords_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[tuple[int, s
         paragraphs, headings = _keywords_drawn(draw, kind)
         blocks = []
         for how, text in paragraphs:
-            inlines = [_strong(*_inlines(text))] if how == "bold" else _inlines(text)
+            words = _keywords_inlines(text)
+            inlines = [_strong(*words)] if how == "bold" else words
             block = {"t": "Para", "c": inlines}
             blocks.append(_one_cell(block) if how == "cell" else block)
         out.append((blocks, headings))
+    return out
+
+
+#: A Markdown paper's keywords under a heading of their own after its Abstract, as `init
+#: --from` writes them where a run-in "Keywords:" ends it (round 1 of #689), and what G14
+#: reports of the short form the Abstract and the Introduction each define: the list under
+#: the heading, typed in each way, is the Abstract's and no use in the main text; so with an
+#: Introduction with no heading after it, which is the main text's and defines a second
+#: short form its Methods use; and under a heading that only opens with the word, the list
+#: is the main text's, its short form used there before the Introduction defines it and
+#: the Abstract's definition of it used nowhere after it. Each kind is `(under a keywords
+#: heading, an Introduction after the list, the codes)`.
+KEYWORDS_HEADINGS = ("# Keywords", "# Key words", "# KEYWORDS", "## Keywords", "# Keywords:",
+                     "Keywords\n========")  # fmt: skip
+KEYWORDS_SECTIONS = {
+    "the list": (True, False, set()),
+    "the list, then an Introduction": (True, True, set()),
+    "under another heading": (False, False, {"abbreviation-used-before-defined",
+                                             "abbreviation-unused"}),
+}  # fmt: skip
+#: Short forms with their long forms, which each paper defines.
+_KEYWORDS_TERMS = (("reporting odds ratio", "ROR"), ("signal detection ratio", "SDR"),
+                   ("proportional reporting ratio", "PRR"),
+                   ("empirical Bayes geometric mean", "EBGM"))  # fmt: skip
+
+
+@st.composite
+def keywords_sections(draw: st.DrawFn) -> list[tuple[str, str, set[str]]]:
+    """A Markdown paper for every kind of `KEYWORDS_SECTIONS`, in an order drawn, each with
+    its heading of `KEYWORDS_HEADINGS` and its two short forms drawn; with the short form the
+    keywords list, and the codes G14 gives of either."""
+    out = []
+    for kind in draw(st.permutations(list(KEYWORDS_SECTIONS))):
+        named, introduced, codes = KEYWORDS_SECTIONS[kind]
+        (long, short), (other, second) = draw(st.permutations(_KEYWORDS_TERMS))[:2]
+        # One a level under the Abstract's is its own part, and so is what follows it.
+        headings = [one for one in KEYWORDS_HEADINGS if not (introduced and one[:2] == "##")]
+        heading = draw(st.sampled_from(headings)) if named else "# Keyword search"
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text = (f"# Abstract\n\nIn the {long} ({short}), 77 of 412 fell.\n\n{heading}\n\n"
+                f"{short}; falls; {words}\n\n")
+        if introduced:
+            text += f"Older people vary in their {other} ({second}).\n\n"
+        text += (f"# Introduction\n\nThe {long} ({short}) is common. The {short} harms.\n\n"
+                 f"# Methods\n\nThe {short} was read"
+                 + (f", and the {second} with it.\n" if introduced else ".\n"))
+        out.append((text, short if not introduced else f"{short} {second}", codes))
     return out
 
 

@@ -25350,6 +25350,24 @@ Open, recorded as each change landed:
     LaTeX paper's Abstract; and `init --from` leaves the label on its paragraph, no
     heading, where it does not end where a word does, which the audit still reads as one.
     Accepted.
+  - G14 reads the first paragraph under a heading whose whole title is "Keywords" or "Key
+    words", the list `init --from` writes there, in the scope of the text before the
+    heading, the Abstract's where it follows the Abstract, and the text after that
+    paragraph as the main text's: written in the main text's scope, a short form the
+    Abstract and the Introduction each define, listed among the keywords, was used before
+    the Introduction defined it (round 1 of #689). A hand-written `# Keywords` in a
+    Markdown paper is read the same way, where the base read its list as the main text's
+    too. A heading that only opens with the word, "Keyword search", is the main text's as
+    before. Pinned by
+    `tests/test_language.py::test_a_keywords_list_under_its_heading_is_read_with_the_abstract`,
+    `tests/test_language.py::test_the_text_after_the_keywords_list_is_the_main_text`,
+    `tests/test_word_keywords.py::test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them`.
+  - A paragraph "References" in plain type in a cover's contents list ("The present document
+    contains the following: Abstract, Introduction, References …") opens the typed
+    reference list a .docx is read for, which runs on over the Abstract and blanks it, as
+    at the base: docx-psych-B2 is compared now, with none of its Abstract's numbers read, a
+    comparison that passes on nothing (round 1 of #689). Pinned by
+    `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_blanks_the_abstract`.
   - The two shapes are looked for in every file with no heading that names the Abstract,
     a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line
     opening on "Abstract: …", has an Abstract, and its lines above that line are not

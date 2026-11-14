@@ -386,7 +386,15 @@ there. Such an Abstract ends at the next heading, or before it at a title typed 
 of its own that is no part of it, an "Introduction", an "Author information" or an
 "Acknowledgments" in bold, which is a heading too; a structured abstract's own parts are
 its, up to its Introduction, typed or in a heading style. With neither after it, where it ends is not read, and neither is it, and
-`init --from` makes the same headings. A heading over the Abstract or the Introduction, the
+`init --from` makes the same headings. In a .docx, a paragraph that opens on a run-in
+"Keywords:" ("Key words:", "KEYWORDS:") after the Abstract's own words, before the next
+title, ends the Abstract, however its heading was read: the titles after it are the main
+text's, a "Results" among them the paper's own and not the Abstract's part, and where words
+stand after it before the next heading it is read as a heading "Keywords" at the
+Abstract's level, under which nothing is searched, an Introduction with no heading of its
+own. One between the Abstract's title and its first part titled on a line of its own ends
+nothing, and nor does one after the parts, nor "Keywords" in a sentence; a PDF's keywords
+end nothing yet. A heading over the Abstract or the Introduction, the
 paper's title, names no section; one over a Methods subsection does, and the words under
 it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
@@ -563,6 +571,10 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   styles a paragraph whose words are "Abstract" alone, in bold or not, is made a heading, at
   the level of the next heading, and so is a title typed after it that ends it, as the audit
   reads them (above, "Abstract against Results"). `init` prints the headings it made so.
+  A run-in "Keywords:" that ends the Abstract with words after it is made a heading of its
+  label over the keywords, at the Abstract's level, as the audit reads it, and `init` says
+  so: what stands under it up to the next heading is no Abstract's, and is often the
+  Introduction, to be given its heading.
 - **The typed references.** The reference list under a heading or a title in bold that
   names one is read into `literature/references.bib`: each entry of an APA journal article,
   `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.`, or book, `Lee, C.

@@ -880,13 +880,13 @@ def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | No
         return ()
     bold = [(at, title) for at, title in found if at in document.bold]
     for titles in (found, bold):
-        levels = _levels(document.body.split("\n"), titles)
+        levels = _levels(document.body.split("\n"), titles, document.typed)
         if levels is not None:
             return levels
     return None
 
 
-def _levels(lines: list[str], found: list[tuple[int, str]]
+def _levels(lines: list[str], found: list[tuple[int, str]], typed: frozenset[int] = frozenset()
             ) -> tuple[tuple[int, int], ...] | None:  # fmt: skip
     from manuscript_guard.text.section_names import section_levels
 
@@ -895,10 +895,25 @@ def _levels(lines: list[str], found: list[tuple[int, str]]
     ends = [at for at, _title in found[1:]] + [len(lines)]
     worded = [any(lines[k].strip() for k in range(at + 1, end))
               for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
-    levels = section_levels([title for _at, title in found], worded)
+    ended = [keywords_line(lines, typed, at + 1, end) is not None
+             for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
+    levels = section_levels([title for _at, title in found], worded, ended)
     if levels is None:
         return None
     return tuple((at, level) for (at, _title), level in zip(found, levels, strict=True))
+
+
+def keywords_line(lines: list[str], typed: frozenset[int], start: int, end: int) -> int | None:
+    """The 0-based line from `start` up to `end`, the words under a title, on which a run-in
+    "Keywords:" ends them (`section_names.keywords_end`), on a line a title can be typed as
+    (`DocxText.typed`), so in no table's cell and no list Word numbers; None where none
+    does."""
+    from manuscript_guard.text.section_names import keywords_end, run_in_keywords
+
+    span = range(start, end)
+    found = keywords_end([bool(lines[k].strip()) for k in span],
+                         [k in typed and run_in_keywords(lines[k]) is not None for k in span])
+    return None if found is None else span[found]
 
 
 def _boxes(root: ET.Element, fonts: Fonts) -> tuple[str, ...]:

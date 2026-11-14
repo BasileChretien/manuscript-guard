@@ -3091,6 +3091,40 @@ def test_a_number_unlike_the_results_under_result_in_the_singular_is_reported(
     assert not_found("We followed 421 patients.") == ["412"]
 
 
+def test_a_results_number_unlike_the_abstract_s_after_its_keywords_is_reported(
+    tmp_path: Path,
+) -> None:
+    """docx-psych-B2 of the real-paper corpus: a one-paragraph Abstract, "Keywords:", an
+    Introduction with no heading, then Results, Discussion and Conclusion typed in bold, read
+    as the Abstract's own parts, so the paper had no Results and an Abstract's number they do
+    not report went unsaid. The keywords end the Abstract (Basile, 2026-11-15): it is said."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str, bold: bool = False) -> str:
+        props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+        return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+    def not_found(reported: str) -> list[str]:
+        body = (para("Abstract", True) + para("Of 412 patients, 77 fell.")
+                + para("Keywords: falls; older adults") + para("Falls harm older people.")
+                + para("Results", True) + para(reported) + para("Discussion", True)
+                + para("It was so.") + para("Conclusion", True) + para("They matter.")
+                + para("Methods", True) + para("We read the records."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        read = audit([path], None).abstract
+        assert read is not None and read.compared
+        return [c.text for c in read.not_found]
+
+    assert not_found("Of 412 patients, 77 fell.") == []
+    assert not_found("Of 412 patients, 78 fell.") == ["77"]
+
+
 @pytest.mark.parametrize("shape", ["run-in label", "bold line"])
 def test_a_styled_word_paper_s_abstract_number_unlike_its_results_is_reported(
     tmp_path: Path, shape: str,

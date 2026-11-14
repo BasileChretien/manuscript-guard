@@ -27,6 +27,11 @@ Acknowledgments typed in bold before it ended the Abstract for a reader. That ti
 heading too, at the same level, and the text under it is under it up to the next. With
 neither after it, where it ends is not read, and the shape is not read either: the Abstract
 would run to the end of the paper.
+
+However its heading was read, a run-in "Keywords:" after the Abstract's own words, before
+the next title, ends it (`text.docx.keywords_line`; Basile, 2026-11-15): the titles after it
+are no parts of it, and where words stand after it before the next heading, it is a heading
+"Keywords" of its own (`_keywords`).
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ from manuscript_guard.text.section_names import (
     abstract_end,
     names_abstract,
     run_in_abstract,
+    run_in_keywords,
     section_name_alone,
 )
 
@@ -62,10 +68,13 @@ def placed_headings(document) -> tuple[Heading, ...]:
     body = document.body.split("\n")
     levels = document.heading_levels or typed_heading_levels(document) or ()
     found = [Heading(at, level, body[at]) for at, level in levels]
-    if not found or any(names_abstract(heading.title) for heading in found):
+    if found and not any(names_abstract(heading.title) for heading in found):
+        found = sorted([*found, *_abstract(document, body, found)],
+                       key=lambda heading: heading.line)  # fmt: skip
+    keywords = _keywords(document, body, found)
+    if keywords is None:
         return tuple(found)
-    added = _abstract(document, body, found)
-    return tuple(sorted([*found, *added], key=lambda heading: heading.line))
+    return tuple(sorted([*found, keywords], key=lambda heading: heading.line))
 
 
 def _opened(document, body: list[str], styled: bool) -> Heading | None:
@@ -88,6 +97,8 @@ def _opened(document, body: list[str], styled: bool) -> Heading | None:
 def _abstract(document, body: list[str], found: list[Heading]) -> list[Heading]:
     """The Abstract's heading, and the typed title that ends it where one does before the
     next heading; none where neither ends it."""
+    from manuscript_guard.text.docx import keywords_line
+
     opened = _opened(document, body, bool(document.heading_levels))
     if opened is None:
         return []
@@ -100,13 +111,42 @@ def _abstract(document, body: list[str], found: list[Heading]) -> list[Heading]:
     worded = [opened.run_in or _worded(body, opened.line, ends[0])] + [
         _worded(body, at, end) for (at, _name), end in zip(titles, ends[1:], strict=True)]
     closing = _closing([heading.title for heading in later[:1]])
+    # A run-in "Keywords:" under the Abstract's own words ends it (Basile, 2026-11-15).
+    start = opened.line if opened.run_in else opened.line + 1
+    ended = [keywords_line(body, document.typed, start, ends[0]) is not None]
     end = abstract_end(["Abstract", *(name for _at, name in titles), *closing],
-                       worded + [False] * len(closing))  # fmt: skip
+                       worded + [False] * len(closing),
+                       ended=ended + [False] * (len(titles) + len(closing)))  # fmt: skip
     heading = Heading(opened.line, level, opened.title, opened.run_in)
     if end is not None and end <= len(titles):
         at = titles[end - 1][0]
         return [heading, Heading(at, level, _titled(body[at]))]
     return [heading] if later else []
+
+
+def _keywords(document, body: list[str], found: list[Heading]) -> Heading | None:
+    """The heading a run-in "Keywords:" under the Abstract's own words is read as, where it
+    ends the Abstract (`text.docx.keywords_line`) and words stand after it before the next
+    heading: "Keywords", at the Abstract's level, a run-in label like the Abstract's, the
+    line's text the first under it. What stands under it up to the next heading is no
+    Abstract's, and reports nothing (`auditing.abstract`): a paper's Introduction with no
+    heading (docx-psych-B2 and docx-psych-A1 of the real-paper corpus; Basile, 2026-11-15).
+    None where the next heading is deeper than the Abstract's, a part of it by its style."""
+    from manuscript_guard.text.docx import keywords_line
+
+    opened = next((one for one in found if names_abstract(one.title)), None)
+    if opened is None:
+        return None
+    later = [one for one in found if one.line > opened.line]
+    if later and later[0].level > opened.level:
+        return None
+    limit = later[0].line if later else len(body)
+    start = opened.line if opened.run_in else opened.line + 1
+    at = keywords_line(body, document.typed, start, limit)
+    if at is None or not _worded(body, at, limit):
+        return None
+    label = run_in_keywords(body[at]) or "Keywords"
+    return Heading(at, opened.level, label.rstrip(" :"), run_in=True)
 
 
 def _titled(line: str) -> str:

@@ -345,8 +345,9 @@ def _key(title: str) -> str:
 
 
 def section_levels(
-    titles: Sequence[str], worded: Sequence[bool] | None = None
-) -> tuple[int, ...] | None:
+    titles: Sequence[str], worded: Sequence[bool] | None = None,
+    ended: Sequence[bool] | None = None,
+) -> tuple[int, ...] | None:  # fmt: skip
     """The level of each title of `section_name_alone`'s, in order, where they can be placed
     exactly; else None. A structured abstract's headings standing alone are the Abstract's,
     level 2, where the title after the Abstract's is one of `ABSTRACT_PARTS`: they run to an
@@ -362,12 +363,16 @@ def section_levels(
     Abstract's own title, the abstract is one or more paragraphs and the title after it the
     main text's, as a paper opens its main text on "Background" after an abstract of one
     paragraph. Not where they can be: the BMJ's parts "Objectives" and "Design", which name
-    no section, stand under its Abstract as words."""
+    no section, stand under its Abstract as words.
+
+    `ended` says, for each title, whether a run-in "Keywords:" ends the words under it
+    (`keywords_end`). Under the Abstract's own title, it ends the Abstract: the titles after
+    it are the main text's, a "Results" among them the paper's own (Basile, 2026-11-15)."""
     keys = [_key(title) for title in titles]
     nested: set[int] = set()
     first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
     if first is not None:
-        end = _abstract_end(keys, first, worded)
+        end = _abstract_end(keys, first, worded, ended)
         if end is None:
             return None
         nested = set(range(first + 1, end))
@@ -378,16 +383,22 @@ def section_levels(
     return tuple(2 if at in nested else 1 for at in range(len(keys)))
 
 
-def abstract_end(titles: Sequence[str], worded: Sequence[bool]) -> int | None:
+def abstract_end(titles: Sequence[str], worded: Sequence[bool],
+                 ended: Sequence[bool] | None = None) -> int | None:  # fmt: skip
     """Where the Abstract titled by `titles[0]` ends among the titles of `section_name_alone`
     after it, as `section_levels` places them: the index of the first that is no part of it,
     `len(titles)` where none is, and None where that is not read. `worded` says, for each,
-    whether words stand under it before the next."""
-    return _abstract_end([_key(title) for title in titles], 0, worded)
+    whether words stand under it before the next, and `ended` whether a run-in "Keywords:"
+    ends them (`keywords_end`)."""
+    return _abstract_end([_key(title) for title in titles], 0, worded, ended)
 
 
-def _abstract_end(keys: list[str], first: int, worded: Sequence[bool] | None) -> int | None:
-    """The index of the first title after the Abstract's at `first` that is no part of it."""
+def _abstract_end(keys: list[str], first: int, worded: Sequence[bool] | None,
+                  ended: Sequence[bool] | None = None) -> int | None:  # fmt: skip
+    """The index of the first title after the Abstract's at `first` that is no part of it:
+    the next, where a run-in "Keywords:" ends the words under the Abstract's own title."""
+    if ended is not None and ended[first]:
+        return first + 1
     if first + 1 >= len(keys) or keys[first + 1] not in ABSTRACT_PARTS:
         return first + 1
     opening = _parts_end(keys, first)
@@ -407,6 +418,42 @@ def run_in_abstract(text: str) -> str | None:
     rest of it the Abstract's text; None where it opens on none (`_RUN_IN_ABSTRACT`)."""
     found = _RUN_IN_ABSTRACT.match(text)
     return found.group(1) if found is not None else None
+
+
+#: A paragraph that opens on the keywords' run-in label and goes on: "Keywords: falls; older
+#: adults", "Key words: …", "KEYWORDS: …", and "Key Words:" and "KEY WORDS:" as a title's
+#: capitals write it, a space before the colon or not (Basile, 2026-11-15, docx-psych-B2 and
+#: docx-psych-A1 of the real-paper corpus). Not "Keywords were searched", nor "The keywords:
+#: …", nor "Keywords:" with nothing after it.
+_RUN_IN_KEYWORDS = re.compile(r"\s*((?:Keywords|KEYWORDS|Key words|Key Words|KEY WORDS) ?:)"
+                              r"\s+(?=\S)")  # fmt: skip
+
+
+def run_in_keywords(text: str) -> str | None:
+    """The keywords' run-in label a paragraph opens on, as typed, "Keywords:", "Key words :";
+    None where it opens on none (`_RUN_IN_KEYWORDS`)."""
+    found = _RUN_IN_KEYWORDS.match(text)
+    return found.group(1) if found is not None else None
+
+
+def keywords_end(worded: Sequence[bool], labelled: Sequence[bool]) -> int | None:
+    """Where a run-in "Keywords:" ends the Abstract among the paragraphs under its own title
+    up to the next title, in order: `worded` says whether each holds words, and `labelled`
+    whether it opens on the label (`run_in_keywords`) on a line a title can be typed as. The
+    index of the first so labelled, where words stand before it; None where none is, or
+    where none stand before the first, as a structured Abstract may set its keywords between
+    its title and its first part, whose parts stay its own (Basile, 2026-11-15)."""
+    first = next((at for at, label in enumerate(labelled) if label), None)
+    if first is None or not any(worded[:first]):
+        return None
+    return first
+
+
+def names_keywords(title: str) -> bool:
+    """Whether a heading's whole title, numbered, marked or not, is the keywords' label:
+    "Keywords", "Key words:", the heading a run-in "Keywords:" that ends the Abstract is read
+    as (`keywords_end`)."""
+    return _whole(title) in ("keywords", "key words")
 
 
 def abstract_alone(text: str) -> bool:
@@ -448,17 +495,20 @@ __all__ = [
     "ABSTRACT_PARTS",
     "SECTION_NAMES",
     "bare",
+    "keywords_end",
     "methods_sections",
     "names_abstract",
     "names_conclusion",
     "names_discussion",
     "names_introduction",
     "names_introduction_material",
+    "names_keywords",
     "names_paper_summary",
     "names_methods",
     "names_results",
     "names_statement",
     "plain",
+    "run_in_keywords",
     "section_levels",
     "section_name_alone",
 ]

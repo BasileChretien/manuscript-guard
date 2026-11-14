@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -664,6 +664,7 @@ def _regions(
     abstract_title: str | None = None,
     lists: Iterable[tuple[int, int]] = (),
     statements: Iterable[tuple[int, int]] = (),
+    keywords: Mapping[int, int] | None = None,
 ) -> list[_Region]:
     """Which text each stretch of a file belongs to. `chain` is the headings a reader is
     under, carried from one file of a document into the next: a file that opens without a
@@ -671,16 +672,28 @@ def _regions(
     under a line that is no heading (`unmarked_reference_lists`): each is read as the list
     under `# References` is, and the text after it as the text before it. `statements` are
     the paragraphs a statement's bold label opens (`_run_in_statements`): each is quiet, as
-    under a heading that names the statement, in the part of the paper it stands in."""
+    under a heading that names the statement, in the part of the paper it stands in.
+    `keywords` gives, by where it starts, each heading that names the keywords and where its
+    first paragraph ends (`_keywords_lists`): where it follows the Abstract, up to there it
+    is read as the Abstract's, a list of its terms and no use in the main text (round 1 of
+    #689); anywhere else it is read as any heading's section is (round 2)."""
 
     def here(start: int) -> _Region:
         return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
 
+    kept = keywords or {}
     regions = [here(0)]
     for heading in headings:
         while chain and chain[-1].level >= heading.level:
             chain.pop()
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
+        # Only after the Abstract: after a reference list or a statement the list took its
+        # scope, and was not read (round 2 of #689).
+        if heading.start in kept and regions[-1].scope == ABSTRACT:
+            before = regions[-1]
+            regions.append(_Region(heading.start, before.scope, before.quiet))
+            regions.append(here(kept[heading.start]))
+            continue
         regions.append(here(heading.start))
     regions = _set_apart(regions, statements, lambda start, at: _Region(start, at.scope, True))
     return _set_apart(regions, lists, lambda start, _at: _Region(start, None, True))
@@ -740,6 +753,29 @@ def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, 
             if under is not None:
                 end, position = under
         found.append((start, end))
+    return found
+
+
+def _keywords_lists(text: str, hidden: str, headings: list[Heading]) -> dict[int, int]:
+    """Each heading whose title names the keywords (`section_names.names_keywords`), by where
+    it starts, with where the first paragraph under it ends, or the heading itself where a
+    heading follows it first: the list of the paper's keywords, which `init --from` writes
+    under such a heading where a run-in "Keywords:" ends the Abstract, and the text after it
+    is the main text's (round 1 of #689)."""
+    from manuscript_guard.text.section_names import names_keywords
+
+    starts = sorted(heading.start for heading in headings)
+    found: dict[int, int] = {}
+    for heading in headings:
+        if not names_keywords(heading.title):
+            continue
+        after = _heading_span(text, heading)[1]
+        opened = _BLANK_LINES.match(hidden, after).end()
+        end = _paragraph(hidden, opened)[0] if opened < len(hidden) else after
+        following = bisect_right(starts, heading.start)
+        if following < len(starts) and starts[following] < end:
+            end = max(after, starts[following])
+        found[heading.start] = end
     return found
 
 
@@ -1374,7 +1410,8 @@ def _file(
     )
     statements = _run_in_statements(hidden, headings)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
-                       lists=unmarked_reference_lists(text), statements=statements)  # fmt: skip
+                       lists=unmarked_reference_lists(text), statements=statements,
+                       keywords=_keywords_lists(text, hidden, headings))  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     # A glossary under a heading that names it, and one a paragraph of its own opens, as a

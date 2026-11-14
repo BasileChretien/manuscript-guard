@@ -11826,7 +11826,7 @@ def _a_caption_numbered_with_a_letter_ends_no_list(patch: pytest.MonkeyPatch) ->
 def _figi_is_a_roman_figure(patch: pytest.MonkeyPatch) -> None:
     """The figure's Roman numeral before round 1 of #681: "Figi M," a caption."""
     now = reference_lists_module._NO_ENTRY
-    part = r"(?:fig(?:ure)?s?(?:\.\s*|\s+(?=[ivx]+[.:]))|tables?\s*)"
+    part = r"(?:fig(?:ure)?s?(?:\.\s*|\s+)|tables?\s*)"
     assert now.pattern.count(part) == 1, now.pattern
     patch.setattr(reference_lists_module, "_NO_ENTRY", re.compile(
         now.pattern.replace(part, r"(?:fig(?:ure)?s?\.?|tables?)\s*"), now.flags))  # fmt: skip

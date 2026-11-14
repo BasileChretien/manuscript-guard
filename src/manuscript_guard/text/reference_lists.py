@@ -297,12 +297,12 @@ _LABEL = re.compile(r"[ ]{0,3}(\*\*|__)(?=[^\s*_])[^*_\n]{1,80}?(?:\1[ \t]*:|:[ 
 #: caption's number is needed, so that "Fig trees and ..." and an author named Box are
 #: entries; an appendix's may be a letter, and a figure's or a table's a Roman numeral
 #: ("TABLE I."), but not a box's: "Box I, Jenkins GM." is an entry. A figure's Roman
-#: numeral follows "Fig." or a space and has a stop or a colon after it, "Figure IV.": "Figi
-#: M," is an entry (round 1 of #681).
+#: numeral follows "Fig." or a space, "Figure IV", so "Figi M," is an entry (rounds 1 and 2
+#: of #681: a stop asked for after it lost "Figure IV" alone and "FIGURE II |").
 _NO_ENTRY = re.compile(
     r"[ ]{0,3}(?:!\[|\||\+[-=]|\{\{|table:|[*_]{0,3}(?:"
     r"(?:supplementa(?:ry|l)\s+|online\s+|e)?"
-    r"(?:fig(?:ure)?s?(?:\.\s*|\s+(?=[ivx]+[.:]))|tables?\s*)[ivx]+\b"
+    r"(?:fig(?:ure)?s?(?:\.\s*|\s+)|tables?\s*)[ivx]+\b"
     r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?|box)\s*s?[0-9]"
     r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?appendi(?:x|ces)\s*(?:[0-9]|[a-z]\b|[ivx]+\b)"
     r"|additional\s+files?\s*[0-9]"

@@ -31380,6 +31380,10 @@ _AFTER_A_LIST = {
     "a table's caption": f"\n\nTable 1. {_SAID}",
     "a table's caption, Roman": f"\n\nTABLE I. {_SAID}",
     "a caption, Roman": f"\n\nFigure IV. {_SAID}",
+    # Round 2 of #681: the narrowed Roman figure no longer ended a list at these, as main did.
+    "a caption, Roman, no stop": f"\n\nFigure IV {_SAID}",
+    "a caption, Roman, a cell after": f"\n\nFIGURE II | {_SAID}",
+    "a caption, Roman, two figures": f"\n\nFigs I and II {_SAID}",
     "a supplementary table's caption": f"\n\nSupplementary Table S1. {_SAID}",
     "an eTable's caption": f"\n\neTable 1. {_SAID}",
     "a box": f"\n\nBox 1. {_SAID}",

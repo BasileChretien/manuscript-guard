@@ -894,13 +894,19 @@ def test_a_pdf_s_abstract_under_a_run_in_label_is_compared_with_its_results(
     tmp_path: Path, capsys
 ) -> None:
     """The numbers on the label's own line are the Abstract's, matched in the Results, and the
-    one the Results do not report is said not found, at its page and line."""
+    one the Results do not report is said not found, at its page and line: the line as the
+    PDF's text reads it, which the two pdftotext builds lay out differently (Windows CI's
+    puts it a line lower)."""
     paper = write(tmp_path / "paper.pdf", RUN_IN, per_column=40)
     _code, report, _err = audited(capsys, str(paper))
     assert not found(report, "abstract-not-compared")
     assert report["counts"]["abstract_matched"] >= 5, report["counts"]
+    said = "The rate was 21.4% in the exposed."
+    read = reading.read_pdf(paper)
+    at = read.places[next(i for i, line in enumerate(read.text.split("\n")) if said in line)]
     assert [(f["page"], f["line"], f["context"]) for f in found(report, "abstract-not-found")] \
-        == [(1, 4, "The rate was 21.4% in the exposed.")]
+        == [(at.page, at.line, said)]
+    assert at.page == 1
     # The rest of the label's line is the Abstract's text where G4, G6 and G14 read the PDF,
     # and where `compare` does.
     from manuscript_guard.auditing.gates import _staged_pdf

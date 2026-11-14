@@ -859,10 +859,10 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == expected
 
 
-#: Word's heading styles at levels 2 and 4, as pandoc reads them by their names.
+#: Word's heading styles at levels 1 to 4, as pandoc reads them by their names.
 _HEADING_STYLES = "".join(
     f'<w:style w:type="paragraph" w:styleId="Heading{n}"><w:name w:val="heading {n}"/>'
-    "</w:style>" for n in (1, 2, 4))  # fmt: skip
+    "</w:style>" for n in (1, 2, 3, 4))  # fmt: skip
 
 
 def _styled(text: str, level: int) -> str:
@@ -875,41 +875,70 @@ def _paragraph(text: str, bold: bool = False) -> str:
     return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
 
 
-@needs_pandoc
-@pytest.mark.parametrize("shape", ["authors and a note", "two paragraphs of prose", "no Results",
-                                   "a styled Methods"])  # fmt: skip
-def test_the_audit_and_init_set_the_same_heading_styles_aside(tmp_path: Path, shape: str) -> None:
-    """Where no paragraph in a heading style names a section alone and the typed titles can
-    be placed and name an Abstract and a Results, both readers set the styles aside and take
-    the typed titles for headings (Basile, 2026-11-15): styles on the authors' line and a
-    note (docx-psych-A1 of the real-paper corpus), on two paragraphs of prose
-    (docx-med-A2). `init --from` makes each styled paragraph a paragraph of its own words.
-    With no Results among the titles, or beside a styled "Methods", both read the styles."""
-    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+#: The shapes of `test_the_audit_and_init_set_the_same_heading_styles_aside` whose styles
+#: both readers keep.
+_STYLES_KEPT = ("no Results", "a styled Methods", "APA subheadings", "a styled header row")
 
-    prose =("Falls are common in older patients.", "Some of them are harmed by them.")
+
+@needs_pandoc
+@pytest.mark.parametrize("shape", ["authors and a note", "two paragraphs of prose",
+                                   "a styled cell on the title page", *_STYLES_KEPT])
+def test_the_audit_and_init_set_the_same_heading_styles_aside(tmp_path: Path, shape: str) -> None:
+    """Where no paragraph in a heading style names a section alone, each is a stray line, on
+    the title page before the first typed title or a paragraph of prose (Basile,
+    2026-11-15, "Only stray lines"), and the typed titles can be placed and name an Abstract
+    and a Results, both readers set the styles aside and take the typed titles for headings:
+    styles on the authors' line and a note (docx-psych-A1 of the real-paper corpus), on two
+    paragraphs of prose (docx-med-A2), on a title page's table's cell too, which both count
+    among the paragraphs they say were in a heading style. `init --from` makes each styled
+    paragraph a paragraph of its own words. With no Results among the titles, beside a
+    styled "Methods", a header row "Methods | Findings | Notes" in Heading 3, read by its
+    cells' own words, or APA's subheadings in Heading 2 under typed titles, both read the
+    styles, and `init --from` keeps "## Participants" (round 1 of #688)."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+    from manuscript_guard.text.docx_abstract import placed_headings
+
+    prose = ("Falls are common in older patients.", "Some of them are harmed by them.")
     results = "Outcomes" if shape == "no Results" else "Results"
     methods = (_styled("Methods", 1) if shape == "a styled Methods"
                else _paragraph("Methods", True))  # fmt: skip
     authors = (_styled("Ana Martin, Paul Girard", 4) + _styled("Both wrote it equally.", 4)
                if shape != "two paragraphs of prose" else _paragraph("Ana Martin, Paul Girard"))
+    if shape == "a styled cell on the title page":
+        authors += (f"<w:tbl><w:tr><w:tc>{_styled('Department of Medicine, Caen', 3)}</w:tc>"
+                    "</w:tr></w:tbl>")  # fmt: skip
     introduction = (_paragraph(prose[0]) + _paragraph(prose[1]) if shape != "two paragraphs "
                     "of prose" else _styled(prose[0], 2) + _styled(prose[1], 2))  # fmt: skip
+    records = _paragraph("We read 412 records.")
+    if shape == "APA subheadings":
+        records = (_styled("Participants", 2) + records + _styled("Measures", 2)
+                   + _paragraph("Falls were counted.") + _styled("Statistical analysis", 2)
+                   + _paragraph("We used odds ratios."))  # fmt: skip
+    table = ""
+    if shape == "a styled header row":
+        cells = "".join(f"<w:tc>{_styled(name, 3)}</w:tc>" for name in ("Methods", "Findings",
+                                                                        "Notes"))  # fmt: skip
+        table = (f"<w:tbl><w:tr>{cells}</w:tr><w:tr><w:tc>{_paragraph('1')}</w:tc></w:tr>"
+                 "</w:tbl>")  # fmt: skip
     body = (authors + _paragraph("Abstract", True) + _paragraph("Of 412 patients, 77 fell.")
-            + _paragraph("Introduction", True) + introduction + methods
-            + _paragraph("We read 412 records.") + _paragraph(results, True)
-            + _paragraph("Of 412 patients, 77 fell.") + _paragraph("Discussion", True)
-            + _paragraph("It was so."))  # fmt: skip
+            + _paragraph("Introduction", True) + introduction + methods + records
+            + _paragraph(results, True) + _paragraph("Of 412 patients, 77 fell.") + table
+            + _paragraph("Discussion", True) + _paragraph("It was so."))  # fmt: skip
     paper = _package(tmp_path / "paper.docx", body, _HEADING_STYLES)
     converted = from_word.convert(paper)
     document = read_docx_text(paper)
     lines = document.body.split("\n")
-    if shape in ("no Results", "a styled Methods"):
+    if shape in _STYLES_KEPT:
         assert converted.typed_headings == ()
         assert document.heading_levels != ()
-        from manuscript_guard.text.docx_abstract import placed_headings
-
-        assert converted.headings == len(placed_headings(document))
+        # A styled cell places to the audit beside a heading outside a table, and pandoc keeps
+        # it in its cell (#678): the rest are the same headings.
+        assert converted.headings == len([heading for heading in placed_headings(document)
+                                          if heading.line not in document.cells])  # fmt: skip
+        if shape == "APA subheadings":
+            assert "## Participants" in _headings(converted.text), converted.text
+            assert "Participants" in [heading.title for heading in placed_headings(document)]
         return
     titles = ("Abstract", "Introduction", "Methods", "Results", "Discussion")
     assert converted.typed_headings == titles
@@ -917,10 +946,17 @@ def test_the_audit_and_init_set_the_same_heading_styles_aside(tmp_path: Path, sh
     assert document.heading_levels == ()
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == titles
     styled = [lines[at] for at in sorted(document.headings)]
-    # Each styled paragraph is a paragraph of its own words, in the text or the title page.
+    # Each styled paragraph is a paragraph of its own words, in the text or the title page;
+    # a cell's stays in its table.
     written = {line.rstrip("\r") for line in converted.text.split("\n")}
-    assert len(styled) == 2 and set(styled) <= written, converted.text
-    assert "paragraphs in a heading style names a section alone" in converted.title_page
+    assert {lines[at] for at in document.headings - document.cells} <= written, converted.text
+    # Both count the same paragraphs in a heading style, a cell's among them.
+    count = 3 if shape == "a styled cell on the title page" else 2
+    assert len(styled) == count
+    said = f"none of its {count} paragraphs in a heading style names a section alone"
+    assert said in converted.title_page, converted.title_page
+    (read,) = audit([paper], []).headings
+    assert said in read, read
 
 
 @needs_pandoc

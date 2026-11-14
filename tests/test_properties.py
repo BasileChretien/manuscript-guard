@@ -21899,14 +21899,15 @@ from generated import (  # noqa: E402
 def test_heading_styles_that_name_no_section_are_set_aside_by_the_audit(
     drawn: list[tuple[str, list[tuple], bool]],
 ) -> None:
-    """A Word paper whose heading styles are on lines that name no section, an authors' line,
-    a note, prose, before its Abstract or in its Introduction, is placed by its typed
-    titles, in bold or not, in capitals or numbered, where they can be placed and name an
-    Abstract and a Results; its styled lines still headings. Without a Results or an
-    Abstract among them, with a structured abstract's parts that cannot be placed, or beside
-    a styled line that names a section, it is placed by its styles (`text.docx.
-    styles_set_aside`; Basile, 2026-11-15, docx-psych-A1 and docx-med-A2 of the real-paper
-    corpus)."""
+    """A Word paper whose heading styles are on stray lines that name no section, an
+    authors' line, a note or prose before its Abstract, prose in its Introduction, is placed
+    by its typed titles, in bold or not, in capitals or numbered, where they can be placed
+    and name an Abstract and a Results; its styled lines still headings. Without a Results
+    or an Abstract among them, with a structured abstract's parts that cannot be placed,
+    beside a styled line that names a section, or beside a styled subheading after the
+    first typed title that is no sentence (round 1 of #688), it is placed by its styles
+    (`text.docx.styles_set_aside`; Basile, 2026-11-15, docx-psych-A1 and docx-med-A2 of the
+    real-paper corpus)."""
     import tempfile
     import zipfile
 
@@ -21943,11 +21944,13 @@ def test_heading_styles_that_name_no_section_are_set_aside_by_init(
 
     for kind, paper, aside in drawn:
         blocks = stray_styled_blocks(paper)
-        demoted = stray_headers_set_aside(json.loads(json.dumps(blocks)))
+        made = stray_headers_set_aside(json.loads(json.dumps(blocks)))
         if not aside:
-            assert demoted is None, (kind, paper)
+            assert made is None, (kind, paper)
             continue
-        assert demoted is not None, (kind, paper)
+        assert made is not None, (kind, paper)
+        demoted, count = made
+        assert count == sum(1 for item in paper if item[0] == "styled"), kind
         assert [block["c"] for block in demoted] == [
             block["c"][2] if block["t"] == "Header" else block["c"] for block in blocks]
         titles = [item[1] for item in paper if item[0] == "title"]
@@ -21966,6 +21969,14 @@ def _titles_not_placed_set_the_styles_aside(patch: pytest.MonkeyPatch) -> None:
     real = docx.styles_set_aside
     patch.setattr(docx, "styles_set_aside", lambda styled, titles, placed: real(
         styled, titles, True))  # fmt: skip
+
+
+def _a_styled_subheading_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
+    """As the first build of #688: a styled line after the first typed title that is no
+    sentence, an APA paper's "Participants", was set aside too."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "only_stray_lines", lambda styled: True)
 
 
 def _any_titles_set_the_styles_aside(patch: pytest.MonkeyPatch) -> None:
@@ -22820,6 +22831,14 @@ BROKEN = {
     "the audit sets aside styles with no Abstract or no Results": (
         _any_titles_set_the_styles_aside,
         test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "the audit sets aside styles beside a styled subheading": (
+        _a_styled_subheading_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "init sets aside styles beside a styled subheading": (
+        _a_styled_subheading_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
     ),
     "init sets aside styles beside a styled name": (
         _a_styled_name_is_set_aside_too,

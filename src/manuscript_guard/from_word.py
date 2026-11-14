@@ -171,9 +171,9 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     unstyled = 0
     demoted = stray_headers_set_aside(blocks) if headings else None
     if demoted is not None:
-        # Its heading styles name no section, as the audit reads them (docx-psych-A1 and
-        # docx-med-A2 of the real-paper corpus; Basile, 2026-11-15).
-        blocks, unstyled, headings = demoted, headings, 0
+        # Its heading styles are on stray lines alone, as the audit reads them
+        # (docx-psych-A1 and docx-med-A2 of the real-paper corpus; Basile, 2026-11-15).
+        (blocks, unstyled), headings = demoted, 0
     styled = bool(headings)
     if not headings:
         # Counted as made: "headings: 0" was printed after 14 were (PsyArXiv fyxeq_v2 of the
@@ -635,21 +635,31 @@ def _typed_titles(blocks: list) -> tuple[list, list, list[tuple[int, str, str]],
     return blocks, lists, found, levels
 
 
-def stray_headers_set_aside(blocks: list) -> list | None:
+def stray_headers_set_aside(blocks: list) -> tuple[list, int] | None:
     """`blocks` with each top-level heading made a paragraph of its own words, exactly,
     where the paper's heading styles are set aside as the audit sets them aside
     (`text.docx.styles_set_aside`): no heading, a table's cell's among them, names a section
-    alone, and its typed titles can be placed and name an Abstract and a Results; None
-    otherwise. Its typed titles are then made its headings (`typed_headings`), as in a
-    paper with no heading style."""
+    alone, each is a stray line, before the first typed title or a sentence, and its typed
+    titles can be placed and name an Abstract and a Results; with how many headings there
+    were, a cell's counted as the audit counts it; None otherwise. Its typed titles are then
+    made its headings (`typed_headings`), as in a paper with no heading style."""
     from manuscript_guard.text.docx import styles_set_aside
 
-    styled = [" ".join(text_of(header["c"][2]).split()) for header in _walk(blocks, "Header")]
     demoted = [{"t": "Para", "c": block["c"][2]} if block["t"] == "Header" else block
                for block in blocks]  # fmt: skip
-    _opened, _lists, found, levels = _typed_titles(demoted)
+    made = {id(block) for block, was in zip(demoted, blocks, strict=True) if block is not was}
+    opened, _lists, found, levels = _typed_titles(demoted)
+    first = found[0][0] if found else len(opened)
+    styled: list[tuple[str, bool]] = []
+    for at, block in enumerate(opened):
+        # A heading made a paragraph stands in `opened` as it is, a list's item never.
+        inlines = [block["c"]] if id(block) in made else [
+            header["c"][2] for header in _walk(block, "Header")]
+        styled += [(" ".join(text_of(one).split()), at < first) for one in inlines]
     titles = [typed for _at, _name, typed in found]
-    return demoted if styles_set_aside(styled, titles, levels is not None) else None
+    if not styles_set_aside(styled, titles, levels is not None):
+        return None
+    return demoted, len(styled)
 
 
 def _opened_lists(blocks: list, named) -> tuple[list, list]:

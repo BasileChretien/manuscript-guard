@@ -26,9 +26,10 @@
 expected:
   - reading: word abstract
     why: >-
-      a Word paper whose only paragraphs in a heading style name no section, an authors'
-      line, a note or prose, and whose typed titles can be placed and name an Abstract and a
-      Results, is placed by its typed titles, so its Abstract is compared with its Results,
+      a Word paper whose only paragraphs in a heading style name no section and are stray
+      lines, an authors' line or a note before its first typed title or prose anywhere, and
+      whose typed titles can be placed and name an Abstract and a Results, is placed by its
+      typed titles, so its Abstract is compared with its Results,
       where the base read it by those styles and compared nothing (Basile, 2026-11-15,
       decision 21: docx-psych-A1 and docx-med-A2 of the real-paper corpus)
   - reading: audit references not sorted

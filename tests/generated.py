@@ -16010,21 +16010,30 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
 # --------------------------------------- a Word paper's heading styles on lines naming no section
 
 
-#: Lines a Word paper puts in a heading style that name no section (Basile, 2026-11-15): its
-#: authors' line and an "equal contribution" note (docx-psych-A1 of the real-paper corpus),
-#: prose (docx-med-A2), an address, and a sentence that opens with a section's name.
-STRAY_STYLED = ("Ana Martin, Paul Girard, PhD", "*contributed equally to this paper",
-                "Falls are common in older patients.", "Department of Medicine, Caen",
-                "Results of an earlier survey were mixed.")  # fmt: skip
+#: Lines a Word paper puts in a heading style that name no section and are stray lines
+#: (Basile, 2026-11-15, "Only stray lines"): on its title page, its authors' line, an "equal
+#: contribution" note (docx-psych-A1 of the real-paper corpus) and an address; and anywhere,
+#: prose (docx-med-A2), a sentence that opens with a section's name among it.
+STRAY_TITLE_PAGE = ("Ana Martin, Paul Girard, PhD", "*contributed equally to this paper",
+                    "Department of Medicine, Caen")  # fmt: skip
+STRAY_PROSE = ("Falls are common in older patients.", "Results of an earlier survey were mixed.",
+               "We followed them for two years, and the risk was high.")  # fmt: skip
+#: Lines in a heading style after the first typed title that are no sentence: APA's
+#: subheadings, under typed titles, and a title page's lines out of their place (round 1 of
+#: #688). They keep the styles.
+STYLED_SUBHEADINGS = ("Participants", "Measures", "Statistical analysis",
+                      "Study design and setting", "Ana Martin, Paul Girard, PhD",
+                      "Department of Medicine, Caen")  # fmt: skip
 #: A heading-styled line that names a section alone, which keeps the styles.
 NAMED_STYLED = ("Methods", "2. Results", "INTRODUCTION", "Funding")
 #: The papers of `stray_styled_papers`, and whether each has its styles set aside: its
 #: stray styled lines before its Abstract; inside its Introduction; and kept, its typed
 #: titles naming no Results, naming no Abstract, a structured abstract's parts that cannot
-#: be placed, and a styled line beside them that names a section.
+#: be placed, a styled line beside them that names a section, and a styled subheading after
+#: the first typed title that is no sentence.
 STRAY_STYLED_KINDS = {"before the Abstract": True, "in the Introduction": True,
                       "no Results": False, "no Abstract": False, "not placed": False,
-                      "a styled name": False}  # fmt: skip
+                      "a styled name": False, "a styled subheading": False}  # fmt: skip
 #: The shapes a typed title is drawn in: in bold, plain, in capitals, numbered as typed.
 _TYPED_SHAPES = ("bold", "plain", "capitals", "numbered")
 
@@ -16034,7 +16043,8 @@ def stray_styled_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple], bool]]:
     """A Word paper for every kind of `STRAY_STYLED_KINDS`, in an order drawn, as its
     paragraphs: `("styled", words, level)` in a heading style, `("title", words, bold)` a
     typed title, `("words", text)` a paragraph; with whether its styles are set aside. Each
-    holds one or two lines of `STRAY_STYLED` in a heading style of a level drawn."""
+    holds one or two stray lines in a heading style of a level drawn, of `STRAY_PROSE` in
+    its Introduction, and of `STRAY_TITLE_PAGE` or `STRAY_PROSE` before its first title."""
     word = st.sampled_from(FILLER)
     out = []
     for kind in draw(st.permutations(list(STRAY_STYLED_KINDS))):
@@ -16047,9 +16057,10 @@ def stray_styled_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple], bool]]:
         def words() -> tuple:
             return ("words", f"Of 412 {' '.join(draw(st.lists(word, min_size=1, max_size=3)))}.")
 
+        pool = STRAY_PROSE if kind == "in the Introduction" else STRAY_TITLE_PAGE + STRAY_PROSE
         stray = [("styled", line, draw(st.integers(1, 4)))
-                 for line in draw(st.lists(st.sampled_from(STRAY_STYLED), min_size=1,
-                                           max_size=2, unique=True))]  # fmt: skip
+                 for line in draw(st.lists(st.sampled_from(pool), min_size=1, max_size=2,
+                                           unique=True))]  # fmt: skip
         names = ["Abstract", "Introduction", "Methods", "Results", "Discussion"]
         if kind == "no Results":
             names[3] = draw(st.sampled_from(("Outcomes", "Our cohort")))
@@ -16070,6 +16081,11 @@ def stray_styled_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple], bool]]:
         if kind == "a styled name":
             paper.insert(draw(st.integers(len(stray), len(paper))),
                          ("styled", draw(st.sampled_from(NAMED_STYLED)), 1))
+        if kind == "a styled subheading":
+            # After the first typed title, which stands right after the stray lines.
+            paper.insert(draw(st.integers(len(stray) + 1, len(paper))),
+                         ("styled", draw(st.sampled_from(STYLED_SUBHEADINGS)),
+                          draw(st.integers(1, 4))))
         out.append((kind, paper, STRAY_STYLED_KINDS[kind]))
     return out
 

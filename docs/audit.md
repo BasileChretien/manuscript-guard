@@ -365,9 +365,9 @@ every table of every file; and the whole of a file with no Abstract, a supplemen
 footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
 page, above the Abstract's heading, nor the text above the first heading. A line stands
 under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a
-LaTeX document's as it prints them. A .docx whose heading styles name no section, on its
-authors' line or a paragraph of prose, is placed by its typed titles where they can be
-placed and name an Abstract and a Results. Where no heading of a .docx names the Abstract, its
+LaTeX document's as it prints them. A .docx whose heading styles name no section and are
+only on its title page, before the first typed title, or on paragraphs of prose, is placed
+by its typed titles where they can be placed and name an Abstract and a Results. Where no heading of a .docx names the Abstract, its
 Abstract is under a run-in label that opens its paragraph, "Abstract:" or "Abstract.", the
 numbers on that line the Abstract's, or, in a paper with heading styles, under "Abstract"
 alone on a line of its own, in bold or not, though the paper's other typed titles stay text
@@ -540,10 +540,12 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a
   reading that rests on no list. With neither, nothing is set aside, and the report says
   the paper was read as one text. What `init` prints counts the headings it made. A paper
-  whose heading styles are only on lines that name no section, its authors' line, a note
-  or a paragraph of prose, is read the same way where its typed titles can be placed and
-  name an Abstract and a Results: each styled paragraph is made a paragraph of its own
-  words, and the report says why. Otherwise it is read by its styles.
+  whose heading styles are only on stray lines that name no section, its authors' line or
+  a note before its first typed title, or a paragraph of prose, a sentence, anywhere, is
+  read the same way where its typed titles can be placed and name an Abstract and a
+  Results: each styled paragraph is made a paragraph of its own words, and the report says
+  why. Otherwise it is read by its styles: a subheading "Participants" in Heading 2 under
+  titles typed in bold stays "## Participants".
 - **An Abstract no heading names.** A run-in "Abstract:" or "Abstract." opening a paragraph
   is made a heading "Abstract" over the paragraph's other words, and in a paper with heading
   styles a paragraph whose words are "Abstract" alone, in bold or not, is made a heading, at

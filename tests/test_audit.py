@@ -2303,19 +2303,35 @@ def test_heading_styles_that_name_no_section_are_set_aside(tmp_path: Path, shape
     assert "none of its 2 paragraphs in a heading style names a section alone" in said, said
 
 
-@pytest.mark.parametrize("shape", ["no Results", "titles not placed", "a styled Methods"])
+@pytest.mark.parametrize("shape", ["no Results", "titles not placed", "a styled Methods",
+                                   "APA subheadings", "a short line after the first title",
+                                   "a styled header row"])  # fmt: skip
 def test_heading_styles_are_kept_unless_each_condition_holds(tmp_path: Path, shape: str) -> None:
-    """The styles are set aside only where all three hold: no styled paragraph names a
-    section alone, the typed titles can be placed, and they name an Abstract and a Results.
-    Without a Results among them, with a structured abstract's parts that cannot be placed,
-    or beside a styled "Methods", the paper is read by its styles, as before."""
+    """The styles are set aside only where all four hold: no styled paragraph names a
+    section alone, each is a stray line, on the title page before the first typed title or
+    a paragraph of prose (Basile, 2026-11-15, "Only stray lines"), the typed titles can be
+    placed, and they name an Abstract and a Results. Without a Results among them, with a
+    structured abstract's parts that cannot be placed, beside a styled "Methods", a table's
+    header row "Methods | Findings | Notes" in a heading style, read by its cells' own words
+    (round 1 of #688), APA's subheadings in Heading 2 under typed titles, or a short line
+    that is no sentence after the first typed title, the paper is read by its styles, as
+    before."""
     authors = _styled("Ana Martin, Paul Girard, PhD", 4)
+    header = "".join(f"<w:tc>{_styled(name, 3)}</w:tc>" for name in ("Methods", "Findings",
+                                                                     "Notes"))
     typed = {
         "no Results": _TYPED_PAPER.replace(bold("Results"), bold("Outcomes")),
         "titles not placed": (bold("Abstract") + bold("Background") + para("Drugs cause harm.")
                               + bold("Results") + para("Of 412 patients, 77 had it.")
                               + bold("Discussion") + para("It was so.")),
         "a styled Methods": _TYPED_PAPER.replace(bold("Method"), _styled("Methods", 1)),
+        "APA subheadings": _TYPED_PAPER.replace(para("We read 412 records."), (
+            _styled("Participants", 2) + para("We read 412 records.")
+            + _styled("Measures", 2) + para("Falls were counted.")
+            + _styled("Statistical analysis", 2) + para("We used odds ratios."))),
+        "a short line after the first title": _TYPED_PAPER.replace(
+            bold("Method"), _styled("Department of Medicine, Caen", 2) + bold("Method")),
+        "a styled header row": _TYPED_PAPER + f"<w:tbl><w:tr>{header}</w:tr>{row('1')}</w:tbl>",
     }[shape]
     document = read_docx_text(make_docx(tmp_path / "paper.docx", authors + typed))
     assert document.heading_levels != ()

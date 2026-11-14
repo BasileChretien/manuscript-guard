@@ -25264,20 +25264,32 @@ Open, recorded as each change landed:
     title is its "References" keeps its text where every gate reads it. A heading is written
     with the title's own words, its number kept. Accepted.
   - A paper none of whose paragraphs in a heading style names a section alone, a table's
-    cell's among them, is read by its typed titles where they can be placed and name an
-    Abstract and a Results (Basile, 2026-11-15, "Yes, narrowly": styles on an authors' line
-    and a note, docx-psych-A1 of the real-paper corpus, or on two paragraphs of prose,
-    docx-med-A2). Both readers then take its typed titles for its headings, `init --from`
-    making each styled paragraph a paragraph of its own words, and a styled line still ends
-    a reference list to the audit. Where its typed titles name no Results or no Abstract,
-    cannot be placed, or stand beside one styled line that names a section, it is read by
-    its styles as before, its typed titles text: no list of names says that a styled line
-    is no title, and the narrow reading leaves those papers as they were. Where the title
-    page holds such a styled line, `init --from` lifts no paragraph in Word's Abstract style
-    out of it, as its reading with styles stops at the first heading; that is held by no
-    test. Pinned by
+    cell's among them read by its own words, and each of which is a stray line, is read by
+    its typed titles where they can be placed and name an Abstract and a Results (Basile,
+    2026-11-15, "Yes, narrowly" and "Only stray lines": styles on an authors' line and a
+    note, docx-psych-A1 of the real-paper corpus, or on two paragraphs of prose,
+    docx-med-A2). A stray line stands on the title page, before the first typed title, or
+    is a paragraph of prose: it holds a sentence as the title page reads one
+    (`text.title_page.a_sentence`). Both readers then take its typed titles for its
+    headings, `init --from` making each styled paragraph a paragraph of its own words, and
+    a styled line still ends a reference list to the audit. Where its typed titles name no
+    Results or no Abstract, cannot be placed, or stand beside one styled line that names a
+    section, or one after the first typed title that holds no sentence, a subheading
+    "Participants" or "Statistical analysis" in Heading 2 under titles an APA paper types in
+    bold (round 1 of #688), it is read by its styles as before, its typed titles text: no
+    list of names says that a styled line is no title, and the narrow reading leaves those
+    papers as they were. So an empty paragraph in a heading style after the first typed
+    title keeps the styles too. Where the title page holds such a styled line, `init --from`
+    lifts no paragraph in Word's Abstract style out of it, as its reading with styles stops
+    at the first heading; that is held by no test. Pinned by
     `tests/test_from_word.py::test_the_audit_and_init_set_the_same_heading_styles_aside`,
     `tests/test_audit.py::test_heading_styles_are_kept_unless_each_condition_holds`.
+  - `compare` reads a .docx version by its heading styles' levels alone
+    (`comparing/versions.py`), not by its typed titles: a version whose stray styles were
+    set aside has no heading to it, as a paper with no heading style has none, so two
+    versions on different sides of that rule, one set aside and one not, have no section in
+    common, and every section is compared as changed (round 1 of #688). Two versions of one
+    paper rarely differ so. Accepted.
   - Where no heading names the Abstract, two shapes of its title are read as its heading,
     by the audit and by `init --from` alike (Basile, 2026-11-14, after four papers of the
     real-paper corpus): a paragraph that opens on a run-in "Abstract:" or "Abstract." and

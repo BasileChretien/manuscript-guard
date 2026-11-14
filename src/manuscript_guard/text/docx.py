@@ -791,16 +791,42 @@ def names_abstract_and_results(titles: Sequence[str]) -> bool:
         names_results(title) for title in titles)
 
 
-def styles_set_aside(styled: Sequence[str], titles: Sequence[str], placed: bool) -> bool:
+def only_stray_lines(styled: Sequence[tuple[str, bool]]) -> bool:
+    """Whether each of `styled`, the words of a paper's paragraphs in a heading style with
+    whether it stands before its first typed title, is a stray line (Basile, 2026-11-15,
+    "Only stray lines"): on the title page, before the first typed title, an authors' line
+    or a note; or a paragraph of prose, which holds a sentence as the title page reads one
+    (`title_page.a_sentence`: a word only a sentence has, "the" twice, or one sentence
+    ending before another). A styled subheading under a typed title, "Participants" or
+    "Statistical analysis" in an APA paper, is neither, and keeps the paper read by its
+    styles (round 1 of #688)."""
+    from manuscript_guard.text.title_page import a_sentence
+
+    return all(before or a_sentence(words) for words, before in styled)
+
+
+def styles_set_aside(styled: Sequence[tuple[str, bool]], titles: Sequence[str],
+                     placed: bool) -> bool:  # fmt: skip
     """Whether a Word paper that uses a heading style is read by its typed titles instead,
-    as the audit and `init --from` both decide it (Basile, 2026-11-15, "Yes, narrowly"):
-    only where no paragraph in a heading style names a section alone, `styled` their words;
-    its typed titles, `titles` their words, can be `placed`; and they include an Abstract
-    and a Results. A paper whose heading styles are on its authors' line and a note
-    (docx-psych-A1 of the real-paper corpus) or on two paragraphs of prose (docx-med-A2)
-    had its Abstract compared with nothing, its typed titles text."""
-    return bool(styled) and names_no_section(styled) and placed and \
-        names_abstract_and_results(titles)  # fmt: skip
+    as the audit and `init --from` both decide it (Basile, 2026-11-15, "Yes, narrowly", and
+    "Only stray lines"): only where no paragraph in a heading style names a section alone
+    and each is a stray line (`only_stray_lines`), `styled` their words with whether each
+    stands before the first typed title; its typed titles, `titles` their words, can be
+    `placed`; and they include an Abstract and a Results. A paper whose heading styles are
+    on its authors' line and a note (docx-psych-A1 of the real-paper corpus) or on two
+    paragraphs of prose (docx-med-A2) had its Abstract compared with nothing, its typed
+    titles text."""
+    words = [one for one, _before in styled]
+    return bool(styled) and names_no_section(words) and only_stray_lines(styled) and \
+        placed and names_abstract_and_results(titles)  # fmt: skip
+
+
+def own_words(line: str) -> str:
+    """A line of a .docx's body without the boundary " | " the next cell of its row puts at
+    its end, as `_tables` reads a cell: a styled header row's "Methods | " is "Methods", as
+    pandoc reads it (round 1 of #688)."""
+    text = line.strip()
+    return text[:-1].rstrip() if text.endswith("|") else text
 
 
 def _stray_styles_set_aside(document: DocxText) -> DocxText:
@@ -814,9 +840,13 @@ def _stray_styles_set_aside(document: DocxText) -> DocxText:
     lines = document.body.split("\n")
     unstyled = replace(document, heading_levels=())
     levels = typed_heading_levels(unstyled)
-    titles = [lines[at] for at, _title in typed_titles(unstyled)] if levels is None else [
-        lines[at] for at, _level in levels]
-    styled = [lines[at] for at in sorted(document.headings)]
+    found = [at for at, _title in typed_titles(unstyled)] if levels is None else [
+        at for at, _level in levels]
+    first = found[0] if found else len(lines)
+    # A cell's line ends in the next cell's boundary; read by its own words.
+    styled = [(own_words(lines[at]) if at in document.cells else lines[at], at < first)
+              for at in sorted(document.headings)]  # fmt: skip
+    titles = [lines[at] for at in found]
     return unstyled if styles_set_aside(styled, titles, levels is not None) else document
 
 

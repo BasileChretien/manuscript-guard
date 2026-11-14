@@ -24,6 +24,17 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: pdf headings
+    why: >-
+      where no line names the Abstract alone, a line before a PDF's first heading that opens
+      on a run-in "Abstract:" (or "Abstract.") and goes on, not on a count of words, is the
+      Abstract's heading, the rest of the line its text; and where the names alone cannot be
+      placed, a line after the Abstract that opens on "Experiment N:" or "Study N:", N a
+      number or a Roman numeral, with a name after it before the next, is a heading a level
+      above the names after it, so a multi-study paper's repeated Method and Results are
+      placed where the base placed nothing; a paper the base placed is placed as it was
+      (Basile, 2026-11-15, decisions 22 and 23, after pdf-socio-B1 and pdf-psych-A2 of the
+      real-paper corpus; round 1 of #686)
   - reading: word abstract
     why: >-
       a Word paper that uses heading styles and titles its Abstract by a run-in "Abstract:"

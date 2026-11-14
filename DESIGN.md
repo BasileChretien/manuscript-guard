@@ -11260,7 +11260,27 @@ structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them,
 heading between the two is the Abstract's, a level under it (`PdfText.placed`), in `compare`
 too (round 2 of #486): a Lancet "Summary" with its Funding line, or a BMJ abstract, is placed
 so (the fix-only round of #486 kept this over ending the Abstract at a heading of another
-name). Where there is no
+name). Two shapes of line are headings besides (Basile, 2026-11-15, decisions 22 and 23, after
+the real-paper corpus; `auditing.pdf.headings_of`), each only where the names read nothing,
+as a Word paper's run-in label is read where no heading names the Abstract (round 1 of #686:
+read anywhere, each made papers the names placed unplaced). Where no line names the
+Abstract, the first line before the first heading that opens on the Abstract's run-in label
+and goes on (`section_names.run_in_abstract`, a Word paper's rule) with a word, a capital
+first, "Abstract: The second generation...", is the Abstract's heading, the rest of the line
+its first text; one that goes on with a digit, a bracket or other punctuation, or a word in
+lower case, is a title page's counts, "Abstract: 248 words; Main text: 3,512 words",
+"Abstract: (248 words)", and no heading (round 4 of #686: Basile chose this exact rule after
+a rule for the counts failed twice). It ends as an Abstract read from its lines does;
+after it, a reference's title or a quotation that opens so titles nothing. And where the names cannot be placed alone and can
+be with them, each line after the Abstract's end (where the name after the Abstract's is
+no part of one or a Background after its words, at it; else at the first study's line,
+which ends a structured Abstract's parts too, as in an APA paper with no heading over its
+Introduction: rounds 2 and 3 of #686) that opens on "Experiment" or "Study", a
+number or a Roman numeral and a colon (`study_title`), with a name after it before the next
+such line that is no back matter's, is a multi-study paper's heading over the names after it, a level above them, to
+the next such line or the end, so that each study's own "Method" and "Results" are placed
+and a name stands twice only where it does under one study. Where there
+is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
 are placed in no section, so the Abstract is not compared with the Results and no causal word
@@ -26408,6 +26428,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
     the paper's Background its own. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
+  - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
+    line, an author's address or a title page's other lines typed before it are the
+    Abstract's, their numbers among its own; and where the Introduction has no heading, the
+    Abstract runs on through it to the next ("Methods"), and the Introduction's numbers are
+    the Abstract's, those the Results do not report said not found. Only the first such line
+    before the first heading that goes on with a word, a capital first, is read, and none
+    where a line names the Abstract alone. So an Abstract whose text opens on a number,
+    "Abstract: 412 patients were followed", or on a bracket, is not read as a run-in label's,
+    as on main: Basile chose this exact rule (2026-11-15) after a rule that told a title
+    page's counts of words apart failed twice in review. Accepted.
+  - Where the names cannot be placed alone, a line after the Abstract that opens on
+    "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
+    no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a
+    caption that opens so is one too, and the names after it are placed under it, a summary
+    row of the General Discussion with a "Limitations" after it among them. Pinned by
+    `tests/test_audit_pdf.py::test_a_summary_row_with_only_the_back_matter_after_it_is_no_heading`.
+  - The names after the last study, "General Discussion" and the back matter among them,
+    are placed under it, a level down; a "Discussion" of the whole paper after the last
+    study's own "Discussion" is a name twice under it, and no study's line is then a
+    heading. A study's heading wrapped over two lines is read by its first. A study named
+    otherwise ("Study 1a:", "Pilot study:", "Experiment One:") is no heading. Accepted.
   - "Result", the singular, joined the names for pdf-psych-B3's "3. Result" (Basile,
     2026-11-15), and in a PDF it is a heading only after a section's number, "3. Result",
     "3 Result", "III. Result" (`auditing.pdf.NUMBERED_ONLY`; round 1 of #687): poppler's

@@ -2570,6 +2570,62 @@ def test_an_abstract_that_differs_from_its_results_fails_the_audit_of_a_pdf(
 
 
 @pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_under_a_pdf_s_run_in_abstract_label_unlike_its_results_fails_strict(
+    tmp_path: Path,
+) -> None:
+    """pdf-socio-B1 of the real-paper corpus, in MDPI's layout, titles its Abstract by a run-in
+    "Abstract:" on a line of its words, and the audit read no Abstract in it (Basile,
+    2026-11-15, decision 22). The label is its heading now, and an interval on the label's
+    own line that differs from the Results' fails --strict."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    lines = ["A study of things", "Abstract: Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10).",
+             "Keywords: harm; records", "1. Introduction", "Drugs harm.", "2. Methods",
+             "We read 412 records.", "3. Results",
+             "Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10)."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_bytes(typeset([lines[0], lines[1].replace("2.10)", "2.20)"), *lines[2:]],
+                              columns=1))  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_of_one_study_s_results_unlike_the_abstract_fails_strict(
+    tmp_path: Path,
+) -> None:
+    """pdf-psych-A2 of the real-paper corpus repeats "Method" and "Results and Discussion"
+    under each "Experiment N: <title>", and its headings were placed nowhere, so its Abstract
+    was compared with nothing (Basile, 2026-11-15, decision 23). Each study's heading is one
+    level above its names now, and an interval of the second study's Results that differs
+    from the Abstract's fails --strict."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    interval = "(OR 1.52, 95% CI 1.10-2.10)"
+    lines = ["Abstract", f"In Experiment 2 (n = 99), 77 heard it {interval}.", "Introduction",
+             "Voices are heard.", "Experiment 1: Priming", "Method", "We tested 40.",
+             "Results and Discussion", "Of 40, 12 heard it.", "Experiment 2: Replication",
+             "Method", "We tested 99.", "Results and Discussion",
+             f"Of 99, 77 heard it {interval}."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_bytes(typeset([*lines[:-1], lines[-1].replace("2.10)", "2.20)")], columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
 def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_column_is_unfound(
     tmp_path: Path,
 ) -> None:

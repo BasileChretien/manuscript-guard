@@ -30,7 +30,15 @@ refused, exit 2. Its tables are lines of text there, so their numbers are compar
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
 holds a section's name alone; the singular "Result" only numbered, "3. Result", since a
 table's column headed "Result" is often a line of its own there. A PDF with no such line
-is said to be read as one text. A PDF in a folder is not read: name it.
+is said to be read as one text. Two lines are headings besides, each only where those
+lines read nothing. Where no line names the Abstract, a line before the first heading that
+opens on a run-in "Abstract:" and goes on with a word, a capital first, as MDPI's layout
+sets it, not with a number or a bracket ("Abstract: 248 words"): the rest of the line is the
+Abstract's first text, up to the next heading. And where the names cannot be placed alone, as a multi-study paper's
+repeated Method and Results cannot, a line after the Abstract that opens on "Experiment
+2:" or "Study II:", a colon after the number and a section's name after it: each study's
+heading over the sections it repeats, so that each study's Results are compared with the
+Abstract. A PDF in a folder is not read: name it.
 
 `--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
 `--details` prints them: its sections and each kind of finding on the words are bookmarks,

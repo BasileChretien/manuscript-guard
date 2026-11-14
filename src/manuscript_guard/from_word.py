@@ -120,6 +120,9 @@ class Converted:
     #: In a document with no paragraph in a heading style, the titles of the paragraphs that
     #: name a section alone, which were made its headings (`typed_headings`).
     typed_headings: tuple[str, ...] = ()
+    #: Where no heading named the Abstract, the headings made of its run-in label or the line
+    #: that names it alone, and of the typed title that ends it (`from_word_abstract`).
+    abstract_headings: tuple[str, ...] = ()
     #: What `init --from` made of the typed reference list and citations (`typed_references`).
     references: TypedReferences | None = None
 
@@ -164,11 +167,19 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     blocks = tree["blocks"]
     headings = sum(1 for block in blocks if block["t"] == "Header")
     typed: tuple[str, ...] = ()
+    styled = bool(headings)
     if not headings:
         # Counted as made: "headings: 0" was printed after 14 were (PsyArXiv fyxeq_v2 of the
         # real-paper corpus).
         blocks, typed = typed_headings(blocks)
         headings = len(typed)
+    shaped: tuple[str, ...] = ()
+    if headings and not abstract:
+        from manuscript_guard.from_word_abstract import abstract_headings
+
+        # As the audit reads them (`text.docx_abstract`, Basile, 2026-11-14).
+        blocks, shaped = abstract_headings(blocks, styled)
+        headings += len(shaped)
     aside, body, title_page = _title_page(blocks, typed)
     if aside:
         # Read with styles, a document with no heading runs on past where its typed title
@@ -186,7 +197,8 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     return Converted(title=title, authors=names, abstract=bool(abstract), text=text,
                      media=media, tables=converted, tables_left=left, title_page=title_page,
                      headings=headings, title_noted=noted,
-                     title_marks=marks, typed_headings=typed)  # fmt: skip
+                     title_marks=marks, typed_headings=typed,
+                     abstract_headings=shaped)  # fmt: skip
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
@@ -870,6 +882,11 @@ def what_was_done(docx: Path, converted: Converted) -> str:
         lines.append("  abstract: from its Abstract paragraphs, as the section # Abstract")
     lines.append(f"  title page: {converted.title_page}")
     lines.append(f"  headings: {converted.headings}")
+    if converted.abstract_headings:
+        lines.append("    no heading named the Abstract, so its run-in label or the line that "
+                     "names it alone, and a title typed after it that ends it, were made "
+                     "headings, as the audit reads them: "
+                     + ", ".join(converted.abstract_headings))  # fmt: skip
     lines.append(f"  tables: {converted.tables} written as pipe tables")
     if converted.tables_left:
         lines.append("  tables left as pandoc writes them: check reads a grid table's rows, "

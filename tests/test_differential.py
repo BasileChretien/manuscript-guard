@@ -75,6 +75,7 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: Abstract against Results writes a paper and its supplement and audits them.
 EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15,
                                             "abstract against results": 40,
+                                            "word abstract": 40,
                                             "written shares": 40}
 #: And how many when the two sides are this same source under two hash seeds.
 RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2}

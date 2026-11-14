@@ -989,6 +989,8 @@ TITLE_PAGE_LINES = (
     "Word count: 3,412",
     "Keywords: pharmacology; L.AS; medical education",
     "\\*These authors contributed equally to this work.",
+    # A label of a title page that is a section's name too (round 2 of #683).
+    "**Author information**",
 )
 #: A title page of a single line that only a title page holds, after names with no mark.
 TITLE_PAGE_NAMES = "Ana Martin, Paul Girard and Lea Roux"
@@ -15757,6 +15759,10 @@ TYPED_BLOCKS = {
     "in capitals": ({"t": "Para", "c": [_str("LIMITATIONS")]}, "LIMITATIONS"),
     "numbered in capitals": ({"t": "Para", "c": [_str("4."), _GAP, _str("ACKNOWLEDGEMENTS")]},
                              "4. ACKNOWLEDGEMENTS"),
+    # Back matter docx-socio-A2 types in bold (Basile, 2026-11-14).
+    "author information": ({"t": "Para", "c": [_strong(_str("Author"), _GAP,
+                                                       _str("information"))]},
+                           "Author information"),
     "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
                                                       _str("clear.")]}, None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
@@ -15796,6 +15802,209 @@ def typed_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
         if title is not None:
             titles.append(title)
     return blocks, titles
+
+
+# ------------------------------------------ a Word paper's Abstract in a shape no style marks
+
+
+def _w_heading(text: str) -> str:
+    return f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>'
+
+
+def _w_para(text: str, bold: bool = False) -> str:
+    props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+    return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+
+#: A styled Word paper's Abstract in each shape (Basile, 2026-11-14), as `w:p` XML of the
+#: Abstract's words, and the heading the audit reads of it, or None: a run-in label, with a
+#: colon, with a stop, in capitals, in bold before plain words (docx-med-B3 of the real-paper
+#: corpus); "Abstract" alone on a line in bold, in capitals too (docx-med-A2, docx-psych-A1,
+#: docx-socio-A2), in plain type (docx-ecol-B2), with a colon after it; and none of a
+#: sentence in bold or not that opens with "Abstracts", a run-in label in a table's cell and
+#: "Abstract" alone in one.
+WORD_ABSTRACT_SHAPES = {
+    "run-in, a colon": (lambda words: _w_para(f"Abstract: {words}"), "Abstract"),
+    "run-in, a stop": (lambda words: _w_para(f"Abstract. {words}"), "Abstract"),
+    "run-in, capitals": (lambda words: _w_para(f"ABSTRACT: {words}"), "ABSTRACT"),
+    "run-in, label in bold": (lambda words: (
+        '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Abstract:</w:t></w:r><w:r><w:t xml:space='
+        f'"preserve"> {words}</w:t></w:r></w:p>'), "Abstract"),
+    "in bold": (lambda words: _w_para("Abstract", True) + _w_para(words), "Abstract"),
+    "in bold, capitals": (lambda words: _w_para("ABSTRACT", True) + _w_para(words), "ABSTRACT"),
+    "plain": (lambda words: _w_para("Abstract") + _w_para(words), "Abstract"),
+    "plain, a colon": (lambda words: _w_para("Abstract:") + _w_para(words), "Abstract"),
+    "a sentence in bold": (lambda words: _w_para("Abstracts were screened by two reviewers.",
+                                                 True) + _w_para(words), None),
+    "a sentence": (lambda words: _w_para(f"Abstracts of {words}"), None),
+    "in a cell": (lambda words: "<w:tbl><w:tr><w:tc>" + _w_para(f"Abstract: {words}")
+                  + "</w:tc></w:tr></w:tbl>", None),
+    "alone in a cell": (lambda words: "<w:tbl><w:tr><w:tc>" + _w_para("Abstract")
+                        + "</w:tc></w:tr></w:tbl>" + _w_para(words), None),
+}  # fmt: skip
+#: What comes after the Abstract, and the headings it adds after the Abstract's where the
+#: Abstract is read: the next heading; a title typed in bold before it, which ends the
+#: Abstract and is a heading too; a structured abstract's parts in bold, which are the
+#: Abstract's, up to that title; such parts up to the next heading, a styled Introduction,
+#: which ends them as a typed one does, theirs named as sections or as JAMA's, of which only
+#: "Results" names one (round 1 of #683: they were cut at their first part named); and no
+#: heading after the Abstract, nor a typed title, so that nothing ends it and it is not read,
+#: the heading styles on the authors' line before it (docx-psych-A1).
+WORD_ABSTRACT_ENDS = ("the next heading", "a typed title", "its parts, then a typed title",
+                      "its parts, then the next heading", "nothing")  # fmt: skip
+#: A structured abstract's parts in bold, each over words: parts that name sections, and
+#: JAMA's.
+_WORD_ABSTRACT_PARTS = (("Background", "Results", "Conclusions"),
+                        ("Importance", "Objective", "Design, Setting, and Participants",
+                         "Results", "Conclusions and Relevance"))  # fmt: skip
+
+
+@st.composite
+def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
+    """A styled Word paper's body for every shape of `WORD_ABSTRACT_SHAPES`, each with an end
+    of `WORD_ABSTRACT_ENDS`, every end among the shapes that are read; and the titles of the
+    headings the audit places each by (`text.docx_abstract.placed_headings`)."""
+    read = [kind for kind, (_shape, title) in WORD_ABSTRACT_SHAPES.items() if title]
+    unread = [kind for kind in WORD_ABSTRACT_SHAPES if kind not in read]
+    ends = list(draw(st.permutations(WORD_ABSTRACT_ENDS)))
+    ends += [draw(st.sampled_from(WORD_ABSTRACT_ENDS)) for _more in range(len(read) - len(ends))]
+    paired = list(zip(draw(st.permutations(read)), ends, strict=True)) + [
+        (kind, draw(st.sampled_from(WORD_ABSTRACT_ENDS))) for kind in unread]
+    word = st.sampled_from(FILLER)
+    out = []
+    for kind, end in draw(st.permutations(paired)):
+        shape, title = WORD_ABSTRACT_SHAPES[kind]
+        words = " ".join(draw(st.lists(word, min_size=1, max_size=4)))
+        first = draw(st.sampled_from(("Falls in older patients", "Ana Martin, Paul Girard")))
+        body = _w_heading(first) + shape(f"of 412 {words}, 77 fell.")
+        if end == "its parts, then a typed title":
+            body += (_w_para("Background", True) + _w_para(f"{words.capitalize()} harm.")
+                     + _w_para("Results", True) + _w_para("Of 412, 77 fell."))  # fmt: skip
+        if end == "its parts, then the next heading":
+            for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
+                body += _w_para(part, True) + _w_para(f"Of 412 {words}, 77 fell.")
+            body += _w_heading("Introduction") + _w_para(f"{words.capitalize()} harm.")
+        # A structured abstract's parts end at an Introduction (`section_levels`).
+        typed = draw(st.sampled_from(("Introduction", "1. Introduction") + (
+            () if end == "its parts, then a typed title" else ("Acknowledgments",
+                                                                "Author Information"))))
+        if end in ("a typed title", "its parts, then a typed title"):
+            body += _w_para(typed, True) + _w_para(f"In 2019, 15 {words} died.")
+        if end == "nothing":
+            # A sentence that opens with a section's name ends nothing.
+            body += _w_para(f"{typed} were many: 15 {words} died.", True)
+            out.append((body, [first]))
+            continue
+        body += _w_heading("Methods") + _w_para("We read 412.") + _w_heading("Results")
+        body += _w_para("Of 412, 77 fell.")
+        ended = [typed] if end in ("a typed title", "its parts, then a typed title") else []
+        introduced = ["Introduction"] if end == "its parts, then the next heading" else []
+        out.append((body, [first, *([title, *ended] if title else []), *introduced, "Methods",
+                           "Results"]))  # fmt: skip
+    return out
+
+
+#: A styled Word paper's Abstract in each shape as pandoc reads it, as its blocks with `{}`
+#: for the Abstract's words, and the headings `from_word_abstract.abstract_headings` makes of
+#: them, or none: a run-in label, with a colon, a space before it, in bold, in bold with the
+#: words after it, in a block quote after another paragraph of it (pandoc reads an indented
+#: paragraph as one, docx-med-B3), before a no-break or a thin space; "Abstract" alone in
+#: bold, in capitals, in plain type, with a colon; and none of a label that runs on into the
+#: words in one piece, one with a note's mark, a sentence in bold that opens with
+#: "Abstracts", and "Abstract" alone in a list's item.
+ABSTRACT_BLOCKS = {
+    "run-in, a colon": ([{"t": "Para", "c": [_str("Abstract:"), _GAP, _str("{}")]}],
+                        ["Abstract"]),
+    "run-in, a space before the colon": ([{"t": "Para", "c": [
+        _str("Abstract"), _GAP, _str(":"), _GAP, _str("{}")]}], ["Abstract"]),
+    "run-in, label in bold": ([{"t": "Para", "c": [_strong(_str("Abstract:")), _GAP,
+                                                   _str("{}")]}], ["Abstract"]),
+    "run-in, bold run on": ([{"t": "Para", "c": [_strong(_str("Abstract."), _GAP, _str("{}"))]}],
+                            ["Abstract"]),
+    # pandoc keeps a no-break or a thin space inside one piece of text (round 1 of #683).
+    "run-in, a no-break space": ([{"t": "Para", "c": [_str("Abstract:\N{NO-BREAK SPACE}{}")]}],
+                                 ["Abstract"]),
+    "run-in, a thin space": ([{"t": "Para", "c": [_strong(_str("Abstract.\N{THIN SPACE}{}"))]}],
+                             ["Abstract"]),
+    "run-in, quoted": ([{"t": "BlockQuote", "c": [
+        {"t": "Para", "c": [_str("Its"), _GAP, _str("words.")]},
+        {"t": "Para", "c": [_str("ABSTRACT:"), _GAP, _str("{}")]}]}], ["ABSTRACT"]),
+    "in bold": ([{"t": "Para", "c": [_strong(_str("Abstract"))]},
+                 {"t": "Para", "c": [_str("{}")]}], ["Abstract"]),
+    "in bold, capitals": ([{"t": "Para", "c": [_strong(_str("ABSTRACT"))]},
+                           {"t": "Para", "c": [_str("{}")]}], ["ABSTRACT"]),
+    "run on in one piece": ([{"t": "Para", "c": [_str("Abstract:{}")]}], []),
+    "with a note's mark": ([{"t": "Para", "c": [_str("Abstract:"), {"t": "Note", "c": [
+        {"t": "Para", "c": [_str("A note.")]}]}, _GAP, _str("{}")]}], []),
+    # docx-ecol-B2 (Basile, 2026-11-14).
+    "plain": ([{"t": "Para", "c": [_str("Abstract")]}, {"t": "Para", "c": [_str("{}")]}],
+              ["Abstract"]),
+    "plain, a colon": ([{"t": "Para", "c": [_str("Abstract:")]},
+                        {"t": "Para", "c": [_str("{}")]}], ["Abstract"]),
+    "a sentence in bold": ([{"t": "Para", "c": [_strong(_str("Abstracts"), _GAP, _str("were"),
+                                                        _GAP, _str("read."))]},
+                            {"t": "Para", "c": [_str("{}")]}], []),
+    "in a list": ([{"t": "BulletList", "c": [[{"t": "Plain", "c": [_str("Abstract")]}]]},
+                   {"t": "Para", "c": [_str("{}")]}], []),
+}  # fmt: skip
+
+
+def _abstract_block_filled(node: object, words: str) -> object:
+    """`node`, a piece of pandoc's tree of `ABSTRACT_BLOCKS`, with `words` for each `{}`."""
+    if isinstance(node, list):
+        return [_abstract_block_filled(one, words) for one in node]
+    if isinstance(node, dict):
+        return {key: _abstract_block_filled(value, words) for key, value in node.items()}
+    return node.replace("{}", words) if isinstance(node, str) else node
+
+
+#: What comes after the Abstract in `abstract_blocks`: the next heading; an "Introduction"
+#: typed in bold before it, which is made a heading; and a structured abstract's parts in
+#: bold up to a heading "Introduction", which ends them (round 1 of #683).
+ABSTRACT_BLOCK_ENDS = ("the next heading", "a typed title", "its parts, then the next heading",
+                       "a title Word numbers")  # fmt: skip
+
+
+@st.composite
+def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, list[str]]]:
+    """Pandoc's blocks of a styled Word paper for every shape of `ABSTRACT_BLOCKS`, its title
+    a heading, then the Abstract, then an end of `ABSTRACT_BLOCK_ENDS` before its Methods,
+    every end among the shapes made headings; with the titles of its headings once
+    `abstract_headings` has made them, the Abstract's words, and the titles it made."""
+    out = []
+    word = st.sampled_from(FILLER)
+    made_ones = [kind for kind, (_shape, made) in ABSTRACT_BLOCKS.items() if made]
+    ends = list(draw(st.permutations(ABSTRACT_BLOCK_ENDS)))
+    ends += [draw(st.sampled_from(ABSTRACT_BLOCK_ENDS)) for _ in range(len(made_ones) - len(ends))]
+    paired = dict(zip(draw(st.permutations(made_ones)), ends, strict=True))
+    for kind in draw(st.permutations(list(ABSTRACT_BLOCKS))):
+        shape, made = ABSTRACT_BLOCKS[kind]
+        end = paired.get(kind) or draw(st.sampled_from(ABSTRACT_BLOCK_ENDS))
+        words = draw(st.sampled_from(("Of", "In"))) + " " + " ".join(
+            draw(st.lists(word, min_size=1, max_size=3)))
+        level = draw(st.sampled_from((1, 2)))
+        title = {"t": "Header", "c": [1, ["", [], []], [_str("Falls")]]}
+        blocks = [title, *_abstract_block_filled(shape, words)]
+        if end == "a typed title":
+            blocks += [{"t": "Para", "c": [_strong(_str("Introduction"))]},
+                       {"t": "Para", "c": [_str("Text.")]}]
+        if end == "a title Word numbers":
+            # A numbered list's lone item, as pandoc reads docx-ecol-B2's (round 2 of #683).
+            blocks += [{"t": "OrderedList", "c": [[1, {"t": "Decimal"}, {"t": "Period"}],
+                                                  [[{"t": "Plain", "c": [_str("Introduction")]}]]]},
+                       {"t": "Para", "c": [_str("Text.")]}]
+        named = [*made, *(["Introduction"] if made and end in ("a typed title",
+                                                               "a title Word numbers") else [])]
+        if end == "its parts, then the next heading":
+            for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
+                blocks += [{"t": "Para", "c": [_strong(_str(part))]},
+                           {"t": "Para", "c": [_str("Of"), _GAP, _str("412.")]}]
+            blocks.append({"t": "Header", "c": [level, ["", [], []], [_str("Introduction")]]})
+        blocks.append({"t": "Header", "c": [level, ["", [], []], [_str("Methods")]]})
+        titles = ["Falls", *named, *(["Introduction"] if end.startswith("its parts") else []),
+                  "Methods"]  # fmt: skip
+        out.append((json.loads(json.dumps(blocks)), titles, words, named))
+    return out
 
 
 #: A heading of the Markdown pandoc converts a .docx to, as it is typed and as a place names
@@ -16358,6 +16567,8 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
+    "word abstract": word_abstract_papers().flatmap(
+        lambda drawn: st.sampled_from([body for body, _titles in drawn])),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),

@@ -365,7 +365,15 @@ every table of every file; and the whole of a file with no Abstract, a supplemen
 footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
 page, above the Abstract's heading, nor the text above the first heading. A line stands
 under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a
-LaTeX document's as it prints them. A heading over the Abstract or the Introduction, the
+LaTeX document's as it prints them. Where no heading of a .docx names the Abstract, its
+Abstract is under a run-in label that opens its paragraph, "Abstract:" or "Abstract.", the
+numbers on that line the Abstract's, or, in a paper with heading styles, under "Abstract"
+alone on a line of its own, in bold or not, though the paper's other typed titles stay text
+there. Such an Abstract ends at the next heading, or before it at a title typed on a line
+of its own that is no part of it, an "Introduction", an "Author information" or an
+"Acknowledgments" in bold, which is a heading too; a structured abstract's own parts are
+its, up to its Introduction, typed or in a heading style. With neither after it, where it ends is not read, and neither is it, and
+`init --from` makes the same headings. A heading over the Abstract or the Introduction, the
 paper's title, names no section; one over a Methods subsection does, and the words under
 it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
@@ -530,6 +538,11 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a
   reading that rests on no list. With neither, nothing is set aside, and the report says
   the paper was read as one text. What `init` prints counts the headings it made.
+- **An Abstract no heading names.** A run-in "Abstract:" or "Abstract." opening a paragraph
+  is made a heading "Abstract" over the paragraph's other words, and in a paper with heading
+  styles a paragraph whose words are "Abstract" alone, in bold or not, is made a heading, at
+  the level of the next heading, and so is a title typed after it that ends it, as the audit
+  reads them (above, "Abstract against Results"). `init` prints the headings it made so.
 - **The typed references.** The reference list under a heading or a title in bold that
   names one is read into `literature/references.bib`: each entry of an APA journal article,
   `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.`, or book, `Lee, C.

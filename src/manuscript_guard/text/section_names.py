@@ -283,6 +283,9 @@ SECTION_NAMES = frozenset({
     "ethics statement", "ethical approval", "abbreviations", "appendix",
     "supplementary material", "supplementary materials", "tables", "figures",
     "figure legends", "figure captions",
+    # Back matter that docx-socio-A2 of the real-paper corpus types in bold between its
+    # Abstract and its Acknowledgments, its authors' addresses under it (Basile, 2026-11-14).
+    "author information",
     # The back matter as BMC's journals title it: one "Declarations" over its statements.
     "declarations", "declaration", "list of abbreviations", "authors' contributions",
     "authors\N{RIGHT SINGLE QUOTATION MARK} contributions", "consent for publication",
@@ -359,17 +362,55 @@ def section_levels(
     keys = [_key(title) for title in titles]
     nested: set[int] = set()
     first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
-    if first is not None and first + 1 < len(keys) and keys[first + 1] in ABSTRACT_PARTS:
-        opening = _parts_end(keys, first)
-        if opening is not None:
-            nested = set(range(first + 1, opening))
-        elif not _one_paragraph(worded, first):
+    if first is not None:
+        end = _abstract_end(keys, first, worded)
+        if end is None:
             return None
+        nested = set(range(first + 1, end))
     for group in (nested, set(range(len(keys))) - nested):
         names = [keys[at] for at in group]
         if len(names) != len(set(names)):
             return None
     return tuple(2 if at in nested else 1 for at in range(len(keys)))
+
+
+def abstract_end(titles: Sequence[str], worded: Sequence[bool]) -> int | None:
+    """Where the Abstract titled by `titles[0]` ends among the titles of `section_name_alone`
+    after it, as `section_levels` places them: the index of the first that is no part of it,
+    `len(titles)` where none is, and None where that is not read. `worded` says, for each,
+    whether words stand under it before the next."""
+    return _abstract_end([_key(title) for title in titles], 0, worded)
+
+
+def _abstract_end(keys: list[str], first: int, worded: Sequence[bool] | None) -> int | None:
+    """The index of the first title after the Abstract's at `first` that is no part of it."""
+    if first + 1 >= len(keys) or keys[first + 1] not in ABSTRACT_PARTS:
+        return first + 1
+    opening = _parts_end(keys, first)
+    if opening is not None:
+        return opening
+    return first + 1 if _one_paragraph(worded, first) else None
+
+
+#: A paragraph that opens on the Abstract's run-in label and goes on: "Abstract: This review
+#: explores", "ABSTRACT. We read" (Basile, 2026-11-14, docx-med-B3 of the real-paper corpus).
+#: Not "Abstracts were screened", nor "Abstract:" with nothing after it.
+_RUN_IN_ABSTRACT = re.compile(r"\s*((?:Abstract|ABSTRACT) ?[:.])\s+(?=\S)")
+
+
+def run_in_abstract(text: str) -> str | None:
+    """The run-in label a paragraph opens on, as typed, "Abstract:", "Abstract :", with the
+    rest of it the Abstract's text; None where it opens on none (`_RUN_IN_ABSTRACT`)."""
+    found = _RUN_IN_ABSTRACT.match(text)
+    return found.group(1) if found is not None else None
+
+
+def abstract_alone(text: str) -> bool:
+    """Whether a line's words are the Abstract's name alone, as `section_name_alone` reads a
+    title: "Abstract", "ABSTRACT", "1. Abstract", "Abstract:"; not "Structured abstract" nor
+    "Summary", which name it elsewhere, nor "Abstracts were screened by two reviewers"."""
+    name = section_name_alone(text)
+    return name is not None and _key(name) == "abstract"
 
 
 def _parts_end(keys: list[str], first: int) -> int | None:

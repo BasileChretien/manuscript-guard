@@ -2252,6 +2252,25 @@ def test_a_title_page_like_the_author_s_gives_no_finding(project: Path) -> None:
     assert finding.line == text[: text.index("The NIH")].count("\n") + 1
 
 
+@pytest.mark.parametrize("label", ["**Author information**",
+                                   "**[Author Information]{.underline}**",
+                                   "[Author information]{.underline}"])  # fmt: skip
+def test_an_author_information_label_ends_no_title_page(project: Path, label: str) -> None:
+    """"Author information" names a section (docx-socio-A2, Basile, 2026-11-14), and it is a
+    title page's label too: over the affiliations, in bold or underlined, it ends no title
+    page, and G14 reads none of the affiliations' short forms; nor does the title page end
+    there read from the text as it is written, with the underline's markup in it, as G14's
+    masked view of it hides (rounds 2 and 3 of #683)."""
+    from manuscript_guard.text.blocks import find_headings
+    from manuscript_guard.text.title_page import title_page_end
+
+    text = (f"Ana Martin, Paul Girard\n\n{label}\n\n"
+            "Department of Pharmacology, CHU de Caen, UNICAEN, Caen, France\n\n"
+            "# Abstract\n\nThe NIH paid for it.\n\n" + BODY)  # fmt: skip
+    assert _named(written(project, text)) == {"NIH"}
+    assert title_page_end(text, find_headings(text)) == text.index("# Abstract")
+
+
 @pytest.mark.parametrize("opening", ["# Introduction", "**Background**", "## 1. Main text"])
 def test_without_an_abstract_the_title_page_ends_at_the_first_section(
     project: Path, opening: str

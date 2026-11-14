@@ -15630,11 +15630,12 @@ def pdf_heading_papers(
     number of each kind of `PDF_STUDY_NUMBERS` among them, with names of `PDF_STUDY_NAMES`
     under it, one of them under each, and every kind of `PDF_STUDY_PROSE` among their lines;
     the back matter after the last, a reference that opens on the label and one that opens
-    on a study's number and a colon; the count before the label in the first. And four
+    on a study's number and a colon; the count before the label in the first. And five
     papers made from them: with a line that names the Abstract alone after the label, which
     is then text; with a study's line in the Abstract, which is no heading; with a name twice
-    under one study, where no study's line is a heading and nothing is placed; and with no
-    heading over the Introduction, where the Abstract ends at the first study's line. Each
+    under one study, where no study's line is a heading and nothing is placed; with no
+    heading over the Introduction, where the Abstract ends at the first study's line; and
+    with its studies under a structured Abstract, whose parts that line ends. Each
     with its headings `(line, title)`, the run-in label's line, and the levels
     `PdfText.placed` gives them."""
     word = st.sampled_from(FILLER)
@@ -15717,6 +15718,18 @@ def pdf_heading_papers(
     out.append(([*lines[: line - 1], *lines[line:]],
                 [(at - (at > line), title) for at, title in headings if at != line],
                 {at - (at > line) for at in run_in}, (*levels[:gone], *levels[gone + 1 :])))
+    # The fourth paper's studies under a structured Abstract with no Introduction after it:
+    # its first study's line ends the Abstract's parts (round 3 of #686).
+    lines, headings, _run_in, levels = out[3]
+    study = next(at for at, (_line, title) in enumerate(headings) if title in PDF_STUDY_NAMES) - 1
+    parts = ["Background", "Methods", "Results", "Conclusions"]
+    head = ["Falls in older patients", "Abstract", *(one for part in parts for one in (
+        part, f"Of 412 {words()}, 77 fell."))]
+    moved = len(head) - (headings[study][0] - 1)
+    out.append(([*head, *lines[headings[study][0] - 1 :]],
+                [(2, "Abstract"), *((3 + 2 * at, part) for at, part in enumerate(parts)),
+                 *((line + moved, title) for line, title in headings[study:])],
+                set(), (1, *([2] * len(parts)), *levels[study:])))
     return out
 
 

@@ -59,6 +59,7 @@ from manuscript_guard.text.section_names import (
     SECTION_NAMES,
     abstract_end,
     names_abstract,
+    names_introduction,
     names_statement,
     run_in_abstract,
     section_levels,
@@ -232,13 +233,24 @@ def study_title(line: str) -> str | None:
     return text if _STUDY.match(text) else None
 
 
-#: What a title page writes after "Abstract:": its count of words, "248 words", "250-word",
-#: which titles no Abstract (round 1 of #686).
-#: The count alone: "248 words", "250-word limit", "word count 248", "248"; not "60 word
-#: pairs were learned", an Abstract that opens on a number of words (round 2 of #686).
-_WORD_COUNT = re.compile(r"(?:(?:word\s+)?(?:count|limit|max(?:imum)?)\s*:?\s*)?"
+#: One of the counts a title page writes after "Abstract:", a label before it or not: "248
+#: words", "250-word limit", "word count 248", "248", "Main text: 3,512 words", "Tables: 2";
+#: not "60 word pairs were learned", an Abstract that opens on a number of words (rounds 1
+#: to 3 of #686).
+_WORD_COUNT = re.compile(r"(?:[A-Za-z][\w ]{0,30}:\s*)?"
+                         r"(?:(?:word\s+)?(?:count|limit|max(?:imum)?)\s*:?\s*)?"
                          r"\d[\d,]*(?:\s*-?\s*words?)?"
-                         r"(?:\s+(?:limit|max(?:imum)?|count))?[\s.;]*", re.IGNORECASE)
+                         r"(?:\s+(?:limit|max(?:imum)?|count))?\s*\.?", re.IGNORECASE)
+#: Where a title page's counts are set apart: "248 words; Main text: 3,512 words", "250
+#: words, Text: 3,000", "248 words (limit 250)", "248 | Main text"; not a number's comma.
+_COUNTS_APART = re.compile(r"[;|()]|,(?!\d)")
+
+
+def _counts_words(rest: str) -> bool:
+    """Whether the rest of a line after the Abstract's label is a title page's counts: a
+    count of words, and others after it, set apart (`_COUNTS_APART`), each a count."""
+    parts = [part.strip() for part in _COUNTS_APART.split(rest)]
+    return bool(parts[0]) and all(not part or _WORD_COUNT.fullmatch(part) for part in parts)
 
 
 def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], frozenset[int]]:
@@ -259,20 +271,21 @@ def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], froz
 
 
 def _run_in(texts: Sequence[str], named: list[tuple[int, str]]) -> tuple[int, str] | None:
-    """The first line before the first heading that opens on the Abstract's run-in label and
+    """The last line before the first heading that opens on the Abstract's run-in label and
     goes on (`text.section_names.run_in_abstract`), with its label less the colon or the stop
     as its title, the rest of the line the Abstract's (decision 22, after pdf-socio-B1). Not
     where a heading names the Abstract, nor where the rest of the line is a count of words, a
-    title page's "Abstract: 248 words"; nor after the first heading, where a reference or a
-    quotation opens so."""
+    title page's "Abstract: 248 words; Main text: 3,512 words" (`_counts_words`); nor after
+    the first heading, where a reference or a quotation opens so."""
     if any(names_abstract(title) for _at, title in named):
         return None
     first = named[0][0] if named else len(texts) + 1
+    found = None
     for at, text in enumerate(texts[: first - 1], 1):
         label = run_in_abstract(text)
-        if label is not None and not _WORD_COUNT.fullmatch(after_label(text)):
-            return at, label.rstrip(" :.")
-    return None
+        if label is not None and not _counts_words(after_label(text)):
+            found = at, label.rstrip(" :.")
+    return found
 
 
 def _studies(texts: Sequence[str], named: list[tuple[int, str]],
@@ -311,31 +324,49 @@ def _abstract_ends(texts: Sequence[str], named: list[tuple[int, str]],
                    run_in: frozenset[int]) -> int | None:  # fmt: skip
     """The line of the first heading after the Abstract's that is no part of it, 0 where no
     heading names the Abstract; None where it ends is not read, or it runs to the end. Where
-    the name after the Abstract's is no part of one, an Introduction, the Abstract ends there,
-    and a study's line before it is the Abstract's. Else the studies' lines are read among
-    the names, and the Abstract ends at the first, which names no part of it: over the names
-    alone, the parts of an APA paper's Abstract with no Introduction ran to the second
-    study's "Method" (round 2 of #686)."""
-    end = _end_among(texts, named, run_in)
-    if end is not None and end[1]:
-        return end[0]
-    among = _end_among(texts, sorted([*named, *studies]), run_in)
-    return None if among is None else among[0]
-
-
-def _end_among(texts: Sequence[str], headings: list[tuple[int, str]],
-               run_in: frozenset[int]) -> tuple[int, bool] | None:  # fmt: skip
-    """Where the Abstract ends among `headings`, as `_abstract_ends` gives it, and whether at
-    the heading next after its own; None where that is not read."""
-    first = next((at for at, (_line, title) in enumerate(headings) if names_abstract(title)),
+    the names alone end the Abstract at a name no Abstract holds among its parts, an
+    Introduction, it ends there, and so it does at a Background after an Abstract with words
+    under it; a study's line before it is the Abstract's. Else the first study's line after
+    the Abstract's ends its parts: over the names alone, an APA paper's Abstract with no
+    Introduction ran to its second study's "Method" (rounds 2 and 3 of #686)."""
+    first = next((at for at, (_line, title) in enumerate(named) if names_abstract(title)),
                  None)  # fmt: skip
     if first is None:
-        return 0, True
-    worded = _worded(list(texts), headings, run_in)
-    end = abstract_end([title for _line, title in headings[first:]], worded[first:])
-    if end is None or first + end >= len(headings):
+        return 0
+    worded = _worded(list(texts), named, run_in)
+    titles = [title for _line, title in named]
+    end = abstract_end(titles[first:], worded[first:])
+    if end is not None and first + end < len(named) and _no_part(titles[first + end]):
+        return named[first + end][0]
+    if worded[first] and first + 1 < len(named) and names_introduction(titles[first + 1]):
+        return named[first + 1][0]
+    study = next((line for line, _title in studies if line > named[first][0]), None)
+    if study is None:
         return None
-    return headings[first + end][0], end == 1
+    before = [one for one in named[first:] if one[0] < study]
+    levels = _prefix_levels([title for _line, title in before],
+                            _worded(list(texts), [*before, (study, "")], run_in)[:-1])
+    if levels is None:
+        return None
+    return next((line for (line, _title), level in list(zip(before, levels, strict=True))[1:]
+                 if level == 1), study)
+
+
+def _no_part(title: str) -> bool:
+    """Whether a name is none an Abstract holds among its parts (`ABSTRACT_PARTS`)."""
+    return " ".join(title.casefold().split()) not in ABSTRACT_PARTS
+
+
+def _prefix_levels(titles: list[str], worded: list[bool]) -> tuple[int, ...] | None:
+    """The levels of the names before a study's first line, as `section_levels` places them;
+    where it places none and none of them is an Introduction, as it would with one after
+    them: a study's line ends a structured Abstract's parts (round 3 of #686)."""
+    levels = section_levels(titles, worded)
+    keys = [" ".join(title.casefold().split()) for title in titles]
+    if levels is not None or "introduction" in keys:
+        return levels
+    closed = section_levels([*titles, "Introduction"], [*worded, False])
+    return None if closed is None else closed[:-1]
 
 
 def _back_matter(title: str) -> bool:
@@ -371,7 +402,8 @@ def _levels(titles: list[str], worded: list[bool]) -> tuple[int, ...] | None:
     after it at level 2, up to the next study's or the end, none of them twice under it."""
     studies = [at for at, title in enumerate(titles) if study_title(title) is not None]
     first = studies[0] if studies else len(titles)
-    levels = section_levels(titles[:first], worded[:first])
+    levels = (_prefix_levels(titles[:first], worded[:first]) if studies
+              else section_levels(titles, worded))  # fmt: skip
     if levels is None:
         return None
     bounds = [*studies, len(titles)]

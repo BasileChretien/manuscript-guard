@@ -1225,7 +1225,8 @@ def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None
 
 @pytest.mark.parametrize("words", ["60 word pairs were learned by 40 adults.",
                                    "120 words were presented to 40 adults.",
-                                   "250 words, then 40 more, were read."])  # fmt: skip
+                                   "250 words, then 40 more, were read.",
+                                   "120 words; 40 adults read them."])  # fmt: skip
 def test_an_abstract_that_opens_on_a_number_of_words_is_one(words: str) -> None:
     """Round 2 of #686: a count of words is the rest of the line alone; an Abstract that opens
     on a number of words is an Abstract."""
@@ -1249,3 +1250,59 @@ def test_a_name_twice_with_no_study_s_line_places_nothing_and_raises_nothing() -
     lines = ["Abstract", "Of 412, 77 fell.", "Introduction", "Falls harm.", "Methods",
              "We read 412.", "Results", "Of 412, 77 fell.", "Methods", "Again."]
     assert _levels_of(lines) is None
+
+
+# ---------------------------------------------- round 3 of #686: counts, structured abstracts
+
+
+@pytest.mark.parametrize("count", ["248 words; Main text: 3,512 words",
+                                   "250 words, Text: 3,000 words, Tables: 2",
+                                   "248 words (limit 250)", "248 | Main text: 3,512"])
+def test_a_title_page_s_counts_after_the_label_title_no_abstract(count: str) -> None:
+    """Round 3 of #686: the Abstract's count of words, then the title page's others. Where
+    several lines open on the label before the first heading, the last that is no count is
+    the Abstract's."""
+    from manuscript_guard.auditing.pdf import headings_of
+
+    lines = ["Title", f"Abstract: {count}", "Abstract: Of 412 patients, 77 fell.",
+             "Introduction", "Falls harm.", "Results", "Of 412 patients, 77 fell."]
+    assert headings_of(lines) == (((3, "Abstract"), (4, "Introduction"), (6, "Results")),
+                                  frozenset({3}))
+    assert headings_of([lines[0], lines[2], lines[1], *lines[3:]])[1] == {2}
+
+
+#: Round 3 of #686: a structured Abstract over a multi-study paper's studies.
+_PARTS = ["Abstract", "Background", "Falls are common.", "Methods", "We surveyed 412.",
+          "Results", "Of 412, 77 fell."]
+_STUDIES = ["Study 1: A survey", "Method", "We surveyed 412.", "Results", "Of 412, 77 fell.",
+            "Study 2: Interviews", "Method", "We spoke to 20.", "Results", "Of 20, 4 fell.",
+            "General Discussion", "Falls are common.", "References", "1. Smith J. 2019."]
+_PLACED = [("Study 1: A survey", 1), ("Method", 2), ("Results", 2), ("Study 2: Interviews", 1),
+           ("Method", 2), ("Results", 2), ("General Discussion", 2), ("References", 2)]
+
+
+def test_a_study_listed_in_a_structured_abstract_ended_by_its_introduction_is_no_heading(
+) -> None:
+    lines = [*_PARTS, "Study 1: 412 were surveyed.", "Conclusions", "Falls are common.",
+             "Introduction", "Falls harm.", *_STUDIES]
+    assert _levels_of(lines) == [("Abstract", 1), ("Background", 2), ("Methods", 2),
+                                 ("Results", 2), ("Conclusions", 2), ("Introduction", 1),
+                                 *_PLACED]
+
+
+def test_a_study_s_line_ends_a_structured_abstract_s_parts() -> None:
+    lines = [*_PARTS, "Conclusions", "Falls are common.", *_STUDIES]
+    assert _levels_of(lines) == [("Abstract", 1), ("Background", 2), ("Methods", 2),
+                                 ("Results", 2), ("Conclusions", 2), *_PLACED]
+
+
+def test_a_study_listed_in_an_abstract_over_a_background_is_no_heading() -> None:
+    """A one-paragraph Abstract that lists a study, and a main text that opens on
+    "Background", over three studies, whose names the base cannot place: the Abstract ends
+    at the Background."""
+    third = ["Study 3: Again", "Method", "We read 9.", "Results", "Of 9, 1 fell."]
+    lines = ["Abstract", "Of 412, 77 fell.", "Study 1: 412 were surveyed.", "Background",
+             "Falls harm.", *_STUDIES[:10], *third, *_STUDIES[10:]]
+    assert _levels_of(lines) == [("Abstract", 1), ("Background", 1), *_PLACED[:6],
+                                 ("Study 3: Again", 1), ("Method", 2), ("Results", 2),
+                                 *_PLACED[6:]]

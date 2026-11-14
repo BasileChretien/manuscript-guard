@@ -21439,7 +21439,8 @@ def test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed(
     line that opens on "Experiment N:" or "Study N:", N Arabic, of two digits or Roman, is a
     heading one level above the names after it, up to the next or to the end; in the
     Abstract, with no name after it, with no colon after the number, or inside a line, it is
-    prose; an Abstract with no Introduction after it ends at the first study's line; and
+    prose; an Abstract with no Introduction after it ends at the first study's line, a
+    structured one's parts too; and
     with a name twice under one study no study's line is a heading and nothing is placed
     (`auditing.pdf.headings_of`, `PdfText.placed`; Basile, 2026-11-15, decisions 22 and 23,
     after pdf-socio-B1 and pdf-psych-A2; rounds 1 and 2 of #686)."""
@@ -21514,10 +21515,23 @@ def _the_abstract_s_end_is_read_over_the_names_alone(patch: pytest.MonkeyPatch) 
     from manuscript_guard.auditing import pdf
 
     def ends(texts, named, studies, run_in):
-        end = pdf._end_among(texts, named, run_in)
-        return None if end is None else end[0]
+        first = next((at for at, (_line, title) in enumerate(named)
+                      if pdf.names_abstract(title)), None)  # fmt: skip
+        if first is None:
+            return 0
+        worded = pdf._worded(list(texts), named, run_in)
+        end = pdf.abstract_end([title for _line, title in named[first:]], worded[first:])
+        return None if end is None or first + end >= len(named) else named[first + end][0]
 
     patch.setattr(pdf, "_abstract_ends", ends)
+
+
+def _a_study_s_line_ends_no_structured_abstract_s_parts(patch: pytest.MonkeyPatch) -> None:
+    """As at 6ff7fa01: a structured Abstract with no Introduction after it, its studies after
+    it, was placed nowhere."""
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_prefix_levels", pdf.section_levels)
 
 
 def _a_study_s_heading_is_at_its_names_level(patch: pytest.MonkeyPatch) -> None:
@@ -22846,6 +22860,10 @@ BROKEN = {
     ),
     "a PDF's Abstract ends over its names alone, its studies' lines left out": (
         _the_abstract_s_end_is_read_over_the_names_alone,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's study's line ends no structured Abstract's parts": (
+        _a_study_s_line_ends_no_structured_abstract_s_parts,
         test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
     ),
     "a PDF's study listed in its Abstract is a heading": (

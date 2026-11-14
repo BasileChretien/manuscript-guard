@@ -15474,7 +15474,8 @@ def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
 #: paragraph over the main text's "Background"; a structured abstract up to an Introduction;
 #: one up to the main text's second "Background", as BMC's journals set them; the BMJ's,
 #: whose "Objectives" and "Design" name no section and stand under its Abstract as words; a
-#: structured abstract with neither after it; a name twice in the main text; no abstract.
+#: structured abstract with neither after it; a name twice in the main text; no abstract;
+#: and "Result", the singular, among a structured abstract's parts and as its first.
 PLACED_PAPERS = {
     "one paragraph": ([("Abstract", True), ("Background", None), ("Methods", None),
                        ("Results", None), ("Discussion", None), ("References", None)],
@@ -15520,7 +15521,51 @@ PLACED_PAPERS = {
                                          (1, 1, 1, 1, 1, 1, 1, 1)),
     "no abstract": ([("Introduction", None), ("Methods", None), ("Results", None),
                      ("Discussion", None)], (1, 1, 1, 1)),
+    # The Results in the singular, as a structured abstract's first part and in its order
+    # of parts, and as the main text's (Basile, 2026-11-15).
+    "parts from Result": ([("Abstract", True), ("Result", None), ("Conclusion", None),
+                           ("Background", None), ("Method", None), ("Result", None),
+                           ("Discussion", None)],
+                          (1, 2, 2, 1, 1, 1, 1)),
+    "Result among the parts": ([("Abstract", False), ("Background", None), ("Method", None),
+                                ("Result", None), ("Conclusion", None), ("Background", None),
+                                ("Method", None), ("Result", None), ("Discussion", None)],
+                               (1, 2, 2, 2, 2, 1, 1, 1, 1)),
 }  # fmt: skip
+
+
+#: A PDF's line of each kind, `{n}` a section's number, `{name}` a name, and whether it is
+#: a heading: the singular "Result" numbered as a section, by a number with a stop or
+#: without, Roman, or a subsection's; and not alone, in capitals or with a colon, as a
+#: table's column header stands on a line of its own; and the other names, numbered or not
+#: (round 1 of #687).
+PDF_HEADING_LINES = {
+    "the singular, numbered with a stop": ("{n}. Result", True),
+    "the singular, numbered": ("{n} Result", True),
+    "the singular, a Roman number": ("III. Result", True),
+    "the singular, a subsection's number": ("{n}.1 Result", True),
+    "the singular in capitals, numbered": ("{n}. RESULT", True),
+    "the singular alone": ("Result", False),
+    "the singular in capitals": ("RESULT", False),
+    "the singular with a colon": ("Result:", False),
+    "another name alone": ("{name}", True),
+    "another name numbered": ("{n}. {name}", True),
+}  # fmt: skip
+
+
+@st.composite
+def pdf_heading_lines(draw: st.DrawFn) -> list[tuple[str, str | None]]:
+    """A PDF's line of every kind of `PDF_HEADING_LINES`, in an order drawn, its number and
+    the other name drawn, each with the title `auditing.pdf.heading_title` reads of it, or
+    None."""
+    out = []
+    for kind in draw(st.permutations(list(PDF_HEADING_LINES))):
+        shape, heading = PDF_HEADING_LINES[kind]
+        name = draw(st.sampled_from(("Results", "Methods", "Discussion", "Method")))
+        line = shape.format(n=draw(st.integers(1, 12)), name=name)
+        title = line.split(" ", 1)[-1] if line[0].isdigit() or line.startswith("III") else line
+        out.append((line, title if heading else None))
+    return out
 
 
 @st.composite
@@ -15536,6 +15581,157 @@ def placed_papers(
         titles = [draw(st.sampled_from((title, title.upper()))) for title, _words in planted]
         worded = [draw(st.booleans()) if words is None else words for _title, words in planted]
         out.append((titles, worded, levels))
+    return out
+
+
+#: The Abstract's run-in labels a PDF's line may open on (`auditing.pdf.headings_of`), and
+#: the title each gives (Basile, 2026-11-15, decision 22, after pdf-socio-B1).
+PDF_RUN_IN_LABELS = {"Abstract:": "Abstract", "ABSTRACT:": "ABSTRACT", "Abstract.": "Abstract",
+                     "Abstract :": "Abstract"}  # fmt: skip
+#: A title page's count of words after the label, which titles no Abstract (round 1 of #686).
+PDF_WORD_COUNTS = ("248 words", "250-word limit", "1,250 Words", "word count 248",
+                   "248 words. Main text: 3,512 words.", "(248 words)",
+                   "250 words, Text: 3,000 words, 4 tables, 2 figures")  # fmt: skip
+#: How a study's own heading opens (`auditing.pdf.study_title`; decision 23, after
+#: pdf-psych-A2), and its numbers: Arabic, of two digits, and Roman (round 1 of #686).
+PDF_STUDIES = ("Experiment", "Study", "EXPERIMENT", "STUDY")
+PDF_STUDY_NUMBERS = {"arabic": ("1", "2", "3", "4"), "two digits": ("10", "12"),
+                     "roman": ("I", "II", "IV", "IX")}  # fmt: skip
+#: The names a study repeats under its own heading.
+PDF_STUDY_NAMES = ("Method", "Methods", "Results", "Results and Discussion", "Discussion")
+#: Lines that open on what a heading opens on, and are prose: a study named with no colon
+#: after its number, at a line's start; one named with a colon inside the line.
+PDF_STUDY_PROSE = ("{study} {number} (n = 99) confirmed this with {words}.",
+                   "{study} {number}. In addition, {words} were primed.",
+                   "{study} {number} included {words}.", "As in {study} {number}: {words}.")
+#: Lines that open on the Abstract's word and title no Abstract: a sentence before the first
+#: heading, and a reference's title after it that opens on the label.
+PDF_ABSTRACT_PROSE = "Abstracts were screened by {words}."
+
+
+def _inserted(paper: tuple, after: int, text: str, title: str | None,
+              run_in: set[int]) -> tuple:  # fmt: skip
+    """`paper` with `text` inserted after its line `after`, a heading titled `title` where
+    one is given, with the headings and the run-in label's line after it moved down."""
+    lines, headings, _run_in, levels = paper
+    moved = [(line + (line > after), name) for line, name in headings]
+    if title is not None:
+        moved = sorted([*moved, (after + 1, title)])
+    return ([*lines[:after], text, *lines[after:]], moved,
+            {line + (line > after) for line in run_in}, levels)
+
+
+@st.composite
+def pdf_heading_papers(
+    draw: st.DrawFn,
+) -> list[tuple[list[str], list[tuple[int, str]], set[int], tuple[int, ...] | None]]:
+    """PDFs' lines with every kind of line `auditing.pdf.headings_of` reads or leaves, a
+    paper for each run-in label of `PDF_RUN_IN_LABELS`, in an order drawn: before the first
+    heading, a sentence that opens on "Abstracts", a count of words after the label and the
+    label, in an order drawn; an Introduction; a study for each heading of `PDF_STUDIES`, a
+    number of each kind of `PDF_STUDY_NUMBERS` among them, with names of `PDF_STUDY_NAMES`
+    under it, one of them under each, and every kind of `PDF_STUDY_PROSE` among their lines;
+    the back matter after the last, a reference that opens on the label and one that opens
+    on a study's number and a colon; the count before the label in the first. And five
+    papers made from them: with a line that names the Abstract alone after the label, which
+    is then text; with a study's line in the Abstract, which is no heading; with a name twice
+    under one study, where no study's line is a heading and nothing is placed; with no
+    heading over the Introduction, where the Abstract ends at the first study's line; and
+    with its studies under a structured Abstract, whose parts that line ends. Each
+    with its headings `(line, title)`, the run-in label's line, and the levels
+    `PdfText.placed` gives them."""
+    word = st.sampled_from(FILLER)
+
+    def words() -> str:
+        return " ".join(draw(st.lists(word, min_size=1, max_size=4)))
+
+    def numbers() -> list[str]:
+        drawn = [draw(st.sampled_from(PDF_STUDY_NUMBERS[kind])) for kind in PDF_STUDY_NUMBERS]
+        left = [one for kind in PDF_STUDY_NUMBERS.values() for one in kind if one not in drawn]
+        return list(draw(st.permutations([*drawn, draw(st.sampled_from(left))])))
+
+    def paper(label: str, count_first: bool) -> tuple:
+        opening = [f"{label} Of 412 {words()}, 77 fell.",
+                   PDF_ABSTRACT_PROSE.format(words=words())]  # fmt: skip
+        count = f"{label} {draw(st.sampled_from(PDF_WORD_COUNTS))}"
+        # The count before the label in one paper at least (round 2 of #686).
+        lines = ["Falls in older patients", *([count] if count_first else []),
+                 *draw(st.permutations(opening if count_first else [*opening, count])),
+                 "Keywords: falls; records"]  # fmt: skip
+        headings = [(lines.index(opening[0]) + 1, PDF_RUN_IN_LABELS[label])]
+        levels = [1]
+
+        def heading(text: str, title: str, level: int) -> None:
+            lines.append(text)
+            headings.append((len(lines), title))
+            levels.append(level)
+
+        heading("1. Introduction", "Introduction", 1)
+        lines.append(f"In 2019, {words()} were 15.")
+        prose = st.sampled_from(PDF_STUDY_PROSE)
+        shared = draw(st.sampled_from(PDF_STUDY_NAMES))
+        others = [name for name in PDF_STUDY_NAMES if name != shared]
+        for study, number in zip(draw(st.permutations(PDF_STUDIES)), numbers(), strict=True):
+            title = draw(st.sampled_from((" ", "  "))).join(
+                [f"{study} {number}:", *([words()] if draw(st.booleans()) else [])])
+            heading(title, " ".join(title.split()), 1)
+            lines.append(draw(prose).format(study=study, number=number, words=words()))
+            # A name under every study, so that the names alone are not placed.
+            names = draw(st.permutations([shared, *draw(st.lists(st.sampled_from(others),
+                                                                  unique=True))]))  # fmt: skip
+            for name in names:
+                heading(name, name, 2)
+                lines.append(draw(prose).format(study=study, number=number, words=words()))
+        # Every kind of prose line, in the last study's last section, in an order drawn.
+        for kind in draw(st.permutations(PDF_STUDY_PROSE)):
+            lines.append(kind.format(study=draw(st.sampled_from(PDF_STUDIES)),
+                                     number=draw(st.sampled_from(PDF_STUDY_NUMBERS["arabic"])),
+                                     words=words()))  # fmt: skip
+        heading("General Discussion", "General Discussion", 2)
+        lines.append(f"It was so for {words()}.")
+        heading("References", "References", 2)
+        lines += ["1. Smith A. A paper. J Things. 2019;12:345-56.",
+                  f"{label} {words()} in 412 patients.",
+                  f"{draw(st.sampled_from(PDF_STUDIES))} 2: {words()}. J Things. 2020."]
+        return lines, headings, {headings[0][0]}, tuple(levels)
+
+    out = [paper(label, at == 0)
+           for at, label in enumerate(draw(st.permutations(sorted(PDF_RUN_IN_LABELS))))]
+    # A line that names the Abstract alone, after the label: the label is text then.
+    lines, headings, run_in, levels = out[0]
+    alone = _inserted(out[0], headings[0][0], "Abstract", "Abstract", set())
+    out.append((alone[0], alone[1][1:], set(), levels))
+    # A study's line in the Abstract, after the label's: no heading.
+    line = out[1][1][0][0]
+    out.append(_inserted(out[1], line, "Study 1: 412 were surveyed.", None, out[1][2]))
+    # The first paper with its first study's first name twice under it: no study's line is a
+    # heading, and nothing is placed.
+    first = next(at for at, (_line, title) in enumerate(headings) if title in PDF_STUDY_NAMES)
+    line = headings[first][0]
+    twice = _inserted(out[0], line, lines[line - 1], lines[line - 1], run_in)
+    names = [(at, title) for at, title in twice[1]
+             if title.split()[0] not in {study.split()[0] for study in PDF_STUDIES}]
+    out.append((twice[0], names, run_in, None))
+    # The third paper with no heading over its Introduction, as APA's papers have none: the
+    # Abstract ends at the first study's line (round 2 of #686).
+    lines, headings, run_in, levels = out[2]
+    gone = next(at for at, (_line, title) in enumerate(headings) if title == "Introduction")
+    line = headings[gone][0]
+    out.append(([*lines[: line - 1], *lines[line:]],
+                [(at - (at > line), title) for at, title in headings if at != line],
+                {at - (at > line) for at in run_in}, (*levels[:gone], *levels[gone + 1 :])))
+    # The fourth paper's studies under a structured Abstract with no Introduction after it:
+    # its first study's line ends the Abstract's parts (round 3 of #686).
+    lines, headings, _run_in, levels = out[3]
+    study = next(at for at, (_line, title) in enumerate(headings) if title in PDF_STUDY_NAMES) - 1
+    parts = ["Background", "Methods", "Results", "Conclusions"]
+    head = ["Falls in older patients", "Abstract", *(one for part in parts for one in (
+        part, f"Of 412 {words()}, 77 fell."))]
+    moved = len(head) - (headings[study][0] - 1)
+    out.append(([*head, *lines[headings[study][0] - 1 :]],
+                [(2, "Abstract"), *((3 + 2 * at, part) for at, part in enumerate(parts)),
+                 *((line + moved, title) for line, title in headings[study:])],
+                set(), (1, *([2] * len(parts)), *levels[study:])))
     return out
 
 
@@ -15732,7 +15928,8 @@ def _listed(*items: list[dict], start: int = 3) -> dict:
 #: `from_word.typed_headings` makes of it, or None: a name in bold; also underlined, inside
 #: the bold or around it; in a span; numbered; with a colon; a name only half in bold; one
 #: in italics only; one typed plain, in capitals, numbered in capitals (the real-paper
-#: corpus, 2026-11-11); and none of a bold title that names no section, a name in bold
+#: corpus, 2026-11-11), "RESULT:" in the singular; and none of a bold title that names no
+#: section, "Result of the survey", a name in bold
 #: opening a sentence, a plain one opening a sentence, one in a list's item, one in a link.
 #: Each title names its section once, so that they can be placed: a name twice falls back to
 #: the titles in bold (`tests/test_from_word.py::test_a_name_typed_twice_keeps_the_bold_titles`).
@@ -15765,6 +15962,12 @@ TYPED_BLOCKS = {
                            "Author information"),
     "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
                                                       _str("clear.")]}, None),
+    # The Results in the singular, "RESULT:" in docx-med-A3 of the real-paper corpus, and
+    # the word opening a title's words (Basile, 2026-11-15).
+    "the singular, in capitals": ({"t": "Para", "c": [_str("RESULT:")]}, "RESULT"),
+    "the singular opening words": ({"t": "Para", "c": [_str("Result"), _GAP, _str("of"), _GAP,
+                                                        _str("the"), _GAP, _str("survey")]},
+                                   None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
         _str("Background"))]}]]}, None),
     "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [
@@ -16688,6 +16891,9 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
+    "pdf headings": st.one_of(
+        pdf_heading_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
+        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn]))),
     "word abstract": st.one_of(
         word_abstract_papers().flatmap(
             lambda drawn: st.sampled_from([body for body, _titles in drawn])),

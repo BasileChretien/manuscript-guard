@@ -11260,7 +11260,27 @@ structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them,
 heading between the two is the Abstract's, a level under it (`PdfText.placed`), in `compare`
 too (round 2 of #486): a Lancet "Summary" with its Funding line, or a BMJ abstract, is placed
 so (the fix-only round of #486 kept this over ending the Abstract at a heading of another
-name). Where there is no
+name). Two shapes of line are headings besides (Basile, 2026-11-15, decisions 22 and 23, after
+the real-paper corpus; `auditing.pdf.headings_of`), each only where the names read nothing,
+as a Word paper's run-in label is read where no heading names the Abstract (round 1 of #686:
+read anywhere, each made papers the names placed unplaced). Where no line names the
+Abstract, the first line before the first heading that opens on the Abstract's run-in label
+and goes on (`section_names.run_in_abstract`, a Word paper's rule) with a word, a capital
+first, "Abstract: The second generation...", is the Abstract's heading, the rest of the line
+its first text; one that goes on with a digit, a bracket or other punctuation, or a word in
+lower case, is a title page's counts, "Abstract: 248 words; Main text: 3,512 words",
+"Abstract: (248 words)", and no heading (round 4 of #686: Basile chose this exact rule after
+a rule for the counts failed twice). It ends as an Abstract read from its lines does;
+after it, a reference's title or a quotation that opens so titles nothing. And where the names cannot be placed alone and can
+be with them, each line after the Abstract's end (where the name after the Abstract's is
+no part of one or a Background after its words, at it; else at the first study's line,
+which ends a structured Abstract's parts too, as in an APA paper with no heading over its
+Introduction: rounds 2 and 3 of #686) that opens on "Experiment" or "Study", a
+number or a Roman numeral and a colon (`study_title`), with a name after it before the next
+such line that is no back matter's, is a multi-study paper's heading over the names after it, a level above them, to
+the next such line or the end, so that each study's own "Method" and "Results" are placed
+and a name stands twice only where it does under one study. Where there
+is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
 are placed in no section, so the Abstract is not compared with the Results and no causal word
@@ -25207,8 +25227,13 @@ Open, recorded as each change landed:
   (Basile, 2026-11-11, after 52 real preprints: "ABSTRACT" and "3. RESULTS" typed as plain
   paragraphs left 79% of the Abstracts judged unfound), whose words are a section's name
   alone from the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`), its
-  first letter a capital. `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
-  holds the two readings together. Pinned by
+  first letter a capital. "Result", the Results in the singular, joined the list as
+  "Method" stands beside "Methods", and the parts a structured abstract is placed by
+  (Basile, 2026-11-15: docx-med-A3's "RESULT:", docx-med-A2's "Result:" and pdf-psych-B3's
+  "3. Result" left their Abstracts compared with nothing).
+  `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
+  and `tests/test_from_word.py::test_the_audit_and_init_take_result_in_the_singular_alike`
+  hold the two readings together. Pinned by
   `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`,
   `tests/test_from_word.py::test_a_word_paper_with_typed_titles_has_them_made_headings`.
   - A "Study design and setting", a "Statistical analysis", a "Participants" or a "2.1
@@ -25217,8 +25242,12 @@ Open, recorded as each change landed:
   - A one-word paragraph that is a section's name, typed as a run-in label in the middle
     of a section, "Results" over the results of one analysis among several, is a heading
     to both readers, and what stands under it is placed under it, the Results' or another
-    section's: nothing tells the label from a title in a paper with no heading style.
-    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+    section's: nothing tells the label from a title in a paper with no heading style. So is
+    a bold "Result" over a worked example inside the Methods, since the singular is a name
+    of the list (Basile, 2026-11-15, told of this risk): the example's lines are the
+    Results', and the Abstract is compared with them.
+    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`,
+    `tests/test_audit.py::test_a_bold_result_over_an_example_in_the_methods_is_a_heading`.
   - A title Word numbers itself, "1. INTRODUCTION" with Word's "1.", is a typed title to
     both readers where pandoc reads it as the lone item of a numbered list in no other
     (Basile, 2026-11-14); the audit reads the paragraph's numbering as pandoc does, its
@@ -26435,6 +26464,39 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
     the paper's Background its own. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
+  - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
+    line, an author's address or a title page's other lines typed before it are the
+    Abstract's, their numbers among its own; and where the Introduction has no heading, the
+    Abstract runs on through it to the next ("Methods"), and the Introduction's numbers are
+    the Abstract's, those the Results do not report said not found. Only the first such line
+    before the first heading that goes on with a word, a capital first, is read, and none
+    where a line names the Abstract alone. So an Abstract whose text opens on a number,
+    "Abstract: 412 patients were followed", or on a bracket, is not read as a run-in label's,
+    as on main: Basile chose this exact rule (2026-11-15) after a rule that told a title
+    page's counts of words apart failed twice in review. Accepted.
+  - Where the names cannot be placed alone, a line after the Abstract that opens on
+    "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
+    no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a
+    caption that opens so is one too, and the names after it are placed under it, a summary
+    row of the General Discussion with a "Limitations" after it among them. Pinned by
+    `tests/test_audit_pdf.py::test_a_summary_row_with_only_the_back_matter_after_it_is_no_heading`.
+  - The names after the last study, "General Discussion" and the back matter among them,
+    are placed under it, a level down; a "Discussion" of the whole paper after the last
+    study's own "Discussion" is a name twice under it, and no study's line is then a
+    heading. A study's heading wrapped over two lines is read by its first. A study named
+    otherwise ("Study 1a:", "Pilot study:", "Experiment One:") is no heading. Accepted.
+  - "Result", the singular, joined the names for pdf-psych-B3's "3. Result" (Basile,
+    2026-11-15), and in a PDF it is a heading only after a section's number, "3. Result",
+    "3 Result", "III. Result" (`auditing.pdf.NUMBERED_ONLY`; round 1 of #687): poppler's
+    layout order (pdftotext 24.04.0) sets each of a table's cells on a line of its own, its
+    header row's too, so a column headed "Result" was a line holding the name alone, a
+    Results opened in the Discussion, and with "3. Result" or a second such column it left
+    the PDF unplaced. A Results titled "Result" alone, unnumbered, is no heading in a PDF,
+    and its lines are the section before's. A column headed "Results" is still a heading
+    where its header stands on a line of its own, as it was before. Pinned by
+    `tests/test_audit_pdf.py::test_a_table_s_column_headed_result_is_no_heading`,
+    `tests/test_audit_pdf.py::test_a_numbered_result_beside_a_column_headed_result_is_placed`,
+    `tests/test_audit_pdf.py::test_a_column_headed_result_in_the_discussion_opens_no_results`.
   - A reference list whose entries are not told apart is counted by its identifiers, and its
     citations are held to nothing; one numbered entry that holds two DOIs (an article and its
     data, say) makes the whole list so. A wrapped line inside an entry that starts with the

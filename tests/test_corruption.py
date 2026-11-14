@@ -2569,6 +2569,92 @@ def test_an_abstract_that_differs_from_its_results_fails_the_audit_of_a_pdf(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_under_a_pdf_s_run_in_abstract_label_unlike_its_results_fails_strict(
+    tmp_path: Path,
+) -> None:
+    """pdf-socio-B1 of the real-paper corpus, in MDPI's layout, titles its Abstract by a run-in
+    "Abstract:" on a line of its words, and the audit read no Abstract in it (Basile,
+    2026-11-15, decision 22). The label is its heading now, and an interval on the label's
+    own line that differs from the Results' fails --strict."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    lines = ["A study of things", "Abstract: Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10).",
+             "Keywords: harm; records", "1. Introduction", "Drugs harm.", "2. Methods",
+             "We read 412 records.", "3. Results",
+             "Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10)."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_bytes(typeset([lines[0], lines[1].replace("2.10)", "2.20)"), *lines[2:]],
+                              columns=1))  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_of_one_study_s_results_unlike_the_abstract_fails_strict(
+    tmp_path: Path,
+) -> None:
+    """pdf-psych-A2 of the real-paper corpus repeats "Method" and "Results and Discussion"
+    under each "Experiment N: <title>", and its headings were placed nowhere, so its Abstract
+    was compared with nothing (Basile, 2026-11-15, decision 23). Each study's heading is one
+    level above its names now, and an interval of the second study's Results that differs
+    from the Abstract's fails --strict."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    interval = "(OR 1.52, 95% CI 1.10-2.10)"
+    lines = ["Abstract", f"In Experiment 2 (n = 99), 77 heard it {interval}.", "Introduction",
+             "Voices are heard.", "Experiment 1: Priming", "Method", "We tested 40.",
+             "Results and Discussion", "Of 40, 12 heard it.", "Experiment 2: Replication",
+             "Method", "We tested 99.", "Results and Discussion",
+             f"Of 99, 77 heard it {interval}."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_bytes(typeset([*lines[:-1], lines[-1].replace("2.10)", "2.20)")], columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_column_is_unfound(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #687: a table's column headed "Result", a line of its own in poppler's
+    layout order, opened a Results inside the Discussion, and an Abstract's number the
+    Results do not give but the Discussion repeats after it was found. In a PDF the singular
+    is a heading only numbered: the number is not found."""
+    import sys
+
+    from manuscript_guard.audit import audit
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
+
+    long = "Of 412 patients enrolled at three centres, 77 had the event during follow-up."
+    rows = ["Abstract", "In all, 1,284 adults were enrolled.", "Introduction", long,
+            "Methods", long, "3. Result", long, "Discussion", long, "Table 1. Outcomes",
+            ((120, "Result"),), *(((0, f"Outcome {k}"), (120, f"{7 * k}")) for k in range(1, 7)),
+            "In all, 1,284 adults were enrolled, as earlier work found."]  # fmt: skip
+    pieces = []
+    for at, row in enumerate(rows):
+        cells = ((0, row),) if isinstance(row, str) else row
+        pieces += [Piece(LEFT + x, TOP - LEADING * at, text) for x, text in cells]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    read = audit([paper], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["1,284"]
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:
@@ -2971,6 +3057,38 @@ def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
 
     assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
     assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
+
+
+@pytest.mark.parametrize("title", ["RESULT:", "Result:", "3. Result"])
+def test_a_number_unlike_the_results_under_result_in_the_singular_is_reported(
+    tmp_path: Path, title: str,
+) -> None:
+    """A Word paper typed by titles whose Results are titled in the singular, "RESULT:"
+    (docx-med-A3 of the real-paper corpus), "Result:" (docx-med-A2) or numbered "3. Result",
+    as pdf-psych-B3 numbers them, had no Results to the audit, and an Abstract's number they
+    do not report went unsaid (Basile, 2026-11-15). It is said."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def not_found(reported: str) -> list[str]:
+        body = (para("ABSTRACT") + para("We followed 412 patients.") + para("METHODS")
+                + para("We read the records.") + para(title) + para(reported)
+                + para("DISCUSSION") + para("It was so."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        read = audit([path], None).abstract
+        assert read is not None and read.compared, title
+        return [c.text for c in read.not_found]
+
+    assert not_found("We followed 412 patients.") == []
+    assert not_found("We followed 421 patients.") == ["412"]
 
 
 @pytest.mark.parametrize("shape", ["run-in label", "bold line"])

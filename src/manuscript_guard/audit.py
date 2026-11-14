@@ -1019,8 +1019,9 @@ PDF_NOT_READ = (
     "counts held back are checked in it; the numbers in them are read as the text's",
     "its lists are lines of text, so no flow is read in it",
     "a line of it is read as a heading only where it holds a section's name and nothing else "
-    "(Abstract, Methods, Results, Discussion, References and the like), so a section under "
-    "any other title is read as the one before it",
+    "(Abstract, Methods, Results, Discussion, References and the like), opens on a study's "
+    "number and a colon (\"Experiment 2:\", \"Study II:\"), or, before the first, on a run-in "
+    "\"Abstract:\", so a section under any other title is read as the one before it",
 )
 
 
@@ -1032,7 +1033,8 @@ def _pdf_structure(report: AuditReport, pdf) -> dict:
     from manuscript_guard.auditing.pdf import UNPLACED
     from manuscript_guard.text.sections import Section
 
-    heading_lines = frozenset(line for line, _title in pdf.headings)
+    # A run-in label's line is the Abstract's text too, whose sentences are read.
+    heading_lines = frozenset(line for line, _title in pdf.headings) - pdf.run_in
     if not pdf.headings:
         # Said as a .docx with no heading is (`_headings_said`): with none read, it places
         # none, and is read as one text (Basile, 2026-11-11, after 2509.01351's small

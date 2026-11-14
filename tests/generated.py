@@ -989,6 +989,8 @@ TITLE_PAGE_LINES = (
     "Word count: 3,412",
     "Keywords: pharmacology; L.AS; medical education",
     "\\*These authors contributed equally to this work.",
+    # A label of a title page that is a section's name too (round 2 of #683).
+    "**Author information**",
 )
 #: A title page of a single line that only a title page holds, after names with no mark.
 TITLE_PAGE_NAMES = "Ana Martin, Paul Girard and Lea Roux"
@@ -15809,7 +15811,8 @@ def _abstract_block_filled(node: object, words: str) -> object:
 #: What comes after the Abstract in `abstract_blocks`: the next heading; an "Introduction"
 #: typed in bold before it, which is made a heading; and a structured abstract's parts in
 #: bold up to a heading "Introduction", which ends them (round 1 of #683).
-ABSTRACT_BLOCK_ENDS = ("the next heading", "a typed title", "its parts, then the next heading")
+ABSTRACT_BLOCK_ENDS = ("the next heading", "a typed title", "its parts, then the next heading",
+                       "a title Word numbers")  # fmt: skip
 
 
 @st.composite
@@ -15822,7 +15825,7 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
     word = st.sampled_from(FILLER)
     made_ones = [kind for kind, (_shape, made) in ABSTRACT_BLOCKS.items() if made]
     ends = list(draw(st.permutations(ABSTRACT_BLOCK_ENDS)))
-    ends += [draw(st.sampled_from(ABSTRACT_BLOCK_ENDS)) for _ in range(len(made_ones) - 3)]
+    ends += [draw(st.sampled_from(ABSTRACT_BLOCK_ENDS)) for _ in range(len(made_ones) - len(ends))]
     paired = dict(zip(draw(st.permutations(made_ones)), ends, strict=True))
     for kind in draw(st.permutations(list(ABSTRACT_BLOCKS))):
         shape, made = ABSTRACT_BLOCKS[kind]
@@ -15835,7 +15838,13 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
         if end == "a typed title":
             blocks += [{"t": "Para", "c": [_strong(_str("Introduction"))]},
                        {"t": "Para", "c": [_str("Text.")]}]
-        named = [*made, *(["Introduction"] if made and end == "a typed title" else [])]
+        if end == "a title Word numbers":
+            # A numbered list's lone item, as pandoc reads docx-ecol-B2's (round 2 of #683).
+            blocks += [{"t": "OrderedList", "c": [[1, {"t": "Decimal"}, {"t": "Period"}],
+                                                  [[{"t": "Plain", "c": [_str("Introduction")]}]]]},
+                       {"t": "Para", "c": [_str("Text.")]}]
+        named = [*made, *(["Introduction"] if made and end in ("a typed title",
+                                                               "a title Word numbers") else [])]
         if end == "its parts, then the next heading":
             for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
                 blocks += [{"t": "Para", "c": [_strong(_str(part))]},

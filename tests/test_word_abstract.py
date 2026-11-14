@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from generated import TYPED_PARAGRAPH_NUMBERING, numbered
 from test_from_word import _package
 
 from manuscript_guard import from_word
@@ -50,8 +51,10 @@ AFTER = (heading("Methods") + para("We read 412 records.") + heading("Results")
 
 
 def paper(tmp_path: Path, abstract: str, name: str = "paper.docx", after: str = AFTER) -> Path:
-    """A paper with heading styles: its title in one, then `abstract`, then `after`."""
-    return _package(tmp_path / name, heading("Falls in older patients") + abstract + after, STYLES)
+    """A paper with heading styles: its title in one, then `abstract`, then `after`; with
+    Word's numberings `numbered` names."""
+    return _package(tmp_path / name, heading("Falls in older patients") + abstract + after,
+                    STYLES, TYPED_PARAGRAPH_NUMBERING)  # fmt: skip
 
 
 def titles(path: Path) -> list[str]:
@@ -151,6 +154,23 @@ def test_author_information_typed_in_bold_ends_the_abstract(tmp_path: Path) -> N
     path = paper(tmp_path, bold("Abstract") + para("Of 412 patients, 77 fell.") + block)
     assert titles(path) == ["Falls in older patients", "Abstract", "Author Information",
                             "Methods", "Results"]  # fmt: skip
+    read = audit([path], None).abstract
+    assert read.compared and read.not_found == [] and read.numbers == read.matched == 2, read
+
+
+#: docx-ecol-B2's shape: "Abstract" plain, then an "Introduction" Word numbers as a list's
+#: lone item, a typed title since #682 (round 2 of #683).
+NUMBERED_INTRODUCTION = (para("Abstract") + para("Of 412 patients, 77 fell.")
+                         + numbered().format("Introduction") + para("In 2019, 15 died."))
+
+
+def test_a_title_word_numbers_ends_the_abstract(tmp_path: Path) -> None:
+    """A title Word numbers, a typed title since #682, ends the Abstract as any typed title
+    does: "In 2019, 15 died" is the Introduction's. It ran on over the Introduction, and
+    docx-ecol-B2 had three of its Introduction's numbers not found."""
+    path = paper(tmp_path, NUMBERED_INTRODUCTION)
+    assert titles(path) == ["Falls in older patients", "Abstract", "Introduction", "Methods",
+                            "Results"]  # fmt: skip
     read = audit([path], None).abstract
     assert read.compared and read.not_found == [] and read.numbers == read.matched == 2, read
 
@@ -292,6 +312,10 @@ SHAPES = {
     "plain, a colon, ended": (para("Abstract:") + para("Of 412 patients, 77 fell.")
                               + bold("Author Information") + para("Tel 161 275 3797."),
                               ["Abstract", "Author Information"]),
+    "plain, ended at a title Word numbers": (NUMBERED_INTRODUCTION,
+                                             ["Abstract", "Introduction"]),
+    "numbered by Word": (numbered().format("Abstract") + para("Of 412 patients, 77 fell."),
+                         []),
     "a bold sentence": (bold("Abstracts were screened by two reviewers."), []),
     "in a cell": ("<w:tbl><w:tr><w:tc>" + para("Abstract") + "</w:tc></w:tr></w:tbl>"
                   + para("Of 412 patients, 77 fell."), []),

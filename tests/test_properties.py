@@ -2192,6 +2192,14 @@ def _a_salutation_opens_no_letter(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(title_page, "_SALUTATION", re.compile(r"(?!)"))
 
 
+def _a_label_that_names_a_section_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #683: "**Author information**", a section's name since it ended
+    docx-socio-A2's Abstract, ended a title page over its affiliations."""
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_labels_a_title_page", lambda text: False)
+
+
 def _prose_ends_no_title_page(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import title_page
 
@@ -21687,13 +21695,22 @@ def _init_makes_only_a_bold_abstract_line_a_heading(patch: pytest.MonkeyPatch) -
 
     real = from_word_abstract._opened
 
-    def opened(blocks: list, styled: bool):
-        found = real(blocks, styled)
+    def opened(blocks: list, lists: list, styled: bool):
+        found = real(blocks, lists, styled)
         if found is not None and not found[2] and not _in_bold(blocks[found[0]]["c"]):
             return None
         return found
 
     patch.setattr(from_word_abstract, "_opened", opened)
+
+
+def _init_opens_no_numbered_list_for_the_abstract_s_end(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #683: a title Word numbers ended no Abstract to `init --from`, as it did to
+    the audit, and docx-ecol-B2's ran over its Introduction."""
+    from manuscript_guard import from_word
+
+    patch.setattr(from_word, "_opened_lists", lambda blocks, named: (blocks, [None] * len(
+        blocks)))  # fmt: skip
 
 
 def _init_s_next_heading_ends_no_parts(patch: pytest.MonkeyPatch) -> None:
@@ -21721,9 +21738,9 @@ def _a_quoted_label_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import from_word_abstract
 
     real = from_word_abstract._opened
-    patch.setattr(from_word_abstract, "_opened", lambda blocks, styled: real(
+    patch.setattr(from_word_abstract, "_opened", lambda blocks, lists, styled: real(
         [block if block.get("t") != "BlockQuote" else {"t": "HorizontalRule"}
-         for block in blocks], styled))  # fmt: skip
+         for block in blocks], lists, styled))  # fmt: skip
 
 
 from generated import word_paragraphs  # noqa: E402
@@ -25012,6 +25029,14 @@ BROKEN = {
     "a salutation opens no letter": (
         _a_salutation_opens_no_letter,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title page's label that names a section ends it": (
+        _a_label_that_names_a_section_ends_a_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "init opens no numbered list for the Abstract's end": (
+        _init_opens_no_numbered_list_for_the_abstract_s_end,
+        test_init_from_makes_the_abstract_s_heading_of_the_shapes_the_audit_reads,
     ),
     "prose ends no title page": (
         _prose_ends_no_title_page,

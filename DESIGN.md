@@ -25257,22 +25257,23 @@ Open, recorded as each change landed:
     paragraph in one, and an "Introduction", an "Abbreviations", an "Author Information" or
     a "Method" typed in bold ended the Abstract for a reader. "Author information" joined the
     names of `SECTION_NAMES` for docx-socio-A2 (Basile, 2026-11-14), so it is a typed title
-    too in a paper with no heading style and a PDF's heading. With neither after it, where it
+    too in a paper with no heading style and a PDF's heading, and ends a reference list; on
+    a title page it stays a label of one, and ends no title page (round 2 of #683). With neither after it, where it
     ends is not read, and the shape is not read either. Pinned by
     `tests/test_word_abstract.py::test_a_run_in_abstract_label_in_a_styled_paper_is_its_heading`,
     `tests/test_word_abstract.py::test_an_abstract_line_in_a_styled_paper_is_its_heading`,
     `tests/test_word_abstract.py::test_author_information_typed_in_bold_ends_the_abstract`,
+    `tests/test_word_abstract.py::test_a_title_word_numbers_ends_the_abstract`,
     `tests/test_word_abstract.py::test_the_abstract_ends_at_a_typed_title_before_the_next_heading`,
     `tests/test_word_abstract.py::test_a_structured_abstract_s_parts_in_bold_run_to_the_next_heading`,
     `tests/test_word_abstract.py::test_a_run_in_label_before_a_space_pandoc_keeps_keeps_the_words_after_it`,
     `tests/test_word_abstract.py::test_an_abstract_that_nothing_ends_is_not_read`,
     `tests/test_word_abstract.py::test_the_audit_and_init_take_the_same_abstract_headings`.
   - What stands between such an Abstract and its end is the Abstract's, whatever it is: a
-    "Keywords:" line, a table, and a title numbered by Word's own numbering, a list's item
-    and no typed title: docx-ecol-B2's "Introduction" is one, so its Abstract runs on over
-    the Introduction to the next heading, and three of the Introduction's numbers are then
-    the Abstract's, not found where the paper reports. A line in bold that names no section,
-    or a run-in "Keywords:", ends nothing: no rule says which do. `init --from`
+    "Keywords:" line, a table. A title Word numbers as the lone item of a list is a typed
+    title since #682, and ends the Abstract to both readers, docx-ecol-B2's "Introduction"
+    (round 2 of #683); no list's item is the Abstract's own heading. A line in bold that
+    names no section, or a run-in "Keywords:", ends nothing: no rule says which do. `init --from`
     leaves a run-in label on its paragraph where the label does not end where a word does
     (it runs on into a note's mark, a link or the paragraph's next word in one piece of
     text), which the audit still reads; it makes the label a heading in a paper whose typed

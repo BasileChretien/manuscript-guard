@@ -326,12 +326,21 @@ def _named(text: str, abstract_title: str | None, *, first: bool = False) -> str
     alone = plain(text).rstrip(" :.")
     if _opens(alone, abstract_title) or (not first and _opens_a_list(text)):
         return OPENING
-    if section_name_alone(alone) is not None or _key(alone) in SECTION_NAMES:
+    if (section_name_alone(alone) is not None or _key(alone) in SECTION_NAMES) \
+            and not _labels_a_title_page(text):  # fmt: skip
         return OTHER
     label = _RUN_IN.match(text)
     if label is not None and _opens(label.group("name"), abstract_title):
         return OPENING
     return None
+
+
+def _labels_a_title_page(text: str) -> bool:
+    """Whether a section's name is a label a title page holds too (`_LABEL`), "**Author
+    information**" over the affiliations, which ends no title page: made a section's name for
+    docx-socio-A2 (Basile, 2026-11-14), it ended one, and G14 read the affiliations as prose
+    (round 2 of #683)."""
+    return _LABEL.match(text) is not None
 
 
 def _opens_a_list(text: str) -> bool:

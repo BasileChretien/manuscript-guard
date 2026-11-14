@@ -73,9 +73,11 @@ def _opened(document, body: list[str], styled: bool) -> Heading | None:
     for now; None where there is none."""
     numbered = {line - 1 for line, *_rest in document.numbering}
     for at, line in enumerate(body):
-        if at in document.headings or at in document.cells:
+        if at in document.headings or at in document.cells or at in numbered:
+            # A list Word numbers holds no Abstract's heading, though its lone item that
+            # names another section is a typed title since #682, which may end one.
             continue
-        label = run_in_abstract(line) if at not in numbered else None
+        label = run_in_abstract(line)
         if label is not None:
             return Heading(at, 0, label.rstrip(" :."), run_in=True)
         if styled and at in document.typed and abstract_alone(line):

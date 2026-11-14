@@ -33,15 +33,37 @@ def abstract_headings(blocks: list, styled: bool) -> tuple[list, tuple[str, ...]
     """`blocks`, which hold a heading, with the Abstract's heading made of a run-in label or,
     where `styled`, of a paragraph that names it alone, and the typed title that
     ends it; and the titles of the headings made. As they came where a heading names the
-    Abstract, or where neither shape is found or ends."""
-    from manuscript_guard.from_word import text_of
+    Abstract, or where neither shape is found or ends.
+
+    A top-level numbered list's item that names a section alone, a title Word numbers, is
+    read as `typed_headings` reads it (`from_word._opened_lists`, #682): it may end the
+    Abstract, made a heading where it stands and its list split there, as the audit reads
+    it (round 2 of #683: docx-ecol-B2's "Introduction"). No list's item is the Abstract's
+    heading, as it is not to the audit."""
+    from manuscript_guard.from_word import _closed_lists, _opened_lists, text_of
 
     headers = [at for at, block in enumerate(blocks) if block.get("t") == "Header"]
     if not headers or any(names_abstract(text_of(blocks[at]["c"][2])) for at in headers):
         return blocks, ()
-    opened = _opened(blocks, styled)
-    if opened is None:
+    unlisted, lists = _opened_lists(blocks, section_name_alone)
+    found = _found(unlisted, lists, styled)
+    if found is None:
         return blocks, ()
+    out, out_lists, named = found
+    return _closed_lists(out, out_lists), named
+
+
+def _found(blocks: list, lists: list,
+           styled: bool) -> tuple[list, list, tuple[str, ...]] | None:  # fmt: skip
+    """The headings made in `blocks`, whose numbered lists are opened at their titles, each
+    block with the list it came from or None (`lists`): the blocks, what each came from,
+    and the titles made; None where none is."""
+    from manuscript_guard.from_word import text_of
+
+    headers = [at for at, block in enumerate(blocks) if block.get("t") == "Header"]
+    opened = _opened(blocks, lists, styled)
+    if opened is None:
+        return None
     at, made, run_in = opened
     later = [one for one in headers if one > at]
     limit = later[0] if later else len(blocks)
@@ -60,12 +82,14 @@ def abstract_headings(blocks: list, styled: bool) -> tuple[list, tuple[str, ...]
     elif later:
         closing = None
     else:
-        return blocks, ()
-    return _made(blocks, at, made, level, closing)
+        return None
+    return _made(blocks, lists, at, made, level, closing)
 
 
-def _made(blocks: list, at: int, made: list, level: int,
-          closing: tuple[int, str] | None) -> tuple[list, tuple[str, ...]]:  # fmt: skip
+def _made(blocks: list, lists: list, at: int, made: list, level: int,
+          closing: tuple[int, str] | None) -> tuple[list, list, tuple[str, ...]]:  # fmt: skip
+    """`blocks` with the Abstract's at `at` made into `made`, at `level`, and the closing
+    title made a heading; with what each came from (`lists`), and the titles made."""
     from manuscript_guard.from_word import _heading, text_of
 
     named = []
@@ -73,22 +97,24 @@ def _made(blocks: list, at: int, made: list, level: int,
         if block.get("t") == "Header":
             block["c"][0] = level
             named.append(text_of(block["c"][2]))
-    out = [*blocks[:at], *made]
+    out = [*blocks[:at], *made, *blocks[at + 1 :]]
+    came = [*lists[:at], *[None] * len(made), *lists[at + 1 :]]
     if closing is not None:
         one, typed = closing
-        out += blocks[at + 1 : one] + [_heading(typed, level, identifier="")] + blocks[one + 1 :]
+        out[one + len(made) - 1] = _heading(typed, level, identifier="")
         named.append(typed)
-    else:
-        out += blocks[at + 1 :]
-    return out, tuple(named)
+    return out, came, tuple(named)
 
 
-def _opened(blocks: list, styled: bool) -> tuple[int, list, bool] | None:
-    """The first block that is the Abstract's heading in one of the two shapes: its index,
-    the blocks it is made into, and whether it was a run-in label."""
+def _opened(blocks: list, lists: list, styled: bool) -> tuple[int, list, bool] | None:
+    """The first block that is the Abstract's heading in one of the two shapes, none an item
+    of a numbered list opened (`lists`): its index, the blocks it is made into, and whether
+    it was a run-in label."""
     from manuscript_guard.from_word import _heading, _words_only, text_of
 
     for at, block in enumerate(blocks):
+        if lists[at] is not None:
+            continue
         kind = block.get("t")
         if kind in ("Para", "Plain"):
             split = _split(block)

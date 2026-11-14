@@ -1208,9 +1208,15 @@ def test_a_paper_the_base_placed_is_compared_as_it_was(
         "Study 1: 412 nurses were surveyed.", "Study 2: 20 were interviewed."}
 
 
-@pytest.mark.parametrize("count", ["248 words", "250-word limit", "248 words.",
-                                   "1,250 Words", "word count 248", "248", "max 250 words",
-                                   "250 words max"])  # fmt: skip
+#: Every title page's count after the label seen in #686's rounds of review.
+COUNTS = ["248 words", "250-word limit", "248 words.", "1,250 Words", "word count 248", "248",
+          "max 250 words", "250 words max", "248 words; Main text: 3,512 words",
+          "250 words, Text: 3,000 words, Tables: 2", "248 words (limit 250)",
+          "248 | Main text: 3,512", "248 words. Main text: 3,512 words.",
+          "250 words, Text: 3,000 words, 4 tables, 2 figures", "(248 words)"]
+
+
+@pytest.mark.parametrize("count", COUNTS)
 def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None:
     from manuscript_guard.auditing.pdf import headings_of
 
@@ -1223,17 +1229,18 @@ def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None
     assert _levels_of(WORD_COUNT)[0] == ("Abstract", 1)
 
 
-@pytest.mark.parametrize("words", ["60 word pairs were learned by 40 adults.",
-                                   "120 words were presented to 40 adults.",
-                                   "250 words, then 40 more, were read.",
-                                   "120 words; 40 adults read them."])  # fmt: skip
-def test_an_abstract_that_opens_on_a_number_of_words_is_one(words: str) -> None:
-    """Round 2 of #686: a count of words is the rest of the line alone; an Abstract that opens
-    on a number of words is an Abstract."""
+@pytest.mark.parametrize("words", ["412 patients were followed for a year.",
+                                   "60 word pairs were learned by 40 adults.",
+                                   "(Background) Falls are common."])  # fmt: skip
+def test_an_abstract_that_opens_on_no_word_is_no_run_in_label_s(words: str) -> None:
+    """Round 4 of #686: the label is read only where its line goes on with a word, a capital
+    first (DESIGN.md, Known gaps): an Abstract that opens on a number is not read so, as on
+    main."""
     from manuscript_guard.auditing.pdf import headings_of
 
-    lines = [RUN_IN[0], f"Abstract: {words}", *RUN_IN[2:]]
-    assert headings_of(lines)[1] == {2}
+    assert headings_of([RUN_IN[0], f"Abstract: {words}", *RUN_IN[2:]])[1] == frozenset()
+    assert headings_of([RUN_IN[0], "Abstract: The second generation of tools.",
+                        *RUN_IN[2:]])[1] == {2}
 
 
 def test_a_run_in_label_where_a_line_names_the_abstract_alone_is_text() -> None:
@@ -1255,13 +1262,11 @@ def test_a_name_twice_with_no_study_s_line_places_nothing_and_raises_nothing() -
 # ---------------------------------------------- round 3 of #686: counts, structured abstracts
 
 
-@pytest.mark.parametrize("count", ["248 words; Main text: 3,512 words",
-                                   "250 words, Text: 3,000 words, Tables: 2",
-                                   "248 words (limit 250)", "248 | Main text: 3,512"])
+@pytest.mark.parametrize("count", COUNTS)
 def test_a_title_page_s_counts_after_the_label_title_no_abstract(count: str) -> None:
-    """Round 3 of #686: the Abstract's count of words, then the title page's others. Where
-    several lines open on the label before the first heading, the last that is no count is
-    the Abstract's."""
+    """Rounds 3 and 4 of #686: the Abstract's count of words, then the title page's others,
+    is no label's line; the label's line after it is. Where two lines open on the label and
+    a word, the first is the Abstract's."""
     from manuscript_guard.auditing.pdf import headings_of
 
     lines = ["Title", f"Abstract: {count}", "Abstract: Of 412 patients, 77 fell.",
@@ -1269,6 +1274,7 @@ def test_a_title_page_s_counts_after_the_label_title_no_abstract(count: str) -> 
     assert headings_of(lines) == (((3, "Abstract"), (4, "Introduction"), (6, "Results")),
                                   frozenset({3}))
     assert headings_of([lines[0], lines[2], lines[1], *lines[3:]])[1] == {2}
+    assert headings_of([*lines[:3], "Abstract. Then 9 left.", *lines[3:]])[1] == {3}
 
 
 #: Round 3 of #686: a structured Abstract over a multi-study paper's studies.

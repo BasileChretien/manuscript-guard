@@ -21499,7 +21499,7 @@ def _a_count_of_words_titles_the_abstract(patch: pytest.MonkeyPatch) -> None:
     """As at 2299323: a title page's "Abstract: 248 words" was the Abstract's heading."""
     from manuscript_guard.auditing import pdf
 
-    patch.setattr(pdf, "_WORD_COUNT", re.compile(r"(?!)"))
+    patch.setattr(pdf, "_opens_on_a_word", lambda rest: True)
 
 
 def _a_study_s_line_is_read_inside_the_abstract(patch: pytest.MonkeyPatch) -> None:

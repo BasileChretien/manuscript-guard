@@ -11265,10 +11265,13 @@ the real-paper corpus; `auditing.pdf.headings_of`), each only where the names re
 as a Word paper's run-in label is read where no heading names the Abstract (round 1 of #686:
 read anywhere, each made papers the names placed unplaced). Where no line names the
 Abstract, the first line before the first heading that opens on the Abstract's run-in label
-and goes on (`section_names.run_in_abstract`, a Word paper's rule), and not on a count of
-words, "Abstract: 248 words; Main text: 3,512 words", is the Abstract's heading, the rest of the line its first text,
-and it ends as an Abstract read from its lines does; after it, a reference's title or a
-quotation that opens so titles nothing. And where the names cannot be placed alone and can
+and goes on (`section_names.run_in_abstract`, a Word paper's rule) with a word, a capital
+first, "Abstract: The second generation...", is the Abstract's heading, the rest of the line
+its first text; one that goes on with a digit, a bracket or other punctuation, or a word in
+lower case, is a title page's counts, "Abstract: 248 words; Main text: 3,512 words",
+"Abstract: (248 words)", and no heading (round 4 of #686: Basile chose this exact rule after
+a rule for the counts failed twice). It ends as an Abstract read from its lines does;
+after it, a reference's title or a quotation that opens so titles nothing. And where the names cannot be placed alone and can
 be with them, each line after the Abstract's end (where the name after the Abstract's is
 no part of one or a Background after its words, at it; else at the first study's line,
 which ends a structured Abstract's parts too, as in an APA paper with no heading over its
@@ -26429,10 +26432,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     line, an author's address or a title page's other lines typed before it are the
     Abstract's, their numbers among its own; and where the Introduction has no heading, the
     Abstract runs on through it to the next ("Methods"), and the Introduction's numbers are
-    the Abstract's, those the Results do not report said not found. Of several such lines
-    before the first heading the last that is no title page's count of words is read, and
-    none where a line names the Abstract alone.
-    Accepted.
+    the Abstract's, those the Results do not report said not found. Only the first such line
+    before the first heading that goes on with a word, a capital first, is read, and none
+    where a line names the Abstract alone. So an Abstract whose text opens on a number,
+    "Abstract: 412 patients were followed", or on a bracket, is not read as a run-in label's,
+    as on main: Basile chose this exact rule (2026-11-15) after a rule that told a title
+    page's counts of words apart failed twice in review. Accepted.
   - Where the names cannot be placed alone, a line after the Abstract that opens on
     "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
     no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a

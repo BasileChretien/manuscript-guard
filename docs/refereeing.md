@@ -58,8 +58,9 @@ and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). 
   under any other title is read as part of the one before. A structured abstract's own
   headings, on lines of their own, are the Abstract's where an Introduction follows them.
   Where no line names the Abstract, a line before the first heading that opens on
-  "Abstract:" and goes on is the Abstract's heading, and its words the Abstract's, unless
-  they are a count of words. Where the names repeat, a line after the Abstract that opens on
+  "Abstract:" and goes on with a word, a capital first, is the Abstract's heading, and its
+  words the Abstract's; one that goes on with a number, a title page's count of words, is
+  not. Where the names repeat, a line after the Abstract that opens on
   "Experiment 1:" or "Study 1:", with a section's name after it, is a heading over the names
   after it, so a multi-study paper's repeated Method and Results are each read under their
   own study; "Experiment 1 (n = 99)" and "Experiment 1." are not.

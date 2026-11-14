@@ -233,24 +233,14 @@ def study_title(line: str) -> str | None:
     return text if _STUDY.match(text) else None
 
 
-#: One of the counts a title page writes after "Abstract:", a label before it or not: "248
-#: words", "250-word limit", "word count 248", "248", "Main text: 3,512 words", "Tables: 2";
-#: not "60 word pairs were learned", an Abstract that opens on a number of words (rounds 1
-#: to 3 of #686).
-_WORD_COUNT = re.compile(r"(?:[A-Za-z][\w ]{0,30}:\s*)?"
-                         r"(?:(?:word\s+)?(?:count|limit|max(?:imum)?)\s*:?\s*)?"
-                         r"\d[\d,]*(?:\s*-?\s*words?)?"
-                         r"(?:\s+(?:limit|max(?:imum)?|count))?\s*\.?", re.IGNORECASE)
-#: Where a title page's counts are set apart: "248 words; Main text: 3,512 words", "250
-#: words, Text: 3,000", "248 words (limit 250)", "248 | Main text"; not a number's comma.
-_COUNTS_APART = re.compile(r"[;|()]|,(?!\d)")
-
-
-def _counts_words(rest: str) -> bool:
-    """Whether the rest of a line after the Abstract's label is a title page's counts: a
-    count of words, and others after it, set apart (`_COUNTS_APART`), each a count."""
-    parts = [part.strip() for part in _COUNTS_APART.split(rest)]
-    return bool(parts[0]) and all(not part or _WORD_COUNT.fullmatch(part) for part in parts)
+def _opens_on_a_word(rest: str) -> bool:
+    """Whether the rest of a line after the Abstract's run-in label opens on a sentence's
+    word, a capital letter first: "The second generation...". Not a title page's counts,
+    "248 words; Main text: 3,512 words", "(248 words)", "word count 248", which open on a
+    digit, a bracket or a word in lower case. The count rule failed twice, and Basile chose
+    this exact one (2026-11-15, round 4 of #686): an Abstract that opens on a number, "412
+    patients were followed", is then no run-in label's (DESIGN.md, Known gaps)."""
+    return rest[:1].isalpha() and rest[:1].isupper()
 
 
 def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], frozenset[int]]:
@@ -271,21 +261,19 @@ def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], froz
 
 
 def _run_in(texts: Sequence[str], named: list[tuple[int, str]]) -> tuple[int, str] | None:
-    """The last line before the first heading that opens on the Abstract's run-in label and
-    goes on (`text.section_names.run_in_abstract`), with its label less the colon or the stop
-    as its title, the rest of the line the Abstract's (decision 22, after pdf-socio-B1). Not
-    where a heading names the Abstract, nor where the rest of the line is a count of words, a
-    title page's "Abstract: 248 words; Main text: 3,512 words" (`_counts_words`); nor after
-    the first heading, where a reference or a quotation opens so."""
+    """The first line before the first heading that opens on the Abstract's run-in label and
+    goes on (`text.section_names.run_in_abstract`) with a word (`_opens_on_a_word`), with its
+    label less the colon or the stop as its title, the rest of the line the Abstract's
+    (decision 22, after pdf-socio-B1). Not where a heading names the Abstract, nor after the
+    first heading, where a reference or a quotation opens so."""
     if any(names_abstract(title) for _at, title in named):
         return None
     first = named[0][0] if named else len(texts) + 1
-    found = None
     for at, text in enumerate(texts[: first - 1], 1):
         label = run_in_abstract(text)
-        if label is not None and not _counts_words(after_label(text)):
-            found = at, label.rstrip(" :.")
-    return found
+        if label is not None and _opens_on_a_word(after_label(text)):
+            return at, label.rstrip(" :.")
+    return None
 
 
 def _studies(texts: Sequence[str], named: list[tuple[int, str]],

@@ -15589,7 +15589,9 @@ def placed_papers(
 PDF_RUN_IN_LABELS = {"Abstract:": "Abstract", "ABSTRACT:": "ABSTRACT", "Abstract.": "Abstract",
                      "Abstract :": "Abstract"}  # fmt: skip
 #: A title page's count of words after the label, which titles no Abstract (round 1 of #686).
-PDF_WORD_COUNTS = ("248 words", "250-word limit", "1,250 Words")
+PDF_WORD_COUNTS = ("248 words", "250-word limit", "1,250 Words", "word count 248",
+                   "248 words. Main text: 3,512 words.", "(248 words)",
+                   "250 words, Text: 3,000 words, 4 tables, 2 figures")  # fmt: skip
 #: How a study's own heading opens (`auditing.pdf.study_title`; decision 23, after
 #: pdf-psych-A2), and its numbers: Arabic, of two digits, and Roman (round 1 of #686).
 PDF_STUDIES = ("Experiment", "Study", "EXPERIMENT", "STUDY")

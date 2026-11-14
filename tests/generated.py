@@ -15585,11 +15585,13 @@ def pdf_heading_papers(
     number of each kind of `PDF_STUDY_NUMBERS` among them, with names of `PDF_STUDY_NAMES`
     under it, one of them under each, and every kind of `PDF_STUDY_PROSE` among their lines;
     the back matter after the last, a reference that opens on the label and one that opens
-    on a study's number and a colon. And three papers made from them: with a line that names
-    the Abstract alone after the label, which is then text; with a study's line in the
-    Abstract, which is no heading; and with a name twice under one study, where no study's
-    line is a heading and nothing is placed. Each with its headings `(line, title)`, the
-    run-in label's line, and the levels `PdfText.placed` gives them."""
+    on a study's number and a colon; the count before the label in the first. And four
+    papers made from them: with a line that names the Abstract alone after the label, which
+    is then text; with a study's line in the Abstract, which is no heading; with a name twice
+    under one study, where no study's line is a heading and nothing is placed; and with no
+    heading over the Introduction, where the Abstract ends at the first study's line. Each
+    with its headings `(line, title)`, the run-in label's line, and the levels
+    `PdfText.placed` gives them."""
     word = st.sampled_from(FILLER)
 
     def words() -> str:
@@ -15600,11 +15602,13 @@ def pdf_heading_papers(
         left = [one for kind in PDF_STUDY_NUMBERS.values() for one in kind if one not in drawn]
         return list(draw(st.permutations([*drawn, draw(st.sampled_from(left))])))
 
-    def paper(label: str) -> tuple:
+    def paper(label: str, count_first: bool) -> tuple:
         opening = [f"{label} Of 412 {words()}, 77 fell.",
-                   PDF_ABSTRACT_PROSE.format(words=words()),
-                   f"{label} {draw(st.sampled_from(PDF_WORD_COUNTS))}"]  # fmt: skip
-        lines = ["Falls in older patients", *draw(st.permutations(opening)),
+                   PDF_ABSTRACT_PROSE.format(words=words())]  # fmt: skip
+        count = f"{label} {draw(st.sampled_from(PDF_WORD_COUNTS))}"
+        # The count before the label in one paper at least (round 2 of #686).
+        lines = ["Falls in older patients", *([count] if count_first else []),
+                 *draw(st.permutations(opening if count_first else [*opening, count])),
                  "Keywords: falls; records"]  # fmt: skip
         headings = [(lines.index(opening[0]) + 1, PDF_RUN_IN_LABELS[label])]
         levels = [1]
@@ -15643,7 +15647,8 @@ def pdf_heading_papers(
                   f"{draw(st.sampled_from(PDF_STUDIES))} 2: {words()}. J Things. 2020."]
         return lines, headings, {headings[0][0]}, tuple(levels)
 
-    out = [paper(label) for label in draw(st.permutations(sorted(PDF_RUN_IN_LABELS)))]
+    out = [paper(label, at == 0)
+           for at, label in enumerate(draw(st.permutations(sorted(PDF_RUN_IN_LABELS))))]
     # A line that names the Abstract alone, after the label: the label is text then.
     lines, headings, run_in, levels = out[0]
     alone = _inserted(out[0], headings[0][0], "Abstract", "Abstract", set())
@@ -15659,6 +15664,14 @@ def pdf_heading_papers(
     names = [(at, title) for at, title in twice[1]
              if title.split()[0] not in {study.split()[0] for study in PDF_STUDIES}]
     out.append((twice[0], names, run_in, None))
+    # The third paper with no heading over its Introduction, as APA's papers have none: the
+    # Abstract ends at the first study's line (round 2 of #686).
+    lines, headings, run_in, levels = out[2]
+    gone = next(at for at, (_line, title) in enumerate(headings) if title == "Introduction")
+    line = headings[gone][0]
+    out.append(([*lines[: line - 1], *lines[line:]],
+                [(at - (at > line), title) for at, title in headings if at != line],
+                {at - (at > line) for at in run_in}, (*levels[:gone], *levels[gone + 1 :])))
     return out
 
 

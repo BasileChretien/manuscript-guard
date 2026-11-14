@@ -1048,16 +1048,48 @@ def test_a_study_line_inside_the_abstract_or_with_no_name_after_it_is_no_heading
         ("General Discussion", 2), ("References", 2)]
 
 
-def test_a_summary_row_with_the_reference_list_after_it_is_a_study_s_heading() -> None:
-    """A limit (DESIGN.md, Known gaps): in a multi-study paper's General Discussion, a
-    summary row that opens "Study 1:" with the next row's "Study 2:" after it and no name
-    between is no heading; the last row, with the reference list's heading after it, is a
-    study's heading over the reference list."""
-    lines = [*STUDIES[:-2], "Study 1: d = 0.45 in the first.",
-             "Study 2: d = 0.30 in the second.", "It was so.", *STUDIES[-2:]]
-    assert _levels_of(lines)[-3:] == [("General Discussion", 2),
-                                      ("Study 2: d = 0.30 in the second.", 1),
+def test_a_summary_row_with_only_the_back_matter_after_it_is_no_heading() -> None:
+    """In a multi-study paper's General Discussion, a summary row that opens "Study 1:" with
+    the next row's "Study 2:" after it and no name between is no heading, and nor is the last
+    row, with only the back matter's names after it (round 2 of #686). A limit (DESIGN.md,
+    Known gaps): a row with a name of the main text after it, "Limitations", is a study's
+    heading over it."""
+    rows = ["Study 1: d = 0.45 in the first.", "Study 2: d = 0.30 in the second.",
+            "It was so."]
+    lines = [*STUDIES[:-2], *rows, "Acknowledgements", "We thank them.", *STUDIES[-2:]]
+    assert _levels_of(lines)[-3:] == [("General Discussion", 2), ("Acknowledgements", 2),
                                       ("References", 2)]
+    lines = [*STUDIES[:-2], *rows, "Limitations", "They were few.", *STUDIES[-2:]]
+    assert _levels_of(lines)[-4:] == [("General Discussion", 2),
+                                      ("Study 2: d = 0.30 in the second.", 1),
+                                      ("Limitations", 2), ("References", 2)]
+
+
+def test_a_study_s_heading_ends_an_abstract_with_no_introduction_after_it() -> None:
+    """Round 2 of #686: an APA paper whose Introduction has no heading. Over the names alone,
+    the Abstract's parts ran to the second study's "Method", and the first study's sections
+    were its parts. A study's line names no part of an Abstract, so the Abstract ends at the
+    first, and every study is placed."""
+    lines = [line for line in STUDIES if line != "Introduction"]
+    assert _levels_of(lines) == [
+        ("Abstract", 1), *(
+            one for number in (1, 2, 3, 4) for one in (
+                (f"Experiment {number}: Modulating prior knowledge of speech", 1),
+                ("Method", 2), ("Results and Discussion", 2))),
+        ("General Discussion", 2), ("References", 2)]
+
+
+@needs_pdftotext
+def test_nothing_of_the_first_study_is_compared_as_the_abstract_s(tmp_path: Path,
+                                                                  capsys) -> None:  # fmt: skip
+    """The same paper as a PDF: its Abstract is compared with every study's Results, and no
+    number of the first study's sections is read as the Abstract's. Its Introduction's own
+    lines, under no heading, are the Abstract's (DESIGN.md, Known gaps)."""
+    lines = [line for line in STUDIES if line != "Introduction"]
+    _code, report, _err = audited(capsys, str(write(tmp_path / "paper.pdf", lines,
+                                                    per_column=40)))  # fmt: skip
+    assert not found(report, "abstract-not-compared")
+    assert {f["context"] for f in found(report, "abstract-not-found")} <= set(STUDIES[3:5])
 
 
 @needs_pdftotext
@@ -1076,7 +1108,8 @@ def test_a_paper_the_base_placed_is_compared_as_it_was(
 
 
 @pytest.mark.parametrize("count", ["248 words", "250-word limit", "248 words.",
-                                   "1,250 Words"])  # fmt: skip
+                                   "1,250 Words", "word count 248", "248", "max 250 words",
+                                   "250 words max"])  # fmt: skip
 def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None:
     from manuscript_guard.auditing.pdf import headings_of
 
@@ -1087,6 +1120,18 @@ def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None
         assert not run_in and [title for _line, title in headings].count("Abstract") == (
             lines.count("Abstract")), headings
     assert _levels_of(WORD_COUNT)[0] == ("Abstract", 1)
+
+
+@pytest.mark.parametrize("words", ["60 word pairs were learned by 40 adults.",
+                                   "120 words were presented to 40 adults.",
+                                   "250 words, then 40 more, were read."])  # fmt: skip
+def test_an_abstract_that_opens_on_a_number_of_words_is_one(words: str) -> None:
+    """Round 2 of #686: a count of words is the rest of the line alone; an Abstract that opens
+    on a number of words is an Abstract."""
+    from manuscript_guard.auditing.pdf import headings_of
+
+    lines = [RUN_IN[0], f"Abstract: {words}", *RUN_IN[2:]]
+    assert headings_of(lines)[1] == {2}
 
 
 def test_a_run_in_label_where_a_line_names_the_abstract_alone_is_text() -> None:

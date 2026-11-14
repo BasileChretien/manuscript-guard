@@ -58,6 +58,7 @@ from manuscript_guard.text.section_names import (
     SECTION_NAMES,
     abstract_end,
     names_abstract,
+    names_statement,
     run_in_abstract,
     section_levels,
     section_name_alone,
@@ -218,7 +219,11 @@ def study_title(line: str) -> str | None:
 
 #: What a title page writes after "Abstract:": its count of words, "248 words", "250-word",
 #: which titles no Abstract (round 1 of #686).
-_WORD_COUNT = re.compile(r"\d[\d,]*\s*-?\s*words?\b", re.IGNORECASE)
+#: The count alone: "248 words", "250-word limit", "word count 248", "248"; not "60 word
+#: pairs were learned", an Abstract that opens on a number of words (round 2 of #686).
+_WORD_COUNT = re.compile(r"(?:(?:word\s+)?(?:count|limit|max(?:imum)?)\s*:?\s*)?"
+                         r"\d[\d,]*(?:\s*-?\s*words?)?"
+                         r"(?:\s+(?:limit|max(?:imum)?|count))?[\s.;]*", re.IGNORECASE)
 
 
 def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], frozenset[int]]:
@@ -250,7 +255,7 @@ def _run_in(texts: Sequence[str], named: list[tuple[int, str]]) -> tuple[int, st
     first = named[0][0] if named else len(texts) + 1
     for at, text in enumerate(texts[: first - 1], 1):
         label = run_in_abstract(text)
-        if label is not None and not _WORD_COUNT.match(after_label(text)):
+        if label is not None and not _WORD_COUNT.fullmatch(after_label(text)):
             return at, label.rstrip(" :.")
     return None
 
@@ -259,9 +264,10 @@ def _studies(texts: Sequence[str], named: list[tuple[int, str]],
              run_in: frozenset[int]) -> list[tuple[int, str]]:  # fmt: skip
     """`named` with the lines that open on a study's number and a colon (`study_title`)
     among them, where the names cannot be placed without them and can with them (decision
-    23, after pdf-psych-A2): each after the Abstract's end, with a name after it before the
-    next such line. Else `named`, so a paper the names place is placed as they place it, and
-    a study listed in its Abstract or a summary row is no heading (round 1 of #686)."""
+    23, after pdf-psych-A2): each after the Abstract's end (`_abstract_ends`), with a name
+    after it before the next such line that is no back matter's (`_back_matter`). Else
+    `named`, so a paper the names place is placed as they place it, and a study listed in its
+    Abstract or a summary row is no heading (rounds 1 and 2 of #686)."""
     lines = [(at, title) for at, text in enumerate(texts, 1)
              if (title := study_title(text)) is not None]  # fmt: skip
     if not lines:
@@ -270,12 +276,13 @@ def _studies(texts: Sequence[str], named: list[tuple[int, str]],
     worded = _worded(list(texts), named, run_in)
     if section_levels(titles, worded) is not None:
         return named
-    after = _abstract_ends(named, worded)
+    after = _abstract_ends(texts, named, lines, run_in)
     if after is None:
         return named
     nexts = [at for at, _title in lines[1:]] + [len(texts) + 1]
     kept = [(at, title) for (at, title), until in zip(lines, nexts, strict=True)
-            if at > after and any(at < line < until for line, _name in named)]  # fmt: skip
+            if at >= after and any(at < line < until and not _back_matter(name)
+                                   for line, name in named)]  # fmt: skip
     if not kept:
         return named
     found = sorted([*named, *kept])
@@ -284,16 +291,45 @@ def _studies(texts: Sequence[str], named: list[tuple[int, str]],
     return found
 
 
-def _abstract_ends(named: list[tuple[int, str]], worded: list[bool]) -> int | None:
+def _abstract_ends(texts: Sequence[str], named: list[tuple[int, str]],
+                   studies: list[tuple[int, str]],
+                   run_in: frozenset[int]) -> int | None:  # fmt: skip
     """The line of the first heading after the Abstract's that is no part of it, 0 where no
-    heading names the Abstract; None where it ends is not read, or it runs to the end."""
-    first = next((at for at, (_line, title) in enumerate(named) if names_abstract(title)), None)
+    heading names the Abstract; None where it ends is not read, or it runs to the end. Where
+    the name after the Abstract's is no part of one, an Introduction, the Abstract ends there,
+    and a study's line before it is the Abstract's. Else the studies' lines are read among
+    the names, and the Abstract ends at the first, which names no part of it: over the names
+    alone, the parts of an APA paper's Abstract with no Introduction ran to the second
+    study's "Method" (round 2 of #686)."""
+    end = _end_among(texts, named, run_in)
+    if end is not None and end[1]:
+        return end[0]
+    among = _end_among(texts, sorted([*named, *studies]), run_in)
+    return None if among is None else among[0]
+
+
+def _end_among(texts: Sequence[str], headings: list[tuple[int, str]],
+               run_in: frozenset[int]) -> tuple[int, bool] | None:  # fmt: skip
+    """Where the Abstract ends among `headings`, as `_abstract_ends` gives it, and whether at
+    the heading next after its own; None where that is not read."""
+    first = next((at for at, (_line, title) in enumerate(headings) if names_abstract(title)),
+                 None)  # fmt: skip
     if first is None:
-        return 0
-    end = abstract_end([title for _line, title in named[first:]], worded[first:])
-    if end is None or first + end >= len(named):
+        return 0, True
+    worded = _worded(list(texts), headings, run_in)
+    end = abstract_end([title for _line, title in headings[first:]], worded[first:])
+    if end is None or first + end >= len(headings):
         return None
-    return named[first + end][0]
+    return headings[first + end][0], end == 1
+
+
+def _back_matter(title: str) -> bool:
+    """Whether a heading names the reference list or a statement of the back matter,
+    "Acknowledgements", "Funding", "Author contributions" (`section_names.names_statement`):
+    a summary row before them alone is no study's heading (round 2 of #686)."""
+    from manuscript_guard.text.sections import Section
+
+    return names_statement(title) or Section(title, 1, "", 0).is_references
 
 
 def _worded(lines: list[str], headings: Sequence[tuple[int, str]],

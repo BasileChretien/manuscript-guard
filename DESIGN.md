@@ -11269,9 +11269,11 @@ and goes on (`section_names.run_in_abstract`, a Word paper's rule), and not on a
 words, "Abstract: 248 words", is the Abstract's heading, the rest of the line its first text,
 and it ends as an Abstract read from its lines does; after it, a reference's title or a
 quotation that opens so titles nothing. And where the names cannot be placed alone and can
-be with them, each line after the Abstract's end that opens on "Experiment" or "Study", a
+be with them, each line after the Abstract's end (where the name after the Abstract's is
+no part of one, at it; else at the first study's line, as in an APA paper with no heading
+over its Introduction: round 2 of #686) that opens on "Experiment" or "Study", a
 number or a Roman numeral and a colon (`study_title`), with a name after it before the next
-such line, is a multi-study paper's heading over the names after it, a level above them, to
+such line that is no back matter's, is a multi-study paper's heading over the names after it, a level above them, to
 the next such line or the end, so that each study's own "Method" and "Results" are placed
 and a name stands twice only where it does under one study. Where there
 is no
@@ -26421,11 +26423,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     before the first heading is read, and none where a line names the Abstract alone.
     Accepted.
   - Where the names cannot be placed alone, a line after the Abstract that opens on
-    "Experiment N:" or "Study N:" with a name after it before the next such line is a
-    study's heading: a table's row or a wrapped line of prose or of a caption that opens so
-    is one too, and the names after it are placed under it, a summary row of the General
-    Discussion with only the reference list's heading after it among them. Pinned by
-    `tests/test_audit_pdf.py::test_a_summary_row_with_the_reference_list_after_it_is_a_study_s_heading`.
+    "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
+    no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a
+    caption that opens so is one too, and the names after it are placed under it, a summary
+    row of the General Discussion with a "Limitations" after it among them. Pinned by
+    `tests/test_audit_pdf.py::test_a_summary_row_with_only_the_back_matter_after_it_is_no_heading`.
   - The names after the last study, "General Discussion" and the back matter among them,
     are placed under it, a level down; a "Discussion" of the whole paper after the last
     study's own "Discussion" is a name twice under it, and no study's line is then a

@@ -21439,9 +21439,10 @@ def test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed(
     line that opens on "Experiment N:" or "Study N:", N Arabic, of two digits or Roman, is a
     heading one level above the names after it, up to the next or to the end; in the
     Abstract, with no name after it, with no colon after the number, or inside a line, it is
-    prose; and with a name twice under one study no study's line is a heading and nothing is
-    placed (`auditing.pdf.headings_of`, `PdfText.placed`; Basile, 2026-11-15, decisions 22
-    and 23, after pdf-socio-B1 and pdf-psych-A2; round 1 of #686)."""
+    prose; an Abstract with no Introduction after it ends at the first study's line; and
+    with a name twice under one study no study's line is a heading and nothing is placed
+    (`auditing.pdf.headings_of`, `PdfText.placed`; Basile, 2026-11-15, decisions 22 and 23,
+    after pdf-socio-B1 and pdf-psych-A2; rounds 1 and 2 of #686)."""
     from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
 
     for page, headings, run_in, levels in drawn:
@@ -21504,7 +21505,19 @@ def _a_study_s_line_is_read_inside_the_abstract(patch: pytest.MonkeyPatch) -> No
     """As at 2299323: a study listed in the Abstract was a heading."""
     from manuscript_guard.auditing import pdf
 
-    patch.setattr(pdf, "_abstract_ends", lambda named, worded: 0)
+    patch.setattr(pdf, "_abstract_ends", lambda *given: 0)
+
+
+def _the_abstract_s_end_is_read_over_the_names_alone(patch: pytest.MonkeyPatch) -> None:
+    """As at f74e43c1: an APA paper's Abstract with no Introduction after it ran to its
+    second study's "Method", over its first study's sections."""
+    from manuscript_guard.auditing import pdf
+
+    def ends(texts, named, studies, run_in):
+        end = pdf._end_among(texts, named, run_in)
+        return None if end is None else end[0]
+
+    patch.setattr(pdf, "_abstract_ends", ends)
 
 
 def _a_study_s_heading_is_at_its_names_level(patch: pytest.MonkeyPatch) -> None:
@@ -22777,6 +22790,10 @@ BROKEN = {
     ),
     "a PDF's count of words after the label titles its Abstract": (
         _a_count_of_words_titles_the_abstract,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's Abstract ends over its names alone, its studies' lines left out": (
+        _the_abstract_s_end_is_read_over_the_names_alone,
         test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
     ),
     "a PDF's study listed in its Abstract is a heading": (

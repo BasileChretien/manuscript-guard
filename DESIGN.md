@@ -25258,7 +25258,10 @@ Open, recorded as each change landed:
     a "Method" typed in bold ended the Abstract for a reader. "Author information" joined the
     names of `SECTION_NAMES` for docx-socio-A2 (Basile, 2026-11-14), so it is a typed title
     too in a paper with no heading style and a PDF's heading, and ends a reference list; on
-    a title page it stays a label of one, and ends no title page (round 2 of #683). With neither after it, where it
+    a title page it stays a label of one, and ends no title page (round 2 of #683); read
+    from the text as written, not G14's masked view, an underlined one ends none but counts
+    as no label either, so a title page it was the second signal of is not found (check of
+    #683). With neither after it, where it
     ends is not read, and the shape is not read either. Pinned by
     `tests/test_word_abstract.py::test_a_run_in_abstract_label_in_a_styled_paper_is_its_heading`,
     `tests/test_word_abstract.py::test_an_abstract_line_in_a_styled_paper_is_its_heading`,
@@ -25286,10 +25289,12 @@ Open, recorded as each change landed:
     searched for the paper's Abstract's numbers, nor is the Abstract's own text. That is the
     rule a heading in a heading style that names the Abstract already follows in a
     supplement (review of #683). Accepted.
-  - An "Abstract" line naming a numbering that numbering.xml does not define is a line Word
-    numbers to the audit, which takes no list item for the Abstract's heading, and a
-    paragraph of its own to pandoc, which `init --from` makes that heading, so the two
-    readers part there; it needs a broken numbering (check of #683). Accepted.
+  - An "Abstract" line naming a numbering that numbering.xml does not define, with no
+    list's item before it, is a line Word numbers to the audit, which takes no list item for
+    the Abstract's heading, and a paragraph of its own to pandoc, which `init --from` makes
+    that heading, so the two readers part there; after an item, pandoc joins it to that
+    item and neither makes it the heading. It needs a broken numbering (checks of #683).
+    Accepted.
   - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a

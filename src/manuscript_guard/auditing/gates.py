@@ -136,7 +136,7 @@ def _staged_pdf(paper: Path) -> _Staged:
     that holds a section's name alone (`auditing.pdf.heading_title`) a heading, a blank line
     before and after it, a structured abstract's a heading under the Abstract's where it can
     be placed (`PdfText.placed`), with the line of the text each line of the Markdown is."""
-    from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
+    from manuscript_guard.auditing.pdf import UnreadablePdf, after_label, read_pdf
 
     try:
         pdf = read_pdf(paper)
@@ -149,6 +149,9 @@ def _staged_pdf(paper: Path) -> _Staged:
     lines: list[int] = []
     for at, text in enumerate(pdf.text.split("\n"), 1):
         said = ["", f"{'#' * levels[at][1]} {levels[at][0]}", ""] if at in levels else [text]
+        if at in pdf.run_in:
+            # The rest of a run-in label's line is the Abstract's first text.
+            said.append(after_label(text))
         staged += said
         lines += [at] * len(said)
     return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),

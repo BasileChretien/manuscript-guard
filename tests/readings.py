@@ -1943,6 +1943,30 @@ def _word_abstract() -> Reading:
     return read
 
 
+@reading("pdf headings")
+def _pdf_headings() -> Reading:
+    """The headings a PDF's lines are read as, each `(line, title)`, those that are the
+    Abstract's run-in label, and each heading's level where they are placed, else None
+    (`auditing.pdf`): the lines given as `pdftotext` would read them, on one page, none
+    numbered."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.pdf import _text_of
+
+    def read(given: list[str]) -> dict[str, Any]:
+        kept = SimpleNamespace(lines=[SimpleNamespace(page=1, text=text, number=None)
+                                      for text in given],
+                               numbered=False, furniture=(), reader="test", pages=1)  # fmt: skip
+        pdf = _text_of(Path("paper.pdf"), kept, "\n".join(given))
+        placed = pdf.placed
+        return {"headings": [list(one) for one in pdf.headings],
+                # Newer than the reading: a base without it reads none.
+                "run in": sorted(getattr(pdf, "run_in", ())),
+                "placed": None if placed is None else [list(one) for one in placed]}  # fmt: skip
+
+    return read
+
+
 @reading("word paragraphs")
 def _word_paragraphs() -> Reading:
     """Where each line of the Markdown a .docx converts to stands, as the audit names a

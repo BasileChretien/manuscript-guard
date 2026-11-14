@@ -2307,7 +2307,8 @@ def test_heading_styles_that_name_no_section_are_set_aside(tmp_path: Path, shape
 #: word only a sentence has, but no two sentences (round 2 of #688): BMJ's box among them.
 STYLED_SENTENCE_HEADINGS = ("Strengths and limitations of this study", "What this study adds",
                             "Association between exposure and outcome",
-                            "Data were collected in the clinic")  # fmt: skip
+                            "Data were collected in the clinic", "Early vs. Late Initiation",
+                            "Smith et al. Revisited")  # fmt: skip
 
 
 @pytest.mark.parametrize("shape", ["no Results", "titles not placed", "a styled Methods",

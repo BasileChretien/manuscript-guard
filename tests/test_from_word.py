@@ -880,7 +880,8 @@ def _paragraph(text: str, bold: bool = False) -> str:
 #: Headings of one sentence's words, after the first typed title (round 2 of #688).
 _SENTENCE_HEADINGS = ("Strengths and limitations of this study", "What this study adds",
                       "Association between exposure and outcome",
-                      "Data were collected in the clinic")  # fmt: skip
+                      "Data were collected in the clinic", "Early vs. Late Initiation",
+                      "Smith et al. Revisited")  # fmt: skip
 _STYLES_KEPT = ("no Results", "a styled Methods", "APA subheadings", "a styled header row",
                 "a styled Methods cell first", "an empty styled paragraph",
                 *_SENTENCE_HEADINGS)  # fmt: skip

@@ -16027,7 +16027,8 @@ STYLED_SUBHEADINGS = ("Participants", "Measures", "Statistical analysis",
                       "Study design and setting", "Ana Martin, Paul Girard, PhD",
                       "Department of Medicine, Caen", "Strengths and limitations of this study",
                       "What this study adds", "Association between exposure and outcome",
-                      "Data were collected in the clinic")  # fmt: skip
+                      "Data were collected in the clinic", "Early vs. Late Initiation",
+                      "Smith et al. Revisited")  # fmt: skip
 #: A heading-styled line that names a section alone, which keeps the styles.
 NAMED_STYLED = ("Methods", "2. Results", "INTRODUCTION", "Funding")
 #: The papers of `stray_styled_papers`, and whether each has its styles set aside: its
@@ -16037,7 +16038,8 @@ NAMED_STYLED = ("Methods", "2. Results", "INTRODUCTION", "Funding")
 #: the first typed title that is no sentence.
 STRAY_STYLED_KINDS = {"before the Abstract": True, "in the Introduction": True,
                       "no Results": False, "no Abstract": False, "not placed": False,
-                      "a styled name": False, "a styled subheading": False}  # fmt: skip
+                      "a styled name": False, "a styled subheading": False,
+                      "a styled sentence-like subheading": False}  # fmt: skip
 #: The shapes a typed title is drawn in: in bold, plain, in capitals, numbered as typed.
 _TYPED_SHAPES = ("bold", "plain", "capitals", "numbered")
 
@@ -16085,11 +16087,14 @@ def stray_styled_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple], bool]]:
         if kind == "a styled name":
             paper.insert(draw(st.integers(len(stray), len(paper))),
                          ("styled", draw(st.sampled_from(NAMED_STYLED)), 1))
-        if kind == "a styled subheading":
-            # After the first typed title, which stands right after the stray lines.
+        if kind in ("a styled subheading", "a styled sentence-like subheading"):
+            # After the first typed title, which stands right after the stray lines: a heading
+            # of plain words, or one of a sentence's, each a paper of its own in every example,
+            # so that a rule reading the second as prose fails (check of #688).
+            pool = (STYLED_SUBHEADINGS[:6] if kind == "a styled subheading"
+                    else STYLED_SUBHEADINGS[6:])  # fmt: skip
             paper.insert(draw(st.integers(len(stray) + 1, len(paper))),
-                         ("styled", draw(st.sampled_from(STYLED_SUBHEADINGS)),
-                          draw(st.integers(1, 4))))
+                         ("styled", draw(st.sampled_from(pool)), draw(st.integers(1, 4))))
         out.append((kind, paper, STRAY_STYLED_KINDS[kind]))
     return out
 

@@ -25281,7 +25281,10 @@ Open, recorded as each change landed:
     bold (round 1 of #688) or "Strengths and limitations of this study" (round 2), it is
     read by its styles as before, its typed titles text: no list of names says that a styled
     line is no title, and the narrow reading leaves those papers as they were. So does a
-    paragraph of one sentence in a heading style there, which is no stray line either. An
+    paragraph of one sentence in a heading style there, which is no stray line either, and
+    one whose sentences end on a citation's or a number's stop ("Falls are common (1). Most
+    are harmed (2)."), which the title page's sentence reading does not split; "vs.",
+    "et al.", "Mt." and "cf." end no sentence there (check of #688). An
     empty paragraph in a heading style after the first typed title keeps the styles too, to
     both readers: pandoc 3.9.0.2 keeps it as an empty heading, and the audit as an empty
     styled line. Where the title page holds such a styled line, `init --from`

@@ -189,12 +189,14 @@ _PROSE_WORDS = 8
 _PROSE_SHARE = 0.6
 #: A sentence's end inside a paragraph, before the next sentence's capital: after a word
 #: that is no initial, no short form in capitals ("MSc. Paul"), and none of the words a
-#: title page shortens with a stop (`_SHORTENED`).
+#: title page shortens with a stop (`_SHORTENED`), nor one a heading does ("Early vs. Late
+#: Initiation", "Smith et al. Revisited": the check of #688).
 _SENTENCE_BREAK = re.compile(
     r"(?P<word>[^\W\d_]+)[.!?][\"'\N{RIGHT DOUBLE QUOTATION MARK})]*\s+[A-Z]"
 )
 _SHORTENED_WORDS = (
     "dr mr mrs ms st prof univ dept inst hosp inc ltd ave str blvd jr sr no vol fig"
+    " vs al mt cf"
 )
 _SHORTENED = frozenset(_SHORTENED_WORDS.split())
 _WORD = re.compile(r"[^\W\d_][\w'\N{RIGHT SINGLE QUOTATION MARK}-]*")

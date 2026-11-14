@@ -339,8 +339,9 @@ def _labels_a_title_page(text: str) -> bool:
     """Whether a section's name is a label a title page holds too (`_LABEL`), "**Author
     information**" over the affiliations, which ends no title page: made a section's name for
     docx-socio-A2 (Basile, 2026-11-14), it ended one, and G14 read the affiliations as prose
-    (round 2 of #683)."""
-    return _LABEL.match(text) is not None
+    (round 2 of #683). Read as written and as `plain` reads it, so an underline's markup,
+    "**[Author Information]{.underline}**", hides no label (round 3)."""
+    return _LABEL.match(text) is not None or _LABEL.match(plain(text)) is not None
 
 
 def _opens_a_list(text: str) -> bool:

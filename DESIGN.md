@@ -25286,6 +25286,10 @@ Open, recorded as each change landed:
     searched for the paper's Abstract's numbers, nor is the Abstract's own text. That is the
     rule a heading in a heading style that names the Abstract already follows in a
     supplement (review of #683). Accepted.
+  - An "Abstract" line naming a numbering that numbering.xml does not define is a line Word
+    numbers to the audit, which takes no list item for the Abstract's heading, and a
+    paragraph of its own to pandoc, which `init --from` makes that heading, so the two
+    readers part there; it needs a broken numbering (check of #683). Accepted.
   - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a

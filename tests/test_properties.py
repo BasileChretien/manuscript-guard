@@ -21979,6 +21979,16 @@ def _a_styled_subheading_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(docx, "only_stray_lines", lambda styled: True)
 
 
+def _one_sentence_s_words_are_prose(patch: pytest.MonkeyPatch) -> None:
+    """As round 1 of #688 built it: a styled line holding a word only a sentence has was
+    prose, so "Strengths and limitations of this study" after the first title was set
+    aside."""
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "two_sentences", lambda text: title_page._a_sentence(
+        title_page._words(text), text))  # fmt: skip
+
+
 def _any_titles_set_the_styles_aside(patch: pytest.MonkeyPatch) -> None:
     """Without the third condition: titles naming no Abstract or no Results set them aside."""
     from manuscript_guard.text import docx
@@ -22838,6 +22848,14 @@ BROKEN = {
     ),
     "init sets aside styles beside a styled subheading": (
         _a_styled_subheading_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
+    ),
+    "the audit sets aside styles beside a heading of one sentence's words": (
+        _one_sentence_s_words_are_prose,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "init sets aside styles beside a heading of one sentence's words": (
+        _one_sentence_s_words_are_prose,
         test_heading_styles_that_name_no_section_are_set_aside_by_init,
     ),
     "init sets aside styles beside a styled name": (

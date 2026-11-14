@@ -795,14 +795,14 @@ def only_stray_lines(styled: Sequence[tuple[str, bool]]) -> bool:
     """Whether each of `styled`, the words of a paper's paragraphs in a heading style with
     whether it stands before its first typed title, is a stray line (Basile, 2026-11-15,
     "Only stray lines"): on the title page, before the first typed title, an authors' line
-    or a note; or a paragraph of prose, which holds a sentence as the title page reads one
-    (`title_page.a_sentence`: a word only a sentence has, "the" twice, or one sentence
-    ending before another). A styled subheading under a typed title, "Participants" or
-    "Statistical analysis" in an APA paper, is neither, and keeps the paper read by its
-    styles (round 1 of #688)."""
-    from manuscript_guard.text.title_page import a_sentence
+    or a note; or a paragraph of prose, which holds two sentences, one ending before another
+    (`title_page.two_sentences`), as docx-med-A2's do. A styled subheading under a typed
+    title, "Participants" or "Statistical analysis" in an APA paper (round 1 of #688), or
+    one of a sentence's words, "Strengths and limitations of this study" (round 2), is
+    neither, and keeps the paper read by its styles."""
+    from manuscript_guard.text.title_page import two_sentences
 
-    return all(before or a_sentence(words) for words, before in styled)
+    return all(before or two_sentences(words) for words, before in styled)
 
 
 def styles_set_aside(styled: Sequence[tuple[str, bool]], titles: Sequence[str],

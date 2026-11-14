@@ -16013,17 +16013,21 @@ def abstract_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[str], str, l
 #: Lines a Word paper puts in a heading style that name no section and are stray lines
 #: (Basile, 2026-11-15, "Only stray lines"): on its title page, its authors' line, an "equal
 #: contribution" note (docx-psych-A1 of the real-paper corpus) and an address; and anywhere,
-#: prose (docx-med-A2), a sentence that opens with a section's name among it.
+#: prose of two sentences or more (docx-med-A2), one opening with a section's name among it.
 STRAY_TITLE_PAGE = ("Ana Martin, Paul Girard, PhD", "*contributed equally to this paper",
                     "Department of Medicine, Caen")  # fmt: skip
-STRAY_PROSE = ("Falls are common in older patients.", "Results of an earlier survey were mixed.",
-               "We followed them for two years, and the risk was high.")  # fmt: skip
-#: Lines in a heading style after the first typed title that are no sentence: APA's
-#: subheadings, under typed titles, and a title page's lines out of their place (round 1 of
-#: #688). They keep the styles.
+STRAY_PROSE = ("Falls are common in older patients. Many of them are harmed.",
+               "Results of an earlier survey were mixed. It was small.",
+               "We followed them for two years. The risk was high. Most fell again.")  # fmt: skip
+#: Lines in a heading style after the first typed title that are no two sentences: APA's
+#: subheadings, under typed titles, a title page's lines out of their place (round 1 of
+#: #688), and headings of a sentence's words, BMJ's box among them (round 2). They keep the
+#: styles.
 STYLED_SUBHEADINGS = ("Participants", "Measures", "Statistical analysis",
                       "Study design and setting", "Ana Martin, Paul Girard, PhD",
-                      "Department of Medicine, Caen")  # fmt: skip
+                      "Department of Medicine, Caen", "Strengths and limitations of this study",
+                      "What this study adds", "Association between exposure and outcome",
+                      "Data were collected in the clinic")  # fmt: skip
 #: A heading-styled line that names a section alone, which keeps the styles.
 NAMED_STYLED = ("Methods", "2. Results", "INTRODUCTION", "Funding")
 #: The papers of `stray_styled_papers`, and whether each has its styles set aside: its

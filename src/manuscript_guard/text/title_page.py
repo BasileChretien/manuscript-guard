@@ -384,10 +384,11 @@ def _paragraph_kind(raw: str, joined: str, *, first: bool = False) -> str:
     return NEUTRAL
 
 
-def a_sentence(text: str) -> bool:
-    """Whether a paragraph's text holds a sentence, as the title page tells prose from its
-    names and addresses (`_a_sentence`)."""
-    return _a_sentence(_words(text), text)
+def two_sentences(text: str) -> bool:
+    """Whether a paragraph's text holds two sentences, one ending before another, the one
+    sign of `_a_sentence`'s that no heading has (`_broken`): a word only a sentence has, or
+    "the" twice, is in "Strengths and limitations of this study" too (round 2 of #688)."""
+    return _broken(text)
 
 
 def _a_sentence(words: list[str], joined: str) -> bool:
@@ -431,4 +432,4 @@ def _key(name: str) -> str:
     return " ".join(name.casefold().split())
 
 
-__all__ = ["MOST_WORDS", "a_sentence", "title_page_end"]
+__all__ = ["MOST_WORDS", "title_page_end", "two_sentences"]

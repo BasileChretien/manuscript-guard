@@ -291,6 +291,20 @@ def _walk(node: object, kind: str):
             yield from _walk(item, kind)
 
 
+def _in_the_body(node: object, kind: str):
+    """Each element of `kind` in the tree but in a note's text, which the audit reads apart
+    from the body (round 2 of #688)."""
+    if isinstance(node, dict) and node.get("t") == "Note":
+        return
+    if isinstance(node, dict):
+        if node.get("t") == kind:
+            yield node
+        yield from _in_the_body(node.get("c"), kind)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _in_the_body(item, kind)
+
+
 #: The blocks whose text ends with a space, so that two of them do not run together.
 _BLOCKS = frozenset({"Para", "Plain", "Header", "LineBlock", "CodeBlock"})
 
@@ -654,7 +668,7 @@ def stray_headers_set_aside(blocks: list) -> tuple[list, int] | None:
     for at, block in enumerate(opened):
         # A heading made a paragraph stands in `opened` as it is, a list's item never.
         inlines = [block["c"]] if id(block) in made else [
-            header["c"][2] for header in _walk(block, "Header")]
+            header["c"][2] for header in _in_the_body(block, "Header")]
         styled += [(" ".join(text_of(one).split()), at < first) for one in inlines]
     titles = [typed for _at, _name, typed in found]
     if not styles_set_aside(styled, titles, levels is not None):

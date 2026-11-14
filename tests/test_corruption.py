@@ -3031,8 +3031,8 @@ def test_a_results_number_unlike_the_abstract_s_beside_stray_heading_styles_is_r
         stray = ((para("Ana Martin, Paul Girard", "Heading4")
                   + para("*contributed equally to this paper", "Heading4"))
                  if styled == "authors and a note" else
-                 (para("Falls are common in older patients.", "Heading2")
-                  + para("Some of them are harmed by them.", "Heading2")))  # fmt: skip
+                 (para("Falls are common in older patients. Many are harmed.", "Heading2")
+                  + para("Some of them die. We read why.", "Heading2")))  # fmt: skip
         body = (stray + para("Abstract", bold=True) + para(abstract)
                 + para("Methods", bold=True) + para("We read 412 records.")
                 + para("Results", bold=True) + para("Of 412 patients, 77 fell."))  # fmt: skip

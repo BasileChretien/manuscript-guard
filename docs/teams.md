@@ -85,7 +85,8 @@ findings are answered. The panel can be people, such as an internal reviewer or 
 an agent, or models from several providers. Sending an unpublished manuscript to a provider is
 the authors' decision: with the models listed under `review: models:` in `paper.yaml`,
 `manuscript-guard review --run --dry-run` writes what would be sent where, and sends nothing
-([a review panel read by several models](review-panel.md)).
+([a review panel read by several models](review-panel.md)), and [what a provider
+keeps](review-panel.md#what-a-provider-keeps) says what each provider's terms let it keep.
 
 ## Data with a custodian
 

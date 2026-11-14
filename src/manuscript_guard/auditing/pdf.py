@@ -24,15 +24,18 @@ again (`text.section_names.section_levels`). Where one name stands on two such l
 which section is the paper's is not read, and the PDF's sections are not used to place its
 lines (`PdfText.placed`); the reference list is still found by its heading.
 
-Two lines are headings besides (Basile, 2026-11-15, decisions 22 and 23, after the real-paper
-corpus). Before the first heading read, a line that opens on the Abstract's run-in label and
-goes on, "Abstract: The second generation...", as MDPI's layout sets it: the label is the
-Abstract's heading and the rest of the line its first text, and it runs to the next heading
-as an Abstract read from its lines does (`section_levels`), as a Word paper's run-in label
-does (`text.docx_abstract`). And a line that opens on a study's number and a colon,
-"Experiment 1: Modulating prior knowledge", "Study II: A replication" (`study_title`): a
-multi-study paper's heading over the sections each study repeats, one level above the names
-after it, up to the next such line or to the end of the paper.
+Two lines are headings besides, each only where the names read nothing (Basile, 2026-11-15,
+decisions 22 and 23, after the real-paper corpus; round 1 of #686). Where no line names the
+Abstract, the first line before the first heading that opens on the Abstract's run-in label
+and goes on, "Abstract: The second generation...", as MDPI's layout sets it, and not on a
+count of words, "Abstract: 248 words": the label is the Abstract's heading and the rest of
+the line its first text, and it runs to the next heading as an Abstract read from its lines
+does (`section_levels`), as a Word paper's run-in label does (`text.docx_abstract`). And
+where the names cannot be placed alone, a line after the Abstract that opens on a study's
+number and a colon, "Experiment 1: Modulating prior knowledge", "Study II: A replication"
+(`study_title`), with a name after it before the next: a multi-study paper's heading over
+the sections each study repeats, one level above the names after it, up to the next such
+line or to the end of the paper.
 
 A PDF's tables are lines of text, not rows of cells: their numbers are read as the text's,
 and no table is read as one. What a PDF keeps besides its text is not a Word file's: the
@@ -53,6 +56,8 @@ from pathlib import Path
 from manuscript_guard.text.section_names import (
     ABSTRACT_PARTS,
     SECTION_NAMES,
+    abstract_end,
+    names_abstract,
     run_in_abstract,
     section_levels,
     section_name_alone,
@@ -163,13 +168,7 @@ class PdfText:
         name on two lines among the rest is not placed either
         (`text.section_names.section_levels`, which reads a Word document's bold titles the
         same way)."""
-        lines = self.text.split("\n")
-        starts = [line for line, _title in self.headings]
-        # With no heading read there is none to place (corpus run of 2026-11-11, 2509.01351).
-        ends = [*starts[1:], len(lines) + 1] if starts else []
-        # A run-in label has words under it on its own line.
-        worded = [start in self.run_in or any(lines[k].strip() for k in range(start, end - 1))
-                  for start, end in zip(starts, ends, strict=True)]  # fmt: skip
+        worded = _worded(self.text.split("\n"), self.headings, self.run_in)
         levels = _levels([title for _line, title in self.headings], worded)
         if levels is None:
             return None
@@ -217,27 +216,95 @@ def study_title(line: str) -> str | None:
     return text if _STUDY.match(text) else None
 
 
+#: What a title page writes after "Abstract:": its count of words, "248 words", "250-word",
+#: which titles no Abstract (round 1 of #686).
+_WORD_COUNT = re.compile(r"\d[\d,]*\s*-?\s*words?\b", re.IGNORECASE)
+
+
 def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], frozenset[int]]:
     """The headings of a PDF's lines, each `(line, title)`, lines from 1, and the lines of
     those that are a run-in label: each line that holds a section's name alone
-    (`heading_title`) or opens on a study's number and a colon (`study_title`); and, before
-    the first of those, the first line that opens on the Abstract's run-in label and goes on
-    (`text.section_names.run_in_abstract`), its label less the colon or the stop its title,
-    the rest of the line the Abstract's. Not after the first heading: a reference's title or
-    a quotation that opens "Abstract:" titles no Abstract (Basile, 2026-11-15, decision 22,
-    after pdf-socio-B1 of the real-paper corpus)."""
-    found: list[tuple[int, str]] = []
-    run_in: set[int] = set()
-    for at, text in enumerate(texts, 1):
-        title = heading_title(text) or study_title(text)
-        if title is None and not found:
-            label = run_in_abstract(text)
-            if label is not None:
-                title = label.rstrip(" :.")
-                run_in.add(at)
-        if title is not None:
-            found.append((at, title))
-    return tuple(found), frozenset(run_in)
+    (`heading_title`); the Abstract's run-in label, where none of them names the Abstract
+    (`_run_in`); and the studies' own headings, where the paper's names cannot be placed
+    without them (`_studies`). Each new shape is read only where the names read nothing, as
+    a Word paper's run-in label is read where no heading names the Abstract (Basile,
+    2026-11-15, decisions 22 and 23, after the real-paper corpus; round 1 of #686)."""
+    named = [(at, title) for at, text in enumerate(texts, 1)
+             if (title := heading_title(text)) is not None]  # fmt: skip
+    label = _run_in(texts, named)
+    run_in = frozenset({label[0]} if label is not None else ())
+    if label is not None:
+        named = sorted([*named, label])
+    return tuple(_studies(texts, named, run_in)), run_in
+
+
+def _run_in(texts: Sequence[str], named: list[tuple[int, str]]) -> tuple[int, str] | None:
+    """The first line before the first heading that opens on the Abstract's run-in label and
+    goes on (`text.section_names.run_in_abstract`), with its label less the colon or the stop
+    as its title, the rest of the line the Abstract's (decision 22, after pdf-socio-B1). Not
+    where a heading names the Abstract, nor where the rest of the line is a count of words, a
+    title page's "Abstract: 248 words"; nor after the first heading, where a reference or a
+    quotation opens so."""
+    if any(names_abstract(title) for _at, title in named):
+        return None
+    first = named[0][0] if named else len(texts) + 1
+    for at, text in enumerate(texts[: first - 1], 1):
+        label = run_in_abstract(text)
+        if label is not None and not _WORD_COUNT.match(after_label(text)):
+            return at, label.rstrip(" :.")
+    return None
+
+
+def _studies(texts: Sequence[str], named: list[tuple[int, str]],
+             run_in: frozenset[int]) -> list[tuple[int, str]]:  # fmt: skip
+    """`named` with the lines that open on a study's number and a colon (`study_title`)
+    among them, where the names cannot be placed without them and can with them (decision
+    23, after pdf-psych-A2): each after the Abstract's end, with a name after it before the
+    next such line. Else `named`, so a paper the names place is placed as they place it, and
+    a study listed in its Abstract or a summary row is no heading (round 1 of #686)."""
+    lines = [(at, title) for at, text in enumerate(texts, 1)
+             if (title := study_title(text)) is not None]  # fmt: skip
+    if not lines:
+        return named
+    titles = [title for _at, title in named]
+    worded = _worded(list(texts), named, run_in)
+    if section_levels(titles, worded) is not None:
+        return named
+    after = _abstract_ends(named, worded)
+    if after is None:
+        return named
+    nexts = [at for at, _title in lines[1:]] + [len(texts) + 1]
+    kept = [(at, title) for (at, title), until in zip(lines, nexts, strict=True)
+            if at > after and any(at < line < until for line, _name in named)]  # fmt: skip
+    if not kept:
+        return named
+    found = sorted([*named, *kept])
+    if _levels([title for _at, title in found], _worded(list(texts), found, run_in)) is None:
+        return named
+    return found
+
+
+def _abstract_ends(named: list[tuple[int, str]], worded: list[bool]) -> int | None:
+    """The line of the first heading after the Abstract's that is no part of it, 0 where no
+    heading names the Abstract; None where it ends is not read, or it runs to the end."""
+    first = next((at for at, (_line, title) in enumerate(named) if names_abstract(title)), None)
+    if first is None:
+        return 0
+    end = abstract_end([title for _line, title in named[first:]], worded[first:])
+    if end is None or first + end >= len(named):
+        return None
+    return named[first + end][0]
+
+
+def _worded(lines: list[str], headings: Sequence[tuple[int, str]],
+            run_in: frozenset[int]) -> list[bool]:  # fmt: skip
+    """For each heading, whether words stand under it before the next: a run-in label has
+    them on its own line."""
+    starts = [line for line, _title in headings]
+    # With no heading read there is none to place (corpus run of 2026-11-11, 2509.01351).
+    ends = [*starts[1:], len(lines) + 1] if starts else []
+    return [start in run_in or any(lines[k].strip() for k in range(start, end - 1))
+            for start, end in zip(starts, ends, strict=True)]  # fmt: skip
 
 
 def after_label(line: str) -> str:

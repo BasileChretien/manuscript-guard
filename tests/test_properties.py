@@ -21433,12 +21433,15 @@ def test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed(
     drawn: list[tuple[list[str], list[tuple[int, str]], set[int], tuple[int, ...] | None]],
 ) -> None:
     """Before a PDF's first heading, a line that opens on the Abstract's run-in label and
-    goes on is the Abstract's heading, the rest of the line its text; a sentence that opens
-    on "Abstracts", and the label after the first heading, are not. A line that opens on
-    "Experiment N:" or "Study N:" is a heading one level above the names after it, up to the
-    next or to the end; with no colon after the number, or inside a line, it is prose; and a
-    name twice under one study places nothing (`auditing.pdf.headings_of`, `PdfText.placed`;
-    Basile, 2026-11-15, decisions 22 and 23, after pdf-socio-B1 and pdf-psych-A2)."""
+    goes on is the Abstract's heading, the rest of the line its text, where no line names the
+    Abstract alone; a sentence that opens on "Abstracts", a count of words after the label,
+    and the label after the first heading, are not. Where the names alone are not placed, a
+    line that opens on "Experiment N:" or "Study N:", N Arabic, of two digits or Roman, is a
+    heading one level above the names after it, up to the next or to the end; in the
+    Abstract, with no name after it, with no colon after the number, or inside a line, it is
+    prose; and with a name twice under one study no study's line is a heading and nothing is
+    placed (`auditing.pdf.headings_of`, `PdfText.placed`; Basile, 2026-11-15, decisions 22
+    and 23, after pdf-socio-B1 and pdf-psych-A2; round 1 of #686)."""
     from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
 
     for page, headings, run_in, levels in drawn:
@@ -21481,6 +21484,27 @@ def _a_study_s_heading_needs_no_colon(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(pdf, "_STUDY", re.compile(r"(?:Experiment|EXPERIMENT|Study|STUDY) "
                                             r"(?:\d{1,2}|[IVX]{1,5})\b"))  # fmt: skip
+
+
+def _a_study_s_number_is_arabic_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_STUDY", re.compile(r"(?:Experiment|EXPERIMENT|Study|STUDY) "
+                                            r"\d{1,2}:"))  # fmt: skip
+
+
+def _a_count_of_words_titles_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    """As at 2299323: a title page's "Abstract: 248 words" was the Abstract's heading."""
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_WORD_COUNT", re.compile(r"(?!)"))
+
+
+def _a_study_s_line_is_read_inside_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    """As at 2299323: a study listed in the Abstract was a heading."""
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_abstract_ends", lambda named, worded: 0)
 
 
 def _a_study_s_heading_is_at_its_names_level(patch: pytest.MonkeyPatch) -> None:
@@ -22745,6 +22769,18 @@ BROKEN = {
     ),
     "a PDF's study heading needs no colon": (
         _a_study_s_heading_needs_no_colon,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a study's number is Arabic only": (
+        _a_study_s_number_is_arabic_only,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's count of words after the label titles its Abstract": (
+        _a_count_of_words_titles_the_abstract,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's study listed in its Abstract is a heading": (
+        _a_study_s_line_is_read_inside_the_abstract,
         test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
     ),
     "a PDF's study heading is at the level of the names under it": (

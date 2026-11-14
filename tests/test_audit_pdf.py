@@ -984,3 +984,116 @@ def test_a_multi_study_pdf_s_results_are_all_compared_with_its_abstract(
     staged = _staged_pdf(paper).files["main.md"]
     assert "\n# Experiment 3: Modulating prior knowledge of speech\n" in staged
     assert "\n## Results and Discussion\n" in staged
+
+
+# ------------------------------------------- the new shapes only where nothing else places
+
+#: Round 1 of #686: a structured Abstract that lists its studies line by line under its
+#: Methods, and a main text whose names each stand once. The base placed it and compared it.
+LISTED_STUDIES = [
+    "Falls in nurses", "Abstract", "Background", "Falls are common among nurses.",
+    "Methods", "Study 1: 412 nurses were surveyed.", "Study 2: 20 were interviewed.",
+    "Results", "Of 412 nurses, 77 fell.", "Conclusions", "Falls are common.",
+    "Introduction", "Falls harm nurses.", "Methods", "We surveyed 412 nurses.",
+    "Results", "Of 412 nurses, 77 fell.", "Discussion", "Falls are common.",
+    "Study 1: d = 0.45 for the survey.",
+    "References", "Smith J. Falls. BMJ 2019;1:1.", "Experiment 2: a title wrapped. J. 2020."]
+#: Round 1 of #686: a title page's count of words, "Abstract: 248 words", over the Abstract's
+#: own heading. The base placed it and compared it.
+WORD_COUNT = [
+    "Falls in nurses", "Word count", "Abstract: 248 words", "Main text: 3,500 words",
+    "Abstract", "Of 412 nurses, 77 fell.", "Introduction", "Falls harm nurses.",
+    "Methods", "We surveyed 412 nurses.", "Results", "Of 412 nurses, 77 fell.",
+    "Discussion", "Falls are common.", "References", "Smith J. Falls. BMJ 2019;1:1."]
+
+
+def _levels_of(lines: list[str]) -> list[tuple[str, int]] | None:
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
+
+    headings, run_in = headings_of(lines)
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                  tuple(Place(1, at) for at in range(1, len(lines) + 1)), headings,
+                  run_in=run_in)  # fmt: skip
+    placed = pdf.placed
+    return None if placed is None else [(title, level) for _line, title, level in placed]
+
+
+def test_a_study_line_where_the_names_are_placed_without_it_is_no_heading() -> None:
+    """Studies listed under a structured Abstract's Methods, a summary row in the Discussion
+    and a reference that opens "Experiment 2:": the paper's names are placed without them,
+    so none is a heading, and the paper is placed as the base placed it."""
+    assert _levels_of(LISTED_STUDIES) == [
+        ("Abstract", 1), ("Background", 2), ("Methods", 2), ("Results", 2),
+        ("Conclusions", 2), ("Introduction", 1), ("Methods", 1), ("Results", 1),
+        ("Discussion", 1), ("References", 1)]
+
+
+def test_a_study_line_inside_the_abstract_or_with_no_name_after_it_is_no_heading() -> None:
+    """In a multi-study paper, whose names are placed only under its studies: a line of its
+    Abstract that opens "Study 1:", and a reference that opens "Experiment 2:" with no name
+    after it, are no study's headings; the studies' own are."""
+    lines = [STUDIES[0], "Study 1: 412 listeners heard speech.", *STUDIES[1:],
+             "Experiment 2: a title wrapped. 2020."]
+    assert _levels_of(lines) == [
+        ("Abstract", 1), ("Introduction", 1), *(
+            one for number in (1, 2, 3, 4) for one in (
+                (f"Experiment {number}: Modulating prior knowledge of speech", 1),
+                ("Method", 2), ("Results and Discussion", 2))),
+        ("General Discussion", 2), ("References", 2)]
+
+
+def test_a_summary_row_with_the_reference_list_after_it_is_a_study_s_heading() -> None:
+    """A limit (DESIGN.md, Known gaps): in a multi-study paper's General Discussion, a
+    summary row that opens "Study 1:" with the next row's "Study 2:" after it and no name
+    between is no heading; the last row, with the reference list's heading after it, is a
+    study's heading over the reference list."""
+    lines = [*STUDIES[:-2], "Study 1: d = 0.45 in the first.",
+             "Study 2: d = 0.30 in the second.", "It was so.", *STUDIES[-2:]]
+    assert _levels_of(lines)[-3:] == [("General Discussion", 2),
+                                      ("Study 2: d = 0.30 in the second.", 1),
+                                      ("References", 2)]
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("lines", [LISTED_STUDIES, WORD_COUNT], ids=["studies", "word count"])
+def test_a_paper_the_base_placed_is_compared_as_it_was(
+    tmp_path: Path, capsys, lines: list[str]
+) -> None:
+    """Round 1 of #686: each was compared at the base, and not at 2299323. What the main text
+    does not report is the Abstract's own studies' 20 interviewed, said not found as at the
+    base; the title page's count of words is no number of the Abstract's."""
+    paper = write(tmp_path / "paper.pdf", lines, per_column=40)
+    _code, report, _err = audited(capsys, str(paper))
+    assert not found(report, "abstract-not-compared")
+    assert {f["context"] for f in found(report, "abstract-not-found")} <= {
+        "Study 1: 412 nurses were surveyed.", "Study 2: 20 were interviewed."}
+
+
+@pytest.mark.parametrize("count", ["248 words", "250-word limit", "248 words.",
+                                   "1,250 Words"])  # fmt: skip
+def test_a_count_of_words_after_the_label_titles_no_abstract(count: str) -> None:
+    from manuscript_guard.auditing.pdf import headings_of
+
+    alone = [line for line in WORD_COUNT if line != "Abstract"]
+    for lines in (WORD_COUNT, alone):
+        lines = [line.replace("248 words", count) for line in lines]
+        headings, run_in = headings_of(lines)
+        assert not run_in and [title for _line, title in headings].count("Abstract") == (
+            lines.count("Abstract")), headings
+    assert _levels_of(WORD_COUNT)[0] == ("Abstract", 1)
+
+
+def test_a_run_in_label_where_a_line_names_the_abstract_alone_is_text() -> None:
+    from manuscript_guard.auditing.pdf import headings_of
+
+    lines = [RUN_IN[0], RUN_IN[1], "Abstract", "We read records.", *RUN_IN[3:]]
+    headings, run_in = headings_of(lines)
+    assert not run_in and headings[0] == (3, "Abstract"), headings
+
+
+def test_a_name_twice_with_no_study_s_line_places_nothing_and_raises_nothing() -> None:
+    """Fix-only round of #686: pdf-socio-A3 of the real-paper corpus, whose names stand twice
+    and which has no study's line, stopped `audit` on `zip()`'s length check."""
+    lines = ["Abstract", "Of 412, 77 fell.", "Introduction", "Falls harm.", "Methods",
+             "We read 412.", "Results", "Of 412, 77 fell.", "Methods", "Again."]
+    assert _levels_of(lines) is None

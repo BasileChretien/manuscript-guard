@@ -29,11 +29,14 @@ numbers left out, and each place in it is a page and a line; without `pdftotext`
 refused, exit 2. Its tables are lines of text there, so their numbers are compared and read
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
 holds a section's name alone; a PDF with no such line is said to be read as one text. Two
-lines are headings besides: before the first heading, a line that opens on a run-in
-"Abstract:" and goes on, as MDPI's layout sets it, the rest of the line the Abstract's first
-text, up to the next heading; and a line that opens on "Experiment 2:" or "Study II:", a
-colon after the number, a multi-study paper's heading over the sections each of its studies
-repeats, so that each study's Results are compared with the Abstract. A PDF in a folder is not read: name it.
+lines are headings besides, each only where those lines read nothing. Where no line names
+the Abstract, a line before the first heading that opens on a run-in "Abstract:" and goes
+on, as MDPI's layout sets it, but not on a count of words ("Abstract: 248 words"): the rest
+of the line is the Abstract's first text, up to the next heading. And where the names
+cannot be placed alone, as a multi-study paper's repeated Method and Results cannot, a line
+after the Abstract that opens on "Experiment 2:" or "Study II:", a colon after the number
+and a section's name after it: each study's heading over the sections it repeats, so that
+each study's Results are compared with the Abstract. A PDF in a folder is not read: name it.
 
 `--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
 `--details` prints them: its sections and each kind of finding on the words are bookmarks,

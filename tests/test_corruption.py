@@ -2973,6 +2973,40 @@ def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
     assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
 
 
+def test_an_abstract_that_differs_in_a_paper_titled_by_word_s_numbering_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """A Word paper with no heading style whose titles are items of a list Word numbers,
+    "1. INTRODUCTION:" with Word's "1.", had no Results heading to the audit, and its
+    Abstract was compared with nothing: four of six such papers of the real-paper corpus
+    (2026-11-14). Its list-item titles are its headings now, and a Results number other than
+    the Abstract's is counted by --strict."""
+    import zipfile
+
+    from generated import TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.cli import main
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def docx(abstract: str) -> Path:
+        body = (para("ABSTRACT") + para(abstract) + numbered().format("INTRODUCTION:")
+                + para("Falls are common.") + numbered().format("Methods")
+                + para("We did it.") + numbered().format("RESULTS")
+                + para("The odds ratio was 1.52 (95% CI 1.21-1.89)."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/numbering.xml", TYPED_PARAGRAPH_NUMBERING)
+        return path
+
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
+
+
 def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
     """An Abstract that names a data release or a variant the Methods do not, "v7" for the
     Methods' "v8", is told apart from one that names the Methods' own: each identifier was

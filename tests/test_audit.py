@@ -33,13 +33,15 @@ MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 
-def make_docx(path: Path, body: str, styles: str = "") -> Path:
+def make_docx(path: Path, body: str, styles: str = "", numbering: str = "") -> Path:
     document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
         if styles:
             part = f"<w:styles {NS}>{styles}</w:styles>"
             archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), part)
+        if numbering:
+            archive.writestr(zipfile.ZipInfo("word/numbering.xml", FIXED_TIME), numbering)
     return path
 
 
@@ -1675,15 +1677,16 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:
     """A .docx with no heading style and no line that names a section alone is read as one
     text, and the report says what that costs, where it said nothing. A sentence that opens
-    with "Results", and a section's name in a table's cell or in a list Word numbers, are
+    with "Results", and a section's name in a table's cell or in a list Word bullets, are
     no heading."""
-    numbered = ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
-                "</w:pPr><w:r><w:t>Methods</w:t></w:r></w:p>")  # fmt: skip
+    from generated import TYPED_PARAGRAPH_NUMBERING, numbered
+
     body = (para("A study of things") + para("Summary of the study")
             + para("Of 412 patients, 77 (18.7%) had the event.") + para("Results were clear.")
-            + numbered + f"<w:tbl>{row('ABSTRACT', '9')}</w:tbl>"
+            + numbered(0, 2).format("Methods") + f"<w:tbl>{row('ABSTRACT', '9')}</w:tbl>"
             + para("Of 412 patients, 77 (18.7%) had the event."))  # fmt: skip
-    report = audit([make_docx(tmp_path / "paper.docx", body)], [])
+    report = audit([make_docx(tmp_path / "paper.docx", body,
+                              numbering=TYPED_PARAGRAPH_NUMBERING)], [])  # fmt: skip
     (said,) = report.headings
     assert "none on a line of its own names a section, so it was read as one text" in said
     assert "Abstract is not compared with its Results" in said
@@ -1722,6 +1725,85 @@ def test_a_docx_whose_titles_are_typed_is_placed_by_them(tmp_path: Path) -> None
     assert said.startswith("paper.docx: no paragraph is in a heading style, so the 5 paragraphs "
                            "that name a section alone (ABSTRACT, INTRODUCTION, Methods, RESULTS, "
                            "Discussion) were read as its headings")  # fmt: skip
+
+
+def _listed_titles(sentences: str = "") -> str:
+    """A paper with no heading style whose titles Word numbers as a list's items, as six of
+    the real-paper corpus had them (docx-educ-A3, docx-med-A3, docx-socio-A1 among them,
+    2026-11-14): in capitals, with a colon, in title case, one numbered by its style with a
+    subtitle beside it; `sentences` after the Results' first paragraph."""
+    from generated import numbered
+
+    def item(text: str, level: int = 0) -> str:
+        return numbered(level).format(text)
+
+    title = '<w:p><w:pPr><w:pStyle w:val="NumTitle"/></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>'
+    sub = '<w:p><w:pPr><w:pStyle w:val="NumSub"/></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>'
+    return (para("A study of things") + para("ABSTRACT")
+            + para("Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).")
+            + item("INTRODUCTION:") + para("Drugs cause harm.")
+            + title.format("Methods") + sub.format("Study design and setting")
+            + para("We read 412 records.") + item("RESULTS")
+            + para("Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).")
+            + sentences + item("Discussion") + para("It was so."))  # fmt: skip
+
+
+def test_a_docx_whose_titles_word_numbers_is_placed_by_them(tmp_path: Path) -> None:
+    """A title Word numbers as a list's item, "1. INTRODUCTION" where the "1." is Word's,
+    was a numbered line to the audit and no heading: four of six such papers in the
+    real-paper corpus had "no Results heading" and their Abstract compared with nothing
+    (2026-11-14). An item whose words name a section alone is a typed title now, its colon
+    left out of its name; a numbered list of sentences, an item "Results of the survey" and
+    one the list bullets stay a list's items, and are read as a flow is."""
+    from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.stats.flows import docx_lists
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    listed = (numbered().format("Of 412 records, 30 were excluded.")
+              + numbered().format("Results of the survey")
+              + numbered(0, 2).format("Conclusions"))  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", _listed_titles(para("We counted:") + listed),
+                     NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING)  # fmt: skip
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    levels = typed_heading_levels(document)
+    assert [lines[at] for at, _level in levels] == [
+        "ABSTRACT", "INTRODUCTION:", "Methods", "RESULTS", "Discussion"]
+    report = audit([path], [])
+    assert report.abstract is not None and report.abstract.compared
+    assert report.abstract.not_found == [] and report.abstract.conflicts == []
+    (said,) = report.headings
+    assert ("the 5 paragraphs that name a section alone (ABSTRACT, INTRODUCTION, Methods, "
+            "RESULTS, Discussion) were read as its headings") in said, said
+    # A title placed is a heading, not a list's item; the sentences are a list's.
+    lists = docx_lists(lines, dict(document.levels), {at + 1: level for at, level in levels})
+
+    def texts(items: tuple) -> list[str]:
+        return [text for item in items for text in (item.text.strip(), *texts(item.children))]
+
+    items = {text for one in lists for text in texts(one.items)}
+    assert not {"INTRODUCTION:", "Methods", "RESULTS", "Discussion"} & items, lists
+    assert {"Of 412 records, 30 were excluded.", "Results of the survey", "Conclusions"} <= items
+
+
+def test_a_title_word_numbers_holding_more_than_its_line_is_no_heading(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a title Word numbers with its subsections
+    numbered straight under it, "2. Methods" then "2.1 Participants", is an item holding a
+    list to pandoc, and no heading to `init --from` nor to the audit, as docx-psych-B1 of
+    the real-paper corpus has its Methods and Results; so is one with a paragraph pandoc
+    joins to its item, a numbering's paragraph with no level."""
+    from generated import TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.text.docx import typed_titles
+
+    body = (para("ABSTRACT") + para("It was so.") + numbered().format("Methods")
+            + numbered(1).format("Participants") + para("We read 412 records.")
+            + numbered().format("Results") + numbered(0, 0).format("Of 412, 77 had it.")
+            + numbered().format("Discussion") + para("It was so."))  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", body, numbering=TYPED_PARAGRAPH_NUMBERING)
+    assert [title for _at, title in typed_titles(read_docx_text(path))] == [
+        "ABSTRACT", "Discussion"]
 
 
 def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None:
@@ -1784,11 +1866,11 @@ def test_init_from_makes_bold_abstract_parts_beside_plain_ones_one_level(tmp_pat
     assert [block["c"][0] for block in made if block["t"] == "Header"] == [1, 1, 1]
 
 
-def _package(path: Path, body: str, styles: str) -> Path:
+def _package(path: Path, body: str, styles: str, numbering: str = "") -> Path:
     """A .docx with the parts pandoc needs to read it (`test_from_word._package`)."""
     from test_from_word import _package as package
 
-    return package(path, body, styles)
+    return package(path, body, styles, numbering)
 
 
 def _blocks(path: Path) -> list:
@@ -1799,6 +1881,91 @@ def _blocks(path: Path) -> list:
     return json.loads(subprocess.run(["pandoc", str(path), "-f", "docx", "-t", "json"],
                                      capture_output=True, text=True, check=True,
                                      timeout=120).stdout)["blocks"]  # fmt: skip
+
+
+@needs_pandoc
+def test_pandoc_reads_a_numbered_paragraph_as_the_audit_takes_it(tmp_path: Path) -> None:
+    """What pandoc (3.9.0.2) makes of each shape of numbered paragraph, read from its tree,
+    that `Numbering.pandoc_item` and `text.docx._in_lists` are written from: a list's lone
+    item; an item holding an item a level deeper, a paragraph with a numbering of 0 or of
+    no level, or an empty item a level deeper; items at one level and numbering in one list,
+    an empty paragraph between them; a list for each numbering; a subtitle whose style names
+    a level and no numbering beside its base's title; a paragraph naming a numbering pandoc
+    reads no level of, on its own; a bulleted item. Round 1 of #682: an item in List
+    Paragraph indented from the left more than it hangs, an item to pandoc whatever its own
+    indent, and so is a paragraph naming no level or a numbering of 0, a paragraph and no
+    block quote; a level with no `w:numFmt` or no `w:lvlText`, which pandoc reads as no
+    level, a paragraph on its own and joined to the item before it."""
+    from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
+
+    shapes = {
+        "lone": (numbered().format("A"), [["A"]]),
+        "indented, in List Paragraph": (numbered(style="ListParagraph", indent=True).format(
+            "A"), [["A"]]),
+        "no level, indented": (numbered(0, 77, indent=True).format("A"), "a paragraph"),
+        "numbering 0, indented": (numbered(0, 0, indent=True).format("A"), "a paragraph"),
+        "no format, alone": (numbered(0, 4).format("A"), "a paragraph"),
+        "no text, alone": (numbered(0, 5).format("A"), "a paragraph"),
+        "holding no format": (numbered().format("A") + numbered(0, 4).format("B"), [["A", "B"]]),
+        "holding no text": (numbered().format("A") + numbered(0, 5).format("B"), [["A", "B"]]),
+        "holding an item": (numbered().format("A") + numbered(1).format("B"), [["A", ["B"]]]),
+        "holding numbering 0": (numbered().format("A") + numbered(0, 0).format("B"),
+                                [["A", "B"]]),
+        "holding no level": (numbered().format("A") + numbered(0, 77).format("B"), [["A", "B"]]),
+        "holding an empty item": (numbered().format("A") + numbered(1).format(""),
+                                  [["A", []]]),
+        "two items, empty between": (numbered().format("A") + para("") + numbered().format("B"),
+                                     [["A"], ["B"]]),
+        "two numberings": (numbered().format("A") + numbered(0, 3).format("B"), "two lists"),
+        "a subtitle by its style": (
+            '<w:p><w:pPr><w:pStyle w:val="NumTitle"/></w:pPr><w:r><w:t>A</w:t></w:r></w:p>'
+            '<w:p><w:pPr><w:pStyle w:val="NumSub"/></w:pPr><w:r><w:t>B</w:t></w:r></w:p>',
+            [["A"], ["B"]]),
+        "no level, alone": (numbered(0, 77).format("A"), "a paragraph"),
+        "bulleted": (numbered(0, 2).format("A"), "bulleted"),
+    }  # fmt: skip
+    # 3 a second numbering of 1's count; 4 a level with no format, 5 one with no text.
+    numbering = TYPED_PARAGRAPH_NUMBERING.replace('<w:num w:numId="1">', (
+        '<w:abstractNum w:abstractNumId="4"><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+        '<w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="5">'
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/></w:lvl>'
+        '</w:abstractNum><w:num w:numId="1">')).replace("</w:numbering>", (
+        '<w:num w:numId="3"><w:abstractNumId w:val="0"/></w:num>'
+        '<w:num w:numId="4"><w:abstractNumId w:val="4"/></w:num>'
+        '<w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num></w:numbering>'))
+    from manuscript_guard.text.docx import read_docx_text
+
+    def titles(blocks: list) -> set[str]:
+        """What `init --from` reads a title from: a top-level paragraph, and a numbered
+        list's item that is one paragraph."""
+        said = [item[0]["c"] for block in blocks if block["t"] in ("Para", "OrderedList")
+                for item in (block["c"][1] if block["t"] == "OrderedList" else [[block]])
+                if len(item) == 1 and item[0]["t"] in ("Para", "Plain")]  # fmt: skip
+        return {" ".join(from_word.text_of(inlines).split()) for inlines in said}
+
+    def items(blocks: list) -> list:
+        return [[" ".join(from_word.text_of(block["c"]).split()) if block["t"] == "Para"
+                 else items(block["c"][1])[0] if block["t"] == "OrderedList" else block["t"]
+                 for block in item] for item in blocks]  # fmt: skip
+
+    for name, (shape, expected) in shapes.items():
+        path = _package(tmp_path / "shape.docx", para("Before.") + shape + para("After."),
+                        NUMBERED_STYLES, numbering)
+        middle = _blocks(path)[1:-1]
+        kinds = [block["t"] for block in middle]
+        if expected == "two lists":
+            assert kinds == ["OrderedList", "OrderedList"], name
+        elif expected == "a paragraph":
+            assert kinds == ["Para"], name
+        elif expected == "bulleted":
+            assert kinds == ["BulletList"], name
+        else:
+            assert kinds == ["OrderedList"] and items(middle[0]["c"][1]) == expected, (name, middle)
+        # The audit takes as a line a title can be typed as what pandoc reads as one.
+        document = read_docx_text(path)
+        lines = document.body.split("\n")
+        typed = {lines[at] for at in document.typed} - {"Before.", "After."}
+        assert typed == titles(middle), (name, typed, middle)
 
 
 @needs_pandoc
@@ -1830,10 +1997,10 @@ def test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading(tmp_path:
 def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_heading(
     tmp_path: Path,
 ) -> None:
-    """A section's name typed in Word's caption style, in a table's cell or in a list Word
-    numbers is no heading, as pandoc sets the caption beside a table as the table's and the
-    others in a list and a cell. In a document with a paragraph in a heading style, the
-    styles alone are read, and a typed "RESULTS" is text."""
+    """A section's name typed in Word's caption style or in a table's cell is no heading, as
+    pandoc sets the caption beside a table as the table's and the other in a cell. In a
+    document with a paragraph in a heading style, the styles alone are read, and a typed
+    "RESULTS" is text."""
     styles = ('<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/>'
               "</w:style>")  # fmt: skip
     caption = '<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>RESULTS</w:t></w:r></w:p>'

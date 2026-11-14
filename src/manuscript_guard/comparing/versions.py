@@ -257,14 +257,14 @@ def _figures(lines: list[str], path: Path, skipped: set[int]) -> tuple[Display, 
 
 def _word(path: Path) -> Version:
     """A .docx as `audit` reads one."""
-    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.audit import docx_bibliography_spans
     from manuscript_guard.text.docx import read_docx_text
 
     document = read_docx_text(path)
     text = document.text
     body = document.body.split("\n")
     found = [(body[at], level, at + 1) for at, level in document.heading_levels]
-    spans = bibliography_spans(document.body, document.headings, document.cells)
+    spans = docx_bibliography_spans(document)
     references = {line + 1 for start, end in spans for line in range(start, end)}
     lines = text.split("\n")
     cells = {at + 1 for at in document.cells}

@@ -20620,13 +20620,36 @@ Open, recorded as each change landed:
   data, and a citation in the Introduction to the abstract as a finding passes. The covering
   letter is in no file, so what it declares is not checked; `submit` only lists what to put
   there. Accepted.
-- **A table cell styled as a heading ends a reference list.** A cell never starts one,
-  since "References" there is a column header, but a heading-styled cell after the list's
-  heading ends it, as it would anywhere: Word lists such a cell as a heading in its
-  navigation pane. A reference list laid out as a table, with a heading-styled cell among
-  its rows, is cut there, and the entries after it are reported as numbers not found.
-  Letting cells run the list on would instead leave a table placed after the references,
-  under no heading of its own, silently unaudited as part of them.
+- **A table, a caption or a heading-styled cell ends a reference list.** A cell never
+  starts one, since "References" there is a column header, but a heading-styled cell after
+  the list's heading ends it, as it would anywhere: Word lists such a cell as a heading in
+  its navigation pane. Once the list holds an entry, a line outside a table with a
+  reference's shape (`audit.looks_like_reference`), the first table ends it too, and so do
+  the first paragraph in a caption style and the first line by its shape no entry
+  (`reference_lists._NO_ENTRY`, and a caption numbered with a letter as G2's `_NOTE` reads
+  one): a caption typed, "Fig 1.", "S4 Table.", "Supplementary Table 3", "Table A1.", and
+  also "Box 1", "Appendix A" or "Additional file 1"; in Markdown a pipe or a grid table and
+  an image as well (Basile, 2026-11-14). With no heading after the references, the list
+  ran over the figures' captions and the supplementary tables to the end of the file,
+  every number in them hidden as a reference's (docx-sport-A3 and docx-socio-B2 of the
+  corpus run of 2026-11-13). A reference list laid out in tables, under a caption or a
+  note or not, holds no such entry and reads on to the next heading, a caption after it
+  too; so does a list none of whose entries has a reference's shape, as before. One with a
+  heading-styled cell among its rows is still cut there, and one whose first entries are
+  paragraphs and the rest a table is cut at the table. An entry that opens with a caption's
+  shape, which no style writes, cuts the list as well. Either way the entries after the
+  cut are reported as numbers not found, the cheaper mistake: running on hides the tables.
+  A PDF's list ends at its headings alone. Pinned by
+  `tests/test_properties.py::test_a_docx_list_under_a_heading_ends_at_a_display_once_it_holds_an_entry`.
+  - A Markdown list under a heading ends at fewer paragraphs in the audit than in G2,
+    which also ends one at a bold label, a back-matter title alone, a footnote's
+    definition and a section's name alone (`reference_lists._ends_here`). A Word paragraph
+    in a caption style with no caption's number becomes a plain paragraph in the Markdown
+    `init --from` writes, so a .docx and its `main.md` can be cut at different lines.
+    Accepted.
+  - An entry that opens as a supplementary table's caption does, the US Census's subject
+    table "Table S1701. Poverty status …" as its title, ends the list there: by its shape it
+    cannot be told from "Table S1." Accepted.
 - **A table row is read as gone only when it is marked the way Word 16 marks one.** That
   is its properties marking it deleted, or every paragraph in it, a nested table's
   included, having its mark moved away. A text box anchored in the moved text is not

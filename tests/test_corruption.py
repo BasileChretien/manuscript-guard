@@ -21163,6 +21163,35 @@ def test_audit_reads_an_appendix_after_the_references(tmp_path: Path) -> None:
     assert report.unmatched[0].line == 9, "line numbers must still point into the file"
 
 
+@pytest.mark.parametrize("kind", ["docx", "markdown"])
+def test_audit_reads_a_table_after_the_references_under_no_heading(
+    tmp_path: Path, kind: str
+) -> None:
+    """A paper with no heading after its References: the list ran on to the end of the file,
+    and every number in the tables after it was hidden as a reference's, a false pass
+    (docx-sport-A3 and docx-socio-B2 of the corpus run of 2026-11-13). The list now ends at
+    the table, in a .docx and in the Markdown `init --from` writes of it, and a count there
+    that is in no output is listed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "serious": 412}')
+    entry = "Smith J, Jones K. Title. Lancet. 2019;393:100-10."
+
+    def paper(count: int) -> Path:
+        if kind == "docx":
+            table = (f"<w:tbl><w:tr><w:tc>{_p('Serious')}</w:tc><w:tc>{_p(str(count))}</w:tc>"
+                     "</w:tr></w:tbl>")  # fmt: skip
+            return _docx(tmp_path / "paper.docx", _p("We saw 77.") + _p("References", "Heading1")
+                         + _p(entry) + table)  # fmt: skip
+        path = tmp_path / "paper.md"
+        path.write_text(f"We saw 77.\n\n# References\n\n{entry}\n\n| Reports | n |\n|---|---|\n"
+                        f"| Serious | {count} |\n", encoding="utf-8")  # fmt: skip
+        return path
+
+    assert [c.text for c in audit([paper(412)], [outputs]).unmatched] == []
+    assert [c.text for c in audit([paper(413)], [outputs]).unmatched] == ["413"]
+
+
 def test_audit_reads_the_footnotes_of_a_document_with_references(tmp_path: Path) -> None:
     """A .docx is read body first and notes after, so the reference heading in the body cut
     every footnote and endnote along with the bibliography."""
@@ -31409,6 +31438,10 @@ _AFTER_A_LIST = {
     "a table's caption": f"\n\nTable 1. {_SAID}",
     "a table's caption, Roman": f"\n\nTABLE I. {_SAID}",
     "a caption, Roman": f"\n\nFigure IV. {_SAID}",
+    # Round 2 of #681: the narrowed Roman figure no longer ended a list at these, as main did.
+    "a caption, Roman, no stop": f"\n\nFigure IV {_SAID}",
+    "a caption, Roman, a cell after": f"\n\nFIGURE II | {_SAID}",
+    "a caption, Roman, two figures": f"\n\nFigs I and II {_SAID}",
     "a supplementary table's caption": f"\n\nSupplementary Table S1. {_SAID}",
     "an eTable's caption": f"\n\neTable 1. {_SAID}",
     "a box": f"\n\nBox 1. {_SAID}",
@@ -31464,11 +31497,14 @@ def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, 
         "Box I, Jenkins GM. The color of time series. Wiley; 2015.",
         "Tables and the color of tumor registries. 2nd ed. Oxford; 2018.",
         "Figueroa A. The color of a tumor. BMC Med. 2020;18:1.",
+        # Round 1 of #681: `fig\s*[ivx]+\b` took "Figi" for a figure numbered "i".
+        "Figi M, Roe A. The color of a tumor. BMJ 2020;370:m1.",
         "\n\n\n3. Doe J. The color of a tumor. Lancet. 2019;393:1-2.",
     ],
     ids=["bold text in an entry", "Fig as a title's word", "an author named Box",
          "an author named Box with one initial", "Tables as a title's word",
-         "an author named Figueroa", "blank lines between entries"],  # fmt: skip
+         "an author named Figueroa", "an author named Figi",
+         "blank lines between entries"],  # fmt: skip
 )
 def test_an_entry_shaped_a_little_like_a_caption_ends_no_reference_list(
     project: Path, entry: str

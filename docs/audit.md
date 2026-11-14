@@ -205,7 +205,14 @@ Word's conversion has put the title in a block quote (`> **11. REFERENCES**:`) o
 a link to Word's bookmark on it, and otherwise by the shape of its entries: journal articles in the numbered
 and author-year styles, the BMJ's with no full stop before the year, books, chapters, web
 pages and articles online first. A shape can be wrong, so the numbers on a line it accepts
-are still compared, and those not found are listed apart. A title that is a plain paragraph
+are still compared, and those not found are listed apart. A list under a heading runs to
+the next heading, or, once it holds an entry with a reference's shape outside a table, to
+the first display before it: a table, a paragraph in a caption style, or a line typed as
+a caption ("Fig 1.", "Figure 2:", "Table S1.", "S4 Table.", "Supplementary Table 3",
+"Table A1."), and in Markdown a pipe or a grid table or an image too. So the figures'
+captions and the supplementary tables after the references are audited, in a paper with
+no heading after them as well. A reference list laid out in tables, under a caption or a
+note or not, is read to the next heading. A title that is a plain paragraph
 of a .docx, with no heading style, ends its list where `check` ends one under no heading: at
 a figure's or a table's caption, a title such as "Funding" or "Figure legends" standing
 alone, or a table. A .docx and a figure print `<!--` as typed, so nothing between it and

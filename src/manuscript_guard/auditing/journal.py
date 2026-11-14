@@ -344,13 +344,13 @@ def _docx_text(paper: Path) -> str:
     heading among them. The audit's own cut runs on to the next styled heading, and back
     matter after the list under a title in Normal style, the acknowledgements, was not read
     for the authors (round 2 of #478)."""
-    from manuscript_guard.audit import _blank, _end_under_no_heading, bibliography_spans
+    from manuscript_guard.audit import _blank, _end_under_no_heading, docx_bibliography_spans
     from manuscript_guard.text.docx import read_docx_text
 
     document = read_docx_text(paper)
     lines = document.body.split("\n")
     spans = [(start, _end_under_no_heading(lines, start, end)) for start, end
-             in bibliography_spans(document.body, document.headings, document.cells)]
+             in docx_bibliography_spans(document)]
     body = _blank(document.body, spans)
     return f"{body}\n{document.notes}" if document.notes else body
 

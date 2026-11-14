@@ -674,9 +674,9 @@ def _regions(
     the paragraphs a statement's bold label opens (`_run_in_statements`): each is quiet, as
     under a heading that names the statement, in the part of the paper it stands in.
     `keywords` gives, by where it starts, each heading that names the keywords and where its
-    first paragraph ends (`_keywords_lists`): up to there it is read as the text before it,
-    the Abstract's where it follows the Abstract, a list of its terms and no use in the main
-    text (round 1 of #689)."""
+    first paragraph ends (`_keywords_lists`): where it follows the Abstract, up to there it
+    is read as the Abstract's, a list of its terms and no use in the main text (round 1 of
+    #689); anywhere else it is read as any heading's section is (round 2)."""
 
     def here(start: int) -> _Region:
         return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
@@ -687,7 +687,9 @@ def _regions(
         while chain and chain[-1].level >= heading.level:
             chain.pop()
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
-        if heading.start in kept:
+        # Only after the Abstract: after a reference list or a statement the list took its
+        # scope, and was not read (round 2 of #689).
+        if heading.start in kept and regions[-1].scope == ABSTRACT:
             before = regions[-1]
             regions.append(_Region(heading.start, before.scope, before.quiet))
             regions.append(here(kept[heading.start]))

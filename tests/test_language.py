@@ -2516,6 +2516,16 @@ def test_a_keywords_list_under_its_heading_is_read_with_the_abstract(project: Pa
     assert not found(report, "abbreviation-unused"), found(report)
 
 
+def test_a_keywords_list_not_after_the_abstract_is_read_as_before(project: Path) -> None:
+    """A "Keywords" heading after the reference list, or anywhere but after the Abstract,
+    takes no scope of the section before it: its list is read as the main text, as before,
+    and a short form it never defines is said undefined (round 2 of #689: it took the
+    reference list's scope and was not read)."""
+    report = written(project, "# Introduction\n\nText.\n\n# References\n\nHicks A. 2004.\n\n"
+                              "# Keywords\n\nXQZ; falls\n")  # fmt: skip
+    assert any("XQZ" in said for said in found(report, "abbreviation-undefined")), found(report)
+
+
 def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> None:
     """Only the list is the Abstract's: a paragraph after it under "Keywords", an
     Introduction with no heading of its own, is the main text, whose definitions the

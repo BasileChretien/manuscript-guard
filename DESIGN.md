@@ -25351,15 +25351,18 @@ Open, recorded as each change landed:
     heading, where it does not end where a word does, which the audit still reads as one.
     Accepted.
   - G14 reads the first paragraph under a heading whose whole title is "Keywords" or "Key
-    words", the list `init --from` writes there, in the scope of the text before the
-    heading, the Abstract's where it follows the Abstract, and the text after that
-    paragraph as the main text's: written in the main text's scope, a short form the
+    words", the list `init --from` writes there, in the Abstract's scope where the heading
+    follows the Abstract, and anywhere else as any heading's section (round 2), and the
+    text after that paragraph as the main text's: written in the main text's scope, a short form the
     Abstract and the Introduction each define, listed among the keywords, was used before
     the Introduction defined it (round 1 of #689). A hand-written `# Keywords` in a
     Markdown paper is read the same way, where the base read its list as the main text's
     too. A heading that only opens with the word, "Keyword search", is the main text's as
-    before. Pinned by
+    before. The first paragraph is taken for the list whatever it is: prose under such a
+    heading, or a comment in Markdown before the list, is read in the Abstract's scope in
+    its place (round 2 of #689; `init --from` writes neither). Pinned by
     `tests/test_language.py::test_a_keywords_list_under_its_heading_is_read_with_the_abstract`,
+    `tests/test_language.py::test_a_keywords_list_not_after_the_abstract_is_read_as_before`,
     `tests/test_language.py::test_the_text_after_the_keywords_list_is_the_main_text`,
     `tests/test_word_keywords.py::test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them`.
   - A paragraph "References" in plain type in a cover's contents list ("The present document

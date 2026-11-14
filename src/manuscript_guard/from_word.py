@@ -117,8 +117,9 @@ class Converted:
     title_noted: bool = False
     #: The footnote marks at the Title paragraph's end, left out of `title`.
     title_marks: str = ""
-    #: In a document with no paragraph in a heading style, the titles of the paragraphs that
-    #: name a section alone, which were made its headings (`typed_headings`).
+    #: In a document with no paragraph in a heading style, or whose heading styles were set
+    #: aside (`stray_headers_set_aside`), the titles of the paragraphs that name a section
+    #: alone, which were made its headings (`typed_headings`).
     typed_headings: tuple[str, ...] = ()
     #: Where no heading named the Abstract, the headings made of its run-in label or the line
     #: that names it alone, and of the typed title that ends it (`from_word_abstract`).
@@ -170,6 +171,12 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     blocks = tree["blocks"]
     headings = sum(1 for block in blocks if block["t"] == "Header")
     typed: tuple[str, ...] = ()
+    unstyled = 0
+    demoted = stray_headers_set_aside(blocks) if headings else None
+    if demoted is not None:
+        # Its heading styles are on stray lines alone, as the audit reads them
+        # (docx-psych-A1 and docx-med-A2 of the real-paper corpus; Basile, 2026-11-15).
+        (blocks, unstyled), headings = demoted, 0
     styled = bool(headings)
     if not headings:
         # Counted as made: "headings: 0" was printed after 14 were (PsyArXiv fyxeq_v2 of the
@@ -183,7 +190,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
         # As the audit reads them (`text.docx_abstract`, Basile, 2026-11-14).
         blocks, shaped = abstract_headings(blocks, styled)
         headings += len(shaped)
-    aside, body, title_page = _title_page(blocks, typed)
+    aside, body, title_page = _title_page(blocks, typed, unstyled)
     if aside:
         # Read with styles, a document with no heading runs on past where its typed title
         # ended the title page here: the two are compared up to there.
@@ -289,6 +296,20 @@ def _walk(node: object, kind: str):
     elif isinstance(node, list):
         for item in node:
             yield from _walk(item, kind)
+
+
+def _in_the_body(node: object, kind: str):
+    """Each element of `kind` in the tree but in a note's text, which the audit reads apart
+    from the body (round 2 of #688)."""
+    if isinstance(node, dict) and node.get("t") == "Note":
+        return
+    if isinstance(node, dict):
+        if node.get("t") == kind:
+            yield node
+        yield from _in_the_body(node.get("c"), kind)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _in_the_body(item, kind)
 
 
 #: The blocks whose text ends with a space, so that two of them do not run together.
@@ -606,6 +627,21 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     Its heading is titled with its words alone: pandoc numbers a list's items by its own
     count, not Word's, and gave "5. METHODS" where Word prints "2. METHODS" (docx-educ-A3 of
     the real-paper corpus), so the number is not written."""
+    blocks, lists, found, levels = _typed_titles(blocks)
+    if not found:
+        return _closed_lists(blocks, lists), ()
+    levels = levels or (1,) * len(found)
+    out = list(blocks)
+    for (at, _name, typed), level in zip(found, levels, strict=True):
+        out[at] = _heading(typed, level, identifier="")
+    return _closed_lists(out, lists), tuple(typed for _at, _name, typed in found)
+
+
+def _typed_titles(blocks: list) -> tuple[list, list, list[tuple[int, str, str]],
+                                         tuple[int, ...] | None]:  # fmt: skip
+    """`blocks` with their lists opened at each title (`_opened_lists`), the lists, each
+    typed title `typed_headings` makes a heading of, by place, name and words, and their
+    levels, None where they cannot be placed."""
     from manuscript_guard.text.section_names import section_levels, section_name_alone
 
     blocks, lists = _opened_lists(blocks, section_name_alone)
@@ -618,16 +654,39 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
         if name is not None:
             found.append((at, name, typed.rstrip(" :.")))
     if not found:
-        return _closed_lists(blocks, lists), ()
+        return blocks, lists, found, None
     levels = _levels(blocks, found, section_levels)
     bold = [one for one in found if _in_bold(blocks[one[0]]["c"])]
     if levels is None and bold and (placed := _levels(blocks, bold, section_levels)):
         found, levels = bold, placed  # as the audit falls back (round 3 of #641)
-    levels = levels or (1,) * len(found)
-    out = list(blocks)
-    for (at, _name, typed), level in zip(found, levels, strict=True):
-        out[at] = _heading(typed, level, identifier="")
-    return _closed_lists(out, lists), tuple(typed for _at, _name, typed in found)
+    return blocks, lists, found, levels
+
+
+def stray_headers_set_aside(blocks: list) -> tuple[list, int] | None:
+    """`blocks` with each top-level heading made a paragraph of its own words, exactly,
+    where the paper's heading styles are set aside as the audit sets them aside
+    (`text.docx.styles_set_aside`): no heading, a table's cell's among them, names a section
+    alone, each is a stray line, before the first typed title or a sentence, and its typed
+    titles can be placed and name an Abstract and a Results; with how many headings there
+    were, a cell's counted as the audit counts it; None otherwise. Its typed titles are then
+    made its headings (`typed_headings`), as in a paper with no heading style."""
+    from manuscript_guard.text.docx import styles_set_aside
+
+    demoted = [{"t": "Para", "c": block["c"][2]} if block["t"] == "Header" else block
+               for block in blocks]  # fmt: skip
+    made = {id(block) for block, was in zip(demoted, blocks, strict=True) if block is not was}
+    opened, _lists, found, levels = _typed_titles(demoted)
+    first = found[0][0] if found else len(opened)
+    styled: list[tuple[str, bool]] = []
+    for at, block in enumerate(opened):
+        # A heading made a paragraph stands in `opened` as it is, a list's item never.
+        inlines = [block["c"]] if id(block) in made else [
+            header["c"][2] for header in _in_the_body(block, "Header")]
+        styled += [(" ".join(text_of(one).split()), at < first) for one in inlines]
+    titles = [typed for _at, _name, typed in found]
+    if not styles_set_aside(styled, titles, levels is not None):
+        return None
+    return demoted, len(styled)
 
 
 def _opened_lists(blocks: list, named) -> tuple[list, list]:
@@ -699,10 +758,12 @@ def _closed_lists(blocks: list, lists: list) -> list:
     return out
 
 
-def _title_page(blocks: list, typed: tuple[str, ...] = ()) -> tuple[list, list, str]:
+def _title_page(blocks: list, typed: tuple[str, ...] = (), unstyled: int = 0
+                ) -> tuple[list, list, str]:  # fmt: skip
     """The blocks set aside, the blocks of the text, and what was done, in words. `typed`
     are the titles of the headings made from paragraphs that name a section alone
-    (`typed_headings`)."""
+    (`typed_headings`), and `unstyled` the paragraphs in a heading style made paragraphs
+    (`stray_headers_set_aside`)."""
     first = next((at for at, block in enumerate(blocks) if block["t"] == "Header"), None)
     if first is None:
         return [], blocks, (
@@ -714,7 +775,7 @@ def _title_page(blocks: list, typed: tuple[str, ...] = ()) -> tuple[list, list, 
         named = ("the paragraph that names a section alone was made a heading"
                  if len(typed) == 1 else f"the {len(typed)} paragraphs that name a section "
                  "alone were made its headings")  # fmt: skip
-        made = f"no paragraph is in a heading style, so {named} ({', '.join(typed)}); "
+        made = f"{_why_typed(unstyled)}, so {named} ({', '.join(typed)}); "
     if first == 0:
         return [], blocks, f"{made}the document opens on a heading, so nothing was set aside"
     if typed and not _opens_a_paper(typed[0]):
@@ -732,6 +793,18 @@ def _title_page(blocks: list, typed: tuple[str, ...] = ()) -> tuple[list, list, 
     return before, blocks[first:], (
         f"{made}the {words} words before the first heading were set aside in a comment at "
         "the top of main.md, which no gate reads; move into the text what belongs to the paper")
+
+
+def _why_typed(count: int) -> str:
+    """Why typed titles were made headings: no paragraph is in a heading style, or those
+    that are, `count`, name no section and were made paragraphs."""
+    if not count:
+        return "no paragraph is in a heading style"
+    if count == 1:
+        return ("its one paragraph in a heading style names no section alone and was made a "
+                "paragraph, and its typed titles name an Abstract and a Results")
+    return (f"none of its {count} paragraphs in a heading style names a section alone, and "
+            "they were made paragraphs, as its typed titles name an Abstract and a Results")
 
 
 def _opens_a_paper(title: str) -> bool:

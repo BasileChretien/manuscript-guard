@@ -2339,6 +2339,102 @@ def test_a_heading_style_in_a_table_s_cell_makes_no_heading(tmp_path: Path) -> N
     assert [lines[end] for _start, end in spans] == ["Sr. No"], spans
 
 
+def _styled(text: str, level: int) -> str:
+    return (f'<w:p><w:pPr><w:pStyle w:val="Heading{level}"/></w:pPr><w:r><w:t>{text}</w:t>'
+            "</w:r></w:p>")  # fmt: skip
+
+
+#: A typed Abstract and Results, and a bold title between, each over words.
+_TYPED_PAPER = (bold("Abstract") + para("Of 412 patients, 77 fell.") + bold("Method")
+                + para("We read 412 records.") + bold("Results") + para("Of 412 patients, 77 fell.")
+                + bold("Discussion") + para("It was so."))  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", ["authors and a note", "two paragraphs of prose"])
+def test_heading_styles_that_name_no_section_are_set_aside(tmp_path: Path, shape: str) -> None:
+    """A Word paper whose only paragraphs in a heading style name no section is read by its
+    typed titles where they can be placed and name an Abstract and a Results (Basile,
+    2026-11-15, "Yes, narrowly"): the styles on an authors' line and an "equal contribution"
+    note (docx-psych-A1 of the real-paper corpus), or on two paragraphs of prose in the
+    Introduction (docx-med-A2). Its Abstract was compared with nothing. The styled lines
+    are still headings to a reference list, and the report says how the headings were
+    read, not that no paragraph is in a heading style."""
+    if shape == "authors and a note":
+        body = (_styled("Ana Martin, Paul Girard, PhD", 4)
+                + _styled("*contributed equally to this paper", 4) + _TYPED_PAPER)
+    else:
+        prose = "Falls are common in older patients. Of them, {} are harmed. We read why."
+        body = (bold("Introduction") + _styled(prose.format("many"), 2)
+                + _styled(prose.format("some"), 2) + _TYPED_PAPER)
+    path = make_docx(tmp_path / "paper.docx", body)
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert document.heading_levels == ()
+    assert len(document.headings) == 2
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    titles = [lines[at] for at, _level in typed_heading_levels(document)]
+    assert titles[-4:] == ["Abstract", "Method", "Results", "Discussion"], titles
+    report = audit([path], [])
+    assert report.abstract and report.abstract.compared, report.abstract
+    assert report.abstract.not_found == []
+    (said,) = report.headings
+    assert "no paragraph" not in said, said
+    assert "none of its 2 paragraphs in a heading style names a section alone" in said, said
+
+
+#: Headings a paper may put in a heading style under its typed titles, that each hold a
+#: word only a sentence has, but no two sentences (round 2 of #688): BMJ's box among them.
+STYLED_SENTENCE_HEADINGS = ("Strengths and limitations of this study", "What this study adds",
+                            "Association between exposure and outcome",
+                            "Data were collected in the clinic", "Early vs. Late Initiation",
+                            "Smith et al. Revisited")  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", ["no Results", "titles not placed", "a styled Methods",
+                                   "APA subheadings", "a short line after the first title",
+                                   "a styled header row", "a styled Methods cell first",
+                                   "an empty styled paragraph", *STYLED_SENTENCE_HEADINGS])
+def test_heading_styles_are_kept_unless_each_condition_holds(tmp_path: Path, shape: str) -> None:
+    """The styles are set aside only where all four hold: no styled paragraph names a
+    section alone, each is a stray line, on the title page before the first typed title or
+    a paragraph of prose (Basile, 2026-11-15, "Only stray lines"), the typed titles can be
+    placed, and they name an Abstract and a Results. Without a Results among them, with a
+    structured abstract's parts that cannot be placed, beside a styled "Methods", a table's
+    header row "Methods | Findings | Notes" in a heading style, read by its cells' own words
+    (round 1 of #688), a styled "Methods" cell before the Abstract, APA's subheadings in
+    Heading 2 under typed titles, a short line that is no sentence, an empty paragraph, or
+    a heading of one sentence's words, "Strengths and limitations of this study", after the
+    first typed title, the paper is read by its styles, as before: after it, prose is two
+    sentences, one ending before another (round 2)."""
+    authors = _styled("Ana Martin, Paul Girard, PhD", 4)
+    header = "".join(f"<w:tc>{_styled(name, 3)}</w:tc>" for name in ("Methods", "Findings",
+                                                                     "Notes"))
+    typed = {
+        "no Results": _TYPED_PAPER.replace(bold("Results"), bold("Outcomes")),
+        "titles not placed": (bold("Abstract") + bold("Background") + para("Drugs cause harm.")
+                              + bold("Results") + para("Of 412 patients, 77 had it.")
+                              + bold("Discussion") + para("It was so.")),
+        "a styled Methods": _TYPED_PAPER.replace(bold("Method"), _styled("Methods", 1)),
+        "APA subheadings": _TYPED_PAPER.replace(para("We read 412 records."), (
+            _styled("Participants", 2) + para("We read 412 records.")
+            + _styled("Measures", 2) + para("Falls were counted.")
+            + _styled("Statistical analysis", 2) + para("We used odds ratios."))),
+        "a short line after the first title": _TYPED_PAPER.replace(
+            bold("Method"), _styled("Department of Medicine, Caen", 2) + bold("Method")),
+        "a styled header row": _TYPED_PAPER + f"<w:tbl><w:tr>{header}</w:tr>{row('1')}</w:tbl>",
+        "a styled Methods cell first": f"<w:tbl><w:tr>{header}</w:tr></w:tbl>" + _TYPED_PAPER,
+        "an empty styled paragraph": _TYPED_PAPER.replace(
+            bold("Method"), '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>'
+            + bold("Method")),
+    }.get(shape) or _TYPED_PAPER.replace(bold("Method"), _styled(shape, 2) + bold("Method"))
+    document = read_docx_text(make_docx(tmp_path / "paper.docx", authors + typed))
+    assert document.heading_levels != ()
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    assert typed_heading_levels(document) == ()
+
+
 def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
     """A structured abstract's parts in bold straight under its Abstract, with no
     Introduction after them and none of their names again: which Results are the paper's is

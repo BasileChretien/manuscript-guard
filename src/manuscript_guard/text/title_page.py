@@ -189,12 +189,14 @@ _PROSE_WORDS = 8
 _PROSE_SHARE = 0.6
 #: A sentence's end inside a paragraph, before the next sentence's capital: after a word
 #: that is no initial, no short form in capitals ("MSc. Paul"), and none of the words a
-#: title page shortens with a stop (`_SHORTENED`).
+#: title page shortens with a stop (`_SHORTENED`), nor one a heading does ("Early vs. Late
+#: Initiation", "Smith et al. Revisited": the check of #688).
 _SENTENCE_BREAK = re.compile(
     r"(?P<word>[^\W\d_]+)[.!?][\"'\N{RIGHT DOUBLE QUOTATION MARK})]*\s+[A-Z]"
 )
 _SHORTENED_WORDS = (
     "dr mr mrs ms st prof univ dept inst hosp inc ltd ave str blvd jr sr no vol fig"
+    " vs al mt cf"
 )
 _SHORTENED = frozenset(_SHORTENED_WORDS.split())
 _WORD = re.compile(r"[^\W\d_][\w'\N{RIGHT SINGLE QUOTATION MARK}-]*")
@@ -384,6 +386,13 @@ def _paragraph_kind(raw: str, joined: str, *, first: bool = False) -> str:
     return NEUTRAL
 
 
+def two_sentences(text: str) -> bool:
+    """Whether a paragraph's text holds two sentences, one ending before another, the one
+    sign of `_a_sentence`'s that no heading has (`_broken`): a word only a sentence has, or
+    "the" twice, is in "Strengths and limitations of this study" too (round 2 of #688)."""
+    return _broken(text)
+
+
 def _a_sentence(words: list[str], joined: str) -> bool:
     """Whether a paragraph holds a sentence: a word of `_SENTENCE`, "the" twice, or one
     sentence ending before another."""
@@ -425,4 +434,4 @@ def _key(name: str) -> str:
     return " ".join(name.casefold().split())
 
 
-__all__ = ["MOST_WORDS", "title_page_end"]
+__all__ = ["MOST_WORDS", "title_page_end", "two_sentences"]

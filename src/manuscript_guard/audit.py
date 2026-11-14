@@ -1077,8 +1077,9 @@ def _headings_said(path: Path, document, headed: bool) -> str | None:
     styles = "give its section titles Word's heading styles"
     # A table's cells, where they are the only paragraphs in one, place nothing (round 1 of
     # #678: the author was told there were none).
-    none = ("no paragraph outside a table is in a heading style" if document.headings
-            else "no paragraph is in a heading style")  # fmt: skip
+    none = ("no paragraph is in a heading style" if not document.headings
+            else "no paragraph outside a table is in a heading style"
+            if document.headings <= document.cells else _set_aside(document))  # fmt: skip
     titles = typed_titles(document)
     if not titles:
         return (f"{path.name}: {none}, and none on a line of its "
@@ -1100,6 +1101,14 @@ def _headings_said(path: Path, document, headed: bool) -> str | None:
     return (f"{path.name}: {none}, so {named} {read}, in bold "
             f"or not, as `init --from` makes them; a title that names no section is read as "
             f"text; {styles} for a reading that rests on no list of names")
+
+
+def _set_aside(document) -> str:
+    """Why a .docx's heading styles were set aside (`text.docx.styles_set_aside`)."""
+    count = len(document.headings)
+    styled = ("its one paragraph in a heading style names no section alone" if count == 1
+              else f"none of its {count} paragraphs in a heading style names a section alone")
+    return f"{styled}, and its typed titles name an Abstract and a Results"
 
 
 def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:

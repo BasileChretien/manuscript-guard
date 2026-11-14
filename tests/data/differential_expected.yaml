@@ -37,14 +37,13 @@ expected:
       real-paper corpus; round 1 of #686)
   - reading: word abstract
     why: >-
-      a run-in "Keywords:" after a Word paper's Abstract's words, before the next title,
-      ends the Abstract: the titles typed after it are the main text's, so a paper whose
-      Results, Discussion and Conclusion come after its keywords is compared where the base
-      read them as the Abstract's parts and compared nothing, and the words after the
-      keywords up to the next heading, an Introduction with no heading, are no Abstract's
-      and are not searched, where the base read their numbers as the Abstract's; the inputs
-      now draw such papers (Basile, 2026-11-15, decision 24: docx-psych-B2 and docx-psych-A1
-      of the real-paper corpus)
+      a Word paper whose only paragraphs in a heading style name no section and are stray
+      lines, an authors' line or a note before its first typed title or prose of two
+      sentences anywhere, and
+      whose typed titles can be placed and name an Abstract and a Results, is placed by its
+      typed titles, so its Abstract is compared with its Results,
+      where the base read it by those styles and compared nothing (Basile, 2026-11-15,
+      decision 21: docx-psych-A1 and docx-med-A2 of the real-paper corpus)
   - reading: audit references not sorted
     why: >-
       a paper's entries the audit cannot sort are one note, at the first of them, naming

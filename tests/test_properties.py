@@ -22197,6 +22197,114 @@ def _a_quoted_label_is_not_read(patch: pytest.MonkeyPatch) -> None:
          for block in blocks], lists, styled))  # fmt: skip
 
 
+from generated import (  # noqa: E402
+    stray_styled_blocks,
+    stray_styled_body,
+    stray_styled_papers,
+)
+
+
+@holds(30, stray_styled_papers())
+def test_heading_styles_that_name_no_section_are_set_aside_by_the_audit(
+    drawn: list[tuple[str, list[tuple], bool]],
+) -> None:
+    """A Word paper whose heading styles are on stray lines that name no section, an
+    authors' line, a note or prose before its Abstract, prose in its Introduction, is placed
+    by its typed titles, in bold or not, in capitals or numbered, where they can be placed
+    and name an Abstract and a Results; its styled lines still headings. Without a Results
+    or an Abstract among them, with a structured abstract's parts that cannot be placed,
+    beside a styled line that names a section, or beside a styled subheading after the
+    first typed title that is no sentence (round 1 of #688), it is placed by its styles
+    (`text.docx.styles_set_aside`; Basile, 2026-11-15, docx-psych-A1 and docx-med-A2 of the
+    real-paper corpus)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+
+    with tempfile.TemporaryDirectory() as folder:
+        for number, (kind, paper, aside) in enumerate(drawn):
+            path = Path(folder) / f"paper-{number}.docx"
+            body = stray_styled_body(paper)
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                      f"{body}</w:body></w:document>")  # fmt: skip
+            document = read_docx_text(path)
+            lines = document.body.split("\n")
+            styled = [item[1] for item in paper if item[0] == "styled"]
+            assert [lines[at] for at in sorted(document.headings)] == styled, kind
+            if aside:
+                titles = [item[1] for item in paper if item[0] == "title"]
+                assert document.heading_levels == (), (kind, paper)
+                assert [lines[at] for at, _l in typed_heading_levels(document)] == titles, kind
+            else:
+                assert [lines[at] for at, _l in document.heading_levels] == styled, (kind, paper)
+
+
+@holds(60, stray_styled_papers())
+def test_heading_styles_that_name_no_section_are_set_aside_by_init(
+    drawn: list[tuple[str, list[tuple], bool]],
+) -> None:
+    """`init --from` sets a Word paper's heading styles aside where the audit does, as pandoc
+    reads them: each heading made a paragraph of its own words, exactly, and the typed titles
+    made its headings; otherwise its headings are left as they are
+    (`from_word.stray_headers_set_aside`)."""
+    from manuscript_guard.from_word import stray_headers_set_aside, typed_headings
+
+    for kind, paper, aside in drawn:
+        blocks = stray_styled_blocks(paper)
+        made = stray_headers_set_aside(json.loads(json.dumps(blocks)))
+        if not aside:
+            assert made is None, (kind, paper)
+            continue
+        assert made is not None, (kind, paper)
+        demoted, count = made
+        assert count == sum(1 for item in paper if item[0] == "styled"), kind
+        assert [block["c"] for block in demoted] == [
+            block["c"][2] if block["t"] == "Header" else block["c"] for block in blocks]
+        titles = [item[1] for item in paper if item[0] == "title"]
+        assert list(typed_headings(demoted)[1]) == titles, kind
+
+
+def _a_styled_name_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "names_no_section", lambda styled: True)
+
+
+def _titles_not_placed_set_the_styles_aside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx
+
+    real = docx.styles_set_aside
+    patch.setattr(docx, "styles_set_aside", lambda styled, titles, placed: real(
+        styled, titles, True))  # fmt: skip
+
+
+def _a_styled_subheading_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
+    """As the first build of #688: a styled line after the first typed title that is no
+    sentence, an APA paper's "Participants", was set aside too."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "only_stray_lines", lambda styled: True)
+
+
+def _one_sentence_s_words_are_prose(patch: pytest.MonkeyPatch) -> None:
+    """As round 1 of #688 built it: a styled line holding a word only a sentence has was
+    prose, so "Strengths and limitations of this study" after the first title was set
+    aside."""
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "two_sentences", lambda text: title_page._a_sentence(
+        title_page._words(text), text))  # fmt: skip
+
+
+def _any_titles_set_the_styles_aside(patch: pytest.MonkeyPatch) -> None:
+    """Without the third condition: titles naming no Abstract or no Results set them aside."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "names_abstract_and_results", lambda titles: bool(titles))
+
+
 from generated import word_paragraphs  # noqa: E402
 
 
@@ -23130,6 +23238,46 @@ BROKEN = {
     "a shaped Abstract ends at its first typed title": (
         _the_abstract_ends_at_its_first_typed_title,
         test_a_styled_word_paper_s_abstract_is_read_in_the_shapes_it_is_written_in,
+    ),
+    "the audit sets aside styles beside a styled name": (
+        _a_styled_name_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "the audit sets aside styles beside titles not placed": (
+        _titles_not_placed_set_the_styles_aside,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "the audit sets aside styles with no Abstract or no Results": (
+        _any_titles_set_the_styles_aside,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "the audit sets aside styles beside a styled subheading": (
+        _a_styled_subheading_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "init sets aside styles beside a styled subheading": (
+        _a_styled_subheading_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
+    ),
+    "the audit sets aside styles beside a heading of one sentence's words": (
+        _one_sentence_s_words_are_prose,
+        test_heading_styles_that_name_no_section_are_set_aside_by_the_audit,
+    ),
+    "init sets aside styles beside a heading of one sentence's words": (
+        _one_sentence_s_words_are_prose,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
+    ),
+    "init sets aside styles beside a styled name": (
+        _a_styled_name_is_set_aside_too,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
+    ),
+    "init sets aside styles beside titles not placed": (
+        _titles_not_placed_set_the_styles_aside,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
+    ),
+    "init sets aside styles with no Abstract or no Results": (
+        _any_titles_set_the_styles_aside,
+        test_heading_styles_that_name_no_section_are_set_aside_by_init,
     ),
     "a shaped Abstract nothing ends runs to the end": (
         _an_abstract_nothing_ends_runs_to_the_end,

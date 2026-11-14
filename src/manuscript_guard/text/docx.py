@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -120,7 +121,8 @@ class DocxText:
     numbering: tuple[tuple[int, str, bool, int], ...] = ()
     #: The level of each line in `headings`, 1 for "heading 1": by 0-based line, what the
     #: audit's Abstract against Results places a line under (`gates.reported.Walk`). None
-    #: where every line of `headings` is a table's cell, which then place nothing.
+    #: where every line of `headings` is a table's cell, which then place nothing, or where
+    #: they name no section and the typed titles are read instead (`styles_set_aside`).
     heading_levels: tuple[tuple[int, int], ...] = ()
     #: Each line of `body` outside a table and a text box that is an item of a list Word
     #: numbers or bullets, and not a heading, 1-based, with its level, 0 the outermost
@@ -764,18 +766,93 @@ def read_docx_text(path: Path) -> DocxText:
     notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
                       _MARKS[2:])  # fmt: skip
     body = _unmarked(marked, _MARKS)
-    return DocxText(body=body, notes=notes, headings=headings, cells=cells,
-                    tables=_tables(lines),
-                    numbering=tuple((line, *count[:3]) for line, count in numbering),
-                    heading_levels=heading_levels,
-                    levels=tuple((line, count[3]) for line, count in numbering
-                                 if count[3] is not None),
-                    boxed=_boxes(body_root, fonts), bold=bold, typed=typed,
-                    captions=captioned)  # fmt: skip
+    return _stray_styles_set_aside(DocxText(
+        body=body, notes=notes, headings=headings, cells=cells, tables=_tables(lines),
+        numbering=tuple((line, *count[:3]) for line, count in numbering),
+        heading_levels=heading_levels,
+        levels=tuple((line, count[3]) for line, count in numbering if count[3] is not None),
+        boxed=_boxes(body_root, fonts), bold=bold, typed=typed, captions=captioned))
+
+
+def names_no_section(styled: Sequence[str]) -> bool:
+    """Whether none of `styled`, the words of a paper's paragraphs in a heading style, names
+    a section alone (`section_name_alone`, the closed list)."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    return all(section_name_alone(words) is None for words in styled)
+
+
+def names_abstract_and_results(titles: Sequence[str]) -> bool:
+    """Whether `titles`, a paper's typed titles as placed, include an Abstract and a
+    Results (`names_abstract`, `names_results`)."""
+    from manuscript_guard.text.section_names import names_abstract, names_results
+
+    return any(names_abstract(title) for title in titles) and any(
+        names_results(title) for title in titles)
+
+
+def only_stray_lines(styled: Sequence[tuple[str, bool]]) -> bool:
+    """Whether each of `styled`, the words of a paper's paragraphs in a heading style with
+    whether it stands before its first typed title, is a stray line (Basile, 2026-11-15,
+    "Only stray lines"): on the title page, before the first typed title, an authors' line
+    or a note; or a paragraph of prose, which holds two sentences, one ending before another
+    (`title_page.two_sentences`), as docx-med-A2's do. A styled subheading under a typed
+    title, "Participants" or "Statistical analysis" in an APA paper (round 1 of #688), or
+    one of a sentence's words, "Strengths and limitations of this study" (round 2), is
+    neither, and keeps the paper read by its styles."""
+    from manuscript_guard.text.title_page import two_sentences
+
+    return all(before or two_sentences(words) for words, before in styled)
+
+
+def styles_set_aside(styled: Sequence[tuple[str, bool]], titles: Sequence[str],
+                     placed: bool) -> bool:  # fmt: skip
+    """Whether a Word paper that uses a heading style is read by its typed titles instead,
+    as the audit and `init --from` both decide it (Basile, 2026-11-15, "Yes, narrowly", and
+    "Only stray lines"): only where no paragraph in a heading style names a section alone
+    and each is a stray line (`only_stray_lines`), `styled` their words with whether each
+    stands before the first typed title; its typed titles, `titles` their words, can be
+    `placed`; and they include an Abstract and a Results. A paper whose heading styles are
+    on its authors' line and a note (docx-psych-A1 of the real-paper corpus) or on two
+    paragraphs of prose (docx-med-A2) had its Abstract compared with nothing, its typed
+    titles text."""
+    words = [one for one, _before in styled]
+    return bool(styled) and names_no_section(words) and only_stray_lines(styled) and \
+        placed and names_abstract_and_results(titles)  # fmt: skip
+
+
+def own_words(line: str) -> str:
+    """A line of a .docx's body without the boundary " | " the next cell of its row puts at
+    its end, as `_tables` reads a cell: a styled header row's "Methods | " is "Methods", as
+    pandoc reads it (round 1 of #688)."""
+    text = line.strip()
+    return text[:-1].rstrip() if text.endswith("|") else text
+
+
+def _stray_styles_set_aside(document: DocxText) -> DocxText:
+    """`document` placed by its typed titles where its heading styles are set aside
+    (`styles_set_aside`): its `heading_levels` emptied, as for a table's cells (#678), and
+    its `headings` kept, which still end a reference list."""
+    from dataclasses import replace
+
+    if not document.heading_levels:
+        return document
+    lines = document.body.split("\n")
+    unstyled = replace(document, heading_levels=())
+    levels = typed_heading_levels(unstyled)
+    found = [at for at, _title in typed_titles(unstyled)] if levels is None else [
+        at for at, _level in levels]
+    first = found[0] if found else len(lines)
+    # A cell's line ends in the next cell's boundary; read by its own words.
+    styled = [(own_words(lines[at]) if at in document.cells else lines[at], at < first)
+              for at in sorted(document.headings)]  # fmt: skip
+    titles = [lines[at] for at in found]
+    return unstyled if styles_set_aside(styled, titles, levels is not None) else document
 
 
 def typed_titles(document: DocxText) -> list[tuple[int, str]]:
-    """In a document with no paragraph in a heading style but a table's cells, each line a
+    """In a document with no paragraph in a heading style but a table's cells or ones set
+    aside (`styles_set_aside`), each line a
     title can be typed as (`DocxText.typed`) whose words are a section's name alone
     (`section_name_alone`), in bold or not, numbered as typed or by Word or not, in capitals
     or not, "ABSTRACT", "3. RESULTS", by 0-based line, with its name; none in a document

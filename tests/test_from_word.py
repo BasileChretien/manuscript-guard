@@ -859,6 +859,143 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == expected
 
 
+#: Word's heading styles at levels 1 to 4, as pandoc reads them by their names.
+_HEADING_STYLES = "".join(
+    f'<w:style w:type="paragraph" w:styleId="Heading{n}"><w:name w:val="heading {n}"/>'
+    "</w:style>" for n in (1, 2, 3, 4))  # fmt: skip
+
+
+def _styled(text: str, level: int) -> str:
+    return (f'<w:p><w:pPr><w:pStyle w:val="Heading{level}"/></w:pPr><w:r><w:t>{text}</w:t>'
+            "</w:r></w:p>")  # fmt: skip
+
+
+def _paragraph(text: str, bold: bool = False) -> str:
+    props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+    return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+
+#: The shapes of `test_the_audit_and_init_set_the_same_heading_styles_aside` whose styles
+#: both readers keep.
+#: Headings of one sentence's words, after the first typed title (round 2 of #688).
+_SENTENCE_HEADINGS = ("Strengths and limitations of this study", "What this study adds",
+                      "Association between exposure and outcome",
+                      "Data were collected in the clinic", "Early vs. Late Initiation",
+                      "Smith et al. Revisited")  # fmt: skip
+_STYLES_KEPT = ("no Results", "a styled Methods", "APA subheadings", "a styled header row",
+                "a styled Methods cell first", "an empty styled paragraph",
+                *_SENTENCE_HEADINGS)  # fmt: skip
+#: A table's header row in Heading 3, "Methods | Findings | Notes" to the audit's lines.
+_STYLED_ROW = "".join(f"<w:tc>{_styled(name, 3)}</w:tc>" for name in ("Methods", "Findings",
+                                                                      "Notes"))  # fmt: skip
+
+
+@needs_pandoc
+@pytest.mark.parametrize("shape", ["authors and a note", "two paragraphs of prose",
+                                   "a styled cell on the title page", *_STYLES_KEPT])
+def test_the_audit_and_init_set_the_same_heading_styles_aside(tmp_path: Path, shape: str) -> None:
+    """Where no paragraph in a heading style names a section alone, each is a stray line, on
+    the title page before the first typed title or a paragraph of prose (Basile,
+    2026-11-15, "Only stray lines"), and the typed titles can be placed and name an Abstract
+    and a Results, both readers set the styles aside and take the typed titles for headings:
+    styles on the authors' line and a note (docx-psych-A1 of the real-paper corpus), on two
+    paragraphs of prose (docx-med-A2), on a title page's table's cell too, which both count
+    among the paragraphs they say were in a heading style. `init --from` makes each styled
+    paragraph a paragraph of its own words. With no Results among the titles, beside a
+    styled "Methods", a header row "Methods | Findings | Notes" in Heading 3, read by its
+    cells' own words, the same row before the Abstract, or APA's subheadings in Heading 2
+    under typed titles, both read the styles, and `init --from` keeps "## Participants"
+    (round 1 of #688); and so they do beside an empty paragraph in a heading style, which
+    pandoc 3.9.0.2 keeps as an empty heading, or a heading of one sentence's words after the
+    first typed title, "Strengths and limitations of this study": prose there is two
+    sentences, as docx-med-A2's paragraphs are (round 2)."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+    from manuscript_guard.text.docx_abstract import placed_headings
+
+    prose = ("Falls are common in older patients. Many are harmed.",
+             "Some of them die. We read why.")  # fmt: skip
+    results = "Outcomes" if shape == "no Results" else "Results"
+    methods = (_styled("Methods", 1) if shape == "a styled Methods"
+               else _paragraph("Methods", True))  # fmt: skip
+    if shape == "an empty styled paragraph":
+        methods = '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>' + methods
+    if shape in _SENTENCE_HEADINGS:
+        methods = _styled(shape, 2) + methods
+    authors = (_styled("Ana Martin, Paul Girard", 4) + _styled("Both wrote it equally.", 4)
+               if shape != "two paragraphs of prose" else _paragraph("Ana Martin, Paul Girard"))
+    if shape == "a styled cell on the title page":
+        authors += (f"<w:tbl><w:tr><w:tc>{_styled('Department of Medicine, Caen', 3)}</w:tc>"
+                    "</w:tr></w:tbl>")  # fmt: skip
+    if shape == "a styled Methods cell first":
+        authors += f"<w:tbl><w:tr>{_STYLED_ROW}</w:tr></w:tbl>"
+    introduction = (_paragraph(prose[0]) + _paragraph(prose[1]) if shape != "two paragraphs "
+                    "of prose" else _styled(prose[0], 2) + _styled(prose[1], 2))  # fmt: skip
+    records = _paragraph("We read 412 records.")
+    if shape == "APA subheadings":
+        records = (_styled("Participants", 2) + records + _styled("Measures", 2)
+                   + _paragraph("Falls were counted.") + _styled("Statistical analysis", 2)
+                   + _paragraph("We used odds ratios."))  # fmt: skip
+    table = ""
+    if shape == "a styled header row":
+        table = (f"<w:tbl><w:tr>{_STYLED_ROW}</w:tr><w:tr><w:tc>{_paragraph('1')}</w:tc>"
+                 "</w:tr></w:tbl>")  # fmt: skip
+    body = (authors + _paragraph("Abstract", True) + _paragraph("Of 412 patients, 77 fell.")
+            + _paragraph("Introduction", True) + introduction + methods + records
+            + _paragraph(results, True) + _paragraph("Of 412 patients, 77 fell.") + table
+            + _paragraph("Discussion", True) + _paragraph("It was so."))  # fmt: skip
+    paper = _package(tmp_path / "paper.docx", body, _HEADING_STYLES)
+    converted = from_word.convert(paper)
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    if shape in _STYLES_KEPT:
+        assert converted.typed_headings == ()
+        assert document.heading_levels != ()
+        # A styled cell places to the audit beside a heading outside a table, and pandoc keeps
+        # it in its cell (#678): the rest are the same headings.
+        assert converted.headings == len([heading for heading in placed_headings(document)
+                                          if heading.line not in document.cells])  # fmt: skip
+        if shape == "APA subheadings" or shape in _SENTENCE_HEADINGS:
+            kept = "Participants" if shape == "APA subheadings" else shape
+            assert f"## {kept}" in _headings(converted.text), converted.text
+            assert kept in [heading.title for heading in placed_headings(document)]
+        return
+    titles = ("Abstract", "Introduction", "Methods", "Results", "Discussion")
+    assert converted.typed_headings == titles
+    assert _headings(converted.text) == [f"# {title}" for title in titles]
+    assert document.heading_levels == ()
+    assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == titles
+    styled = [lines[at] for at in sorted(document.headings)]
+    # Each styled paragraph is a paragraph of its own words, in the text or the title page;
+    # a cell's stays in its table.
+    written = {line.rstrip("\r") for line in converted.text.split("\n")}
+    assert {lines[at] for at in document.headings - document.cells} <= written, converted.text
+    # Both count the same paragraphs in a heading style, a cell's among them.
+    count = 3 if shape == "a styled cell on the title page" else 2
+    assert len(styled) == count
+    said = f"none of its {count} paragraphs in a heading style names a section alone"
+    assert said in converted.title_page, converted.title_page
+    (read,) = audit([paper], []).headings
+    assert said in read, read
+
+
+def test_a_heading_in_a_note_is_not_read_for_the_styles_set_aside() -> None:
+    """`init --from` reads a paper's headings for the rule in its body alone, as the audit
+    reads its paragraphs in a heading style (round 2 of #688): a heading "Methods" in a
+    note's text keeps nothing from being set aside."""
+    from generated import stray_styled_blocks
+
+    paper = [("styled", "Ana Martin, Paul Girard", 4), *(
+        item for name in ("Abstract", "Introduction", "Results", "Discussion")
+        for item in (("title", name, True), ("words", "Of 412 fell.")))]
+    blocks = stray_styled_blocks(paper)
+    note = {"t": "Note", "c": [{"t": "Header", "c": [1, ["", [], []], [
+        {"t": "Str", "c": "Methods"}]]}]}  # fmt: skip
+    blocks[2]["c"].append(note)
+    made = from_word.stray_headers_set_aside(json.loads(json.dumps(blocks)))
+    assert made is not None and made[1] == 1
+
+
 @needs_pandoc
 def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) -> None:
     """A title Word numbers as a list's item is a heading to both readers where pandoc reads

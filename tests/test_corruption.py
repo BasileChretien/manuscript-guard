@@ -3161,6 +3161,46 @@ def test_a_styled_word_paper_s_abstract_number_unlike_its_results_is_reported(
     assert read.compared and [c.text for c in read.not_found] == ["78"]
 
 
+@pytest.mark.parametrize("styled", ["authors and a note", "two paragraphs of prose"])
+def test_a_results_number_unlike_the_abstract_s_beside_stray_heading_styles_is_reported(
+    tmp_path: Path, styled: str,
+) -> None:
+    """A Word paper whose only heading styles are on lines that name no section, its
+    authors' line and a note (docx-psych-A1 of the real-paper corpus) or two paragraphs of
+    prose (docx-med-A2), was read by those styles, and its typed Abstract compared with no
+    Results: a number of its Abstract the Results do not report went unsaid. Its typed
+    titles are its headings now (Basile, 2026-11-15), and the number is reported."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str, style: str = "", bold: bool = False) -> str:
+        style = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+        return f'<w:p>{style}<w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+    def docx(abstract: str) -> Path:
+        stray = ((para("Ana Martin, Paul Girard", "Heading4")
+                  + para("*contributed equally to this paper", "Heading4"))
+                 if styled == "authors and a note" else
+                 (para("Falls are common in older patients. Many are harmed.", "Heading2")
+                  + para("Some of them die. We read why.", "Heading2")))  # fmt: skip
+        body = (stray + para("Abstract", bold=True) + para(abstract)
+                + para("Methods", bold=True) + para("We read 412 records.")
+                + para("Results", bold=True) + para("Of 412 patients, 77 fell."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        return path
+
+    read = audit([docx("Of 412 patients, 77 fell.")], None).abstract
+    assert read.compared and read.not_found == []
+    read = audit([docx("Of 412 patients, 78 fell.")], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["78"]
+
+
 def test_an_abstract_that_differs_in_a_paper_titled_by_word_s_numbering_fails_an_audit(
     tmp_path: Path,
 ) -> None:

@@ -25278,8 +25278,9 @@ Open, recorded as each change landed:
     audit does not; a caption whose words are a section's name alone and nothing else is
     rare. Accepted.
   - A paper that uses a heading style anywhere is read by its styles alone, its typed
-    titles text, but for its Abstract's heading (the next point), unless its only paragraphs
-    in a heading style are a table's cells, which then place nothing (#678). A paragraph in a heading style in a text box counts as one
+    titles text, but for its Abstract's heading (the point after next), unless its only
+    paragraphs in a heading style are a table's cells, which then place nothing (#678), or
+    they name no section (the next point). A paragraph in a heading style in a text box counts as one
     outside a table, so a paper whose other heading styles are cells is read by its styles
     and its typed titles stay text, as before #678 (check of #678). Where the titles
     cannot be placed, a structured abstract's parts with no Introduction after them, the order of its parts never starting again and no title it
@@ -25291,6 +25292,41 @@ Open, recorded as each change landed:
     that opens a paper, its Abstract or its Introduction: a short paper whose first typed
     title is its "References" keeps its text where every gate reads it. A heading is written
     with the title's own words, its number kept. Accepted.
+  - A paper none of whose paragraphs in a heading style names a section alone, a table's
+    cell's among them read by its own words, and each of which is a stray line, is read by
+    its typed titles where they can be placed and name an Abstract and a Results (Basile,
+    2026-11-15, "Yes, narrowly" and "Only stray lines": styles on an authors' line and a
+    note, docx-psych-A1 of the real-paper corpus, or on two paragraphs of prose,
+    docx-med-A2). A stray line stands on the title page, before the first typed title, or
+    is a paragraph of prose: it holds two sentences, one ending before another, as the
+    title page reads one (`text.title_page.two_sentences`), the one sign of a sentence no
+    heading has (round 2 of #688: a word only a sentence has is in "Strengths and
+    limitations of this study" too). Both readers then take its typed titles for its
+    headings, `init --from` making each styled paragraph a paragraph of its own words, and
+    a styled line still ends a reference list to the audit. Where its typed titles name no
+    Results or no Abstract, cannot be placed, or stand beside one styled line that names a
+    section, or one after the first typed title that holds no two sentences, a subheading
+    "Participants" or "Statistical analysis" in Heading 2 under titles an APA paper types in
+    bold (round 1 of #688) or "Strengths and limitations of this study" (round 2), it is
+    read by its styles as before, its typed titles text: no list of names says that a styled
+    line is no title, and the narrow reading leaves those papers as they were. So does a
+    paragraph of one sentence in a heading style there, which is no stray line either, and
+    one whose sentences end on a citation's or a number's stop ("Falls are common (1). Most
+    are harmed (2)."), which the title page's sentence reading does not split; "vs.",
+    "et al.", "Mt." and "cf." end no sentence there (check of #688). An
+    empty paragraph in a heading style after the first typed title keeps the styles too, to
+    both readers: pandoc 3.9.0.2 keeps it as an empty heading, and the audit as an empty
+    styled line. Where the title page holds such a styled line, `init --from`
+    lifts no paragraph in Word's Abstract style out of it, as its reading with styles stops
+    at the first heading; that is held by no test. Pinned by
+    `tests/test_from_word.py::test_the_audit_and_init_set_the_same_heading_styles_aside`,
+    `tests/test_audit.py::test_heading_styles_are_kept_unless_each_condition_holds`.
+  - `compare` reads a .docx version by its heading styles' levels alone
+    (`comparing/versions.py`), not by its typed titles: a version whose stray styles were
+    set aside has no heading to it, as a paper with no heading style has none, so two
+    versions on different sides of that rule, one set aside and one not, have no section in
+    common, and every section is compared as changed (round 1 of #688). Two versions of one
+    paper rarely differ so. Accepted.
   - Where no heading names the Abstract, two shapes of its title are read as its heading,
     by the audit and by `init --from` alike (Basile, 2026-11-14, after four papers of the
     real-paper corpus): a paragraph that opens on a run-in "Abstract:" or "Abstract." and

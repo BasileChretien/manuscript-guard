@@ -23,8 +23,10 @@ from manuscript_guard.text.docx_abstract import _closing
 from manuscript_guard.text.section_names import (
     abstract_alone,
     abstract_end,
+    keywords_end,
     names_abstract,
     run_in_abstract,
+    run_in_keywords,
     section_name_alone,
 )
 
@@ -75,8 +77,11 @@ def _found(blocks: list, lists: list,
         for (one, _name, _typed), end in zip(titles, ends[1:], strict=True)]  # fmt: skip
     # The next heading's title read after them, as the audit reads it (`_closing`).
     closing = _closing([text_of(blocks[limit]["c"][2])] if later else [])
+    # A run-in "Keywords:" under the Abstract's own words ends it (Basile, 2026-11-15).
+    ended = [keywords_block(blocks, at if run_in else at + 1, ends[0]) is not None]
     end = abstract_end(["Abstract", *(name for _one, name, _typed in titles), *closing],
-                       worded + [False] * len(closing))  # fmt: skip
+                       worded + [False] * len(closing),
+                       ended=ended + [False] * (len(titles) + len(closing)))  # fmt: skip
     if end is not None and end <= len(titles):
         closing = (titles[end - 1][0], titles[end - 1][2])
     elif later:
@@ -140,15 +145,67 @@ def _split(block: dict) -> list | None:
     """A paragraph that opens on the Abstract's run-in label, as a heading of the label's
     name over the paragraph's other words; None where it opens on none, or where the label
     cannot be taken off where its words end."""
-    from manuscript_guard.from_word import _heading, text_of
+    from manuscript_guard.from_word import text_of
 
-    label = run_in_abstract(text_of(block["c"]))
+    return _split_at(block, run_in_abstract(text_of(block["c"])))
+
+
+def _split_at(block: dict, label: str | None, level: int = 1) -> list | None:
+    """A paragraph that opens on the run-in `label`, as a heading of the label's name, at
+    `level`, over the paragraph's other words; None where `label` is None, or where it
+    cannot be taken off where its words end."""
+    from manuscript_guard.from_word import _heading
+
     if label is None:
         return None
     rest = _cut(json.loads(json.dumps(block["c"])), _Cut(len(label.split())))
     if not rest:
         return None
-    return [_heading(label.rstrip(" :."), 1, identifier=""), {"t": block["t"], "c": rest}]
+    return [_heading(label.rstrip(" :."), level, identifier=""), {"t": block["t"], "c": rest}]
+
+
+def keywords_block(blocks: list, start: int, end: int) -> int | None:
+    """The block from `start` up to `end`, the words under a title, at which a run-in
+    "Keywords:" ends them (`section_names.keywords_end`), as `text.docx.keywords_line` reads
+    the same paragraph: a paragraph of words and how they look alone, so in no table's
+    cell, no list, no block quote and with no note's mark; None where none does."""
+    from manuscript_guard.from_word import _words, _words_only, text_of
+
+    span = range(start, end)
+    found = keywords_end(
+        [_words(blocks[k : k + 1]) > 0 for k in span],
+        [blocks[k].get("t") == "Para" and bool(_words_only(blocks[k]["c"]))
+         and run_in_keywords(text_of(blocks[k]["c"])) is not None for k in span])  # fmt: skip
+    return None if found is None else span[found]
+
+
+def keywords_heading(blocks: list) -> tuple[list, str | None]:
+    """`blocks` with a run-in "Keywords:" that ends the Abstract made a heading of its label
+    over the paragraph's other words, at the Abstract's level, as the audit reads it
+    (`text.docx_abstract._keywords`): under the first heading that names the Abstract, after
+    its own words, before the next heading, and with words after it up to that heading,
+    which are then no Abstract's (docx-psych-B2 and docx-psych-A1 of the real-paper corpus;
+    Basile, 2026-11-15); and the heading's title. As they came, and None, where none does,
+    where the next heading is deeper than the Abstract's, or where the label cannot be taken
+    off where its words end."""
+    from manuscript_guard.from_word import _words, text_of
+
+    headers = [at for at, block in enumerate(blocks) if block.get("t") == "Header"]
+    opened = next((at for at in headers if names_abstract(text_of(blocks[at]["c"][2]))), None)
+    if opened is None:
+        return blocks, None
+    level = blocks[opened]["c"][0]
+    later = [at for at in headers if at > opened]
+    if later and blocks[later[0]]["c"][0] > level:
+        return blocks, None
+    limit = later[0] if later else len(blocks)
+    at = keywords_block(blocks, opened + 1, limit)
+    if at is None or not _words(blocks[at + 1 : limit]):
+        return blocks, None
+    made = _split_at(blocks[at], run_in_keywords(text_of(blocks[at]["c"])), level)
+    if made is None:
+        return blocks, None
+    return [*blocks[:at], *made, *blocks[at + 1 :]], text_of(made[0]["c"][2])
 
 
 class _Cut:

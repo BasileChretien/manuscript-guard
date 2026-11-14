@@ -2493,3 +2493,48 @@ def test_the_title_page_is_found_in_linear_time(assert_linear) -> None:
 
     assert_linear(lines, lambda text: title_page_end(text, find_headings(text)), 200,
                   "the title page, by line")  # fmt: skip
+
+
+# ------------------------------------------------- the keywords, a list of the Abstract's terms
+
+#: An Abstract that defines COPD, its keywords under a heading of their own that list it, and
+#: an Introduction that defines it again (round 1 of #689's review: `init --from` writes such a
+#: heading where a run-in "Keywords:" ends the Abstract).
+KEYWORDS_UNDER_A_HEADING = (
+    "# Abstract\n\nIn chronic obstructive pulmonary disease (COPD), 77 of 412 fell.\n\n"
+    "# Keywords\n\nCOPD; falls\n\n"
+    "# Introduction\n\nChronic obstructive pulmonary disease (COPD) is common. COPD harms.\n"
+)
+
+
+def test_a_keywords_list_under_its_heading_is_read_with_the_abstract(project: Path) -> None:
+    """The keywords are a list of the Abstract's terms, not a use in the main text: under a
+    heading "Keywords" after the Abstract, their paragraph is read in the Abstract's scope,
+    and COPD in it is no use before the Introduction defines it."""
+    report = written(project, KEYWORDS_UNDER_A_HEADING)
+    assert not found(report, "abbreviation-used-before-defined"), found(report)
+    assert not found(report, "abbreviation-unused"), found(report)
+
+
+def test_a_keywords_list_not_after_the_abstract_is_read_as_before(project: Path) -> None:
+    """A "Keywords" heading after the reference list, or anywhere but after the Abstract,
+    takes no scope of the section before it: its list is read as the main text, as before,
+    and a short form it never defines is said undefined (round 2 of #689: it took the
+    reference list's scope and was not read)."""
+    report = written(project, "# Introduction\n\nText.\n\n# References\n\nHicks A. 2004.\n\n"
+                              "# Keywords\n\nXQZ; falls\n")  # fmt: skip
+    assert any("XQZ" in said for said in found(report, "abbreviation-undefined")), found(report)
+
+
+def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> None:
+    """Only the list is the Abstract's: a paragraph after it under "Keywords", an
+    Introduction with no heading of its own, is the main text, whose definitions the
+    Methods use."""
+    report = written(
+        project,
+        "# Abstract\n\nIn chronic obstructive pulmonary disease (COPD), 77 of 412 fell.\n\n"
+        "# Keywords\n\nCOPD; falls\n\nThe body mass index (BMI) of older people varies.\n\n"
+        "# Methods\n\nThe BMI was read from the records.\n",
+    )
+    assert not found(report, "abbreviation-undefined"), found(report)
+    assert not found(report, "abbreviation-used-before-defined"), found(report)

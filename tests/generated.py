@@ -15475,7 +15475,11 @@ def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
 #: one up to the main text's second "Background", as BMC's journals set them; the BMJ's,
 #: whose "Objectives" and "Design" name no section and stand under its Abstract as words; a
 #: structured abstract with neither after it; a name twice in the main text; no abstract;
-#: and "Result", the singular, among a structured abstract's parts and as its first.
+#: "Result", the singular, among a structured abstract's parts and as its first; and a run-in
+#: "Keywords:" that ends an Abstract's words, a third item `True` on its title, before titles
+#: that would be its parts, and none above a structured abstract's titled parts, `False`,
+#: which stay its own (`keywords_end`, Basile, 2026-11-15). Whether one ends the words under
+#: any other title decides nothing, and is drawn.
 PLACED_PAPERS = {
     "one paragraph": ([("Abstract", True), ("Background", None), ("Methods", None),
                        ("Results", None), ("Discussion", None), ("References", None)],
@@ -15531,6 +15535,19 @@ PLACED_PAPERS = {
                                 ("Result", None), ("Conclusion", None), ("Background", None),
                                 ("Method", None), ("Result", None), ("Discussion", None)],
                                (1, 2, 2, 2, 2, 1, 1, 1, 1)),
+    # docx-psych-B2 of the real-paper corpus: read as the Abstract's parts up to "Methods",
+    # its Results, Discussion and Conclusion left the paper no Results.
+    "keywords after one paragraph": ([("Abstract", True, True), ("Results", None),
+                                      ("Discussion", None), ("Conclusion", None),
+                                      ("Methods", None)], (1, 1, 1, 1, 1)),
+    "keywords before part names": ([("Abstract", True, True), ("Results", None),
+                                    ("Conclusions", None), ("Background", None),
+                                    ("Methods", None), ("Discussion", None)],
+                                   (1, 1, 1, 1, 1, 1)),
+    "keywords above titled parts": ([("Abstract", False, False), ("Background", None),
+                                     ("Results", None), ("Conclusions", None),
+                                     ("Introduction", None), ("Methods", None),
+                                     ("Results", None)], (1, 2, 2, 2, 1, 1, 1)),
 }  # fmt: skip
 
 
@@ -15571,16 +15588,19 @@ def pdf_heading_lines(draw: st.DrawFn) -> list[tuple[str, str | None]]:
 @st.composite
 def placed_papers(
     draw: st.DrawFn,
-) -> list[tuple[list[str], list[bool], tuple[int, ...] | None]]:
+) -> list[tuple[list[str], list[bool], list[bool], tuple[int, ...] | None]]:
     """Every paper of `PLACED_PAPERS`, in an order drawn, each title written as drawn, as
-    it stands or in capitals, and the words under each title that decide nothing drawn; with
-    the levels each is to be given."""
+    it stands or in capitals, and the words under each title that decide nothing drawn, and
+    whether a run-in "Keywords:" ends them under each title but the Abstract's; with the
+    levels each is to be given."""
     out = []
     for kind in draw(st.permutations(list(PLACED_PAPERS))):
         planted, levels = PLACED_PAPERS[kind]
-        titles = [draw(st.sampled_from((title, title.upper()))) for title, _words in planted]
-        worded = [draw(st.booleans()) if words is None else words for _title, words in planted]
-        out.append((titles, worded, levels))
+        titles = [draw(st.sampled_from((one[0], one[0].upper()))) for one in planted]
+        worded = [draw(st.booleans()) if one[1] is None else one[1] for one in planted]
+        ended = [one[2] if len(one) > 2 else False if one[0] == "Abstract"
+                 else draw(st.booleans()) for one in planted]  # fmt: skip
+        out.append((titles, worded, ended, levels))
     return out
 
 
@@ -16052,9 +16072,20 @@ WORD_ABSTRACT_SHAPES = {
 #: which ends them as a typed one does, theirs named as sections or as JAMA's, of which only
 #: "Results" names one (round 1 of #683: they were cut at their first part named); and no
 #: heading after the Abstract, nor a typed title, so that nothing ends it and it is not read,
-#: the heading styles on the authors' line before it (docx-psych-A1).
+#: the heading styles on the authors' line before it (docx-psych-A1); a run-in "Keywords:"
+#: after its words, words after it, a heading of its own that ends it (docx-psych-A1 and
+#: docx-psych-B2; Basile, 2026-11-15); and "Keywords" in a sentence, or a label with no
+#: words after it, which ends nothing.
 WORD_ABSTRACT_ENDS = ("the next heading", "a typed title", "its parts, then a typed title",
-                      "its parts, then the next heading", "nothing")  # fmt: skip
+                      "its parts, then the next heading", "nothing", "keywords",
+                      "keywords that end nothing")  # fmt: skip
+#: A run-in "Keywords:" in each way it is typed, and the heading's title the audit reads.
+WORD_KEYWORDS = (("Keywords: falls; {}", "Keywords"), ("Key words: {}", "Key words"),
+                 ("KEYWORDS: {}", "KEYWORDS"), ("Key Words : {}", "Key Words"))  # fmt: skip
+#: "Keywords" that end nothing: in a sentence, opening one, a label with no words after it,
+#: and a label run on into the words.
+WORD_KEYWORDS_NONE = ("The keywords: {} were searched.", "Keywords were searched in 3 {}.",
+                      "Keywords:", "Keywords:{}")  # fmt: skip
 #: A structured abstract's parts in bold, each over words: parts that name sections, and
 #: JAMA's.
 _WORD_ABSTRACT_PARTS = (("Background", "Results", "Conclusions"),
@@ -16087,6 +16118,13 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
             for part in draw(st.sampled_from(_WORD_ABSTRACT_PARTS)):
                 body += _w_para(part, True) + _w_para(f"Of 412 {words}, 77 fell.")
             body += _w_heading("Introduction") + _w_para(f"{words.capitalize()} harm.")
+        keyword = None
+        if end == "keywords":
+            typed_keywords, keyword = draw(st.sampled_from(WORD_KEYWORDS))
+            body += _w_para(typed_keywords.format(words)) + _w_para(f"In 2019, 15 {words} died.")
+        if end == "keywords that end nothing":
+            body += _w_para(draw(st.sampled_from(WORD_KEYWORDS_NONE)).format(words))
+            body += _w_para(f"In 2019, 15 {words} died.")
         # A structured abstract's parts end at an Introduction (`section_levels`).
         typed = draw(st.sampled_from(("Introduction", "1. Introduction") + (
             () if end == "its parts, then a typed title" else ("Acknowledgments",
@@ -16101,10 +16139,161 @@ def word_abstract_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
         body += _w_heading("Methods") + _w_para("We read 412.") + _w_heading("Results")
         body += _w_para("Of 412, 77 fell.")
         ended = [typed] if end in ("a typed title", "its parts, then a typed title") else []
+        ended += [keyword] if keyword else []
         introduced = ["Introduction"] if end == "its parts, then the next heading" else []
         out.append((body, [first, *([title, *ended] if title else []), *introduced, "Methods",
                            "Results"]))  # fmt: skip
     return out
+
+
+#: Word papers with no heading style, placed by their typed titles, each a list of paragraphs
+#: `(how, words)`, `how` "bold", "plain" or "cell" (alone in a table's cell), `{label}` a
+#: run-in "Keywords:" drawn from `WORD_KEYWORDS` and `{none}` "Keywords" that ends nothing
+#: from `WORD_KEYWORDS_NONE`; and each heading both readers place it by, `(level, title)`,
+#: `{label}` the keywords' heading. A run-in "Keywords:" after the Abstract's words ends it,
+#: and its Results, Discussion and Conclusion are the paper's (docx-psych-B2), after parts
+#: run in (docx-psych-A1), and with no words after it, where it is no heading; one between
+#: the Abstract's title and its titled parts ends nothing, and they stay its own; and neither
+#: does "Keywords" in a sentence, nor a label in a table's cell (Basile, 2026-11-15).
+_KEYWORDS_MAIN = [("bold", "Results"), ("plain", "Of 412, 77 fell."), ("bold", "Discussion"),
+                  ("plain", "Falls are common."), ("bold", "Conclusion"),
+                  ("plain", "They matter."), ("bold", "Methods"), ("plain", "We read 412.")]
+_KEYWORDS_PLACED = [(1, "Results"), (1, "Discussion"), (1, "Conclusion"), (1, "Methods")]
+_KEYWORDS_NESTED = [(2, "Results"), (2, "Discussion"), (2, "Conclusion"), (1, "Methods")]
+KEYWORDS_PAPERS = {
+    "one paragraph": ([("bold", "Abstract"), ("plain", "Of 412, 77 fell."), ("plain", "{label}"),
+                       ("bold", "Falls in Older Patients"), ("plain", "Up to 45% fall."),
+                       *_KEYWORDS_MAIN],
+                      [(1, "Abstract"), (1, "{label}"), *_KEYWORDS_PLACED]),
+    "parts run in": ([("bold", "Abstract"), ("plain", "Background: Falls harm."),
+                      ("plain", "Results: Of 412, 77 fell."), ("plain", "{label}"),
+                      ("plain", "Rates as high as 80% were seen."), *_KEYWORDS_MAIN],
+                     [(1, "Abstract"), (1, "{label}"), *_KEYWORDS_PLACED]),
+    "no words after": ([("bold", "Abstract"), ("plain", "Of 412, 77 fell."),
+                        ("plain", "{label}"), *_KEYWORDS_MAIN],
+                       [(1, "Abstract"), *_KEYWORDS_PLACED]),
+    "above titled parts": ([("bold", "Abstract"), ("plain", "{label}"), ("bold", "Background"),
+                            ("plain", "Falls harm."), ("bold", "Results"),
+                            ("plain", "Of 412, 77 fell."), ("bold", "Conclusions"),
+                            ("plain", "They matter."), ("bold", "Introduction"),
+                            ("plain", "Falls harm."), ("bold", "Methods"), ("plain", "We read.")],
+                           [(1, "Abstract"), (2, "Background"), (2, "Results"),
+                            (2, "Conclusions"), (1, "Introduction"), (1, "Methods")]),
+    "in a sentence": ([("bold", "Abstract"), ("plain", "Of 412, 77 fell."), ("plain", "{none}"),
+                       ("plain", "Up to 45% fall."), *_KEYWORDS_MAIN],
+                      [(1, "Abstract"), *_KEYWORDS_NESTED]),
+    "in a cell": ([("bold", "Abstract"), ("plain", "Of 412, 77 fell."), ("cell", "{label}"),
+                   ("plain", "Up to 45% fall."), *_KEYWORDS_MAIN],
+                  [(1, "Abstract"), *_KEYWORDS_NESTED]),
+}  # fmt: skip
+
+
+def _keywords_drawn(draw: st.DrawFn, kind: str) -> tuple[list[tuple[str, str]],
+                                                         list[tuple[int, str]]]:  # fmt: skip
+    """A paper of `KEYWORDS_PAPERS` with its label and its "Keywords" that ends nothing
+    drawn, and the headings it is placed by."""
+    paragraphs, headings = KEYWORDS_PAPERS[kind]
+    typed, title = draw(st.sampled_from(WORD_KEYWORDS))
+    words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+    label, none = typed.format(words), draw(st.sampled_from(WORD_KEYWORDS_NONE)).format(words)
+    return ([(how, text.format(label=label, none=none)) for how, text in paragraphs],
+            [(level, text.format(label=title)) for level, text in headings])
+
+
+@st.composite
+def keywords_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple[int, str]]]]:
+    """A Word paper's body for every kind of `KEYWORDS_PAPERS`, in an order drawn, as
+    `w:body` XML with no heading style; and the headings the audit places each by."""
+    out = []
+    for kind in draw(st.permutations(list(KEYWORDS_PAPERS))):
+        paragraphs, headings = _keywords_drawn(draw, kind)
+        body = "".join("<w:tbl><w:tr><w:tc>" + _w_para(text) + "</w:tc></w:tr></w:tbl>"
+                       if how == "cell" else _w_para(text, how == "bold")
+                       for how, text in paragraphs)  # fmt: skip
+        out.append((body, headings))
+    return out
+
+
+def _keywords_inlines(text: str) -> list[dict]:
+    """`text` as pandoc's inlines, a word to each piece and a gap between."""
+    out: list[dict] = []
+    for word in text.split():
+        out += [_GAP, _str(word)] if out else [_str(word)]
+    return out
+
+
+@st.composite
+def keywords_blocks(draw: st.DrawFn) -> list[tuple[list[dict], list[tuple[int, str]]]]:
+    """Pandoc's blocks of a Word paper with no heading for every kind of `KEYWORDS_PAPERS`,
+    in an order drawn, as pandoc reads them, a table's cell a table's; and the headings
+    `init --from` makes of each, `(level, title)`."""
+    out = []
+    for kind in draw(st.permutations(list(KEYWORDS_PAPERS))):
+        paragraphs, headings = _keywords_drawn(draw, kind)
+        blocks = []
+        for how, text in paragraphs:
+            words = _keywords_inlines(text)
+            inlines = [_strong(*words)] if how == "bold" else words
+            block = {"t": "Para", "c": inlines}
+            blocks.append(_one_cell(block) if how == "cell" else block)
+        out.append((blocks, headings))
+    return out
+
+
+#: A Markdown paper's keywords under a heading of their own after its Abstract, as `init
+#: --from` writes them where a run-in "Keywords:" ends it (round 1 of #689), and what G14
+#: reports of the short form the Abstract and the Introduction each define: the list under
+#: the heading, typed in each way, is the Abstract's and no use in the main text; so with an
+#: Introduction with no heading after it, which is the main text's and defines a second
+#: short form its Methods use; and under a heading that only opens with the word, the list
+#: is the main text's, its short form used there before the Introduction defines it and
+#: the Abstract's definition of it used nowhere after it. Each kind is `(under a keywords
+#: heading, an Introduction after the list, the codes)`.
+KEYWORDS_HEADINGS = ("# Keywords", "# Key words", "# KEYWORDS", "## Keywords", "# Keywords:",
+                     "Keywords\n========")  # fmt: skip
+KEYWORDS_SECTIONS = {
+    "the list": (True, False, set()),
+    "the list, then an Introduction": (True, True, set()),
+    "under another heading": (False, False, {"abbreviation-used-before-defined",
+                                             "abbreviation-unused"}),
+}  # fmt: skip
+#: Short forms with their long forms, which each paper defines.
+_KEYWORDS_TERMS = (("reporting odds ratio", "ROR"), ("signal detection ratio", "SDR"),
+                   ("proportional reporting ratio", "PRR"),
+                   ("empirical Bayes geometric mean", "EBGM"))  # fmt: skip
+
+
+@st.composite
+def keywords_sections(draw: st.DrawFn) -> list[tuple[str, str, set[str]]]:
+    """A Markdown paper for every kind of `KEYWORDS_SECTIONS`, in an order drawn, each with
+    its heading of `KEYWORDS_HEADINGS` and its two short forms drawn; with the short form the
+    keywords list, and the codes G14 gives of either."""
+    out = []
+    for kind in draw(st.permutations(list(KEYWORDS_SECTIONS))):
+        named, introduced, codes = KEYWORDS_SECTIONS[kind]
+        (long, short), (other, second) = draw(st.permutations(_KEYWORDS_TERMS))[:2]
+        # One a level under the Abstract's is its own part, and so is what follows it.
+        headings = [one for one in KEYWORDS_HEADINGS if not (introduced and one[:2] == "##")]
+        heading = draw(st.sampled_from(headings)) if named else "# Keyword search"
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text = (f"# Abstract\n\nIn the {long} ({short}), 77 of 412 fell.\n\n{heading}\n\n"
+                f"{short}; falls; {words}\n\n")
+        if introduced:
+            text += f"Older people vary in their {other} ({second}).\n\n"
+        text += (f"# Introduction\n\nThe {long} ({short}) is common. The {short} harms.\n\n"
+                 f"# Methods\n\nThe {short} was read"
+                 + (f", and the {second} with it.\n" if introduced else ".\n"))
+        out.append((text, short if not introduced else f"{short} {second}", codes))
+    return out
+
+
+def _one_cell(block: dict) -> dict:
+    """A table of one cell holding `block`, as pandoc 3.9 reads one of Word's."""
+    attr = ["", [], []]
+    cell = [attr, {"t": "AlignDefault"}, 1, 1, [block]]
+    return {"t": "Table", "c": [attr, [None, []], [[{"t": "AlignDefault"},
+                                                     {"t": "ColWidthDefault"}]],
+                                [attr, []], [[attr, 0, [], [[attr, [cell]]]]], [attr, []]]}
 
 
 #: A styled Word paper's Abstract in each shape as pandoc reads it, as its blocks with `{}`
@@ -16773,7 +16962,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pdf headings": st.one_of(
         pdf_heading_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
         placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn]))),
-    "word abstract": word_abstract_papers().flatmap(
+    "word abstract": st.one_of(word_abstract_papers(), keywords_papers()).flatmap(
         lambda drawn: st.sampled_from([body for body, _titles in drawn])),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),

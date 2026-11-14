@@ -21411,18 +21411,19 @@ from generated import (  # noqa: E402
 
 @holds(60, placed_papers())
 def test_titles_standing_alone_are_placed_as_their_paper_sets_them(
-    drawn: list[tuple[list[str], list[bool], tuple[int, ...] | None]],
+    drawn: list[tuple[list[str], list[bool], list[bool], tuple[int, ...] | None]],
 ) -> None:
     """A structured abstract's titles standing alone, a PDF's lines or a Word paper's titles
     in bold, are the Abstract's up to an Introduction or to where the order of its parts
     starts again; an Abstract with words under it whose next titles cannot be placed so is
     one paragraph, and the title after it the main text's; a structured abstract with
     neither after it, a title no abstract holds among its parts, and a name twice in the
-    main text, are not placed (`section_levels`)."""
+    main text, are not placed; and where a run-in "Keywords:" ends the Abstract's words, the
+    titles after it are the main text's (`section_levels`)."""
     from manuscript_guard.text.section_names import section_levels
 
-    for titles, worded, levels in drawn:
-        assert section_levels(titles, worded) == levels, (titles, worded)
+    for titles, worded, ended, levels in drawn:
+        assert section_levels(titles, worded, ended) == levels, (titles, worded, ended)
 
 
 from generated import pdf_heading_papers  # noqa: E402
@@ -21573,6 +21574,146 @@ def _a_structured_abstract_ends_at_a_name_again(patch: pytest.MonkeyPatch) -> No
         return None
 
     patch.setattr(section_names, "_parts_end", again)
+
+
+def _keywords_end_no_abstract(patch: pytest.MonkeyPatch) -> None:
+    """As before decision 24: a run-in "Keywords:" ended nothing."""
+    from manuscript_guard.text import section_names
+
+    real = section_names._abstract_end
+    patch.setattr(section_names, "_abstract_end",
+                  lambda keys, first, worded, ended=None: real(keys, first, worded))
+
+
+def _keywords_with_no_words_before_them_end_it(patch: pytest.MonkeyPatch) -> None:
+    """A label between the Abstract's title and its titled parts ended it, and its own
+    Results were the paper's."""
+    from manuscript_guard import from_word_abstract
+    from manuscript_guard.text import section_names
+
+    for module in (section_names, from_word_abstract):
+        patch.setattr(module, "keywords_end", lambda worded, labelled: next(
+            (at for at, label in enumerate(labelled) if label), None))
+
+
+def _a_sentence_about_keywords_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word_abstract
+    from manuscript_guard.text import docx_abstract, section_names
+
+    def label(text: str) -> str | None:
+        return "Keywords:" if "keywords" in text.casefold() else None
+
+    for module in (section_names, docx_abstract, from_word_abstract):
+        patch.setattr(module, "run_in_keywords", label)
+
+
+def _a_label_in_a_cell_ends_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx
+
+    real = docx.keywords_line
+    patch.setattr(docx, "keywords_line", lambda lines, typed, start, end: real(
+        lines, frozenset(range(len(lines))), start, end))
+
+
+from generated import keywords_blocks, keywords_papers  # noqa: E402
+
+
+@holds(30, keywords_papers())
+def test_a_run_in_keywords_ends_the_abstract_where_the_audit_places_a_word_paper(
+    drawn: list[tuple[str, list[tuple[int, str]]]],
+) -> None:
+    """A Word paper with no heading style is placed by its typed titles: a run-in
+    "Keywords:", "Key words:", "KEYWORDS:", after the Abstract's words ends the Abstract, and
+    is a heading "Keywords" at its level where words stand after it, so the Results,
+    Discussion and Conclusion after it are the paper's (docx-psych-B2), after parts run in
+    too (docx-psych-A1); not one between the Abstract's title and its titled parts, which
+    stay its own, nor "Keywords" in a sentence, a label with nothing after it, run on into
+    the words, or in a table's cell (`text.docx_abstract.placed_headings`; Basile,
+    2026-11-15)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+    from manuscript_guard.text.docx_abstract import placed_headings
+
+    with tempfile.TemporaryDirectory() as folder:
+        for at, (body, headings) in enumerate(drawn):
+            path = Path(folder) / f"paper-{at}.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                      f"{body}</w:body></w:document>")  # fmt: skip
+            placed = placed_headings(read_docx_text(path))
+            assert [(one.level, one.title.strip()) for one in placed] == headings, body
+
+
+@holds(30, keywords_blocks())
+def test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does(
+    drawn: list[tuple[list[dict], list[tuple[int, str]]]],
+) -> None:
+    """`init --from` makes the same headings of the same papers as pandoc reads them: the
+    typed titles at the levels the keywords leave them (`from_word.typed_headings`), and the
+    keywords' label a heading over the keywords (`from_word_abstract.keywords_heading`)."""
+    from manuscript_guard.from_word import text_of, typed_headings
+    from manuscript_guard.from_word_abstract import keywords_heading
+
+    for blocks, headings in drawn:
+        made, _typed = typed_headings(json.loads(json.dumps(blocks)))
+        made, keywords = keywords_heading(made)
+        found = [(block["c"][0], " ".join(text_of(block["c"][2]).split()))
+                 for block in made if block["t"] == "Header"]  # fmt: skip
+        assert found == headings, blocks
+        assert keywords == next((title for _level, title in headings
+                                 if title.casefold().startswith("key")), None)  # fmt: skip
+
+
+from generated import keywords_sections  # noqa: E402
+
+
+@holds(30, keywords_sections())
+def test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14(
+    drawn: list[tuple[str, str, set[str]]],
+) -> None:
+    """The paragraph under a heading "Keywords" after the Abstract, as `init --from` writes a
+    run-in "Keywords:" that ends it, is a list of the Abstract's terms: G14 reads it in the
+    Abstract's scope, so a short form it lists is no use in the main text before the
+    Introduction defines it, nor is the Abstract's definition unused; what follows the list
+    is the main text's; and under a heading that only opens with the word, the list is the
+    main text's as before (round 1 of #689)."""
+    from manuscript_guard.gates.language import _file, _judge, _Known, _shipped
+
+    exact, lowered = _shipped()
+    for text, shorts, codes in drawn:
+        found = _judge([_file(0, MAIN, text, [], False)], _Known(exact, lowered), Path("."))
+        said = {f.code for f in found.findings if f.code.startswith("abbreviation")
+                and f.message.split()[0] in shorts.split()}  # fmt: skip
+        assert said == codes, (text, [f.message for f in found.findings])
+
+
+def _g14_reads_no_keywords_list(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #689: the list was the main text's."""
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_keywords_lists", lambda text, hidden, headings: {})
+
+
+def _g14_reads_the_whole_keywords_section_with_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    """The text after the list, an Introduction with no heading, read as the Abstract's."""
+    from manuscript_guard.gates import language
+
+    real = language._keywords_lists
+
+    def whole(text: str, hidden: str, headings: list) -> dict[int, int]:
+        starts = sorted(heading.start for heading in headings)
+        return {start: next((one for one in starts if one > start), len(text))
+                for start in real(text, hidden, headings)}  # fmt: skip
+
+    patch.setattr(language, "_keywords_lists", whole)
+
+
+def _init_makes_no_keywords_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word_abstract
+
+    patch.setattr(from_word_abstract, "keywords_heading", lambda blocks: (blocks, None))
 
 
 from generated import pdf_heading_lines  # noqa: E402
@@ -21916,14 +22057,14 @@ def _only_a_bold_abstract_line_is_a_heading(patch: pytest.MonkeyPatch) -> None:
 def _the_abstract_ends_only_at_the_next_heading(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import docx_abstract
 
-    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded: len(titles))
+    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded, ended=None: len(titles))
 
 
 def _the_abstract_ends_at_its_first_typed_title(patch: pytest.MonkeyPatch) -> None:
     """A structured abstract's parts in bold are not read as its own: it ends at the first."""
     from manuscript_guard.text import docx_abstract
 
-    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded: 1)
+    patch.setattr(docx_abstract, "abstract_end", lambda titles, worded, ended=None: 1)
 
 
 def _an_abstract_nothing_ends_runs_to_the_end(patch: pytest.MonkeyPatch) -> None:
@@ -22889,6 +23030,50 @@ BROKEN = {
     "an Abstract with words under it is never one paragraph": (
         _an_abstract_with_words_under_it_is_never_one_paragraph,
         test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a run-in Keywords ends no Abstract's titles": (
+        _keywords_end_no_abstract,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a run-in Keywords ends no Abstract to the audit": (
+        _keywords_end_no_abstract,
+        test_a_run_in_keywords_ends_the_abstract_where_the_audit_places_a_word_paper,
+    ),
+    "a run-in Keywords ends no Abstract to init": (
+        _keywords_end_no_abstract,
+        test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does,
+    ),
+    "keywords above an Abstract's titled parts end it": (
+        _keywords_with_no_words_before_them_end_it,
+        test_a_run_in_keywords_ends_the_abstract_where_the_audit_places_a_word_paper,
+    ),
+    "keywords above an Abstract's titled parts end it to init": (
+        _keywords_with_no_words_before_them_end_it,
+        test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does,
+    ),
+    "a sentence about keywords ends the Abstract": (
+        _a_sentence_about_keywords_is_a_label,
+        test_a_run_in_keywords_ends_the_abstract_where_the_audit_places_a_word_paper,
+    ),
+    "a sentence about keywords ends the Abstract to init": (
+        _a_sentence_about_keywords_is_a_label,
+        test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does,
+    ),
+    "a label in a table's cell ends the Abstract": (
+        _a_label_in_a_cell_ends_the_abstract,
+        test_a_run_in_keywords_ends_the_abstract_where_the_audit_places_a_word_paper,
+    ),
+    "init makes no heading of the keywords": (
+        _init_makes_no_keywords_heading,
+        test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does,
+    ),
+    "G14 reads a keywords list as the main text's": (
+        _g14_reads_no_keywords_list,
+        test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14,
+    ),
+    "G14 reads the whole keywords section as the Abstract's": (
+        _g14_reads_the_whole_keywords_section_with_the_abstract,
+        test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14,
     ),
     "a PDF's line Result alone is a heading": (
         _the_singular_is_a_heading_unnumbered,

@@ -165,13 +165,17 @@ def _pdf(path: Path) -> Version:
     found = ([(title, level, line) for line, title, level in placed] if placed is not None
              else [(title, 1, line) for line, title in pdf.headings])  # fmt: skip
     references = {line + 1 for start, end in pdf_spans(pdf) for line in range(start, end)}
-    return Version(path, "PDF", pdf.text, _sections(pdf.text, found), (), (),
+    return Version(path, "PDF", pdf.text, _sections(pdf.text, found, pdf.run_in), (), (),
                    frozenset(references), pdf=pdf)
 
 
-def _sections(text: str, found: list[tuple[str, int, int]]) -> tuple[Heading, ...]:
+def _sections(text: str, found: list[tuple[str, int, int]],
+              run_in: frozenset[int] = frozenset()) -> tuple[Heading, ...]:  # fmt: skip
     """The sections of `text` from its headings (title, level, line), each with its own text
-    up to the next; the text before the first heading as a section of no title."""
+    up to the next; the text before the first heading as a section of no title. A heading
+    whose line is in `run_in` is a run-in label, and the rest of its line is its section's
+    first text (`auditing.pdf.headings_of`)."""
+    from manuscript_guard.auditing.pdf import after_label
     from manuscript_guard.text.section_names import plain
 
     lines = text.split("\n")
@@ -183,7 +187,9 @@ def _sections(text: str, found: list[tuple[str, int, int]]) -> tuple[Heading, ..
         sections.append(Heading("", 0, 0, before))
     for at, (title, level, line) in enumerate(found):
         end = starts[at + 1] - 1 if at + 1 < len(starts) else len(lines)
-        sections.append(Heading(plain(title), level, line, "\n".join(lines[line:end])))
+        opening = [after_label(lines[line - 1])] if line in run_in else []
+        sections.append(Heading(plain(title), level, line, "\n".join([*opening,
+                                                                      *lines[line:end]])))
     return tuple(sections)
 
 

@@ -24,6 +24,16 @@ again (`text.section_names.section_levels`). Where one name stands on two such l
 which section is the paper's is not read, and the PDF's sections are not used to place its
 lines (`PdfText.placed`); the reference list is still found by its heading.
 
+Two lines are headings besides (Basile, 2026-11-15, decisions 22 and 23, after the real-paper
+corpus). Before the first heading read, a line that opens on the Abstract's run-in label and
+goes on, "Abstract: The second generation...", as MDPI's layout sets it: the label is the
+Abstract's heading and the rest of the line its first text, and it runs to the next heading
+as an Abstract read from its lines does (`section_levels`), as a Word paper's run-in label
+does (`text.docx_abstract`). And a line that opens on a study's number and a colon,
+"Experiment 1: Modulating prior knowledge", "Study II: A replication" (`study_title`): a
+multi-study paper's heading over the sections each study repeats, one level above the names
+after it, up to the next such line or to the end of the paper.
+
 A PDF's tables are lines of text, not rows of cells: their numbers are read as the text's,
 and no table is read as one. What a PDF keeps besides its text is not a Word file's: the
 Author field of its Info dictionary is read through `pdfinfo` where it is installed
@@ -36,12 +46,14 @@ import hashlib
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.text.section_names import (
     ABSTRACT_PARTS,
     SECTION_NAMES,
+    run_in_abstract,
     section_levels,
     section_name_alone,
 )
@@ -108,6 +120,9 @@ class PdfText:
     #: Each running head and foot taken out, `(page, "head" or "foot", text)`: the blinding
     #: check reads them (`auditing.journal._pdf_places`).
     running: tuple[tuple[int, str, str], ...] = ()
+    #: The lines, from 1, of the headings that are the Abstract's run-in label, the rest of
+    #: the line its first text (`headings_of`).
+    run_in: frozenset[int] = frozenset()
 
     def place(self, line: int | None) -> Place | None:
         """Where line `line` of the text stands, None for no line or one not in it."""
@@ -152,9 +167,10 @@ class PdfText:
         starts = [line for line, _title in self.headings]
         # With no heading read there is none to place (corpus run of 2026-11-11, 2509.01351).
         ends = [*starts[1:], len(lines) + 1] if starts else []
-        worded = [any(lines[k].strip() for k in range(start, end - 1))
+        # A run-in label has words under it on its own line.
+        worded = [start in self.run_in or any(lines[k].strip() for k in range(start, end - 1))
                   for start, end in zip(starts, ends, strict=True)]  # fmt: skip
-        levels = section_levels([title for _line, title in self.headings], worded)
+        levels = _levels([title for _line, title in self.headings], worded)
         if levels is None:
             return None
         placed = zip(self.headings, levels, strict=True)
@@ -184,6 +200,69 @@ def heading_title(line: str) -> str | None:
     whole line, less a number in front and a colon or a stop after, is one of `HEADINGS`,
     and its first letter is a capital (`text.section_names.section_name_alone`)."""
     return section_name_alone(line)
+
+
+#: A line that opens on a study's number, Arabic or Roman, and a colon: "Experiment 1:
+#: Modulating prior knowledge", "Study II: A replication", "EXPERIMENT 3:" (Basile,
+#: 2026-11-15, decision 23, after pdf-psych-A2 of the real-paper corpus, whose four
+#: experiments each have a "Method" and a "Results and Discussion"). Not "Experiment 3 (n =
+#: 99) confirmed this", nor "Experiment 1. In addition", which are its prose.
+_STUDY = re.compile(r"(?:Experiment|EXPERIMENT|Study|STUDY) (?:\d{1,2}|[IVX]{1,5}):")
+
+
+def study_title(line: str) -> str | None:
+    """The line, its spaces as one, where it opens on a study's number and a colon
+    (`_STUDY`): a multi-study paper's heading over its study's sections; else None."""
+    text = " ".join(line.split())
+    return text if _STUDY.match(text) else None
+
+
+def headings_of(texts: Sequence[str]) -> tuple[tuple[tuple[int, str], ...], frozenset[int]]:
+    """The headings of a PDF's lines, each `(line, title)`, lines from 1, and the lines of
+    those that are a run-in label: each line that holds a section's name alone
+    (`heading_title`) or opens on a study's number and a colon (`study_title`); and, before
+    the first of those, the first line that opens on the Abstract's run-in label and goes on
+    (`text.section_names.run_in_abstract`), its label less the colon or the stop its title,
+    the rest of the line the Abstract's. Not after the first heading: a reference's title or
+    a quotation that opens "Abstract:" titles no Abstract (Basile, 2026-11-15, decision 22,
+    after pdf-socio-B1 of the real-paper corpus)."""
+    found: list[tuple[int, str]] = []
+    run_in: set[int] = set()
+    for at, text in enumerate(texts, 1):
+        title = heading_title(text) or study_title(text)
+        if title is None and not found:
+            label = run_in_abstract(text)
+            if label is not None:
+                title = label.rstrip(" :.")
+                run_in.add(at)
+        if title is not None:
+            found.append((at, title))
+    return tuple(found), frozenset(run_in)
+
+
+def after_label(line: str) -> str:
+    """The rest of a line that opens on the Abstract's run-in label, the Abstract's first
+    text (`headings_of`); the line as it is where it opens on none."""
+    label = run_in_abstract(line)
+    return line if label is None else line.lstrip()[len(label):].lstrip()
+
+
+def _levels(titles: list[str], worded: list[bool]) -> tuple[int, ...] | None:
+    """Each title's level, as `PdfText.placed` gives it: the titles before the first study's
+    (`study_title`) as `section_levels` places them; each study's at level 1, and the names
+    after it at level 2, up to the next study's or the end, none of them twice under it."""
+    studies = [at for at, title in enumerate(titles) if study_title(title) is not None]
+    first = studies[0] if studies else len(titles)
+    levels = section_levels(titles[:first], worded[:first])
+    if levels is None:
+        return None
+    bounds = [*studies, len(titles)]
+    for start, end in zip(bounds, bounds[1:], strict=False):
+        names = [" ".join(title.casefold().split()) for title in titles[start + 1 : end]]
+        if len(names) != len(set(names)):
+            return None
+        levels = (*levels, 1, *([2] * len(names)))
+    return levels
 
 
 _READ: dict[tuple[str, str], PdfText] = {}
@@ -273,14 +352,13 @@ def _text_of(path: Path, kept, raw: str) -> PdfText:
                    and f"{line.number} {line.text}" in typed else None)  # fmt: skip
         places.append(Place(page, counted[page], printed))
     texts = [line.text for line in kept.lines]
-    headings = tuple((at, title) for at, text in enumerate(texts, 1)
-                     if (title := heading_title(text)) is not None)  # fmt: skip
+    headings, run_in = headings_of(texts)
     taken = set(kept.furniture)
     running = tuple((index, "head" if at < len(lines) / 2 else "foot", text)
                     for index, lines in enumerate(pages, 1)
                     for at, text in enumerate(lines) if text in taken)  # fmt: skip
     return PdfText(path, kept.reader, kept.pages, "\n".join(texts), tuple(places), headings,
-                   kept.furniture, kept.numbered, running)  # fmt: skip
+                   kept.furniture, kept.numbered, running, run_in)  # fmt: skip
 
 
 #: Where the name `author` gives was read.
@@ -320,9 +398,12 @@ __all__ = [
     "PdfText",
     "Place",
     "UnreadablePdf",
+    "after_label",
     "author",
     "can_read",
     "heading_title",
+    "headings_of",
     "is_pdf",
     "read_pdf",
+    "study_title",
 ]

@@ -830,3 +830,157 @@ def test_a_doi_cut_at_a_lines_end_is_not_sent(tmp_path: Path, registries,  # noq
     assert not found(report, "doi-unregistered")
     assert [(f["message"], f["page"]) for f in found(report, "identifier-not-sent")] == [
         ("10.1056/nejmoa20: not looked up: it may continue on the next line", 1)]
+
+
+# --------------------------------------- a run-in "Abstract:", and a study's own heading
+
+#: pdf-socio-B1 of the real-paper corpus, in MDPI's layout: its Abstract titled by a run-in
+#: "Abstract:" on a line of its words, then "Keywords:", then "1. Introduction". No line
+#: names the Abstract alone, and the audit said no file has a heading that names it.
+RUN_IN = [
+    "A study of things",
+    "Abstract: Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).",
+    "The rate was 21.4% in the exposed.",
+    "Keywords: harm; drugs; records",
+    "1. Introduction",
+    "Drugs cause harm [1].",
+    "2. Methods",
+    "We read 412 records [2].",
+    "3. Results",
+    "Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).",
+    "4. Discussion",
+    "It was so.",
+    "References",
+    "1. Smith A. A paper. J Things. 2019;12:345-56.",
+    "2. Jones B. Another paper. J Things. 2020;13:1-9.",
+]
+
+
+def test_a_run_in_abstract_label_before_the_first_heading_is_the_abstract_s() -> None:
+    """Basile, 2026-11-15, decision 22: the label is the Abstract's heading and the rest of
+    its line the Abstract's first text; it runs to the next heading. "Abstract." and
+    "ABSTRACT:" are read as a Word paper's run-in label is."""
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
+
+    headings, run_in = headings_of(RUN_IN)
+    assert headings[:2] == ((2, "Abstract"), (5, "Introduction")) and run_in == {2}
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(RUN_IN),
+                  tuple(Place(1, at) for at in range(1, len(RUN_IN) + 1)), headings,
+                  run_in=run_in)  # fmt: skip
+    assert [level for _line, _title, level in pdf.placed] == [1] * len(headings)
+    for label in ("Abstract.", "ABSTRACT:", "Abstract :"):
+        lines = [RUN_IN[0], RUN_IN[1].replace("Abstract:", label), *RUN_IN[2:]]
+        assert headings_of(lines)[0][0] == (2, label.rstrip(" :.")), label
+
+
+@pytest.mark.parametrize("line", [
+    # After the first heading, a reference's title or a quotation that opens on the label.
+    None,
+    # A sentence that opens with the word, and the label with nothing after it on its line.
+    "Abstracts were screened by two reviewers.",
+    "abstract: of 412 patients, 77 had the event.",
+])
+def test_no_other_line_that_opens_on_the_word_titles_an_abstract(line: str | None) -> None:
+    from manuscript_guard.auditing.pdf import headings_of
+
+    lines = ([*RUN_IN[:1], *RUN_IN[2:], f"Abstract: {RUN_IN[2]}"] if line is None
+             else [RUN_IN[0], line, *RUN_IN[2:]])  # fmt: skip
+    headings, run_in = headings_of(lines)
+    assert not run_in and all(title != "Abstract" for _line, title in headings), headings
+
+
+@needs_pdftotext
+def test_a_pdf_s_abstract_under_a_run_in_label_is_compared_with_its_results(
+    tmp_path: Path, capsys
+) -> None:
+    """The numbers on the label's own line are the Abstract's, matched in the Results, and the
+    one the Results do not report is said not found, at its page and line."""
+    paper = write(tmp_path / "paper.pdf", RUN_IN, per_column=40)
+    _code, report, _err = audited(capsys, str(paper))
+    assert not found(report, "abstract-not-compared")
+    assert report["counts"]["abstract_matched"] >= 5, report["counts"]
+    assert [(f["page"], f["line"], f["context"]) for f in found(report, "abstract-not-found")] \
+        == [(1, 4, "The rate was 21.4% in the exposed.")]
+    # The rest of the label's line is the Abstract's text where G4, G6 and G14 read the PDF,
+    # and where `compare` does.
+    from manuscript_guard.auditing.gates import _staged_pdf
+    from manuscript_guard.comparing.versions import read_version
+
+    staged = _staged_pdf(paper).files["main.md"]
+    assert "\n# Abstract\n\nOf 412 patients, 77 (18.7%) had the event" in staged, staged
+    abstract = next(one for one in read_version(paper).sections if one.title == "Abstract")
+    assert abstract.body.startswith("Of 412 patients, 77 (18.7%)"), abstract.body
+
+
+#: pdf-psych-A2 of the real-paper corpus: four experiments, each with its "Method" and its
+#: "Results and Discussion" under "Experiment N: <title>". Each name stood on four lines,
+#: and its headings were placed nowhere. Its prose names an experiment with no colon after
+#: the number, at a line's start too.
+STUDIES = [
+    "Abstract",
+    "Of 412 listeners, 77 (18.7%) heard speech, and in one experiment 21.4% did so.",
+    "Introduction",
+    "Experiment 3 (n = 99) confirmed this pattern with a new stimulus.",
+    "Experiment 1. In addition, half of them were primed.",
+    *(line for number in (1, 2, 3, 4) for line in (
+        f"Experiment {number}: Modulating prior knowledge of speech",
+        "Method", f"We tested {number}0 listeners.",
+        "Results and Discussion",
+        "In this one, 21.4% heard speech." if number == 3 else
+        "Of 412 listeners, 77 (18.7%) heard speech.")),
+    "General Discussion",
+    "It was so.",
+    "References",
+    "1. Smith A. A paper. J Things. 2019;12:345-56.",
+]
+
+
+def test_a_study_s_own_heading_is_one_level_above_the_names_after_it() -> None:
+    """Basile, 2026-11-15, decision 23: "Experiment N:" and "Study N:", N a number or a Roman
+    numeral, a colon required, are headings over the names after them, up to the next."""
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of, study_title
+
+    headings, run_in = headings_of(STUDIES)
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(STUDIES),
+                  tuple(Place(1, at) for at in range(1, len(STUDIES) + 1)), headings)
+    levels = [(title.split(":")[0], level) for _line, title, level in pdf.placed]
+    assert levels == [("Abstract", 1), ("Introduction", 1), *(
+        one for number in (1, 2, 3, 4) for one in (
+            (f"Experiment {number}", 1), ("Method", 2), ("Results and Discussion", 2))),
+        ("General Discussion", 2), ("References", 2)], levels
+    assert not run_in
+    for line in ("Study 1: A first look", "STUDY II: Again", "Experiment IV: Last",
+                 "Study  2:  spaced"):  # fmt: skip
+        assert study_title(line) == " ".join(line.split()), line
+    for line in STUDIES[3:5] + ["Experiment 2 included a version of the scale.",
+                                "In Experiment 4: a sentence.", "Study one: words",
+                                "experiment 1: lower case"]:  # fmt: skip
+        assert study_title(line) is None, line
+
+
+def test_a_name_twice_under_one_study_places_nothing() -> None:
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
+
+    lines = [*STUDIES[:8], "Method", *STUDIES[8:]]
+    headings, _run_in = headings_of(lines)
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                  tuple(Place(1, at) for at in range(1, len(lines) + 1)), headings)
+    assert pdf.placed is None
+
+
+@needs_pdftotext
+def test_a_multi_study_pdf_s_results_are_all_compared_with_its_abstract(
+    tmp_path: Path, capsys
+) -> None:
+    """The number of the Abstract only Experiment 3's Results report is found there, and the
+    staged Markdown G4, G6 and G14 read sets each study's sections under it."""
+    from manuscript_guard.auditing.gates import _staged_pdf
+
+    paper = write(tmp_path / "paper.pdf", STUDIES, per_column=40)
+    _code, report, _err = audited(capsys, str(paper))
+    assert not found(report, "abstract-not-compared")
+    assert not found(report, "abstract-not-found"), found(report, "abstract-not-found")
+    assert report["counts"]["abstract_matched"] == report["counts"]["abstract_numbers"] >= 4
+    staged = _staged_pdf(paper).files["main.md"]
+    assert "\n# Experiment 3: Modulating prior knowledge of speech\n" in staged
+    assert "\n## Results and Discussion\n" in staged

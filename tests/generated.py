@@ -15539,6 +15539,97 @@ def placed_papers(
     return out
 
 
+#: The Abstract's run-in labels a PDF's line may open on (`auditing.pdf.headings_of`), and
+#: the title each gives (Basile, 2026-11-15, decision 22, after pdf-socio-B1).
+PDF_RUN_IN_LABELS = {"Abstract:": "Abstract", "ABSTRACT:": "ABSTRACT", "Abstract.": "Abstract",
+                     "Abstract :": "Abstract"}  # fmt: skip
+#: How a study's own heading opens (`auditing.pdf.study_title`; decision 23, after
+#: pdf-psych-A2), each with a number of each kind.
+PDF_STUDIES = ("Experiment", "Study", "EXPERIMENT", "STUDY")
+PDF_STUDY_NUMBERS = ("1", "2", "3", "4", "12", "I", "II", "IV", "IX")
+#: The names a study repeats under its own heading.
+PDF_STUDY_NAMES = ("Method", "Methods", "Results", "Results and Discussion", "Discussion")
+#: Lines that open on what a heading opens on, and are prose: a study named with no colon
+#: after its number, at a line's start; one named with a colon inside the line.
+PDF_STUDY_PROSE = ("{study} {number} (n = 99) confirmed this with {words}.",
+                   "{study} {number}. In addition, {words} were primed.",
+                   "{study} {number} included {words}.", "As in {study} {number}: {words}.")
+#: Lines that open on the Abstract's word and title no Abstract: a sentence before the first
+#: heading, and a reference's title after it that opens on the label.
+PDF_ABSTRACT_PROSE = "Abstracts were screened by {words}."
+
+
+@st.composite
+def pdf_heading_papers(
+    draw: st.DrawFn,
+) -> list[tuple[list[str], list[tuple[int, str]], set[int], tuple[int, ...] | None]]:
+    """PDFs' lines with every kind of line `auditing.pdf.headings_of` reads or leaves, a
+    paper for each run-in label of `PDF_RUN_IN_LABELS`, in an order drawn: before the first
+    heading, a sentence that opens on "Abstracts" and the label, in an order drawn; an
+    Introduction; a study for each heading of `PDF_STUDIES`, a number of `PDF_STUDY_NUMBERS`
+    after it, with names of `PDF_STUDY_NAMES` under it and every kind of `PDF_STUDY_PROSE`
+    among their lines; the back matter after the last, and a reference that opens on the
+    label. And the first paper with a name twice under one study, which places nothing. Each
+    with its headings `(line, title)`, the run-in label's line, and the levels
+    `PdfText.placed` gives them."""
+    word = st.sampled_from(FILLER)
+
+    def words() -> str:
+        return " ".join(draw(st.lists(word, min_size=1, max_size=4)))
+
+    def paper(label: str) -> tuple[list[str], list[tuple[int, str]], tuple[int, ...]]:
+        opening = [f"{label} Of 412 {words()}, 77 fell.",
+                   PDF_ABSTRACT_PROSE.format(words=words())]  # fmt: skip
+        lines = ["Falls in older patients", *draw(st.permutations(opening)),
+                 "Keywords: falls; records"]  # fmt: skip
+        headings = [(lines.index(opening[0]) + 1, PDF_RUN_IN_LABELS[label])]
+        levels = [1]
+
+        def heading(text: str, title: str, level: int) -> None:
+            lines.append(text)
+            headings.append((len(lines), title))
+            levels.append(level)
+
+        heading("1. Introduction", "Introduction", 1)
+        lines.append(f"In 2019, {words()} were 15.")
+        prose = st.sampled_from(PDF_STUDY_PROSE)
+        numbers = draw(st.permutations(PDF_STUDY_NUMBERS))
+        for study, number in zip(draw(st.permutations(PDF_STUDIES)), numbers, strict=False):
+            title = draw(st.sampled_from((" ", "  "))).join(
+                [f"{study} {number}:", *([words()] if draw(st.booleans()) else [])])
+            heading(title, " ".join(title.split()), 1)
+            lines.append(draw(prose).format(study=study, number=number, words=words()))
+            for name in draw(st.lists(st.sampled_from(PDF_STUDY_NAMES), min_size=1,
+                                      unique=True)):  # fmt: skip
+                heading(name, name, 2)
+                lines.append(draw(prose).format(study=study, number=number, words=words()))
+        # Every kind of prose line, in the last study's last section, in an order drawn.
+        for kind in draw(st.permutations(PDF_STUDY_PROSE)):
+            lines.append(kind.format(study=draw(st.sampled_from(PDF_STUDIES)),
+                                     number=draw(st.sampled_from(PDF_STUDY_NUMBERS)),
+                                     words=words()))  # fmt: skip
+        heading("General Discussion", "General Discussion", 2)
+        lines.append(f"It was so for {words()}.")
+        heading("References", "References", 2)
+        lines += ["1. Smith A. A paper. J Things. 2019;12:345-56.",
+                  f"{label} {words()} in 412 patients."]
+        return lines, headings, tuple(levels)
+
+    out = []
+    for label in draw(st.permutations(sorted(PDF_RUN_IN_LABELS))):
+        lines, headings, levels = paper(label)
+        out.append((lines, headings, {headings[0][0]}, levels))
+    # The first paper with its first study's first name twice under it: placed nowhere.
+    lines, headings, run_in, _levels = out[0]
+    first = next(at for at, (_line, title) in enumerate(headings) if title in PDF_STUDY_NAMES)
+    line = headings[first][0]
+    twice = [*lines[:line], lines[line - 1], *lines[line:]]
+    shifted = [(at + (at > line), title) for at, title in headings]
+    shifted.insert(first + 1, (line + 1, lines[line - 1]))
+    out.append((twice, shifted, run_in, None))
+    return out
+
+
 #: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether pandoc
 #: reads every word of it as bold (3.9.0.2): bold by the run's own `w:b`, by its character
 #: style's; not by a style that one is based on, nor by a paragraph style's, nor with `w:b`
@@ -16567,6 +16658,9 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
+    "pdf headings": st.one_of(
+        pdf_heading_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
+        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn]))),
     "word abstract": word_abstract_papers().flatmap(
         lambda drawn: st.sampled_from([body for body, _titles in drawn])),
     "checker sentences": texts(),

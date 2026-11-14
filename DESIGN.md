@@ -11260,7 +11260,16 @@ structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them,
 heading between the two is the Abstract's, a level under it (`PdfText.placed`), in `compare`
 too (round 2 of #486): a Lancet "Summary" with its Funding line, or a BMJ abstract, is placed
 so (the fix-only round of #486 kept this over ending the Abstract at a heading of another
-name). Where there is no
+name). Two shapes of line are headings besides (Basile, 2026-11-15, decisions 22 and 23, after
+the real-paper corpus; `auditing.pdf.headings_of`). Before the first heading, a line that
+opens on the Abstract's run-in label and goes on (`section_names.run_in_abstract`, a Word
+paper's rule) is the Abstract's heading, the rest of the line its first text, and it ends as
+an Abstract read from its lines does; after it, a reference's title or a quotation that opens
+so titles nothing. And a line that opens on "Experiment" or "Study", a number or a Roman
+numeral and a colon (`study_title`) is a multi-study paper's heading over the names after it,
+a level above them, to the next such line or the end, so that each study's own "Method" and
+"Results" are placed and a name stands twice only where it does under one study. Where there
+is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
 are placed in no section, so the Abstract is not compared with the Results and no causal word
@@ -26399,6 +26408,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
     the paper's Background its own. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
+  - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
+    line, an author's address or a title page's other lines typed before it are the
+    Abstract's, their numbers among its own. Only the first such line before the first
+    heading is read. Accepted.
+  - Any line that opens on "Experiment N:" or "Study N:" is a study's heading: a table's row
+    or a wrapped line of prose or of a caption that opens so is one too, and the names after
+    it are placed under it. The names after the last study, "General Discussion" and the back
+    matter among them, are placed under it, a level down; a "Discussion" of the whole paper
+    after the last study's own "Discussion" is a name twice under it, and the PDF's lines are
+    placed in no section. A study's heading wrapped over two lines is read by its first. A
+    study named otherwise ("Study 1a:", "Pilot study:", "Experiment One:") is no heading.
+    Accepted.
   - A reference list whose entries are not told apart is counted by its identifiers, and its
     citations are held to nothing; one numbered entry that holds two DOIs (an article and its
     data, say) makes the whole list so. A wrapped line inside an entry that starts with the

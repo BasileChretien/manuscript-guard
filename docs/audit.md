@@ -28,7 +28,12 @@ A PDF named is read through `pdftotext`, its running heads, page numbers and mar
 numbers left out, and each place in it is a page and a line; without `pdftotext` it is
 refused, exit 2. Its tables are lines of text there, so their numbers are compared and read
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
-holds a section's name alone; a PDF with no such line is said to be read as one text. A PDF in a folder is not read: name it.
+holds a section's name alone; a PDF with no such line is said to be read as one text. Two
+lines are headings besides: before the first heading, a line that opens on a run-in
+"Abstract:" and goes on, as MDPI's layout sets it, the rest of the line the Abstract's first
+text, up to the next heading; and a line that opens on "Experiment 2:" or "Study II:", a
+colon after the number, a multi-study paper's heading over the sections each of its studies
+repeats, so that each study's Results are compared with the Abstract. A PDF in a folder is not read: name it.
 
 `--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
 `--details` prints them: its sections and each kind of finding on the words are bookmarks,

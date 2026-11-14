@@ -57,6 +57,10 @@ and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). 
   name and nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"). A section
   under any other title is read as part of the one before. A structured abstract's own
   headings, on lines of their own, are the Abstract's where an Introduction follows them.
+  Before the first heading, a line that opens on "Abstract:" and goes on is the Abstract's
+  heading, and its words the Abstract's. A line that opens on "Experiment 1:" or "Study 1:"
+  is a heading over the names after it, so a multi-study paper's repeated Method and Results
+  are each read under their own study; "Experiment 1 (n = 99)" and "Experiment 1." are not.
   Where none does, or one name stands alone on two lines otherwise, which section is the
   paper's is not read: the lines are placed in no section, the Abstract is not compared with
   the Results, a journal's limits on the abstract's and the main text's words are not

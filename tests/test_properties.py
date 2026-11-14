@@ -21425,6 +21425,71 @@ def test_titles_standing_alone_are_placed_as_their_paper_sets_them(
         assert section_levels(titles, worded) == levels, (titles, worded)
 
 
+from generated import pdf_heading_papers  # noqa: E402
+
+
+@holds(30, pdf_heading_papers())
+def test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed(
+    drawn: list[tuple[list[str], list[tuple[int, str]], set[int], tuple[int, ...] | None]],
+) -> None:
+    """Before a PDF's first heading, a line that opens on the Abstract's run-in label and
+    goes on is the Abstract's heading, the rest of the line its text; a sentence that opens
+    on "Abstracts", and the label after the first heading, are not. A line that opens on
+    "Experiment N:" or "Study N:" is a heading one level above the names after it, up to the
+    next or to the end; with no colon after the number, or inside a line, it is prose; and a
+    name twice under one study places nothing (`auditing.pdf.headings_of`, `PdfText.placed`;
+    Basile, 2026-11-15, decisions 22 and 23, after pdf-socio-B1 and pdf-psych-A2)."""
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
+
+    for page, headings, run_in, levels in drawn:
+        found, run = headings_of(page)
+        assert list(found) == headings and run == run_in, page
+        pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(page),
+                      tuple(Place(1, at) for at in range(1, len(page) + 1)), found,
+                      run_in=run)  # fmt: skip
+        placed = pdf.placed
+        assert (None if placed is None else tuple(one[2] for one in placed)) == levels, page
+
+
+def _a_pdf_s_run_in_label_titles_an_abstract_anywhere(patch: pytest.MonkeyPatch) -> None:
+    """As though the label were read after the first heading too, a reference's among them."""
+    from manuscript_guard.auditing import pdf
+
+    def headings_of(texts):
+        found, run_in = [], set()
+        for at, text in enumerate(texts, 1):
+            title = pdf.heading_title(text) or pdf.study_title(text)
+            label = pdf.run_in_abstract(text) if title is None else None
+            if label is not None:
+                title = label.rstrip(" :.")
+                run_in.add(at)
+            if title is not None:
+                found.append((at, title))
+        return tuple(found), frozenset(run_in)
+
+    patch.setattr(pdf, "headings_of", headings_of)
+
+
+def _a_pdf_s_run_in_label_is_no_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "run_in_abstract", lambda text: None)
+
+
+def _a_study_s_heading_needs_no_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_STUDY", re.compile(r"(?:Experiment|EXPERIMENT|Study|STUDY) "
+                                            r"(?:\d{1,2}|[IVX]{1,5})\b"))  # fmt: skip
+
+
+def _a_study_s_heading_is_at_its_names_level(patch: pytest.MonkeyPatch) -> None:
+    """As before decision 23: the names each study repeats are placed nowhere."""
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_levels", pdf.section_levels)
+
+
 def _a_structured_abstract_ends_only_at_an_introduction(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -22669,6 +22734,22 @@ BROKEN = {
     "the notes pandoc writes are under the last heading": (
         _the_notes_are_not_read,
         test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "a PDF's run-in Abstract label is read after its first heading": (
+        _a_pdf_s_run_in_label_titles_an_abstract_anywhere,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's run-in Abstract label is no heading": (
+        _a_pdf_s_run_in_label_is_no_heading,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's study heading needs no colon": (
+        _a_study_s_heading_needs_no_colon,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
+    ),
+    "a PDF's study heading is at the level of the names under it": (
+        _a_study_s_heading_is_at_its_names_level,
+        test_a_pdf_s_run_in_abstract_and_its_studies_headings_are_read_and_placed,
     ),
     "a structured abstract's parts end only at an Introduction": (
         _a_structured_abstract_ends_only_at_an_introduction,

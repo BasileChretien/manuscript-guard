@@ -65,6 +65,7 @@ from manuscript_guard.text.section_names import (
     names_discussion,
     names_introduction,
     names_introduction_material,
+    names_keywords,
     names_paper_summary,
     names_results,
     plain,
@@ -245,10 +246,13 @@ def _reports_nothing(section: Section, walk) -> bool:
     nothing or as summarising (`Walk.elsewhere`, `Walk.summaries`): the abstract, a
     "Limitations" or an "Interpretation" of its own, the statements and the reference list
     (round 1 of #641: a number in a footnote under "References" or in a "Funding" was found,
-    and so was one an "Author summary" repeats)."""
+    and so was one an "Author summary" repeats); and the keywords, under which a Word paper's
+    Introduction with no heading of its own stands where a run-in "Keywords:" ends its
+    Abstract (`text.docx_abstract`; Basile, 2026-11-15)."""
     title = section.title
     return (id(section) in walk.elsewhere or id(section) in walk.summaries
             or names_introduction(title) or names_introduction_material(title)
+            or names_keywords(title)
             or names_conclusion(title) or names_paper_summary(title)
             or (names_discussion(title) and not names_results(title)))  # fmt: skip
 

@@ -25305,15 +25305,50 @@ Open, recorded as each change landed:
     `tests/test_word_abstract.py::test_an_abstract_that_nothing_ends_is_not_read`,
     `tests/test_word_abstract.py::test_the_audit_and_init_take_the_same_abstract_headings`.
   - What stands between such an Abstract and its end is the Abstract's, whatever it is: a
-    "Keywords:" line, a table. A title Word numbers as the lone item of a list is a typed
+    table, a line in bold that names no section, but a run-in "Keywords:" after its words
+    (next point). A title Word numbers as the lone item of a list is a typed
     title since #682, and ends the Abstract to both readers, docx-ecol-B2's "Introduction"
     (round 2 of #683); no list's item is the Abstract's own heading. A line in bold that
-    names no section, or a run-in "Keywords:", ends nothing: no rule says which do. `init --from`
+    names no section ends nothing: no rule says which do. `init --from`
     leaves a run-in label on its paragraph where the label does not end where a word does
     (it runs on into a note's mark, a link or the paragraph's next word in one piece of
     text), which the audit still reads; it makes the label a heading in a paper whose typed
     titles the audit cannot place, which the audit then places by nothing; and a label in
     a text box is read by the audit, and what pandoc makes of it is not held by a test.
+    Accepted.
+  - A paragraph of a Word paper that opens on a run-in "Keywords:", "Key words:",
+    "KEYWORDS:", "Key Words:" or "KEY WORDS:" and goes on, on a line a title can be typed
+    as, under the Abstract's own title after its words and before the next title, ends the
+    Abstract, to the audit and to `init --from` alike, however the Abstract's heading was
+    read: a heading style, a typed title, a run-in label or "Abstract" alone on its line
+    (Basile, 2026-11-15, decision 24). `section_levels` places the titles after it in the
+    main text, so docx-psych-B2's Results, Discussion and Conclusion typed in bold after
+    its keywords and its Introduction with no heading are the paper's, not the Abstract's
+    parts, and the paper is compared. Where words stand after it before the next heading,
+    it is a heading of its label, "Keywords", at the Abstract's level, its line read as a
+    paragraph as a run-in "Abstract:" is, and nothing under it is searched for the
+    Abstract's numbers (`auditing.abstract._reports_nothing`): docx-psych-A1's Introduction
+    with no heading, whose 45% and 80% were the Abstract's numbers not found once the paper
+    was compared. One with no words before it, between the Abstract's title and its first
+    part titled on a line of its own, ends nothing, and the parts stay the Abstract's; nor
+    does "Keywords" in a sentence, a label with nothing after it or run on into the words,
+    or one in a table's cell. Pinned by
+    `tests/test_word_keywords.py::test_keywords_after_a_one_paragraph_abstract_leave_the_results_the_paper_s`,
+    `tests/test_word_keywords.py::test_the_introduction_after_the_keywords_is_not_the_abstract_s`,
+    `tests/test_word_keywords.py::test_keywords_before_an_abstract_s_titled_parts_end_nothing`,
+    `tests/test_word_keywords.py::test_keywords_in_a_sentence_end_nothing`,
+    `tests/test_word_keywords.py::test_keywords_in_a_table_s_cell_end_nothing`,
+    `tests/test_word_keywords.py::test_the_audit_and_init_take_the_same_end_at_the_keywords`.
+  - What that rule leaves as it was: a "Keywords:" after a structured abstract's parts
+    titled on lines of their own stands under its last part, not under the Abstract's own
+    title, and ends nothing, so the Abstract runs on to where its parts end; one whose
+    next heading in a heading style is deeper than the Abstract's ends nothing, the
+    Abstract's part by its style; one with no words after it before the next title ends
+    the Abstract's titles but is no heading, so its own line stays the Abstract's; the
+    keywords of a PDF end nothing, since `auditing/pdf.py` gives `section_levels` no
+    keywords and is left to a follow-up, nor do a "Keywords:" paragraph of a Markdown or a
+    LaTeX paper's Abstract; and `init --from` leaves the label on its paragraph, no
+    heading, where it does not end where a word does, which the audit still reads as one.
     Accepted.
   - The two shapes are looked for in every file with no heading that names the Abstract,
     a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line

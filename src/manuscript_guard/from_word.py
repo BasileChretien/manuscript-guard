@@ -125,6 +125,9 @@ class Converted:
     abstract_headings: tuple[str, ...] = ()
     #: What `init --from` made of the typed reference list and citations (`typed_references`).
     references: TypedReferences | None = None
+    #: The heading made of a run-in "Keywords:" that ends the Abstract, its label's words, or
+    #: None (`from_word_abstract.keywords_heading`).
+    keywords_heading: str | None = None
 
 
 def refused(path: Path) -> str | None:
@@ -189,6 +192,10 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
         abstract = [*abstract, *styled]
     if abstract:
         body = [_heading("Abstract"), *abstract, *body]
+    from manuscript_guard.from_word_abstract import keywords_heading
+
+    body, keywords = keywords_heading(body)
+    headings += keywords is not None
     converted, unconverted = _tables(body)
     left = tuple(f"{said}; {_form(_write(tree, [table], path))}"
                  for said, table in unconverted)  # fmt: skip
@@ -198,7 +205,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
                      media=media, tables=converted, tables_left=left, title_page=title_page,
                      headings=headings, title_noted=noted,
                      title_marks=marks, typed_headings=typed,
-                     abstract_headings=shaped)  # fmt: skip
+                     abstract_headings=shaped, keywords_heading=keywords)  # fmt: skip
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
@@ -564,10 +571,16 @@ def _in_bold(inlines: list, bold: bool = False) -> bool:
 
 
 def _levels(blocks: list, found: list, section_levels) -> tuple[int, ...] | None:
+    from manuscript_guard.from_word_abstract import keywords_block
+
     ends = [at for at, _name, _typed in found[1:]] + [len(blocks)]
     worded = [_words(blocks[at + 1 : end]) > 0
               for (at, _name, _typed), end in zip(found, ends, strict=True)]  # fmt: skip
-    return section_levels([name for _at, name, _typed in found], worded)
+    # A run-in "Keywords:" under the Abstract's own words ends it, as the audit reads it
+    # (`text.docx.keywords_line`; Basile, 2026-11-15).
+    ended = [keywords_block(blocks, at + 1, end) is not None
+             for (at, _name, _typed), end in zip(found, ends, strict=True)]  # fmt: skip
+    return section_levels([name for _at, name, _typed in found], worded, ended)
 
 
 def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
@@ -887,6 +900,11 @@ def what_was_done(docx: Path, converted: Converted) -> str:
                      "names it alone, and a title typed after it that ends it, were made "
                      "headings, as the audit reads them: "
                      + ", ".join(converted.abstract_headings))  # fmt: skip
+    if converted.keywords_heading:
+        lines.append(f"    a run-in \"{converted.keywords_heading}:\" after the Abstract's words "
+                     "ended it and was made a heading, as the audit reads it; what follows it "
+                     "up to the next heading is no Abstract's: if it is the Introduction, "
+                     "give it its heading")  # fmt: skip
     lines.append(f"  tables: {converted.tables} written as pipe tables")
     if converted.tables_left:
         lines.append("  tables left as pandoc writes them: check reads a grid table's rows, "

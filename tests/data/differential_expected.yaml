@@ -26,12 +26,14 @@
 expected:
   - reading: word abstract
     why: >-
-      a Word paper that uses heading styles and titles its Abstract by a run-in "Abstract:"
-      or "Abstract." opening its paragraph, or by "Abstract" alone on a line of its own, in
-      bold or not, has that Abstract compared with its Results, where the base said no file
-      has a heading that names the Abstract; it ends at the next heading, or before it at a
-      title typed on a line of its own that is no part of it, "Author information" among
-      them (Basile, 2026-11-14, five papers of the real-paper corpus)
+      a run-in "Keywords:" after a Word paper's Abstract's words, before the next title,
+      ends the Abstract: the titles typed after it are the main text's, so a paper whose
+      Results, Discussion and Conclusion come after its keywords is compared where the base
+      read them as the Abstract's parts and compared nothing, and the words after the
+      keywords up to the next heading, an Introduction with no heading, are no Abstract's
+      and are not searched, where the base read their numbers as the Abstract's; the inputs
+      now draw such papers (Basile, 2026-11-15, decision 24: docx-psych-B2 and docx-psych-A1
+      of the real-paper corpus)
   - reading: audit references not sorted
     why: >-
       a paper's entries the audit cannot sort are one note, at the first of them, naming

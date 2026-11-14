@@ -520,7 +520,12 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   capitals or not, "Abstract", "ABSTRACT", "2. Methods", "3. RESULTS", "References",
   "Declarations", is made a heading, and the title page before the first is set aside as
   above; the audit reads the .docx's sections the same way, and says so in the report. A
-  sentence that opens with "Results", a list's item, a table's cell and a caption beside a
+  title Word numbers itself, "1. INTRODUCTION" as an item of a numbered list, is one too
+  where the item holds that line alone, and its heading is titled with its name alone,
+  since pandoc's count of a list's items is not always Word's; the list is split there,
+  and its other items stay a list. An item with its subsections numbered straight under
+  it, or with a paragraph joined to it, is not. A sentence that opens with "Results", a
+  bulleted list's item, a numbered list's sentence, a table's cell and a caption beside a
   table, an indented paragraph and one beside a picture are not titles. The names are a
   closed list, the one a PDF's lines are read by: a
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a

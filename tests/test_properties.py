@@ -21363,11 +21363,15 @@ def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
 @holds(40, typed_paragraphs())
 def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]]) -> None:
     """A paragraph of words outside a table, in no caption style pandoc reads ("caption",
-    "Table Caption", "Image Caption", by name) and not numbered by Word is a line a title can
-    be typed as, in bold or not; one in a table's cell, in a link, in a caption style, Word
-    numbers or with a note's mark is not (`text.docx.DocxText.typed`)."""
+    "Table Caption", "Image Caption", by name), and that pandoc reads as a paragraph or as
+    the lone item of a numbered list in no other, is a line a title can be typed as, in bold
+    or not; one in a table's cell, in a link, in a caption style, with a note's mark, Word
+    bullets, or an item holding another or a paragraph is not
+    (`text.docx.DocxText.typed`)."""
     import tempfile
     import zipfile
+
+    from generated import TYPED_PARAGRAPH_NUMBERING
 
     from manuscript_guard.text.docx import read_docx_text
 
@@ -21379,6 +21383,7 @@ def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]
                                                   f"{body}</w:body></w:document>")  # fmt: skip
             archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
                                                 f"{TYPED_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+            archive.writestr("word/numbering.xml", TYPED_PARAGRAPH_NUMBERING)
         document = read_docx_text(path)
     lines = document.body.split("\n")
     assert sorted(lines[at] for at in document.typed) == typed
@@ -21396,27 +21401,86 @@ def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(docx_module, "_caption_styles", lambda archive, names, what: frozenset())
 
 
+def _a_numbered_paragraph_indented_is_quoted(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #682: a list's item indented as Word indents one was read as a quote."""
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_block_quote", lambda paragraph, shape: docx_module._quoted(
+        paragraph))
+
+
+def _a_line_word_numbers_is_never_typed(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-14: a title Word numbers was a list's item, and no title."""
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._in_lists
+    patch.setattr(docx_module, "_in_lists", lambda pieces, listed, pictured: real(
+        pieces, listed, pictured) | {line for line, shape in listed.items() if shape})
+
+
+def _an_item_holding_more_is_typed(patch: pytest.MonkeyPatch) -> None:
+    """An item with an item under it, or with a paragraph pandoc joins to it, read as lone."""
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_list_run", lambda run: {
+        line for line, _num, _level, kind, _joined in run if kind != "ordered"})
+
+
+def _word_s_level_is_pandoc_s(patch: pytest.MonkeyPatch) -> None:
+    """A numbered paragraph read at the level Word numbers it at, not pandoc's."""
+    from manuscript_guard.text.word_numbering import Numbering
+
+    real = Numbering.pandoc_item
+
+    def item(self: Numbering, paragraph: object) -> tuple[str, int, str] | None:
+        found = real(self, paragraph)
+        if found is None or found[2] == "plain":
+            return found
+        return (found[0], self.level_of(paragraph) or 0, found[2])
+
+    patch.setattr(Numbering, "pandoc_item", item)
+
+
 @holds(60, typed_blocks())
 def test_a_paragraph_that_names_a_section_alone_is_made_a_heading(
     drawn: tuple[list[dict], list[str]],
 ) -> None:
     """In a Word paper with no heading style, a paragraph whose words name a section is made
     a heading of its name, in bold or not, also underlined, in a span, in italics, numbered,
-    with a colon, in capitals, half in bold; a bold title that names none, a word in bold or
-    not opening a sentence, a name in a list's item or in a link stays text
-    (`from_word.typed_headings`; the real-paper corpus, 2026-11-11)."""
+    with a colon, in capitals, half in bold, and a numbered list's item that is one such
+    paragraph, its list split there; a bold title that names none, a word in bold or not
+    opening a sentence, a name in a bulleted list's item or in a link, a numbered item with a
+    list under it or of a sentence stays text (`from_word.typed_headings`; the real-paper
+    corpus, 2026-11-11 and 2026-11-14). Every word stays where it stood."""
     from manuscript_guard.from_word import typed_headings
 
     blocks, titles = drawn
+    before = _words_in_order(blocks)
     made, named = typed_headings(blocks)
     assert list(named) == titles
     assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
+    assert _words_in_order(made) == before
 
 
 def _text_of_heading(block: dict) -> str:
     from manuscript_guard.from_word import text_of
 
     return " ".join(text_of(block["c"][2]).split())
+
+
+def _words_in_order(blocks: list[dict]) -> list[str]:
+    """The words of `blocks`, a list's item by item, each without a colon or a stop at its end,
+    which a heading made of it leaves out."""
+    from manuscript_guard.from_word import text_of
+
+    said: list[str] = []
+    for block in blocks:
+        if block["t"] == "OrderedList":
+            said += [" ".join(text_of(item).split()) for item in block["c"][1]]
+        else:
+            said.append(" ".join(text_of(block["c"][2] if block["t"] == "Header"
+                                         else block["c"]).split()))  # fmt: skip
+    return [words.rstrip(" :.") for words in said]
 
 
 def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
@@ -21432,6 +21496,35 @@ def _only_a_title_in_bold_is_typed(patch: pytest.MonkeyPatch) -> None:
     real = from_word._words_only
     patch.setattr(from_word, "_words_only", lambda inlines: real(inlines) and any(
         node.get("t") == "Strong" for node in inlines))  # fmt: skip
+
+
+def _a_list_s_item_is_never_a_title(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-14: a numbered list's item stayed a list's item."""
+    from manuscript_guard import from_word
+
+    patch.setattr(from_word, "_titles_a_section", lambda item, named: False)
+
+
+def _an_item_with_a_list_under_it_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._titles_a_section
+    patch.setattr(from_word, "_titles_a_section", lambda item, named: real(item[:1], named))
+
+
+def _a_split_list_loses_its_items_after_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._opened_lists
+
+    def opened(blocks: list, named: object) -> tuple[list, list]:
+        out, lists = real(blocks, named)
+        kept = [(block, came) for at, (block, came) in enumerate(zip(out, lists, strict=True))
+                if not (block["t"] == "OrderedList" and at and lists[at - 1] is not None
+                        and lists[at - 1][0] == (came or [None])[0])]  # fmt: skip
+        return [block for block, _came in kept], [came for _block, came in kept]
+
+    patch.setattr(from_word, "_opened_lists", opened)
 
 
 def _a_number_before_a_title_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
@@ -22518,6 +22611,34 @@ BROKEN = {
     "a paragraph in a caption style is typed": (
         _a_caption_is_typed,
         test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered paragraph indented is quoted": (
+        _a_numbered_paragraph_indented_is_quoted,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a line Word numbers is never typed": (
+        _a_line_word_numbers_is_never_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "an item holding more than its line is typed": (
+        _an_item_holding_more_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered paragraph is at Word's level": (
+        _word_s_level_is_pandoc_s,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
+    ),
+    "a numbered list's item is never a title": (
+        _a_list_s_item_is_never_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "an item with a list under it is a title": (
+        _an_item_with_a_list_under_it_is_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a list split at a title loses the items after it": (
+        _a_split_list_loses_its_items_after_a_title,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,

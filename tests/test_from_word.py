@@ -622,6 +622,26 @@ def test_an_abstract_styled_paragraph_before_the_first_heading_is_the_abstract(
 
 
 @needs_pandoc
+def test_an_abstract_styled_paragraph_before_a_title_word_numbers_is_the_abstract(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #682: where the first heading is made of a title Word numbers, with an
+    item of its list before it, an affiliation numbered "1.", the title page ends in that
+    list cut where the heading was. The reading with styles was compared whole, and the
+    paragraphs in the Abstract style were left in the comment."""
+    paper = word(tmp_path / "word", ABSTRACT_LATER.replace(
+        "# Introduction\n\nFalls are common.\n",
+        "1. Somewhere University\n2. INTRODUCTION\n\nFalls are common.\n"))
+    converted = from_word.convert(paper)
+    assert converted.typed_headings[:1] == ("INTRODUCTION",)
+    comment = converted.text[: converted.text.index("-->")]
+    assert "Somewhere University" in comment and "Corresponding author" in comment
+    assert "120 patients" not in comment and "41 fell" not in comment
+    assert "# Abstract\n\nWe followed 120 patients.\n\nOf them, 41 fell again.\n\n# INTRODUCTION" \
+        in converted.text.replace("\r\n", "\n"), converted.text
+
+
+@needs_pandoc
 def test_an_abstract_styled_paragraph_under_a_heading_stays_where_it_is(tmp_path: Path) -> None:
     """Only what is set aside as the title page is looked at: under a heading, a paragraph
     in the Abstract style is in the text already."""
@@ -736,9 +756,9 @@ PICTURE = (
 )
 
 
-def _package(path: Path, body: str, styles: str) -> Path:
-    """A .docx of `body` and `styles` with the parts pandoc needs to find them, and the
-    picture `PICTURE` points to."""
+def _package(path: Path, body: str, styles: str, numbering: str = "") -> Path:
+    """A .docx of `body`, `styles` and `numbering`, a `word/numbering.xml` where it is
+    given, with the parts pandoc needs to find them, and the picture `PICTURE` points to."""
     import zipfile
 
     w = " ".join(f'xmlns:{prefix}="{space}"' for prefix, space in (
@@ -757,18 +777,24 @@ def _package(path: Path, body: str, styles: str) -> Path:
             'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
             '<Default Extension="png" ContentType="image/png"/>'
             f'<Override PartName="/word/document.xml" ContentType="{main}.document.main+xml"/>'
-            f'<Override PartName="/word/styles.xml" ContentType="{main}.styles+xml"/></Types>'))
+            f'<Override PartName="/word/styles.xml" ContentType="{main}.styles+xml"/>'
+            + (f'<Override PartName="/word/numbering.xml" ContentType="{main}.numbering+xml"/>'
+               if numbering else "") + "</Types>"))
         archive.writestr("_rels/.rels", (
             f'<Relationships xmlns="{package}"><Relationship Id="r1" '
             f'Type="{relations}/officeDocument" Target="word/document.xml"/></Relationships>'))
+        numbered = (f'<Relationship Id="rNum" Type="{relations}/numbering" '
+                    'Target="numbering.xml"/>' if numbering else "")  # fmt: skip
         archive.writestr("word/_rels/document.xml.rels", (
             f'<Relationships xmlns="{package}"><Relationship Id="r1" '
             f'Type="{relations}/styles" Target="styles.xml"/><Relationship Id="rPic" '
-            f'Type="{relations}/image" Target="media/pic.png"/></Relationships>'))
+            f'Type="{relations}/image" Target="media/pic.png"/>{numbered}</Relationships>'))
         archive.writestr("word/media/pic.png", png())
         archive.writestr("word/document.xml",
                          f"<w:document {w}><w:body>{body}</w:body></w:document>")
         archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
+        if numbering:
+            archive.writestr("word/numbering.xml", numbering)
     return path
 
 
@@ -831,6 +857,86 @@ def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
     document = read_docx_text(paper)
     lines = document.body.split("\n")
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == expected
+
+
+@needs_pandoc
+def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) -> None:
+    """A title Word numbers as a list's item is a heading to both readers where pandoc reads
+    it as the lone item of a numbered list in no other (Basile, 2026-11-14): by its own
+    numbering or its style's, at any level, in capitals with a colon, in bold, after an
+    empty paragraph, indented in List Paragraph as Word indents an item, with a subtitle its
+    style numbers "1.1." beside it, which pandoc reads as an item beside it, and named by a
+    numbering pandoc reads no level of, a paragraph to it. One with an item under it or a
+    paragraph pandoc joins to it, one Word bullets, a list's sentence, "Results of the
+    survey", and the subtitle are a heading to neither.
+    What the audit places is what `init --from` makes, at the same levels, its name alone."""
+    from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+
+    styled = '<w:p><w:pPr><w:pStyle w:val="{}"/></w:pPr><w:r><w:t>{{}}</w:t></w:r></w:p>'
+    shapes = {
+        "own numbering": (numbered(), True),
+        "a level deeper": (numbered(1), True),
+        "by its style": (styled.format("NumTitle"), True),
+        "in bold": (numbered().replace("<w:r>", "<w:r><w:rPr><w:b/></w:rPr>"), True),
+        "after an empty paragraph": ("<w:p/>" + numbered(), True),
+        "a subtitle beside it": (styled.format("NumTitle") + styled.format("NumSub").format(
+            "Study design"), True),
+        "a numbering of no level": (numbered(0, 77), True),
+        "an item under it": (numbered() + numbered(1).format("Participants"), False),
+        "a paragraph joined": (numbered() + numbered(0, 0).format("Our aims."), False),
+        "bulleted": (numbered(0, 2), False),
+        "a sentence": (numbered().format("Results were clear."), False),
+        "a name opening an item": (numbered().format("Results of the survey"), False),
+        # Round 1 of #682: an item indented as Word indents one, in List Paragraph.
+        "indented, in List Paragraph": (numbered(style="ListParagraph", indent=True), True),
+    }  # fmt: skip
+    names = ("INTRODUCTION:", "Methods", "Results", "Discussion", "Conclusions", "Funding",
+             "Ethics", "Limitations", "Declarations", "Appendix", "Abbreviations",
+             "References", "Acknowledgements")  # fmt: skip
+    body, expected = "", []
+    for (kind, (shape, heading)), name in zip(shapes.items(), names, strict=True):
+        body += (shape.format(name) if "{}" in shape else shape) + (
+            f"<w:p><w:r><w:t>Words of {kind}.</w:t></w:r></w:p>")  # fmt: skip
+        if heading:
+            expected.append(name.rstrip(":"))
+    paper = _package(tmp_path / "paper.docx", body, NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING)
+    converted = from_word.convert(paper)
+    assert converted.typed_headings == tuple(expected)
+    made = [line for line in converted.text.splitlines() if line.startswith("#")]
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    placed = typed_heading_levels(document)
+    assert tuple(lines[at].rstrip(":") for at, _level in placed) == tuple(expected)
+    assert ["#" * level + " " + lines[at].rstrip(":") for at, level in placed] == made
+    # The items no heading was made of are still a list's, numbered where pandoc had them.
+    assert "Results were clear." in converted.text and "Participants" in converted.text
+
+
+def test_a_title_word_numbers_splits_its_list_there() -> None:
+    """A numbered list's item that is a title is made a heading where it stands: the items
+    before it stay a list, numbered as they were, and the items after it another, numbered
+    on from where they stood. A title the bold fallback leaves out stays in its list, which
+    is as it was."""
+    from generated import _listed, _str
+
+    blocks = [_listed([_str("Our"), {"t": "Space"}, _str("aims.")], [_str("Methods")],
+                      [_str("More.")], [_str("Results")], start=4),
+              {"t": "Para", "c": [_str("We read.")]}]
+    made, titles = from_word.typed_headings(json.loads(json.dumps(blocks)))
+    assert titles == ("Methods", "Results")
+    assert [block["t"] for block in made] == ["OrderedList", "Header", "OrderedList", "Header",
+                                              "Para"]  # fmt: skip
+    assert [block["c"][0][0] for block in made if block["t"] == "OrderedList"] == [4, 6]
+    # Typed twice, the titles are placed by those in bold, and a plain one stays an item.
+    bold = {"t": "Para", "c": [{"t": "Strong", "c": [_str("Introduction")]}]}
+    twice = [bold, {"t": "Para", "c": [_str("Text.")]},
+             {"t": "Para", "c": [{"t": "Strong", "c": [_str("Results")]}]},
+             {"t": "Para", "c": [_str("Text.")]}, json.loads(json.dumps(blocks[0]))]
+    made, titles = from_word.typed_headings(twice)
+    assert titles == ("Introduction", "Results")
+    assert made[-1] == blocks[0]
 
 
 @needs_pandoc

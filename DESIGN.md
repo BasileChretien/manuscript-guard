@@ -25196,14 +25196,28 @@ Open, recorded as each change landed:
     to both readers, and what stands under it is placed under it, the Results' or another
     section's: nothing tells the label from a title in a paper with no heading style.
     Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
-  - A title numbered by Word's own numbering is a list's item to pandoc and a numbered
-    line to the audit, and no heading to either; a title holding a link or a note's mark
+  - A title Word numbers itself, "1. INTRODUCTION" with Word's "1.", is a typed title to
+    both readers where pandoc reads it as the lone item of a numbered list in no other
+    (Basile, 2026-11-14); the audit reads the paragraph's numbering as pandoc does, its
+    numbering and level from its own `w:numPr` or else its style's, a subtitle whose
+    style names a level and no numbering read beside its base's title, where Word numbers
+    it under it (`Numbering.pandoc_item`). One with its subsections numbered straight
+    under it, as docx-psych-B1 of the real-paper corpus has its Methods and Results, or
+    with a paragraph pandoc joins to it, a numbering's with no level, is an item holding
+    more than its line and a heading to neither, and so its Results is none. `init --from`
+    titles the heading with its name alone, the list's number not written: pandoc counts
+    each numbering apart and a subtitle at its base's level, and gave "5. METHODS" where
+    Word prints "2. METHODS" (docx-educ-A3), so its count is not Word's. Pinned by
+    `tests/test_audit.py::test_a_title_word_numbers_holding_more_than_its_line_is_no_heading`,
+    `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_word_numbers`.
+  - A title holding a link or a note's mark
     is none, as pandoc reads the link or the note in it, nor is one in a text box to the
     audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
     to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
-    test, so there the two readers may differ). A paragraph indented from the left by its
-    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
-    and so is one that holds a picture; an indent its style gives it is not read by the
+    test, so there the two readers may differ). A paragraph naming no numbering indented
+    from the left by its own `w:ind` more than it hangs is a block quote to pandoc and no
+    title to the audit, and so is one that holds a picture; one naming a numbering is read
+    by it whatever its indent, a list's item indented as Word indents one among them; an indent its style gives it is not read by the
     audit, and what pandoc makes of it is not held by a test. Accepted.
   - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
     Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a
@@ -27465,16 +27479,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
     names the file and the line, and `check` says nothing of an RRID after it, where BUILD
     reports the refusal. An RRID in a float's cells is read, as in prose. Accepted.
   - G2 and G14 read a typed RRID with a copy of this reading (`data/structural.yaml`,
-    `gates/language.py`, from #663, the entry below), which changes with `rrids.py` until one
-    imports the other. Accepted.
+    `gates/language.py`, from #663, the entry below). A test holds the three patterns to one
+    another over the accessions, gaps, trails and cases the generated inputs draw, with each
+    copy's escaped underscore; a form none of them draws could still be read two ways, and
+    what each gate does before its pattern is not compared. Pinned by
+    `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike`.
+    - The space after the colon is not one set: the copies take any one white-space
+      character, and `rrids.py` a space, a tab, a no-break or narrow no-break space, or a
+      line break (`\r\n` too), so "RRID:" before an em space or a lone `\r` is read by the
+      copies only, and before a `\r\n` by `rrids.py` only. Accepted.
 - **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
   from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
   (#658) as its round 2 left it, a `.` joining only before a digit and a `-` ending the
   accession only before a word of four small letters or more with no `:`, `_` or `-` after
-  it; it is copied into `data/structural.yaml` and `gates/language.py` while that module is
-  not on main, and each copy changes with it until one imports the other. Pinned by
+  it; it is copied into `data/structural.yaml` and `gates/language.py`, which a YAML rule and a
+  masked view cannot import, and
+  `tests/test_rrid_lookup.py::test_g2_g14_and_rrids_py_read_an_rrid_alike` holds the three
+  patterns to one another, as the point above says. Pinned by
   `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
   - An accession typed without "RRID:" in capitals and its colon right before it, one space
     or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",

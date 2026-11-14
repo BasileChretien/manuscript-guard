@@ -66,12 +66,15 @@ _NOTE_REFERENCE = "\x19"
 # After the heading mark, on the line of a body paragraph outside a table that Word numbers:
 # the numbering is the next of those `_part_text` lists, in the order of the marks.
 _NUMBERED_MARK = "\x18"
-# In front of the line of a body paragraph outside a table, in no heading style and not
-# numbered by Word, every word of which is in bold, as pandoc reads bold (`_run_bold`).
+# In front of the line of a body paragraph outside a table, in no heading style, every word
+# of which is in bold, as pandoc reads bold (`_run_bold`); after the numbering mark, where
+# Word numbers it.
 _BOLD_MARK = "\x17"
 # In front of the line of a body paragraph outside a table and a text box, in no heading
-# style, no caption style and not numbered by Word, that holds words and no link or note's
-# mark: a line a section's title can be typed as (`DocxText.typed`). Before the bold mark.
+# style and no caption style, that holds words and no link or note's mark, and that pandoc
+# reads as no item of a list but the lone item of a numbered one (`_in_lists`): a line a
+# section's title can be typed as (`DocxText.typed`). Before the bold mark, and after the
+# numbering mark, where Word numbers it.
 _TYPED_MARK = "\x16"
 _MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
           _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK)  # fmt: skip
@@ -124,18 +127,21 @@ class DocxText:
     #: boxes is: read for the note that it is not read as one.
     boxed: tuple[str, ...] = ()
     #: Each 0-based line of `body` whose paragraph is outside a table, in no heading style,
-    #: not numbered by Word, and every word of it in bold as pandoc reads bold. A title in
+    #: numbered by Word or not, and every word of it in bold as pandoc reads bold. A title in
     #: bold was the only one read as a heading in a document with no heading style; a title
     #: typed is now, in bold or not (`typed`, Basile, 2026-11-11).
     bold: frozenset[int] = frozenset()
     #: Each 0-based line of `body` whose paragraph is outside a table and a text box, in no
-    #: heading style, not in Word's caption style, not numbered by Word, not indented as
-    #: pandoc quotes a paragraph (`_quoted`), and holds words and no link, picture or note's
-    #: mark, bold or not: a line a section's title can be typed as in a document with no
-    #: heading style (`typed_heading_levels`), as `init --from` reads a top-level paragraph of
-    #: words (`from_word.typed_headings`). pandoc sets a caption beside a table as the
-    #: table's, an indented paragraph in a block quote and a picture's paragraph as an image
-    #: beside words, and a list's item and a cell are no paragraph of the text.
+    #: heading style, not in Word's caption style, not indented as pandoc quotes a paragraph
+    #: (`_block_quote`), holds words and no link, picture or note's mark, bold or not, and that
+    #: pandoc reads as no list's item but the lone item of a numbered list in no other
+    #: (`_in_lists`): a line a section's title can be typed as in a document with no heading
+    #: style (`typed_heading_levels`), as `init --from` reads a top-level paragraph of words
+    #: and such an item (`from_word.typed_headings`). pandoc sets a caption beside a table as
+    #: the table's, an indented paragraph in a block quote and a picture's paragraph as an
+    #: image beside words, and a bulleted item, one holding more than its line, one in
+    #: another and a cell are no title's paragraph to it (Basile, 2026-11-14: a title Word
+    #: numbers, "1. INTRODUCTION", is a typed title).
     typed: frozenset[int] = frozenset()
 
     @property
@@ -303,6 +309,14 @@ def _quoted(paragraph: ET.Element) -> bool:
         return False
     left = indent.get(W + "left", indent.get(W + "start"))
     return _twips(left) - _twips(indent.get(W + "hanging")) > 0
+
+
+def _block_quote(paragraph: ET.Element, shape: tuple[str, int, str] | None) -> bool:
+    """Whether pandoc (3.9.0.2) sets a paragraph in a block quote: by its own indent
+    (`_quoted`), where it names no numbering (`Numbering.pandoc_item`). One that names one is
+    read by its numbering whatever its indent, an item indented as Word indents a list's,
+    and a numbering of 0 or of no level a paragraph (round 1 of #682)."""
+    return shape is None and _quoted(paragraph)
 
 
 #: What holds a picture in a paragraph, whose words pandoc reads beside an image: no title's.
@@ -532,6 +546,8 @@ def _part_text(
     # word outside a link.
     weights: dict[int, bool] = {}
     worded: dict[int, bool] = {}
+    # By line outside a table and a text box, what pandoc reads it as (`pandoc_item`).
+    listed: dict[int, tuple[str, int, str] | None] = {}
 
     for node in root.iter():
         if node.tag in _BREAKS and not _seen(node, parents, hidden):
@@ -556,6 +572,12 @@ def _part_text(
                 lines[node] = [_line_start(node, joins, parents, headings, opens, numbering,
                                            counts, levels)]  # fmt: skip
                 pieces.append(lines[node])
+                if numbering is not None and not _inside(node, parents, W + "tc") and \
+                        not _inside(node, parents, W + "txbxContent"):  # fmt: skip
+                    last = node
+                    while last in joins:
+                        last = joins[last]
+                    listed[id(lines[node])] = numbering.pandoc_item(last)
             if node in joins:
                 lines[joins[node]] = lines[node]
         elif node.tag in _SHOWN:
@@ -583,21 +605,75 @@ def _part_text(
                 weights[id(lines[owner])] = False
                 worded[id(lines[owner])] = False
 
-    # A plain line, in no heading style, not numbered, in no table and no text box: typed
-    # where it is in no caption style, by its last paragraph's, whose mark is the one left
-    # (`_line_start`); and all in bold.
+    # A plain line, in no heading style, in no table and no text box: typed where it is in no
+    # caption style, by its last paragraph's, whose mark is the one left (`_line_start`), and
+    # where pandoc reads it as a paragraph of the text or as the lone item of a numbered list
+    # (`_in_lists`); and all in bold. A numbered line's marks go after its numbering's.
     styled = {id(line): _paragraph_style(owner) for owner, line in lines.items()
               if owner not in joins}  # fmt: skip
-    quoted = {id(line) for owner, line in lines.items() if owner not in joins and _quoted(owner)}
+    quoted = {id(line) for owner, line in lines.items()
+              if owner not in joins and _block_quote(owner, listed.get(id(line)))}  # fmt: skip
     pictured = {id(line) for owner, line in lines.items() if _pictured(owner)}
+    listed_in = _in_lists(pieces, listed, pictured)
     for owner, line in lines.items():
-        if line[0] != "\n" or _inside(owner, parents, W + "txbxContent"):
+        if line[0] not in ("\n", "\n" + _NUMBERED_MARK) or _inside(owner, parents,
+                                                                   W + "txbxContent"):
             continue
         typed = (worded.get(id(line)) and styled.get(id(line)) not in captions
-                 and id(line) not in quoted | pictured)  # fmt: skip
-        line[0] = ("\n" + (_TYPED_MARK if typed else "")
-                   + (_BOLD_MARK if weights.get(id(line)) else ""))  # fmt: skip
+                 and id(line) not in quoted | pictured | listed_in)  # fmt: skip
+        line[0] += ((_TYPED_MARK if typed else "")
+                    + (_BOLD_MARK if weights.get(id(line)) else ""))  # fmt: skip
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
+
+
+def _in_lists(pieces: list, listed: dict[int, tuple[str, int, str] | None],
+              pictured: set[int]) -> set[int]:  # fmt: skip
+    """The lines pandoc (3.9.0.2) reads as no paragraph of the text and as no lone item of a
+    numbered list that is in no other: an item of a bulleted list, of a list inside an item,
+    and one holding a list or a paragraph besides its own; and a paragraph naming a numbering
+    pandoc reads no level of, joined to the item before it (`Numbering.pandoc_item`). What
+    `init --from` makes a typed title of is a top-level paragraph, or such an item, so a
+    line among these is no title to the audit either. pandoc drops an empty paragraph and
+    keeps an empty item; any other line between two items ends their list."""
+    found: set[int] = set()
+    run: list[list] = []
+    for piece in [*pieces, " | "]:
+        shape = listed.get(id(piece)) if isinstance(piece, list) else None
+        if shape is not None and shape[2] != "plain":
+            run.append([id(piece), shape[0], shape[1], shape[2], False])
+            continue
+        text = "".join(piece[1:]) if isinstance(piece, list) else piece
+        if not text.strip() and id(piece) not in pictured:
+            continue
+        if shape is not None and run:
+            run[-1][4] = True
+            found.add(id(piece))
+            continue
+        found |= _list_run(run)
+        run = []
+    return found
+
+
+def _list_run(run: list[list]) -> set[int]:
+    """Of a run of items with nothing between them, `[line, numId, level, kind, joined]`,
+    those that are not the lone item of a numbered list in no other: pandoc's lists are a
+    first item and each after it at a deeper level or at its own with its numId, and an item
+    of one at a level deeper than its first is inside the item before it."""
+    found: set[int] = set()
+    first = 0
+    while first < len(run):
+        _line, num, level, kind, _joined = run[first]
+        end = first + 1
+        while end < len(run) and (run[end][2] > level or (run[end][2] == level
+                                                          and run[end][1] == num)):  # fmt: skip
+            end += 1
+        for at in range(first, end):
+            line, _num, deep, _kind, joined = run[at]
+            holds = at + 1 < end and run[at + 1][2] > level
+            if kind != "ordered" or deep != level or holds or joined:
+                found.add(line)
+        first = end
+    return found
 
 
 def _tidy(text: str) -> str:
@@ -666,8 +742,11 @@ def read_docx_text(path: Path) -> DocxText:
         # 2026-11-13). Beside a heading outside a table they place as before: a boxed
         # Abstract titled in its cell. Either way they end a reference list.
         heading_levels = ()
-    bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2])
-    typed = frozenset(i for i, line in enumerate(lines) if line.startswith(_TYPED_MARK))
+    # A numbered line's marks follow its numbering's (`_part_text`).
+    bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2]
+                     or line.startswith(_NUMBERED_MARK) and _BOLD_MARK in line[1:3])  # fmt: skip
+    typed = frozenset(i for i, line in enumerate(lines)
+                      if line.startswith((_TYPED_MARK, _NUMBERED_MARK + _TYPED_MARK)))
     # The notes keep what they always had, the cell mark of a table in a note among it; the
     # marks the tables are read by go from both.
     notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
@@ -685,9 +764,9 @@ def read_docx_text(path: Path) -> DocxText:
 def typed_titles(document: DocxText) -> list[tuple[int, str]]:
     """In a document with no paragraph in a heading style but a table's cells, each line a
     title can be typed as (`DocxText.typed`) whose words are a section's name alone
-    (`section_name_alone`), in bold or not, numbered or not, in capitals or not, "ABSTRACT",
-    "3. RESULTS", by 0-based line, with its name; none in a document with a heading style
-    outside a table, read by its styles."""
+    (`section_name_alone`), in bold or not, numbered as typed or by Word or not, in capitals
+    or not, "ABSTRACT", "3. RESULTS", by 0-based line, with its name; none in a document
+    with a heading style outside a table, read by its styles."""
     from manuscript_guard.text.section_names import section_name_alone
 
     if document.heading_levels:

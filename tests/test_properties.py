@@ -21459,6 +21459,51 @@ def _a_structured_abstract_ends_at_a_name_again(patch: pytest.MonkeyPatch) -> No
     patch.setattr(section_names, "_parts_end", again)
 
 
+from generated import pdf_heading_lines  # noqa: E402
+
+
+@holds(40, pdf_heading_lines())
+def test_a_pdf_s_line_is_a_heading_by_its_name_and_the_singular_by_its_number(
+    drawn: list[tuple[str, str | None]],
+) -> None:
+    """A PDF's line that holds a section's name alone is a heading, numbered or not; the
+    singular "Result" only after a section's number, "3. Result", "3 Result", "III. Result",
+    and not alone, as a table's column header stands on a line of its own
+    (`auditing.pdf.heading_title`; round 1 of #687)."""
+    from manuscript_guard.auditing.pdf import heading_title
+
+    for line, title in drawn:
+        assert heading_title(line) == title, line
+
+
+def _the_singular_is_a_heading_unnumbered(patch: pytest.MonkeyPatch) -> None:
+    """As #687 was first built: a PDF's line "Result" alone was a heading."""
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "NUMBERED_ONLY", frozenset())
+
+
+def _a_number_makes_no_singular_a_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_SECTION_NUMBER", re.compile("(?!)"))
+
+
+def _result_is_no_abstract_part(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-15: "Result" was no part a structured abstract opens on."""
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "ABSTRACT_PARTS", section_names.ABSTRACT_PARTS - {"result"})
+
+
+def _result_has_no_place_among_the_parts(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-15: "Result" had no place in a structured abstract's order."""
+    from manuscript_guard.text import section_names
+
+    order = {name: place for name, place in section_names._PART_ORDER.items() if name != "result"}
+    patch.setattr(section_names, "_PART_ORDER", order)
+
+
 def _an_abstract_with_words_under_it_is_never_one_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -21640,6 +21685,13 @@ def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
     patch.setattr(section_names, "section_name_alone", lambda text: " ".join(text.split()) or None)
+
+
+def _result_names_no_section(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-15: "Result", the singular, was no section's name."""
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "SECTION_NAMES", section_names.SECTION_NAMES - {"result"})
 
 
 def _only_a_title_in_bold_is_typed(patch: pytest.MonkeyPatch) -> None:
@@ -22686,6 +22738,22 @@ BROKEN = {
         _an_abstract_with_words_under_it_is_never_one_paragraph,
         test_titles_standing_alone_are_placed_as_their_paper_sets_them,
     ),
+    "a PDF's line Result alone is a heading": (
+        _the_singular_is_a_heading_unnumbered,
+        test_a_pdf_s_line_is_a_heading_by_its_name_and_the_singular_by_its_number,
+    ),
+    "a PDF's numbered Result is no heading": (
+        _a_number_makes_no_singular_a_heading,
+        test_a_pdf_s_line_is_a_heading_by_its_name_and_the_singular_by_its_number,
+    ),
+    "Result is no part a structured abstract opens on": (
+        _result_is_no_abstract_part,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "Result has no place in a structured abstract's order": (
+        _result_has_no_place_among_the_parts,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
     "a paragraph style's bold is read": (
         _a_paragraph_style_s_bold_is_read,
         test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
@@ -22700,6 +22768,10 @@ BROKEN = {
     ),
     "any typed title is a section's": (
         _any_bold_title_is_a_section_s,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "Result in the singular names no section": (
+        _result_names_no_section,
         test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
     "a run-in Abstract label is no heading": (

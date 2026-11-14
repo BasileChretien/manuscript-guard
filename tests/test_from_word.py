@@ -914,6 +914,41 @@ def test_the_audit_and_init_take_the_same_titles_word_numbers(tmp_path: Path) ->
     assert "Results were clear." in converted.text and "Participants" in converted.text
 
 
+@needs_pandoc
+@pytest.mark.parametrize("shape", ["typed", "numbered by Word", "in bold"])
+def test_the_audit_and_init_take_result_in_the_singular_alike(tmp_path: Path, shape: str) -> None:
+    """"Result", the Results in the singular (Basile, 2026-11-15), is a typed title to both
+    readers, at the same level: "RESULT:" typed, as a title Word numbers in List Paragraph
+    and in bold (docx-med-A3 of the real-paper corpus), and "Result:" in bold (docx-med-A2).
+    "Result of the survey" after it is text to both."""
+    from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+
+    plain = "<w:p><w:r><w:t>{}</w:t></w:r></w:p>"
+    title, name = {
+        "typed": (plain.format("RESULT:"), "RESULT"),
+        "numbered by Word": (numbered(style="ListParagraph", indent=True).replace(
+            "<w:r>", "<w:r><w:rPr><w:b/></w:rPr>").format("RESULT:"), "RESULT"),
+        "in bold": ("<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Result:</w:t></w:r></w:p>", "Result"),
+    }[shape]  # fmt: skip
+    body = "".join((plain.format("ABSTRACT"), plain.format("We read 412 records."),
+                    plain.format("METHODS"), plain.format("We read them."), title,
+                    plain.format("Of 412, 77 had it."), plain.format("Result of the survey"),
+                    plain.format("DISCUSSION"), plain.format("It was so.")))  # fmt: skip
+    paper = _package(tmp_path / "paper.docx", body, NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING)
+    converted = from_word.convert(paper)
+    expected = ("ABSTRACT", "METHODS", name, "DISCUSSION")
+    assert converted.typed_headings == expected
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    placed = typed_heading_levels(document)
+    assert tuple(lines[at].rstrip(":") for at, _level in placed) == expected
+    made = [line for line in converted.text.splitlines() if line.startswith("#")]
+    assert ["#" * level + " " + lines[at].rstrip(":") for at, level in placed] == made
+    assert "Result of the survey" in converted.text
+
+
 def test_a_title_word_numbers_splits_its_list_there() -> None:
     """A numbered list's item that is a title is made a heading where it stands: the items
     before it stay a list, numbered as they were, and the items after it another, numbered

@@ -1980,6 +1980,86 @@ def test_a_docx_whose_titles_word_numbers_is_placed_by_them(tmp_path: Path) -> N
     assert {"Of 412 records, 30 were excluded.", "Results of the survey", "Conclusions"} <= items
 
 
+def _titled_result(results: str, abstract: str = "Of 412 patients, 77 (18.7%) had the event.",
+                   reported: str = "Of 412 patients, 77 (18.7%) had the event.") -> str:
+    """A paper with no heading style, its Results titled `results`, a paragraph's XML."""
+    return (para("A study of things") + para("ABSTRACT") + para(abstract)
+            + para("INTRODUCTION") + para("Drugs cause harm.") + para("METHODS")
+            + para("We read 412 records.") + results + para(reported)
+            + para("DISCUSSION") + para("It was so."))  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", ["typed", "numbered by Word", "in bold"])
+def test_a_results_section_titled_in_the_singular_is_the_results(
+    tmp_path: Path, shape: str
+) -> None:
+    """A Results section titled "Result", as three papers of the real-paper corpus title it
+    (Basile, 2026-11-15): "RESULT:" typed, as a title Word numbers in List Paragraph and in
+    bold (docx-med-A3), and "Result:" in bold (docx-med-A2). "Result" was no section's name,
+    so the paper had no Results to the audit, and its Abstract was compared with nothing.
+    It is a typed title now, and the Abstract is compared with what it holds."""
+    from generated import NUMBERED_STYLES, TYPED_PARAGRAPH_NUMBERING, numbered
+
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    title, typed = {
+        "typed": (para("RESULT:"), "RESULT:"),
+        "numbered by Word": (numbered(style="ListParagraph", indent=True).replace(
+            "<w:r>", "<w:r><w:rPr><w:b/></w:rPr>").format("RESULT:"), "RESULT:"),
+        "in bold": (bold("Result:"), "Result:"),
+    }[shape]  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", _titled_result(title), NUMBERED_STYLES,
+                     TYPED_PARAGRAPH_NUMBERING)  # fmt: skip
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "INTRODUCTION", "METHODS", typed, "DISCUSSION"]
+    report = audit([path], [])
+    assert report.abstract is not None and report.abstract.compared
+    assert report.abstract.not_found == []
+
+
+def test_result_opening_a_sentence_or_in_a_cell_is_no_title(tmp_path: Path) -> None:
+    """The singular names a section only as a title's whole words: a sentence that opens
+    with "Result of the survey" and a table's cell "Result" are text, and a paper titled by
+    them has no Results."""
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    cell = "<w:tbl><w:tr><w:tc>{}</w:tc></w:tr></w:tbl>"
+    for name, title in (("sentence", para("Result of the survey")),
+                        ("cell", cell.format(para("Result"))),
+                        ("bold cell", cell.format(bold("Result")))):  # fmt: skip
+        path = make_docx(tmp_path / f"{name}.docx", _titled_result(title))
+        document = read_docx_text(path)
+        lines = document.body.split("\n")
+        assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+            "ABSTRACT", "INTRODUCTION", "METHODS", "DISCUSSION"], name
+        report = audit([path], [])
+        assert not (report.abstract and report.abstract.compared), name
+
+
+def test_a_bold_result_over_an_example_in_the_methods_is_a_heading(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a bold "Result" over a worked example inside
+    the Methods, in a paper with no heading style, is a heading, as a one-word "Results" is
+    there (`test_a_run_in_label_typed_alone_is_read_as_a_heading`): what stands under it is
+    the Results', and the Abstract is compared with it. Nothing tells the label from a
+    title."""
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    body = (bold("Abstract") + para("Of 412 patients, 77 had it.") + bold("Methods")
+            + para("We fitted one model. For example, of 10 patients, 3 had it.")
+            + bold("Result") + para("The model gave 3 of 10.") + bold("Discussion")
+            + para("It was so."))  # fmt: skip
+    path = make_docx(tmp_path / "paper.docx", body)
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "Abstract", "Methods", "Result", "Discussion"]
+    report = audit([path], [])
+    assert report.abstract is not None and report.abstract.compared
+    assert [c.text for c in report.abstract.not_found] == ["412", "77"]
+
+
 def test_a_title_word_numbers_holding_more_than_its_line_is_no_heading(tmp_path: Path) -> None:
     """A known limit (DESIGN.md, "Known gaps"): a title Word numbers with its subsections
     numbered straight under it, "2. Methods" then "2.1 Participants", is an item holding a

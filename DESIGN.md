@@ -26408,15 +26408,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
     the paper's Background its own. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
-  - A table's column headed "Result" or "Results" is a heading where its header stands on a
-    line of its own, and poppler's layout order (pdftotext 24.04.0) sets each of a row's
-    cells on a line of its own, its header row's too: a PDF marks no table. The lines after
-    it are then the Results', up to the next heading, and two such columns are a name on two
-    lines, which leaves the PDF's lines unplaced. "Result" joined the names for
-    pdf-psych-B3's "3. Result" (Basile, 2026-11-15), and no other PDF of the real-paper
-    corpus has a line "Result"; a header row read as one line, as the drawing order reads
-    it, is none.
-    Pinned by `tests/test_audit_pdf.py::test_a_table_s_column_headed_result_is_read_as_a_heading`.
+  - "Result", the singular, joined the names for pdf-psych-B3's "3. Result" (Basile,
+    2026-11-15), and in a PDF it is a heading only after a section's number, "3. Result",
+    "3 Result", "III. Result" (`auditing.pdf.NUMBERED_ONLY`; round 1 of #687): poppler's
+    layout order (pdftotext 24.04.0) sets each of a table's cells on a line of its own, its
+    header row's too, so a column headed "Result" was a line holding the name alone, a
+    Results opened in the Discussion, and with "3. Result" or a second such column it left
+    the PDF unplaced. A Results titled "Result" alone, unnumbered, is no heading in a PDF,
+    and its lines are the section before's. A column headed "Results" is still a heading
+    where its header stands on a line of its own, as it was before. Pinned by
+    `tests/test_audit_pdf.py::test_a_table_s_column_headed_result_is_no_heading`,
+    `tests/test_audit_pdf.py::test_a_numbered_result_beside_a_column_headed_result_is_placed`,
+    `tests/test_audit_pdf.py::test_a_column_headed_result_in_the_discussion_opens_no_results`.
   - A reference list whose entries are not told apart is counted by its identifiers, and its
     citations are held to nothing; one numbered entry that holds two DOIs (an article and its
     data, say) makes the whole list so. A wrapped line inside an entry that starts with the

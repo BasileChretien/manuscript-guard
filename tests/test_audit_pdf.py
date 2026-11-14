@@ -88,9 +88,11 @@ def found(report: dict, code: str) -> list[dict]:
 
 @pytest.mark.parametrize("name", sorted(HEADINGS))
 def test_a_line_that_holds_a_sections_name_alone_is_a_heading(name: str) -> None:
+    """Each name, numbered or not; the singular "Result" numbered only (`NUMBERED_ONLY`)."""
     title = name[:1].upper() + name[1:]
-    for written in (title, title.upper(), f"2. {title}", f"2.1 {title}", f"IV. {title}",
-                    f"{title}:"):  # fmt: skip
+    numbered = (f"2. {title}", f"2.1 {title}", f"IV. {title}", f"3 {title}")
+    bare = () if name in reading.NUMBERED_ONLY else (title, title.upper(), f"{title}:")
+    for written in (*numbered, *bare):
         assert heading_title(written) == (title.upper() if written.isupper() else title), written
 
 
@@ -98,8 +100,10 @@ def test_a_line_that_holds_a_sections_name_alone_is_a_heading(name: str) -> None
     "results", "Results of the trial", "The results", "Results were mixed.", "Methodsx",
     "12 patients", "", "References 1. Smith A.", "Table 1. Results",
     # The singular as a heading's words alone (Basile, 2026-11-15): not in small letters, not
-    # opening a sentence, and not in a table's row read as a line.
-    "result", "Result of the survey", "Outcome Result 95% CI P",
+    # opening a sentence, not in a table's row read as a line, and, in a PDF, not unnumbered,
+    # as a table's column headed "Result" is (round 1 of #687).
+    "result", "Result of the survey", "Outcome Result 95% CI P", "Result", "RESULT",
+    "Result:",
 ])
 def test_any_other_line_is_none(line: str) -> None:
     """Exact: a section's name and nothing else, a capital first; a wrapped line that happens
@@ -261,23 +265,65 @@ def _set(rows: list[str | tuple[tuple[float, str], ...]]) -> bytes:
     return pdf([pieces])
 
 
+#: A paper's lines on one page, long enough that pdftotext reads its text as one column.
+_LONG = "Of 412 patients enrolled at three centres, 77 had the event during follow-up."
+
+
+def _table(at: int = 120) -> list:
+    """A table's caption, its column headed "Result" on a line of its own, and its rows, each
+    cell set apart: poppler's layout order (pdftotext 24.04.0) sets each cell on a line of
+    its own, its header row's too."""
+    return ["Table 1. Outcomes", ((at, "Result"),),
+            *(((0, f"Outcome {k}"), (at, f"{7 * k}"), (220, f"1.{k}-2.{k}"))
+              for k in range(1, 7))]  # fmt: skip
+
+
 @needs_pdftotext
-def test_a_table_s_column_headed_result_is_read_as_a_heading(tmp_path: Path) -> None:
-    """A known limit (DESIGN.md, "Known gaps"): a table's column headed "Result" whose header
-    stands on a line of its own holds a section's name alone, and is a heading, as a column
-    headed "Results" is: a PDF marks no table. Poppler's layout order sets each of a row's
-    cells on a line of its own (pdftotext 24.04.0), so its header row's "Result" is such a
-    line too. In the drawing order a row is one line, and none of it a heading."""
-    long = "Of 412 patients enrolled at three centres, 77 had the event during follow-up."
-    rows = ["Abstract", long, "Introduction", long, "Methods", long, "Results", long,
-            "Table 1. Outcomes", ((120, "Result"),),
-            *(((0, f"Outcome {k}"), (120, f"{7 * k}"), (220, f"1.{k}-2.{k}"))
-              for k in range(1, 7)), "Discussion", long]  # fmt: skip
+def test_a_table_s_column_headed_result_is_no_heading(tmp_path: Path) -> None:
+    """A table's column headed "Result" on a line of its own holds a section's name alone,
+    and in a PDF the singular is a heading only numbered as a section (round 1 of #687): the
+    column is a line of the table, and the PDF is placed."""
+    rows = ["Abstract", _LONG, "Introduction", _LONG, "Methods", _LONG, "Results", _LONG,
+            *_table(), "Discussion", _LONG]  # fmt: skip
     path = tmp_path / "paper.pdf"
     path.write_bytes(_set(rows))
-    titles = [title for _line, title in reading.read_pdf(path).headings]
-    assert titles[:4] == ["Abstract", "Introduction", "Methods", "Results"], titles
-    assert "Result" in titles and "Discussion" in titles, titles
+    pdf = reading.read_pdf(path)
+    assert [title for _line, title in pdf.headings] == [
+        "Abstract", "Introduction", "Methods", "Results", "Discussion"], pdf.text
+    assert pdf.placed is not None
+
+
+@needs_pdftotext
+def test_a_numbered_result_beside_a_column_headed_result_is_placed(tmp_path: Path) -> None:
+    """Round 1 of #687: "3. Result" and a table's column headed "Result" on a line of its
+    own named the section twice, and a PDF that was placed before was placed in no section.
+    The column is no heading, and the PDF is placed."""
+    rows = ["Abstract", _LONG, "1. Introduction", _LONG, "2. Methods", _LONG, "3. Result",
+            _LONG, *_table(), "4. Discussion", _LONG]  # fmt: skip
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(_set(rows))
+    pdf = reading.read_pdf(path)
+    assert [title for _line, title in pdf.headings] == [
+        "Abstract", "Introduction", "Methods", "Result", "Discussion"], pdf.text
+    assert pdf.placed is not None
+
+
+@needs_pdftotext
+def test_a_column_headed_result_in_the_discussion_opens_no_results(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #687: a table's column headed "Result" in the Discussion opened a Results
+    there, and an Abstract's number the Results do not give but the Discussion repeats after
+    the table was found. The column is no heading: the number is not found."""
+    rows = ["Abstract", "In all, 1,284 adults were enrolled.", "Introduction", _LONG,
+            "Methods", _LONG, "Results", _LONG, "Discussion", _LONG, *_table(),
+            "In all, 1,284 adults were enrolled, as earlier work found."]  # fmt: skip
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(_set(rows))
+    _code, report, _err = audited(capsys, str(path))
+    assert not found(report, "abstract-not-compared")
+    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+        "In all, 1,284 adults were enrolled."]
 
 
 @needs_pdftotext

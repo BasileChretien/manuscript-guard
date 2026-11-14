@@ -2569,6 +2569,36 @@ def test_an_abstract_that_differs_from_its_results_fails_the_audit_of_a_pdf(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_column_is_unfound(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #687: a table's column headed "Result", a line of its own in poppler's
+    layout order, opened a Results inside the Discussion, and an Abstract's number the
+    Results do not give but the Discussion repeats after it was found. In a PDF the singular
+    is a heading only numbered: the number is not found."""
+    import sys
+
+    from manuscript_guard.audit import audit
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
+
+    long = "Of 412 patients enrolled at three centres, 77 had the event during follow-up."
+    rows = ["Abstract", "In all, 1,284 adults were enrolled.", "Introduction", long,
+            "Methods", long, "3. Result", long, "Discussion", long, "Table 1. Outcomes",
+            ((120, "Result"),), *(((0, f"Outcome {k}"), (120, f"{7 * k}")) for k in range(1, 7)),
+            "In all, 1,284 adults were enrolled, as earlier work found."]  # fmt: skip
+    pieces = []
+    for at, row in enumerate(rows):
+        cells = ((0, row),) if isinstance(row, str) else row
+        pieces += [Piece(LEFT + x, TOP - LEADING * at, text) for x, text in cells]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    read = audit([paper], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["1,284"]
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

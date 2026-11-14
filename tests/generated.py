@@ -15534,6 +15534,40 @@ PLACED_PAPERS = {
 }  # fmt: skip
 
 
+#: A PDF's line of each kind, `{n}` a section's number, `{name}` a name, and whether it is
+#: a heading: the singular "Result" numbered as a section, by a number with a stop or
+#: without, Roman, or a subsection's; and not alone, in capitals or with a colon, as a
+#: table's column header stands on a line of its own; and the other names, numbered or not
+#: (round 1 of #687).
+PDF_HEADING_LINES = {
+    "the singular, numbered with a stop": ("{n}. Result", True),
+    "the singular, numbered": ("{n} Result", True),
+    "the singular, a Roman number": ("III. Result", True),
+    "the singular, a subsection's number": ("{n}.1 Result", True),
+    "the singular in capitals, numbered": ("{n}. RESULT", True),
+    "the singular alone": ("Result", False),
+    "the singular in capitals": ("RESULT", False),
+    "the singular with a colon": ("Result:", False),
+    "another name alone": ("{name}", True),
+    "another name numbered": ("{n}. {name}", True),
+}  # fmt: skip
+
+
+@st.composite
+def pdf_heading_lines(draw: st.DrawFn) -> list[tuple[str, str | None]]:
+    """A PDF's line of every kind of `PDF_HEADING_LINES`, in an order drawn, its number and
+    the other name drawn, each with the title `auditing.pdf.heading_title` reads of it, or
+    None."""
+    out = []
+    for kind in draw(st.permutations(list(PDF_HEADING_LINES))):
+        shape, heading = PDF_HEADING_LINES[kind]
+        name = draw(st.sampled_from(("Results", "Methods", "Discussion", "Method")))
+        line = shape.format(n=draw(st.integers(1, 12)), name=name)
+        title = line.split(" ", 1)[-1] if line[0].isdigit() or line.startswith("III") else line
+        out.append((line, title if heading else None))
+    return out
+
+
 @st.composite
 def placed_papers(
     draw: st.DrawFn,

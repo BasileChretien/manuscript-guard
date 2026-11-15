@@ -16954,6 +16954,47 @@ def test_a_p_is_judged_at_the_alpha_the_analysis_emits(project: Path) -> None:
     assert [f.code for f in _recomputed(project).findings] == ["p-inconsistent"]
 
 
+@pytest.mark.parametrize("comment", ["", "<!-- one -->\n\n", "<!--\none\n\ntwo\n-->\n\n"])
+def test_g8_names_the_line_of_a_p_after_a_comment_of_several_lines(
+    project: Path, comment: str
+) -> None:
+    """The mask turned a comment's line breaks to NUL, and G8 counted its lines in the masked
+    text, so a P after a comment of several lines was said that many lines too early (found
+    with the audit's, below)."""
+    main = main_md(project)
+    sentence = "Earlier work found t(23) = 2.45, p = .041 [@fictionalHepaticCohort2021]."
+    text = f"{main.read_text(encoding='utf-8')}\n{comment}{sentence}\n"
+    main.write_bytes(text.encode("utf-8"))
+    found = [f.line for f in _recomputed(project).findings if f.code == "p-inconsistent"]
+    assert found == [text.count("\n", 0, text.index(sentence)) + 1]
+
+
+def test_an_abstract_number_unlike_the_results_after_a_comment_is_reported(
+    tmp_path: Path,
+) -> None:
+    """The paper `init --from` writes, its cover in a comment of several lines over an
+    Abstract and no Methods: the Abstract's numbers were placed the comment's height too
+    early, outside it, and none was compared (found building #691). With the lines kept, the
+    Results matching them hides each; one changed in the Results is still reported, at the
+    Abstract's own line."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "main.md"
+
+    def not_found(reported: str) -> list[tuple[str, int]]:
+        text = ("<!--\nAbstract\nIntroduction\n-->\n\n# Abstract\n\nOf 412 nurses, 77 fell.\n\n"
+                f"# Introduction\n\nFalls harm nurses.\n\n# Results\n\n{reported}\n\n"
+                "# Discussion\n\nFalls are common.\n")  # fmt: skip
+        paper.write_bytes(text.encode("utf-8"))
+        read = audit([paper], None).abstract
+        assert read.compared and read.numbers == 2, text
+        return [(c.text, c.line) for c in read.not_found]
+
+    assert not_found("Of 412 nurses, 77 fell.") == []
+    assert not_found("Of 412 nurses, 71 fell.") == [("77", 8)]
+    assert not_found("Of 421 nurses, 77 fell.") == [("412", 8)]
+
+
 def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
     """The source's own numbers disagree, so the value taken from them may be the wrong
     one of the two."""

@@ -58,7 +58,7 @@ from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, s
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text, typed_heading_levels
 from manuscript_guard.text.fences import unclear_fence_lines
-from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.reference_lists import (
     ends_a_list_alone,
     is_bibliography_heading,
@@ -1362,9 +1362,15 @@ def _masked(text: str, printed_as_typed: bool) -> str:
     same mask as Markdown, so a paragraph that mentions both markers hid everything between
     them. There each `<!--` is masked with its last hyphen made another character, so that
     it opens nothing and every other region is masked as before, and the hyphen is put back
-    wherever it was left readable."""
+    wherever it was left readable.
+
+    Every line break of `text` is kept where `text` has it (`kept_breaks`), a comment's too:
+    the audit takes lines from this text, the Abstract against Results, the tests, intervals
+    and shares it holds and G7's markers among them, beside the sections placed on the
+    file's own lines, and a comment of several lines put every number after it as many
+    lines too early, in the section above."""
     if not printed_as_typed:
-        return mask(text)
+        return kept_breaks(text, mask(text))
     opens_nothing = mask(text.replace("<!--", "<!-\N{HYPHEN}"))
     kept = zip(opens_nothing, text, strict=True)
     return "".join(NUL if hidden == NUL else typed for hidden, typed in kept)

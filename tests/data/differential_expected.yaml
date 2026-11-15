@@ -90,14 +90,6 @@ expected:
       tabulars and tex-qbio-pe-A2's `w_{min}`); the generated inputs now hold a name in a
       pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports;
       a table's caption and a footnote in a tabular's cell are read still (round 1 of #673)
-  - reading: written shares
-    why: >-
-      new with this pull request: a share a sentence writes beside both its counts, "12 of
-      40 patients (50%)", under any heading or in a note, is held to them as the Abstract's
-      is, and one off them is listed with the numbers that do not fit the ones beside them,
-      by the heading it stands under (Basile, 2026-11-13, after #664), a range written with
-      a slash, "Grade 3/4 neutropenia (12%)", being none (round 1 of #668); the base said
-      only the Abstract's and a table's, which the reading lists as before
   - reading: abbreviations
     why: >-
       a short form after a spaced dash followed by a value bound to the results, "– OR
@@ -133,16 +125,6 @@ expected:
       the hint of a form written two ways ends "The place given is the first use of the
       other form", where it said "This is the first place the other form stands", which the
       author did not understand (the author's audit, 2026-11-10)
-  - reading: abstract against results
-    why: >-
-      a heading whose whole title is one of the names the Results go by elsewhere,
-      "Experiments", "4. Numerical results", "Empirical analysis" and the rest of
-      `RESULTS_LIKE`, is the Results to the Abstract against Results where the section
-      searches, so the Abstract is compared where the base said "no file has a Results
-      heading outside the Abstract"; where it still is not, the reason names those headings
-      (Basile, 2026-11-13, after tex-astro-ga-A2, tex-cs-lg-A1 and tex-stat-ap-B1 of the
-      real-paper corpus); the inputs now hold a paper for each name and each near miss. The
-      entry it replaces, for the percentages beside their counts (#664), is spent
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -350,3 +332,25 @@ expected:
       end of the run, and nothing the reader found past it is kept now, a cross-reference or
       a listing among it, where it was kept though the text past it was not read (round 1
       of #637, finding 4)
+  - reading: abstract against results
+    why: >-
+      the inputs now hold an HTML comment of several lines before the Abstract, between two
+      sections and inside one, as `init --from` writes the cover over every main.md; the
+      audit keeps a comment's line breaks in the text it reads, so what each line of the
+      paper reports is read on that line, where the base read it as many lines too early as
+      the comment is high, and an Abstract's number the Results repeat is found (the bug
+      found building #691); the entry it replaces, for the Results by another name (#672), is
+      spent
+  - reading: written shares
+    why: >-
+      the inputs now hold an HTML comment of several lines before the Abstract, between two
+      sections and inside one; a share off its counts after one is said at its own line,
+      where the base said it as many lines too early as the comment is high (the bug found
+      building #691); the entry it replaces, for the shares a sentence writes (#664), is
+      spent
+  - reading: reference census
+    why: >-
+      the inputs now hold an HTML comment of several lines before the first heading, between
+      two sections and inside one; a citation beyond the reference list after one is said at
+      its own line, where the base said it as many lines too early as the comment is high
+      (the bug found building #691)

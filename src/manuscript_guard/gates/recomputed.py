@@ -45,7 +45,7 @@ from manuscript_guard.stats.intervals import (
     reported_intervals,
 )
 from manuscript_guard.stats.reported import ALPHA, described, judge, reported_tests
-from manuscript_guard.text.masking import NUL, mask
+from manuscript_guard.text.masking import NUL, kept_breaks, mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import bound_files
 
@@ -72,8 +72,10 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
     # Nothing reads TeX after, so a `%` in a display is the character (step 8).
     for bound in bound_files(project):
         path = bound.path
-        printed = mask(_put_in(bound.view, displays) if bound.latex
-                       else substitute(bound.view, displays))
+        put = _put_in(bound.view, displays) if bound.latex else substitute(bound.view, displays)
+        # Its lines kept, a comment's too: a finding names the line it counts here, and a P
+        # after a comment of several lines was said that many lines too early.
+        printed = kept_breaks(put, mask(put))
         for test in reported_tests(printed):
             verdict = judge(test, alpha)
             if verdict is None:

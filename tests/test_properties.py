@@ -83,7 +83,6 @@ from generated import (
     UNITS_TYPED,
     WORD_EDITS,
     WRITTEN_WORDS,
-    abstract_papers,
     abstract_trees,
     alt_texts,
     beside_edited,
@@ -95,6 +94,9 @@ from generated import (
     claim_pairs,
     collection_plans,
     commented,
+    commented_abstract_papers,
+    commented_numbered_citations,
+    commented_prose_share_papers,
     communication_texts,
     count_cells,
     counted_tables,
@@ -156,7 +158,6 @@ from generated import (
     method_claims,
     methods_titled,
     named_numbers,
-    numbered_citations,
     numbered_displays,
     oracle_tables,
     painted_pdfs,
@@ -171,7 +172,6 @@ from generated import (
     printings,
     profile_tables,
     proofs,
-    prose_share_papers,
     published_texts,
     quotations,
     quoted_references,
@@ -599,6 +599,31 @@ def test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s(
     read = [(cell.text, cell.line) for table in markdown_tables(text)
             for row in table for cell in row]  # fmt: skip
     assert read == cells, (text, read)
+
+
+@holds(40, st.one_of(masked_blocks().map(lambda drawn: drawn[0]),
+                     commented_abstract_papers().map(lambda drawn: drawn[0])))  # fmt: skip
+def test_the_audit_reads_a_markdown_paper_on_the_lines_it_has(text: str) -> None:
+    """What the audit reads a Markdown paper in, masked (`audit._masked`), has each of the
+    paper's line breaks where the paper has it, a comment's too: it takes lines from that
+    text beside the sections placed on the paper's own, and a comment of several lines,
+    which `init --from` writes over every main.md, put each number after it as many lines
+    too early (found building #691). So does a paper printed as typed, a .docx's text."""
+    from manuscript_guard.audit import _masked
+
+    breaks = [at for at, char in enumerate(text) if char in "\r\n"]
+    for printed_as_typed in (False, True):
+        hidden = _masked(text, printed_as_typed=printed_as_typed)
+        assert len(hidden) == len(text), text
+        assert [at for at, char in enumerate(hidden) if char in "\r\n"] == breaks, text
+
+
+def _a_comment_is_read_on_one_line(patch: pytest.MonkeyPatch) -> None:
+    """The audit's mask with a comment's line breaks hidden, as `mask` hides them: the comment
+    is one line of what the audit reads."""
+    from manuscript_guard import audit
+
+    patch.setattr(audit, "kept_breaks", lambda text, masked: masked)
 
 
 def _a_line_reader_reads_the_mask_as_it_is(patch: pytest.MonkeyPatch) -> None:
@@ -6590,7 +6615,7 @@ def _abstract_found(read) -> dict[str, list]:
     return {"conflicts": conflicts, "looked": states}
 
 
-@holds(40, abstract_papers())
+@holds(40, commented_abstract_papers())
 def test_the_abstract_is_held_to_what_the_paper_reports(
     drawn: tuple[str, str, dict[str, list], str, str, dict[str, list]],
 ) -> None:
@@ -6829,7 +6854,7 @@ def _written_shares_found(text: str, suffix: str) -> list[list[Any]]:
         return sorted(found)
 
 
-@holds(30, prose_share_papers())
+@holds(30, commented_prose_share_papers())
 def test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it(
     drawn: tuple[str, list, str, list],
 ) -> None:
@@ -8240,7 +8265,7 @@ def _what_follows_a_row_break_is_the_next_cell(patch: pytest.MonkeyPatch) -> Non
 # ---------------------------------------------------- a reference list and its citations
 
 
-@holds(100, numbered_citations())
+@holds(100, commented_numbered_citations())
 def test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none(
     drawn: tuple[str, list[tuple[str, int]]],
 ) -> None:
@@ -29365,6 +29390,22 @@ BROKEN = {
     "a citation after a sentence's stop is the next sentence's": (
         _a_citation_after_the_stop_is_the_next_sentence_s,
         test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a comment is one line of what the audit reads": (
+        _a_comment_is_read_on_one_line,
+        test_the_audit_reads_a_markdown_paper_on_the_lines_it_has,
+    ),
+    "a comment is one line of what the Abstract against Results reads": (
+        _a_comment_is_read_on_one_line,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a comment is one line of what the shares are read in": (
+        _a_comment_is_read_on_one_line,
+        test_a_share_off_its_counts_is_said_wherever_a_sentence_writes_it,
+    ),
+    "a comment is one line of what the census reads": (
+        _a_comment_is_read_on_one_line,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
     ),
 }
 

@@ -31,7 +31,10 @@ one here, and the comparison never falls back to the whole body (Basile, 2026-11
   reports: an identifier was otherwise never found, even beside its copy in the Methods (a
   preprint of the real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the
   audit's against the outputs, and the section ends with what one is worth, the roundings
-  counted in.
+  counted in. A power, `10^{-2}`, `10^8`, `10^-2^`, is read whole, in the Abstract and where
+  the paper reports alike (`powers`), and found only where the same power is printed: read
+  as atoms, LaTeX's `10^{-2}`, its braces blanked, was "10^" and "-2" (tex-astro-ga-B1 of
+  the real-paper corpus).
 * **From its counts.** A percentage the Abstract writes beside both its counts, "164 out
   of 250 (66%)", "66% (164/250)" (`stats.shares.written_shares`), is held to them, as a
   table's n (%) is to its denominator, and not looked for: one they give is explained by
@@ -56,7 +59,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from math import ceil, floor
 from pathlib import Path
@@ -122,6 +125,9 @@ class Piece:
     results: bool
     atoms: tuple[Atom, ...]
     lined: str = ""
+    #: The file's text as its atoms are reported from, at the offsets of `hidden`: where a
+    #: power's exponent is read (`powers`), whose braces a LaTeX file's `hidden` blanks.
+    text: str = ""
 
     def line(self, at: int) -> int:
         """The line of the file offset `at` stands on."""
@@ -573,6 +579,136 @@ def _words(text: str) -> set[str]:
     return found - {""}
 
 
+# -------------------------------------------------------------------------------- powers
+
+#: A power of a number as TeX sets one, a number, a caret and a braced exponent, `10^{-2}`,
+#: `10^{\,8}`, `2^{10}`, `10^{\alpha}`, or a single digit, `10^8`; and as pandoc's
+#: superscript writes one, `10^-2^`. Not `10^-2` nor `10^82` in maths, which TeX sets as
+#: 10 to the minus and 10 to the 8 before a 2: these are read as they were. The base stands
+#: alone or after a TeX command, `3\times10^{8}` (`_base_alone`).
+_POWER = re.compile(
+    r"(?<![\d.])(?P<base>\d+(?:\.\d+)?)[ \t]*\^(?:"
+    r"(?P<raised>[-+\N{MINUS SIGN}]?\d+(?:\.\d+)?)\^"
+    r"|[ \t]*\{(?P<group>(?:[^{}\n]|\{[^{}\n]*\})*)\}"
+    r"|[ \t]*(?P<digit>\d)(?![\d.]))"
+)
+#: What a braced exponent is read without: TeX's spaces and the commands that print one.
+_EXPONENT_SPACE = re.compile(r"\\[,;:! ]|~|\s+")
+_EXPONENT_NUMBER = re.compile(r"[-+\N{MINUS SIGN}]?\d+(?:\.\d+)?")
+
+
+@dataclass(frozen=True)
+class Power:
+    """A power where a file prints one: from `start` to `end` of its text, and what it is
+    looked for as, its base and its exponent each read as a number where it is one,
+    `10^-2` for `10^{-2}`, `10^{-2.0}` and `10^-2^`."""
+
+    start: int
+    end: int
+    key: str
+
+
+def _base_alone(text: str, at: int) -> bool:
+    """Whether a power's base at `at` stands alone, after no letter, digit, point or
+    underscore, or after a TeX command's name, `\\times10^{8}`."""
+    letters = at
+    while letters > 0 and text[letters - 1].isascii() and text[letters - 1].isalpha():
+        letters -= 1
+    if letters < at:
+        return letters > 0 and text[letters - 1] == "\\"
+    return at == 0 or not (text[at - 1].isalnum() or text[at - 1] in "._")
+
+
+def powers(text: str, read: str) -> list[Power]:
+    """Each power `text` prints where `read`, its masked text at the same offsets with what is
+    not read blanked, keeps its base, its caret and its exponent's digits: a power in a
+    comment, in code a mask hides or on a line not read is none."""
+    from manuscript_guard.audit import normalise_number
+
+    if len(text) != len(read):
+        return []
+    found = []
+    for match in _POWER.finditer(text):
+        start, caret = match.start(), text.index("^", match.end("base"))
+        name = next(one for one in ("raised", "digit", "group") if match[one] is not None)
+        exponent, at = match[name], match.start(name)
+        kept = all(read[at + k] == c for k, c in enumerate(exponent) if c.isdigit())
+        if not (_base_alone(text, start) and kept
+                and read[start : caret + 1] == text[start : caret + 1]):  # fmt: skip
+            continue
+        exponent = _EXPONENT_SPACE.sub("", exponent)
+        if not exponent:
+            continue
+        if _EXPONENT_NUMBER.fullmatch(exponent):
+            exponent = normalise_number(exponent)
+        found.append(Power(start, match.end(), f"{normalise_number(match['base'])}^{exponent}"))
+    return found
+
+
+@dataclass(frozen=True)
+class Looked:
+    """What the section looks for in an Abstract: an atom, or the atoms of one power or more
+    read as one (`_looked_for`), as an atom spanning them; its parts as printed; and which of
+    them are powers, looked for among the powers where the paper reports alone."""
+
+    atom: Atom
+    parts: tuple[str, ...]
+    powered: frozenset[str] = frozenset()
+
+
+def _looked_for(piece: Piece, abstract: str, lines: set[int]) -> list[Looked]:
+    """Each thing one file's Abstract gives to be looked for, in order: an atom of its lines,
+    with its parts (`printed_parts`), or the atoms that overlap a power its text prints
+    (`powers`), with any other power they overlap, read as one: the powers, and the numbers
+    of those atoms outside them as the paper's reported text reads them (`_numbers`). Read
+    as atoms, `10^{-2}` in LaTeX, whose braces are blanked, was "10^" and "-2", a number the
+    paper does not hold and one it may (tex-astro-ga-B1 of the real-paper corpus); and
+    `10^8` was looked for as printed among numbers no power is one of."""
+    atoms = [atom for atom in piece.atoms if atom.line in lines]
+    groups: list[tuple[list[int], list[Power]]] = []
+    for power in powers(piece.text, abstract) if piece.text else ():
+        over = [at for at, atom in enumerate(atoms)
+                if atom.start < power.end and power.start < atom.end]  # fmt: skip
+        if not over:
+            continue
+        if groups and groups[-1][0][-1] >= over[0]:
+            held, read = groups[-1]
+            groups[-1] = (sorted({*held, *over}), [*read, power])
+        else:
+            groups.append((over, [power]))
+    opened = {group[0][0]: group for group in groups}
+    inside = {at for group in groups for at in group[0]}
+    found = []
+    for at, atom in enumerate(atoms):
+        if at in opened:
+            held, read = opened[at]
+            found.append(_joined([atoms[one] for one in held], read, piece.text))
+        elif at not in inside:
+            found.append(Looked(atom, tuple(printed_parts(atom.text))))
+    return found
+
+
+def _joined(atoms: list[Atom], read: list[Power], text: str) -> Looked:
+    """Atoms and the powers they overlap, read as one: from the first of them to the last,
+    `$` taken off its ends, which a Markdown atom of maths keeps; the powers, then the
+    numbers of the atoms outside every power."""
+    first = atoms[0]
+    start = min(first.start, read[0].start)
+    end = max(atoms[-1].end, read[-1].end)
+    while start < end and text[start] == "$":
+        start += 1
+    while end > start and text[end - 1] == "$":
+        end -= 1
+    outside = " ".join(
+        "".join(" " if any(p.start <= at < p.end for p in read) else text[at]
+                for at in range(atom.start, atom.end))
+        for atom in atoms)  # fmt: skip
+    keys = tuple(power.key for power in read)
+    atom = replace(first, text=text[start:end], start=start, end=end,
+                   col=start - first.line_start + 1)  # fmt: skip
+    return Looked(atom, (*keys, *_numbers(outside)), frozenset(keys))
+
+
 # ------------------------------------------------------------------------------- reading
 
 
@@ -641,6 +777,8 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     exact = {normalise_number(number) for number in printed}
     rounded = {found for number in printed for found in coarser(number)}
     words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
+    printed_powers = {power.key for piece, _abstract, reported, _lines in split if piece.text
+                      for power in powers(piece.text, reported)}  # fmt: skip
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
     intervals = [(piece, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip
@@ -649,17 +787,18 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     for piece, abstract, _reported, lines in split:
         spans = _conflicts(read, piece, abstract, intervals, tests)
         written = _shares(read, piece, abstract)
-        for atom in piece.atoms:
-            if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
+        for looked in _looked_for(piece, abstract, lines):
+            atom, parts = looked.atom, list(looked.parts)
+            if any(start <= atom.start < end for start, end in spans):
                 continue
-            parts = printed_parts(atom.text)
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
             off, parts = _off_its_counts(atom, parts, written)
-            states = [_state(part, exact, rounded, words) for part in parts]
+            states = [("exact" if part in printed_powers else "") if part in looked.powered
+                      else _state(part, exact, rounded, words) for part in parts]  # fmt: skip
             if off:
                 read.off_counts.append(candidate)
             elif off is not None and "" not in states:

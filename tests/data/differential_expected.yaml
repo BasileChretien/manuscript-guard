@@ -24,6 +24,15 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: abstract against results
+    why: >-
+      a power in the Abstract, `$10^{-2}$`, `$10^8$` or pandoc's `10^-2^`, is read whole
+      and found where the paper reports the same power, its exponent spelled any way, and
+      not where it gives the base and the exponent apart; the base read a power as printed,
+      never found among the paper's bare numbers, and in LaTeX, whose braces the reader
+      blanks, as "10^" and "-2", each looked for alone (tex-astro-ga-B1 of the real-paper
+      corpus, its Abstract's `10^{-2}` named "10^"); the entry it replaces, for the comments
+      of several lines (#693), is spent
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens
@@ -332,17 +341,6 @@ expected:
       end of the run, and nothing the reader found past it is kept now, a cross-reference or
       a listing among it, where it was kept though the text past it was not read (round 1
       of #637, finding 4)
-  - reading: abstract against results
-    why: >-
-      the inputs now hold an HTML comment of several lines before the Abstract, between two
-      sections and inside one, as `init --from` writes the cover over every main.md, and one
-      holding a blank line before each test's P; the audit counts each line in a copy that
-      keeps every line break of the file (`audit._lined`), while its readers still read a
-      comment's breaks as the mask writes them, so what each line of the paper reports is
-      read on that line, where the base read it as many lines too early as the comment is
-      high, and an Abstract's number the Results repeat is found (the bug found building
-      #691); the entry it replaces, for the lines past a reference list (#692, decision 25),
-      is spent
   - reading: written shares
     why: >-
       the inputs now hold an HTML comment of several lines before the Abstract, between two

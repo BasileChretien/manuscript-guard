@@ -9395,7 +9395,11 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: with the list's next number, which resumes the list and is not found, a caption that ends
 #: it again, which is, and an entry with no number and a reference's shape, which resumes it
 #: too (rounds 1 and 2 of #692). In LaTeX none of them is, since the lines after
-#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps").
+#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps"). And a
+#: power in maths (`POWER_SPELLINGS`), which the Methods print again, spelled as drawn, and
+#: is found, and one only the Discussion prints, its base and its exponent apart in the
+#: Methods, which is not; each named whole, and neither by its base and a caret, as
+#: tex-astro-ga-B1 of the real-paper corpus had its `10^{-2}` named "10^".
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9410,7 +9414,20 @@ ABSTRACT_KINDS = (
     "share rounded up", "share off", "share closed up", "share without a denominator",
     "share after its counts", "share without a sign", "share with a decimal comma",
     "share season", "share season and year", "share count over", "share over a hundred",
+    "power", "power not found",
 )  # fmt: skip
+#: How a power's exponent is spelled in maths, `{v}` the exponent: braced, after a thin
+#: space, with its plus sign, and, a digit, unbraced; and what may stand before it.
+POWER_SPELLINGS = ("{{{v}}}", "{{" + BACKSLASH + ",{v}}}", "{{+{v}}}", "{v}")
+POWER_LEADS = ("", BACKSLASH + "sim ", BACKSLASH + "approx ")
+POWER_BASES = ("10", "2", "3")
+
+
+def _power(draw: st.DrawFn, base: str, value: int) -> str:
+    """A power of `base` to `value`, spelled in one of `POWER_SPELLINGS` drawn that can
+    write it: a sign only braced, and only a digit unbraced."""
+    spellings = [one for one in POWER_SPELLINGS if value > 0 or "+" not in one and one != "{v}"]
+    return f"{base}^" + draw(st.sampled_from(spellings)).format(v=value)
 #: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
 #: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
 SHARE_SHAPES = {
@@ -9716,6 +9733,21 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             found = kind in ("past the list", "past the list legend", "past the resumed list")
             looked.append((kind, shown, "exact" if found else "not found"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind.startswith("power"):
+            base = draw(st.sampled_from(POWER_BASES))
+            # Exponents apart, so that neither kind's power is the other's.
+            low = 2 if kind == "power" else 6
+            value = draw(st.integers(low, low + 3)) * draw(st.sampled_from((1, -1)))
+            power = _power(draw, base, value)
+            if kind == "power":
+                methods.append(f"It was ${_power(draw, base, value)}$ then.")
+            else:
+                discussion.append(f"It was ${power}$ then.")
+                methods.append(f"Of {base} runs, {value} was the shift.")
+            looked += [(kind, power, "exact" if kind == "power" else "not found"),
+                       (kind, f"{base}^", "absent")]  # fmt: skip
+            lead = draw(st.sampled_from(POWER_LEADS))
+            abstract.append((kind, f"The rate was ${lead}{power}$ here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400

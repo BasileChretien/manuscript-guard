@@ -416,7 +416,11 @@ paper's title, names no section; one over a Methods subsection does, and the wor
 it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
-matched only as printed, the same word there, and never by the number it holds. A number
+matched only as printed, the same word there, and never by the number it holds. A power, a
+number with a caret and a braced exponent or a single digit after it, `$10^{-2}$`,
+`$10^8$`, or pandoc's `10^-2^`, is read whole and matched only where the paper prints the
+same power, its exponent spelled any way, `10^{-2}` or `10^{-2.0}`, and never by its base
+and its exponent apart, nor by its value. A number
 not found there is listed, its finding saying where it was looked for, and
 not counted by `--strict`. A percentage the Abstract writes beside both its counts, "164
 out of 250 (66%)", "164 of 250 (66%)", "164/250 (65.6%)", "164 of 250 patients (66%)",

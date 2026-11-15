@@ -6658,7 +6658,9 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
     resumes the list where it opens with the list's next number, wrapped, or has a
     reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
-    Without
+    A power in maths, `$10^{-2}$`, is read whole and found where the Methods print the same
+    power, however its exponent is spelled, and not where they give its base and exponent
+    apart; it is never named by its base and a caret (tex-astro-ga-B1). Without
     an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
     reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
     of #472), but for what stands after `thebibliography`, which stands under the section
@@ -6927,6 +6929,28 @@ def _compared_as(patch: pytest.MonkeyPatch, compared: bool) -> None:
         dataclasses.replace(report, abstract=dataclasses.replace(report.abstract,
                                                                  compared=compared)),
         sources, pieces))  # fmt: skip
+
+
+def _a_power_is_read_as_its_atoms(patch: pytest.MonkeyPatch) -> None:
+    """As on 0223ca005: `10^{-2}` in LaTeX was "10^" and "-2"."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "powers", lambda text, read: [])
+
+
+def _a_power_is_found_by_its_pieces(patch: pytest.MonkeyPatch) -> None:
+    """A power's base and exponent looked for as two numbers, as the body's bare numbers."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        one = real(atoms, read, text)
+        flat = re.sub(r"[\^{}]", " ", one.atom.text)
+        return dataclasses.replace(one, parts=tuple(abstract._numbers(flat)),
+                                   powered=frozenset())  # fmt: skip
+
+    patch.setattr(abstract, "_joined", joined)
 
 
 def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
@@ -27332,6 +27356,14 @@ BROKEN = {
     ),
     "an estimate's words are not its abbreviation": (
         _an_estimates_words_are_not_its_abbreviation,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read as its atoms": (
+        _a_power_is_read_as_its_atoms,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by its base and its exponent apart": (
+        _a_power_is_found_by_its_pieces,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (

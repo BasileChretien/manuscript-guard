@@ -9899,8 +9899,13 @@ def _hundredths_of(p: Decimal) -> str:
 #: Where `with_comments` puts a comment of several lines in a Markdown paper, one at each in
 #: every example: before its Abstract (or its first heading where it has none), as
 #: `init --from` writes the converted paper's cover over every main.md; before a heading
-#: drawn after it, between two sections; and between two paragraphs of a section drawn.
+#: drawn after it, between two sections; and between two paragraphs of a section drawn. And
+#: a comment holding a blank line inside a sentence, between each statistic and its P
+#: (`TESTED`), wherever the paper types one (round 1 of #693): a blank line in a comment
+#: ends no sentence.
 COMMENT_PLACES = ("before the abstract", "between sections", "inside a section")
+#: Where a line types a statistic's P after it, ", P = 0.02" or ", P < 0.05".
+TESTED = re.compile(r", P [=<] ")
 #: The lines a comment holds: a section's name alone and as a heading, a number, a blank
 #: line, and the words `init --from` writes there.
 COMMENT_LINES = ("note", "Abstract", "Introduction", "## Results", "", "It was 412 then.",
@@ -9909,9 +9914,17 @@ COMMENT_LINES = ("note", "Abstract", "Introduction", "## Results", "", "It was 4
 
 def with_comments(draw: st.DrawFn, text: str) -> tuple[str, Callable[[int], int]]:
     """`text`, a Markdown paper, with an HTML comment of three lines or more at each of
-    `COMMENT_PLACES`, and where each line of `text` is in it: the mask hid a comment's line
-    breaks, and every line the audit read after one was that many lines too early."""
+    `COMMENT_PLACES`, and one holding a blank line before each P of `TESTED`; and where each
+    line of `text` is in it: the mask hid a comment's line breaks, and every line the audit
+    read after one was that many lines too early."""
     lines = text.split("\n")
+    # In a sentence first, a line made three, so that the places after are of `text`.
+    tested = [at for at, line in enumerate(lines) if TESTED.search(line)]
+    for at in tested:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))
+        found = TESTED.search(lines[at])
+        lines[at] = (f"{lines[at][: found.start()]} <!-- {words[0]}\n\n{' '.join(words)} -->"
+                     f"{lines[at][found.start() :]}")  # fmt: skip
     headings = [at for at, line in enumerate(lines) if re.match(r"#{1,6} ", line)]
     abstract = next((at for at in headings if re.fullmatch(r"#{1,6} Abstract", lines[at])),
                     headings[0])  # fmt: skip
@@ -9930,7 +9943,8 @@ def with_comments(draw: st.DrawFn, text: str) -> tuple[str, Callable[[int], int]
         lines[at:at] = comment
 
     def moved(line: int) -> int:
-        return line + sum(len(comment) for at, comment in put if line > at)
+        return (line + sum(len(comment) for at, comment in put if line > at)
+                + 2 * sum(line > at + 1 for at in tested))  # fmt: skip
 
     return "\n".join(lines), moved
 

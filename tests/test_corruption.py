@@ -16969,6 +16969,31 @@ def test_g8_names_the_line_of_a_p_after_a_comment_of_several_lines(
     assert found == [text.count("\n", 0, text.index(sentence)) + 1]
 
 
+@pytest.mark.parametrize(
+    ("sentence", "codes"),
+    [
+        ("Earlier work found t(23) = 2.45 <!-- see\n\nnotes --> p = .041 "
+         "[@fictionalHepaticCohort2021].", ["p-inconsistent"]),
+        ("Earlier work found Welch's <!-- see\n\nnotes --> t(23) = 2.45, p = .041 "
+         "[@fictionalHepaticCohort2021].", []),
+    ],
+)  # fmt: skip
+def test_g8_reads_a_sentence_across_a_comment_holding_a_blank_line(
+    project: Path, sentence: str, codes: list[str]
+) -> None:
+    """Round 1 of #693: with a comment's line breaks kept in what G8 reads, a blank line in
+    a comment inside a sentence ended it, so a P after the comment was no P of the
+    statistic before it, and a quiet word before it, "Welch's", was no word of the test
+    after it. Both are read across the comment, and the finding is at its line."""
+    main = main_md(project)
+    text = f"{main.read_text(encoding='utf-8')}\n{sentence}\n"
+    main.write_bytes(text.encode("utf-8"))
+    found = [(f.code, f.line) for f in _recomputed(project).findings
+             if f.code in ("p-inconsistent", "p-decision-error")]  # fmt: skip
+    line = text.count("\n", 0, text.index(sentence)) + 1
+    assert found == [(code, line) for code in codes]
+
+
 def test_an_abstract_number_unlike_the_results_after_a_comment_is_reported(
     tmp_path: Path,
 ) -> None:

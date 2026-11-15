@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from manuscript_guard.audit import _masked, audit
+from manuscript_guard.text.masking import mask
 
 COMMENT = "<!--\nAbstract\nIntroduction\n-->\n\n"
 BODY = ("# Abstract\n\nOf 412 nurses, 77 fell (18.7%).\n\n# Introduction\n\nFalls harm nurses.\n\n"
@@ -84,11 +85,39 @@ HIDDEN = {
 
 
 @pytest.mark.parametrize("construct", HIDDEN)
-@pytest.mark.parametrize("printed_as_typed", [False, True])
-def test_the_masked_text_has_the_text_s_lines(construct: str, printed_as_typed: bool) -> None:
-    """Whatever is hidden, each line break of the text is where the text has it."""
-    text = f"# Abstract\n\n{HIDDEN[construct]}\nWe saw 12 of 40.\n"
-    hidden = _masked(text, printed_as_typed=printed_as_typed)
-    assert len(hidden) == len(text)
-    assert [at for at, char in enumerate(hidden) if char in "\r\n"] == [
-        at for at, char in enumerate(text) if char in "\r\n"]
+def test_a_finding_after_what_the_mask_hides_is_on_its_own_line(
+    tmp_path: Path, construct: str
+) -> None:
+    """Whatever the mask hides over several lines, a finding after it is said at its line;
+    and what is read is masked as `mask` masks it, a comment's line breaks hidden with it."""
+    sentence = "The groups differed, t(23) = 2.45, p = 0.40."
+    text = f"# Abstract\n\n{HIDDEN[construct]}\n{sentence}\n"
+    assert _masked(text, printed_as_typed=False) == mask(text)
+    found = audit([_paper(tmp_path, text)], None).disagreements
+    assert [d.line for d in found] == [text.count("\n", 0, text.index(sentence)) + 1]
+
+
+#: A comment holding a blank line, typed inside a paragraph.
+IN_A_PARAGRAPH = "<!-- see\n\nnotes -->"
+
+
+def test_a_p_after_a_comment_in_its_sentence_is_read_with_its_statistic(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #693: a blank line inside a comment ended the sentence where the comment's
+    line breaks were kept in what is read, so the P after it was out of its statistic's
+    reach, and a P that does not follow from it went unsaid. It is said, at its line."""
+    sentence = f"The groups differed, t(23) = 2.45 {IN_A_PARAGRAPH} p = 0.40."
+    text = COMMENT + BODY.replace("Falls are common.", sentence)
+    found = audit([_paper(tmp_path, text)], None).disagreements
+    assert [d.line for d in found] == [text.count("\n", 0, text.index(sentence)) + 1]
+
+
+def test_a_word_that_makes_a_p_quiet_is_read_across_a_comment_in_its_sentence(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #693: "Welch's" before a comment holding a blank line was cut off from the
+    statistic after it, so its P was recomputed as a plain t test's and said to differ."""
+    sentence = f"The groups differed, Welch's {IN_A_PARAGRAPH} t(23) = 2.45, p = 0.40."
+    text = COMMENT + BODY.replace("Falls are common.", sentence)
+    assert audit([_paper(tmp_path, text)], None).disagreements == []

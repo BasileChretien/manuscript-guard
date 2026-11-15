@@ -232,8 +232,8 @@ def test_a_markdown_entry_after_a_caption_in_its_list_is_the_list_s_again(
 def test_a_markdown_list_ended_by_a_thematic_break_has_what_follows_searched(
     tmp_path: Path,
 ) -> None:
-    """A Markdown list ends at a thematic break or a heading pandoc prints as text, as well as
-    at a display: what follows it, before the next heading, is searched too."""
+    """A Markdown list ends at a thematic break, as well as at a display: what follows it,
+    before the next heading, is searched too."""
     paper = tmp_path / "paper.md"
     paper.write_text(_markdown("---\n\nGrant 33.2 paid for it.\n"), encoding="utf-8")
     assert not_found(paper) == []
@@ -250,3 +250,64 @@ def test_an_entry_with_no_reference_s_shape_after_a_caption_is_searched(tmp_path
     paper.write_text(_said_393(_markdown(f"Table 1. Baseline\n\n{shapeless}\n")),
                      encoding="utf-8")  # fmt: skip
     assert not_found(paper) == ["33.2%"]
+
+
+#: An entry after a mid-list caption wrapped over two lines, as a PDF sets it, neither line
+#: of a reference's shape; `{}` its number (round 2 of #692).
+_WRAPPED = ("{} Brown T, Jones K. A title about falls", "in older adults. Lancet. 2019;393:100-10.")
+#: The forms a list numbers its entries in, `{}` the number.
+_FORMS = ("{}.", "{})", "[{}]")
+
+
+def _numbered(form: str) -> list[str]:
+    """`ENTRIES` numbered in `form`."""
+    return [form.format(at) + entry[entry.index(" "):] for at, entry in enumerate(ENTRIES, 1)]
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("form", _FORMS)
+def test_a_pdf_s_wrapped_entry_with_the_list_s_next_number_resumes_the_list(
+    tmp_path: Path, form: str
+) -> None:
+    """Basile, 2026-11-15: a line that opens with the list's next entry number, in the form
+    the list numbers its entries in, resumes the list for the Abstract against Results,
+    whatever its shape: the entry's volume is not the Abstract's "393"."""
+    lines = [*_pdf_lines(["Table 1. Baseline", "Women 194 12", _WRAPPED[0].format(
+        form.format(3)), _WRAPPED[1]])]  # fmt: skip
+    lines = [_said_393(line) for line in lines]
+    at = lines.index("References")
+    lines[at + 1:at + 3] = _numbered(form)
+    assert not_found(write(tmp_path / "paper.pdf", lines, per_column=40)) == ["393", "33.2%"]
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("number", ["7.", "3)", "[3]", "2."],
+                         ids=["another number", "a parenthesis", "brackets", "the last"])
+def test_a_pdf_s_entry_with_any_other_number_resumes_nothing(tmp_path: Path,
+                                                              number: str) -> None:  # fmt: skip
+    """Only the next number in the list's own form: "7." after "2.", "3)" or "[3]" after a
+    list numbered "1.", "2.", and "2." again, resume nothing, and the volume is searched."""
+    lines = _pdf_lines(["Table 1. Baseline", "Women 194 12", _WRAPPED[0].format(number),
+                        _WRAPPED[1]])  # fmt: skip
+    lines = [_said_393(line) for line in lines]
+    assert not_found(write(tmp_path / "paper.pdf", lines, per_column=40)) == ["33.2%"]
+
+
+@pytest.mark.parametrize("form", _FORMS)
+def test_a_docx_or_markdown_entry_with_the_next_number_resumes_the_list(
+    tmp_path: Path, form: str
+) -> None:
+    """The same in a .docx and in Markdown, an entry with the next number and no reference's
+    shape, its year left out."""
+    shapeless = f"{form.format(3)} Brown T, Jones K. A title about falls, volume 393"
+    entries = _numbered(form)
+    body = _docx_body(para("Table 1. Baseline") + para(shapeless))
+    for entry, numbered in zip(ENTRIES, entries, strict=True):
+        body = body.replace(entry, numbered)
+    assert not_found(make_docx(tmp_path / "paper.docx", _said_393(body))) == ["393", "33.2%"]
+    text = _markdown(f"Table 1. Baseline\n\n{shapeless}\n")
+    for entry, numbered in zip(ENTRIES, entries, strict=True):
+        text = text.replace(entry, numbered)
+    paper = tmp_path / "paper.md"
+    paper.write_text(_said_393(text), encoding="utf-8")
+    assert not_found(paper) == ["393", "33.2%"]

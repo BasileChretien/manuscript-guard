@@ -373,12 +373,15 @@ a "Limitations" or an "Interpretation" of its own,
 so the Methods and the Results and also a "Participants", a "Study design" or an appendix;
 every table of every file; the whole of a file with no Abstract, a supplement; and, in a
 Markdown paper, a .docx or a PDF, the lines between a reference list's end and the next
-heading. A list ends before its next heading once it holds an entry: at a table or a
-caption, in Markdown at a thematic break or a heading pandoc prints as text too, and in a
-PDF, or in a .docx under no heading, at a back-matter title. What follows it, a table typed
-as text, a caption, a legend or an appendix with no heading, stood under "References" and
-was not searched. A line after it with an entry's shape, after a caption between the list's
-entries, resumes the list, and is not searched up to where the list ends again. In LaTeX
+heading. A list ends before its next heading: once it holds an entry, at a table or a
+caption; in Markdown at a thematic break or a heading pandoc prints as text, entry or no
+entry; in a PDF at a caption or a back-matter title, and in a .docx under no heading at a
+back-matter title, entry or no entry. What follows it, a table typed as text, a caption, a
+legend or an appendix with no heading, stood under "References" and was not searched. A
+line anywhere in that stretch, after a caption, a table, a thematic break or a back-matter
+title, that has an entry's shape, or opens with the list's next entry number in the form
+the list numbers its entries in ("3." after "2.", "[3]" after "[2]"), resumes the list,
+and is not searched up to where the list ends again. In LaTeX
 what stands after `thebibliography` or
 `\bibliography{}` stays under the section before the list, and is searched only where that
 section reports. A

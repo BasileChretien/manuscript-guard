@@ -7,9 +7,10 @@ conclusion, a summary of the paper and the back matter, and no note (`placed`), 
 and the Results as G8 reads them (`gates.reported.Walk`) among them; every table of every
 file; the whole of a file with no Abstract, which is a supplement; and, in Markdown, a .docx
 or a PDF, the lines between a reference list's end and the next heading, a table typed as
-text, a caption or a legend after a list that ends at a display, or what follows a thematic
-break in Markdown, an entry there resuming the list (`_past_the_lists`; Basile, 2026-11-15;
-round 1 of #692). In LaTeX those lines stand under the section before the list, as it prints
+text, a caption or a legend after a list that ends at a display, what follows a thematic
+break or a heading-shaped line in Markdown, or a back-matter title in a PDF, an entry there
+by its shape or its next number resuming the list (`_past_the_lists`; Basile, 2026-11-15;
+rounds 1 and 2 of #692). In LaTeX those lines stand under the section before the list, as it prints
 them (DESIGN.md, "Known gaps"). A line
 is placed under the headings over it, a Markdown paper's (`split_sections`), a Word
 document's heading styles (`DocxText.headings`), a LaTeX document's printed view, its places
@@ -251,14 +252,15 @@ def _past_the_lists(where: Callable[[int], object], sections: list[Section],
     lines `[start, end)`, and the next of `sections`' headings or the end of the file. A list
     the audit cuts (`audit.bibliography_spans`) ends before its next heading: once it holds
     an entry, at a display, a table or a caption; in Markdown at a thematic break or a
-    heading pandoc prints as text too; in a PDF, and in a .docx under no heading, at a
-    caption or a back-matter title. The lines after it still stood under "References", which
-    reports nothing, so a table typed as text, a caption, a legend or an appendix there was
-    never searched, as a Word paper's tables always were (pdf-psych-B3 of the real-paper
-    corpus, its Abstract's "33.2%" in the table after its references; Basile, 2026-11-15).
+    heading pandoc prints as text, entry or no entry; in a PDF at a caption or a back-matter
+    title, and in a .docx under no heading at a back-matter title. The lines after it still
+    stood under "References", which reports nothing, so a table typed as text, a caption, a
+    legend or an appendix there was never searched, as a Word paper's tables always were
+    (pdf-psych-B3 of the real-paper corpus, its Abstract's "33.2%" in the table after its
+    references; Basile, 2026-11-15).
     Never a note's line, nor one of the title page, nor a line of `lists`: the audit's cut,
-    blanked before the comparison reads it, and a list resumed after it at an entry
-    (`audit.resumed_lists`; round 1 of #692)."""
+    blanked before the comparison reads it, and a list resumed after it at an entry by its
+    shape or its next number (`audit.resumed_lists`; rounds 1 and 2 of #692)."""
     from manuscript_guard.gates.reported import REPORTED
 
     heads = sorted(section.line for section in sections)

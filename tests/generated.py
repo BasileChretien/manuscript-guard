@@ -9391,10 +9391,11 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: between the reference list's end and the next heading (`PAST_THE_LIST`): a caption typed
 #: that ends the list and a legend after it, which are found, a note there, which is not,
 #: and a section of back matter after them, which is not (pdf-psych-B3 of the real-paper
-#: corpus; Basile, 2026-11-15); and after them an entry, which resumes the list and is not
-#: found, and a caption that ends it again, which is (round 1 of #692). In LaTeX none of
-#: them is, since the lines after `thebibliography` stand under the section before it
-#: (DESIGN.md, "Known gaps").
+#: corpus; Basile, 2026-11-15); and after them an entry wrapped over two lines that opens
+#: with the list's next number, which resumes the list and is not found, a caption that ends
+#: it again, which is, and an entry with no number and a reference's shape, which resumes it
+#: too (rounds 1 and 2 of #692). In LaTeX none of them is, since the lines after
+#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps").
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9403,7 +9404,7 @@ ABSTRACT_KINDS = (
     "other section", "introduction", "conclusion", "references", "note", "statement",
     "summary", "related work", "over the methods", "title page",
     "past the list", "past the list legend", "past the list note", "past the list then back matter",
-    "past the list entry", "past the resumed list",
+    "past the list entry", "past the resumed list", "past the list shaped entry",
     "share out of", "share of", "share slash", "share after words", "share goes on",
     "share first", "share first of", "share first n", "share thousands", "share decimal",
     "share rounded up", "share off", "share closed up", "share without a denominator",
@@ -9451,13 +9452,17 @@ ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summ
                       "title page": 2700}  # fmt: skip
 #: Each kind of `ABSTRACT_KINDS` that stands after the reference list, by the base of its
 #: number: a caption typed, which ends the list, a legend after it, a note there and a
-#: section of back matter after them; and after the legend and the note an entry, its
-#: volume a whole number, which resumes the list, and a caption that ends it again. A
-#: caption is in one of the shapes that end a list (`text.reference_lists.is_no_entry`,
-#: `CAPTIONS_PAST_THE_LIST`).
+#: section of back matter after them; and after the legend and the note an entry that opens
+#: with the list's next number, wrapped over two lines neither of which has a reference's
+#: shape, a caption that ends the list it resumes, and an entry with no number and a
+#: reference's shape, each entry's volume a whole number. A caption is in one of the shapes
+#: that end a list (`text.reference_lists.is_no_entry`, `CAPTIONS_PAST_THE_LIST`), and the
+#: list is numbered in one of `ENTRY_NUMBER_FORMS`.
 PAST_THE_LIST = {"past the list": 6100, "past the list legend": 6200,
                  "past the list note": 6300, "past the list then back matter": 6400,
-                 "past the list entry": 6500, "past the resumed list": 6600}  # fmt: skip
+                 "past the list entry": 6500, "past the resumed list": 6600,
+                 "past the list shaped entry": 6700}  # fmt: skip
+ENTRY_NUMBER_FORMS = ("{}.", "{})", "[{}]")
 CAPTIONS_PAST_THE_LIST = ("Table 1.", "Figure 2:", "Fig 3.", "S1 Table.",
                           "Supplementary Table 4.")  # fmt: skip
 ENTRY_PAST_THE_LIST = "Smith J, Jones K. Title. Lancet. 2019;393:100-10."
@@ -9574,7 +9579,7 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     elsewhere: list[str] = []
     after: dict[str, list] = {kind: [] for kind in ABSTRACT_ELSEWHERE}
     past: list = []
-    resumed: list[str] = ["", ""]
+    resumed: list[str] = ["", "", ""]
     back: list[str] = []
     conclusions: list[str] = []
     looked: list[tuple[str, str, str]] = []
@@ -9689,7 +9694,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             if kind == "past the list entry":
                 # Its volume, a whole number, as an entry's is.
                 shown = str(PAST_THE_LIST[kind] + draw(st.integers(0, 99)))
-                resumed[0] = f"Brown T. Title. Lancet. 2019;{shown}:100-10."
+                # Its number, the list's next, is put in where the list is numbered.
+                resumed[0] = ("{} Brown T, Jones K. A title about falls\nin older adults. "
+                              f"Lancet. 2019;{shown}:100-10.")
+            elif kind == "past the list shaped entry":
+                shown = str(PAST_THE_LIST[kind] + draw(st.integers(0, 99)))
+                resumed[2] = f"Green A. Title. BMJ. 2021;{shown}:5-9."
             elif kind == "past the resumed list":
                 caption = draw(st.sampled_from(CAPTIONS_PAST_THE_LIST))
                 resumed[1] = f"{caption} It was {shown}."
@@ -9765,6 +9775,7 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                           for line, shown, state in expected["looked"]]  # fmt: skip
     expected["conflicts"] = [[line + 2 + 2 * len(front[1]), kind]
                              for line, kind in expected["conflicts"]]  # fmt: skip
+    form = draw(st.sampled_from(ENTRY_NUMBER_FORMS))
     parts = ((draw(st.sampled_from(PAPER_SUMMARY_TITLES)), after["summary"]),
              ("Introduction", introduction),
              (draw(st.sampled_from(INTRODUCTION_MATERIAL_TITLES)), after["related work"]),
@@ -9775,10 +9786,13 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
              ("Conclusions", conclusions),
              (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
              # An entry of a reference's shape, which a list must hold to end at a caption.
-             ("References", [ENTRY_PAST_THE_LIST, *after["references"]]),
+             # Numbered in a form drawn, the entry after the caption with the next number.
+             ("References", [form.format(at) + " " + entry for at, entry in enumerate(
+                 [ENTRY_PAST_THE_LIST, *after["references"]], 1)]),
              # What stands after the list, under no heading of its own, then back matter.
              # An entry after them resumes the list, and a caption ends it again.
-             (None, [*past, *resumed]),
+             (None, [*past, resumed[0].format(form.format(2 + len(after["references"]))),
+                     *resumed[1:]]),
              (draw(st.sampled_from(STATEMENT_TITLES)), back))  # fmt: skip
     for heading, part in parts:
         part = [said.markdown if isinstance(said, Apart) else

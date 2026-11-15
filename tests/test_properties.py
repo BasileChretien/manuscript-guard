@@ -6612,7 +6612,9 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     2026-11-11). A number in a caption that ends the reference list or in a legend after it,
     before the next heading, is found; one in a note there, or in back matter after them, is
     not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
-    resumes the list, while one in a caption after that entry is (round 1 of #692). Without
+    resumes the list where it opens with the list's next number, wrapped, or has a
+    reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
+    Without
     an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
     reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
     of #472), but for what stands after `thebibliography`, which stands under the section
@@ -6998,8 +7000,16 @@ def _an_entry_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
     past the list, and its volume was the Abstract's number found."""
     import manuscript_guard.audit as audit
 
-    patch.setattr(audit, "resumed_lists", lambda spans, heads, count, entry, resume: tuple(
+    patch.setattr(audit, "resumed_lists", lambda spans, heads, lines, entry, resume: tuple(
         spans))  # fmt: skip
+
+
+def _the_next_entry_number_resumes_no_list(patch: pytest.MonkeyPatch) -> None:
+    """As at the second head of #692: an entry after a caption wrapped over two lines, a
+    reference's shape on neither, stood past the list, and its volume was found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "entry_number", lambda line: None)
 
 
 def _a_note_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
@@ -26942,6 +26952,10 @@ BROKEN = {
     ),
     "an entry after a caption in a reference list is searched for an Abstract's number": (
         _an_entry_past_a_list_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a reference list with the next number resumes no list": (
+        _the_next_entry_number_resumes_no_list,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a note after a reference list is searched for an Abstract's number": (

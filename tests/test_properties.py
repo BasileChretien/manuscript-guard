@@ -11913,11 +11913,13 @@ def test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entr
 
 def _a_list_under_a_heading_ends_at_no_display(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: end)  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: end)  # fmt: skip
 
 
 def _a_list_ends_at_a_display_before_its_first_entry(patch: pytest.MonkeyPatch) -> None:
-    def ended(lines, start, end, cells, displays):
+    # `held` is taken and not read: this rule ends a list at a display whether it holds an
+    # entry or not.
+    def ended(lines, start, end, cells, displays, *, held=False):
         return next((at for at in range(start + 1, end)
                      if (at in displays if displays is not None else
                          audit_module.is_no_entry(lines[at]))), end)  # fmt: skip
@@ -11940,8 +11942,7 @@ def _a_table_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
 def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
     """6e2f8b1d7, round 1 of #681: any line but a rule armed the end, a note too."""
 
-    def ended(lines, start, end, cells, displays):
-        held = False
+    def ended(lines, start, end, cells, displays, *, held=False):
         for at in range(start + 1, end):
             line = lines[at]
             if held and (
@@ -11960,8 +11961,8 @@ def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
 def _an_entry_in_a_cell_arms_the_end(patch: pytest.MonkeyPatch) -> None:
     real = audit_module._end_at_a_display
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: real(
-                      lines, start, end, frozenset(), displays))  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: real(
+                      lines, start, end, frozenset(), displays, held=held))  # fmt: skip
 
 
 def _markdown_escapes_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:

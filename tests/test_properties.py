@@ -6609,9 +6609,16 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     beside both its counts, "164 out of 250 (66%)", "66% (n = 164/250)", is given by them
     where it is their share rounded to its places, and is an arithmetic finding where it is
     not; one beside a count with no denominator is looked for as any number is (the author,
-    2026-11-11). Without an Abstract heading, or a Results heading, nothing is compared. The
-    same paper in LaTeX reads alike, its last sentence of the Abstract on the line of
-    `!end{abstract}` (round 1 of #472)."""
+    2026-11-11). A number in a caption that ends the reference list or in a legend after it,
+    before the next heading, is found; one in a note there, or in back matter after them, is
+    not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
+    resumes the list where it opens with the list's next number, wrapped, or has a
+    reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
+    Without
+    an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
+    reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
+    of #472), but for what stands after `thebibliography`, which stands under the section
+    before it and is not found (DESIGN.md, "Known gaps")."""
     paper, supplement, expected, latex, supplement_tex, in_latex = drawn
     for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
                                         (latex, supplement_tex, ".tex", in_latex)):
@@ -6666,7 +6673,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.auditing import abstract
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    def placed(sections, notes=frozenset()):
+    def placed(sections, notes=frozenset(), lists=()):
         walk = Walk()
         place = walk.placing(sections)
         where = abstract._searched(sections, place, walk, notes)
@@ -6675,7 +6682,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         results = (any(place(s.line) is REPORTED for s in sections
                        if abstract.names_results(s.title))
                    or any(abstract.names_results_like(s.title) for s in sections))
-        return where, has, results
+        return abstract._past_the_lists(where, sections, lists, notes), has, results
 
     patch.setattr(abstract, "placed", placed)
 
@@ -6968,6 +6975,49 @@ def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     real = abstract._searched
     patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
         sections, place, walk, frozenset()))  # fmt: skip
+
+
+def _the_lines_past_a_list_are_not_searched(patch: pytest.MonkeyPatch) -> None:
+    """As before Basile's decision of 2026-11-15: a caption or a legend after the reference
+    list stood under "References" and was never searched (pdf-psych-B3)."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: where)
+
+
+def _the_lines_past_a_list_run_on_past_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    """To the end of the file, whatever heading stands after the list: a "Funding" after the
+    tables was searched."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, [], lists, notes))  # fmt: skip
+
+
+def _an_entry_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #692: an entry after a caption between a list's entries stood
+    past the list, and its volume was the Abstract's number found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "resumed_lists", lambda spans, heads, lines, entry, resume: tuple(
+        spans))  # fmt: skip
+
+
+def _the_next_entry_number_resumes_no_list(patch: pytest.MonkeyPatch) -> None:
+    """As at the second head of #692: an entry after a caption wrapped over two lines, a
+    reference's shape on neither, stood past the list, and its volume was found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "entry_number", lambda line: None)
+
+
+def _a_note_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, sections, lists, frozenset()))  # fmt: skip
 
 
 def _a_summary_of_the_paper_is_searched(patch: pytest.MonkeyPatch) -> None:
@@ -11863,11 +11913,13 @@ def test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entr
 
 def _a_list_under_a_heading_ends_at_no_display(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: end)  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: end)  # fmt: skip
 
 
 def _a_list_ends_at_a_display_before_its_first_entry(patch: pytest.MonkeyPatch) -> None:
-    def ended(lines, start, end, cells, displays):
+    # `held` is taken and not read: this rule ends a list at a display whether it holds an
+    # entry or not.
+    def ended(lines, start, end, cells, displays, *, held=False):
         return next((at for at in range(start + 1, end)
                      if (at in displays if displays is not None else
                          audit_module.is_no_entry(lines[at]))), end)  # fmt: skip
@@ -11890,8 +11942,7 @@ def _a_table_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
 def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
     """6e2f8b1d7, round 1 of #681: any line but a rule armed the end, a note too."""
 
-    def ended(lines, start, end, cells, displays):
-        held = False
+    def ended(lines, start, end, cells, displays, *, held=False):
         for at in range(start + 1, end):
             line = lines[at]
             if held and (
@@ -11910,8 +11961,8 @@ def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
 def _an_entry_in_a_cell_arms_the_end(patch: pytest.MonkeyPatch) -> None:
     real = audit_module._end_at_a_display
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: real(
-                      lines, start, end, frozenset(), displays))  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: real(
+                      lines, start, end, frozenset(), displays, held=held))  # fmt: skip
 
 
 def _markdown_escapes_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
@@ -26925,6 +26976,26 @@ BROKEN = {
     ),
     "a note is searched for an Abstract's number": (
         _a_note_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the lines after a reference list are not searched for an Abstract's number": (
+        _the_lines_past_a_list_are_not_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the lines after a reference list run on past the next heading": (
+        _the_lines_past_a_list_run_on_past_the_next_heading,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a caption in a reference list is searched for an Abstract's number": (
+        _an_entry_past_a_list_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a reference list with the next number resumes no list": (
+        _the_next_entry_number_resumes_no_list,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a note after a reference list is searched for an Abstract's number": (
+        _a_note_past_a_list_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a summary of the paper is searched for an Abstract's number": (

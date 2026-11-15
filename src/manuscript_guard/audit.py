@@ -733,7 +733,7 @@ def bibliography_spans(
 
 def _end_at_a_display(
     lines: list[str], start: int, end: int, cells: frozenset[int],
-    displays: frozenset[int] | None,
+    displays: frozenset[int] | None, *, held: bool = False,
 ) -> int:  # fmt: skip
     """Where a list from `start` ends at a display, before `end`, once it holds an entry: a
     .docx's table or paragraph in a caption style (`displays`), and in either reader a line
@@ -747,8 +747,9 @@ def _end_at_a_display(
     under its heading or under a caption or a note, or as tables of one cell with
     paragraphs between, holds no entry and reads on to its end as before: a note above the
     table ended the list at its own first row (round 1 of #681). A list none of whose
-    entries has a reference's shape is not ended here either."""
-    held = False
+    entries has a reference's shape is not ended here either. `held` says that the line at
+    `start` is an entry already, as a list the Abstract against Results resumes at its next
+    entry number opens with one (`resumed_lists`)."""
     for at in range(start + 1, end):
         line = lines[at]
         if held and (
@@ -954,7 +955,7 @@ def _read_sources(
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
         source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
-        structure = _structure(text, hidden, tables, document)
+        structure = _structure(text, hidden, tables, document, spans, original)
         sources.append(replace(source, **structure))
         said = _headings_said(path, document, bool(structure["heading_lines"]))
         if said:
@@ -1016,7 +1017,7 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     blanked = _blank(text, spans)
     hidden = _masked(blanked, printed_as_typed=True)
     source = _Source(path, blanked, hidden, blanked, blanked, (), not spans, True, wrapped=True)
-    sources.append(replace(source, **_pdf_structure(report, pdf)))
+    sources.append(replace(source, **_pdf_structure(report, pdf, spans)))
     report.not_audited += [pdf.described(), *(
         f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list"
         for start, end in spans), *(f"{path.name}: {what}" for what in PDF_NOT_READ)]
@@ -1034,6 +1035,118 @@ def pdf_spans(pdf) -> list[tuple[int, int]]:
             for start, end in bibliography_spans(pdf.text, pdf.heading_lines)]  # fmt: skip
 
 
+#: The number a reference list's entry opens with, in the form the list numbers it: "3.",
+#: "3)" or "[3]", then a space.
+_ENTRY_NUMBER = re.compile(r"[ ]{0,3}(?:\[(?P<bracket>\d{1,4})\]|(?P<number>\d{1,4})(?P<mark>[.)]))"
+                           r"(?=\s)")
+
+
+def entry_number(line: str) -> tuple[int, str] | None:
+    """The number an entry's line opens with and its form, "[]", "." or ")": `(3, ".")` of
+    "3. Brown T", None of a line that opens with none."""
+    found = _ENTRY_NUMBER.match(line)
+    if found is None:
+        return None
+    if found["bracket"]:
+        return int(found["bracket"]), "[]"
+    return int(found["number"]), found["mark"]
+
+
+def resumed_lists(
+    spans: list[tuple[int, int]], heads: frozenset[int], lines: list[str],
+    entry: Callable[[int], bool], resume: Callable[[int, int, int], int],
+) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """The reference lists as the Abstract against Results reads them, as 0-based lines
+    `[start, end)`: the audit's `spans`, and after each, before the next of `heads` (the
+    headings the section reading places by) or the end of `lines`, the list resumed at each
+    line `entry` takes, one with a reference's shape outside a table, as `_end_at_a_display`
+    reads an entry, or one that opens with the list's next entry number in its own form, the
+    last number read from the list's own lines, the cut's and those resumed before it
+    (`entry_number`): "3." after "2.", "[3]" after "[2]", never any other number. Each runs to
+    where `resume(start, at, stop)` ends it by the reader's own rule. A list ends at a
+    caption, so with a float or a caption between its entries those after it stood past the
+    list and were searched, and an entry's volume was the Abstract's number found (round 1
+    of #692); a PDF's entry wrapped over two lines has a reference's shape on neither
+    (Basile, 2026-11-15, round 2). The audit's cut, which G2, G14 and the report read, stays
+    as it is."""
+    found: list[tuple[int, int]] = []
+
+    def last_number(start: int, end: int, known: tuple[int, str] | None):
+        for at in range(start, end):
+            known = entry_number(lines[at]) or known
+        return known
+
+    for start, end in spans:
+        found.append((start, end))
+        # From the line after the heading: "7. References" numbers no entry.
+        known = last_number(start + 1, end, None)
+        stop = min((head for head in heads if head >= end), default=len(lines))
+        at = end
+        while at < stop:
+            numbered = entry_number(lines[at])
+            following = (known is not None and numbered is not None
+                         and numbered == (known[0] + 1, known[1]))  # fmt: skip
+            if not (following or entry(at)):
+                at += 1
+                continue
+            ended = max(resume(start, at, stop), at + 1)
+            found.append((at, ended))
+            known = last_number(at, ended, known)
+            at = ended
+    return tuple(found)
+
+
+def markdown_compared(text: str, spans: list[tuple[int, int]],
+                      heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a Markdown paper, its text before the cut, as `bibliography_spans`
+    reads it: a line as pandoc prints its escapes, and a list ended at a heading, a
+    heading-shaped line, a thematic break or a display."""
+    scanned = scannable(text).split("\n")
+    lines = [_ESCAPED.sub(r"\1", line) for line in scanned]
+    ends = sorted(_markdown_heading_lines(text) | heading_shaped(scanned)
+                  | thematic_breaks(scanned))  # fmt: skip
+
+    def resume(_start: int, at: int, stop: int) -> int:
+        bound = min((line for line in ends if line > at), default=stop)
+        return _end_at_a_display(scanned, at, min(bound, stop), frozenset(), None, held=True)
+
+    return resumed_lists(spans, heads, lines, lambda at: looks_like_reference(lines[at]),
+                         resume)  # fmt: skip
+
+
+def docx_compared(document, spans: list[tuple[int, int]],
+                  heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a .docx, as `docx_bibliography_spans` reads it: an entry outside a
+    table, and a list ended at a heading style or a display, and under no heading where a
+    list under no heading ends (`_end_under_no_heading`)."""
+    lines = document.body.split("\n")
+    displays = docx_displays(document)
+
+    def resume(start: int, at: int, stop: int) -> int:
+        bound = min((line for line in document.headings if line > at), default=stop)
+        ended = _end_at_a_display(lines, at, min(bound, stop), document.cells, displays,
+                                  held=True)  # fmt: skip
+        return ended if start in document.headings else _end_under_no_heading(lines, at, ended)
+
+    outside = [line if at not in document.cells else "" for at, line in enumerate(lines)]
+    return resumed_lists(spans, heads, outside, lambda at: looks_like_reference(outside[at]),
+                         resume)  # fmt: skip
+
+
+def pdf_compared(pdf, spans: list[tuple[int, int]],
+                 heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a PDF, as `pdf_spans` reads it: a list ended at a heading line or
+    where a list under no heading ends (`_end_under_no_heading`)."""
+    lines = pdf.text.split("\n")
+
+    def resume(_start: int, at: int, stop: int) -> int:
+        bound = min((line for line in pdf.heading_lines if line > at), default=stop)
+        return _end_under_no_heading(lines, at, min(bound, stop))
+
+    return resumed_lists(spans, heads, lines, lambda at: looks_like_reference(lines[at]),
+                         resume)  # fmt: skip
+
+
 #: What a PDF's text is not read for, said of each PDF audited.
 PDF_NOT_READ = (
     "its tables are lines of text, not rows of cells, so no table's totals, shares, means or "
@@ -1046,10 +1159,13 @@ PDF_NOT_READ = (
 )
 
 
-def _pdf_structure(report: AuditReport, pdf) -> dict:
+def _pdf_structure(report: AuditReport, pdf,
+                   spans: list[tuple[int, int]] | tuple = ()) -> dict:  # fmt: skip
     """Where each line of a PDF stands, from the lines that hold a section's name alone
     (`auditing.pdf.heading_title`), a structured abstract's under its Abstract
-    (`PdfText.placed`); placed nowhere where they cannot be placed exactly, which is said."""
+    (`PdfText.placed`), the lines after its reference lists `spans` before the next heading
+    searched (`auditing.abstract._past_the_lists`); placed nowhere where they cannot be
+    placed exactly, which is said."""
     from manuscript_guard.auditing.abstract import placed
     from manuscript_guard.auditing.pdf import UNPLACED
     from manuscript_guard.text.sections import Section
@@ -1070,7 +1186,10 @@ def _pdf_structure(report: AuditReport, pdf) -> dict:
                                   f"{UNPLACED}")  # fmt: skip
         return {"heading_lines": heading_lines}
     sections = [Section(title, level, "", line) for line, title, level in levels]
-    place, abstract, results = placed(sections) if sections else (None, False, False)
+    heads = frozenset(section.line - 1 for section in sections)
+    lists = pdf_compared(pdf, list(spans), heads)
+    place, abstract, results = (placed(sections, lists=lists) if sections
+                                else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results,
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
 
@@ -1132,12 +1251,15 @@ def _set_aside(document) -> str:
     return f"{styled}, and its typed titles name an Abstract and a Results"
 
 
-def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
+def _structure(text: str, hidden: str, tables: list[Table], document,
+               spans: list[tuple[int, int]], original: str) -> dict:
     """What a Markdown or a .docx paper's Abstract against Results and its flows are read
     from: where each line stands under its own headings, a Word document's by their styles;
     the lines in a table; its lists, a Word document's by their levels; and the counts in
-    its text boxes. Each file is placed alone: a file with no Abstract is reported whole
-    (round 2 of #472, DESIGN.md, "Known gaps")."""
+    its text boxes. The lines after its reference lists `spans` and before the next heading
+    are searched (`auditing.abstract._past_the_lists`), a list resumed there read in its
+    `original` text, before the cut (`resumed_lists`). Each file is placed alone: a file
+    with no Abstract is reported whole (round 2 of #472, DESIGN.md, "Known gaps")."""
     from manuscript_guard.auditing.abstract import placed
     from manuscript_guard.stats.flows import boxed_counts, docx_lists, markdown_lists
     from manuscript_guard.text.sections import Section, scannable, split_sections
@@ -1167,7 +1289,11 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         # The notes, read after the body, under its last heading (`read_paper`).
         last = document.body.count("\n") + 1
         notes = frozenset(range(last + 1, text.count("\n") + 2)) if document.notes else frozenset()
-    place, abstract, results = placed(sections, notes) if sections else (None, False, False)
+    heads = frozenset(section.line - 1 for section in sections)
+    compared = (markdown_compared(original, spans, heads) if document is None
+                else docx_compared(document, spans, heads))  # fmt: skip
+    place, abstract, results = (placed(sections, notes, compared) if sections
+                                else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(

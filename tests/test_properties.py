@@ -6653,9 +6653,16 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     beside both its counts, "164 out of 250 (66%)", "66% (n = 164/250)", is given by them
     where it is their share rounded to its places, and is an arithmetic finding where it is
     not; one beside a count with no denominator is looked for as any number is (the author,
-    2026-11-11). Without an Abstract heading, or a Results heading, nothing is compared. The
-    same paper in LaTeX reads alike, its last sentence of the Abstract on the line of
-    `!end{abstract}` (round 1 of #472)."""
+    2026-11-11). A number in a caption that ends the reference list or in a legend after it,
+    before the next heading, is found; one in a note there, or in back matter after them, is
+    not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
+    resumes the list where it opens with the list's next number, wrapped, or has a
+    reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
+    Without
+    an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
+    reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
+    of #472), but for what stands after `thebibliography`, which stands under the section
+    before it and is not found (DESIGN.md, "Known gaps")."""
     paper, supplement, expected, latex, supplement_tex, in_latex = drawn
     for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
                                         (latex, supplement_tex, ".tex", in_latex)):
@@ -6710,7 +6717,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.auditing import abstract
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    def placed(sections, notes=frozenset()):
+    def placed(sections, notes=frozenset(), lists=()):
         walk = Walk()
         place = walk.placing(sections)
         where = abstract._searched(sections, place, walk, notes)
@@ -6719,7 +6726,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         results = (any(place(s.line) is REPORTED for s in sections
                        if abstract.names_results(s.title))
                    or any(abstract.names_results_like(s.title) for s in sections))
-        return where, has, results
+        return abstract._past_the_lists(where, sections, lists, notes), has, results
 
     patch.setattr(abstract, "placed", placed)
 
@@ -7012,6 +7019,49 @@ def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     real = abstract._searched
     patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
         sections, place, walk, frozenset()))  # fmt: skip
+
+
+def _the_lines_past_a_list_are_not_searched(patch: pytest.MonkeyPatch) -> None:
+    """As before Basile's decision of 2026-11-15: a caption or a legend after the reference
+    list stood under "References" and was never searched (pdf-psych-B3)."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: where)
+
+
+def _the_lines_past_a_list_run_on_past_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    """To the end of the file, whatever heading stands after the list: a "Funding" after the
+    tables was searched."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, [], lists, notes))  # fmt: skip
+
+
+def _an_entry_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #692: an entry after a caption between a list's entries stood
+    past the list, and its volume was the Abstract's number found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "resumed_lists", lambda spans, heads, lines, entry, resume: tuple(
+        spans))  # fmt: skip
+
+
+def _the_next_entry_number_resumes_no_list(patch: pytest.MonkeyPatch) -> None:
+    """As at the second head of #692: an entry after a caption wrapped over two lines, a
+    reference's shape on neither, stood past the list, and its volume was found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "entry_number", lambda line: None)
+
+
+def _a_note_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, sections, lists, frozenset()))  # fmt: skip
 
 
 def _a_summary_of_the_paper_is_searched(patch: pytest.MonkeyPatch) -> None:
@@ -11907,11 +11957,13 @@ def test_a_markdown_list_under_a_heading_ends_at_a_display_once_it_holds_an_entr
 
 def _a_list_under_a_heading_ends_at_no_display(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: end)  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: end)  # fmt: skip
 
 
 def _a_list_ends_at_a_display_before_its_first_entry(patch: pytest.MonkeyPatch) -> None:
-    def ended(lines, start, end, cells, displays):
+    # `held` is taken and not read: this rule ends a list at a display whether it holds an
+    # entry or not.
+    def ended(lines, start, end, cells, displays, *, held=False):
         return next((at for at in range(start + 1, end)
                      if (at in displays if displays is not None else
                          audit_module.is_no_entry(lines[at]))), end)  # fmt: skip
@@ -11934,8 +11986,7 @@ def _a_table_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
 def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
     """6e2f8b1d7, round 1 of #681: any line but a rule armed the end, a note too."""
 
-    def ended(lines, start, end, cells, displays):
-        held = False
+    def ended(lines, start, end, cells, displays, *, held=False):
         for at in range(start + 1, end):
             line = lines[at]
             if held and (
@@ -11954,8 +12005,8 @@ def _any_line_is_an_entry(patch: pytest.MonkeyPatch) -> None:
 def _an_entry_in_a_cell_arms_the_end(patch: pytest.MonkeyPatch) -> None:
     real = audit_module._end_at_a_display
     patch.setattr(audit_module, "_end_at_a_display",
-                  lambda lines, start, end, cells, displays: real(
-                      lines, start, end, frozenset(), displays))  # fmt: skip
+                  lambda lines, start, end, cells, displays, *, held=False: real(
+                      lines, start, end, frozenset(), displays, held=held))  # fmt: skip
 
 
 def _markdown_escapes_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
@@ -11978,6 +12029,41 @@ def _figi_is_a_roman_figure(patch: pytest.MonkeyPatch) -> None:
 def _a_typed_caption_ends_no_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(audit_module, "is_no_entry",
                   lambda line: line.lstrip().startswith(("|", "+", "![")))  # fmt: skip
+
+
+from generated import typed_list_body, typed_list_papers  # noqa: E402
+
+
+@holds(30, typed_list_papers())
+def test_a_word_list_ends_at_the_next_typed_title_its_sections_are_read_from(
+    drawn: list[tuple[str, list[tuple[str, bool]], list[str]]],
+) -> None:
+    """In a Word paper with no heading style, read by its typed titles, a reference list
+    ends at the next of them that names no list, as a PDF's ends at its next heading: a
+    "References" in plain type in a contents list on the cover is read as a list only up to
+    the Abstract's title in bold, and every number of the paper after it is listed
+    (docx-psych-B2 of the real-paper corpus); and a title typed right after a list's entries,
+    in bold, plain, in capitals or numbered, ends it, and the numbers under it are listed
+    (`audit.docx_bibliography_spans`; Basile, 2026-11-15). The entries' numbers are not."""
+    import tempfile
+    import zipfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        for number, (kind, paragraphs, planted) in enumerate(drawn):
+            path = Path(folder) / f"paper-{number}.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                      f"{typed_list_body(paragraphs)}"
+                                                      "</w:body></w:document>")  # fmt: skip
+            assert _listed([path]) == sorted(planted), (kind, paragraphs)
+
+
+def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
+    """As at the base: a list ended at a heading style, a display or what ends one under no
+    heading, and at no typed title."""
+    patch.setattr(audit_module, "docx_bibliography_spans", lambda document: (
+        audit_module.bibliography_spans(document.body, document.headings, document.cells,
+                                        audit_module.docx_displays(document))))  # fmt: skip
 
 
 # --------------------------------------------------- e-mail addresses beside citations
@@ -26936,6 +27022,26 @@ BROKEN = {
         _a_note_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
+    "the lines after a reference list are not searched for an Abstract's number": (
+        _the_lines_past_a_list_are_not_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the lines after a reference list run on past the next heading": (
+        _the_lines_past_a_list_run_on_past_the_next_heading,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a caption in a reference list is searched for an Abstract's number": (
+        _an_entry_past_a_list_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a reference list with the next number resumes no list": (
+        _the_next_entry_number_resumes_no_list,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a note after a reference list is searched for an Abstract's number": (
+        _a_note_past_a_list_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
     "a summary of the paper is searched for an Abstract's number": (
         _a_summary_of_the_paper_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
@@ -28391,6 +28497,10 @@ BROKEN = {
     "a list in a .docx with no heading styles runs to the end": (
         _a_docx_list_runs_to_the_end,
         test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
+    ),
+    "a Word list ends at no typed title": (
+        _a_word_list_ends_at_no_typed_title,
+        test_a_word_list_ends_at_the_next_typed_title_its_sections_are_read_from,
     ),
     "a caption or a table ends no list in a .docx": (
         _a_caption_ends_no_docx_list,

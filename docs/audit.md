@@ -225,7 +225,11 @@ no heading after them as well. A reference list laid out in tables, under a capt
 note or not, is read to the next heading. A title that is a plain paragraph
 of a .docx, with no heading style, ends its list where `check` ends one under no heading: at
 a figure's or a table's caption, a title such as "Funding" or "Figure legends" standing
-alone, or a table. A .docx and a figure print `<!--` as typed, so nothing between it and
+alone, or a table. In a .docx whose sections are read from the titles typed alone on their
+lines rather than from its heading styles, a list also ends at the next such title that names no
+reference list, as a PDF's ends at its next heading line: a "References" in plain type in a
+contents list on the cover is read as a list only up to the Abstract's title, not over the
+paper. A .docx and a figure print `<!--` as typed, so nothing between it and
 `-->` is hidden there. Numbers in names are classified as
 `check` classifies them: an e-mail address is no number, nor a name the shipped terms hold,
 such as "IL-4" or "interleukin-4". A Word 97-2003 document (.doc) is not read; save it as
@@ -371,7 +375,20 @@ another name ("Related work", "Literature review", "Theoretical framework",
 "Highlights", an Abstract in another language), the statements, the reference list and
 a "Limitations" or an "Interpretation" of its own,
 so the Methods and the Results and also a "Participants", a "Study design" or an appendix;
-every table of every file; and the whole of a file with no Abstract, a supplement. A
+every table of every file; the whole of a file with no Abstract, a supplement; and, in a
+Markdown paper, a .docx or a PDF, the lines between a reference list's end and the next
+heading. A list ends before its next heading: once it holds an entry, at a table or a
+caption; in Markdown at a thematic break or a heading pandoc prints as text, entry or no
+entry; in a PDF at a caption or a back-matter title, and in a .docx under no heading at a
+typed caption, a table or a back-matter title, entry or no entry. What follows it, a table
+typed as text, a caption, a legend or an appendix with no heading, stood under "References" and was not searched. A
+line anywhere in that stretch, after a caption, a table, a thematic break or a back-matter
+title, that has an entry's shape, or opens with the list's next entry number in the form
+the list numbers its entries in ("3." after "2.", "[3]" after "[2]"), resumes the list,
+and is not searched up to where the list ends again. In LaTeX
+what stands after `thebibliography` or
+`\bibliography{}` stays under the section before the list, and is searched only where that
+section reports. A
 footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
 page, above the Abstract's heading, nor the text above the first heading. A line stands
 under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a

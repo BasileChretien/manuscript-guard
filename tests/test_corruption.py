@@ -2999,6 +2999,60 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
     assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
 
 
+def test_an_abstract_number_changed_in_a_table_after_the_references_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """A number of the Abstract in a table or a caption typed after the reference list, with
+    no heading after it, is found there, which it was not before (pdf-psych-B3 of the
+    real-paper corpus; Basile, 2026-11-15); changed there, it is not found, in Markdown and
+    in a .docx, and in a PDF, whose table is lines of text."""
+    import shutil
+
+    from test_abstract_past_the_list import _docx_body, _markdown, _pdf_lines
+    from test_audit import make_docx, para
+    from test_audit_pdf import write
+
+    from manuscript_guard.audit import audit
+
+    def not_found(paper: Path) -> list[str]:
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    for row, wanted in (("Women 194 33.2", []), ("Women 194 33.9", ["33.2%"])):
+        markdown = tmp_path / "paper.md"
+        markdown.write_text(_markdown(f"Table 1. Baseline\n\n{row}\n"), encoding="utf-8")
+        assert not_found(markdown) == wanted, row
+        docx = make_docx(tmp_path / "paper.docx", _docx_body(para("Table 1. Baseline")
+                                                             + para(row)))  # fmt: skip
+        assert not_found(docx) == wanted, row
+        if shutil.which("pdftotext"):
+            pdf = write(tmp_path / "paper.pdf", _pdf_lines(["Table 1. Baseline", row]),
+                        per_column=40)  # fmt: skip
+            assert not_found(pdf) == wanted, row
+
+
+def test_an_abstract_number_that_is_an_entry_s_volume_after_a_caption_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #692: with a caption between a list's entries, the entry after it stood past
+    the list and its volume, "393", was the Abstract's "393 patients" found. It resumes the
+    list now, in Markdown and in a .docx; a row with no entry's shape there is still read."""
+    from test_abstract_past_the_list import _RESUMED, _docx_body, _markdown, _said_393
+    from test_audit import make_docx, para
+
+    from manuscript_guard.audit import audit
+
+    def not_found(paper: Path) -> list[str]:
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    for after, wanted in ((_RESUMED, ["393", "33.2%"]), ("Women 393 12", ["33.2%"])):
+        markdown = tmp_path / "paper.md"
+        markdown.write_text(_said_393(_markdown(f"Table 1. Baseline\n\n{after}\n")),
+                            encoding="utf-8")  # fmt: skip
+        assert not_found(markdown) == wanted, after
+        body = _said_393(_docx_body(para("Table 1. Baseline") + para(after)))
+        assert not_found(make_docx(tmp_path / "paper.docx", body)) == wanted, after
+
+
 def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
     """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
     and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as
@@ -3119,6 +3173,42 @@ def test_a_results_number_unlike_the_abstract_s_after_its_keywords_is_reported(
                                                   "</w:body></w:document>")  # fmt: skip
         read = audit([path], None).abstract
         assert read is not None and read.compared
+        return [c.text for c in read.not_found]
+
+    assert not_found("Of 412 patients, 77 fell.") == []
+    assert not_found("Of 412 patients, 78 fell.") == ["77"]
+
+
+def test_a_results_number_unlike_the_abstract_s_under_a_cover_s_contents_list_is_reported(
+    tmp_path: Path,
+) -> None:
+    """docx-psych-B2 of the real-paper corpus lists its contents on its cover in plain type,
+    "References" among them, and the reference list read from that line ran over the
+    Abstract and the Results: an Abstract's number the Results do not report went unsaid. A
+    Word paper's list ends at the next typed title its sections are read from (Basile,
+    2026-11-15, decision 26): the Abstract's title in bold, and it is said."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str, bold: bool = False) -> str:
+        props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+        return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+    def not_found(reported: str) -> list[str]:
+        body = (para("The present document contains the following:") + para("Abstract")
+                + para("Introduction") + para("References") + para("Abstract", True)
+                + para("Of 412 patients, 77 fell.") + para("Introduction", True)
+                + para("Falls harm older people.") + para("Results", True) + para(reported)
+                + para("Discussion", True) + para("It was so.") + para("References", True)
+                + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        read = audit([path], None).abstract
+        assert read is not None and read.compared and read.numbers == 2
         return [c.text for c in read.not_found]
 
     assert not_found("Of 412 patients, 77 fell.") == []

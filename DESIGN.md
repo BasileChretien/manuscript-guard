@@ -25422,11 +25422,20 @@ Open, recorded as each change landed:
     `tests/test_language.py::test_the_text_after_the_keywords_list_is_the_main_text`,
     `tests/test_word_keywords.py::test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them`.
   - A paragraph "References" in plain type in a cover's contents list ("The present document
-    contains the following: Abstract, Introduction, References …") opens the typed
-    reference list a .docx is read for, which runs on over the Abstract and blanks it, as
-    at the base: docx-psych-B2 is compared now, with none of its Abstract's numbers read, a
-    comparison that passes on nothing (round 1 of #689). Pinned by
-    `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_blanks_the_abstract`.
+    contains the following: Abstract, Introduction, References …") still opens a typed
+    reference list in a .docx. It no longer runs on over the Abstract: a Word paper's list
+    ends at the next typed title its sections are read from (Basile, 2026-11-15, decision
+    26), there the Abstract's title in bold, so docx-psych-B2's Abstract is compared with
+    its numbers read. What is left: the contents list's lines after its "References", up to
+    that title, are read as the list, and a number in one ("Results tables 1, 2, and 3") is
+    compared with nothing; and where the paper's titles are no more in bold than the
+    contents list's lines, or are in capitals in plain type beside them, the titles cannot
+    be placed (`typed_heading_levels` gives None), and the list runs on as at the base;
+    titles in bold capitals are placed, and end it. Pinned by
+    `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_ends_at_the_abstract_s_title`,
+    `tests/test_word_keywords.py::test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list`,
+    `tests/test_word_keywords.py::test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on`,
+    `tests/test_word_keywords.py::test_titles_in_bold_capitals_beside_a_contents_list_end_its_list`.
   - The two shapes are looked for in every file with no heading that names the Abstract,
     a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line
     opening on "Abstract: …", has an Abstract, and its lines above that line are not
@@ -27822,6 +27831,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (References, paragraph 2) and 2 (References, paragraph 2)". Accepted.
   - A LaTeX tree's place names no file, so two `\bibitem{x}` in two `\input` files can both
     read "line 3". Accepted.
+- **What stands after a reference list is searched for the Abstract's numbers as far as the
+  cut is right.** In Markdown, a .docx and a PDF, the lines between a list's end and the
+  next heading the section reading uses are searched (`auditing.abstract._past_the_lists`;
+  Basile, 2026-11-15, after pdf-psych-B3's "33.2%" in the table after its references), but
+  a note's line and the title page's are not, and the list's own lines are blanked. A list
+  ends there once it holds an entry at a display; in Markdown at a thematic break or a
+  heading-shaped line, entry or no entry; in a PDF at a caption or a back-matter title, and
+  in a .docx under no heading at a typed caption, a table or a back-matter title, entry or
+  no entry. A line anywhere in that stretch, outside a table, that has a reference's shape or opens with the list's next
+  entry number in the list's own form ("3." after "2.", "[3]" after "[2]", the last number
+  read from the list's own lines) resumes the list for the comparison, to where the reader's
+  own rule ends it again (`audit.resumed_lists`; round 1 of #692: an entry after a caption
+  between a list's entries had its volume found as the Abstract's number; round 2, Basile,
+  2026-11-15: a PDF's entry wrapped over two lines has a reference's shape on neither).
+  Accepted.
+  - An unnumbered entry whose first line holds no year, a long list of authors or Chicago's
+    style, or one with no reference's shape, after a caption between a list's entries, or
+    after an entry that opens like a caption ("Table 1"), at which the list is cut too early,
+    is searched, and a year, a volume or a page there can match an Abstract's number. Pinned
+    by `tests/test_abstract_past_the_list.py::test_an_entry_with_no_reference_s_shape_after_a_caption_is_searched`.
+  - A table's row or a caption in the stretch that opens with the list's next number, "3.",
+    resumes the list too, and what follows it up to where the list ends again is not
+    searched. Accepted.
+  - The last number is read from every line of the list but its heading, so a wrapped line
+    of an entry that opens on a number and a stop ("2019. Title …") is read as one, and so
+    is a Markdown list typed "1." on every item, which pandoc numbers anew: an entry after a
+    caption resumes the list then only by its shape, and one with no reference's shape is
+    searched; and under a list typed "1." throughout, a line of the paper's own typed "2. …"
+    after a caption resumes the list and is not searched. Accepted.
+  - In a PDF a table's row typed as text with a reference's shape resumes the list and
+    hides the rows after it, as the base hid them all. Accepted.
+  - A .docx list that Word numbers itself has no number typed in its text, so its entries
+    after a caption resume the list only by their shape. Accepted.
+  - In a PDF any list, and in a .docx one under no heading, ends at a back-matter title or
+    a statement's label too (`_end_under_no_heading`, which `pdf_spans` applies to every
+    PDF list); where that title is read as no heading, the statement after it, a grant's
+    number among it, is searched. None of the 52 papers of the real-paper corpus has such a
+    stretch: theirs open on a table, a figure's caption or an appendix's text. Accepted.
+  - In LaTeX nothing changed: no heading is printed for `thebibliography` or
+    `\bibliography{}`, so what follows the list stands under the section before it, searched
+    where that section reports and not under a Discussion or a statement. Pinned by
+    `tests/test_abstract_past_the_list.py::test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

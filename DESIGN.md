@@ -27829,7 +27829,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   a note's line and the title page's are not, and the list's own lines are blanked. A list
   ends there once it holds an entry at a display; in Markdown at a thematic break or a
   heading-shaped line, entry or no entry; in a PDF at a caption or a back-matter title, and
-  in a .docx under no heading at a back-matter title, entry or no entry. A line anywhere in
+  in a .docx under no heading at a caption, a table or a back-matter title, entry or no
+  entry. A line anywhere in
   that stretch, outside a table, that has a reference's shape or opens with the list's next
   entry number in the list's own form ("3." after "2.", "[3]" after "[2]", the last number
   read from the list's own lines) resumes the list for the comparison, to where the reader's
@@ -27844,6 +27845,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     by `tests/test_abstract_past_the_list.py::test_an_entry_with_no_reference_s_shape_after_a_caption_is_searched`.
   - A table's row or a caption in the stretch that opens with the list's next number, "3.",
     resumes the list too, and what follows it up to where the list ends again is not
+    searched. Accepted.
+  - The last number is read from every line of the list but its heading, so a wrapped line
+    of an entry that opens on a number and a stop ("2019. Title …") is read as one, and so
+    is a Markdown list typed "1." on every item, which pandoc numbers anew: an entry after a
+    caption resumes the list then only by its shape, and one with no reference's shape is
     searched. Accepted.
   - In a PDF a table's row typed as text with a reference's shape resumes the list and
     hides the rows after it, as the base hid them all. Accepted.

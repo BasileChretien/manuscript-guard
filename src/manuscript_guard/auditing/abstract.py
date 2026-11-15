@@ -253,7 +253,8 @@ def _past_the_lists(where: Callable[[int], object], sections: list[Section],
     the audit cuts (`audit.bibliography_spans`) ends before its next heading: once it holds
     an entry, at a display, a table or a caption; in Markdown at a thematic break or a
     heading pandoc prints as text, entry or no entry; in a PDF at a caption or a back-matter
-    title, and in a .docx under no heading at a back-matter title. The lines after it still
+    title, and in a .docx under no heading at a caption, a table or a back-matter title. The
+    lines after it still
     stood under "References", which reports nothing, so a table typed as text, a caption, a
     legend or an appendix there was never searched, as a Word paper's tables always were
     (pdf-psych-B3 of the real-paper corpus, its Abstract's "33.2%" in the table after its

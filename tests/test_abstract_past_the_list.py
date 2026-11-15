@@ -311,3 +311,19 @@ def test_a_docx_or_markdown_entry_with_the_next_number_resumes_the_list(
     paper = tmp_path / "paper.md"
     paper.write_text(_said_393(text), encoding="utf-8")
     assert not_found(paper) == ["393", "33.2%"]
+
+
+#: Entries that hold no number of their own, an author-year list's.
+_UNNUMBERED = ("Smith, J., and Jones, K. (2019). Falls in nurses. Lancet, 393, 100-110.",
+               "Doe, A. (2021). Falls at home. BMJ, 372, 71-80.")  # fmt: skip
+
+
+def test_a_numbered_heading_gives_an_unnumbered_list_no_next_number(tmp_path: Path) -> None:
+    """The next number is read from the list's entries, never from its heading: under "7.
+    References", an author-year list has none, and "8. …" after a caption is the paper's
+    text, searched (the check of #692's last commit)."""
+    body = _docx_body(para("Table 1. Baseline") + para("8. Older adults: 33.2% fell."))
+    body = body.replace(heading("References"), heading("7. References"))
+    for entry, unnumbered in zip(ENTRIES, _UNNUMBERED, strict=True):
+        body = body.replace(entry, unnumbered)
+    assert not_found(make_docx(tmp_path / "paper.docx", body)) == []

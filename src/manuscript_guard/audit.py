@@ -1057,7 +1057,8 @@ def resumed_lists(
 
     for start, end in spans:
         found.append((start, end))
-        known = last_number(start, end, None)
+        # From the line after the heading: "7. References" numbers no entry.
+        known = last_number(start + 1, end, None)
         stop = min((head for head in heads if head >= end), default=len(lines))
         at = end
         while at < stop:

@@ -335,10 +335,11 @@ expected:
   - reading: abstract against results
     why: >-
       the inputs now hold an HTML comment of several lines before the Abstract, between two
-      sections and inside one, as `init --from` writes the cover over every main.md; the
-      audit keeps a comment's line breaks in the text it reads, so what each line of the
-      paper reports is read on that line, where the base read it as many lines too early as
-      the comment is high, and an Abstract's number the Results repeat is found (the bug
+      sections and inside one, as `init --from` writes the cover over every main.md, and one
+      holding a blank line before each test's P; the audit counts each line in a copy that
+      keeps every line break of the file (`audit._lined`), while its readers still read a
+      comment's breaks as the mask writes them, so what each line of the paper reports is
+      read on that line, where the base read it as many lines too early as the comment is high, and an Abstract's number the Results repeat is found (the bug
       found building #691); the entry it replaces, for the Results by another name (#672), is
       spent
   - reading: written shares

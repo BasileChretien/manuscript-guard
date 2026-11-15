@@ -350,7 +350,9 @@ def test_a_contents_list_s_list_ends_at_a_typed_title_beside_a_style_set_aside(
     #691)."""
     path = _package(tmp_path / "paper.docx",
                     heading("Smith A, Jones B") + CONTENTS + b2() + LISTED, STYLES)
-    assert read_docx_text(path).headings
+    document = read_docx_text(path)
+    assert document.headings
+    assert document.heading_levels == ()
     assert _spans(path)[0] == ("References", "Abstract")
 
 

@@ -25434,7 +25434,8 @@ Open, recorded as each change landed:
     titles in bold capitals are placed, and end it. Pinned by
     `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_ends_at_the_abstract_s_title`,
     `tests/test_word_keywords.py::test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list`,
-    `tests/test_word_keywords.py::test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on`.
+    `tests/test_word_keywords.py::test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on`,
+    `tests/test_word_keywords.py::test_titles_in_bold_capitals_beside_a_contents_list_end_its_list`.
   - The two shapes are looked for in every file with no heading that names the Abstract,
     a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line
     opening on "Abstract: …", has an Abstract, and its lines above that line are not

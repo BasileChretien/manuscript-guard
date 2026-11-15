@@ -27873,6 +27873,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `\bibliography{}`, so what follows the list stands under the section before it, searched
     where that section reports and not under a Discussion or a statement. Pinned by
     `tests/test_abstract_past_the_list.py::test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it`.
+- **An Abstract's percentage is looked for as a percentage, never as a proportion.** "85%"
+  in the Abstract is not found where the paper gives the share only as 0.85 or .85, as
+  docx-psych-B2 of the real-paper corpus gives each country's in its tables; nor is
+  docx-sport-A3's "14%" beside 0.14. These are 2 of the 24 Abstract numbers the corpus run
+  on 0223ca005 did not find. Taking an equal proportion for the percentage would make a
+  match luck: 0.85 stands 77 times in psych-B2's tables, nearly all an interval's bound, so
+  any Abstract's 85% would be found there whatever the paper reports (Basile, 2026-11-15).
+  Pinned by `tests/test_audit.py::test_a_percentage_is_not_found_as_the_proportion_a_table_gives`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

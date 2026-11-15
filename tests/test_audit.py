@@ -2543,6 +2543,18 @@ def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_rep
     assert read.found == [] and read.rounded == []
 
 
+def test_a_percentage_is_not_found_as_the_proportion_a_table_gives(tmp_path: Path) -> None:
+    """A percentage of the Abstract is looked for as a percentage: "85%" is not found where
+    the Results give the share only as 0.85 or .85, as docx-psych-B2 of the real-paper corpus
+    gives each country's in its tables. A proportion equal to it is as often an interval's
+    bound, so it is not taken for the percentage (DESIGN.md, "Known gaps")."""
+    text = ("# A study\n\n## Abstract\n\nIt ranged from 23% to 85%.\n\n## Methods\n\nWe "
+            "asked.\n\n## Results\n\nThe shares were 0.23 and .85, 95% CI [0.80, 0.85].\n")
+    read = _abstract_of(tmp_path, text)
+    assert sorted(c.text for c in read.not_found) == ["23%", "85%"], [
+        c.text for c in read.found]  # fmt: skip
+
+
 @pytest.mark.parametrize("written", [
     "*rs75015950*", "_rs75015950_", "**rs75015950**", "\N{LEFT DOUBLE QUOTATION MARK}"
     "rs75015950\N{RIGHT DOUBLE QUOTATION MARK}", '"rs75015950"', "'rs75015950'",

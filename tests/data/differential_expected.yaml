@@ -24,15 +24,6 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
-  - reading: abstract against results
-    why: >-
-      the lines between a reference list's end and the next heading, a caption typed that
-      ends the list and the legend after it, are searched for the Abstract's numbers, so a
-      number of the Abstract given only there is found where the base said it not found; a
-      note there, the list's own entries and a section after them that reports nothing are
-      not searched, as before (Basile, 2026-11-15, decision 25, after pdf-psych-B3 of the
-      real-paper corpus); the entry it replaces, for the Results by another name (#672),
-      is spent
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens
@@ -348,9 +339,10 @@ expected:
       holding a blank line before each test's P; the audit counts each line in a copy that
       keeps every line break of the file (`audit._lined`), while its readers still read a
       comment's breaks as the mask writes them, so what each line of the paper reports is
-      read on that line, where the base read it as many lines too early as the comment is high, and an Abstract's number the Results repeat is found (the bug
-      found building #691); the entry it replaces, for the Results by another name (#672), is
-      spent
+      read on that line, where the base read it as many lines too early as the comment is
+      high, and an Abstract's number the Results repeat is found (the bug found building
+      #691); the entry it replaces, for the lines past a reference list (#692, decision 25),
+      is spent
   - reading: written shares
     why: >-
       the inputs now hold an HTML comment of several lines before the Abstract, between two

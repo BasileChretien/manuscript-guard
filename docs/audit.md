@@ -225,8 +225,8 @@ no heading after them as well. A reference list laid out in tables, under a capt
 note or not, is read to the next heading. A title that is a plain paragraph
 of a .docx, with no heading style, ends its list where `check` ends one under no heading: at
 a figure's or a table's caption, a title such as "Funding" or "Figure legends" standing
-alone, or a table. In a .docx with no heading style, whose sections are read from the
-titles typed alone on their lines, a list also ends at the next such title that names no
+alone, or a table. In a .docx whose sections are read from the titles typed alone on their
+lines rather than from its heading styles, a list also ends at the next such title that names no
 reference list, as a PDF's ends at its next heading line: a "References" in plain type in a
 contents list on the cover is read as a list only up to the Abstract's title, not over the
 paper. A .docx and a figure print `<!--` as typed, so nothing between it and

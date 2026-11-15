@@ -305,25 +305,53 @@ def test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list(
     assert contents == ["References", "Preregistration", "Results tables 1, 2, and 3"]
 
 
+def _beside_contents(path: Path, shape: str) -> Path:
+    """A paper after `CONTENTS`, its titles in `shape`: "plain", "capitals" in plain type or
+    "bold capitals"."""
+    def title(name: str) -> str:
+        typed = name if shape == "plain" else name.upper()
+        return bold(typed) if shape == "bold capitals" else para(typed)
+
+    body = CONTENTS + "".join(title(name) + para("Of 412 patients, 77 fell.")
+                              for name in ("Abstract", "Introduction", "Methods", "Results"))
+    return _package(path, body + title("References")
+                    + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."), "")
+
+
 @pytest.mark.parametrize("shape", ["plain", "capitals"])
 def test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on(
     tmp_path: Path, shape: str,
 ) -> None:
-    """What is left: where the paper's titles are in plain type or in capitals beside a
-    contents list that repeats them, they cannot be placed (`typed_heading_levels` gives
-    None), so nothing ends the contents list's list, which runs on as at the base (DESIGN.md,
-    "Known gaps")."""
+    """What is left: where the paper's titles are in plain type or in capitals in plain type
+    beside a contents list that repeats them, they cannot be placed (`typed_heading_levels`
+    gives None), so nothing ends the contents list's list, which runs on as at the base
+    (DESIGN.md, "Known gaps")."""
     from manuscript_guard.text.docx import typed_heading_levels
 
-    def title(name: str) -> str:
-        return para(name.upper() if shape == "capitals" else name)
-
-    body = CONTENTS + "".join(title(name) + para("Of 412 patients, 77 fell.")
-                              for name in ("Abstract", "Introduction", "Methods", "Results"))
-    path = _package(tmp_path / "paper.docx", body + title("References")
-                    + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."), "")
+    path = _beside_contents(tmp_path / "paper.docx", shape)
     assert typed_heading_levels(read_docx_text(path)) is None
     assert _spans(path) == [("References", "the end")]
+
+
+def test_titles_in_bold_capitals_beside_a_contents_list_end_its_list(tmp_path: Path) -> None:
+    """Titles in bold capitals beside a contents list are placed by those in bold alone
+    (`typed_heading_levels`), so the contents list's list ends at "ABSTRACT" (review of
+    #691)."""
+    path = _beside_contents(tmp_path / "paper.docx", "bold capitals")
+    assert _spans(path) == [("References", "ABSTRACT"), ("REFERENCES", "the end")]
+
+
+def test_a_contents_list_s_list_ends_at_a_typed_title_beside_a_style_set_aside(
+    tmp_path: Path,
+) -> None:
+    """The typed titles end a list wherever the sections are read from them, not from the
+    heading styles: here an authors' line in Heading 1, a stray line whose style is set
+    aside (`text.docx.styles_set_aside`), and the paragraph keeps its style (review of
+    #691)."""
+    path = _package(tmp_path / "paper.docx",
+                    heading("Smith A, Jones B") + CONTENTS + b2() + LISTED, STYLES)
+    assert read_docx_text(path).headings
+    assert _spans(path)[0] == ("References", "Abstract")
 
 
 @pytest.mark.parametrize("shape", ["bold", "plain", "capitals"])

@@ -25429,8 +25429,9 @@ Open, recorded as each change landed:
     its numbers read. What is left: the contents list's lines after its "References", up to
     that title, are read as the list, and a number in one ("Results tables 1, 2, and 3") is
     compared with nothing; and where the paper's titles are no more in bold than the
-    contents list's lines, or are in capitals beside them, the titles cannot be placed
-    (`typed_heading_levels` gives None), and the list runs on as at the base. Pinned by
+    contents list's lines, or are in capitals in plain type beside them, the titles cannot
+    be placed (`typed_heading_levels` gives None), and the list runs on as at the base;
+    titles in bold capitals are placed, and end it. Pinned by
     `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_ends_at_the_abstract_s_title`,
     `tests/test_word_keywords.py::test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list`,
     `tests/test_word_keywords.py::test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on`.

@@ -6609,9 +6609,13 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     beside both its counts, "164 out of 250 (66%)", "66% (n = 164/250)", is given by them
     where it is their share rounded to its places, and is an arithmetic finding where it is
     not; one beside a count with no denominator is looked for as any number is (the author,
-    2026-11-11). Without an Abstract heading, or a Results heading, nothing is compared. The
-    same paper in LaTeX reads alike, its last sentence of the Abstract on the line of
-    `!end{abstract}` (round 1 of #472)."""
+    2026-11-11). A number in a caption that ends the reference list or in a legend after it,
+    before the next heading, is found; one in a note there, or in back matter after them, is
+    not (Basile, 2026-11-15, after pdf-psych-B3). Without an Abstract heading, or a Results
+    heading, nothing is compared. The same paper in LaTeX reads alike, its last sentence of
+    the Abstract on the line of `!end{abstract}` (round 1 of #472), but for what stands after
+    `thebibliography`, which stands under the section before it and is not found (DESIGN.md,
+    "Known gaps")."""
     paper, supplement, expected, latex, supplement_tex, in_latex = drawn
     for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
                                         (latex, supplement_tex, ".tex", in_latex)):
@@ -6666,7 +6670,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.auditing import abstract
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    def placed(sections, notes=frozenset()):
+    def placed(sections, notes=frozenset(), lists=()):
         walk = Walk()
         place = walk.placing(sections)
         where = abstract._searched(sections, place, walk, notes)
@@ -6675,7 +6679,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         results = (any(place(s.line) is REPORTED for s in sections
                        if abstract.names_results(s.title))
                    or any(abstract.names_results_like(s.title) for s in sections))
-        return where, has, results
+        return abstract._past_the_lists(where, sections, lists, notes), has, results
 
     patch.setattr(abstract, "placed", placed)
 
@@ -6968,6 +6972,32 @@ def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     real = abstract._searched
     patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
         sections, place, walk, frozenset()))  # fmt: skip
+
+
+def _the_lines_past_a_list_are_not_searched(patch: pytest.MonkeyPatch) -> None:
+    """As before Basile's decision of 2026-11-15: a caption or a legend after the reference
+    list stood under "References" and was never searched (pdf-psych-B3)."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: where)
+
+
+def _the_lines_past_a_list_run_on_past_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    """To the end of the file, whatever heading stands after the list: a "Funding" after the
+    tables was searched."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, [], lists, notes))  # fmt: skip
+
+
+def _a_note_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._past_the_lists
+    patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
+        where, sections, lists, frozenset()))  # fmt: skip
 
 
 def _a_summary_of_the_paper_is_searched(patch: pytest.MonkeyPatch) -> None:
@@ -26890,6 +26920,18 @@ BROKEN = {
     ),
     "a note is searched for an Abstract's number": (
         _a_note_is_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the lines after a reference list are not searched for an Abstract's number": (
+        _the_lines_past_a_list_are_not_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the lines after a reference list run on past the next heading": (
+        _the_lines_past_a_list_run_on_past_the_next_heading,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a note after a reference list is searched for an Abstract's number": (
+        _a_note_past_a_list_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a summary of the paper is searched for an Abstract's number": (

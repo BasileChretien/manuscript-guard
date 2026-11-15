@@ -2999,6 +2999,37 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
     assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
 
 
+def test_an_abstract_number_changed_in_a_table_after_the_references_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """A number of the Abstract in a table or a caption typed after the reference list, with
+    no heading after it, is found there, which it was not before (pdf-psych-B3 of the
+    real-paper corpus; Basile, 2026-11-15); changed there, it is not found, in Markdown and
+    in a .docx, and in a PDF, whose table is lines of text."""
+    import shutil
+
+    from test_abstract_past_the_list import _docx_body, _markdown, _pdf_lines
+    from test_audit import make_docx, para
+    from test_audit_pdf import write
+
+    from manuscript_guard.audit import audit
+
+    def not_found(paper: Path) -> list[str]:
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    for row, wanted in (("Women 194 33.2", []), ("Women 194 33.9", ["33.2%"])):
+        markdown = tmp_path / "paper.md"
+        markdown.write_text(_markdown(f"Table 1. Baseline\n\n{row}\n"), encoding="utf-8")
+        assert not_found(markdown) == wanted, row
+        docx = make_docx(tmp_path / "paper.docx", _docx_body(para("Table 1. Baseline")
+                                                             + para(row)))  # fmt: skip
+        assert not_found(docx) == wanted, row
+        if shutil.which("pdftotext"):
+            pdf = write(tmp_path / "paper.pdf", _pdf_lines(["Table 1. Baseline", row]),
+                        per_column=40)  # fmt: skip
+            assert not_found(pdf) == wanted, row
+
+
 def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
     """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
     and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as

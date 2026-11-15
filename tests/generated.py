@@ -9387,7 +9387,12 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: (the author, 2026-11-11) one beside a count with no denominator, after counts the
 #: sentence gives first, "Of 250 patients, 164 (66%)", one with no "%" and one with a
 #: decimal comma, none of them found. And what reads as a share and is none
-#: (`NO_SHARE_SHAPES`), its percentage reported, so found (round 1 of #664).
+#: (`NO_SHARE_SHAPES`), its percentage reported, so found (round 1 of #664). And what stands
+#: between the reference list's end and the next heading (`PAST_THE_LIST`): a caption typed
+#: that ends the list and a legend after it, which are found, a note there, which is not,
+#: and a section of back matter after them, which is not (pdf-psych-B3 of the real-paper
+#: corpus; Basile, 2026-11-15). In LaTeX none of them is, since the lines after
+#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps").
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9395,6 +9400,7 @@ ABSTRACT_KINDS = (
     "estimate closed up", "identifier", "identifier by its number", "under a method",
     "other section", "introduction", "conclusion", "references", "note", "statement",
     "summary", "related work", "over the methods", "title page",
+    "past the list", "past the list legend", "past the list note", "past the list then back matter",
     "share out of", "share of", "share slash", "share after words", "share goes on",
     "share first", "share first of", "share first n", "share thousands", "share decimal",
     "share rounded up", "share off", "share closed up", "share without a denominator",
@@ -9440,6 +9446,18 @@ SHARE_WORDS = ("patients", "adults in all", "of the women")
 ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summary": 2400,
                       "related work": 2500, "over the methods": 2600,
                       "title page": 2700}  # fmt: skip
+#: Each kind of `ABSTRACT_KINDS` that stands after the reference list, by the base of its
+#: number: a caption typed, which ends the list, a legend after it, a note there and a
+#: section of back matter after them. A caption is in one of the shapes that end a list
+#: (`text.reference_lists.is_no_entry`, `CAPTIONS_PAST_THE_LIST`).
+PAST_THE_LIST = {"past the list": 6100, "past the list legend": 6200,
+                 "past the list note": 6300, "past the list then back matter": 6400}
+CAPTIONS_PAST_THE_LIST = ("Table 1.", "Figure 2:", "Fig 3.", "S1 Table.",
+                          "Supplementary Table 4.")  # fmt: skip
+ENTRY_PAST_THE_LIST = "Smith J, Jones K. Title. Lancet. 2019;393:100-10."
+#: Where each kind stands in LaTeX, its state there where it is not Markdown's: the lines
+#: after `thebibliography` stand under the section before it, here a statement.
+PAST_THE_LIST_IN_LATEX = {"past the list": "not found", "past the list legend": "not found"}
 #: Titles of a summary of the paper, of a section of the Introduction's material, and of a
 #: statement, as `abstract_papers` draws them.
 PAPER_SUMMARY_TITLES = ("Author summary", "Significance", "Highlights",
@@ -9548,6 +9566,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     introduction: list[str] = []
     elsewhere: list[str] = []
     after: dict[str, list] = {kind: [] for kind in ABSTRACT_ELSEWHERE}
+    past: list = []
+    back: list[str] = []
     conclusions: list[str] = []
     looked: list[tuple[str, str, str]] = []
     for kind in draw(st.permutations(ABSTRACT_KINDS)):
@@ -9655,6 +9675,22 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 after[kind].append(f"It was {shown} then.")
             looked.append((kind, shown, "exact" if kind == "over the methods" else "not found"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in PAST_THE_LIST:
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + PAST_THE_LIST[kind])
+            if kind == "past the list":
+                # The caption ends the list, so it stands first.
+                past.insert(0, f"{draw(st.sampled_from(CAPTIONS_PAST_THE_LIST))} It was {shown}.")
+            elif kind == "past the list legend":
+                past.append(f"It was {shown} then.")
+            elif kind == "past the list note":
+                past.append(Apart(f"It was so.[^p1]\n\n[^p1]: It was {shown} then.",
+                                  f"It was so.{BACKSLASH}footnote{{It was {shown} then.}}"))
+            else:
+                back.append(f"It was {shown} then.")
+            found = kind in ("past the list", "past the list legend")
+            looked.append((kind, shown, "exact" if found else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -9723,12 +9759,16 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
              ("Results and discussion", results), ("Discussion", discussion),
              ("Conclusions", conclusions),
              (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
-             ("References", after["references"]))  # fmt: skip
+             # An entry of a reference's shape, which a list must hold to end at a caption.
+             ("References", [ENTRY_PAST_THE_LIST, *after["references"]]),
+             # What stands after the list, under no heading of its own, then back matter.
+             (None, past), (draw(st.sampled_from(STATEMENT_TITLES)), back))  # fmt: skip
     for heading, part in parts:
         part = [said.markdown if isinstance(said, Apart) else
                 f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
                 for said in part]  # fmt: skip
-        lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
+        titled = [] if heading is None else [f"## {heading}", ""]
+        lines += [*titled, *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
     latex, in_latex = _abstract_latex(abstract, looked, parts, front)
@@ -9864,15 +9904,15 @@ def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list],
             lines.append("")
         if kind in ("interval conflict", "test conflict"):
             expected["conflicts"].append([line, kind.split()[0]])
-        expected["looked"] += [[line, shown, state] for planted, shown, state in looked
-                               if planted == kind]  # fmt: skip
+        expected["looked"] += [[line, shown, PAST_THE_LIST_IN_LATEX.get(planted, state)]
+                               for planted, shown, state in looked if planted == kind]
     for heading, part in parts:
         if heading == "References":
             lines += ["", BACKSLASH + "begin{thebibliography}{9}",
                       *(f"{BACKSLASH}bibitem{{r{at}}} {said}" for at, said in enumerate(part)),
                       BACKSLASH + "end{thebibliography}"]  # fmt: skip
             continue
-        lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
+        lines += [""] if heading is None else ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
             if isinstance(said, Apart):
                 lines += [said.latex, ""]

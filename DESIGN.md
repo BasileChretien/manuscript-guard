@@ -27822,6 +27822,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (References, paragraph 2) and 2 (References, paragraph 2)". Accepted.
   - A LaTeX tree's place names no file, so two `\bibitem{x}` in two `\input` files can both
     read "line 3". Accepted.
+- **What stands after a reference list is searched for the Abstract's numbers as far as the
+  cut is right.** In Markdown, a .docx and a PDF, the lines between a list's end and the
+  next heading the section reading uses are searched (`auditing.abstract._past_the_lists`;
+  Basile, 2026-11-15, after pdf-psych-B3's "33.2%" in the table after its references), but
+  a note's line and the title page's are not, and the list's own lines are blanked.
+  Accepted.
+  - A list cut too early, at an entry that opens like a caption ("Table 1"), has its
+    remaining entries searched, and a year, a volume or a page there can match an Abstract's
+    number. Accepted.
+  - A list under no heading, in a PDF or a .docx, ends at a back-matter title or a
+    statement's label too (`_end_under_no_heading`); where that title is read as no heading,
+    the statement after it, a grant's number among it, is searched. None of the 52 papers of
+    the real-paper corpus has such a stretch: theirs open on a table, a figure's caption or
+    an appendix's text. Accepted.
+  - In LaTeX nothing changed: no heading is printed for `thebibliography` or
+    `\bibliography{}`, so what follows the list stands under the section before it, searched
+    where that section reports and not under a Discussion or a statement. Pinned by
+    `tests/test_abstract_past_the_list.py::test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

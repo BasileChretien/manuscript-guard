@@ -24,6 +24,15 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: abstract against results
+    why: >-
+      the lines between a reference list's end and the next heading, a caption typed that
+      ends the list and the legend after it, are searched for the Abstract's numbers, so a
+      number of the Abstract given only there is found where the base said it not found; a
+      note there, the list's own entries and a section after them that reports nothing are
+      not searched, as before (Basile, 2026-11-15, decision 25, after pdf-psych-B3 of the
+      real-paper corpus); the entry it replaces, for the Results by another name (#672),
+      is spent
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens
@@ -133,16 +142,6 @@ expected:
       the hint of a form written two ways ends "The place given is the first use of the
       other form", where it said "This is the first place the other form stands", which the
       author did not understand (the author's audit, 2026-11-10)
-  - reading: abstract against results
-    why: >-
-      a heading whose whole title is one of the names the Results go by elsewhere,
-      "Experiments", "4. Numerical results", "Empirical analysis" and the rest of
-      `RESULTS_LIKE`, is the Results to the Abstract against Results where the section
-      searches, so the Abstract is compared where the base said "no file has a Results
-      heading outside the Abstract"; where it still is not, the reason names those headings
-      (Basile, 2026-11-13, after tex-astro-ga-A2, tex-cs-lg-A1 and tex-stat-ap-B1 of the
-      real-paper corpus); the inputs now hold a paper for each name and each near miss. The
-      entry it replaces, for the percentages beside their counts (#664), is spent
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the

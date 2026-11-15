@@ -371,7 +371,13 @@ another name ("Related work", "Literature review", "Theoretical framework",
 "Highlights", an Abstract in another language), the statements, the reference list and
 a "Limitations" or an "Interpretation" of its own,
 so the Methods and the Results and also a "Participants", a "Study design" or an appendix;
-every table of every file; and the whole of a file with no Abstract, a supplement. A
+every table of every file; the whole of a file with no Abstract, a supplement; and, in a
+Markdown paper, a .docx or a PDF, the lines between a reference list's end and the next
+heading, where a list that ends at a table or a caption, with no heading after it, leaves
+the tables typed as text, the captions and the legends after it, which stand under
+"References" and were not searched. In LaTeX what stands after `thebibliography` or
+`\bibliography{}` stays under the section before the list, and is searched only where that
+section reports. A
 footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
 page, above the Abstract's heading, nor the text above the first heading. A line stands
 under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a

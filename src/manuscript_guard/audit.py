@@ -933,7 +933,7 @@ def _read_sources(
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
         source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
-        structure = _structure(text, hidden, tables, document)
+        structure = _structure(text, hidden, tables, document, spans)
         sources.append(replace(source, **structure))
         said = _headings_said(path, document, bool(structure["heading_lines"]))
         if said:
@@ -995,7 +995,7 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     blanked = _blank(text, spans)
     hidden = _masked(blanked, printed_as_typed=True)
     source = _Source(path, blanked, hidden, blanked, blanked, (), not spans, True, wrapped=True)
-    sources.append(replace(source, **_pdf_structure(report, pdf)))
+    sources.append(replace(source, **_pdf_structure(report, pdf, spans)))
     report.not_audited += [pdf.described(), *(
         f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list"
         for start, end in spans), *(f"{path.name}: {what}" for what in PDF_NOT_READ)]
@@ -1025,10 +1025,13 @@ PDF_NOT_READ = (
 )
 
 
-def _pdf_structure(report: AuditReport, pdf) -> dict:
+def _pdf_structure(report: AuditReport, pdf,
+                   spans: list[tuple[int, int]] | tuple = ()) -> dict:  # fmt: skip
     """Where each line of a PDF stands, from the lines that hold a section's name alone
     (`auditing.pdf.heading_title`), a structured abstract's under its Abstract
-    (`PdfText.placed`); placed nowhere where they cannot be placed exactly, which is said."""
+    (`PdfText.placed`), the lines after its reference lists `spans` before the next heading
+    searched (`auditing.abstract._past_the_lists`); placed nowhere where they cannot be
+    placed exactly, which is said."""
     from manuscript_guard.auditing.abstract import placed
     from manuscript_guard.auditing.pdf import UNPLACED
     from manuscript_guard.text.sections import Section
@@ -1049,7 +1052,8 @@ def _pdf_structure(report: AuditReport, pdf) -> dict:
                                   f"{UNPLACED}")  # fmt: skip
         return {"heading_lines": heading_lines}
     sections = [Section(title, level, "", line) for line, title, level in levels]
-    place, abstract, results = placed(sections) if sections else (None, False, False)
+    place, abstract, results = (placed(sections, lists=tuple(spans)) if sections
+                                else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results,
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
 
@@ -1111,12 +1115,14 @@ def _set_aside(document) -> str:
     return f"{styled}, and its typed titles name an Abstract and a Results"
 
 
-def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
+def _structure(text: str, hidden: str, tables: list[Table], document,
+               spans: list[tuple[int, int]]) -> dict:
     """What a Markdown or a .docx paper's Abstract against Results and its flows are read
     from: where each line stands under its own headings, a Word document's by their styles;
     the lines in a table; its lists, a Word document's by their levels; and the counts in
-    its text boxes. Each file is placed alone: a file with no Abstract is reported whole
-    (round 2 of #472, DESIGN.md, "Known gaps")."""
+    its text boxes. The lines after its reference lists `spans` and before the next heading
+    are searched (`auditing.abstract._past_the_lists`). Each file is placed alone: a file
+    with no Abstract is reported whole (round 2 of #472, DESIGN.md, "Known gaps")."""
     from manuscript_guard.auditing.abstract import placed
     from manuscript_guard.stats.flows import boxed_counts, docx_lists, markdown_lists
     from manuscript_guard.text.sections import Section, scannable, split_sections
@@ -1146,7 +1152,8 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         # The notes, read after the body, under its last heading (`read_paper`).
         last = document.body.count("\n") + 1
         notes = frozenset(range(last + 1, text.count("\n") + 2)) if document.notes else frozenset()
-    place, abstract, results = placed(sections, notes) if sections else (None, False, False)
+    place, abstract, results = (placed(sections, notes, tuple(spans)) if sections
+                                else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(

@@ -5,7 +5,11 @@ An abstract summarises: every number in it should be reported in the paper too. 
 paper reports is every section but the Abstract, the Introduction, the Discussion, a
 conclusion, a summary of the paper and the back matter, and no note (`placed`), the Methods
 and the Results as G8 reads them (`gates.reported.Walk`) among them; every table of every
-file; and the whole of a file with no Abstract, which is a supplement. A line
+file; the whole of a file with no Abstract, which is a supplement; and, in Markdown, a .docx
+or a PDF, the lines between a reference list's end and the next heading, a table typed as
+text, a caption or a legend after a list that ends at a display (`_past_the_lists`; Basile,
+2026-11-15). In LaTeX those lines stand under the section before the list, as it prints
+them (DESIGN.md, "Known gaps"). A line
 is placed under the headings over it, a Markdown paper's (`split_sections`), a Word
 document's heading styles (`DocxText.headings`), a LaTeX document's printed view, its places
 read back to the `.tex` lines (`printed`, `place_line`, `place_lines`). Each file is placed
@@ -208,18 +212,21 @@ def _results_by_another_name(sections: list[Section],
     return False
 
 
-def placed(sections: list[Section], notes: frozenset[int] = frozenset()
+def placed(sections: list[Section], notes: frozenset[int] = frozenset(),
+           lists: tuple[tuple[int, int], ...] = ()
            ) -> tuple[Callable[[int], object], bool, bool]:  # fmt: skip
-    """Where each line of one document stands, given its headings and the lines of its
-    notes, and whether it has an Abstract and a Results heading outside it. Each file is
-    placed alone, unlike G8, which carries the headings of a paper's files from one into
-    the next: a file with no Abstract is a supplement, reported whole, and so is a
-    Discussion written in a file of its own (round 2 of #472, DESIGN.md, "Known gaps").
+    """Where each line of one document stands, given its headings, the lines of its notes
+    and its reference lists as the audit cut them, and whether it has an Abstract and a
+    Results heading outside it. Each file is placed alone, unlike G8, which carries the
+    headings of a paper's files from one into the next: a file with no Abstract is a
+    supplement, reported whole, and so is a Discussion written in a file of its own (round 2
+    of #472, DESIGN.md, "Known gaps").
 
     A line is REPORTED, searched for the Abstract's numbers, as G8 reads the Methods and the
     Results (`gates.reported.Walk`), and under any other section too that reports
     (`_searched`): a paper that reports a number under "Participants", "Study design" or an
-    appendix had it said not found (Basile, 2026-11-11, after 52 real preprints).
+    appendix had it said not found (Basile, 2026-11-11, after 52 real preprints). So is a
+    line between a reference list's end and the next heading (`_past_the_lists`).
 
     The Results are a heading G8 reads as them where it reports, or one whose whole title is
     the Results by another name (`RESULTS_LIKE`) standing where the section searches, not in
@@ -233,7 +240,44 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset()
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     results = (any(place(s.line) is REPORTED for s in sections if names_results(s.title))
                or _results_by_another_name(sections, searched))  # fmt: skip
-    return searched, abstract, results
+    return _past_the_lists(searched, sections, lists, notes), abstract, results
+
+
+def _past_the_lists(where: Callable[[int], object], sections: list[Section],
+                    lists: tuple[tuple[int, int], ...],
+                    notes: frozenset[int]) -> Callable[[int], object]:  # fmt: skip
+    """`where`, with REPORTED for each line between the end of a reference list, as 0-based
+    lines `[start, end)` (`audit.bibliography_spans`), and the next of `sections`' headings
+    or the end of the file: a list that holds an entry ends at a display, a table or a
+    caption, and a list under no heading at a caption or back matter too, and the lines
+    after it still stood under "References", which reports nothing, so a table typed as text,
+    a caption or a legend there was never searched, as a Word paper's tables always were
+    (pdf-psych-B3 of the real-paper corpus, its Abstract's "33.2%" in the table after its
+    references; Basile, 2026-11-15). Never a note's line, nor one of the title page; the
+    list's own lines are blanked before the comparison reads them."""
+    from manuscript_guard.gates.reported import REPORTED
+
+    heads = sorted(section.line for section in sections)
+    stretches = []
+    for _start, end in lists:
+        first = end + 1
+        after = next((line for line in heads if line >= first), None)
+        if after is None or after > first:
+            stretches.append((first, after))
+    if not stretches:
+        return where
+    opened = _title_page_ends(sections)
+
+    def at(line: int) -> object:
+        found = where(line)
+        if (found is REPORTED or in_abstract(found) or line in notes
+                or (opened is not None and line < opened)):  # fmt: skip
+            return found
+        past = any(first <= line and (after is None or line < after)
+                   for first, after in stretches)  # fmt: skip
+        return REPORTED if past else found
+
+    return at
 
 
 def _reports_nothing(section: Section, walk) -> bool:

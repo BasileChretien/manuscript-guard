@@ -6611,11 +6611,12 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     not; one beside a count with no denominator is looked for as any number is (the author,
     2026-11-11). A number in a caption that ends the reference list or in a legend after it,
     before the next heading, is found; one in a note there, or in back matter after them, is
-    not (Basile, 2026-11-15, after pdf-psych-B3). Without an Abstract heading, or a Results
-    heading, nothing is compared. The same paper in LaTeX reads alike, its last sentence of
-    the Abstract on the line of `!end{abstract}` (round 1 of #472), but for what stands after
-    `thebibliography`, which stands under the section before it and is not found (DESIGN.md,
-    "Known gaps")."""
+    not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
+    resumes the list, while one in a caption after that entry is (round 1 of #692). Without
+    an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
+    reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
+    of #472), but for what stands after `thebibliography`, which stands under the section
+    before it and is not found (DESIGN.md, "Known gaps")."""
     paper, supplement, expected, latex, supplement_tex, in_latex = drawn
     for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
                                         (latex, supplement_tex, ".tex", in_latex)):
@@ -6990,6 +6991,15 @@ def _the_lines_past_a_list_run_on_past_the_next_heading(patch: pytest.MonkeyPatc
     real = abstract._past_the_lists
     patch.setattr(abstract, "_past_the_lists", lambda where, sections, lists, notes: real(
         where, [], lists, notes))  # fmt: skip
+
+
+def _an_entry_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #692: an entry after a caption between a list's entries stood
+    past the list, and its volume was the Abstract's number found."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "resumed_lists", lambda spans, heads, count, entry, resume: tuple(
+        spans))  # fmt: skip
 
 
 def _a_note_past_a_list_is_searched(patch: pytest.MonkeyPatch) -> None:
@@ -26928,6 +26938,10 @@ BROKEN = {
     ),
     "the lines after a reference list run on past the next heading": (
         _the_lines_past_a_list_run_on_past_the_next_heading,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an entry after a caption in a reference list is searched for an Abstract's number": (
+        _an_entry_past_a_list_is_searched,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a note after a reference list is searched for an Abstract's number": (

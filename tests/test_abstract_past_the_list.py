@@ -190,3 +190,63 @@ def test_a_number_in_an_entry_of_the_list_is_still_not_found(tmp_path: Path) -> 
     assert not_found(markdown) == ["393"]
     body = _docx_body(para("Figure 1. Of them 33.2% were women.")).replace(PARTS[0][1], said, 1)
     assert not_found(make_docx(tmp_path / "paper.docx", body)) == ["393"]
+
+
+#: An entry after a caption in the middle of a list, a float on a references page or a
+#: caption between its columns, whose volume is the Abstract's "393" (round 1 of #692).
+_RESUMED = "3. Brown T. Title. Lancet. 2019;393:100-10."
+
+
+def _said_393(text: str) -> str:
+    return text.replace(PARTS[0][1], PARTS[0][1].replace("194 patients", "393 patients"), 1)
+
+
+@needs_pdftotext
+def test_a_pdf_s_entry_after_a_caption_in_its_list_is_the_list_s_again(tmp_path: Path) -> None:
+    """The list ends at the caption, but the entry after it resumes the list for the Abstract
+    against Results, to where a PDF's list ends: its volume is not the Abstract's "393"."""
+    lines = _pdf_lines(["Table 1. Baseline", "Women 194 12", _RESUMED])
+    lines = [_said_393(line) for line in lines]
+    assert not_found(write(tmp_path / "paper.pdf", lines, per_column=40)) == ["393", "33.2%"]
+
+
+def test_a_docx_s_entry_after_a_caption_in_its_list_is_the_list_s_again(tmp_path: Path) -> None:
+    body = _said_393(_docx_body(para("Table 1. Baseline") + para(_RESUMED)))
+    assert not_found(make_docx(tmp_path / "paper.docx", body)) == ["393", "33.2%"]
+    # The legend after the entries that resume the list, before the next heading, is searched.
+    body = _said_393(_docx_body(para("Table 1. Baseline") + para(_RESUMED)
+                                + _LEGEND.format("Of them 33.2% were women.")))  # fmt: skip
+    paper = make_docx(tmp_path / "legend.docx", body, _CAPTION_STYLE)
+    assert not_found(paper) == ["393"]
+
+
+def test_a_markdown_entry_after_a_caption_in_its_list_is_the_list_s_again(
+    tmp_path: Path,
+) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text(_said_393(_markdown(f"Table 1. Baseline\n\nWomen 194 12\n\n{_RESUMED}\n")),
+                     encoding="utf-8")  # fmt: skip
+    assert not_found(paper) == ["393", "33.2%"]
+
+
+def test_a_markdown_list_ended_by_a_thematic_break_has_what_follows_searched(
+    tmp_path: Path,
+) -> None:
+    """A Markdown list ends at a thematic break or a heading pandoc prints as text, as well as
+    at a display: what follows it, before the next heading, is searched too."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(_markdown("---\n\nGrant 33.2 paid for it.\n"), encoding="utf-8")
+    assert not_found(paper) == []
+
+
+def test_an_entry_with_no_reference_s_shape_after_a_caption_is_searched(tmp_path: Path) -> None:
+    """What stays (DESIGN.md, "Known gaps"): an entry the reader does not take for one, with
+    no year, journal or pages, does not resume the list, and its number is searched."""
+    from manuscript_guard.audit import looks_like_reference
+
+    shapeless = "Brown T, volume 393"
+    assert not looks_like_reference(shapeless)
+    paper = tmp_path / "paper.md"
+    paper.write_text(_said_393(_markdown(f"Table 1. Baseline\n\n{shapeless}\n")),
+                     encoding="utf-8")  # fmt: skip
+    assert not_found(paper) == ["33.2%"]

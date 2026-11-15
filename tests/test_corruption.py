@@ -3030,6 +3030,29 @@ def test_an_abstract_number_changed_in_a_table_after_the_references_is_not_found
             assert not_found(pdf) == wanted, row
 
 
+def test_an_abstract_number_that_is_an_entry_s_volume_after_a_caption_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #692: with a caption between a list's entries, the entry after it stood past
+    the list and its volume, "393", was the Abstract's "393 patients" found. It resumes the
+    list now, in Markdown and in a .docx; a row with no entry's shape there is still read."""
+    from test_abstract_past_the_list import _RESUMED, _docx_body, _markdown, _said_393
+    from test_audit import make_docx, para
+
+    from manuscript_guard.audit import audit
+
+    def not_found(paper: Path) -> list[str]:
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    for after, wanted in ((_RESUMED, ["393", "33.2%"]), ("Women 393 12", ["33.2%"])):
+        markdown = tmp_path / "paper.md"
+        markdown.write_text(_said_393(_markdown(f"Table 1. Baseline\n\n{after}\n")),
+                            encoding="utf-8")  # fmt: skip
+        assert not_found(markdown) == wanted, after
+        body = _said_393(_docx_body(para("Table 1. Baseline") + para(after)))
+        assert not_found(make_docx(tmp_path / "paper.docx", body)) == wanted, after
+
+
 def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
     """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
     and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as

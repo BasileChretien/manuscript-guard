@@ -1013,6 +1013,83 @@ def pdf_spans(pdf) -> list[tuple[int, int]]:
             for start, end in bibliography_spans(pdf.text, pdf.heading_lines)]  # fmt: skip
 
 
+def resumed_lists(
+    spans: list[tuple[int, int]], heads: frozenset[int], count: int,
+    entry: Callable[[int], bool], resume: Callable[[int, int, int], int],
+) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """The reference lists as the Abstract against Results reads them, as 0-based lines
+    `[start, end)`: the audit's `spans`, and after each, before the next of `heads` (the
+    headings the section reading places by) or the end of `count` lines, the list resumed at
+    each line `entry` takes, one with a reference's shape outside a table, as
+    `_end_at_a_display` reads an entry, to where `resume(start, at, stop)` ends it by the
+    reader's own rule. A list ends at a caption, so with a float or a caption between its
+    entries those after it stood past the list and were searched, and an entry's volume was
+    the Abstract's number found (round 1 of #692). The audit's cut, which G2, G14 and the
+    report read, stays as it is."""
+    found: list[tuple[int, int]] = []
+    for start, end in spans:
+        found.append((start, end))
+        stop = min((head for head in heads if head >= end), default=count)
+        at = end
+        while at < stop:
+            if not entry(at):
+                at += 1
+                continue
+            ended = max(resume(start, at, stop), at + 1)
+            found.append((at, ended))
+            at = ended
+    return tuple(found)
+
+
+def markdown_compared(text: str, spans: list[tuple[int, int]],
+                      heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a Markdown paper, as `bibliography_spans` reads it: an entry as
+    pandoc prints its escapes, and a list ended at a heading, a heading-shaped line, a
+    thematic break or a display."""
+    lines = scannable(text).split("\n")
+    ends = sorted(_markdown_heading_lines(text) | heading_shaped(lines) | thematic_breaks(lines))
+
+    def resume(_start: int, at: int, stop: int) -> int:
+        bound = min((line for line in ends if line > at), default=stop)
+        return _end_at_a_display(lines, at - 1, min(bound, stop), frozenset(), None)
+
+    return resumed_lists(spans, heads, len(lines),
+                         lambda at: looks_like_reference(_ESCAPED.sub(r"\1", lines[at])),
+                         resume)  # fmt: skip
+
+
+def docx_compared(document, spans: list[tuple[int, int]],
+                  heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a .docx, as `docx_bibliography_spans` reads it: an entry outside a
+    table, and a list ended at a heading style or a display, and under no heading where a
+    list under no heading ends (`_end_under_no_heading`)."""
+    lines = document.body.split("\n")
+    displays = docx_displays(document)
+
+    def resume(start: int, at: int, stop: int) -> int:
+        bound = min((line for line in document.headings if line > at), default=stop)
+        ended = _end_at_a_display(lines, at - 1, min(bound, stop), document.cells, displays)
+        return ended if start in document.headings else _end_under_no_heading(lines, at, ended)
+
+    return resumed_lists(spans, heads, len(lines),
+                         lambda at: at not in document.cells and looks_like_reference(lines[at]),
+                         resume)  # fmt: skip
+
+
+def pdf_compared(pdf, spans: list[tuple[int, int]],
+                 heads: frozenset[int]) -> tuple[tuple[int, int], ...]:  # fmt: skip
+    """`resumed_lists` of a PDF, as `pdf_spans` reads it: a list ended at a heading line or
+    where a list under no heading ends (`_end_under_no_heading`)."""
+    lines = pdf.text.split("\n")
+
+    def resume(_start: int, at: int, stop: int) -> int:
+        bound = min((line for line in pdf.heading_lines if line > at), default=stop)
+        return _end_under_no_heading(lines, at, min(bound, stop))
+
+    return resumed_lists(spans, heads, len(lines), lambda at: looks_like_reference(lines[at]),
+                         resume)  # fmt: skip
+
+
 #: What a PDF's text is not read for, said of each PDF audited.
 PDF_NOT_READ = (
     "its tables are lines of text, not rows of cells, so no table's totals, shares, means or "
@@ -1052,7 +1129,9 @@ def _pdf_structure(report: AuditReport, pdf,
                                   f"{UNPLACED}")  # fmt: skip
         return {"heading_lines": heading_lines}
     sections = [Section(title, level, "", line) for line, title, level in levels]
-    place, abstract, results = (placed(sections, lists=tuple(spans)) if sections
+    heads = frozenset(section.line - 1 for section in sections)
+    lists = pdf_compared(pdf, list(spans), heads)
+    place, abstract, results = (placed(sections, lists=lists) if sections
                                 else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results,
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
@@ -1152,7 +1231,10 @@ def _structure(text: str, hidden: str, tables: list[Table], document,
         # The notes, read after the body, under its last heading (`read_paper`).
         last = document.body.count("\n") + 1
         notes = frozenset(range(last + 1, text.count("\n") + 2)) if document.notes else frozenset()
-    place, abstract, results = (placed(sections, notes, tuple(spans)) if sections
+    heads = frozenset(section.line - 1 for section in sections)
+    compared = (markdown_compared(text, spans, heads) if document is None
+                else docx_compared(document, spans, heads))  # fmt: skip
+    place, abstract, results = (placed(sections, notes, compared) if sections
                                 else (None, False, False))  # fmt: skip
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,

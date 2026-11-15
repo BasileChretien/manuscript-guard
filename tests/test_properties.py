@@ -11936,6 +11936,41 @@ def _a_typed_caption_ends_no_list(patch: pytest.MonkeyPatch) -> None:
                   lambda line: line.lstrip().startswith(("|", "+", "![")))  # fmt: skip
 
 
+from generated import typed_list_body, typed_list_papers  # noqa: E402
+
+
+@holds(30, typed_list_papers())
+def test_a_word_list_ends_at_the_next_typed_title_its_sections_are_read_from(
+    drawn: list[tuple[str, list[tuple[str, bool]], list[str]]],
+) -> None:
+    """In a Word paper with no heading style, read by its typed titles, a reference list
+    ends at the next of them that names no list, as a PDF's ends at its next heading: a
+    "References" in plain type in a contents list on the cover is read as a list only up to
+    the Abstract's title in bold, and every number of the paper after it is listed
+    (docx-psych-B2 of the real-paper corpus); and a title typed right after a list's entries,
+    in bold, plain, in capitals or numbered, ends it, and the numbers under it are listed
+    (`audit.docx_bibliography_spans`; Basile, 2026-11-15). The entries' numbers are not."""
+    import tempfile
+    import zipfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        for number, (kind, paragraphs, planted) in enumerate(drawn):
+            path = Path(folder) / f"paper-{number}.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                      f"{typed_list_body(paragraphs)}"
+                                                      "</w:body></w:document>")  # fmt: skip
+            assert _listed([path]) == sorted(planted), (kind, paragraphs)
+
+
+def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
+    """As at the base: a list ended at a heading style, a display or what ends one under no
+    heading, and at no typed title."""
+    patch.setattr(audit_module, "docx_bibliography_spans", lambda document: (
+        audit_module.bibliography_spans(document.body, document.headings, document.cells,
+                                        audit_module.docx_displays(document))))  # fmt: skip
+
+
 # --------------------------------------------------- e-mail addresses beside citations
 
 
@@ -28347,6 +28382,10 @@ BROKEN = {
     "a list in a .docx with no heading styles runs to the end": (
         _a_docx_list_runs_to_the_end,
         test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
+    ),
+    "a Word list ends at no typed title": (
+        _a_word_list_ends_at_no_typed_title,
+        test_a_word_list_ends_at_the_next_typed_title_its_sections_are_read_from,
     ),
     "a caption or a table ends no list in a .docx": (
         _a_caption_ends_no_docx_list,

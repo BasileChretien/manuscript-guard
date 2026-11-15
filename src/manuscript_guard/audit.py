@@ -653,6 +653,7 @@ def bibliography_spans(
     headings: frozenset[int] | None = None,
     cells: frozenset[int] = frozenset(),
     displays: frozenset[int] | None = None,
+    titles: frozenset[int] = frozenset(),
 ) -> list[tuple[int, int]]:
     """Where the reference lists are, as 0-based lines `[start, end)`.
 
@@ -675,6 +676,19 @@ def bibliography_spans(
     open a display, each table's first and each paragraph in a caption style
     (`docx_displays`); given, a list ends there and at a caption typed. A PDF gives none,
     and its list ends at its headings alone.
+
+    `titles` are the lines a .docx whose sections are not read from its heading styles has
+    them read from, the typed titles `text.docx.typed_heading_levels` places
+    (`docx_bibliography_spans`): one with no heading style, one whose only paragraphs in a
+    heading style are in tables' cells, or one whose styles are set aside
+    (`text.docx.styles_set_aside`). A
+    list ends at the first after its start that is no bibliography heading, as a PDF's ends
+    at its next heading line and a Markdown one at its next heading: docx-psych-B2's cover
+    lists its contents, "References" among them in plain type, and the list read from that
+    line ran over the Abstract and the whole paper, every number in them hidden (Basile,
+    2026-11-15). They are not `headings`: a list under a typed "References" would then be
+    under a heading, and no longer end where one under no heading does
+    (`_end_under_no_heading`).
     """
     lines = text.split("\n")
     markdown = headings is None
@@ -707,6 +721,8 @@ def bibliography_spans(
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )
         end = next(after, last)
+        end = next((i for i in sorted(titles) if start < i < end and not is_bibliography_heading(
+            lines[i], marked=True, markdown=markdown)), end)  # fmt: skip
         if markdown or displays is not None:
             end = _end_at_a_display(lines, start, end, cells, displays)
         if not markdown and start not in headings:
@@ -767,9 +783,14 @@ def docx_displays(document) -> frozenset[int]:
 
 
 def docx_bibliography_spans(document) -> list[tuple[int, int]]:
-    """`bibliography_spans` of a .docx read (`text.docx.read_docx_text`)."""
+    """`bibliography_spans` of a .docx read (`text.docx.read_docx_text`), each list ended
+    too at the next typed title its sections are read from (`typed_heading_levels`): none
+    where its sections are read from its heading styles, or where its titles cannot be
+    placed. Its paragraphs in a heading style still end a list where the styles are set
+    aside or in tables' cells, as `headings`."""
+    titles = frozenset(at for at, _level in typed_heading_levels(document) or ())
     return bibliography_spans(document.body, document.headings, document.cells,
-                              docx_displays(document))  # fmt: skip
+                              docx_displays(document), titles)  # fmt: skip
 
 
 def _end_under_no_heading(lines: list[str], start: int, end: int) -> int:

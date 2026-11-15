@@ -3179,6 +3179,42 @@ def test_a_results_number_unlike_the_abstract_s_after_its_keywords_is_reported(
     assert not_found("Of 412 patients, 78 fell.") == ["77"]
 
 
+def test_a_results_number_unlike_the_abstract_s_under_a_cover_s_contents_list_is_reported(
+    tmp_path: Path,
+) -> None:
+    """docx-psych-B2 of the real-paper corpus lists its contents on its cover in plain type,
+    "References" among them, and the reference list read from that line ran over the
+    Abstract and the Results: an Abstract's number the Results do not report went unsaid. A
+    Word paper's list ends at the next typed title its sections are read from (Basile,
+    2026-11-15, decision 26): the Abstract's title in bold, and it is said."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    def para(text: str, bold: bool = False) -> str:
+        props = "<w:rPr><w:b/></w:rPr>" if bold else ""
+        return f'<w:p><w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+
+    def not_found(reported: str) -> list[str]:
+        body = (para("The present document contains the following:") + para("Abstract")
+                + para("Introduction") + para("References") + para("Abstract", True)
+                + para("Of 412 patients, 77 fell.") + para("Introduction", True)
+                + para("Falls harm older people.") + para("Results", True) + para(reported)
+                + para("Discussion", True) + para("It was so.") + para("References", True)
+                + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."))  # fmt: skip
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        read = audit([path], None).abstract
+        assert read is not None and read.compared and read.numbers == 2
+        return [c.text for c in read.not_found]
+
+    assert not_found("Of 412 patients, 77 fell.") == []
+    assert not_found("Of 412 patients, 78 fell.") == ["77"]
+
+
 @pytest.mark.parametrize("shape", ["run-in label", "bold line"])
 def test_a_styled_word_paper_s_abstract_number_unlike_its_results_is_reported(
     tmp_path: Path, shape: str,

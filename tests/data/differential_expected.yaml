@@ -46,13 +46,13 @@ expected:
       real-paper corpus; round 1 of #686)
   - reading: word abstract
     why: >-
-      a Word paper whose only paragraphs in a heading style name no section and are stray
-      lines, an authors' line or a note before its first typed title or prose of two
-      sentences anywhere, and
-      whose typed titles can be placed and name an Abstract and a Results, is placed by its
-      typed titles, so its Abstract is compared with its Results,
-      where the base read it by those styles and compared nothing (Basile, 2026-11-15,
-      decision 21: docx-psych-A1 and docx-med-A2 of the real-paper corpus)
+      a Word paper with no heading style, read by its typed titles, has each reference list
+      ended at the next of those titles that names no list, as a PDF's ends at its next
+      heading: a "References" in plain type in a contents list on the cover is read as a list
+      only up to the Abstract's title, so the Abstract's numbers are read and compared, where
+      the base ran the list over the whole paper and read none; and a title typed right
+      after a list's entries ends it, so the numbers under it are the paper's (Basile,
+      2026-11-15, decision 26: docx-psych-B2 of the real-paper corpus)
   - reading: audit references not sorted
     why: >-
       a paper's entries the audit cannot sort are one note, at the first of them, naming

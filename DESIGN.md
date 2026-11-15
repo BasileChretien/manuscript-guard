@@ -25422,11 +25422,20 @@ Open, recorded as each change landed:
     `tests/test_language.py::test_the_text_after_the_keywords_list_is_the_main_text`,
     `tests/test_word_keywords.py::test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them`.
   - A paragraph "References" in plain type in a cover's contents list ("The present document
-    contains the following: Abstract, Introduction, References …") opens the typed
-    reference list a .docx is read for, which runs on over the Abstract and blanks it, as
-    at the base: docx-psych-B2 is compared now, with none of its Abstract's numbers read, a
-    comparison that passes on nothing (round 1 of #689). Pinned by
-    `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_blanks_the_abstract`.
+    contains the following: Abstract, Introduction, References …") still opens a typed
+    reference list in a .docx. It no longer runs on over the Abstract: a Word paper's list
+    ends at the next typed title its sections are read from (Basile, 2026-11-15, decision
+    26), there the Abstract's title in bold, so docx-psych-B2's Abstract is compared with
+    its numbers read. What is left: the contents list's lines after its "References", up to
+    that title, are read as the list, and a number in one ("Results tables 1, 2, and 3") is
+    compared with nothing; and where the paper's titles are no more in bold than the
+    contents list's lines, or are in capitals in plain type beside them, the titles cannot
+    be placed (`typed_heading_levels` gives None), and the list runs on as at the base;
+    titles in bold capitals are placed, and end it. Pinned by
+    `tests/test_word_keywords.py::test_a_references_line_in_a_cover_s_contents_list_ends_at_the_abstract_s_title`,
+    `tests/test_word_keywords.py::test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list`,
+    `tests/test_word_keywords.py::test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on`,
+    `tests/test_word_keywords.py::test_titles_in_bold_capitals_beside_a_contents_list_end_its_list`.
   - The two shapes are looked for in every file with no heading that names the Abstract,
     a supplement's too: a supplement with "Abstract" alone on a line of its own, or a line
     opening on "Abstract: …", has an Abstract, and its lines above that line are not

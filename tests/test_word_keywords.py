@@ -258,16 +258,143 @@ def test_keywords_made_a_heading_are_no_use_before_the_main_text_defines_them(
     assert _abbreviations(run_gates(path).language) == []
 
 
-def test_a_references_line_in_a_cover_s_contents_list_blanks_the_abstract(
+#: docx-psych-B2's cover: a contents list in plain type, "References" among it.
+CONTENTS = (para("The present document contains the following:") + para("Abstract")
+            + para("Introduction") + para("References"))  # fmt: skip
+#: The paper's own reference list, under a title in bold.
+LISTED = bold("References") + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9.")
+
+
+def _spans(path: Path) -> list[tuple[str, str]]:
+    """The audit's reference lists in a .docx, each by its first line and the line it ends
+    at, "the end" where it runs to the end."""
+    from manuscript_guard.audit import docx_bibliography_spans
+
+    document = read_docx_text(path)
+    lines = document.body.split("\n") + ["the end"]
+    return [(lines[start], lines[end]) for start, end in docx_bibliography_spans(document)]
+
+
+def test_a_references_line_in_a_cover_s_contents_list_ends_at_the_abstract_s_title(
     tmp_path: Path,
 ) -> None:
-    """docx-psych-B2's cover lists its contents, "References" among them, in plain type: a
-    typed reference list is read from that line on, over the Abstract, as at the base, so
-    the paper is compared with none of its Abstract's numbers read. Pinned as it stands
-    (DESIGN.md, "Known gaps"; round 1 of #689)."""
-    cover = (para("The present document contains the following:") + para("Abstract")
-             + para("Introduction") + para("References"))  # fmt: skip
-    path = _package(tmp_path / "paper.docx", cover + b2() + bold("References")
-                    + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."), "")  # fmt: skip
+    """docx-psych-B2's cover lists its contents, "References" among them, in plain type: the
+    list read from that line ran on over the Abstract and the whole paper, and the paper was
+    compared with none of its Abstract's numbers read (round 1 of #689). A Word paper's list
+    ends at the next typed title its sections are read from, as a PDF's ends at its next
+    heading (Basile, 2026-11-15): there, at the Abstract's title in bold, and the paper's own
+    list is read as before."""
+    path = _package(tmp_path / "paper.docx", CONTENTS + b2() + LISTED, "")
+    assert _spans(path) == [("References", "Abstract"), ("References", "the end")]
     read = audit([path], None).abstract
-    assert read.compared and read.numbers == 0, read
+    assert read.compared and read.numbers == read.matched == 2 and read.not_found == [], read
+
+
+def test_a_contents_list_s_lines_after_its_references_are_still_read_as_a_list(
+    tmp_path: Path,
+) -> None:
+    """What is left: the lines of the contents list after its "References", up to the next
+    typed title, are still read as a reference list, so a number in one, "Results tables 1,
+    2, and 3", is compared with nothing (DESIGN.md, "Known gaps")."""
+    cover = CONTENTS + para("Preregistration") + para("Results tables 1, 2, and 3")
+    path = _package(tmp_path / "paper.docx", cover + b2() + LISTED, "")
+    assert _spans(path)[0] == ("References", "Abstract")
+    lines = read_docx_text(path).body.split("\n")
+    at = lines.index("References")
+    contents = lines[at:lines.index("Abstract", at)]
+    assert contents == ["References", "Preregistration", "Results tables 1, 2, and 3"]
+
+
+def _beside_contents(path: Path, shape: str) -> Path:
+    """A paper after `CONTENTS`, its titles in `shape`: "plain", "capitals" in plain type or
+    "bold capitals"."""
+    def title(name: str) -> str:
+        typed = name if shape == "plain" else name.upper()
+        return bold(typed) if shape == "bold capitals" else para(typed)
+
+    body = CONTENTS + "".join(title(name) + para("Of 412 patients, 77 fell.")
+                              for name in ("Abstract", "Introduction", "Methods", "Results"))
+    return _package(path, body + title("References")
+                    + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9."), "")
+
+
+@pytest.mark.parametrize("shape", ["plain", "capitals"])
+def test_titles_no_more_in_bold_than_a_contents_list_leave_its_list_running_on(
+    tmp_path: Path, shape: str,
+) -> None:
+    """What is left: where the paper's titles are in plain type or in capitals in plain type
+    beside a contents list that repeats them, they cannot be placed (`typed_heading_levels`
+    gives None), so nothing ends the contents list's list, which runs on as at the base
+    (DESIGN.md, "Known gaps")."""
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    path = _beside_contents(tmp_path / "paper.docx", shape)
+    assert typed_heading_levels(read_docx_text(path)) is None
+    assert _spans(path) == [("References", "the end")]
+
+
+def test_titles_in_bold_capitals_beside_a_contents_list_end_its_list(tmp_path: Path) -> None:
+    """Titles in bold capitals beside a contents list are placed by those in bold alone
+    (`typed_heading_levels`), so the contents list's list ends at "ABSTRACT" (review of
+    #691)."""
+    path = _beside_contents(tmp_path / "paper.docx", "bold capitals")
+    assert _spans(path) == [("References", "ABSTRACT"), ("REFERENCES", "the end")]
+
+
+def test_a_contents_list_s_list_ends_at_a_typed_title_beside_a_style_set_aside(
+    tmp_path: Path,
+) -> None:
+    """The typed titles end a list wherever the sections are read from them, not from the
+    heading styles: here an authors' line in Heading 1, a stray line whose style is set
+    aside (`text.docx.styles_set_aside`), and the paragraph keeps its style (review of
+    #691)."""
+    path = _package(tmp_path / "paper.docx",
+                    heading("Smith A, Jones B") + CONTENTS + b2() + LISTED, STYLES)
+    document = read_docx_text(path)
+    assert document.headings
+    assert document.heading_levels == ()
+    assert _spans(path)[0] == ("References", "Abstract")
+
+
+@pytest.mark.parametrize("shape", ["bold", "plain", "capitals"])
+def test_a_typed_title_right_after_a_list_s_entries_ends_it(tmp_path: Path, shape: str) -> None:
+    """A Word paper with no heading style, its titles typed: a "Methods" typed right after the
+    entries, with no style and no display between, ends the list, where it ran on to the end
+    of the file and the Methods' numbers were the list's. The Abstract's 512 is found
+    there."""
+    def title(name: str) -> str:
+        return {"bold": bold(name), "plain": para(name), "capitals": para(name.upper())}[shape]
+
+    body = (title("Abstract") + para("We read 512 records; 77 fell.") + title("Introduction")
+            + para("Falls harm older people.") + title("Results") + para("Of them, 77 fell.")
+            + title("References") + para("Hicks A. Falls in older people. J Falls. 2004;3:1-9.")
+            + title("Methods") + para("We read 512 records."))  # fmt: skip
+    path = _package(tmp_path / "paper.docx", body, "")
+    named = {"capitals": str.upper}.get(shape, str)
+    assert _spans(path) == [(named("References"), named("Methods"))]
+    read = audit([path], None).abstract
+    assert read.compared and read.numbers == read.matched == 2 and read.not_found == [], read
+
+
+@needs_pandoc
+def test_init_from_reads_no_list_over_the_abstract_as_the_audit_reads_none(
+    tmp_path: Path,
+) -> None:
+    """`init --from` agrees with the audit on docx-psych-B2's shape: the cover's contents
+    list stands before the first heading, set aside in a comment at the top of main.md that
+    no gate reads, so neither the typed references (`typed_references`) nor `check`'s cut
+    opens a list there, and the one list each reads is the paper's own, under `# References`;
+    the audit's list from the contents list's "References" ends before the Abstract."""
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.reference_lists import reference_lists
+
+    path = _package(tmp_path / "paper.docx", CONTENTS + b2() + LISTED, "")
+    text = from_word.convert(path).text
+    lines = [line.rstrip("\r") for line in text.split("\n")]
+    abstract = lines.index("# Abstract")
+    assert "The present document contains the following:" in "\n".join(lines[:abstract])
+    # `check`'s cut by line, the typed references' by offset.
+    assert [lines[start] for start, _end in bibliography_spans(text)] == ["# References"]
+    starts = [text.count("\n", 0, start) for start, _end in reference_lists(text)]
+    assert [lines[at] for at in starts] == ["# References"], starts
+    assert _spans(path) == [("References", "Abstract"), ("References", "the end")]

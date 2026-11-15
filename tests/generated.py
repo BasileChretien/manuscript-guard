@@ -16520,6 +16520,71 @@ def stray_styled_blocks(paper: list[tuple]) -> list[dict]:
     return out
 
 
+#: The Word papers of `typed_list_papers`, with no heading style, their sections read from
+#: their typed titles, each with a reference list that ends at the next typed title (Basile,
+#: 2026-11-15, decision 26): a "References" in plain type in a contents list on the cover,
+#: read as a list only up to the Abstract's title, not over the paper (docx-psych-B2 of the
+#: real-paper corpus), the paper's titles in bold, which alone are placed where the contents
+#: list repeats them; and a typed title right after the paper's own list's entries, with no
+#: style and no display between, the titles in each shape of `_TYPED_SHAPES`.
+TYPED_LIST_ENDS = ("a contents list on the cover", "a typed title after the entries")
+#: What a cover's contents list may name beside "Abstract", "Introduction" and "References".
+_CONTENTS_MORE = ("Preregistration", "Supplementary tables")
+#: The sections of a paper of `typed_list_papers`, in their order.
+_TYPED_LIST_SECTIONS = ("Abstract", "Introduction", "Methods", "Results", "Discussion")
+
+
+@st.composite
+def typed_list_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple[str, bool]], list[str]]]:
+    """A Word paper for every kind of `TYPED_LIST_ENDS`, in an order drawn: its kind, its
+    paragraphs `(words, bold)` and the numbers outside its reference lists, one under each
+    title, each distinct, which are to be listed. Every entry's numbers are cut, and so are
+    the lines of a contents list after its "References", which hold none."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=12, max_size=12, unique=True)))
+    out = []
+    for kind in draw(st.permutations(list(TYPED_LIST_ENDS))):
+        shape = draw(st.sampled_from(_TYPED_SHAPES)) if kind != TYPED_LIST_ENDS[0] else "bold"
+        names = list(_TYPED_LIST_SECTIONS)
+        after = None
+        if kind == TYPED_LIST_ENDS[1]:
+            after = draw(st.sampled_from(names[2:]))
+            names.remove(after)
+        paragraphs: list[tuple[str, bool]] = []
+        if kind == TYPED_LIST_ENDS[0]:
+            more = draw(st.lists(st.sampled_from(_CONTENTS_MORE), max_size=2, unique=True))
+            listed = draw(st.permutations(["Abstract", "Introduction", "References", *more]))
+            paragraphs += [("The present document contains the following:", False),
+                           *((line, False) for line in listed)]  # fmt: skip
+        planted: list[str] = []
+        for number, name in enumerate([*names, "References"], 1):
+            paragraphs += _typed_section(name, number, shape, numbers, planted)
+        for entry in draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=1, max_size=3)):
+            paragraphs.append((entry.format(year=draw(st.integers(1990, 2025)),
+                                            vol=draw(st.integers(1, 400)),
+                                            page=draw(st.integers(1, 99))), False))  # fmt: skip
+        if after is not None:
+            paragraphs += _typed_section(after, len(names) + 2, shape, numbers, planted)
+        out.append((kind, paragraphs, planted))
+    return out
+
+
+def _typed_section(name: str, number: int, shape: str, numbers, planted: list[str]
+                   ) -> list[tuple[str, bool]]:  # fmt: skip
+    """A section's title typed in `shape` of `_TYPED_SHAPES`, `number` its number, with a
+    paragraph under it holding the next of `numbers`, added to `planted`; a "References" has
+    none, its entries after it."""
+    typed = {"capitals": name.upper(), "numbered": f"{number}. {name}"}.get(shape, name)
+    if name == "References":
+        return [(typed, shape == "bold")]
+    planted.append(_planted(numbers))
+    return [(typed, shape == "bold"), (f"Of them {planted[-1]} were serious.", False)]
+
+
+def typed_list_body(paragraphs: list[tuple[str, bool]]) -> str:
+    """A paper of `typed_list_papers` as `w:body` XML, with no heading style."""
+    return "".join(_w_para(words, bold) for words, bold in paragraphs)
+
+
 #: A heading of the Markdown pandoc converts a .docx to, as it is typed and as a place names
 #: it (`auditing.paragraphs`): plain; with its attributes; in bold; with an escape.
 WORD_HEADINGS = {
@@ -17087,7 +17152,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         st.one_of(word_abstract_papers(), keywords_papers()).flatmap(
             lambda drawn: st.sampled_from([body for body, _titles in drawn])),
         stray_styled_papers().flatmap(
-            lambda drawn: st.sampled_from([stray_styled_body(paper) for _k, paper, _a in drawn]))),
+            lambda drawn: st.sampled_from([stray_styled_body(paper) for _k, paper, _a in drawn])),
+        typed_list_papers().flatmap(
+            lambda drawn: st.sampled_from([typed_list_body(paper) for _k, paper, _p in drawn]))),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),

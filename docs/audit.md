@@ -225,7 +225,11 @@ no heading after them as well. A reference list laid out in tables, under a capt
 note or not, is read to the next heading. A title that is a plain paragraph
 of a .docx, with no heading style, ends its list where `check` ends one under no heading: at
 a figure's or a table's caption, a title such as "Funding" or "Figure legends" standing
-alone, or a table. A .docx and a figure print `<!--` as typed, so nothing between it and
+alone, or a table. In a .docx with no heading style, whose sections are read from the
+titles typed alone on their lines, a list also ends at the next such title that names no
+reference list, as a PDF's ends at its next heading line: a "References" in plain type in a
+contents list on the cover is read as a list only up to the Abstract's title, not over the
+paper. A .docx and a figure print `<!--` as typed, so nothing between it and
 `-->` is hidden there. Numbers in names are classified as
 `check` classifies them: an e-mail address is no number, nor a name the shipped terms hold,
 such as "IL-4" or "interleukin-4". A Word 97-2003 document (.doc) is not read; save it as

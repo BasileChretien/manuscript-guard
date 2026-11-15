@@ -72,8 +72,12 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
     # Nothing reads TeX after, so a `%` in a display is the character (step 8).
     for bound in bound_files(project):
         path = bound.path
-        printed = mask(_put_in(bound.view, displays) if bound.latex
-                       else substitute(bound.view, displays))
+        put = _put_in(bound.view, displays) if bound.latex else substitute(bound.view, displays)
+        # Read as masked, a comment's line breaks hidden with it, so that no sentence ends at
+        # a blank line inside one; and each finding's line counted in `put`, at the same
+        # offsets with every line break, where a P after a comment of several lines was said
+        # that many lines too early.
+        printed = mask(put)
         for test in reported_tests(printed):
             verdict = judge(test, alpha)
             if verdict is None:
@@ -88,7 +92,7 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
                     severity=WARN,
                     message=described(test, verdict, alpha),
                     path=path,
-                    line=printed.count("\n", 0, test.start) + 1,
+                    line=put.count("\n", 0, test.start) + 1,
                     context=" ".join(printed[test.start : test.end].replace(NUL, " ").split()),
                     hint="check the statistic, its degrees of freedom and the P against the "
                     "analysis; two bound values may come from two analyses, the crude and "
@@ -99,8 +103,8 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
         intervals = reported_intervals(printed)
         for interval in intervals:
             judged_intervals += 1
-            findings += _interval_findings(interval, printed, path)
-        findings += [_worded_finding(said, printed, path, alpha)
+            findings += _interval_findings(interval, printed, path, put)
+        findings += [_worded_finding(said, printed, path, alpha, put)
                      for said in worded(printed, alpha, intervals)]  # fmt: skip
     return Report(
         tuple(findings),
@@ -133,10 +137,11 @@ def _put_in(view: str, displays: dict[str, str]) -> str:
     return out
 
 
-def _interval_findings(interval, printed: str, path) -> list[Finding]:
-    """What an estimate and its interval, and the P beside them, say against each other."""
+def _interval_findings(interval, printed: str, path, lined: str) -> list[Finding]:
+    """What an estimate and its interval, and the P beside them, say against each other, at
+    its line of `lined`, the text `printed` masks."""
     context = " ".join(printed[interval.start : interval.end].replace(NUL, " ").split())
-    line = printed.count("\n", 0, interval.start) + 1
+    line = lined.count("\n", 0, interval.start) + 1
     found = []
     if outside_interval(interval):
         found.append(
@@ -187,7 +192,7 @@ def _interval_findings(interval, printed: str, path) -> list[Finding]:
     return found
 
 
-def _worded_finding(said: Worded, printed: str, path, alpha: float) -> Finding:
+def _worded_finding(said: Worded, printed: str, path, alpha: float, lined: str) -> Finding:
     """What a sentence's words say beyond its interval, at its first interval."""
     first, last = said.intervals[0], said.intervals[-1]
     return Finding(
@@ -196,7 +201,7 @@ def _worded_finding(said: Worded, printed: str, path, alpha: float) -> Finding:
         severity=INFO if said.code == NO_EFFECT else WARN,
         message=described_words(said, alpha),
         path=path,
-        line=printed.count("\n", 0, first.start) + 1,
+        line=lined.count("\n", 0, first.start) + 1,
         context=" ".join(printed[first.start : last.end].replace(NUL, " ").split()),
         hint=HINTS[said.code],
     )

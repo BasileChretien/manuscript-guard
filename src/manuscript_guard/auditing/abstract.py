@@ -108,7 +108,11 @@ class Piece:
     """One file as the section reads it: its text as masked, at the offsets of the text its
     numbers were read in; where each line stands (`place`, None for a file with no
     headings); the lines in a table; whether its document has an Abstract and a Results
-    heading; and the numbers the classifier left unexplained in it."""
+    heading; and the numbers the classifier left unexplained in it. `lined` is the masked
+    text with every line break of the file where the file has it, which its lines are
+    counted in; "" where `hidden` has them all. `hidden` is what is read: a comment's line
+    breaks are no line breaks to its sentences, and a blank line in one ended a sentence
+    that goes on past it."""
 
     path: Path
     hidden: str
@@ -117,6 +121,11 @@ class Piece:
     abstract: bool
     results: bool
     atoms: tuple[Atom, ...]
+    lined: str = ""
+
+    def line(self, at: int) -> int:
+        """The line of the file offset `at` stands on."""
+        return (self.lined or self.hidden).count("\n", 0, at) + 1
 
 
 @dataclass
@@ -567,12 +576,21 @@ def _words(text: str) -> set[str]:
 # ------------------------------------------------------------------------------- reading
 
 
-def _kept(hidden: str, keep: Callable[[int], bool]) -> str:
+def _kept(hidden: str, keep: Callable[[int], bool], lined: str = "") -> str:
     """`hidden` with each line `keep` refuses blanked to spaces, so offsets hold, and what is
     masked a space too: a LaTeX file's `95\\%` prints a NUL after its sign, across which no
-    interval is read."""
-    return "\n".join(line.replace(NUL, " ") if keep(number) else " " * len(line)
-                     for number, line in enumerate(hidden.split("\n"), 1))  # fmt: skip
+    interval is read. The lines are those of `lined`, `hidden` at the same offsets with every
+    line break of the file, where it is given; a break `hidden` hides, a comment's, is a
+    space, as it was, so that no sentence ends at a blank line inside a comment."""
+    out = []
+    start = 0
+    for number, line in enumerate((lined or hidden).split("\n"), 1):
+        end = start + len(line)
+        out.append(hidden[start:end].replace(NUL, " ") if keep(number) else " " * len(line))
+        if end < len(hidden):
+            out.append("\n" if hidden[end] == "\n" else " ")
+        start = end + 1
+    return "".join(out)
 
 
 def where(piece: Piece, line: int) -> str:
@@ -592,11 +610,12 @@ def where(piece: Piece, line: int) -> str:
 def _parts(piece: Piece) -> tuple[str, str, set[int]]:
     """A file's Abstract and what it reports, each as its text with the other lines blanked,
     and the lines of its Abstract."""
-    count = piece.hidden.count("\n") + 1
+    count = (piece.lined or piece.hidden).count("\n") + 1
     kinds = {line: where(piece, line) for line in range(1, count + 1)}
     abstract = {line for line, kind in kinds.items() if kind == "abstract"}
-    return (_kept(piece.hidden, abstract.__contains__),
-            _kept(piece.hidden, lambda line: kinds[line] == "reported"), abstract)  # fmt: skip
+    return (_kept(piece.hidden, abstract.__contains__, piece.lined),
+            _kept(piece.hidden, lambda line: kinds[line] == "reported", piece.lined),
+            abstract)  # fmt: skip
 
 
 def against_results(pieces: list[Piece]) -> AbstractRead:
@@ -623,13 +642,13 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     rounded = {found for number in printed for found in coarser(number)}
     words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
-    intervals = [(piece.path, reported, found) for piece, _a, reported, _l in split
+    intervals = [(piece, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip
-    tests = [(piece.path, reported, found) for piece, _a, reported, _l in split
+    tests = [(piece, reported, found) for piece, _a, reported, _l in split
              for found in reported_tests(reported)]  # fmt: skip
     for piece, abstract, _reported, lines in split:
-        spans = _conflicts(read, piece.path, abstract, intervals, tests)
-        written = _shares(read, piece.path, abstract)
+        spans = _conflicts(read, piece, abstract, intervals, tests)
+        written = _shares(read, piece, abstract)
         for atom in piece.atoms:
             if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
                 continue
@@ -672,11 +691,11 @@ def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set
     return "rounded" if (value, places[1]) in rounded else ""
 
 
-def _shares(read: AbstractRead, path: Path, abstract: str) -> dict[int, tuple[bool, str]]:
+def _shares(read: AbstractRead, piece: Piece, abstract: str) -> dict[int, tuple[bool, str]]:
     """Each share one file's Abstract writes beside both its counts (`shares.written_shares`),
     by the offset its percentage starts at: whether it is off them, and its percentage as
-    printed; each one off them put in `read` as an arithmetic finding, whether or not its
-    percentage was left for the section to read."""
+    printed; each one off them put in `read` as an arithmetic finding, at the line of the
+    file it is on, whether or not its percentage was left for the section to read."""
     from manuscript_guard.audit import Disagreement
     from manuscript_guard.stats import shares
 
@@ -685,7 +704,7 @@ def _shares(read: AbstractRead, path: Path, abstract: str) -> dict[int, tuple[bo
         read.shares += 1
         found[start] = (shares.off(share), share.percent)
         if found[start][0]:
-            read.arithmetic.append(Disagreement(path, share.line, "in the Abstract, "
+            read.arithmetic.append(Disagreement(piece.path, piece.line(start), "in the Abstract, "
                                                 f"{shares.described(share)}",
                                                 _around(abstract, start, share)))  # fmt: skip
     return found
@@ -746,10 +765,6 @@ def estimate_of(interval: ReportedInterval) -> tuple[str, str, str]:
     return interval.kind, _NAMED.get(name, name), interval.level or "95"
 
 
-def _line(text: str, at: int) -> int:
-    return text.count("\n", 0, at) + 1
-
-
 def _whole_line(text: str, at: int) -> str:
     """The line `at` stands on, as the report quotes one."""
     start = text.rfind("\n", 0, at) + 1
@@ -757,38 +772,40 @@ def _whole_line(text: str, at: int) -> str:
     return " ".join(text[start : end if end >= 0 else len(text)].split())[:140]
 
 
-def _conflicts(read: AbstractRead, path: Path, abstract: str, intervals: list,
+def _conflicts(read: AbstractRead, piece: Piece, abstract: str, intervals: list,
                tests: list) -> list[tuple[int, int]]:  # fmt: skip
-    """Each conflict of one file's Abstract, put in `read`, and where each stands."""
+    """Each conflict of one file's Abstract, put in `read`, and where each stands, by the
+    lines of the file (`Piece.line`)."""
     from manuscript_guard.audit import Disagreement
 
+    path = piece.path
     spans = []
     for given in reported_intervals(abstract):
         found = _counterpart_interval(given, intervals)
         if found is None:
             continue
-        found_in, text, other = found
+        found_in, _text, other = found
         said = (f"the Abstract gives {given.written}, and where the paper reports, "
-                f"{_at(found_in, text, other.start, path)}gives {other.written}")  # fmt: skip
-        read.conflicts.append(Disagreement(path, _line(abstract, given.start), said,
+                f"{_at(found_in, other.start, path)}gives {other.written}")  # fmt: skip
+        read.conflicts.append(Disagreement(path, piece.line(given.start), said,
                                            _whole_line(abstract, given.start)))
         spans.append((given.start, given.end))
     for given in reported_tests(abstract):
         found = _counterpart_test(given, tests)
         if found is None:
             continue
-        found_in, text, other = found
+        found_in, _text, other = found
         said = (f"the Abstract gives {_test(given)}, and where the paper reports, "
-                f"{_at(found_in, text, other.start, path)}gives {_test(other)}")  # fmt: skip
-        read.conflicts.append(Disagreement(path, _line(abstract, given.start), said,
+                f"{_at(found_in, other.start, path)}gives {_test(other)}")  # fmt: skip
+        read.conflicts.append(Disagreement(path, piece.line(given.start), said,
                                            _whole_line(abstract, given.start)))
         spans.append((given.start, given.end))
     return spans
 
 
-def _at(found_in: Path, text: str, start: int, path: Path) -> str:
-    line = _line(text, start)
-    return f"line {line} " if found_in == path else f"{found_in.name} line {line} "
+def _at(found_in: Piece, start: int, path: Path) -> str:
+    line = found_in.line(start)
+    return f"line {line} " if found_in.path == path else f"{found_in.path.name} line {line} "
 
 
 def _test(test: Reported) -> str:

@@ -24,15 +24,6 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
-  - reading: abstract against results
-    why: >-
-      the lines between a reference list's end and the next heading, a caption typed that
-      ends the list and the legend after it, are searched for the Abstract's numbers, so a
-      number of the Abstract given only there is found where the base said it not found; a
-      note there, the list's own entries and a section after them that reports nothing are
-      not searched, as before (Basile, 2026-11-15, decision 25, after pdf-psych-B3 of the
-      real-paper corpus); the entry it replaces, for the Results by another name (#672),
-      is spent
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens
@@ -99,14 +90,6 @@ expected:
       tabulars and tex-qbio-pe-A2's `w_{min}`); the generated inputs now hold a name in a
       pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports;
       a table's caption and a footnote in a tabular's cell are read still (round 1 of #673)
-  - reading: written shares
-    why: >-
-      new with this pull request: a share a sentence writes beside both its counts, "12 of
-      40 patients (50%)", under any heading or in a note, is held to them as the Abstract's
-      is, and one off them is listed with the numbers that do not fit the ones beside them,
-      by the heading it stands under (Basile, 2026-11-13, after #664), a range written with
-      a slash, "Grade 3/4 neutropenia (12%)", being none (round 1 of #668); the base said
-      only the Abstract's and a table's, which the reading lists as before
   - reading: abbreviations
     why: >-
       a short form after a spaced dash followed by a value bound to the results, "– OR
@@ -349,3 +332,27 @@ expected:
       end of the run, and nothing the reader found past it is kept now, a cross-reference or
       a listing among it, where it was kept though the text past it was not read (round 1
       of #637, finding 4)
+  - reading: abstract against results
+    why: >-
+      the inputs now hold an HTML comment of several lines before the Abstract, between two
+      sections and inside one, as `init --from` writes the cover over every main.md, and one
+      holding a blank line before each test's P; the audit counts each line in a copy that
+      keeps every line break of the file (`audit._lined`), while its readers still read a
+      comment's breaks as the mask writes them, so what each line of the paper reports is
+      read on that line, where the base read it as many lines too early as the comment is
+      high, and an Abstract's number the Results repeat is found (the bug found building
+      #691); the entry it replaces, for the lines past a reference list (#692, decision 25),
+      is spent
+  - reading: written shares
+    why: >-
+      the inputs now hold an HTML comment of several lines before the Abstract, between two
+      sections and inside one; a share off its counts after one is said at its own line,
+      where the base said it as many lines too early as the comment is high (the bug found
+      building #691); the entry it replaces, for the shares a sentence writes (#664), is
+      spent
+  - reading: reference census
+    why: >-
+      the inputs now hold an HTML comment of several lines before the first heading, between
+      two sections and inside one; a citation beyond the reference list after one is said at
+      its own line, where the base said it as many lines too early as the comment is high
+      (the bug found building #691)

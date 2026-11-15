@@ -9965,6 +9965,93 @@ def _hundredths_of(p: Decimal) -> str:
     return str(p.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+# ------------------------------------------------- an HTML comment of several lines
+
+#: Where `with_comments` puts a comment of several lines in a Markdown paper, one at each in
+#: every example: before its Abstract (or its first heading where it has none), as
+#: `init --from` writes the converted paper's cover over every main.md; before a heading
+#: drawn after it, between two sections; and between two paragraphs of a section drawn. And
+#: a comment holding a blank line inside a sentence, between each statistic and its P
+#: (`TESTED`), wherever the paper types one (round 1 of #693): a blank line in a comment
+#: ends no sentence.
+COMMENT_PLACES = ("before the abstract", "between sections", "inside a section")
+#: Where a line types a statistic's P after it, ", P = 0.02" or ", P < 0.05".
+TESTED = re.compile(r", P [=<] ")
+#: The lines a comment holds: a section's name alone and as a heading, a number, a blank
+#: line, and the words `init --from` writes there.
+COMMENT_LINES = ("note", "Abstract", "Introduction", "## Results", "", "It was 412 then.",
+                 "manuscript-guard init --from: the cover")  # fmt: skip
+
+
+def with_comments(draw: st.DrawFn, text: str) -> tuple[str, Callable[[int], int]]:
+    """`text`, a Markdown paper, with an HTML comment of three lines or more at each of
+    `COMMENT_PLACES`, and one holding a blank line before each P of `TESTED`; and where each
+    line of `text` is in it: the mask hid a comment's line breaks, and every line the audit
+    read after one was that many lines too early."""
+    lines = text.split("\n")
+    # In a sentence first, a line made three, so that the places after are of `text`.
+    tested = [at for at, line in enumerate(lines) if TESTED.search(line)]
+    for at in tested:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))
+        found = TESTED.search(lines[at])
+        lines[at] = (f"{lines[at][: found.start()]} <!-- {words[0]}\n\n{' '.join(words)} -->"
+                     f"{lines[at][found.start() :]}")  # fmt: skip
+    headings = [at for at, line in enumerate(lines) if re.match(r"#{1,6} ", line)]
+    abstract = next((at for at in headings if re.fullmatch(r"#{1,6} Abstract", lines[at])),
+                    headings[0])  # fmt: skip
+    after = [at for at in headings if at > abstract] or [abstract]
+    inside = [at for at in range(2, len(lines)) if lines[at] and not lines[at - 1]
+              and lines[at - 2] and not lines[at - 2].startswith("#")
+              and not lines[at].startswith("#")]  # fmt: skip
+    places = {"before the abstract": abstract, "between sections": draw(st.sampled_from(after)),
+              "inside a section": draw(st.sampled_from(inside or [abstract]))}  # fmt: skip
+    # Each before the line at its place in `text` (0-based), so that a line of `text`, 1-based,
+    # moves down by every comment put before it.
+    put = [(places[place], ["<!--", *draw(st.lists(st.sampled_from(COMMENT_LINES),
+                                                     min_size=1, max_size=10)), "-->", ""])
+           for place in COMMENT_PLACES]  # fmt: skip
+    for at, comment in sorted(put, key=lambda one: one[0], reverse=True):
+        lines[at:at] = comment
+
+    def moved(line: int) -> int:
+        return (line + sum(len(comment) for at, comment in put if line > at)
+                + 2 * sum(line > at + 1 for at in tested))  # fmt: skip
+
+    return "\n".join(lines), moved
+
+
+@st.composite
+def commented_abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], str, str,
+                                                        dict[str, list]]:  # fmt: skip
+    """`abstract_papers`, its Markdown paper with a comment of several lines at each of
+    `COMMENT_PLACES` (`with_comments`), and what the Abstract against Results finds there,
+    at the lines the paper has after them; its LaTeX as it was."""
+    paper, supplement, expected, latex, supplement_tex, in_latex = draw(abstract_papers())
+    paper, moved = with_comments(draw, paper)
+    expected = {"conflicts": sorted([moved(line), kind] for line, kind in expected["conflicts"]),
+                "looked": sorted([moved(line), shown, state]
+                                 for line, shown, state in expected["looked"])}  # fmt: skip
+    return paper, supplement, expected, latex, supplement_tex, in_latex
+
+
+@st.composite
+def commented_prose_share_papers(draw: st.DrawFn) -> tuple[str, list, str, list]:
+    """`prose_share_papers`, its Markdown paper with a comment at each of `COMMENT_PLACES`,
+    and each share off its counts at the line it is on after them."""
+    markdown, in_markdown, latex, in_latex = draw(prose_share_papers())
+    markdown, moved = with_comments(draw, markdown)
+    return markdown, sorted([moved(line), where] for line, where in in_markdown), latex, in_latex
+
+
+@st.composite
+def commented_numbered_citations(draw: st.DrawFn) -> tuple[str, list[tuple[str, int]]]:
+    """`numbered_citations` with a comment at each of `COMMENT_PLACES`, its first heading
+    standing for the Abstract, and what the census reports at the lines after them."""
+    text, expected = draw(numbered_citations())
+    text, moved = with_comments(draw, text)
+    return text, [(code, moved(line)) for code, line in expected]
+
+
 # ------------------------------------------------- a share beside its counts, anywhere
 
 #: The sections a paper of `prose_share_papers` writes its shares under, after its Abstract.
@@ -17444,11 +17531,12 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval words": st.one_of(interval_wordings().map(lambda drawn: drawn[0]),
                                 texts(ESTIMATES)),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
-    "written shares": prose_share_papers().map(lambda drawn: drawn[0]),
+    "written shares": commented_prose_share_papers().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),
     "abstract against results": st.one_of(
-        abstract_papers().map(lambda drawn: {"paper": drawn[0], "supplement": drawn[1]}),
+        commented_abstract_papers().map(lambda drawn: {"paper": drawn[0],
+                                                       "supplement": drawn[1]}),
         results_named_papers().flatmap(lambda drawn: st.sampled_from(
             [{"paper": markdown, "supplement": "Nothing.\n"} for _k, markdown, _t, _c in drawn])),
     ),  # fmt: skip
@@ -17458,7 +17546,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
                                  texts().map(lambda text: {"paper": text})),
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
-    "reference census": numbered_citations().map(lambda drawn: drawn[0]),
+    "reference census": commented_numbered_citations().map(lambda drawn: drawn[0]),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

@@ -58,7 +58,7 @@ from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, s
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text, typed_heading_levels
 from manuscript_guard.text.fences import unclear_fence_lines
-from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.reference_lists import (
     ends_a_list_alone,
     is_bibliography_heading,
@@ -885,7 +885,9 @@ def census_of_markdown(path: Path, text: str):
 
     spans = bibliography_spans(text)
     blanked = _blank(text, spans)
-    hidden = _masked(blanked, printed_as_typed=False)
+    # Its markers counted on the paper's lines: no marker runs across a comment, whose
+    # opening is masked, so they are those of the text a comment's breaks are hidden in.
+    hidden = kept_breaks(blanked, _masked(blanked, printed_as_typed=False))
     return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False)
 
 
@@ -976,8 +978,8 @@ def _read_sources(
         if not docx:
             report.unreadable += unread_shapes(path, text)
         report.references.append(
-            census_of_text(path, original, spans, hidden, _intervals(text), docx=docx,
-                           numbering=numbering)  # fmt: skip
+            census_of_text(path, original, spans, kept_breaks(text, hidden), _intervals(text),
+                           docx=docx, numbering=numbering)  # fmt: skip
         )
     if entries or found_tex:
         latex = read_latex(entries, found_tex)
@@ -1509,12 +1511,25 @@ def _masked(text: str, printed_as_typed: bool) -> str:
     same mask as Markdown, so a paragraph that mentions both markers hid everything between
     them. There each `<!--` is masked with its last hyphen made another character, so that
     it opens nothing and every other region is masked as before, and the hyphen is put back
-    wherever it was left readable."""
+    wherever it was left readable.
+
+    A comment's line breaks are hidden with it, as `mask` hides them, so that no sentence
+    read here ends at a blank line inside one. Its lines are counted in `_lined`."""
     if not printed_as_typed:
         return mask(text)
     opens_nothing = mask(text.replace("<!--", "<!-\N{HYPHEN}"))
     kept = zip(opens_nothing, text, strict=True)
     return "".join(NUL if hidden == NUL else typed for hidden, typed in kept)
+
+
+def _lined(source: _Source) -> str:
+    """What a source's lines are counted in: its masked text with every line break of its
+    text where the text has it (`kept_breaks`), a comment's too, which `hidden` hides. The
+    audit takes lines from it beside the sections placed on the file's own lines, and a
+    comment of several lines put every number after it as many lines too early, in the
+    section above, where they were counted in `hidden`. "" for a LaTeX file, whose view
+    holds its lines already."""
+    return "" if source.latex is not None else kept_breaks(source.text, source.hidden)
 
 
 def doc_passed_over(path: Path) -> str:
@@ -1748,13 +1763,14 @@ def _written_shares(report: AuditReport, sources: list[_Source],
                 return False
             return not (report.abstract.compared and where(piece, line) == "abstract")
 
-        text = _kept(source.hidden, read)
+        text = _kept(source.hidden, read, piece.lined)
         for share, at in shares.written_shares(text):
             report.read["shares"] = report.read.get("shares", 0) + 1
             if not shares.off(share):
                 continue
-            found.append(Disagreement(source.path, share.line,
-                                      f"{_under(report, source, piece, share.line)}"
+            line = piece.line(at)
+            found.append(Disagreement(source.path, line,
+                                      f"{_under(report, source, piece, line)}"
                                       f"{shares.described(share)}",
                                       _around(text, at, share)))  # fmt: skip
     return found
@@ -1782,7 +1798,7 @@ def _piece(source: _Source, atoms: list[Atom]):
     from manuscript_guard.auditing.abstract import Piece
 
     return Piece(source.path, source.hidden, source.place, source.table_lines, source.abstract,
-                 source.results, tuple(atoms))  # fmt: skip
+                 source.results, tuple(atoms), _lined(source))  # fmt: skip
 
 
 def _flows(report: AuditReport, source: _Source) -> None:
@@ -1831,7 +1847,7 @@ def _read_numbers(
         _memo={},
     )
     path, text, hidden = source.path, source.text, source.hidden
-    found = _disagreements(path, hidden, list(source.tables), report.read)
+    found = _disagreements(path, hidden, list(source.tables), report.read, _lined(source))
     if report.whole_numbers:
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
                        key=lambda d: d.line)  # fmt: skip
@@ -1938,13 +1954,15 @@ def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
                                        found.member.context or found.line.context))  # fmt: skip
 
 
-def _disagreements(path: Path, hidden: str, tables: list[Table],
-                   read: dict | None = None) -> list[Disagreement]:  # fmt: skip
+def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | None = None,
+                   lined: str = "") -> list[Disagreement]:  # fmt: skip
     """The tests in a paper whose P does not follow from the statistic beside it, the
     estimates whose interval or P does not fit them, and the n (%) in its tables whose share
     is not what the count gives of its denominator, read in its text as masked (`_masked`).
-    `read` counts the tests judged, the intervals and the shares read."""
+    `read` counts the tests judged, the intervals and the shares read. Each is said at its
+    line in `lined`, `hidden` with every line break of the file (`_lined`), where it is given."""
     read = {} if read is None else read
+    lines = lined or hidden
 
     def counted(kind: str) -> None:
         read[kind] = read.get(kind, 0) + 1
@@ -1958,14 +1976,14 @@ def _disagreements(path: Path, hidden: str, tables: list[Table],
             continue
         context = " ".join(hidden[test.start : test.end].replace("\x00", " ").split())
         found.append(
-            Disagreement(path, hidden.count("\n", 0, test.start) + 1,
+            Disagreement(path, lines.count("\n", 0, test.start) + 1,
                          described(test, verdict), context)  # fmt: skip
         )
     # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
     for interval in reported_intervals(hidden):
         counted("intervals")
         context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
-        line = hidden.count("\n", 0, interval.start) + 1
+        line = lines.count("\n", 0, interval.start) + 1
         if outside_interval(interval):
             found.append(Disagreement(path, line, described_outside(interval), context))
         share = asymmetry(interval)

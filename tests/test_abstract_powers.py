@@ -256,6 +256,11 @@ def test_markdown_maths_is_found_as_pandoc_finds_it() -> None:
      ["5~@times~10^{-2}"], []),
     ("masses of $@sim\n5~@times~10^{-2}$ here", "masses of $10^{-2}$ in 5 runs", [],
      ["5~@times~10^{-2}"]),
+    # A list item or a table row is a block of its own: no inline maths runs into the next.
+    ("It was $2@times10^{3}$ here.", "- costs $a\n- VCO~2~ @times10^{3} in b$.",
+     [], ["2@times10^{3}"]),
+    ("It was $2@times10^{3}$ here.", "| $a | x |\n|---|---|\n| VCO~2~ @times10^{3} | b$ |",
+     [], ["2@times10^{3}"]),
     # (b) Display maths on lines of its own, and on one line.
     ("It was $5@times10^{-2}$ here.", "It was\n$$\n5~@times~10^{-2}\n$$\nthen.",
      ["5@times10^{-2}"], []),

@@ -23,6 +23,9 @@ from __future__ import annotations
 import re
 
 _BLANK_LINE = re.compile(r"[ \t]*(?:\n|$)")
+#: A line that opens a block of its own, which pandoc parses apart, so that no inline maths
+#: runs into it: a list item, a table row, a heading, a block quote, a fence (round of 1f0ced14a).
+_NEW_BLOCK = re.compile(r"[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|[|#>]|`{3}|~{3})")
 
 
 def _blank_after(text: str, at: int) -> bool:
@@ -74,7 +77,7 @@ def _inline_end(text: str, at: int) -> int | None:
             while index < len(text) and text[index] in " \t":
                 index += 1
             if index < len(text) and text[index] == "\n":
-                if _blank_after(text, index):
+                if _blank_after(text, index) or _NEW_BLOCK.match(text, index + 1):
                     return None
                 index += 1
             if index >= len(text) or text[index] == "$":

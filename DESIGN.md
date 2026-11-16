@@ -27881,22 +27881,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
   match luck: 0.85 stands 77 times in psych-B2's tables, nearly all an interval's bound, so
   any Abstract's 85% would be found there whatever the paper reports (Basile, 2026-11-15).
   Pinned by `tests/test_audit.py::test_a_percentage_is_not_found_as_the_proportion_a_table_gives`.
-- **An Abstract's power is found only as a power the paper prints.** A number with a caret
-  and a braced exponent or a single digit after it, `10^{-2}`, `10^8`, or pandoc's
-  superscript `10^-2^`, is read whole (`auditing.abstract.powers`), and found where the paper
-  reports the same power, its base and its exponent each read as a number, however the
-  exponent is spelled: braced or not, after a thin space, with a plus sign. Read as atoms,
-  LaTeX's `10^{-2}`, whose braces the reader blanks, was "10^" and "-2", and the finding
-  named "10^" (tex-astro-ga-B1 of the real-paper corpus, on 0223ca005). Accepted.
-  - A power is not found where the paper gives its value instead, 0.01, `\num{1e-2}` or
-    "1e-2", nor where it prints `10^-2` or `10^82` in maths, which TeX sets as a power of a
-    sign or of one digit and the reader reads as printed. A power of ten printed as a unit's
-    scale, a table's "/10^8 cm^-3" or an equation's "1.44 × 10^{-2} M⊙", finds the Abstract's
-    `\sim 10^8` and `\sim 10^{-2}`, as tex-astro-ga-B1's are found, and what a match is
-    worth counts no power. Accepted.
-  - The number before a power, the 3 of `3\times 10^{8}`, is looked for alone, as where the
-    paper reports it is read. Pinned by
-    `tests/test_abstract_powers.py::test_the_number_before_a_power_is_looked_for_as_the_paper_reads_it`.
+- **An Abstract's power is found only as the same number in the same notation.** A number in
+  scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
+  "·") and a power, and a power alone, a number with a caret and a braced exponent or a
+  single digit after it, `10^{-2}`, `10^8`, or pandoc's superscript `10^-2^`, are read whole
+  (`auditing.abstract.powers`), in the Abstract and where the paper reports alike. Each is
+  found only where the paper prints the same sign, mantissa, base and exponent, each read as
+  a number, a bare power with a mantissa of 1, however the exponent is spelled: braced or
+  not, after a thin space, with a plus sign or an en dash. A power after a times sign with
+  no mantissa before it, a column header's "(×10^8 cm^-3)", is a scale and no number on
+  either side. Read as atoms, LaTeX's `10^{-2}`, whose braces the reader blanks, was "10^"
+  and "-2", and the finding named "10^" (tex-astro-ga-B1 of the real-paper corpus, on
+  0223ca005); a mantissa, a scale and a sign were then no part of the number (round 1 of
+  #696). Accepted.
+  - A number is not found where the paper gives its value in another notation, 0.01 for
+    `10^{-2}`, `\num{1e-2}` or "1e-2", nor where it prints `10^-2` or `10^82` in maths, which
+    TeX sets as a power of a sign or of one digit and the reader reads as printed. Accepted.
+  - A power after a slash, a header's `n/10^8`, is a bare power, not a scale, and finds an
+    Abstract's `10^8`; and what a match is worth counts no power. Accepted.
+  - A mantissa in brackets, `(1.4 \pm 0.2) \times 10^{-2}`, is no mantissa: the power after
+    the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone. Accepted.
   - A .docx paragraph's raised run is printed flat, so "10" and a raised "-2" read "10-2", a
     range, in the Abstract and where the paper reports alike. Pinned by
     `tests/test_abstract_powers.py::test_a_docx_superscript_in_a_paragraph_is_read_flat`.

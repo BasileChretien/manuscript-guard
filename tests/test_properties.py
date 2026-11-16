@@ -6660,7 +6660,11 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
     A power in maths, `$10^{-2}$`, is read whole and found where the Methods print the same
     power, however its exponent is spelled, and not where they give its base and exponent
-    apart; it is never named by its base and a caret (tex-astro-ga-B1). Without
+    apart; it is never named by its base and a caret (tex-astro-ga-B1). A number in
+    scientific notation is one number, its sign, mantissa and power: found where the Methods
+    print it again, and not where they print another mantissa, a bare power where they give
+    it a mantissa, a signed one where they drop the sign, nor one they give only as a scale;
+    a scale in the Abstract is no number (round 1 of #696). Without
     an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
     reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
     of #472), but for what stands after `thebibliography`, which stands under the section
@@ -6951,6 +6955,41 @@ def _a_power_is_found_by_its_pieces(patch: pytest.MonkeyPatch) -> None:
                                    powered=frozenset())  # fmt: skip
 
     patch.setattr(abstract, "_joined", joined)
+
+
+def _read_powers_as(patch: pytest.MonkeyPatch, **changed) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.powers
+    patch.setattr(abstract, "powers", lambda text, read: [
+        dataclasses.replace(power, **changed) for power in real(text, read)])  # fmt: skip
+
+
+def _a_scale_or_a_mantissa_is_no_part_of_the_number(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `$5\\times 10^{-2}$` and a header's
+    `(\\times 10^8 cm^-3)` found an Abstract's bare power."""
+    _read_powers_as(patch, mantissa="1", scale=False)
+
+
+def _a_mantissa_is_looked_for_alone(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `3\\times 10^{8}` was found as 3 and 10^8."""
+    from manuscript_guard.auditing import abstract
+
+    _read_powers_as(patch, mantissa="1")
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        one = real(atoms, read, text)
+        alone = [part for power in read for part in abstract._numbers(
+            text[power.start : power.end].split("^")[0])]  # fmt: skip
+        return dataclasses.replace(one, parts=(*one.parts, *alone))
+
+    patch.setattr(abstract, "_joined", joined)
+
+
+def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `-10^{8}` was found as `10^{8}`."""
+    _read_powers_as(patch, sign="")
 
 
 def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
@@ -27364,6 +27403,18 @@ BROKEN = {
     ),
     "a power of the Abstract is found by its base and its exponent apart": (
         _a_power_is_found_by_its_pieces,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by another mantissa or a scale": (
+        _a_scale_or_a_mantissa_is_no_part_of_the_number,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its mantissa looked for alone": (
+        _a_mantissa_is_looked_for_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its sign dropped": (
+        _a_power_s_sign_is_dropped,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (

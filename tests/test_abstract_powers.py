@@ -9,7 +9,10 @@ power is one, so it was never found, even beside its copy in the Results.
 A power, a number with a caret and a braced exponent or a single digit after it, or pandoc's
 superscript `10^-2^`, is read whole, in the Abstract and where the paper reports alike, and
 found only where the paper prints the same power, its base and its exponent each read as a
-number: never by its pieces, and never as its value.
+number: never by its pieces, and never as its value. A number in scientific notation, a
+sign, a mantissa, a times sign and a power, is one number, and a bare power is one with a
+mantissa of 1; a power after a times sign with no mantissa is a scale, no number (round 1
+of #696).
 """
 
 from __future__ import annotations
@@ -105,14 +108,84 @@ def test_a_power_only_the_discussion_prints_is_not_found(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("suffix", [".tex", ".md"])
-def test_the_number_before_a_power_is_looked_for_as_the_paper_reads_it(
+@pytest.mark.parametrize(("abstract", "results", "name"), [
+    ("$3@times 10^{8}$", "$3@times 10^{8}$", "3@times 10^{8}"),
+    ("$3@times10^{8}$", "$3.0 @cdot 10^8$", "3@times10^{8}"),
+    ("$-2.5@,@times@,10^{-3}$", "$-2.5 @times 10^{-3}$", "-2.5@,@times@,10^{-3}"),
+    ("$3 \N{MULTIPLICATION SIGN} 10^{8}$", "$3@times 10^{8}$",
+     "3 \N{MULTIPLICATION SIGN} 10^{8}"),
+    ("$-10^{8}$", "$-1@times 10^{8}$", "-10^{8}"),
+    ("$10^{\N{EN DASH}2}$", "$10^{-2}$", "10^{\N{EN DASH}2}"),
+])  # fmt: skip
+def test_a_number_in_scientific_notation_is_found_whole(tmp_path: Path, suffix: str,
+                                                        abstract: str, results: str,
+                                                        name: str) -> None:  # fmt: skip
+    """A mantissa times a power is one number, its sign, its mantissa and its power; a bare
+    power is the same with a mantissa of 1 and keeps its sign; an en dash in an exponent is
+    a minus, as `audit._NUMBER` reads one."""
+    read = _read(tmp_path, suffix, f"It was {abstract} here.".replace("@", B),
+                 f"It was {results} here.".replace("@", B))  # fmt: skip
+    assert _texts(read.found) == [name.replace("@", B)] and read.not_found == [], read
+
+
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+@pytest.mark.parametrize(("abstract", "results", "name"), [
+    # A scale: the paper's 0.05 is five times the Abstract's 0.01.
+    ("$10^{-2}$", "$5@times 10^{-2}$", "10^{-2}"),
+    # Another mantissa, the Abstract's own given alone elsewhere.
+    ("$3@times 10^{8}$", "$5@times 10^{8}$ in 3 runs", "3@times 10^{8}"),
+    # A sign dropped, either way.
+    ("$-10^{8}$", "$10^{8}$", "-10^{8}"),
+    ("$10^{8}$", "$-10^{8}$", "10^{8}"),
+    ("$-3@times 10^{8}$", "$3@times 10^{8}$", "-3@times 10^{8}"),
+    # A column header's scale is no number.
+    ("$10^{8}$", "Density ($@times 10^8$ cm$^{-3}$) was read.", "10^{8}"),
+    ("$10^{-3}$", "Mass (\N{MULTIPLICATION SIGN}10^{-3}) was read.", "10^{-3}"),
+])  # fmt: skip
+def test_a_number_in_scientific_notation_is_never_found_by_a_part(
+    tmp_path: Path, suffix: str, abstract: str, results: str, name: str
+) -> None:
+    """Round 1 of #696: neither a power nor its mantissa is found apart from the other, a
+    sign is part of the number, and a scale after a times sign with no mantissa before it is
+    no number where the paper reports."""
+    read = _read(tmp_path, suffix, f"It was {abstract} here.".replace("@", B),
+                 f"It was {results}.".replace("@", B))  # fmt: skip
+    assert _texts(read.not_found) == [name.replace("@", B)] and read.found == [], read
+
+
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+@pytest.mark.parametrize("scale", ["($@times 10^{8}$ per ml)", "($@cdot 10^{-3}$)",
+                                   "(\N{MULTIPLICATION SIGN}10^{-3} g)"])
+def test_a_scale_in_the_abstract_is_no_number(tmp_path: Path, suffix: str,
+                                              scale: str) -> None:  # fmt: skip
+    """A power after a times sign with no mantissa before it, as a header scales a column,
+    is never looked for: no finding names it, nor a text ending in a times sign."""
+    read = _read(tmp_path, suffix, f"Densities {scale} were read.".replace("@", B),
+                 "It was so.")  # fmt: skip
+    assert read.numbers == 0 and read.not_found == [] and read.found == [], read
+
+
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+def test_an_unbraced_digit_before_a_full_stop_is_an_exponent(tmp_path: Path,
+                                                             suffix: str) -> None:  # fmt: skip
+    """`$n = 10^8.$` and `10^8.` at a sentence's end are the power 10^8."""
+    read = _read(tmp_path, suffix, "It was $n = 10^8.$ Then $10^8$.", "It was $10^{8}$ here.")
+    assert _texts(read.found) == ["10^8", "10^8"] and read.not_found == [], read
+
+
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+def test_no_finding_names_a_text_ending_in_a_caret_or_a_times_sign(
     tmp_path: Path, suffix: str
 ) -> None:
-    """`3 @times 10^{8}`: the power is read whole, and the 3 before it, a number of its own
-    where the paper reports as here, is looked for as one."""
-    read = _read(tmp_path, suffix, f"It was $3{B}times 10^{{8}}$ here.",
-                 f"It was $3{B}times 10^{{8}}$ here.")  # fmt: skip
-    assert read.not_found == [] and read.matched == 2
+    """Every number of scientific notation is named whole, whatever is found."""
+    abstract = (f"It was $3{B}times 10^{{8}}$, $2.5 {B}cdot 10^{{-3}}$, $-10^{{4}}$ and "
+                "$7 \N{MULTIPLICATION SIGN} 10^5$ here.")  # fmt: skip
+    read = _read(tmp_path, suffix, abstract, "It was 3, 8, 2.5 and 7 here.")
+    named = _texts(read.not_found + read.found)
+    assert len(named) == 4 and not any(text.rstrip().endswith(("^", "times", "cdot",
+                                                               "\N{MULTIPLICATION SIGN}"))
+                                       for text in named), named  # fmt: skip
+    assert read.found == [], named
 
 
 def test_pandoc_s_superscript_is_the_same_power(tmp_path: Path) -> None:

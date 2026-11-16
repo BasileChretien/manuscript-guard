@@ -26,9 +26,11 @@
 expected:
   - reading: abstract against results
     why: >-
-      a power in the Abstract, `$10^{-2}$`, `$10^8$` or pandoc's `10^-2^`, is read whole
-      and found where the paper reports the same power, its exponent spelled any way, and
-      not where it gives the base and the exponent apart; the base read a power as printed,
+      a power in the Abstract, `$10^{-2}$`, `$10^8$` or pandoc's `10^-2^`, and a number in
+      scientific notation, `$-3.2 \times 10^{8}$`, are read whole and found where the paper
+      reports the same sign, mantissa and power, its exponent spelled any way, and not where
+      it gives a part apart, another mantissa or sign, or the power only as a scale after a
+      times sign, which is no number; the base read a power as printed,
       never found among the paper's bare numbers, and in LaTeX, whose braces the reader
       blanks, as "10^" and "-2", each looked for alone (tex-astro-ga-B1 of the real-paper
       corpus, its Abstract's `10^{-2}` named "10^"); the entry it replaces, for the comments

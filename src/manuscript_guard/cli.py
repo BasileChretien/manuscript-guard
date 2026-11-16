@@ -2627,7 +2627,8 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
                  "tracked", "pdf", "lookup", "whole_numbers", "binary", "minimum_cell_count",
-                 "english", "known", "submission_residue", "non_negative")
+                 "english", "known", "submission_residue", "non_negative", "no_abstract",
+                 "no_results", "results")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -2650,7 +2651,8 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
 AUDITED: Callable[[object, object], None] | None = None
 
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
-_AUDIT_FLAGS = ("against", "figures", "english", "known", "submission_residue", "lookup",
+_AUDIT_FLAGS = ("against", "figures", "english", "known", "no_abstract", "no_results", "results",
+                "submission_residue", "lookup",
                 "dry_run", "whole_numbers", "binary", "non_negative", "minimum_cell_count",
                 "journal", "authors", "design", "cited", "commented", "tracked", "pdf", "package",
                 "strict")  # fmt: skip
@@ -2760,6 +2762,7 @@ def _audit(args: argparse.Namespace, package) -> int:
         measure_discrimination,
     )
     from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.abstract import Answers
     from manuscript_guard.auditing.by_title import look_up_all
     from manuscript_guard.auditing.gates import run_gates
     from manuscript_guard.auditing.latex import is_entry
@@ -2864,7 +2867,9 @@ def _audit(args: argparse.Namespace, package) -> int:
                    whole_numbers=tuple(args.whole_numbers), binary=tuple(args.binary),
                    passed_over=docs, non_negative=tuple(args.non_negative),
                    found_tex=found_tex, minimum=args.minimum_cell_count,
-                   design=args.design, cited=args.cited is not None)  # fmt: skip
+                   design=args.design, cited=args.cited is not None,
+                   answers=Answers(args.no_abstract, args.no_results,
+                                   tuple(args.results)))  # fmt: skip
     report.passed_over += pdfs_said
     report.package = package
     if args.against and not report.backing_files:
@@ -6981,6 +6986,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="words the paper's readers know, which G14 neither asks to be defined, reports "
         "the spelling of, nor reads as names from code: names, an author's initials, an "
         "institution's acronym, the field's terms (--known CHU QR licence)",
+    )
+    audit.add_argument(
+        "--no-abstract",
+        action="store_true",
+        help="the paper has no Abstract: the Abstract against Results no longer asks where "
+        "it is; a heading that names the Abstract is taken over this",
+    )
+    audit.add_argument(
+        "--no-results",
+        action="store_true",
+        help="the paper reports no results, a methods paper's: the Abstract against Results "
+        "no longer asks which heading holds them; a Results heading is taken over this",
+    )
+    audit.add_argument(
+        "--results",
+        action="append",
+        default=[],
+        metavar="TITLE",
+        help="the heading whose whole title is TITLE, case and a number before it aside, holds "
+        "the paper's results: a Results heading to the Abstract against Results alone, and to "
+        "no other check; repeatable (--results \"Electron temperature relations\")",
     )
     audit.add_argument(
         "--submission-residue",

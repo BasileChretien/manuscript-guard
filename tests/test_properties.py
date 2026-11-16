@@ -51,6 +51,7 @@ from generated import (
     DATA_IDENTIFIERS,
     DECLARED_TERMS,
     DEPOSIT_DOI,
+    DESCRIPTIVE_TITLES,
     EDIT_GAPS,
     EDIT_WORDS,
     FILLER,
@@ -85,6 +86,7 @@ from generated import (
     WRITTEN_WORDS,
     abstract_trees,
     alt_texts,
+    answered_papers,
     beside_edited,
     bindings,
     bold_planted,
@@ -6703,6 +6705,104 @@ def test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing
                        for name in RESULTS_BY_ANOTHER_NAME), read.why_not  # fmt: skip
 
 
+def _answered(text: str, suffix: str, answers: dict):
+    """The audit of one paper with the author's answers, and the Abstract against Results'
+    items as the report gives them."""
+    import tempfile
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.abstract import Answers
+    from manuscript_guard.auditing.report import ABSTRACT, items
+    from manuscript_guard.classify import Classifier
+
+    if not _AUDIT_RULES:
+        _AUDIT_RULES.append(Classifier.load(rendered=True))
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        report = audit([paper], None, classifier=_AUDIT_RULES[0], answers=Answers(**answers))
+    return report.abstract, [item for item in items(report) if item.section == ABSTRACT]
+
+
+@holds(10, answered_papers())
+def test_a_question_to_the_author_is_asked_until_answered_and_never_counts(
+    drawn: list[tuple[str, str, str, dict, dict]],
+) -> None:
+    """Basile, 2026-11-16, decision 27: where no heading names the Abstract, or none is read
+    as the Results, the section asks the author, at INFO, never counted and marked as a
+    question; `--no-abstract`, `--no-results` and `--results` with the title, written in any
+    case, numbered or with a colon, end it. An answer the paper's headings contradict is
+    said and the headings win; a title that names no heading is said and the question
+    stays. A heading `--results` names is the Results to this section alone: G8 and the
+    parts the audit's sentences are placed in read it as before. In Markdown and LaTeX."""
+    from manuscript_guard.auditing.sentences import RESULTS, placing
+    from manuscript_guard.findings import INFO
+    from manuscript_guard.gates.reported import REPORTED, Walk
+    from manuscript_guard.text.sections import scannable, split_sections
+
+    for kind, markdown, latex, answers, wanted in drawn:
+        for text, suffix in ((markdown, ".md"), (latex, ".tex")):
+            read, said = _answered(text, suffix, answers)
+            assert read.compared == wanted["compared"], (kind, text)
+            asked = [item for item in said if item.question]
+            assert [item.code for item in asked] == ([wanted["question"]] if wanted["question"]
+                                                     else []), (kind, said)  # fmt: skip
+            assert all(item.severity == INFO and not item.counted for item in asked), asked
+            assert [code for code, _said in read.answered] == wanted["notes"], (kind, read)
+            if kind == "results named":
+                assert read.matched == read.numbers == 1, (kind, text)
+        if kind == "results named":
+            sections = [s for s in split_sections(scannable(markdown)) if s.level]
+            heading = next(s for s in sections if s.title == wanted["title"])
+            assert Walk().placing(sections)(heading.line + 2) is not REPORTED, markdown
+            assert placing(sections)(heading.line + 2).part != RESULTS, markdown
+
+
+def _the_answers_are_ignored(patch: pytest.MonkeyPatch) -> None:
+    """`--no-abstract` and `--no-results` read and not given to the section."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.against_results
+    patch.setattr(abstract, "against_results",
+                  lambda pieces, answers=None, named=None: real(pieces, None, named))
+
+
+def _a_results_title_is_ignored(patch: pytest.MonkeyPatch) -> None:
+    """`--results` read and no heading placed by it."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.placed
+    patch.setattr(abstract, "placed", lambda sections, notes=frozenset(), lists=(), named=():
+                  real(sections, notes, lists, ()))  # fmt: skip
+
+
+def _a_question_is_asked_as_a_warning(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.auditing import report
+    from manuscript_guard.findings import WARN
+
+    real = report.question
+    patch.setattr(report, "question", lambda section, code, message: replace(
+        real(section, code, message), severity=WARN))  # fmt: skip
+
+
+def _a_results_title_is_the_results_to_g8(patch: pytest.MonkeyPatch) -> None:
+    """`--results` made a heading the Results everywhere, as a name of `names_results`."""
+    from manuscript_guard.auditing import abstract, sentences
+    from manuscript_guard.gates import reported
+    from manuscript_guard.text import section_names
+
+    real = section_names.names_results
+
+    def names(title: str) -> bool:
+        return real(title) or section_names._whole(title) in {
+            one.lower() for one in DESCRIPTIVE_TITLES}
+
+    for module in (section_names, abstract, sentences, reported):
+        patch.setattr(module, "names_results", names)
+
+
 def _a_results_name_is_read_by_its_opening_words(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
     from manuscript_guard.text.section_names import _whole
@@ -6717,7 +6817,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.auditing import abstract
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    def placed(sections, notes=frozenset(), lists=()):
+    def placed(sections, notes=frozenset(), lists=(), named=()):
         walk = Walk()
         place = walk.placing(sections)
         where = abstract._searched(sections, place, walk, notes)
@@ -6726,7 +6826,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         results = (any(place(s.line) is REPORTED for s in sections
                        if abstract.names_results(s.title))
                    or any(abstract.names_results_like(s.title) for s in sections))
-        return abstract._past_the_lists(where, sections, lists, notes), has, results
+        return abstract._past_the_lists(where, sections, lists, notes), has, results, ()
 
     patch.setattr(abstract, "placed", placed)
 
@@ -6980,7 +7080,7 @@ def _an_abstract_number_is_looked_for_in_the_methods_and_results_alone(
     """As before 2026-11-11: a section of another name was not searched."""
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: place)
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes, given=(): place)
 
 
 def _the_opening_and_the_conclusion_are_searched(patch: pytest.MonkeyPatch) -> None:
@@ -7017,8 +7117,8 @@ def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
     real = abstract._searched
-    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
-        sections, place, walk, frozenset()))  # fmt: skip
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes, given=(): real(
+        sections, place, walk, frozenset(), frozenset(given)))  # fmt: skip
 
 
 def _the_lines_past_a_list_are_not_searched(patch: pytest.MonkeyPatch) -> None:
@@ -7082,9 +7182,9 @@ def _a_heading_over_the_methods_is_the_paper_s_title(patch: pytest.MonkeyPatch) 
 
     real = abstract._searched
 
-    def searched(sections, place, walk, notes):
+    def searched(sections, place, walk, notes, given=frozenset()):
         patch.setattr(abstract, "_over_the_paper", lambda found: set(walk.titles))
-        return real(sections, place, walk, notes)
+        return real(sections, place, walk, notes, given)
 
     patch.setattr(abstract, "_searched", searched)
 
@@ -23060,6 +23160,22 @@ BROKEN = {
     "no heading is the Results by another name": (
         _no_heading_is_the_results_by_another_name,
         test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
+    ),
+    "an answer to the Abstract's question is ignored": (
+        _the_answers_are_ignored,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is ignored": (
+        _a_results_title_is_ignored,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a question to the author is asked as a warning": (
+        _a_question_is_asked_as_a_warning,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is the Results to G8": (
+        _a_results_title_is_the_results_to_g8,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
     ),
     "an RRID keeps the punctuation after it": (
         _an_rrid_keeps_the_mark_after_it,

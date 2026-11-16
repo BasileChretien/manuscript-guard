@@ -1921,6 +1921,33 @@ def _abstract_against_results() -> Reading:
     return read
 
 
+@reading("abstract questions")
+def _abstract_questions() -> Reading:
+    """What `audit` asks the author of a Markdown paper's Abstract against Results, and how
+    the answers given end it (decision 27): whether they were compared, why not, the
+    question asked, each note on the answers, and each item the section gives, by its
+    code, its severity, whether `--strict` counts it and whether it is a question."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.abstract import Answers
+    from manuscript_guard.auditing.report import ABSTRACT, items
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper = Path(folder) / "paper.md"
+            paper.write_text(given["paper"], encoding="utf-8")
+            report = audit([paper], None, answers=Answers(
+                given["no abstract"], given["no results"], tuple(given["results"])))
+            found = report.abstract
+            return {
+                "compared": found.compared, "why not": found.why_not,
+                "question": found.question, "answered": [list(one) for one in found.answered],
+                "items": [[item.code, item.severity, item.counted, item.question]
+                          for item in items(report) if item.section == ABSTRACT],
+            }  # fmt: skip
+
+    return read
+
+
 @reading("word abstract")
 def _word_abstract() -> Reading:
     """What `audit` says of a Word paper's Abstract against its Results, the paper's body

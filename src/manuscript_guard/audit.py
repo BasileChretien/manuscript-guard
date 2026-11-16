@@ -233,6 +233,9 @@ class AuditReport:
     flow_notes: list[Disagreement] = field(default_factory=list)
     #: The Abstract against what the paper reports (`auditing.abstract.AbstractRead`).
     abstract: object = None
+    #: The titles of the headings the author says hold the paper's results, `--results`: a
+    #: Results heading to the Abstract against Results alone (`auditing.abstract.placed`).
+    results_named: tuple[str, ...] = ()
     #: G4 held to the journal's profile, `--journal` (`auditing.journal.JournalRun`); None
     #: where no profile was given.
     journal: object = None
@@ -924,6 +927,9 @@ class _Source:
     latex: object = None
     #: The lines of a Markdown or a Word paper's headings, which are no sentences.
     heading_lines: frozenset[int] = frozenset()
+    #: Each title `--results` gives that a heading of its document has, and whether one
+    #: such heading was read as the Results (`auditing.abstract.placed`).
+    named: tuple[tuple[str, bool], ...] = ()
     #: Whether its lines are lines of paragraphs, wrapped as a PDF sets them, though not
     #: Markdown: a sentence goes on from one to the next (`auditing.pdf`).
     wrapped: bool = False
@@ -957,7 +963,8 @@ def _read_sources(
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
         source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
-        structure = _structure(text, hidden, tables, document, spans, original)
+        structure = _structure(text, hidden, tables, document, spans, original,
+                               report.results_named)  # fmt: skip
         sources.append(replace(source, **structure))
         said = _headings_said(path, document, bool(structure["heading_lines"]))
         if said:
@@ -986,7 +993,7 @@ def _read_sources(
         report.unreadable += latex.unreadable
         report.passed_over += latex.passed_over
         report.not_audited += latex.not_audited
-        structures = _latex_structure(latex)
+        structures = _latex_structure(latex, report.results_named)
         for file in latex.files:
             plain = file.hidden.replace(NUL, " ")
             sources.append(_Source(file.path, file.source.text, file.hidden, file.hidden,
@@ -1190,9 +1197,10 @@ def _pdf_structure(report: AuditReport, pdf,
     sections = [Section(title, level, "", line) for line, title, level in levels]
     heads = frozenset(section.line - 1 for section in sections)
     lists = pdf_compared(pdf, list(spans), heads)
-    place, abstract, results = (placed(sections, lists=lists) if sections
-                                else (None, False, False))  # fmt: skip
-    return {"place": place, "abstract": abstract, "results": results,
+    place, abstract, results, named = (placed(sections, lists=lists,
+                                              named=report.results_named)
+                                       if sections else (None, False, False, ()))  # fmt: skip
+    return {"place": place, "abstract": abstract, "results": results, "named": named,
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
 
 
@@ -1254,14 +1262,16 @@ def _set_aside(document) -> str:
 
 
 def _structure(text: str, hidden: str, tables: list[Table], document,
-               spans: list[tuple[int, int]], original: str) -> dict:
+               spans: list[tuple[int, int]], original: str,
+               named: tuple[str, ...] = ()) -> dict:  # fmt: skip
     """What a Markdown or a .docx paper's Abstract against Results and its flows are read
     from: where each line stands under its own headings, a Word document's by their styles;
     the lines in a table; its lists, a Word document's by their levels; and the counts in
     its text boxes. The lines after its reference lists `spans` and before the next heading
     are searched (`auditing.abstract._past_the_lists`), a list resumed there read in its
     `original` text, before the cut (`resumed_lists`). Each file is placed alone: a file
-    with no Abstract is reported whole (round 2 of #472, DESIGN.md, "Known gaps")."""
+    with no Abstract is reported whole (round 2 of #472, DESIGN.md, "Known gaps"). `named`
+    are the titles `--results` gives (`auditing.abstract.placed`)."""
     from manuscript_guard.auditing.abstract import placed
     from manuscript_guard.stats.flows import boxed_counts, docx_lists, markdown_lists
     from manuscript_guard.text.sections import Section, scannable, split_sections
@@ -1294,9 +1304,10 @@ def _structure(text: str, hidden: str, tables: list[Table], document,
     heads = frozenset(section.line - 1 for section in sections)
     compared = (markdown_compared(original, spans, heads) if document is None
                 else docx_compared(document, spans, heads))  # fmt: skip
-    place, abstract, results = (placed(sections, notes, compared) if sections
-                                else (None, False, False))  # fmt: skip
-    return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
+    place, abstract, results, found = (placed(sections, notes, compared, named) if sections
+                                       else (None, False, False, ()))  # fmt: skip
+    return {"place": place, "abstract": abstract, "results": results, "named": found,
+            "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(
                 text, sections) - run_in}  # fmt: skip
@@ -1329,10 +1340,11 @@ def _heading_lines(text: str, sections: list) -> frozenset[int]:
     return frozenset(found)
 
 
-def _latex_structure(latex) -> dict[Path, dict]:
+def _latex_structure(latex, named: tuple[str, ...] = ()) -> dict[Path, dict]:
     """What each LaTeX file's Abstract against Results and flows are read from: where each
     of its lines stands under the headings its document prints over it (`printed`, read
-    back to the `.tex` line by `place_line`), the lines of its tables, and its lists."""
+    back to the `.tex` line by `place_line`), the lines of its tables, and its lists. `named`
+    are the titles `--results` gives (`auditing.abstract.placed`)."""
     from manuscript_guard.auditing import abstract as placing
     from manuscript_guard.auditing import sentences
     from manuscript_guard.auditing.sentences import place_tex_lines
@@ -1347,8 +1359,9 @@ def _latex_structure(latex) -> dict[Path, dict]:
                    if not source.path.lower().endswith(".sty")]  # fmt: skip
         view = printed(sources)
         sections = [s for s in split_sections(scannable(view.text)) if s.level]
-        place, abstract, results = (placing.placed(sections) if sections
-                                    else (None, False, False))  # fmt: skip
+        place, abstract, results, found_named = (
+            placing.placed(sections, named=named) if sections
+            else (None, False, False, ()))  # fmt: skip
         by_line = placing.place_lines(view, place) if place is not None else {}
         parts = (place_tex_lines(view, sentences.placing(sections)) if sections
                  else {})  # fmt: skip
@@ -1362,7 +1375,7 @@ def _latex_structure(latex) -> dict[Path, dict]:
                               for line in range(text.count("\n", 0, start) + 1,
                                                 text.count("\n", 0, end) + 2))  # fmt: skip
             found[path] = {"place": at if place is not None else None, "abstract": abstract,
-                           "results": results, "table_lines": lines,
+                           "results": results, "named": found_named, "table_lines": lines,
                            "lists": tuple(latex_lists(source, hidden[path])),
                            "part": part if sections else None}  # fmt: skip
     return found
@@ -1570,6 +1583,7 @@ def audit(
     minimum: int | None = None,
     design: str | None = None,
     cited: bool = False,
+    answers=None,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
     numbers, which are held to their column's n (`stats/granularity.py`), and `binary` those
@@ -1582,7 +1596,8 @@ def audit(
     `design` is the study's design the reader declares: an observational study's causal
     words are read (`auditing.causal`), and a trial's tables of baseline characteristics
     (`auditing.baseline`); `cited` asks for each citation beside its sentence
-    (`auditing.cited`)."""
+    (`auditing.cited`). `answers` are the author's to the Abstract against Results'
+    questions (`auditing.abstract.Answers`), None where none was given."""
     from manuscript_guard.auditing.progress import step
 
     step("read")
@@ -1597,6 +1612,7 @@ def audit(
         non_negative=non_negative, non_negative_unfound=list(non_negative),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
         compared=backing is not None, minimum=minimum,
+        results_named=tuple(answers.results) if answers is not None else (),
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -1637,7 +1653,7 @@ def audit(
         pieces.append(_piece(source, atoms))
     from manuscript_guard.auditing.abstract import against_results
 
-    report.abstract = against_results(pieces)
+    report.abstract = against_results(pieces, answers, _named(sources))
     # A share of the Abstract its counts beside it do not give is a number that does not fit
     # the ones beside it, and so is one written anywhere else in a paper's sentences, listed
     # with the rest, by paper in the order read and by line.
@@ -1791,6 +1807,17 @@ def _under(report: AuditReport, source: _Source, piece, line: int) -> str:
     if not title:
         return ""
     return f'in "{title}", ' if "," in title else f"in {title}, "
+
+
+def _named(sources: list[_Source]) -> dict[str, bool]:
+    """Each title `--results` gives that a heading of a paper has, as
+    `auditing.abstract.given_title` gives it, and whether one such heading, in any of them,
+    was read as the Results."""
+    found: dict[str, bool] = {}
+    for source in sources:
+        for title, taken in source.named:
+            found[title] = found.get(title, False) or taken
+    return found
 
 
 def _piece(source: _Source, atoms: list[Atom]):

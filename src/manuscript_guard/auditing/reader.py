@@ -13,6 +13,12 @@ from __future__ import annotations
 
 import re
 
+#: The page's names for the answers to the audit's questions (web/index.html): `--no-abstract`,
+#: `--no-results` and `--results`.
+NO_ABSTRACT_FIELD = "The paper has no Abstract"
+NO_RESULTS_FIELD = "The paper reports no results"
+RESULTS_FIELD = "The heading of its results"
+
 #: What a reader is told of a finding `--strict` counts. Not that the audit failed: without
 #: `--strict` it ends as having run (round 1 of #631).
 FAILS = "(counted as an error)"
@@ -51,6 +57,17 @@ _FOR_A_READER: tuple[tuple[re.Pattern[str], str], ...] = (
      "give the audit the analysis outputs to compare them with"),
     (re.compile(r"--against names the outputs to compare the numbers with\."),
      "no analysis outputs were given to compare the numbers with."),
+    # The answers to the audit's questions, as the page's form gives them (`QUESTIONS`).
+    (re.compile(r"run `audit` again with `--no-abstract`"),
+     f'check it again with "{NO_ABSTRACT_FIELD}" ticked'),
+    (re.compile(r'Run `audit` again with `--results "<that heading>"`; if the paper reports no '
+                r"results, run it with `--no-results`"),
+     f'Check it again with that heading given as "{RESULTS_FIELD}"; if the paper reports no '
+     f'results, check it again with "{NO_RESULTS_FIELD}" ticked'),
+    (re.compile(r"--no-abstract: "), f'"{NO_ABSTRACT_FIELD}" ticked: '),
+    (re.compile(r"--no-results: "), f'"{NO_RESULTS_FIELD}" ticked: '),
+    (re.compile(r'--results "(.*?)": (?=no heading is|the heading stands)'),
+     rf'"{RESULTS_FIELD}" given as "\1": '),
 )  # fmt: skip
 
 #: Markdown's marks of emphasis around words, which a .docx's converted text has where the

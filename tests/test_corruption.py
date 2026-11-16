@@ -2793,6 +2793,45 @@ def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
         assert main(["audit", str(paper), "--strict"]) == failed, heading
 
 
+def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_catch(
+    tmp_path: Path, capsys
+) -> None:
+    """Decision 27 (Basile, 2026-11-16): an Abstract whose interval differs from the one its
+    results give under a descriptive title (tex-astro-ga-B2 of the real-paper corpus) is
+    not compared, and the audit asks which heading holds them: the question never fails
+    --strict, whatever else it holds. Answered with `--results`, the conflict fails it."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.90).\n!end{abstract}\n!section{Data}\nWe did.\n"
+             "!section{Electron temperature relations}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n"
+             "!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict", "--json"]) == 0
+    asked = [one for one in json.loads(capsys.readouterr().out)["findings"] if one["question"]]
+    assert [(one["code"], one["counted"]) for one in asked] == [("question-no-results", False)]
+    assert main(["audit", str(paper), "--strict", "--results",
+                 "Electron temperature relations"]) == 1  # fmt: skip
+
+
+def test_a_heading_named_as_the_results_is_never_the_results_to_g8(tmp_path: Path) -> None:
+    """`--results` is the Results to the audit's Abstract against Results alone: in a
+    project, a key bound only under a descriptive title, beside a Results heading, is still
+    reported nowhere to G8, after an audit that named that title, which keeps nothing."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates import reported
+
+    text = ("# Abstract\n\nWe saw {{results.a}}.\n\n# Methods\n\nWe did.\n\n"
+            "# Results\n\nIt held.\n\n# Electron temperature relations\n\nIt was {{results.a}}.\n")
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    assert main(["audit", str(paper), "--results", "Electron temperature relations"]) == 0
+    walk = reported.Walk()
+    given, found = walk.read(text)
+    assert [one.key for one in given if one.key not in found] == ["a"]
+
+
 def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:

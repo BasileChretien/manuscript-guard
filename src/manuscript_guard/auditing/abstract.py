@@ -18,9 +18,11 @@ read back to the `.tex` lines (`printed`, `place_line`, `place_lines`). Each fil
 by its own headings, unlike G8, which carries a project's headings from file to file: a
 paper split into files has a Discussion in a file of its own reported whole, as a
 supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abstract
-heading, or none a Results heading, nothing is compared, and the report says so: a heading
+heading, or none a Results heading, nothing is compared, and the author is asked why, a
+question the answers `Answers` holds end (Basile, 2026-11-16, decision 27): a heading
 that is the Results by another name, "Experiments", "Numerical results" (`RESULTS_LIKE`), is
-one here, and the comparison never falls back to the whole body (Basile, 2026-11-13).
+one here, and so is one whose title `--results` gives; the comparison never falls back to
+the whole body (Basile, 2026-11-13).
 
 * **Not found.** A number of the Abstract the classifier leaves unexplained, not found in
   the tables or any section that reports (`placed`), is said.
@@ -102,6 +104,58 @@ NO_RESULTS = ("no file has a Results heading outside the Abstract, nor a heading
               "title is one of the names the Results go by elsewhere: "
               + ", ".join(f'"{name.capitalize()}"' for name in RESULTS_LIKE))  # fmt: skip
 
+#: The questions the section asks the author where no exact rule can decide, each with the
+#: answer that ends it (Basile, 2026-11-16, decision 27): a finding of its own kind, which
+#: never fails and never counts, says what it saw and asks (`report.question`).
+ASKED_NO_ABSTRACT = "question-no-abstract"
+ASKED_NO_RESULTS = "question-no-results"
+ASK_NO_ABSTRACT = (
+    "No heading names the Abstract, so it was not compared with the Results. Has the paper no "
+    "Abstract? If its first paragraph, or the text under its title, is the Abstract, put the "
+    'heading "Abstract" over it; if it has none, run `audit` again with `--no-abstract` and '
+    "this is not asked again."
+)  # fmt: skip
+ASK_NO_RESULTS = (
+    'No section is read as the Results (no heading is "Results" or one of the names they go '
+    "by: " + ", ".join(f'"{name.capitalize()}"' for name in RESULTS_LIKE) + "), so the "
+    "Abstract was not compared with them. Which heading holds the paper's results? Run "
+    '`audit` again with `--results "<that heading>"`; if the paper reports no results, run it '
+    "with `--no-results`."
+)  # fmt: skip
+#: Why nothing was compared, where the author answered that there is nothing to compare.
+SAID_NO_ABSTRACT = "the author says the paper has no Abstract"
+SAID_NO_RESULTS = "the author says the paper reports no results"
+#: What is said of an answer the paper's own headings contradict, or that names no heading.
+CONTRADICTED = "abstract-answer-contradicted"
+UNMATCHED = "results-heading-unmatched"
+NOT_TAKEN = "results-heading-not-read"
+_CONTRADICTS_ABSTRACT = ("--no-abstract: a heading names the Abstract, so the paper's own "
+                         "heading is taken over the answer and the Abstract is read as usual")
+_CONTRADICTS_RESULTS = ("--no-results: a heading is read as the Results, so the paper's own "
+                        "heading is taken over the answer and the Abstract is compared with "
+                        "them as usual")  # fmt: skip
+_UNMATCHED = '--results "{0}": no heading is "{0}"'
+_NOT_TAKEN = ('--results "{0}": the heading stands in the Abstract, on the title page or under '
+              "a section that reports nothing, so it is not read as the Results")
+
+
+@dataclass(frozen=True)
+class Answers:
+    """The author's answers to the section's questions, as `audit` is given them: that the
+    paper has no Abstract (`--no-abstract`), that it reports no results (`--no-results`),
+    and the titles of the headings that hold its results (`--results`), each a Results
+    heading to this section alone."""
+
+    no_abstract: bool = False
+    no_results: bool = False
+    results: tuple[str, ...] = ()
+
+
+def given_title(title: str) -> str:
+    """A title `--results` gives, or a heading's, as `section_names` compares a whole name:
+    case aside, a number and marks before it aside, a stop or a colon after it aside."""
+    return _whole(title)
+
 
 @dataclass(frozen=True)
 class Piece:
@@ -152,6 +206,11 @@ class AbstractRead:
     conflicts: list = field(default_factory=list)
     #: What a match is worth against what the paper reports, roundings counted in.
     discrimination: object = None
+    #: The question asked of the author, by its code (`ASKED_NO_ABSTRACT`,
+    #: `ASKED_NO_RESULTS`), "" where none is; and each note on the answers given, as its code
+    #: and what it says.
+    question: str = ""
+    answered: list = field(default_factory=list)
 
 
 def in_abstract(place: object) -> bool:
@@ -224,8 +283,9 @@ def _results_by_another_name(sections: list[Section],
 
 
 def placed(sections: list[Section], notes: frozenset[int] = frozenset(),
-           lists: tuple[tuple[int, int], ...] = ()
-           ) -> tuple[Callable[[int], object], bool, bool]:  # fmt: skip
+           lists: tuple[tuple[int, int], ...] = (), named: tuple[str, ...] = ()
+           ) -> tuple[Callable[[int], object], bool, bool,
+                      tuple[tuple[str, bool], ...]]:  # fmt: skip
     """Where each line of one document stands, given its headings, the lines of its notes
     and its reference lists as the audit cut them, and whether it has an Abstract and a
     Results heading outside it. Each file is placed alone, unlike G8, which carries the
@@ -242,16 +302,31 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset(),
     The Results are a heading G8 reads as them where it reports, or one whose whole title is
     the Results by another name (`RESULTS_LIKE`) standing where the section searches, not in
     the Abstract nor under a Discussion (Basile, 2026-11-13), unless it stands under the
-    Methods and its name does not say "results" (`_results_by_another_name`)."""
+    Methods and its name does not say "results" (`_results_by_another_name`).
+
+    `named` are the titles `--results` gives (`Answers.results`): a heading whose whole title
+    is one (`given_title`) is a Results heading to this section alone, searched whatever its
+    name, where it stands where the section searches, not in the Abstract nor on the title
+    page nor under a section that reports nothing (Basile, 2026-11-16, decision 27). Last
+    comes each title of `named` that a heading of the document has, as `given_title` gives
+    it, and whether one such heading was read as the Results."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
     walk = Walk()
     place = walk.placing(sections)
-    searched = _searched(sections, place, walk, notes)
+    given = frozenset(given_title(title) for title in named)
+    searched = _searched(sections, place, walk, notes, given)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
+    taken: dict[str, bool] = {}
+    for section in sections:
+        title = given_title(section.title)
+        if title in given:
+            taken[title] = taken.get(title, False) or searched(section.line) is REPORTED
     results = (any(place(s.line) is REPORTED for s in sections if names_results(s.title))
-               or _results_by_another_name(sections, searched))  # fmt: skip
-    return _past_the_lists(searched, sections, lists, notes), abstract, results
+               or _results_by_another_name(sections, searched)
+               or any(taken.values()))  # fmt: skip
+    return (_past_the_lists(searched, sections, lists, notes), abstract, results,
+            tuple(sorted(taken.items())))  # fmt: skip
 
 
 def _past_the_lists(where: Callable[[int], object], sections: list[Section],
@@ -343,13 +418,15 @@ def _over_the_paper(sections: list[Section]) -> set[int]:
 
 
 def _searched(sections: list[Section], place: Callable[[int], object], walk,
-              notes: frozenset[int]) -> Callable[[int], object]:  # fmt: skip
+              notes: frozenset[int],
+              given: frozenset[str] = frozenset()) -> Callable[[int], object]:  # fmt: skip
     """`place`, with REPORTED for each line it places in neither the Abstract nor where the
     paper reports that stands under a heading naming a section, the paper's title apart
-    (`_over_the_paper`), none of which reports nothing (`_reports_nothing`). Never a note's
-    line, which a .docx's notes after its body and a Markdown footnote's are, whatever stands
-    over it: citations are written there. Nor a line of the title page, above the first
-    heading that names the Abstract."""
+    (`_over_the_paper`), none of which reports nothing (`_reports_nothing`): a heading whose
+    whole title the author gave as the Results' (`given`, `given_title`) never does. Never a
+    note's line, which a .docx's notes after its body and a Markdown footnote's are,
+    whatever stands over it: citations are written there. Nor a line of the title page,
+    above the first heading that names the Abstract."""
     from manuscript_guard.gates.reported import REPORTED
 
     titles = _over_the_paper(sections)
@@ -362,7 +439,9 @@ def _searched(sections: list[Section], place: Callable[[int], object], walk,
         chain.append(section)
         named = [one for one in chain if id(one) not in titles]
         starts.append(section.line)
-        searched.append(bool(named) and not any(_reports_nothing(one, walk) for one in named))
+        searched.append(bool(named) and not any(
+            _reports_nothing(one, walk) and given_title(one.title) not in given
+            for one in named))  # fmt: skip
 
     def where(line: int) -> object:
         if line in notes:
@@ -618,8 +697,11 @@ def _parts(piece: Piece) -> tuple[str, str, set[int]]:
             abstract)  # fmt: skip
 
 
-def against_results(pieces: list[Piece]) -> AbstractRead:
-    """The section, over every file the audit read."""
+def against_results(pieces: list[Piece], answers: Answers | None = None,
+                    named: dict[str, bool] | None = None) -> AbstractRead:  # fmt: skip
+    """The section, over every file the audit read, with the author's `answers`; `named`
+    holds each title of `answers.results` a heading has, as `given_title` gives it, and
+    whether one such heading was read as the Results (`placed`)."""
     from manuscript_guard.audit import (
         Candidate,
         around,
@@ -628,11 +710,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     )
 
     read = AbstractRead()
-    if not any(piece.abstract for piece in pieces):
-        read.why_not = NO_ABSTRACT
-        return read
-    if not any(piece.results for piece in pieces):
-        read.why_not = NO_RESULTS
+    if not _asked(read, pieces, answers or Answers(), named or {}):
         return read
     read.compared = True
     split = [(piece, *_parts(piece)) for piece in pieces]
@@ -672,6 +750,33 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
                 read.matched += 1
                 read.found.append(candidate)
     return read
+
+
+def _asked(read: AbstractRead, pieces: list[Piece], answers: Answers,
+           named: dict[str, bool]) -> bool:  # fmt: skip
+    """Whether there is an Abstract and a Results to compare, and if not, why not put in
+    `read`, with the question to the author where they have not answered it; and each note
+    on the answers in `read.answered`: a title `--results` gives that no heading has, or
+    whose heading is not read as the Results, and an answer the paper's own headings
+    contradict, which they win over (Basile, 2026-11-16, decision 27)."""
+    for title in dict.fromkeys(answers.results):
+        taken = named.get(given_title(title))
+        if not taken:
+            said = _UNMATCHED if taken is None else _NOT_TAKEN
+            read.answered.append((UNMATCHED if taken is None else NOT_TAKEN, said.format(title)))
+    if not any(piece.abstract for piece in pieces):
+        read.why_not = SAID_NO_ABSTRACT if answers.no_abstract else NO_ABSTRACT
+        read.question = "" if answers.no_abstract else ASKED_NO_ABSTRACT
+        return False
+    if answers.no_abstract:
+        read.answered.append((CONTRADICTED, _CONTRADICTS_ABSTRACT))
+    if not any(piece.results for piece in pieces):
+        read.why_not = SAID_NO_RESULTS if answers.no_results else NO_RESULTS
+        read.question = "" if answers.no_results else ASKED_NO_RESULTS
+        return False
+    if answers.no_results:
+        read.answered.append((CONTRADICTED, _CONTRADICTS_RESULTS))
+    return True
 
 
 def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set[str]) -> str:

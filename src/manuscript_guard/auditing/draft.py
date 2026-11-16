@@ -24,8 +24,11 @@ FIRST = (f"Draft from manuscript-guard {__version__}: findings and their places 
 #: The sections a finding goes to the References or the Language part of the draft from.
 REFERENCE_SECTIONS = frozenset({sections.REFERENCES, sections.CITED, sections.SELF_CITATION})
 LANGUAGE_SECTIONS = frozenset({sections.WRITING, sections.LANGUAGE})
-#: The notes "What was not checked" says, left out of the further findings.
-UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared"})
+#: The notes "What was not checked" says, left out of the further findings; and the questions
+#: the audit asks the author (`report.question`), which are the author's to answer and not a
+#: referee's, and whose reason "What was not checked" says.
+UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared",
+                             "question-no-abstract", "question-no-results"})
 #: The places listed for one code under Language and notation.
 FIRST_PLACES = 3
 #: What a draft always lists as not checked, whatever was given.

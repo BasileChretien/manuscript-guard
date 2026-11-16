@@ -61,6 +61,8 @@ _PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CONTENT = "http://schemas.openxmlformats.org/package/2006/content-types"
 #: Who the comments are by, as Word shows it beside each.
 AUTHOR = "manuscript-guard audit"
+#: What a question to the author is said as, apart from the findings (`report.question`).
+QUESTION = "A question for the author"
 #: A finding's own words as its message quotes them: 'behaviours', 'p<0.05'.
 _QUOTED = re.compile(r"'([^'\n]{1,60})'")
 #: Its first word, where the message opens with what it is about, a number or an
@@ -215,7 +217,7 @@ def notes_of(report, paper: Path) -> list[Note]:
     for item in items(report):
         if item.path is not None and Path(item.path).resolve() != target:
             continue
-        said = f"{item.section}: {item.message}"
+        said = f"{QUESTION}: {item.message}" if item.question else f"{item.section}: {item.message}"
         if item.hint:
             said += f"\nHint: {item.hint}"
         said = for_a_reader(said)

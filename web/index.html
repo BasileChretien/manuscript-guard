@@ -101,6 +101,20 @@
               reported as abbreviations to define, nor for their spelling.</span>
             <input id="known" name="known" type="text" autocomplete="off" spellcheck="false"
               placeholder="CD, CHU, QR, licence…" disabled></label>
+          <label class="tick"><input id="noabstract" type="checkbox" disabled>
+            <span><span class="field">The paper has no Abstract</span>
+              <span class="help">Where the report asks whether it has one: its Abstract is then
+                not looked for.</span></span></label>
+          <label class="tick"><input id="noresults" type="checkbox" disabled>
+            <span><span class="field">The paper reports no results</span>
+              <span class="help">Where the report asks which heading holds them, as for a
+                paper on a method: its Abstract is then not compared with them.</span></span></label>
+          <label><span class="field">The heading of its results</span>
+            <span class="help">Where the report asks which heading holds the results: that
+              heading's whole title, as the paper writes it. Its section is then the Results
+              to the Abstract's comparison, and to nothing else.</span>
+            <input id="results" name="results" type="text" autocomplete="off" spellcheck="false"
+              placeholder="Electron temperature relations" disabled></label>
           <label class="tick"><input id="lookup" type="checkbox" disabled>
             <span><span class="field">Check the reference list for retracted and unregistered
               works</span>

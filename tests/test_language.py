@@ -1150,6 +1150,8 @@ def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
     assert shorts("Use was lower after adjusted odds ratio analysis (AOR: 0.41).") == ["AOR"]
     assert shorts("Physical activity (PA: walking or cycling) was low.") == ["PA"]
     assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
+    # A whole number alone after the short form, as "(ESM 1)" is (decision 29).
+    assert shorts("The reporting odds ratio (ROR 3) was high.") == ["ROR"]
     # Past the aside, the 2 of a count before it is a letter like any other.
     assert shorts("Scored at entry (WSE1) and 20 (12%) had a second WSE (WSE2).") == ["WSE2"]
 

@@ -697,6 +697,31 @@ DEFINING = (
      "\N{EN DASH} DPS", "DPS"),
     ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
      "\N{EN DASH} LSS", "LSS"),
+    # Decision 29 (the author, 2026-11-16; the real-paper corpus): a word or a whole number
+    # after the short form in its bracket, and pandoc's citation prefix so; each short form
+    # of a bracket that lists them; "X = long form" and "X: long form", pair by pair, a
+    # long form wrapped onto the next line, and short forms a slash joins paired with the
+    # long form's parts; "known as X" and each of its kin; and a heading.
+    ("the rapidly varying quasars (RV quasars)", "(RV", "RV"),
+    ("the Online Supplementary Appendix (OSA 2)", "(OSA", "OSA"),
+    ("the Sloan Sky Survey [SSS DR2; @york2000]", "[SSS", "SSS"),
+    ("the Teacher Video Modules (TVM, VM)", ", VM", "VM"),
+    ("GDS = Geriatric Depression Scale; HAQ= Health Assessment Questionnaire", "HAQ=", "HAQ"),
+    ("Countries: MMQ: Memory Mood Questionnaire, given to all", "MMQ:", "MMQ"),
+    # Round 1 of #698: a typed author-year citation after the separator, as a .docx or a
+    # PDF prints pandoc's prefix; and a line break between a bracket's short form and its
+    # word, as a PDF wraps one.
+    ("the Sloan Sky Survey (SSS DR2; York et al., 2000)", "(SSS", "SSS"),
+    ("the Sloan Lens Survey (SLS DR1; York, 2000; Lee, 2001)", "(SLS", "SLS"),
+    ("the rapidly brightening blazars (RB\nblazars)", "(RB", "RB"),
+    ("RA/NRA = risk/non-risk allele", "/NRA", "NRA"),
+    ("EA/NEA = effect/non-effect allele", "EA/", "EA"),
+    ("the ratio of far to near flux, known as FNR", "as FNR", "FNR"),
+    ("the latent bias components, referred to as LBC terms", "as LBC", "LBC"),
+    ("the latent noise components, commonly referred to as LNC terms", "as LNC", "LNC"),
+    ("a gait balance scale, called GBS, in all", "called GBS", "GBS"),
+    ("the Deep Field Survey (hereafter DFS)", "hereafter DFS", "DFS"),
+    ("# Methods\n\n## Grip strength and electromyography (EMG)", "(EMG", "EMG"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -776,6 +801,34 @@ NOT_DEFINING = (
     ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
     ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
      "OR"),
+    # Decision 29's shapes with words that do not hold the short form's letters, or with
+    # more than a word after a bracket's short form, or a long form that is not the words
+    # after the sign whole: a word before its letters, one word, a block quote's next line,
+    # a statistic; short forms a slash joins with no long form to pair; and a heading.
+    ("the bright quasars (QV quasars)", "(QV", "QV"),
+    ("the online files (XSA 2)", "(XSA", "XSA"),
+    ("the protein kinase inhibitor (PKI blocker, 2180)", "(PKI", "PKI"),
+    ("the Teacher Video Modules (TVM, QZ)", ", QZ", "QZ"),
+    ("PSQ = the sleep score", "PSQ =", "PSQ"),
+    ("DCQ = Small Developmental Coordination Questionnaire", "DCQ =", "DCQ"),
+    ("KN: Kenya", "KN:", "KN"),
+    ("> BDS = Beck\n> Depression Scale", "BDS =", "BDS"),
+    # Round 1 of #698: a long form ends at its line, where the words over the break do not
+    # spell the short form by their first letters (round 2), though they hold its letters; a
+    # section's name before a colon is a label; and words after the separator that are no
+    # typed citation, a number among them.
+    ("*Note.* WDQ = Weekly\ndiary of quality.", "WDQ =", "WDQ"),
+    ("*Note.* KDQ = Kidney\ndisease and quality.", "KDQ =", "KDQ"),
+    # Round 3: a wrapped note defines nothing, though its first line holds the letters.
+    ("*Note.* MDI = Major Depression\nInventory.", "MDI =", "MDI"),
+    ("RESULT: Rates Eased Slowly Until Late Testing.", "RESULT:", "RESULT"),
+    ("**RESULTS:** Rates Eased Slowly Until Late Testing Soon.", "RESULTS:", "RESULTS"),
+    ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),
+    ("the odds ratio OR = 1.52 in all", "OR =", "OR"),
+    ("XA/YNA = effect allele", "/YNA", "YNA"),
+    ("the main survey, known as XQZ", "as XQZ", "XQZ"),
+    ("a scale called WTB in all", "called WTB", "WTB"),
+    ("## Grip strength (EGX)", "(EGX", "EGX"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -878,6 +931,62 @@ def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
         found.append((start + written.rindex(needle) + needle.index(short), short, defines))
     return text, found
+
+
+#: How a paper's title typed as a heading stands over its opening (round 1 of #698): a
+#: heading of the opening's level before it, the Introduction, the Background or the
+#: Abstract, and one a level above the opening. `{}` is the title.
+TITLED_OPENINGS = (
+    "# {}\n\n# Introduction\n\n",
+    "# {}\n\n# Background\n\n",
+    "# {}\n\n# Abstract\n\nThe abstract.\n\n# Introduction\n\n",
+    "# {}\n\n## Introduction\n\n",
+)
+#: A title's words and the short form they define, which the text uses undefined; a
+#: section's heading in the main text and the short form it defines; and a heading in the
+#: Abstract with the short form it defines, which defines nothing for the Abstract.
+TITLE_DEFINING = ("Reporting odds ratios in older adults (ROR)", "ROR")
+SECTION_DEFINING = ("## Grip strength and electromyography (EMG)", "EMG")
+ABSTRACT_HEADING = ("## Hand grip power (HGP)", "HGP")
+
+
+@st.composite
+def titled_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
+    """One paper for each of `TITLED_OPENINGS`, its title a heading that defines a short form
+    and the text under it using the form, a section's heading defining another, and, where
+    the paper has an Abstract, a heading in it defining a third; and the forms each leaves
+    undefined, in order of the alphabet: the title's, and the Abstract heading's."""
+    papers = []
+    between = _in_a_row((*_spaced(FILLER), *_PHRASES), few=2, many=5)
+    for opening in TITLED_OPENINGS:
+        title, titled = TITLE_DEFINING
+        heading, headed = SECTION_DEFINING
+        text = opening.format(title)
+        undefined = [titled]
+        if "# Abstract" in opening:
+            # The Abstract's heading goes under it, before the opening after it.
+            cut = text.index("# Introduction")
+            text = (f"{text[:cut]}{ABSTRACT_HEADING[0]}\n\nThe {ABSTRACT_HEADING[1]} was "
+                    f"read.\n\n{text[cut:]}")  # fmt: skip
+            undefined.append(ABSTRACT_HEADING[1])
+        # The text defines the heading's form again, and a table's note the text's: each
+        # restates (Basile, 2026-11-16).
+        # A second section's heading defines a form only it defines (round 2 of #698).
+        text += (f"{draw(between)} The {titled} was read.\n\n# Methods\n\n{heading}\n\n"
+                 f"{draw(between)} The grip and {HEADING_RESTATED} ({headed}) was read, and the "
+                 f"{headed} held. The {NOTED[0]} ({NOTED[1]}) was read.\n\n| Grip | n |\n|---|"
+                 f"---|\n| 12 | 40 |\n\n*Note.* {NOTED[1]} = {NOTED[0]}.\n\nThe {NOTED[1]} "
+                 f"held.\n\n{ONLY_HEADED[0]}\n\n{draw(between)} The {ONLY_HEADED[1]} was "
+                 "read.\n")  # fmt: skip
+        papers.append((text, sorted(undefined)))
+    return papers
+
+
+#: The long form the text gives the section heading's short form again, and a definition a
+#: table's note gives again; and a heading whose form nothing but the heading defines.
+HEADING_RESTATED = "electromyography"
+NOTED = ("hand grip strength", "HGS")
+ONLY_HEADED = ("## Knee extension torque (KET)", "KET")
 
 
 @st.composite

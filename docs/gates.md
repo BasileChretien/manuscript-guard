@@ -23,6 +23,47 @@ them up by what each is about ([What is checked](../README.md#what-is-checked)).
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, a crude and an adjusted model were fitted on the same rows, a Poisson model of a binary outcome has a robust variance, and the Methods name the model that was fitted; and a summary is the one its variable calls for: a mean that names its variable (`variable=`) is at least twice each SD of it above the floor the data dictionary gives the variable (`range.min`), or says why not (`skewed_ok=`), since less shows skewed data (Altman and Bland, BMJ 1996;313:1200, for a floor of 0; the Cochrane Handbook for Systematic Reviews of Interventions, version 6.5.1, section 10.5.3, for another; `mean-sd-skewed`, a warning at every stage) |
 | G16 | where the project keeps a data dictionary: each variable the analysis declares, a model reads or a value names (`variable=`) has an entry (a warning); the data were held to it, each entry and each rule counted by the emitter's `check_data` (a warning from the analysis stage); and the Methods or the supplement bind one of the counts, so that a reader sees what the data held (a warning from drafting); the last two fail at submission |
 
+## What G14 reads as a definition
+
+A definition is read by its shape, and its long form is matched to its short form letter by
+letter (Schwartz and Hearst, 2003): each letter or digit of the short form is found in
+order in the words, the first beginning a word. A shape only says where the two stand; the
+letters decide, so a short form whose words do not hold them stays undefined in every
+shape. The shapes:
+
+- the long form, then the short form in brackets, round or square: "reporting odds ratio
+  (ROR)", "hazard ratio [HR]", "(ROR; ...)", pandoc's "[SDSS; @key]"; the short form before
+  one more word or a whole number and nothing else, "changing-look AGNs (CL AGNs)", "(ESM
+  1)", or before a typed author-year citation, "(SDSS DR15; York et al., 2000)"; each short
+  form of a bracket that lists them, "(CAP, CAP-T)", each read against the words before the
+  bracket on its own;
+- the short form, then its long form in brackets: "ROR (reporting odds ratio)";
+- a short form closing a bracket after a separator: "(i.e. time to task failure; TTF)";
+- a short form after a spaced dash that ends its clause: "Basic Payment Scheme - BPS";
+- "X = long form" and "X: long form", in a sentence or a table's note, pair by pair, the long
+  form being the words after the sign whole, give or take an article, two words at least,
+  ended on its line: "ESR = erythrocyte sedimentation rate; BDI = Beck Depression
+  Inventory". One that runs on into the next line defines nothing. Short
+  forms a slash joins are paired with the parts of the long form's one word a slash joins:
+  "EA/NEA = effect/non-effect allele". A section's name before a colon, "RESULTS:", is a
+  label;
+- "known as X", "referred to as X", "commonly referred to as X", "called X" and "hereafter X"
+  after the long form;
+- in LaTeX, a citation whose optional argument opens with the short form, after its long
+  form: `\citep[SDSS DR15;][]{key}`, or its second where the first is empty, `\citet[][BC03]{key}`;
+- an entry of a list of abbreviations.
+
+A definition in a heading counts as one in the text does where a heading over it names a
+section, "## Force and electromyography (EMG)" under the Methods, in the paper's main text
+or the supplement's; one in the Abstract's headings, a title, and any heading with no named
+section over it define nothing. A caption, a heading, and the shape a note is written in, "X =
+long form" or "X: long form", wherever it stands, a sentence of the text among them, may
+restate the text's definition, as tables are asked to define their own short forms; one
+that gives the form another long form is reported. A short form followed by a
+number with a decimal point, an equals sign and a number, or more than one word gives a
+statistic or a phrase and defines nothing: "(HR 1.32, 95% CI ...)", "OR = 1.52", "(MDD 40
+mg)". What these shapes miss is in DESIGN.md's Known gaps.
+
 ## G0 and BUILD
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:

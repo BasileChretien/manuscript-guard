@@ -23600,12 +23600,16 @@ Open, recorded as each change landed:
   - English only, as every gate. Accepted.
 
 - **G14 reads a definition by its shape, and an abbreviation by its capitals.** Accepted.
-  - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
-    ROR", "ROR stands for". Its short form is then reported as undefined.
+  - A definition written as a sentence of a shape G14 does not read is not seen: "which we
+    call the ROR", "ROR stands for", "programmes, or ROR". Its short form is then reported
+    as undefined. "Known as", "referred to as", "called" and "hereafter" before it are read
+    (decision 29).
   - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
     a definition; `(ROR; ...)` and `(ROR, ...)` are.
   - A short form followed by an equals sign or a number defines nothing, so "the reporting
-    odds ratio (ROR 3.84)" leaves ROR undefined. One followed by a colon defines where its
+    odds ratio (ROR 3.84)" leaves ROR undefined; but one followed by a whole number and
+    nothing else does, as "(ESM 1)" is a definition (decision 29), so "the reporting odds
+    ratio (ROR 3)" defines ROR. One followed by a colon defines where its
     letters are found before the bracket, a statistic or not: "a higher risk (HR: 1.32, 95%
     CI ...)" defines HR as "higher risk", and in "use was lower in the young and older
     adults (AOR: 0.41, 95% CI ...)" the letters A, O and R are there in order, so AOR is
@@ -23836,6 +23840,66 @@ Open, recorded as each change landed:
     Accepted.
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`. Accepted.
+
+- **G14's shapes of decision 29 say where a long form and a short form stand; the letters
+  decide.** The author chose four more shapes on 2026-11-16 (a word or a number after a
+  bracket's short form, and a bracket that lists short forms; "X = long form" and "X: long
+  form"; "known as X" and its kin, and a heading; a LaTeX citation's note), each read through
+  the letter rule above, which no shape widens. Accepted.
+  - A table's or a figure's note may restate the text's definition, as a caption may
+    (Basile, 2026-11-16, "As a restatement"), and so may a heading the text defines again;
+    one whose long form differs is still a second meaning. A note is known by its shape,
+    "X = long form" or "X: long form", not by where it stands, so that shape in a sentence
+    restates too, and a note written "Beck Depression Inventory (BDI)" under a table is a
+    second definition.
+    Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
+  - A heading defines only where a heading over it names a section by the closed list
+    (`section_name_alone`), "## Force and electromyography (EMG)" under the Methods, in a
+    main text, the paper's or the supplement's, not in an Abstract (Basile, 2026-11-16,
+    "Only under a named section"). A title, and any heading with no such heading over it,
+    defines nothing, as before #698: so does a section of its own named otherwise,
+    "\section{Data from the Sloan Sky Survey (SSS)}", and a LaTeX file input under a
+    section of the file that inputs it is read from its own headings alone.
+    Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`
+    and `tests/test_definition_shapes.py::test_a_heading_with_no_named_section_over_it_defines_nothing`.
+  - After a sign the long form is the words after it whole, give or take an article, two
+    words at least, as in "ROR (reporting odds ratio)": a country's code, "XY: Kenya", one
+    word, and an instrument with a word before its letters, "DCQ = Small Developmental
+    Coordination Questionnaire", define nothing.
+    Pinned by `tests/test_definition_shapes.py::test_a_note_ended_on_its_line_defines`.
+  - A note whose long form runs onto the next line of its paragraph, "BDI = Beck
+    Depression" over "Inventory.", defines nothing (Basile, 2026-11-16, "Wrapped note
+    defines nothing"), so a short form only such a note defines is reported undefined.
+    Accepted.
+  - A section's name before a colon is a label (`SECTION_NAMES`),
+    but a label not on that list, "AIM:", is read as any short form is. A colon that
+    introduces words beginning with the short form's letters defines it all the same:
+    "iterations of CAPs: Content Acquisition Podcasts Professional Development (CAP-PD)"
+    defines CAP a second time, and a label in capitals before a sentence that holds its
+    letters in order defines the label.
+    Pinned by `tests/test_definition_shapes.py::test_each_shape_defines_nothing_where_its_words_do_not_match`
+    and `tests/test_definition_shapes.py::test_a_colon_that_introduces_words_with_the_letters_defines`.
+  - A bracket's short form and its word before a semicolon define where an author-year
+    citation the typed-citation reading knows follows, "(SDSS DR15; York et al., 2000)", as
+    a .docx or a PDF prints pandoc's prefix; a numbered citation there, "(SDSS DR15; 12)",
+    does not.
+    Pinned by `tests/test_definition_shapes.py::test_a_bracket_s_short_form_before_a_typed_citation_defines`.
+  - The long form is looked for where a bracket's is, in the words G14 reads and within
+    Schwartz and Hearst's window: one in maths (a ratio of two luminosities typed as `$...$`,
+    "known as IRX"), the authors a citation prints (`\citet[][BC03]{key}`), and one longer than the
+    window, a survey's name of ten words before `\citep[SAMI;][]`, are not found, and the
+    form stays undefined. Accepted.
+  - Short forms a slash joins are paired only after a sign: "derealisation/depersonalisation
+    (DR/DP)" defines neither, as before. "X, or ROR" and a case variant of a defined form,
+    "EMQue-CA" for "EmQue-CA", are no shape. A bracket that lists short forms is read only
+    where every item is one word that may be a short form; "(i.e., CAP-PD, CAP-T)" is not.
+    Pinned by `tests/test_definition_shapes.py::test_a_slash_in_a_bracket_pairs_nothing`.
+  - A LaTeX citation's note is read where its command cites (`text.latex.mask._cites`) and
+    the reader blanked it; pandoc's citation prefix, `[SDSS; @key]`, is a square bracket the
+    mask leaves the prefix of, and is read as one. A heading is read on its own, so a
+    long form is not looked for in the heading above it; in a PDF, whose headings are only
+    its sections' names, a heading's definition is a line of the text and read as one.
+    Accepted.
 
 - **A paper that declares no English is held to a count, and is built in no region.**
   (Basile, 2026-10-23.) Accepted.

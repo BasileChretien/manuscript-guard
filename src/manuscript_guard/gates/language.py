@@ -238,14 +238,11 @@ _PAIRED = re.compile(
     rf"(?<![\w/.\-])(?P<shorts>{_PARTS}(?:/{_PARTS})*)[ \t\N{{NO-BREAK SPACE}}]*(?P<sign>[=:])"
     r"(?=[ \t\N{NO-BREAK SPACE}]*(?P<long>[^;,.=:|()\[\]\r\n\x00]{1,300}))"
 )
-#: The same long form read over one line break, to the same ends, a blank line among them:
-#: what a note wrapped in its long form holds, "BDI = Beck Depression" over "Inventory."
-#: (round 2 of #698). `_paired` takes it only where its words spell the short form by their
-#: first letters (`_initials_spell`).
-_WRAPPED = re.compile(
-    r"[ \t\N{NO-BREAK SPACE}]*(?P<long>[^;,.=:|()\[\]\r\n\x00]{1,300}\r?\n"
-    r"[^;,.=:|()\[\]\r\n\x00]{1,300})"
-)
+#: A long form that runs on into the next line of its paragraph, no stop or separator at its
+#: line's end: "BDI = Beck Depression" over "Inventory.", which defines nothing, since a
+#: wrapped long form cannot be told from a sentence after it (Basile, 2026-11-16, "Wrapped
+#: note defines nothing"). A block quote's line of `>` alone is a blank one.
+_RUNS_ON = re.compile(r"\r?\n(?![ \t>\N{NO-BREAK SPACE}]*(?:\r?\n|\Z))")
 #: The words that name a short form after its long form, as "long form (SHORT)" does:
 #: "the L/U ratio known as IRX", "recovered individuals, commonly referred to as SIR
 #: models", "the survey (hereafter SDSS)" (decision 29). Not a word's end: "so-called".
@@ -1362,14 +1359,11 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
         # never a short form (round 1 of #698).
         if pair.group("sign") == ":" and section_name_alone(pair.group("shorts")) is not None:
             continue
+        if _RUNS_ON.match(prose, pair.end("long")):
+            continue
         words = pair.group("long").split()
         if len(shorts) == 1:
-            # A note wrapped in its long form, "BDI = Beck Depression" over "Inventory.", is
-            # read over the break where the words there spell the short form by their first
-            # letters, every word used; the line's alone otherwise (round 2 of #698).
-            wrapped = _WRAPPED.match(prose, pair.end())
-            over = wrapped.group("long").split() if wrapped is not None else []
-            readings = [(0, shorts[0], over if _initials_spell(shorts[0], over) else words)]
+            readings = [(0, shorts[0], words)]
         else:
             joined = [at for at, word in enumerate(words) if word.count("/") == len(shorts) - 1]
             if len(joined) != 1:
@@ -1385,14 +1379,6 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
             if long is not None:
                 found.append((pair.start("shorts") + start, _stem(short, long), long))
     return found
-
-
-def _initials_spell(short: str, words: list[str]) -> bool:
-    """Do the first letters of `words`, each word's, spell the letters and digits of `short`,
-    in order and every word used: "Beck Depression Inventory" for BDI."""
-    wanted = [char.lower() for char in short if char.isalnum()]
-    firsts = [next((char for char in word if char.isalnum()), "").lower() for word in words]
-    return bool(words) and firsts == wanted
 
 
 def _named_as(prose: str) -> list[tuple[int, str, str]]:
@@ -1672,23 +1658,20 @@ def _titles(
 
 def _the_paper_s_title(headings: Sequence[Heading], *, opens: bool) -> frozenset[int]:
     """Where each heading starts that is the paper's title typed as a heading, which is no
-    section's heading and defines nothing (round 1 of #698), in the file the paper opens with
-    (`opens`) and no other: one over the Abstract or the Introduction, as the audit reads
-    the title (`auditing.abstract._over_the_paper`); and the file's first heading where it
-    names no section and stands over them as that reading would read it a level above the
-    rest, "# Reporting odds ratio (ROR) in older adults" before "# Introduction". A file
-    input later, a LaTeX section's, holds no title (round 2). `headings` have a `title`, a
-    `level` and a `start`."""
+    section's heading and defines nothing (round 1 of #698): one over the Abstract or the
+    Introduction, as the audit reads the title (`auditing.abstract._over_the_paper`); and,
+    in the file the paper opens with (`opens`) only, its first heading where it names no
+    section and stands over them as that reading would read it a level above the rest, "#
+    Reporting odds ratio (ROR) in older adults" before "# Introduction" (round 2).
+    `headings` have a `title`, a `level` and a `start`."""
     from manuscript_guard.auditing.abstract import _over_the_paper
 
-    if not opens:
-        return frozenset()
     sections = [Section(title=heading.title, level=heading.level, body="", line=0)
                 for heading in headings]  # fmt: skip
     over = _over_the_paper(sections)
     found = {heading.start for heading, section in zip(headings, sections, strict=True)
              if id(section) in over}  # fmt: skip
-    if headings and section_name_alone(plain_title(headings[0].title)) is None:
+    if opens and headings and section_name_alone(plain_title(headings[0].title)) is None:
         lifted = [Section(title=headings[0].title, level=0, body="", line=0), *sections[1:]]
         if id(lifted[0]) in _over_the_paper(lifted):
             found.add(headings[0].start)
@@ -1848,11 +1831,13 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
     for supplementary in (False, True):
         read: dict[str, _LatexFile] = {}
         document = read_document(root, supplementary=supplementary)
+        # The file the paper opens with: the first that prints a heading (round 3 of #698).
+        opener = next((source.path for source, start, end in _stretches(document.sources)
+                       if any(start <= h.start < end for h in source.reading.headings)), None)
         for source, start, end in _stretches(document.sources):
             if source.path not in read:
-                read[source.path] = _latex_file(
-                    source, supplementary, abstract_title,
-                    opens=source.path == document.sources[0].path)  # fmt: skip
+                read[source.path] = _latex_file(source, supplementary, abstract_title,
+                                                opens=source.path == opener)  # fmt: skip
             whole = read[source.path]
             outside = ((0, start), (end, len(source.text)))
             files.append(_assembled(

@@ -2622,15 +2622,10 @@ def _a_sign_s_long_form_runs_on_past_its_line(patch: pytest.MonkeyPatch) -> None
     patch.setattr(language_gate, "_PAIRED", re.compile(pattern.replace(ended, r"\x00]{1,300}")))
 
 
-def _a_wrapped_note_is_cut_at_its_line(patch: pytest.MonkeyPatch) -> None:
+def _a_wrapped_note_defines_from_its_first_line(patch: pytest.MonkeyPatch) -> None:
     """Round 2 of #698: "BDI = Beck Depression" over "Inventory." was read as "Beck
     Depression"."""
-    patch.setattr(language_gate, "_WRAPPED", re.compile("(?!)"))
-
-
-def _a_wrapped_note_needs_only_its_letters(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_initials_spell", lambda short, words: bool(
-        language_gate._long_form(short, " ".join(words))))  # fmt: skip
+    patch.setattr(language_gate, "_RUNS_ON", re.compile("(?!)"))
 
 
 def _a_section_s_name_before_a_colon_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
@@ -25962,12 +25957,8 @@ BROKEN = {
         _a_sign_s_long_form_is_one_word_or_more,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a wrapped note is cut at its line": (
-        _a_wrapped_note_is_cut_at_its_line,
-        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
-    ),
-    "a wrapped note needs only its letters": (
-        _a_wrapped_note_needs_only_its_letters,
+    "a wrapped note defines from its first line": (
+        _a_wrapped_note_defines_from_its_first_line,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a heading defines nothing, in the property of titles": (

@@ -714,9 +714,6 @@ DEFINING = (
     ("the Sloan Sky Survey (SSS DR2; York et al., 2000)", "(SSS", "SSS"),
     ("the Sloan Lens Survey (SLS DR1; York, 2000; Lee, 2001)", "(SLS", "SLS"),
     ("the rapidly brightening blazars (RB\nblazars)", "(RB", "RB"),
-    # Round 2 of #698: a note wrapped in its long form, read over the break, whose words'
-    # first letters spell the short form.
-    ("*Note.* GDQ = Geriatric\nDepression Questionnaire.", "GDQ =", "GDQ"),
     ("RA/NRA = risk/non-risk allele", "/NRA", "NRA"),
     ("EA/NEA = effect/non-effect allele", "EA/", "EA"),
     ("the ratio of far to near flux, known as FNR", "as FNR", "FNR"),
@@ -822,6 +819,8 @@ NOT_DEFINING = (
     # typed citation, a number among them.
     ("*Note.* WDQ = Weekly\ndiary of quality.", "WDQ =", "WDQ"),
     ("*Note.* KDQ = Kidney\ndisease and quality.", "KDQ =", "KDQ"),
+    # Round 3: a wrapped note defines nothing, though its first line holds the letters.
+    ("*Note.* MDI = Major Depression\nInventory.", "MDI =", "MDI"),
     ("RESULT: Rates Eased Slowly Until Late Testing.", "RESULT:", "RESULT"),
     ("**RESULTS:** Rates Eased Slowly Until Late Testing Soon.", "RESULTS:", "RESULTS"),
     ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),

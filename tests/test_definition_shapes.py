@@ -226,23 +226,24 @@ def test_a_heading_in_the_abstract_defines_nothing_for_it(project: Path) -> None
     assert ("abbreviation-undefined", "EMG") in found, found
 
 
-def test_a_sign_s_long_form_ends_at_its_line() -> None:
-    """Round 1 of #698: the long form ran on into the next line, "ESR = erythrocyte
-    sedimentation rate" over "Values are medians", and was quoted so; a PDF's note stands a
-    line to a pair."""
-    read = _file(0, Path("main.md"), "ESR = erythrocyte sedimentation rate\nValues are medians\n",
-                 [], False)  # fmt: skip
-    assert read.definitions == [(0, "ESR", "erythrocyte sedimentation rate")], read.definitions
+@pytest.mark.parametrize("note", [
+    "ESR = erythrocyte sedimentation rate\nValues are medians", "*Note.* mRNA = messenger RNA\n"
+    "Not adjusted.", "*Note.* ECG = electrocardiogram\nChanges graded.",
+    "*Note.* BDI = Beck Depression\nInventory."])  # fmt: skip
+def test_a_note_whose_long_form_runs_onto_the_next_line_defines_nothing(note: str) -> None:
+    """Basile, 2026-11-16, "Wrapped note defines nothing" (rounds 1 to 3 of #698): a wrapped
+    long form cannot be told from a sentence after it, so it is refused, not guessed."""
+    assert _file(0, Path("main.md"), f"{note}\n", [], False).definitions == []
 
 
-def test_a_note_wrapped_in_its_long_form_is_read_across_the_break(project: Path) -> None:
-    """Round 2 of #698: a note wrapped in the middle of its long form, "BDI = Beck
-    Depression" over "Inventory.", was cut at its line and read as a second meaning, "Beck
-    Depression". The span over the break is the long form where its words' first letters
-    spell the short form, every word used; else the line's, as before."""
-    read = _file(0, Path("main.md"), "*Note.* BDI = Beck Depression\nInventory.\n", [], False)
-    assert [(short, long) for _at, short, long in read.definitions] == [
-        ("BDI", "Beck Depression Inventory")], read.definitions
+@pytest.mark.parametrize("note", ["*Note.* ESR = erythrocyte sedimentation rate.\nValues.",
+                                  "Values are medians.\nESR = erythrocyte sedimentation rate"])
+def test_a_note_ended_on_its_line_defines(note: str) -> None:
+    read = _file(0, Path("main.md"), f"{note}\n\nThe ESR held.\n", [], False)
+    assert [short for _at, short, _long in read.definitions] == ["ESR"], read.definitions
+
+
+def test_a_wrapped_note_beside_the_text_s_definition_says_nothing(project: Path) -> None:
     assert _judged(project, "# Methods\n\nWe used the Beck Depression Inventory (BDI).\n\n# "
                             "Results\n\n| Score | n |\n|---|---|\n| 12 | 40 |\n\n*Note.* BDI = "
                             "Beck Depression\nInventory.\n\nThe BDI was low.\n") == []
@@ -286,11 +287,19 @@ def test_a_latex_input_file_s_first_heading_is_no_title(tmp_path: Path) -> None:
     (tmp_path / "main.tex").write_text(_latex("\\section{Introduction}\nWe read it.\n\n"
                                               "\\input{sections/data}\n"), encoding="utf-8")
     (tmp_path / "sections" / "data.tex").write_text(
-        "\\section{Data from the Sloan Sky Survey (SSS)}\n\\subsection{Background}\n"
+        "\\section{Data from the Sloan Sky Survey (SSS)}\n\\section{Background}\n"
         "The SSS was read.\n", encoding="utf-8")
     defined = [found for read in _latex_read(tmp_path, None)
                for _at, found, _long in read.definitions]  # fmt: skip
     assert defined == ["SSS"], defined
+    # The file the paper opens with is the first that prints a heading (round 3 of #698).
+    root = tmp_path / "front"
+    root.mkdir()
+    (root / "main.tex").write_text(_latex("\\input{front}\n\\input{body}\n"), encoding="utf-8")
+    (root / "front.tex").write_text("\\section*{Proton pump inhibitor (PPI) use in older "
+                                    "adults}\n\\section{Introduction}\n", encoding="utf-8")
+    (root / "body.tex").write_text("The PPI was read.\n", encoding="utf-8")
+    assert not [one for read in _latex_read(root, None) for one in read.definitions]
 
 
 @pytest.mark.parametrize("label", ["RESULT:", "**RESULT:**", "Result:"])

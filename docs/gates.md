@@ -42,9 +42,8 @@ shape. The shapes:
 - a short form after a spaced dash that ends its clause: "Basic Payment Scheme - BPS";
 - "X = long form" and "X: long form", in a sentence or a table's note, pair by pair, the long
   form being the words after the sign whole, give or take an article, two words at least,
-  on its line, or over one line break where the words there spell the short form by their
-  first letters, every word used, "BDI = Beck Depression" over "Inventory.": "ESR =
-  erythrocyte sedimentation rate; BDI = Beck Depression Inventory". Short
+  ended on its line: "ESR = erythrocyte sedimentation rate; BDI = Beck Depression
+  Inventory". One that runs on into the next line defines nothing. Short
   forms a slash joins are paired with the parts of the long form's one word a slash joins:
   "EA/NEA = effect/non-effect allele". A section's name before a colon, "RESULTS:", is a
   label;

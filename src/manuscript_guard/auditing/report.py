@@ -103,9 +103,11 @@ def _asked(pdf: bool) -> dict[str, str]:
 
 
 def _a_pdf(report) -> bool:
-    """Whether the paper, the first given, is a PDF, which cannot be given a heading."""
+    """Whether every paper read, figures aside, is a PDF, which cannot be given a heading: a
+    PDF supplement beside a Word paper leaves it the Word paper's (round 2 of #697)."""
     papers, pdfs = getattr(report, "papers", ()), getattr(report, "pdfs", None) or {}
-    return bool(papers) and papers[0] in pdfs
+    return bool(pdfs) and not any(path.suffix.lower() in (".docx", ".md", ".markdown", ".txt",
+                                                          ".tex") for path in papers)
 
 
 @dataclass(frozen=True)

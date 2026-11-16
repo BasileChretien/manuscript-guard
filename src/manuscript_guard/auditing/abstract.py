@@ -118,10 +118,10 @@ _ABSTRACT_SEEN = ("No heading names the Abstract, so it was not compared with th
                   "the paper no Abstract? If its first paragraph, or the text under its title, "
                   'is the Abstract, put the heading "Abstract" over it')  # fmt: skip
 _NO_ABSTRACT_ANSWER = ("; if it has none, run `audit` again with `--no-abstract`, and the "
-                       "audit then takes it as answered.")  # fmt: skip
+                       "audit then takes the paper as having none.")  # fmt: skip
 ASK_NO_ABSTRACT = f"{_ABSTRACT_SEEN} and audit it again{_NO_ABSTRACT_ANSWER}"
-ASK_NO_ABSTRACT_PDF = (f"{_ABSTRACT_SEEN} in the document the PDF was made from, which a PDF "
-                       f"cannot be given, and audit that document{_NO_ABSTRACT_ANSWER}")
+ASK_NO_ABSTRACT_PDF = (f"{_ABSTRACT_SEEN} (a PDF cannot be given one) in the document the PDF "
+                       f"was made from, and audit that document{_NO_ABSTRACT_ANSWER}")
 _RESULTS_SEEN = (
     f'No section is read as the Results (no heading is "Results" or one of the names they go '
     f"by: {_NAMES}), so the Abstract was not compared with them. Which heading holds the "
@@ -345,12 +345,15 @@ def placed(sections: list[Section], notes: frozenset[int] = frozenset(),
     searched = _searched(sections, place, walk, notes, given)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     states: dict[str, str] = {}
+    unanswered = _searched(sections, place, walk, notes)
     for section in sections:
         title = given_title(section.title)
         if title not in given:
             continue
-        state = (NOT_READ if searched(section.line) is not REPORTED
-                 else READ_REPORTING_NOTHING if _reports_nothing(section, walk) else READ)
+        # Said where the comparison would not have searched it unanswered: a Discussion
+        # under the Results is searched already (round 2 of #697).
+        state = (NOT_READ if searched(section.line) is not REPORTED else READ
+                 if unanswered(section.line) is REPORTED else READ_REPORTING_NOTHING)
         states[title] = max(states.get(title, NOT_READ), state, key=NAMED_STATES.index)
     results = (any(place(s.line) is REPORTED for s in sections if names_results(s.title))
                or _results_by_another_name(sections, searched)

@@ -708,7 +708,12 @@ DEFINING = (
     ("the Teacher Video Modules (TVM, VM)", ", VM", "VM"),
     ("GDS = Geriatric Depression Scale; HAQ= Health Assessment Questionnaire", "HAQ=", "HAQ"),
     ("Countries: MMQ: Memory Mood Questionnaire, given to all", "MMQ:", "MMQ"),
-    ("*Note.* BAI = Beck Anxiety\nInventory.", "BAI =", "BAI"),
+    # Round 1 of #698: a typed author-year citation after the separator, as a .docx or a
+    # PDF prints pandoc's prefix; and a line break between a bracket's short form and its
+    # word, as a PDF wraps one.
+    ("the Sloan Sky Survey (SSS DR2; York et al., 2000)", "(SSS", "SSS"),
+    ("the Sloan Lens Survey (SLS DR1; York, 2000; Lee, 2001)", "(SLS", "SLS"),
+    ("the rapidly brightening blazars (RB\nblazars)", "(RB", "RB"),
     ("RA/NRA = risk/non-risk allele", "/NRA", "NRA"),
     ("EA/NEA = effect/non-effect allele", "EA/", "EA"),
     ("the ratio of far to near flux, known as FNR", "as FNR", "FNR"),
@@ -808,6 +813,12 @@ NOT_DEFINING = (
     ("DCQ = Small Developmental Coordination Questionnaire", "DCQ =", "DCQ"),
     ("KN: Kenya", "KN:", "KN"),
     ("> BDS = Beck\n> Depression Scale", "BDS =", "BDS"),
+    # Round 1 of #698: a long form ends at its line; a section's name before a colon is a
+    # label; and words after the separator that are no typed citation, a number among them.
+    ("*Note.* GDQ = Geriatric\nDepression Questionnaire.", "GDQ =", "GDQ"),
+    ("RESULT: Rates Eased Slowly Until Late Testing.", "RESULT:", "RESULT"),
+    ("**RESULTS:** Rates Eased Slowly Until Late Testing Soon.", "RESULTS:", "RESULTS"),
+    ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),
     ("the odds ratio OR = 1.52 in all", "OR =", "OR"),
     ("XA/YNA = effect allele", "/YNA", "YNA"),
     ("the main survey, known as XQZ", "as XQZ", "XQZ"),
@@ -915,6 +926,59 @@ def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
         found.append((start + written.rindex(needle) + needle.index(short), short, defines))
     return text, found
+
+
+#: How a paper's title typed as a heading stands over its opening (round 1 of #698): a
+#: heading of the opening's level before it, the Introduction, the Background or the
+#: Abstract, and one a level above the opening. `{}` is the title.
+TITLED_OPENINGS = (
+    "# {}\n\n# Introduction\n\n",
+    "# {}\n\n# Background\n\n",
+    "# {}\n\n# Abstract\n\nThe abstract.\n\n# Introduction\n\n",
+    "# {}\n\n## Introduction\n\n",
+)
+#: A title's words and the short form they define, which the text uses undefined; a
+#: section's heading in the main text and the short form it defines; and a heading in the
+#: Abstract with the short form it defines, which defines nothing for the Abstract.
+TITLE_DEFINING = ("Reporting odds ratios in older adults (ROR)", "ROR")
+SECTION_DEFINING = ("## Grip strength and electromyography (EMG)", "EMG")
+ABSTRACT_HEADING = ("## Hand grip power (HGP)", "HGP")
+
+
+@st.composite
+def titled_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
+    """One paper for each of `TITLED_OPENINGS`, its title a heading that defines a short form
+    and the text under it using the form, a section's heading defining another, and, where
+    the paper has an Abstract, a heading in it defining a third; and the forms each leaves
+    undefined, in order of the alphabet: the title's, and the Abstract heading's."""
+    papers = []
+    between = _in_a_row((*_spaced(FILLER), *_PHRASES), few=2, many=5)
+    for opening in TITLED_OPENINGS:
+        title, titled = TITLE_DEFINING
+        heading, headed = SECTION_DEFINING
+        text = opening.format(title)
+        undefined = [titled]
+        if "# Abstract" in opening:
+            # The Abstract's heading goes under it, before the opening after it.
+            cut = text.index("# Introduction")
+            text = (f"{text[:cut]}{ABSTRACT_HEADING[0]}\n\nThe {ABSTRACT_HEADING[1]} was "
+                    f"read.\n\n{text[cut:]}")  # fmt: skip
+            undefined.append(ABSTRACT_HEADING[1])
+        # The text defines the heading's form again, and a table's note the text's: each
+        # restates (Basile, 2026-11-16).
+        text += (f"{draw(between)} The {titled} was read.\n\n# Methods\n\n{heading}\n\n"
+                 f"{draw(between)} The grip and {HEADING_RESTATED} ({headed}) was read, and the "
+                 f"{headed} held. The {NOTED[0]} ({NOTED[1]}) was read.\n\n| Grip | n |\n|---|"
+                 f"---|\n| 12 | 40 |\n\n*Note.* {NOTED[1]} = {NOTED[0]}.\n\nThe {NOTED[1]} "
+                 "held.\n")  # fmt: skip
+        papers.append((text, sorted(undefined)))
+    return papers
+
+
+#: The long form the text gives the section heading's short form again, and a definition a
+#: table's note gives again.
+HEADING_RESTATED = "electromyography"
+NOTED = ("hand grip strength", "HGS")
 
 
 @st.composite

@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -74,6 +74,7 @@ from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
+from manuscript_guard.text.section_names import plain as plain_title
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
 from manuscript_guard.text.tables import table_lines
@@ -143,12 +144,16 @@ _OPENS_WITH = re.compile(
 # nothing but space follows, as a citation the mask has blanked leaves pandoc's "[SDSS
 # DR15; @york2000]" and as a LaTeX citation's note is, `\\citep[SDSS DR15;][]{key}`. More
 # after it is a sentence's, "Wortmannin (PI3K inhibitor, 2180)", and a statistic is none:
-# "(HR 1.32, 95% CI ...)", "(MDD 40 mg)".
-_OPENS_BEFORE = re.compile(
+# "(HR 1.32, 95% CI ...)", "(MDD 40 mg)". One line break between them is a space, as a PDF
+# wraps "(CL\nAGNs)" (round 1 of #698). `_BEFORE_A_CITATION` is the short form and its word
+# before a separator, where an author-year citation typed as text follows it.
+_SHORT_AND_WORD = (
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[{re.escape(_QUOTES)}]*"
-    rf"[ \t\N{{NO-BREAK SPACE}}]+[{re.escape(_QUOTES)}]*"
-    rf"(?:(?=[^\W_]*[^\W\d_]){_PARTS}|\d+)[\s{re.escape(_QUOTES)}]*(?:[;,]\s*)?$"
+    rf"(?=\s)[ \t\N{{NO-BREAK SPACE}}]*(?:\r?\n[ \t\N{{NO-BREAK SPACE}}]*)?[{re.escape(_QUOTES)}]*"
+    rf"(?:(?=[^\W_]*[^\W\d_]){_PARTS}|\d+)[\s{re.escape(_QUOTES)}]*"
 )
+_OPENS_BEFORE = re.compile(rf"{_SHORT_AND_WORD}(?:[;,]\s*)?$")
+_BEFORE_A_CITATION = re.compile(rf"{_SHORT_AND_WORD};")
 # A bracket that lists short forms and nothing else, "(CAP, CAP-T, CAP-TV, CAP-PD)" (an
 # education preprint of the real-paper corpus): each is read against the words before
 # the bracket, as one alone is.
@@ -225,14 +230,13 @@ _BOUND = re.compile(
 #: effect/non-effect allele" (decision 29; three preprints of the real-paper corpus), or a
 #: sentence's. Several short forms a slash joins are paired with the parts of the long
 #: form's word a slash joins (`_paired`). Nothing that joins a word stands before it, so
-#: `p_exp = ...` names no `exp`. The long form goes on over a line break only onto a line
-#: that opens with a word, as a wrapped line does: not onto a block quote's next line. It is
-#: looked ahead to, so that a pair after a label, "Countries: CM: Cameroon", is read as well
-#: as the label.
+#: `p_exp = ...` names no `exp`. The long form ends at its line's end too: running on, it
+#: took the next line's words, "ESR = erythrocyte sedimentation rate" over "Values are
+#: medians", and a PDF's note stands a line to a pair (round 1 of #698). It is looked ahead
+#: to, so that a pair after a label, "Countries: CM: Cameroon", is read as well as the label.
 _PAIRED = re.compile(
-    rf"(?<![\w/.\-])(?P<shorts>{_PARTS}(?:/{_PARTS})*)[ \t\N{{NO-BREAK SPACE}}]*[=:]"
-    r"(?=[ \t\N{NO-BREAK SPACE}]*(?P<long>(?:[^;,.=:|()\[\]\n\x00]"
-    r"|\r?\n(?=[ \t\N{NO-BREAK SPACE}]*[^\W\d_])){1,300}))"
+    rf"(?<![\w/.\-])(?P<shorts>{_PARTS}(?:/{_PARTS})*)[ \t\N{{NO-BREAK SPACE}}]*(?P<sign>[=:])"
+    r"(?=[ \t\N{NO-BREAK SPACE}]*(?P<long>[^;,.=:|()\[\]\r\n\x00]{1,300}))"
 )
 #: The words that name a short form after its long form, as "long form (SHORT)" does:
 #: "the L/U ratio known as IRX", "recovered individuals, commonly referred to as SIR
@@ -1070,7 +1074,8 @@ def _stem(short: str, long: str) -> str:
 def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
     """A definition with its short form in the bracket: "reporting odds ratio (ROR)", and
     before one more word or a number, "changing-look AGNs (CL AGNs)" (`_OPENS_BEFORE`)."""
-    opening = _OPENS_WITH.match(bracket.group(1)) or _OPENS_BEFORE.match(bracket.group(1))
+    opening = (_OPENS_WITH.match(bracket.group(1)) or _OPENS_BEFORE.match(bracket.group(1))
+               or _before_a_typed_citation(prose, bracket))  # fmt: skip
     if opening is None or not _may_be_defined(opening.group("short")):
         return None
     short = opening.group("short")
@@ -1078,6 +1083,35 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     if long is None:
         return None
     return bracket.start(1) + opening.start("short"), _stem(short, long), long
+
+
+#: A number, with the letter a year takes where an author has two works in it: whether it is
+#: a citation's year is the typed-citation reading's to say (`typed_citation`).
+_A_NUMBER = re.compile(r"(?<![\w.])\d+[a-z]?(?![\w])")
+
+
+def _before_a_typed_citation(prose: str, bracket: re.Match[str]) -> re.Match[str] | None:
+    """The short form and its word before a semicolon, where what follows it in the bracket is
+    author-year citations typed as text, each part a year the typed-citation reading reads as
+    one (`typed_citation`): "(SDSS DR15; York et al., 2000)", which a .docx or a PDF prints
+    where pandoc's `[SDSS DR15; @york2000]` stands (round 1 of #698). None otherwise."""
+    from manuscript_guard.gates.typed_citations import typed_citation
+
+    opening = _BEFORE_A_CITATION.match(bracket.group(1))
+    if opening is None:
+        return None
+    at = bracket.start(1) + opening.end()
+    parts, start = [], at
+    for stop in [*(at + found.start() for found in re.finditer(";", prose[at : bracket.end(1)])),
+                 bracket.end(1)]:  # fmt: skip
+        parts.append((start, stop))
+        start = stop + 1
+    for low, high in parts:
+        years = list(_A_NUMBER.finditer(prose, low, high))
+        if not years or prose[years[-1].end() : high].strip() or not all(
+                typed_citation(prose, year.start(), year.end()) for year in years):  # fmt: skip
+            return None
+    return opening
 
 
 def _short_closing(bracket: re.Match[str]) -> tuple[int, str, str] | None:
@@ -1316,6 +1350,10 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
     found = []
     for pair in _PAIRED.finditer(prose):
         shorts = pair.group("shorts").split("/")
+        # A section's name before a colon is a label, a structured abstract's "RESULT:", and
+        # never a short form (round 1 of #698).
+        if pair.group("sign") == ":" and section_name_alone(pair.group("shorts")) is not None:
+            continue
         words = pair.group("long").split()
         if len(shorts) == 1:
             readings = [(0, shorts[0], words)]
@@ -1533,6 +1571,8 @@ class _File:
     glossaries: tuple[tuple[int, int], ...] = ()
     #: Where the definitions stand that are in a caption or a glossary.
     restating: frozenset[int] = frozenset()
+    #: Where the definitions stand that are in a heading, which define only in the main text.
+    in_headings: frozenset[int] = frozenset()
     #: Whether the file has a heading; None for a LaTeX file, whose sections G14 reads from
     #: its commands.
     headed: bool | None = None
@@ -1594,15 +1634,41 @@ def _file(
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
-        title_page=title_page, titles=_titles(hidden, spans),
+        title_page=title_page,
+        titles=_titles(hidden, spans, _the_paper_s_title(headings, opens=opens)),
     )  # fmt: skip
 
 
-def _titles(words: str, spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, str], ...]:
+def _titles(
+    words: str, spans: Iterable[tuple[int, int]], title: frozenset[int] = frozenset()
+) -> tuple[tuple[int, str], ...]:
     """Each heading's text in `words`, where it starts, every NUL a space: what a definition
-    in a heading is read in, each heading on its own."""
+    in a heading is read in, each heading on its own. Not the paper's title typed as a
+    heading, whose starts are `title` (`_the_paper_s_title`)."""
     return tuple((start, words[start:end].replace(NUL, " ")) for start, end in sorted(spans)
-                 if words[start:end].strip(NUL + " \t\r\n"))  # fmt: skip
+                 if start not in title and words[start:end].strip(NUL + " \t\r\n"))  # fmt: skip
+
+
+def _the_paper_s_title(headings: Sequence[Heading], *, opens: bool) -> frozenset[int]:
+    """Where each heading starts that is the paper's title typed as a heading, which is no
+    section's heading and defines nothing (round 1 of #698): one over the Abstract or the
+    Introduction, as the audit reads the title (`auditing.abstract._over_the_paper`); and,
+    in the file the paper opens with, its first heading where it names no section and stands
+    over them as that reading would read it a level above the rest, "# Reporting odds ratio
+    (ROR) in older adults" before "# Introduction". `headings` have a `title`, a `level` and a
+    `start`."""
+    from manuscript_guard.auditing.abstract import _over_the_paper
+
+    sections = [Section(title=heading.title, level=heading.level, body="", line=0)
+                for heading in headings]  # fmt: skip
+    over = _over_the_paper(sections)
+    found = {heading.start for heading, section in zip(headings, sections, strict=True)
+             if id(section) in over}  # fmt: skip
+    if opens and headings and section_name_alone(plain_title(headings[0].title)) is None:
+        lifted = [Section(title=headings[0].title, level=0, body="", line=0), *sections[1:]]
+        if id(lifted[0]) in _over_the_paper(lifted):
+            found.add(headings[0].start)
+    return frozenset(found)
 
 
 def _in_titles(titles: Iterable[tuple[int, str]]) -> list[tuple[int, str, str]]:
@@ -1723,12 +1789,17 @@ def _assembled(
               for span in glossaries for entry in glossary.entries(prose, raw, span)
               if _may_be_defined(entry.short)]  # fmt: skip
     entries = {at for at, _short, _long in listed}
-    sentences = [*_definitions(prose, raw), *_in_titles(titles)]
+    headed = _in_titles(titles)
+    sentences = [*_definitions(prose, raw), *headed]
     definitions = [*(each for each in sentences if each[0] not in entries), *listed]
+    # A heading's definition and a note's, "X = long form", may restate the text's, as a
+    # caption's may (Basile, 2026-11-16, "As a restatement"; round 1 of #698).
+    restated = {at for at, _short, _long in (*headed, *_paired(prose))}
     restating = frozenset(at for at, _short, _long in definitions
-                          if _restates(captions, glossaries, at))  # fmt: skip
+                          if at in restated or _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)
     return _File(
+        in_headings=frozenset(at for at, _short, _long in headed),
         order=order,
         path=path,
         text=text,
@@ -1851,7 +1922,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         view=_hide(markdown_view(source, bindings(source)[0]), accessions),
         words=_hide(seen.text, accessions),
         untitled=_hide(seen.text, [*titles, *accessions]),
-        titles=_titles(_hide(seen.text, accessions), titles),
+        titles=_titles(_hide(seen.text, accessions), titles,
+                       _the_paper_s_title(source.reading.headings, opens=True)),
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
@@ -1941,6 +2013,10 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             # Nothing on the title page is a definition: its institutions' names are not
             # the paper's terms (Basile, 2026-11-12).
             if region.scope is None or _on_the_title_page(file, offset):
+                continue
+            # A heading defines only as a section's heading of the main text (round 1 of
+            # #698).
+            if offset in file.in_headings and region.scope != BODY:
                 continue
             defined.add(short)
             defining.add((file.order, offset))

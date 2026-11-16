@@ -34,23 +34,28 @@ shape. The shapes:
 - the long form, then the short form in brackets, round or square: "reporting odds ratio
   (ROR)", "hazard ratio [HR]", "(ROR; ...)", pandoc's "[SDSS; @key]"; the short form before
   one more word or a whole number and nothing else, "changing-look AGNs (CL AGNs)", "(ESM
-  1)"; each short form of a bracket that lists them, "(CAP, CAP-T)", each read against the
-  words before the bracket on its own;
+  1)", or before a typed author-year citation, "(SDSS DR15; York et al., 2000)"; each short
+  form of a bracket that lists them, "(CAP, CAP-T)", each read against the words before the
+  bracket on its own;
 - the short form, then its long form in brackets: "ROR (reporting odds ratio)";
 - a short form closing a bracket after a separator: "(i.e. time to task failure; TTF)";
 - a short form after a spaced dash that ends its clause: "Basic Payment Scheme - BPS";
 - "X = long form" and "X: long form", in a sentence or a table's note, pair by pair, the long
-  form being the words after the sign whole, give or take an article, two words at least:
-  "ESR = erythrocyte sedimentation rate; BDI = Beck Depression Inventory". Short forms a
-  slash joins are paired with the parts of the long form's one word a slash joins: "EA/NEA
-  = effect/non-effect allele";
+  form being the words after the sign whole, give or take an article, two words at least,
+  on its line: "ESR = erythrocyte sedimentation rate; BDI = Beck Depression Inventory". Short
+  forms a slash joins are paired with the parts of the long form's one word a slash joins:
+  "EA/NEA = effect/non-effect allele". A section's name before a colon, "RESULTS:", is a
+  label;
 - "known as X", "referred to as X", "commonly referred to as X", "called X" and "hereafter X"
   after the long form;
 - in LaTeX, a citation whose optional argument opens with the short form, after its long
   form: `\citep[SDSS DR15;][]{key}`, or its second where the first is empty, `\citet[][BC03]{key}`;
 - an entry of a list of abbreviations.
 
-A definition in a heading counts as one in the text does. A short form followed by a
+A definition in a section's heading of the main text counts as one in the text does; the
+paper's title typed as a heading defines nothing. A note's "X = long form", a caption and a
+heading may restate the text's definition, as tables are asked to define their own short
+forms; one that gives the form another long form is reported. A short form followed by a
 number with a decimal point, an equals sign and a number, or more than one word gives a
 statistic or a phrase and defines nothing: "(HR 1.32, 95% CI ...)", "OR = 1.52", "(MDD 40
 mg)". What these shapes miss is in DESIGN.md's Known gaps.

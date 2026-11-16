@@ -2159,6 +2159,26 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
             assert at not in defined, (short, text)
 
 
+from generated import titled_papers  # noqa: E402
+
+
+@holds(30, titled_papers())
+def test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does(
+    drawn: list[tuple[str, list[str]]],
+) -> None:
+    """Round 1 of #698: the paper's title typed as a heading, of the opening's level before
+    the Introduction, the Background or the Abstract, or a level above the Introduction, is
+    no section's heading and defines nothing; a heading in the Abstract defines nothing for
+    it; a section's heading in the main text defines."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for text, undefined in drawn:
+        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+                                      Path("."))  # fmt: skip
+        found = sorted((f.code, f.message.split()[0]) for f in report.findings
+                       if f.code.startswith("abbreviation-"))  # fmt: skip
+        assert found == [("abbreviation-undefined", short) for short in undefined], (found, text)
+
+
 @holds(60, capitalised())
 def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     drawn: tuple[str, list[str]],
@@ -2594,12 +2614,92 @@ def _a_sign_s_long_form_is_one_word_or_more(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_spelt_after", found)
 
 
-def _a_sign_s_long_form_runs_into_a_block_quote_s_next_line(patch: pytest.MonkeyPatch) -> None:
+def _a_sign_s_long_form_runs_on_past_its_line(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #698: "ESR = erythrocyte sedimentation rate" took the next line's words."""
     pattern = language_gate._PAIRED.pattern
-    wrapped = r"\r?\n(?=[ \t\N{NO-BREAK SPACE}]*[^\W\d_])"
-    assert wrapped in pattern, pattern
-    patch.setattr(language_gate, "_PAIRED",
-                  re.compile(pattern.replace(wrapped, r"\r?\n(?![ \t\r]*\n)")))  # fmt: skip
+    ended = r"\r\n\x00]{1,300}"
+    assert ended in pattern, pattern
+    patch.setattr(language_gate, "_PAIRED", re.compile(pattern.replace(ended, r"\x00]{1,300}")))
+
+
+def _a_section_s_name_before_a_colon_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._paired
+
+    def unlabelled(prose: str) -> list[tuple[int, str, str]]:
+        with pytest.MonkeyPatch.context() as inner:
+            inner.setattr(language_gate, "section_name_alone", lambda text: None)
+            return real(prose)
+
+    patch.setattr(language_gate, "_paired", unlabelled)
+
+
+def _a_typed_citation_after_a_bracket_s_separator_is_more_words(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_before_a_typed_citation", lambda prose, bracket: None)
+
+
+def _any_words_after_a_bracket_s_separator_are_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import typed_citations
+
+    patch.setattr(typed_citations, "typed_citation", lambda text, start, end: True)
+
+
+def _a_line_break_in_a_bracket_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    broken = r"(?:\r?\n[ \t\N{NO-BREAK SPACE}]*)?"
+    for name in ("_OPENS_BEFORE", "_BEFORE_A_CITATION"):
+        pattern = getattr(language_gate, name).pattern
+        assert broken in pattern, pattern
+        patch.setattr(language_gate, name, re.compile(pattern.replace(broken, "")))
+
+
+def _the_paper_s_title_is_a_section_s_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_the_paper_s_title", lambda headings, *, opens: frozenset())
+
+
+def _only_a_heading_over_the_paper_is_its_title(patch: pytest.MonkeyPatch) -> None:
+    """The first heading before the opening, at its level, read as a section's."""
+    from manuscript_guard.auditing.abstract import _over_the_paper
+    from manuscript_guard.text.sections import Section
+
+    def over(headings, *, opens: bool) -> frozenset[int]:
+        sections = [Section(title=heading.title, level=heading.level, body="", line=0)
+                    for heading in headings]  # fmt: skip
+        found = _over_the_paper(sections)
+        return frozenset(heading.start for heading, section in zip(headings, sections, strict=True)
+                         if id(section) in found)  # fmt: skip
+
+    patch.setattr(language_gate, "_the_paper_s_title", over)
+
+
+def _a_heading_defines_in_any_part(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._assembled
+
+    def assembled(*args, **more):
+        return dataclasses.replace(real(*args, **more), in_headings=frozenset())
+
+    patch.setattr(language_gate, "_assembled", assembled)
+
+
+def _a_note_restates_nothing(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._assembled
+
+    def assembled(*args, **more):
+        read = real(*args, **more)
+        noted = {at for at, _short, _long in language_gate._paired(read.prose)}
+        return dataclasses.replace(read, restating=read.restating - noted)
+
+    patch.setattr(language_gate, "_assembled", assembled)
+
+
+def _a_heading_restates_nothing(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._assembled
+
+    def assembled(*args, **more):
+        read = real(*args, **more)
+        return dataclasses.replace(read, restating=read.restating - read.in_headings)
+
+    patch.setattr(language_gate, "_assembled", assembled)
 
 
 def _a_slash_pairs_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -25851,9 +25951,45 @@ BROKEN = {
         _a_sign_s_long_form_is_one_word_or_more,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a sign's long form runs into a block quote's next line": (
-        _a_sign_s_long_form_runs_into_a_block_quote_s_next_line,
+    "a sign's long form runs on past its line": (
+        _a_sign_s_long_form_runs_on_past_its_line,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a section's name before a colon is a short form": (
+        _a_section_s_name_before_a_colon_is_a_short_form,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a typed citation after a bracket's separator is more words": (
+        _a_typed_citation_after_a_bracket_s_separator_is_more_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "any words after a bracket's separator are a citation": (
+        _any_words_after_a_bracket_s_separator_are_a_citation,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a line break in a bracket is no space": (
+        _a_line_break_in_a_bracket_is_no_space,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "the paper's title is a section's heading": (
+        _the_paper_s_title_is_a_section_s_heading,
+        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
+    ),
+    "only a heading over the paper is its title": (
+        _only_a_heading_over_the_paper_is_its_title,
+        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
+    ),
+    "a heading defines in any part": (
+        _a_heading_defines_in_any_part,
+        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
+    ),
+    "a heading restates nothing": (
+        _a_heading_restates_nothing,
+        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
+    ),
+    "a note restates nothing": (
+        _a_note_restates_nothing,
+        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
     ),
     "a slash pairs no short forms": (
         _a_slash_pairs_nothing,

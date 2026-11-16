@@ -23796,24 +23796,36 @@ Open, recorded as each change landed:
   bracket's short form, and a bracket that lists short forms; "X = long form" and "X: long
   form"; "known as X" and its kin, and a heading; a LaTeX citation's note), each read through
   the letter rule above, which no shape widens. Accepted.
-  - A note under a table or a figure that is not read as a caption, "*Note.* BDI = Beck
-    Depression Inventory" after a table's rows, or a legend that opens otherwise than with
-    its display's name, defines as a sentence does: where the text defined the form first,
-    the note's is a second definition, `abbreviation-redefined`, and a long form worded
-    otherwise there, "Scale" for "Score", a second meaning. A caption may restate a
-    definition (above); whether such a note may is the author's to decide, not decided here.
-    On the corpus run on 0223ca005 the audit's `abbreviation-redefined` warnings went from
-    138 to 184, nearly all of them notes.
-    Pinned by `tests/test_definition_shapes.py::test_a_note_that_defines_again_is_a_second_definition`.
-  - After a sign the long form is the words after it whole, give or take an article, and
-    two words at least, as in "ROR (reporting odds ratio)": a country's code, "XY: Kenya",
-    one word, and an instrument with a word before its letters, "DCQ = Small Developmental
-    Coordination Questionnaire", define nothing. A colon that introduces words beginning with
-    the short form's letters defines it all the same: "iterations of CAPs: Content
-    Acquisition Podcasts Professional Development (CAP-PD)" defines CAP a second time, and a
-    label in capitals before a sentence that holds its letters in order defines the label.
+  - A table's or a figure's note may restate the text's definition, as a caption may
+    (Basile, 2026-11-16, "As a restatement"), and so may a heading the text defines again;
+    one whose long form differs is still a second meaning. A note is known by its shape,
+    "X = long form" or "X: long form", not by where it stands, so that shape in a sentence
+    restates too, and a note written "Beck Depression Inventory (BDI)" under a table is a
+    second definition.
+    Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
+  - A heading defines only where it is a section's heading in the main text. The paper's
+    title typed as a heading is read as the audit reads it, a heading over the Abstract or
+    the Introduction, or the opening file's first heading, naming no section, before one
+    that does; a title over the Methods alone, or before no opening's heading, defines as a
+    heading does.
+    Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`.
+  - After a sign the long form is the words after it whole, give or take an article, two
+    words at least, and on its line, as in "ROR (reporting odds ratio)": a country's code,
+    "XY: Kenya", one word, an instrument with a word before its letters, "DCQ = Small
+    Developmental Coordination Questionnaire", and a long form a LaTeX source wraps onto its
+    next line define nothing. A section's name before a colon is a label (`SECTION_NAMES`),
+    but a label not on that list, "AIM:", is read as any short form is. A colon that
+    introduces words beginning with the short form's letters defines it all the same:
+    "iterations of CAPs: Content Acquisition Podcasts Professional Development (CAP-PD)"
+    defines CAP a second time, and a label in capitals before a sentence that holds its
+    letters in order defines the label.
     Pinned by `tests/test_definition_shapes.py::test_each_shape_defines_nothing_where_its_words_do_not_match`
     and `tests/test_definition_shapes.py::test_a_colon_that_introduces_words_with_the_letters_defines`.
+  - A bracket's short form and its word before a semicolon define where an author-year
+    citation the typed-citation reading knows follows, "(SDSS DR15; York et al., 2000)", as
+    a .docx or a PDF prints pandoc's prefix; a numbered citation there, "(SDSS DR15; 12)",
+    does not.
+    Pinned by `tests/test_definition_shapes.py::test_a_bracket_s_short_form_before_a_typed_citation_defines`.
   - The long form is looked for where a bracket's is, in the words G14 reads and within
     Schwartz and Hearst's window: one in maths (a ratio of two luminosities typed as `$...$`,
     "known as IRX"), the authors a citation prints (`\citet[][BC03]{key}`), and one longer than the

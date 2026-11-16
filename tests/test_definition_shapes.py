@@ -174,20 +174,95 @@ def test_pandoc_s_citation_prefix_is_read_as_a_square_bracket() -> None:
         assert [short for _at, short, _long in read.definitions] == ["SDSS"], prefix
 
 
-def test_a_note_that_defines_again_is_a_second_definition(project: Path) -> None:
-    """Known gaps, held where it stands (docx-sport-A2, docx-psych-A3): a table's note that
-    is not read as a caption defines as a sentence does, so where the text defined the form
-    first it is defined again, and a long form worded otherwise is a second meaning. A
-    caption may restate; whether such a note may is the author's to decide."""
+def _judged(project: Path, text: str) -> list[tuple[str, str]]:
     shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
-    (project / "manuscript" / "main.md").write_text(
+    (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
+    report = check_language(load_project(project)[0])
+    return sorted((f.code, f.message.split()[0]) for f in report.findings)
+
+
+def test_a_note_that_repeats_the_text_s_definition_restates_it(project: Path) -> None:
+    """Basile, 2026-11-16 ("As a restatement"; docx-sport-A2, docx-psych-A3): journals ask a
+    table to define its own short forms, so a note's "X = long form" that repeats the text's
+    definition restates it, as a caption does; one whose long form differs from the text's,
+    "Score" for "Scale", is still a second meaning."""
+    found = _judged(project,
         "# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette Dependence "
         "Scale (CDS).\n\n# Results\n\n| Score | n |\n|---|---|\n| 12 | 40 |\n\n*Note.* BDI = Beck "
         "Depression Inventory; CDS = Cigarette Dependence Score.\n\nThe BDI and the CDS were "
-        "low.\n", encoding="utf-8")
-    report = check_language(load_project(project)[0])
-    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
-    assert found == [("abbreviation-redefined", "BDI"), ("abbreviation-redefined", "CDS")], found
+        "low.\n")  # fmt: skip
+    assert found == [("abbreviation-redefined", "CDS")], found
+
+
+def test_a_heading_that_the_text_defines_again_is_restated(project: Path) -> None:
+    """A heading's definition, which the text then gives again, as many journals want it
+    whatever the heading says, is no second definition (round 1 of #698)."""
+    found = _judged(project, "# Methods\n\n## Reporting odds ratio (ROR)\n\nThe reporting "
+                             "odds ratio (ROR) was computed, and the ROR was high.\n")
+    assert found == [], found
+
+
+@pytest.mark.parametrize("title", [
+    # The paper's title typed as a heading of the Introduction's level, or above the
+    # Abstract or the Introduction (round 1 of #698).
+    "# Reporting odds ratio (ROR) in older adults\n\n# Introduction",
+    "# Reporting odds ratio (ROR) in older adults\n\n# Abstract\n\nIt was read.\n\n# Background",
+    "# Reporting odds ratio (ROR) in older adults\n\n## Introduction",
+])  # fmt: skip
+def test_the_paper_s_title_typed_as_a_heading_defines_nothing(project: Path, title: str) -> None:
+    """The title is no section's heading in the main text: a short form it defines is still
+    undefined in the text, and one the text defines is not defined again."""
+    used = "The ROR was computed, and the ROR was high."
+    assert ("abbreviation-undefined", "ROR") in _judged(project, f"{title}\n\n{used}\n")
+    defined = "The reporting odds ratio (ROR) was computed, and the ROR was high."
+    found = _judged(project, f"{title}\n\n{defined}\n")
+    assert "ROR" not in [short for _code, short in found], found
+
+
+def test_a_heading_in_the_abstract_defines_nothing_for_it(project: Path) -> None:
+    """A heading defines only where it is a section's heading in the main text's scope."""
+    found = _judged(project, "# Abstract\n\n## Grip strength and electromyography (EMG)\n\nThe "
+                             "EMG was high.\n\n# Methods\n\nThe grip was read.\n")
+    assert ("abbreviation-undefined", "EMG") in found, found
+
+
+def test_a_sign_s_long_form_ends_at_its_line() -> None:
+    """Round 1 of #698: the long form ran on into the next line, "ESR = erythrocyte
+    sedimentation rate" over "Values are medians", and was quoted so; a PDF's note stands a
+    line to a pair."""
+    read = _file(0, Path("main.md"), "ESR = erythrocyte sedimentation rate\nValues are medians\n",
+                 [], False)  # fmt: skip
+    assert read.definitions == [(0, "ESR", "erythrocyte sedimentation rate")], read.definitions
+
+
+@pytest.mark.parametrize("label", ["RESULT:", "**RESULT:**", "Result:"])
+def test_a_section_s_name_before_a_colon_is_a_label(label: str) -> None:
+    """A name on the closed list of section names before a colon (`SECTION_NAMES`), a
+    structured abstract's label, is never a short form, though the words after it hold its
+    letters (round 1 of #698)."""
+    read = _file(0, Path("main.md"), f"{label} Rates Eased Slowly Until Late Testing.\n", [],
+                 False)  # fmt: skip
+    assert read.definitions == [], read.definitions
+
+
+def test_a_bracket_s_short_form_before_a_typed_citation_defines() -> None:
+    """The readers agree (round 1 of #698): what pandoc's `[SDSS DR15; @york2000]` defines, the
+    .docx or PDF of the same paper prints "(SDSS DR15; York et al., 2000)", an author-year
+    citation after the separator as the typed-citation reading knows one; other words after
+    it are no citation."""
+    for text, defined in (("the Sloan Sky Survey (SSS DR2; York et al., 2000)", ["SSS"]),
+                          ("the Sloan Sky Survey (SSS DR2; York, 2000; Lee, 2001)", ["SSS"]),
+                          ("the Sloan Sky Survey (SSS DR2; see the appendix)", []),
+                          ("the Sloan Sky Survey (SSS DR2; 12)", [])):  # fmt: skip
+        read = _file(0, Path("main.md"), f"{text}\n", [], False)
+        assert [short for _at, short, _long in read.definitions] == defined, text
+
+
+def test_a_line_break_in_a_bracket_is_a_space() -> None:
+    """A PDF wraps "(CL\\nAGNs)", which the .docx of the paper holds on one line (round 1 of
+    #698)."""
+    read = _file(0, Path("main.md"), "the changing-look AGNs (CL\nAGNs) rose\n", [], False)
+    assert [short for _at, short, _long in read.definitions] == ["CL"], read.definitions
 
 
 def test_a_colon_that_introduces_words_with_the_letters_defines() -> None:

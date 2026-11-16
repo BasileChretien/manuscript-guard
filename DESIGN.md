@@ -27903,11 +27903,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone, each named so.
     So is a power after a times sign after a name, `k_2\times10^{3}`. Accepted.
   - Any run of spaces, ties, `\,`, `\;`, `\:`, `\!`, `\ `, no-break, thin and narrow no-break
-    spaces may stand around the times sign (round 2 of #696). A mantissa is read as
-    `audit._NUMBER` reads a number, its digits grouped by commas, `\,` or a narrow or a
-    no-break space; one with a comma left in it, `1{,}5` or `1,500`, is looked for as
-    printed, since the comma can be a decimal one, so `1,500\times10^{3}` is not found
-    beside `1500\times10^{3}`. Accepted.
+    spaces may stand around the times sign (round 2 of #696); a `~` is a tie only in a LaTeX
+    file and inside a Markdown paper's maths, `$...$` or `\(...\)`, since in Markdown's text
+    it marks a subscript, so `VCO~2~ \times10^{3}` holds a scale and no mantissa (Basile,
+    after the check of b95b6a89f). A mantissa is its digits grouped as `audit._NUMBER`
+    groups them, by commas, `\,` or a narrow or a no-break space, with a digit after each
+    separator; one with a comma left in it, `1{,}5` or `1,500`, is looked for with the same
+    digits and comma, since the comma can be a decimal one, so `1,500\times10^{3}` is not
+    found beside `1500\times10^{3}`. Accepted.
   - A .docx paragraph's raised run is printed flat, so "10" and a raised "-2" read "10-2", a
     range, in the Abstract and where the paper reports alike. Pinned by
     `tests/test_abstract_powers.py::test_a_docx_superscript_in_a_paragraph_is_read_flat`.

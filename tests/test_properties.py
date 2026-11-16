@@ -6939,7 +6939,7 @@ def _a_power_is_read_as_its_atoms(patch: pytest.MonkeyPatch) -> None:
     """As on 0223ca005: `10^{-2}` in LaTeX was "10^" and "-2"."""
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "powers", lambda text, read: [])
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [])
 
 
 def _a_power_is_found_by_its_pieces(patch: pytest.MonkeyPatch) -> None:
@@ -6961,8 +6961,8 @@ def _read_powers_as(patch: pytest.MonkeyPatch, **changed) -> None:
     from manuscript_guard.auditing import abstract
 
     real = abstract.powers
-    patch.setattr(abstract, "powers", lambda text, read: [
-        dataclasses.replace(power, **changed) for power in real(text, read)])  # fmt: skip
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [
+        dataclasses.replace(power, **changed) for power in real(text, read, tied)])  # fmt: skip
 
 
 def _a_scale_or_a_mantissa_is_no_part_of_the_number(patch: pytest.MonkeyPatch) -> None:
@@ -6995,6 +6995,13 @@ def _a_times_sign_s_gap_is_only_a_space(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(abstract, "_GAP", r"(?:[ \t]|\\[,;:!])*")
     narrow = abstract._power_pattern.__wrapped__()
     patch.setattr(abstract, "_power_pattern", lambda: narrow)
+
+
+def _a_tie_is_a_gap_in_markdown_text(patch: pytest.MonkeyPatch) -> None:
+    """As at b95b6a89f: in Markdown, `VCO~2~ \\times10^{3}` was the number 2 times 10^3."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "ties", lambda path, text: None)
 
 
 def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
@@ -27425,6 +27432,10 @@ BROKEN = {
     ),
     "a power of the Abstract is read with a space alone around its times sign": (
         _a_times_sign_s_gap_is_only_a_space,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has a tie in Markdown's text read as a gap": (
+        _a_tie_is_a_gap_in_markdown_text,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a power of the Abstract has its sign dropped": (

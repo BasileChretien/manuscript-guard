@@ -596,14 +596,17 @@ def _words(text: str) -> set[str]:
 #: 2: these are read as they were. The first number stands alone, after a sign, a times sign
 #: or a TeX command (`_base_alone`); a power after a times sign after anything else,
 #: `k_2\times10^{3}`, is a scale. A sign is one where `audit._NUMBER` reads one. A mantissa
-#: is read as `audit._NUMBER` reads a number, its digits grouped by commas, a narrow or a
-#: no-break space, and in TeX by `\,` or a decimal comma `{,}` too (`_MANTISSA`).
+#: is its digits grouped as `audit._NUMBER` groups them, by commas, a narrow or a no-break
+#: space, and in TeX by `\,` or a decimal comma `{,}` too, with a digit after each separator,
+#: and a point and its digits after them (`_MANTISSA`).
 _TIMES = r"(?:\\times(?![A-Za-z])|\\cdot(?![A-Za-z])|\N{MULTIPLICATION SIGN}|\N{MIDDLE DOT})"
 #: What may stand between a mantissa, its times sign and its power: a space, a tab, a
 #: no-break, a thin or a narrow no-break space, TeX's tie `~` and its spaces `\,`, `\;`, `\:`,
-#: `\!` and `\ `, in any run and mix (round 2 of #696).
+#: `\!` and `\ `, in any run and mix (round 2 of #696); the tie only where a `~` is one
+#: (`ties`).
 _GAP = r"(?:[ \t~\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]|\\[,;:! ])*"
-#: A mantissa, as `audit._NUMBER` reads a number, and TeX's groupings of its digits.
+#: A mantissa: digits grouped as `audit._NUMBER` groups them and as TeX does, a digit after
+#: each separator.
 _MANTISSA = (r"\d(?:(?:[,\N{NARROW NO-BREAK SPACE}\N{NO-BREAK SPACE}]|\{,\}|\\,)?\d)*"
              r"(?:\.\d+)?|(?<![\w.])\.\d+")
 #: The signs of a minus, the hyphen last, where a class of characters reads it as itself.
@@ -674,16 +677,69 @@ def _base_alone(text: str, at: int) -> bool:
     return at == 0 or not (text[at - 1].isalnum() or text[at - 1] in "._")
 
 
-def powers(text: str, read: str) -> list[Power]:
+#: What a `~` is read as where it is no tie: no gap, as no character of `_GAP` is.
+_NO_TIE = "\x01"
+
+
+def markdown_maths(text: str) -> list[tuple[int, int]]:
+    """Where a Markdown paper's text holds maths, as pandoc reads it: `$...$` and `$$...$$`
+    on one line (`text.tex`), and `\\(...\\)` on one line; a character after a backslash is
+    escaped."""
+    from manuscript_guard.text.tex import _Line
+
+    spans, offset = [], 0
+    for line in text.split("\n"):
+        reading, at = _Line(line), 0
+        while at < len(line):
+            if line.startswith("\\(", at) and (close := line.find("\\)", at + 2)) >= 0:
+                spans.append((offset + at, offset + close + 2))
+                at = close + 2
+            elif line[at] == "\\":
+                at += 2
+            elif line[at] == "$" and (end := reading.maths(at)[0]) is not None:
+                spans.append((offset + at, offset + end))
+                at = end
+            else:
+                at += 1
+        offset += len(line) + 1
+    return spans
+
+
+def ties(path: Path, text: str) -> tuple[tuple[int, int], ...] | None:
+    """Where a `~` in a file's text is TeX's tie, a gap around a times sign (`_GAP`): all of
+    a LaTeX file's (None); in Markdown, only inside maths (`markdown_maths`), since in its
+    text a `~` marks pandoc's subscript, `CO~2~`; in a .docx or a PDF nowhere, where it is
+    a tilde (Basile, after the check of b95b6a89f in #696)."""
+    suffix = path.suffix.lower()
+    if suffix == ".tex":
+        return None
+    return tuple(markdown_maths(text)) if suffix in (".md", ".markdown", ".txt") else ()
+
+
+def _untied(text: str, tied: tuple[tuple[int, int], ...] | None) -> str:
+    """`text` with each `~` outside `tied` made `_NO_TIE`, at the same offsets."""
+    if tied is None or "~" not in text:
+        return text
+    out, at = [], 0
+    for start, end in tied:
+        out += [text[at:start].replace("~", _NO_TIE), text[start:end]]
+        at = end
+    out.append(text[at:].replace("~", _NO_TIE))
+    return "".join(out)
+
+
+def powers(text: str, read: str,
+           tied: tuple[tuple[int, int], ...] | None = None) -> list[Power]:  # fmt: skip
     """Each number in scientific notation, power and scale `text` prints where `read`, its
     masked text at the same offsets with what is not read blanked, keeps every digit and the
-    caret: one in a comment, in code a mask hides or on a line not read is none."""
+    caret: one in a comment, in code a mask hides or on a line not read is none. A `~` is a
+    gap only within `tied`, everywhere where it is None (`ties`)."""
     from manuscript_guard.audit import normalise_number
 
     if len(text) != len(read):
         return []
     found = []
-    for match in _power_pattern().finditer(text):
+    for match in _power_pattern().finditer(_untied(text, tied)):
         start, end = match.span()
         scale = match["scale"] is not None
         if match["mantissa"] is not None and match["sign"] is None and not _base_alone(
@@ -729,7 +785,8 @@ def _looked_for(piece: Piece, abstract: str, lines: set[int]) -> list[Looked]:
     `10^8` was looked for as printed among numbers no power is one of."""
     atoms = [atom for atom in piece.atoms if atom.line in lines]
     groups: list[tuple[list[int], list[Power]]] = []
-    for power in powers(piece.text, abstract) if piece.text else ():
+    tied = ties(piece.path, piece.text)
+    for power in powers(piece.text, abstract, tied) if piece.text else ():
         over = [at for at, atom in enumerate(atoms)
                 if atom.start < power.end and power.start < atom.end]  # fmt: skip
         if not over:
@@ -846,7 +903,8 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     rounded = {found for number in printed for found in coarser(number)}
     words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
     printed_powers = {power.key for piece, _abstract, reported, _lines in split if piece.text
-                      for power in powers(piece.text, reported) if not power.scale}  # fmt: skip
+                      for power in powers(piece.text, reported, ties(piece.path, piece.text))
+                      if not power.scale}  # fmt: skip
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
     intervals = [(piece, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip

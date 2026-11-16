@@ -203,6 +203,30 @@ def test_no_finding_names_a_text_ending_in_a_caret_or_a_times_sign(
     assert read.found == [], named
 
 
+def test_a_markdown_subscript_before_a_times_sign_is_no_mantissa(tmp_path: Path) -> None:
+    """In a Markdown paper's text `~` is pandoc's subscript mark, `CO~2~`, and no gap: the
+    subscript's digit before a spaced times sign is no mantissa, and the power after it is a
+    scale (Basile, after the check of b95b6a89f: "`~` counts as a space only in LaTeX and
+    inside maths")."""
+    read = _read(tmp_path, ".md", f"It was $2{B}times10^{{3}}$ here.",
+                 f"It was VCO~2~ {B}times10^{{3}} rose.")  # fmt: skip
+    assert _texts(read.not_found) == [f"2{B}times10^{{3}}"] and read.found == [], read
+    read = _read(tmp_path, ".md", "It was $10^{3}$ here.", f"It was X~2~ {B}times10^3 rose.")
+    assert _texts(read.not_found) == ["10^{3}"] and read.found == [], read
+    read = _read(tmp_path, ".md", f"It was X~2~ {B}times10^3 here.", "It was so.")
+    assert not any("times" in text or "^" in text for text in _texts(read.not_found)), read
+
+
+@pytest.mark.parametrize("maths", [f"$5~{B}times~10^{{-2}}$", f"{B}(5~{B}times~10^{{-2}}{B})"])
+def test_a_tie_inside_markdown_maths_is_a_gap(tmp_path: Path, maths: str) -> None:
+    """Inside a Markdown paper's maths, `$...$` or `\\(...\\)`, `~` is TeX's tie, a space:
+    `5~\\times~10^{-2}` is one number there, never the bare power."""
+    read = _read(tmp_path, ".md", "It was $10^{-2}$ here.", f"It was {maths} here.")
+    assert _texts(read.not_found) == ["10^{-2}"] and read.found == [], read
+    read = _read(tmp_path, ".md", f"It was {maths} here.", f"It was $5{B}times 10^{{-2}}$ here.")
+    assert _texts(read.found) == [f"5~{B}times~10^{{-2}}"] and read.not_found == [], read
+
+
 @pytest.mark.parametrize("suffix", [".tex", ".md"])
 def test_a_bracketed_mantissa_s_numbers_are_named_as_looked_for(tmp_path: Path,
                                                                  suffix: str) -> None:  # fmt: skip

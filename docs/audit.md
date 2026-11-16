@@ -423,8 +423,9 @@ are read whole, a bare power with a mantissa of 1, and matched only where the pa
 the same sign, mantissa and power, the exponent spelled any way, `10^{-2}` or `10^{-2.0}`:
 never by a part, nor by its value in another notation. A power after a times sign with no
 mantissa before it, a column header's "(×10^8 cm^-3)", is a scale and no number. Any run of
-spaces, ties and TeX's spaces may stand around the times sign, and a mantissa with a comma
-in it, `1{,}5`, is matched only as printed. A number
+spaces and TeX's spaces may stand around the times sign, a tie `~` too in LaTeX and in a
+Markdown paper's maths (in its text a `~` marks a subscript), and a mantissa with a comma
+in it, `1{,}5`, is matched only with the same digits and comma. A number
 not found there is listed, its finding saying where it was looked for, and
 not counted by `--strict`. A percentage the Abstract writes beside both its counts, "164
 out of 250 (66%)", "164 of 250 (66%)", "164/250 (65.6%)", "164 of 250 patients (66%)",

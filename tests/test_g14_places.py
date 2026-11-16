@@ -207,11 +207,11 @@ def test_a_bold_or_run_in_abstract_line_ends_a_title_page(tmp_path: Path) -> Non
 
 def test_a_statement_s_label_in_plain_type_opens_it(tmp_path: Path) -> None:
     """A run-in label of a statement in plain type, as a PDF's text has every one, at a
-    paragraph's start and with its colon: "Funding:", "Data Availability Statement:", where
-    no heading over it names a section the paper reports in. Not a statement's word inside
-    a sentence (round 1 of #699)."""
-    text = ("Funding: The QXF paid for it.\n\nData Availability Statement: The QXD holds the "
-            "data.\n\nWe thank them. Funding: the QXG paid little.\n")  # fmt: skip
+    paragraph's start and with its colon: "Funding:", "Data Availability Statement:", in the
+    run of such labels that ends the text. Not a statement's word inside a sentence (rounds 1
+    and 3 of #699)."""
+    text = ("We thank them. Funding: the QXG paid little.\n\nFunding: The QXF paid for it.\n\n"
+            "Data Availability Statement: The QXD holds the data.\n")  # fmt: skip
     found = checked(tmp_path, {"main.md": text})
     assert [m.split()[0] for code, m in found if code == "abbreviation-undefined"] == ["QXG"]
     # In the back matter: under a statement's heading.
@@ -230,6 +230,48 @@ def test_a_plain_label_in_the_paper_s_text_is_its_sentence(tmp_path: Path) -> No
     found = checked(tmp_path, {"main.md": text})
     assert [m.split()[0] for code, m in found
             if code == "abbreviation-undefined"] == ["QXG", "QXS"], found  # fmt: skip
+
+
+@pytest.mark.parametrize("text", [
+    # MDPI's: after "5. Conclusions", with no heading of their own, before the reference list.
+    "# Conclusions\n\nIt held.\n\nFunding: The QXF paid for it.\n\n# References\n\nA. 2020.\n",
+    # The same at the end of the file, one label alone over its paragraph.
+    "# Conclusions\n\nIt held.\n\nAuthor Contributions: QXA wrote it.\n\nFunding:\n\n"
+    "The QXF paid for it.\n\nData Availability Statement: The QXD holds the data.\n",
+    # Under a level-1 title over the whole paper.
+    "# The SDR of exams\n\n**Abstract**\n\nWe read records.\n\n## Introduction\n\nIt held."
+    "\n\n## Conclusions\n\nIt held.\n\nFunding: The QXF paid.\n\nData Availability "
+    "Statement: The QXD holds them.\n",
+], ids=["before the references", "at the file's end", "under a title over the paper"])  # fmt: skip
+def test_the_statements_in_plain_type_that_end_the_text_are_statements(
+    tmp_path: Path, text: str
+) -> None:
+    """ "A plain label is a statement within a run of such labels that ends the text before
+    the references" (Basile, 2026-11-16, round 3 of #699): the headings over it decide
+    nothing."""
+    assert checked(tmp_path, {"main.md": text}) == []
+
+
+def test_a_bold_abstract_under_the_paper_s_title_as_a_heading_ends_its_title_page(
+    tmp_path: Path,
+) -> None:
+    """A Markdown paper whose title is a heading over it keeps its title page: "**Abstract**"
+    under it names the Abstract (round 3 of #699)."""
+    text = ("# The SDR of exams\n\nAna Martin, UPV, Rouen\n\n**Abstract**\n\nWe read records."
+            "\n\n## Introduction\n\nIt held.\n")  # fmt: skip
+    assert checked(tmp_path, {"main.md": text}) == []
+
+
+@pytest.mark.parametrize("text", [
+    "# Methods\n\nWe sorted the records by\nkeywords: the QXA terms first.\n",
+    "# Methods\n\nWe sorted the records by\nKeywords: the QXA terms first.\n",
+    "# Methods\n\nWe sorted them.\nkeywords: the QXA terms came first.\n",
+], ids=["small letters, wrapped", "a capital, wrapped", "small letters, after a sentence"])
+def test_a_keywords_word_in_wrapped_prose_is_the_text_s(tmp_path: Path, text: str) -> None:
+    """A keywords line is a capitalised label at a paragraph's start or after a line ending a
+    sentence (Basile, 2026-11-16, round 3 of #699)."""
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found] == ["QXA"], found
 
 
 def test_an_opening_before_the_named_abstract_ends_the_title_page(tmp_path: Path) -> None:
@@ -416,10 +458,26 @@ def test_a_running_line_s_page_number_is_read_as_any_number() -> None:
     assert sorted(texts[line - 1] for line in pdf.repeated) == ["QXH 1", "QXH 2", "QXH 3"]
 
 
+def test_a_running_line_with_its_page_number_inside_it_is_one() -> None:
+    """ "QXH Journal | Page 3 of 12" at the top of pages 3 to 6: each run of digits read alike,
+    in the line's middle too (Basile, 2026-11-16, round 3 of #699)."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    pages = [[f"line {_LETTERS[page]}{_LETTERS[at]}" for at in range(9)] for page in range(6)]
+    for page in range(2, 6):
+        pages[page].insert(0, f"QXH Journal | Page {page + 1} of 12")
+    texts = [text for page in pages for text in page]
+    places = tuple(Place(page, line) for page, lines in enumerate(pages, 1)
+                   for line in range(1, len(lines) + 1))  # fmt: skip
+    pdf = PdfText(Path("p.pdf"), "pdftotext", 6, "\n".join(texts), places)
+    assert sorted(texts[line - 1] for line in pdf.repeated) == [
+        f"QXH Journal | Page {page} of 12" for page in range(3, 7)]
+
+
 def test_digits_inside_a_line_are_its_own() -> None:
     """A supplement whose pages each end on their figure's caption, "Figure S1. ROC of the
-    GBM model, fold 1", "Figure S2 ... fold 2": no running line, a number read alike only at
-    a line's start or end (round 2 of #699)."""
+    GBM model, fold 1", "Figure S2 ... fold 2": no running line, a line with a caption's shape
+    never one (rounds 2 and 3 of #699)."""
     from manuscript_guard.auditing.pdf import PdfText, Place
 
     pages = [[*(f"line {_LETTERS[page]}{_LETTERS[at]}" for at in range(9)),

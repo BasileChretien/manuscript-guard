@@ -251,24 +251,42 @@ def opening(
     paper opens on, "**Abstract**", "Introduction", "Key points", "Highlights", a run-in
     label of one, "Abstract: ...", "Background: ...", a letter's salutation, or a list of
     abbreviations; None where none does. A heading names the Abstract wherever it stands; a
-    paragraph only before the file's first heading, where a title page stands, so a protocol's
-    "**Abstract**" under "# Supplementary Table S1" names none (round 2 of #699). `seen` and
-    `headings` are as `title_page_end` takes them. Whether the blocks before it hold a title
-    page's lines is not asked: G14 takes what stands before the first opening for its title
-    page where the Abstract is named, whatever they hold, and none where it is not
-    (`gates/language.py`, decision 28 and Basile's "No title page there", 2026-11-16)."""
-    first_heading = min((heading.start for heading in headings), default=None)
+    paragraph only before the file's first heading, where a title page stands, or under a
+    first heading that is the paper's title, up to the heading after it (`_titled`), so a
+    protocol's "**Abstract**" under "# Supplementary Table S1" names none (rounds 2 and 3 of
+    #699). `seen` and `headings` are as `title_page_end` takes them. Whether the blocks
+    before it hold a title page's lines is not asked: G14 takes what stands before the first
+    opening for its title page where the Abstract is named, whatever they hold, and none
+    where it is not (`gates/language.py`, decision 28 and Basile's "No title page there",
+    2026-11-16)."""
+    ordered = sorted(headings, key=lambda heading: heading.start)
+    bound = None
+    if ordered:
+        bound = ordered[1].start if len(ordered) > 1 else None
+        if not _titled(ordered):
+            bound = ordered[0].start
     opened: int | None = None
     for at, block in enumerate(_blocks(seen.replace(NUL, " "), headings)):
         if _kind(block, abstract_title, first=at == 0) != OPENING:
             continue
         if opened is None:
             opened = block.start
-        titled = block.heading is not None or first_heading is None or (
-            block.start < first_heading)  # fmt: skip
-        if titled and _names_the_abstract(block, abstract_title):
+        named = block.heading is not None or bound is None or block.start < bound
+        if named and _names_the_abstract(block, abstract_title):
             return opened, True
     return None if opened is None else (opened, False)
+
+
+def _titled(headings: Sequence[Heading]) -> bool:
+    """Whether a file's first heading is the paper's title over it, as
+    `auditing.abstract._over_the_paper` reads one: a heading after it of a deeper level, before
+    one of its own or above, names the Abstract or the Introduction."""
+    from manuscript_guard.auditing.abstract import _over_the_paper
+    from manuscript_guard.text.sections import Section
+
+    sections = [Section(title=heading.title, level=heading.level, body="", line=0)
+                for heading in headings]  # fmt: skip
+    return id(sections[0]) in _over_the_paper(sections)
 
 
 def _names_the_abstract(block: _Block, abstract_title: str | None) -> bool:

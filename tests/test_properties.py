@@ -2344,7 +2344,32 @@ def _a_paragraph_names_the_abstract_after_a_heading(patch: pytest.MonkeyPatch) -
 
 
 def _a_plain_label_in_the_text_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_in_back_matter", lambda offset, headings, chain: True)
+    """Rounds 1 and 2 of #699 at their widest: a statement's name in plain type with its
+    colon opened a statement wherever its paragraph stood."""
+    from manuscript_guard.text.section_names import STATEMENT_TITLE
+
+    patch.setattr(language_gate, "_closing_labels", lambda hidden, headings: (
+        language_gate._labelled(hidden, headings, lambda label: bool(STATEMENT_TITLE.match(
+            label)), language_gate._PLAIN_LABEL)))  # fmt: skip
+
+
+def _the_reference_list_ends_no_run_of_statements(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ends_the_text", lambda title: False)
+
+
+def _a_keywords_line_may_follow_any_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_after_a_sentence", lambda text, start: True)
+
+
+def _a_keywords_label_may_be_in_small_letters(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_KEYWORDS_LINE", re.compile(
+        language_gate._KEYWORDS_LINE.pattern, re.MULTILINE | re.IGNORECASE))  # fmt: skip
+
+
+def _no_first_heading_is_the_paper_s_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_titled", lambda headings: False)
 
 
 def _a_keywords_line_opens_a_paragraph_only(patch: pytest.MonkeyPatch) -> None:
@@ -26060,6 +26085,22 @@ BROKEN = {
     ),
     "a plain label in the text opens a statement": (
         _a_plain_label_in_the_text_opens_a_statement,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "the reference list ends no run of statements": (
+        _the_reference_list_ends_no_run_of_statements,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a keywords line may follow any line": (
+        _a_keywords_line_may_follow_any_line,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a keywords label may be in small letters": (
+        _a_keywords_label_may_be_in_small_letters,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "no first heading is the paper's title": (
+        _no_first_heading_is_the_paper_s_title,
         test_no_definition_is_asked_where_none_is_due,
     ),
     "a keywords line opens a paragraph only": (

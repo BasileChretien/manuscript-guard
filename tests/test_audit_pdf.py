@@ -197,7 +197,8 @@ def test_headings_that_cannot_be_placed_place_nothing(tmp_path: Path, capsys) ->
     _code, report, _err = audited(capsys, str(write(tmp_path / "paper.pdf", lines)))
     said = " ".join(f["message"] for f in found(report, "not-audited"))
     assert "its lines were placed in no section" in said and "no Introduction after" in said
-    assert found(report, "abstract-not-compared")
+    # Asked of the author (decision 27), where it was said not compared.
+    assert not report["abstract_compared"] and found(report, "question-no-abstract")
 
 
 @needs_pdftotext
@@ -213,7 +214,7 @@ def test_a_structured_abstract_ends_where_the_main_text_names_a_part_again(
     pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines))
     assert [level for _line, _title, level in pdf.placed] == [1, 2, 2, 1, 1, 1, 1]
     _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
 
 
 @needs_pdftotext
@@ -227,7 +228,7 @@ def test_a_structured_abstract_before_an_introduction_is_the_abstracts(
     pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines))
     assert [level for _line, _title, level in pdf.placed] == [1, 2, 2, 1, 1, 1, 1, 1]
     _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert [f["context"] for f in found(report, "abstract-not-found")] == [
         "The rate was 21.4% in the exposed."]
 
@@ -247,7 +248,7 @@ def test_a_results_section_numbered_in_the_singular_is_the_results(
     assert [title for _line, title in pdf.headings] == [
         "Abstract", "Introduction", "Methods", "Result", "Discussion", "References"]
     _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert [f["context"] for f in found(report, "abstract-not-found")] == [
         "The rate was 21.4% in the exposed."]
 
@@ -321,7 +322,7 @@ def test_a_column_headed_result_in_the_discussion_opens_no_results(
     path = tmp_path / "paper.pdf"
     path.write_bytes(_set(rows))
     _code, report, _err = audited(capsys, str(path))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert [f["context"] for f in found(report, "abstract-not-found")] == [
         "In all, 1,284 adults were enrolled."]
 
@@ -1000,7 +1001,7 @@ def test_a_pdf_s_abstract_under_a_run_in_label_is_compared_with_its_results(
     puts it a line lower)."""
     paper = write(tmp_path / "paper.pdf", RUN_IN, per_column=40)
     _code, report, _err = audited(capsys, str(paper))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert report["counts"]["abstract_matched"] >= 5, report["counts"]
     said = "The rate was 21.4% in the exposed."
     read = reading.read_pdf(paper)
@@ -1085,7 +1086,7 @@ def test_a_multi_study_pdf_s_results_are_all_compared_with_its_abstract(
 
     paper = write(tmp_path / "paper.pdf", STUDIES, per_column=40)
     _code, report, _err = audited(capsys, str(paper))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert not found(report, "abstract-not-found"), found(report, "abstract-not-found")
     assert report["counts"]["abstract_matched"] == report["counts"]["abstract_numbers"] >= 4
     staged = _staged_pdf(paper).files["main.md"]
@@ -1189,7 +1190,7 @@ def test_nothing_of_the_first_study_is_compared_as_the_abstract_s(tmp_path: Path
     lines = [line for line in STUDIES if line != "Introduction"]
     _code, report, _err = audited(capsys, str(write(tmp_path / "paper.pdf", lines,
                                                     per_column=40)))  # fmt: skip
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert {f["context"] for f in found(report, "abstract-not-found")} <= set(STUDIES[3:5])
 
 
@@ -1203,7 +1204,7 @@ def test_a_paper_the_base_placed_is_compared_as_it_was(
     base; the title page's count of words is no number of the Abstract's."""
     paper = write(tmp_path / "paper.pdf", lines, per_column=40)
     _code, report, _err = audited(capsys, str(paper))
-    assert not found(report, "abstract-not-compared")
+    assert report["abstract_compared"]
     assert {f["context"] for f in found(report, "abstract-not-found")} <= {
         "Study 1: 412 nurses were surveyed.", "Study 2: 20 were interviewed."}
 

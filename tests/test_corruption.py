@@ -2793,6 +2793,55 @@ def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
         assert main(["audit", str(paper), "--strict"]) == failed, heading
 
 
+def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_catch(
+    tmp_path: Path, capsys
+) -> None:
+    """Decision 27 (Basile, 2026-11-16): an Abstract whose interval differs from the one its
+    results give under a descriptive title (tex-astro-ga-B2 of the real-paper corpus) is
+    not compared, and the audit asks which heading holds them: the question never fails
+    --strict, whatever else it holds. Answered with `--results`, the conflict fails it."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.90).\n!end{abstract}\n!section{Data}\nWe did.\n"
+             "!section{Electron temperature relations}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n"
+             "!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict", "--json"]) == 0
+    asked = [one for one in json.loads(capsys.readouterr().out)["findings"] if one["question"]]
+    assert [(one["code"], one["counted"]) for one in asked] == [("question-no-results", False)]
+    assert main(["audit", str(paper), "--strict", "--results",
+                 "Electron temperature relations"]) == 1  # fmt: skip
+
+
+def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(
+    tmp_path: Path, capsys
+) -> None:
+    """`--results` is the Results to the audit's Abstract against Results alone, never to a
+    reader that places sentences in the paper's parts: the Discussion's claim of a cause is
+    said under `--design observational` as it was, its part the Discussion, with the
+    Discussion and the descriptive title named as the Results (round 1 of #697: the earlier
+    test read the raw text, and could not fail)."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A study\n\n## Abstract\n\nThe OR was 1.52 (95% CI 1.21-1.90).\n\n"
+                     "## Introduction\n\nIt matters.\n\n## Electron temperature relations\n\n"
+                     "The OR was 1.52 (95% CI 1.21-1.89).\n\n## Discussion\n\n"
+                     "The drug causes the improvement.\n", encoding="utf-8")  # fmt: skip
+
+    def causal(*given: str) -> list:
+        assert main(["audit", str(paper), "--json", "--design", "observational", *given]) == 0
+        return [(one["code"], one["line"], one["message"])
+                for one in json.loads(capsys.readouterr().out)["findings"]
+                if one["section"] == "Causal words"]  # fmt: skip
+
+    said = causal()
+    assert said and said == causal("--results", "Electron temperature relations",
+                                   "--results", "Discussion")
+
+
 def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:

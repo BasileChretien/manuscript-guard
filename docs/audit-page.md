@@ -47,7 +47,10 @@ holds it to the command line's word for word; the page shows it only where the P
 made, as the report, with "Download the report as text".
 "English of the paper" is `--english`, and "Words to leave alone", split at spaces and
 commas, is `--known`: names, initials and the field's terms G14 then neither asks to be
-defined, reports the spelling of, nor reads as names from code.
+defined, reports the spelling of, nor reads as names from code. "The paper has no Abstract"
+is `--no-abstract`, "The paper reports no results" is `--no-results`, and "The heading of
+its results" is `--results`, one heading as the page takes it: the answers to the report's
+questions for the author ([audit.md](audit.md)).
 
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line

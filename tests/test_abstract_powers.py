@@ -217,14 +217,74 @@ def test_a_markdown_subscript_before_a_times_sign_is_no_mantissa(tmp_path: Path)
     assert not any("times" in text or "^" in text for text in _texts(read.not_found)), read
 
 
-@pytest.mark.parametrize("maths", [f"$5~{B}times~10^{{-2}}$", f"{B}(5~{B}times~10^{{-2}}{B})"])
+@pytest.mark.parametrize("maths", [f"$5~{B}times~10^{{-2}}$", f"$$5~{B}times~10^{{-2}}$$"])
 def test_a_tie_inside_markdown_maths_is_a_gap(tmp_path: Path, maths: str) -> None:
-    """Inside a Markdown paper's maths, `$...$` or `\\(...\\)`, `~` is TeX's tie, a space:
-    `5~\\times~10^{-2}` is one number there, never the bare power."""
+    """Inside a Markdown paper's maths, `$...$` or `$$...$$`, `~` is TeX's tie, a space:
+    `5~\\times~10^{-2}` is one number there, never the bare power. `\\(...\\)` is no maths
+    to pandoc's Markdown (`test_a_markdown_paper_s_maths_holds_its_ties_across_lines`)."""
     read = _read(tmp_path, ".md", "It was $10^{-2}$ here.", f"It was {maths} here.")
     assert _texts(read.not_found) == ["10^{-2}"] and read.found == [], read
     read = _read(tmp_path, ".md", f"It was {maths} here.", f"It was $5{B}times 10^{{-2}}$ here.")
     assert _texts(read.found) == [f"5~{B}times~10^{{-2}}"] and read.not_found == [], read
+
+
+def test_markdown_maths_is_found_as_pandoc_finds_it() -> None:
+    """Basile, after the check of 191d0e7c2: `$...$` within a paragraph across a line break,
+    opened before a non-space and closed after one with no digit after it; `$$...$$` across
+    lines; none in code, after an escaped `\\$`, across a blank line, nor `\\(...\\)`."""
+    from manuscript_guard.auditing.abstract import markdown_maths
+
+    def read(text: str) -> list[str]:
+        return [text[start:end] for start, end in markdown_maths(text)]
+
+    assert read("masses of $\\sim\n5~\\times~10^{-2}$ here") == ["$\\sim\n5~\\times~10^{-2}$"]
+    assert read("It was\n$$\n5~\\times~10^{-2}\n$$\nthen.") == ["$$\n5~\\times~10^{-2}\n$$"]
+    assert read("It was $$5~\\times~10^{-2}$$ then.") == ["$$5~\\times~10^{-2}$$"]
+    assert read("costs $5 ~ $7 and $x$") == ["$x$"]
+    assert read("Set `$PATH` and VCO~2~ \\times10^{3} rose to 5$.") == []
+    assert read("A `` x$ `` and ```\n$y$\n```\n$z$") == ["$z$"]
+    assert read("```\n$y$\n```\n$z$") == ["$z$"]
+    assert read("\\(VCO~2~ \\times10^{3}\\)") == []
+    assert read("An escaped \\$5~x$ and $a$") == ["$a$"]
+    assert read("open $a\n\nb$ and $c $ and $d$5") == []
+    assert read("<!-- $a$ -->$b$") == ["$b$"]
+
+
+@pytest.mark.parametrize(("abstract", "results", "found", "not_found"), [
+    # (a) An Abstract's maths wrapped across a line break.
+    ("masses of $@sim\n5~@times~10^{-2}$ here", "masses of $5@times 10^{-2}$ there",
+     ["5~@times~10^{-2}"], []),
+    ("masses of $@sim\n5~@times~10^{-2}$ here", "masses of $10^{-2}$ in 5 runs", [],
+     ["5~@times~10^{-2}"]),
+    # (b) Display maths on lines of its own, and on one line.
+    ("It was $5@times10^{-2}$ here.", "It was\n$$\n5~@times~10^{-2}\n$$\nthen.",
+     ["5@times10^{-2}"], []),
+    ("It was $5@times10^{-2}$ here.", "It was $$5~@times~10^{-2}$$ then.",
+     ["5@times10^{-2}"], []),
+    # No maths: a `~` is a subscript, so the power is a scale.
+    ("It was $2@times10^{3}$ here.", "It costs $5 ~ $7, and VCO~2~ @times10^{3} rose.",
+     [], ["2@times10^{3}"]),
+    ("It was $2@times10^{3}$ here.", "Set `$PATH` and VCO~2~ @times10^{3} rose to 5$.",
+     [], ["2@times10^{3}"]),
+    ("It was $2@times10^{3}$ here.", "It was @(VCO~2~ @times10^{3}@) then.",
+     [], ["2@times10^{3}"]),
+    ("It was $2@times10^{3}$ here.", "An escaped @$5 and VCO~2~ @times10^{3} rose$.",
+     [], ["2@times10^{3}"]),
+    # A line break is a space around a times sign, as in maths and in prose.
+    ("It was $5@times10^{-2}$ here.", "It was $5 @times\n10^{-2}$ then.",
+     ["5@times10^{-2}"], []),
+    # A `~` in a braced exponent outside maths leaves no control character anywhere.
+    ("It was 10^{~3} here.", "It was so.", [], ["10^{~3}"]),
+])  # fmt: skip
+def test_a_markdown_paper_s_maths_holds_its_ties_across_lines(
+    tmp_path: Path, abstract: str, results: str, found: list, not_found: list
+) -> None:
+    """Basile, after the check of 191d0e7c2: "Find Markdown maths exactly as pandoc does"."""
+    read = _read(tmp_path, ".md", abstract.replace("@", B), results.replace("@", B))
+    assert _texts(read.found) == [one.replace("@", B) for one in found], read
+    assert _texts(read.not_found) == [one.replace("@", B) for one in not_found], read
+    assert not any(ord(c) < 32 and c != "\n" for one in read.found + read.not_found
+                   for c in one.text + one.normalised), read  # fmt: skip
 
 
 @pytest.mark.parametrize("suffix", [".tex", ".md"])

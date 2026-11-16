@@ -9405,7 +9405,8 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: with a minus they print without, and one they print only as a column's scale, none of
 #: them found; and a scale in the Abstract, which is no number (round 1 of #696). And a
 #: number whose mantissa is the digit of a subscript before a times sign where the paper
-#: reports, `VCO~2~ \times10^{41}`, a scale in Markdown's text, not found.
+#: reports, `VCO~2~ \times10^{41}`, a scale in Markdown's text, not found; and one the paper
+#: prints with ties in maths over more than one line (`MATHS_OVER_LINES`), found.
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9422,6 +9423,7 @@ ABSTRACT_KINDS = (
     "share season", "share season and year", "share count over", "share over a hundred",
     "power", "power not found", "scientific", "scientific another mantissa", "power scaled",
     "power signed", "scale", "scale in the abstract", "scale after a subscript",
+    "ties in maths across lines",
 )  # fmt: skip
 #: How a power's exponent is spelled in maths, `{v}` the exponent: braced, after a thin
 #: space, with its plus sign, and, a digit, unbraced; and what may stand before it.
@@ -9435,7 +9437,11 @@ POWER_BASES = ("10", "2", "3")
 POWER_EXPONENTS = {"power": 2, "power not found": 6, "scientific": 11,
                    "scientific another mantissa": 15, "power scaled": 21, "power signed": 25,
                    "scale": 31, "scale in the abstract": 35,
-                   "scale after a subscript": 41}  # fmt: skip
+                   "scale after a subscript": 41, "ties in maths across lines": 45}  # fmt: skip
+#: Maths over more than one line that holds a number in scientific notation with ties, `{}`
+#: the number: inline maths wrapped at a line break, and display maths on lines of its own
+#: (after the check of 191d0e7c2 in #696).
+MATHS_OVER_LINES = ("It was $" + BACKSLASH + "sim\n{}$ then.", "It was\n$$\n{}\n$$\nthen.")
 #: A times sign between a mantissa and its power, and the spaces either side of it.
 TIMES_SIGNS = (BACKSLASH + "times", BACKSLASH + "cdot")
 #: Of them, the gaps a typist or TeX leaves beside a space and TeX's thin space: a tie, a
@@ -9499,6 +9505,10 @@ def _abstract_power(draw: st.DrawFn, kind: str
     elif kind == "scale":
         written, state = power, "not found"
         methods.append(f"Counts (${TIMES_SIGNS[0]} {again}$ per ml) were read.")
+    elif kind == "ties in maths across lines":
+        written, state = _times(draw, mantissa, power), "exact"
+        tied = f"{mantissa}~{TIMES_SIGNS[0]}~{again}"
+        methods.append(draw(st.sampled_from(MATHS_OVER_LINES)).format(tied))
     elif kind == "scale after a subscript":
         # In Markdown's text `~` marks a subscript, no tie: its digit is no mantissa, and the
         # power after the times sign a scale (after the check of b95b6a89f in #696).

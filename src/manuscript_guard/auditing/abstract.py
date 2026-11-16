@@ -69,6 +69,7 @@ from pathlib import Path
 
 from manuscript_guard.stats.intervals import ReportedInterval, reported_intervals
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
+from manuscript_guard.text.markdown_maths import markdown_maths
 from manuscript_guard.text.section_names import (
     _METHOD_TITLE,
     _whole,
@@ -603,8 +604,9 @@ _TIMES = r"(?:\\times(?![A-Za-z])|\\cdot(?![A-Za-z])|\N{MULTIPLICATION SIGN}|\N{
 #: What may stand between a mantissa, its times sign and its power: a space, a tab, a
 #: no-break, a thin or a narrow no-break space, TeX's tie `~` and its spaces `\,`, `\;`, `\:`,
 #: `\!` and `\ `, in any run and mix (round 2 of #696); the tie only where a `~` is one
-#: (`ties`).
-_GAP = r"(?:[ \t~\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]|\\[,;:! ])*"
+#: (`ties`); and a line break with no blank line after it, a space in TeX and in Markdown.
+_GAP = (r"(?:[ \t~\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]|\\[,;:! ]"
+        r"|\n(?![ \t]*(?:\n|$)))*")
 #: A mantissa: digits grouped as `audit._NUMBER` groups them and as TeX does, a digit after
 #: each separator.
 _MANTISSA = (r"\d(?:(?:[,\N{NARROW NO-BREAK SPACE}\N{NO-BREAK SPACE}]|\{,\}|\\,)?\d)*"
@@ -681,35 +683,13 @@ def _base_alone(text: str, at: int) -> bool:
 _NO_TIE = "\x01"
 
 
-def markdown_maths(text: str) -> list[tuple[int, int]]:
-    """Where a Markdown paper's text holds maths, as pandoc reads it: `$...$` and `$$...$$`
-    on one line (`text.tex`), and `\\(...\\)` on one line; a character after a backslash is
-    escaped."""
-    from manuscript_guard.text.tex import _Line
-
-    spans, offset = [], 0
-    for line in text.split("\n"):
-        reading, at = _Line(line), 0
-        while at < len(line):
-            if line.startswith("\\(", at) and (close := line.find("\\)", at + 2)) >= 0:
-                spans.append((offset + at, offset + close + 2))
-                at = close + 2
-            elif line[at] == "\\":
-                at += 2
-            elif line[at] == "$" and (end := reading.maths(at)[0]) is not None:
-                spans.append((offset + at, offset + end))
-                at = end
-            else:
-                at += 1
-        offset += len(line) + 1
-    return spans
-
-
 def ties(path: Path, text: str) -> tuple[tuple[int, int], ...] | None:
     """Where a `~` in a file's text is TeX's tie, a gap around a times sign (`_GAP`): all of
-    a LaTeX file's (None); in Markdown, only inside maths (`markdown_maths`), since in its
-    text a `~` marks pandoc's subscript, `CO~2~`; in a .docx or a PDF nowhere, where it is
-    a tilde (Basile, after the check of b95b6a89f in #696)."""
+    a LaTeX file's (None); in Markdown, only inside maths as pandoc finds it
+    (`text.markdown_maths`), since in its text a `~` marks pandoc's subscript, `CO~2~`, and
+    so it does in `\\(...\\)`, which pandoc's Markdown reads as no maths; in a .docx or a
+    PDF nowhere, where it is a tilde (Basile, after the checks of b95b6a89f and 191d0e7c2
+    in #696)."""
     suffix = path.suffix.lower()
     if suffix == ".tex":
         return None
@@ -751,16 +731,18 @@ def powers(text: str, read: str,
                    if text[at].isdigit() or text[at] == "^")  # fmt: skip
         if not (kept and (led or _base_alone(text, match.start("base")))):
             continue
+        # Each part from `text` itself, never from the copy `_untied` made: no `_NO_TIE` in it.
         name = next(one for one in ("raised", "digit", "group") if match[one] is not None)
-        exponent = _EXPONENT_SPACE.sub("", match[name])
+        exponent = _EXPONENT_SPACE.sub("", text[match.start(name) : match.end(name)])
         if not exponent:
             continue
         if _EXPONENT_NUMBER.fullmatch(exponent):
             exponent = normalise_number(exponent)
         sign = "-" if match["sign"] is not None or match["bare"] is not None else ""
-        mantissa = "1" if scale or match["mantissa"] is None else _mantissa(match["mantissa"])
-        found.append(Power(start, end, sign, mantissa, normalise_number(match["base"]),
-                           exponent, scale))  # fmt: skip
+        printed = text[match.start("mantissa") : match.end("mantissa")]
+        mantissa = "1" if scale or match["mantissa"] is None else _mantissa(printed)
+        base = normalise_number(text[match.start("base") : match.end("base")])
+        found.append(Power(start, end, sign, mantissa, base, exponent, scale))
     return found
 
 

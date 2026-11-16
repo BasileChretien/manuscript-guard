@@ -27903,10 +27903,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone, each named so.
     So is a power after a times sign after a name, `k_2\times10^{3}`. Accepted.
   - Any run of spaces, ties, `\,`, `\;`, `\:`, `\!`, `\ `, no-break, thin and narrow no-break
-    spaces may stand around the times sign (round 2 of #696); a `~` is a tie only in a LaTeX
-    file and inside a Markdown paper's maths, `$...$` or `\(...\)`, since in Markdown's text
-    it marks a subscript, so `VCO~2~ \times10^{3}` holds a scale and no mantissa (Basile,
-    after the check of b95b6a89f). A mantissa is its digits grouped as `audit._NUMBER`
+    spaces, and line breaks with no blank line after them, may stand around the times sign
+    (round 2 of #696); a `~` is a tie only in a LaTeX file and inside a Markdown paper's
+    maths, since in Markdown's text it marks a subscript, so `VCO~2~ \times10^{3}` holds a
+    scale and no mantissa (Basile, after the check of b95b6a89f). Markdown's maths is found
+    as pandoc's `tex_math_dollars` finds it (`text.markdown_maths`; Basile, after the check
+    of 191d0e7c2): `$...$` within a paragraph across line breaks, opened before a non-space
+    and closed after one with no digit after it, `$$...$$` across lines, none from an
+    escaped `\$` nor in a code span, a fenced code block or an HTML comment, found first by
+    the mask's own readers and with their limits (`text.masking._code_spans`); `\(...\)` is
+    no maths, as pandoc's Markdown reads it by default, and a `~` there is a subscript's.
+    An indented code block is not read as code, and a `$` in one can open maths that runs
+    out of it to the next `$`. A mantissa is its digits grouped as `audit._NUMBER`
     groups them, by commas, `\,` or a narrow or a no-break space, with a digit after each
     separator; one with a comma left in it, `1{,}5` or `1,500`, is looked for with the same
     digits and comma, since the comma can be a decimal one, so `1,500\times10^{3}` is not

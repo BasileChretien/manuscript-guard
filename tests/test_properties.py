@@ -7004,6 +7004,23 @@ def _a_tie_is_a_gap_in_markdown_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(abstract, "ties", lambda path, text: None)
 
 
+def _markdown_maths_is_read_within_one_line(patch: pytest.MonkeyPatch) -> None:
+    """As at 191d0e7c2: maths wrapped at a line break, or display maths on lines of its own,
+    held no tie."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.markdown_maths
+
+    def one_line(text: str) -> list[tuple[int, int]]:
+        spans, offset = [], 0
+        for line in text.split("\n"):
+            spans += [(offset + start, offset + end) for start, end in real(line)]
+            offset += len(line) + 1
+        return spans
+
+    patch.setattr(abstract, "markdown_maths", one_line)
+
+
 def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
     """As at the head of round 1 of #696: `-10^{8}` was found as `10^{8}`."""
     _read_powers_as(patch, sign="")
@@ -27436,6 +27453,10 @@ BROKEN = {
     ),
     "a power of the Abstract has a tie in Markdown's text read as a gap": (
         _a_tie_is_a_gap_in_markdown_text,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has Markdown's maths read within one line": (
+        _markdown_maths_is_read_within_one_line,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a power of the Abstract has its sign dropped": (

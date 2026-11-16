@@ -206,7 +206,8 @@ def _only_in_seen(text: str, places: list[tuple[tuple[str, ...], str]],
     are found where the paper reports, the parts that are not (round 1 of #700)."""
     where = " and ".join(f"under {', '.join(map(_quoted, titles))} ({at})"
                          for titles, at in places)  # fmt: skip
-    subject = (f"Of {text} in the Abstract, {' and '.join(parts)} is" if parts
+    verb = "are" if len(parts) > 1 else "is"
+    subject = (f"Of {text} in the Abstract, {' and '.join(parts)} {verb}" if parts
                else f"{text} in the Abstract is")
     return (f"{subject} found only {where}, where the comparison does not look for the "
             "Abstract's numbers")

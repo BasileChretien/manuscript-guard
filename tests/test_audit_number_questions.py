@@ -393,6 +393,17 @@ def test_a_number_s_part_found_elsewhere_is_left_out_of_its_question(
         'Of 30-40% in the Abstract, 40 is found only under "Discussion"'), said[0]["message"]
 
 
+def test_two_parts_found_only_elsewhere_take_a_plural_verb() -> None:
+    """Round 2 of #700: where two of a number's parts stand only in a section that reports
+    nothing, the question says they "are" found there, as the draft does."""
+    places = [(("Discussion",), "line 9")]
+    for said in (abstract.asked_only_in("X", places, ("A", "B")),
+                 abstract.referee_only_in("X", places, ("A", "B"))):  # fmt: skip
+        assert said.startswith('Of X in the Abstract, A and B are found only under'), said
+    assert abstract.asked_only_in("X", places, ("A",)).startswith(
+        "Of X in the Abstract, A is found only under")
+
+
 def test_a_heading_given_already_is_named_again_with_the_one_under_it(
     tmp_path: Path, capsys
 ) -> None:

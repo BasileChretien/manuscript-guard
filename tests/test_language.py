@@ -1443,7 +1443,7 @@ def test_an_entry_of_the_list_is_said_as_one(project: Path) -> None:
 
 @pytest.mark.parametrize(
     "after",
-    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "
+    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Limitations\n\nUMC: the "
      "centre was consulted."],
     ids=["a sentence", "a line shaped like an entry", "a heading"],
 )  # fmt: skip
@@ -2417,15 +2417,21 @@ def test_a_french_letter_s_title_page_is_not_read(project: Path) -> None:
 def test_prose_wrapped_over_lines_is_read_as_one_paragraph(project: Path) -> None:
     """An opening paragraph wrapped over several lines is one block: read a line at a time,
     its lines that name a department and a faculty were a title page's, and hid its CHU
-    (round 1 of #654)."""
+    (round 1 of #654). What stands before the first heading asks no definition since
+    decision 28, so its CHU is asked where the Introduction uses it too, and its first use
+    there is the one said."""
+    from manuscript_guard.gates.language import _file
+
     text = (
         "Teaching pharmacology to second-year students\n"
         "at the Department of Pharmacology, CHU de Rouen,\n"
         "and the Faculty of Medicine, Université de Rouen,\n"
         "was reviewed in 2021 and we found that it\n"
-        "was less used than the faculty.\n\n# Introduction\n\nNothing.\n"
+        "was less used than the faculty.\n\n# Introduction\n\nThe CHU paid.\n"
     )
-    assert _named(written(project, text)) == {"CHU"}
+    assert _file(0, Path("main.md"), text, [], False).title_page == 0
+    assert found(written(project, text), "abbreviation-undefined") == [
+        "CHU is used once in the main text as G14 reads it, and not defined there"]
 
 
 def test_nothing_on_the_title_page_defines_or_uses(project: Path) -> None:
@@ -2519,11 +2525,14 @@ def test_a_keywords_list_under_its_heading_is_read_with_the_abstract(project: Pa
 def test_a_keywords_list_not_after_the_abstract_is_read_as_before(project: Path) -> None:
     """A "Keywords" heading after the reference list, or anywhere but after the Abstract,
     takes no scope of the section before it: its list is read as the main text, as before,
-    and a short form it never defines is said undefined (round 2 of #689: it took the
-    reference list's scope and was not read)."""
-    report = written(project, "# Introduction\n\nText.\n\n# References\n\nHicks A. 2004.\n\n"
-                              "# Keywords\n\nXQZ; falls\n")  # fmt: skip
-    assert any("XQZ" in said for said in found(report, "abbreviation-undefined")), found(report)
+    so what it defines is defined there (round 2 of #689: it took the reference list's scope
+    and was not read). A short form it lists asks no definition (decision 28)."""
+    report = written(project, "# Introduction\n\nThe ROR rose.\n\n# References\n\n"
+                              "Hicks A. 2004.\n\n# Keywords\n\nreporting odds ratio (ROR); "
+                              "XQZ; falls\n")  # fmt: skip
+    assert found(report, "abbreviation-used-before-defined") == [
+        "ROR is used here, and defined later at manuscript/main.md:11"], found(report)
+    assert not found(report, "abbreviation-undefined"), found(report)
 
 
 def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> None:

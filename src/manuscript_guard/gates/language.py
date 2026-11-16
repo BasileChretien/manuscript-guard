@@ -41,7 +41,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -73,10 +73,14 @@ from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
-from manuscript_guard.text.section_names import section_name_alone
+from manuscript_guard.text.section_names import (
+    names_abstract,
+    names_statement,
+    section_name_alone,
+)
 from manuscript_guard.text.sections import Section
 from manuscript_guard.text.tables import table_lines
-from manuscript_guard.text.title_page import title_page_end
+from manuscript_guard.text.title_page import MOST_WORDS, opening_before, title_page_end, words_in
 
 if TYPE_CHECKING:
     from manuscript_guard.text.latex.structure import Source
@@ -331,6 +335,14 @@ class _Mark:
 
 
 @dataclass(frozen=True)
+class _Use(_Mark):
+    """A use of a short form; `undue` where it stands where no definition is owed, the
+    title page, a statement, a keywords line or a PDF's running line (`_undue`)."""
+
+    undue: bool = False
+
+
+@dataclass(frozen=True)
 class _Definition(_Mark):
     long: str = ""
     #: In a caption or a glossary: where a definition may be given again, and is not given
@@ -344,7 +356,7 @@ class _Scope:
 
     name: str
     defined: dict[str, list[_Definition]] = field(default_factory=dict)
-    used: dict[str, list[_Mark]] = field(default_factory=dict)
+    used: dict[str, list[_Use]] = field(default_factory=dict)
 
 
 @lru_cache(maxsize=1)
@@ -654,6 +666,9 @@ class _Region:
     start: int
     scope: str | None  # None: not read at all (the reference list)
     quiet: bool
+    #: A statement's: under a heading that names one (`section_names.names_statement`) or
+    #: in a quiet one, where no use of a short form is owed its definition (`_undue`).
+    statement: bool = False
 
 
 def _regions(
@@ -691,11 +706,12 @@ def _regions(
         # scope, and was not read (round 2 of #689).
         if heading.start in kept and regions[-1].scope == ABSTRACT:
             before = regions[-1]
-            regions.append(_Region(heading.start, before.scope, before.quiet))
+            regions.append(replace(before, start=heading.start))
             regions.append(here(kept[heading.start]))
             continue
         regions.append(here(heading.start))
-    regions = _set_apart(regions, statements, lambda start, at: _Region(start, at.scope, True))
+    regions = _set_apart(regions, statements,
+                         lambda start, at: _Region(start, at.scope, True, True))  # fmt: skip
     return _set_apart(regions, lists, lambda start, _at: _Region(start, None, True))
 
 
@@ -720,7 +736,7 @@ def _set_apart(
             current = regions[at]
             at += 1
         if at == len(regions) or regions[at].start > end:
-            out.append(_Region(end, current.scope, current.quiet))
+            out.append(replace(current, start=end))
     return out + regions[at:]
 
 
@@ -733,6 +749,28 @@ def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, 
     "**Contributions of this study** We ...", is the paper's own, and so is one whose bold
     word goes on into its sentence, "**Funding** of the NHS fell" (`_a_label`), and a label
     inside a paragraph. `hidden` is the file masked, a listing and a comment blanked."""
+    return _labelled(hidden, headings, _names_a_statement)
+
+
+def _run_in_named(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
+    """Where each paragraph runs that a bold label opens as `_run_in_statements` reads one,
+    whose label names a statement (`STATEMENT_TITLE`) that `_QUIET` does not find: "**Data
+    availability:**", "**Ethics approval**". Its capitals are read as anywhere, but no use
+    in it is owed a definition (`_undue`), as in a statement under a heading that names one."""
+    from manuscript_guard.text.section_names import STATEMENT_TITLE
+
+    def named(label: str) -> bool:
+        label = _ESCAPE.sub(r"\1", label).strip()
+        return bool(STATEMENT_TITLE.match(label)) and not _names_a_statement(label)
+
+    return _labelled(hidden, headings, named)
+
+
+def _labelled(
+    hidden: str, headings: list[Heading], names: Callable[[str], bool]
+) -> list[tuple[int, int]]:
+    """Where each paragraph runs that opens with a bold label `names` takes, a label alone
+    with the paragraph under it (`_run_in_statements`)."""
     starts = sorted(heading.start for heading in headings)
     found: list[tuple[int, int]] = []
     position = 0
@@ -746,7 +784,7 @@ def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, 
         if opening is None:
             continue
         label, rest = opening.group("label"), hidden[opening.end() : end]
-        if not (_names_a_statement(label) and _a_label(label, rest)):
+        if not (names(label) and _a_label(label, rest)):
             continue
         if _alone(rest):
             under = _under_a_label(hidden, position, starts)
@@ -777,6 +815,65 @@ def _keywords_lists(text: str, hidden: str, headings: list[Heading]) -> dict[int
             end = max(after, starts[following])
         found[heading.start] = end
     return found
+
+
+#: A keywords line, the label at its start with the keywords after it: "Keywords: ...",
+#: "Key words - ...", "INDEX TERMS: ...", in bold or in italics or not, the label followed by
+#: a colon, as `section_names.run_in_keywords` reads one, or by a dash, as IEEE sets "Index
+#: Terms—" and a LaTeX paper "\\textit{Keywords} ---". The line alone: a PDF's text marks
+#: no paragraph, so a list carried onto a second line is read there (DESIGN.md, Known gaps).
+_KEYWORDS_LINE = re.compile(
+    r"^[ \t\x00*_]*(?:key[ \t]?words?|index[ \t]+terms)[ \t\x00*_]*"
+    r"(?::|\N{EM DASH}|\N{EN DASH}|-{1,3})[^\n]*\S",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _keywords_lines(hidden: str) -> list[tuple[int, int]]:
+    """Where each keywords line runs (`_KEYWORDS_LINE`), in `hidden`, the file as G14 reads
+    it with what is no prose blanked."""
+    return [(line.start(), line.end()) for line in _KEYWORDS_LINE.finditer(hidden)]
+
+
+def _lines_at(text: str, numbers: Iterable[int]) -> list[tuple[int, int]]:
+    """Where each of the lines `numbers` of `text` runs, from 1, to its break."""
+    wanted = set(numbers)
+    if not wanted:
+        return []
+    spans, at = [], 0
+    for number, line in enumerate(text.split("\n"), 1):
+        if number in wanted:
+            spans.append((at, at + len(line)))
+        at += len(line) + 1
+    return spans
+
+
+def _united(spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+    """`spans` in order, those that meet made one, so that none is inside another
+    (`_inside`)."""
+    out: list[tuple[int, int]] = []
+    for start, end in sorted(span for span in spans if span[0] < span[1]):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return tuple(out)
+
+
+def _front(hidden: str, headings: list[Heading], abstract_title: str | None) -> int | None:
+    """Where the paper's own text opens in a Markdown file, all before it its title page to
+    G14's places (Basile, 2026-11-16, decision 28): the first heading that names the Abstract,
+    as G14's scopes read one, or where none does the first heading; and before it, the first
+    block G14's title page reads as the paper's opening (`title_page.opening_before`),
+    "**Abstract**" in bold, "Background: ...", a letter's salutation. None where the file
+    holds no heading: a letter's whole text is its own."""
+    if not headings:
+        return None
+    named = next((heading.start for heading in headings
+                  if names_abstract(heading.title, abstract_title)), None)  # fmt: skip
+    bound = named if named is not None else min(heading.start for heading in headings)
+    opening = opening_before(hidden, headings, bound, abstract_title)
+    return bound if opening is None else opening
 
 
 def _paragraph(text: str, start: int) -> tuple[int, int]:
@@ -839,12 +936,13 @@ def _region(
     """The text a stretch under `chain` belongs to; `abstract` and `references` where a LaTeX
     environment says so, which no heading in the chain does."""
     if references or any(section.is_references for section in chain):
-        return _Region(start, None, True)
+        return _Region(start, None, True, True)
     quiet = any(_QUIET.search(section.title) for section in chain)
+    statement = quiet or any(names_statement(section.title) for section in chain)
     if supplementary:
-        return _Region(start, SUPPLEMENT, quiet)
+        return _Region(start, SUPPLEMENT, quiet, statement)
     abstract = abstract or any(section.names_abstract(abstract_title) for section in chain)
-    return _Region(start, ABSTRACT if abstract else BODY, quiet)
+    return _Region(start, ABSTRACT if abstract else BODY, quiet, statement)
 
 
 def _latex_regions(
@@ -1372,6 +1470,13 @@ class _File:
     #: Where the title page that opens the file ends, 0 where it opens with none
     #: (`text/title_page.py`): no abbreviation is read before it.
     title_page: int = 0
+    #: Where the paper's own text opens in the file, past its title page as G14's places
+    #: read it (`_front`); None where the file holds neither a heading nor an opening.
+    front: int | None = None
+    #: Where no use of a short form is owed its definition, besides the title page and the
+    #: statements: a keywords line or section, a LaTeX statement, a PDF's running line; in
+    #: order, none inside another (`_undue`).
+    undue: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1395,9 +1500,12 @@ def _file(
     supplementary: bool,
     abstract_title: str | None = None,
     opens: bool | None = None,
+    running: Iterable[int] = (),
 ) -> _File:
     """A Markdown file read. `opens` where it is the first file of the paper or of the
-    supplement, which a title page may open; by default, where `order` is 0."""
+    supplement, which a title page may open; by default, where `order` is 0. `running` are
+    the lines, from 1, that a PDF the file was staged from repeats at the top or the foot of
+    its pages (`auditing.pdf.PdfText.running_lines`)."""
     headings = find_headings(text)
     hidden, code = _views(text)
     if opens is None:
@@ -1409,9 +1517,12 @@ def _file(
         NUL, " "
     )
     statements = _run_in_statements(hidden, headings)
+    keywords = _keywords_lists(text, hidden, headings)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
                        lists=unmarked_reference_lists(text), statements=statements,
-                       keywords=_keywords_lists(text, hidden, headings))  # fmt: skip
+                       keywords=keywords)  # fmt: skip
+    undue = _united([*_run_in_named(hidden, headings), *keywords.items(),
+                     *_keywords_lines(hidden), *_lines_at(text, running)])  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     # A glossary under a heading that names it, and one a paragraph of its own opens, as a
@@ -1425,7 +1536,7 @@ def _file(
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
-        title_page=title_page,
+        title_page=title_page, front=_front(hidden, headings, abstract_title), undue=undue,
     )  # fmt: skip
 
 
@@ -1571,8 +1682,26 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
                 tables=whole.cells, initials=whole.initials,
+                front=_latex_front(source, whole.regions, start, end),
+                undue=tuple(span for span in whole.undue if span[0] < end and span[1] > start),
             ))  # fmt: skip
     return files
+
+
+def _latex_front(source: Source, regions: list[_Region], start: int, end: int) -> int | None:
+    """Where the paper's own text opens in the stretch `[start, end)` of a LaTeX file, all
+    before it the title page to G14's places (decision 28): where an abstract runs first, as
+    the reader marks one (`Reading.abstracts`), or where none does, the first heading; None
+    where the stretch holds neither."""
+    starts = [region.start for region in regions]
+    if regions[bisect_right(starts, start) - 1].scope == ABSTRACT:
+        return start
+    abstract = next((region.start for region in regions if start <= region.start < end
+                     and region.scope == ABSTRACT), None)  # fmt: skip
+    if abstract is not None:
+        return abstract
+    return next((heading.start for heading in source.reading.headings
+                 if start <= heading.start < end and heading.end != -1), None)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -1597,6 +1726,9 @@ class _LatexFile:
     initials: frozenset[str] = frozenset()
     #: Where its tables' cells run (`_latex_cells`).
     cells: tuple[tuple[int, int], ...] = ()
+    #: Where no use is owed a definition: its keywords lines and its statements typed as an
+    #: environment or as AASTeX's `\\acknowledgments` (`_latex_statements`).
+    undue: tuple[tuple[int, int], ...] = ()
 
 
 #: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
@@ -1662,7 +1794,52 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
                         [*_preamble(source.reading), *source.reading.figures]),
+        undue=_united([*_keywords_lines(seen.text), *_latex_statements(source)]),
     )  # fmt: skip
+
+
+#: A statement typed as an environment, `\\begin{acknowledgements}` (A&A's, revtex's),
+#: `\\begin{funding}`, whose name is a statement's (`STATEMENT_TITLE`), to its `\\end`; and
+#: AASTeX's `\\acknowledgments`, which prints the heading and takes no argument, to the next
+#: heading, `\\appendix`, the reference list or the document's end.
+_LATEX_STATEMENT = re.compile(
+    r"\\begin\s*\{(?P<name>[A-Za-z]+)\*?\}|\\acknowledge?ments?(?![A-Za-z@])")
+_LATEX_STATEMENT_ENDS = re.compile(
+    r"\\(?:appendix|bibliography|printbibliography|begin\s*\{thebibliography\}"
+    r"|end\s*\{document\})(?![A-Za-z@])")
+
+
+def _latex_statements(source: Source) -> list[tuple[int, int]]:
+    """Where each statement of a LaTeX file runs that no heading opens (`_LATEX_STATEMENT`),
+    in its body and outside a comment and a definition's body."""
+    from manuscript_guard.text.section_names import STATEMENT_TITLE
+
+    reading, text = source.reading, source.text
+    if reading.body_start < 0:
+        return []
+    passed = _united([*reading.comments, *reading.bodies])
+    headings = sorted(heading.start for heading in reading.headings)
+    found = []
+    for opened in _LATEX_STATEMENT.finditer(text, reading.body_start):
+        at = opened.start()
+        if _inside(passed, at):
+            continue
+        name = opened.group("name")
+        if name is not None:
+            if not STATEMENT_TITLE.match(name):
+                continue
+            closed = re.compile(rf"\\end\s*\{{{name}\*?\}}").search(text, opened.end())
+            found.append((at, closed.end() if closed else len(text)))
+            continue
+        ends = [len(text)]
+        following = bisect_right(headings, at)
+        if following < len(headings):
+            ends.append(headings[following])
+        stop = _LATEX_STATEMENT_ENDS.search(text, opened.end())
+        if stop is not None:
+            ends.append(stop.start())
+        found.append((at, min(ends)))
+    return found
 
 
 def _stretches(sources) -> Iterator[tuple[Source, int, int]]:
@@ -1704,10 +1881,11 @@ def _input_ends(source: Source) -> list[int]:
     return [end for end, _after in source.resumes]
 
 
-def _read(project: Project) -> list[_File]:
+def _read(project: Project, running: Mapping[str, Iterable[int]] | None = None) -> list[_File]:
     """The manuscript as a reader meets it: the paper's files in printed order, then the
     supplement's. The abstract is the section the journal's profile names as one, where it
-    names one ("Summary"), as G4 reads it."""
+    names one ("Summary"), as G4 reads it. `running` gives, by a file's path under
+    `manuscript/`, the lines a PDF it was staged from repeats at its pages' edges."""
     from manuscript_guard.gates.journal import abstract_title
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
@@ -1727,8 +1905,23 @@ def _read(project: Project) -> list[_File]:
         chain: list[Section] = []
         for at, path in enumerate(document):
             text = read_text(path)
-            files.append(_file(len(files), path, text, chain, supplementary, named, at == 0))
+            lines = _running_at(running, root, path)
+            files.append(_file(len(files), path, text, chain, supplementary, named, at == 0,
+                               running=lines))  # fmt: skip
     return files
+
+
+def _running_at(
+    running: Mapping[str, Iterable[int]] | None, root: Path, path: Path
+) -> Iterable[int]:
+    """The running lines `running` gives for the file at `path` under `root`; none where it
+    gives none, or the file is not under it."""
+    if not running:
+        return ()
+    try:
+        return running.get(path.relative_to(root).as_posix(), ())
+    except ValueError:
+        return ()
 
 
 def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
@@ -1752,10 +1945,12 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
     # The authors' initials a contributions statement names, which are people in a bracket
     # of initials anywhere in the paper: "by a single author (CD)".
     initials = frozenset().union(*(file.initials for file in files))
+    fronts = _fronts(files)
     for file in files:
         capitals = _in_capitals(file.prose)
         starts = [start for start, _end in capitals]
         people = _people(file.prose, initials)
+        front = fronts.get(file.order, 0)
         for word in _WORD.finditer(_CLOCK.sub(lambda time: " " * len(time[0]), file.prose)):
             token = word.group(0)
             if token.islower() or token.isdigit():
@@ -1768,6 +1963,7 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]
+            undue = _undue(file, word.start(), region, front)
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
@@ -1784,9 +1980,40 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     if count is not None and _formula(short + count.group(1)):
                         continue
                 scopes[region.scope].used.setdefault(short, []).append(
-                    _Mark(file.order, offset, region.quiet)
+                    _Use(file.order, offset, region.quiet, undue)
                 )
     return scopes
+
+
+def _undue(file: _File, offset: int, region: _Region, front: int) -> bool:
+    """Whether a use at `offset` stands where no definition is owed (Basile, 2026-11-16,
+    decision 28): on the title page, before `front`, where the paper's own text opens
+    (`_fronts`); in a statement (`_Region.statement`); in a keywords line or section, a LaTeX
+    statement or a PDF's running line (`_File.undue`). Such a use asks no definition, is not
+    counted, and comes before no definition; it is a use all the same, of a short form
+    defined and not used again."""
+    return offset < front or region.statement or _inside(file.undue, offset)
+
+
+def _fronts(files: list[_File]) -> dict[int, int]:
+    """By a file's `order`, where the title page in it ends: in the paper and in the
+    supplement apart, each file before the first that holds a heading or an opening
+    (`_File.front`) is the title page whole, and that one up to it. None of a document whose
+    files hold neither, a letter's; and none where more words stand before it than a title
+    page holds (`title_page.MOST_WORDS`), as G14's title page reads it: a run that long is
+    read as the paper's own text may be."""
+    ends: dict[int, int] = {}
+    for supplementary in (False, True):
+        document = [file for file in files if file.supplementary == supplementary]
+        first = next((at for at, file in enumerate(document) if file.front is not None), None)
+        if first is None:
+            continue
+        before = [(file, len(file.text)) for file in document[:first]]
+        before.append((document[first], document[first].front or 0))
+        if sum(words_in(file.prose, 0, end) for file, end in before) > MOST_WORDS:
+            continue
+        ends.update((file.order, end) for file, end in before)
+    return ends
 
 
 def _same_meaning(one: str, other: str) -> bool:
@@ -1914,8 +2141,11 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             definitions.sort(key=lambda mark: mark.key)
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
+            # A use where no definition is owed, a title page's or a statement's, is no
+            # use before the definition (Basile, 2026-11-16, decision 28).
+            owed = [use for use in uses if not use.undue]
 
-            if uses and uses[0].key < first.key and all(listed(mark) for mark in definitions):
+            if owed and owed[0].key < first.key and all(listed(mark) for mark in definitions):
                 # Defined only in the list of abbreviations, after this use: the text owes
                 # the long form at first use as well, as most journals ask. Where the text
                 # spells it out too, after the list, it is defined later there, as before
@@ -1923,23 +2153,23 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
-                        uses[0],
+                        owed[0],
                         short,
                         f"{short} is used here and not spelt out; only the list of "
                         "abbreviations defines it, "
-                        + placed(first, uses[0], "at", "on the same line"),
+                        + placed(first, owed[0], "at", "on the same line"),
                         "spell it out where it first appears, the long form then the short "
                         "form in brackets: most journals ask for that besides the list",
                     )
                 )
-            elif uses and uses[0].key < first.key:
+            elif owed and owed[0].key < first.key:
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
-                        uses[0],
+                        owed[0],
                         short,
                         f"{short} is used here, and defined "
-                        + placed(first, uses[0], "later at", "later on the same line"),
+                        + placed(first, owed[0], "later at", "later on the same line"),
                         "define an abbreviation where it first appears: the long form, then "
                         "the short form in brackets",
                     )
@@ -1998,9 +2228,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                 continue
             if scope.name == SUPPLEMENT and short in scopes[BODY].defined:
                 continue
-            # A use among the acknowledgements counts as a use, and is not where a reader
-            # is owed the definition.
-            uses = sorted((use for use in uses if not use.quiet), key=lambda mark: mark.key)
+            # A use among the acknowledgements, on the title page, in a keywords line or a
+            # PDF's running line counts as a use, and is not where a reader is owed the
+            # definition (Basile, 2026-11-16, decision 28).
+            uses = sorted((use for use in uses if not use.undue), key=lambda mark: mark.key)
             if not uses:
                 continue
             times = "once" if len(uses) == 1 else f"{len(uses)} times"
@@ -2029,14 +2260,19 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
 
 
 def check_language(
-    project: Project, stage: str | None = None, results: Results | None = None
+    project: Project,
+    stage: str | None = None,
+    results: Results | None = None,
+    running: Mapping[str, Iterable[int]] | None = None,
 ) -> Report:
     """The five readings of the manuscript: its abbreviations, the terms it keeps to, its
     spelling, its notation and the names from its code; and where its prose is in a script
     none of them reads. `stage` is the one `check` runs at, which decides whether
     `no-headings` is said and whether a name from the code fails. `results` are the
-    analysis's, read from the project where they are not given."""
-    files = _read(project)
+    analysis's, read from the project where they are not given. `running` gives, by a file's
+    path under `manuscript/`, the lines from 1 that a PDF the audit staged it from repeats at
+    the top or the foot of its pages, where no use of a short form is owed its definition."""
+    files = _read(project, running)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
              for file in files]  # fmt: skip

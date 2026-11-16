@@ -243,6 +243,24 @@ def title_page_end(
     return end if signals >= needed else None
 
 
+def opening_before(
+    seen: str, headings: Sequence[Heading], end: int, abstract_title: str | None = None
+) -> int | None:
+    """Where the first block before `end` stands that opens the paper (`OPENING`): a heading
+    or a paragraph that names a section a paper opens on, "**Abstract**", "Introduction", a
+    run-in label of one, "Background: ...", a letter's salutation, or a list of
+    abbreviations; None where none stands before it. `seen` and `headings` are as
+    `title_page_end` takes them. Whether the blocks before it hold a title page's lines is not
+    asked: G14 reads no definition as owed before it either way (`gates/language.py`, decision
+    28)."""
+    for at, block in enumerate(_blocks(seen.replace(NUL, " "), headings)):
+        if block.start >= end:
+            return None
+        if _kind(block, abstract_title, first=at == 0) == OPENING:
+            return block.start
+    return None
+
+
 def _blocks(seen: str, headings: Sequence[Heading]) -> Iterator[_Block]:
     """The blocks of `seen` in order: each heading, and each run of lines between blank
     lines and headings. The first, where it has more lines than `SPLIT_LINES`, a line to
@@ -430,8 +448,14 @@ def _words(text: str) -> list[str]:
     return _WORD.findall(_RAISED.sub(" ", text))
 
 
+def words_in(text: str, start: int = 0, end: int | None = None) -> int:
+    """How many words stand in `text[start:end]`, as a title page's are counted against
+    `MOST_WORDS`."""
+    return len(_words(text[start:end]))
+
+
 def _key(name: str) -> str:
     return " ".join(name.casefold().split())
 
 
-__all__ = ["MOST_WORDS", "title_page_end", "two_sentences"]
+__all__ = ["MOST_WORDS", "opening_before", "title_page_end", "two_sentences", "words_in"]

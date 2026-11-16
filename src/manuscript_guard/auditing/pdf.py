@@ -47,6 +47,7 @@ Author field of its Info dictionary is read through `pdfinfo` where it is instal
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import shutil
 import subprocess
@@ -69,6 +70,11 @@ from manuscript_guard.text.section_names import (
 SUFFIX = ".pdf"
 #: The longest `pdfinfo` is waited for.
 PDFINFO_SECONDS = 30
+
+#: A line repeated at the pages' edges is a running one where it stands there on this share of
+#: the pages, and on this many at least (`PdfText.repeated`).
+REPEATED_SHARE = 0.5
+REPEATED_PAGES = 3
 
 #: The names a line of a PDF is read as a heading by, standing alone, in any case: the same
 #: as a Word paragraph wholly in bold is read by in a document with no heading style.
@@ -153,6 +159,32 @@ class PdfText:
         if start.page == end.page:
             return f"page {start.page}, lines {start.line}-{end.line}"
         return f"page {start.page}, line {start.line} to page {end.page}, line {end.line}"
+
+    @property
+    def repeated(self) -> frozenset[int]:
+        """The lines of the text, from 1, that stand where a running head or foot does and
+        were not taken out with them (`proof.reading`, which takes out a line of one shape,
+        digits aside, alone on its page): each line whose words, its spaces made one, stand
+        among the first or the last lines of a page (`proof.reading._edge`) on half the pages
+        or more, and on three at least. G14 asks no definition of a short form there (Basile,
+        2026-11-16, decision 28)."""
+        from manuscript_guard.proof.reading import _edge
+
+        pages: dict[int, list[int]] = {}
+        for line, place in enumerate(self.places, 1):
+            pages.setdefault(place.page, []).append(line)
+        texts = self.text.split("\n")
+        on: dict[str, set[int]] = {}
+        at: dict[str, list[int]] = {}
+        for page, lines in pages.items():
+            for index, line in enumerate(lines):
+                words = " ".join(texts[line - 1].split())
+                if words and _edge(index, lines):
+                    on.setdefault(words, set()).add(page)
+                    at.setdefault(words, []).append(line)
+        least = max(REPEATED_PAGES, math.ceil(REPEATED_SHARE * self.pages))
+        return frozenset(line for words, seen in on.items() if len(seen) >= least
+                         for line in at[words])  # fmt: skip
 
     @property
     def heading_lines(self) -> frozenset[int]:

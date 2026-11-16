@@ -153,6 +153,28 @@ over, which, and by which list. `check` reads no such list and still gives
 one warning for each form, which a project's author answers one at a time (the corpus run
 of 2026-11-11: 354 of 427 of these warnings that judges read on 52 preprints were false,
 the field's own terms, and the true ones were lost among them).
+No definition is asked of a short form that stands only where none is due (decision 28,
+2026-11-16), in the audit as in `check`: on the title page, all before the first heading
+that names the Abstract, or before the first heading where none does, short of a block G14
+reads as the paper's opening ("**Abstract**" in bold, "Background: ...") and of 600 words;
+in a statement, under a heading that names one ("Acknowledgements", "Funding", "Data
+availability", "Ethics approval") or run in from such a label in bold, and in a LaTeX
+paper's `acknowledgements` environment or AASTeX's `\acknowledgments`; in a keywords or
+Index Terms line; and, in a PDF, in a line its text repeats at the top or the foot of half
+its pages or more, and of three at least. A form the text uses too is listed as before, its
+uses in those places not counted, and a use there before the text's definition is no use
+before it. What each place does to G14's four findings:
+
+| place | undefined | used before defined | redefined | unused |
+| --- | --- | --- | --- | --- |
+| the title page | not asked; not counted | not a use before the definition | as before | as before |
+| a statement | not asked; not counted | not a use before the definition | as before | as before |
+| a keywords line | not asked; not counted | not a use before the definition | as before | as before |
+| a PDF's running line | not asked; not counted | not a use before the definition | as before | as before |
+
+"As before" for redefined and unused: a definition in these places is still one, and a use
+there still keeps a definition the text gives from being unused, but for G14's own title
+page (`text/title_page.py`), whose lines were never read for either.
 The names written the way names in code are, `community_action_importance`, are one finding
 in the same way: "3 names are written the way names in code are, as G14 reads the paper:
 'community_action_importance' here, then ...", at the first use of the first, with `--known`

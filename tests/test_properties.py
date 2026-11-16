@@ -2224,6 +2224,60 @@ def _no_title_page_is_found(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "title_page_end", lambda *args, **kwargs: None)
 
 
+from generated import undue_places  # noqa: E402
+
+
+@holds(40, undue_places())
+def test_no_definition_is_asked_where_none_is_due(drawn: tuple[str, list[int], list[str]]) -> None:
+    """A short form that stands only on the title page, in a statement under a heading that
+    names one or run in from its bold label, in a keywords line or in a line a PDF repeats at
+    its pages' edges asks no definition; one the Results use too is asked there, each of its
+    uses in those places counted for nothing; and a title's use before the Introduction
+    defines it is no use before the definition (Basile, 2026-11-16, decision 28)."""
+    text, running, asked = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    file = _file(0, Path("main.md"), text, [], False, running=running)
+    report = language_gate._judge([file], nothing, Path("."))
+    found = sorted((f.code, f.message) for f in report.findings)
+    assert found == [("abbreviation-undefined", f"{short} is used once in the main text as "
+                      "G14 reads it, and not defined there") for short in asked], text
+
+
+def _the_title_page_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_fronts", lambda files: {})
+
+
+def _a_statement_s_heading_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "names_statement", lambda title: False)
+
+
+def _a_statement_run_in_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_run_in_named", lambda hidden, headings: [])
+
+
+def _a_keywords_line_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_keywords_lines", lambda hidden: [])
+
+
+def _a_running_line_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_lines_at", lambda text, numbers: [])
+
+
+def _a_use_where_none_is_due_comes_before_the_definition(patch: pytest.MonkeyPatch) -> None:
+    """Uses in those places asked nothing, but counted before the definition, as before."""
+    real = language_gate._collect
+
+    def counted(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            for short, uses in scope.used.items():
+                if short in scope.defined:
+                    scope.used[short] = [dataclasses.replace(use, undue=False) for use in uses]
+        return scopes
+
+    patch.setattr(language_gate, "_collect", counted)
+
+
 def _only_an_abstract_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import title_page
 
@@ -25853,6 +25907,30 @@ BROKEN = {
     "no title page is found": (
         _no_title_page_is_found,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "the title page is read as text": (
+        _the_title_page_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statement's heading is read as text": (
+        _a_statement_s_heading_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statement run in from its label is read as text": (
+        _a_statement_run_in_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a keywords line is read as text": (
+        _a_keywords_line_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a pdf's running line is read as text": (
+        _a_running_line_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a use where no definition is due comes before the definition": (
+        _a_use_where_none_is_due_comes_before_the_definition,
+        test_no_definition_is_asked_where_none_is_due,
     ),
     "only an abstract ends a title page": (
         _only_an_abstract_ends_a_title_page,

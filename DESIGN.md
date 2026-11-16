@@ -5449,6 +5449,24 @@ each rule leans the other way. A LaTeX paper is not read so: the title page its 
 writes, `\author`, `\affil`, `\address` and the rest of `FRONT_MATTER_COMMANDS`, is passed
 over by its reader (above), and nothing here changes how a LaTeX paper is read.
 
+**No definition is asked where none is due** (Basile, 2026-11-16, decision 28, after 35
+findings the judges of the real-paper corpus marked false in 20 papers). A short form that
+stands only in these places asks no definition and is not counted, in `audit` and in `check`
+alike: the title page, all before the first heading that names the Abstract, or where none
+does before the first heading, in the paper and in the supplement apart (`_fronts`), short
+of a block the title page above reads as the paper's opening and of 600 words; a LaTeX
+paper's, before where its first abstract runs, or its first heading; a statement, under a
+heading `STATEMENT_TITLE` names or `_QUIET` finds, run in from such a bold label, and in
+LaTeX in an environment so named or after AASTeX's `\acknowledgments`; a keywords or Index
+Terms line, and the list under a "Keywords" heading; and, in a PDF, a line its text repeats
+word for word, its spaces made one, among the first or the last lines of half its pages or
+more and of three at least (`PdfText.repeated`), which the audit gives G14 by its lines. A
+short form the text uses too is asked about as before, its uses in those places not
+counted, and a use there before the text's definition is no use before it. A definition in
+those places is still one, and a use there still keeps a definition from being unused: the
+title page above, whose words are read for neither, is unchanged. Known gaps says where the
+places end.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -27881,6 +27899,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
   match luck: 0.85 stands 77 times in psych-B2's tables, nearly all an interval's bound, so
   any Abstract's 85% would be found there whatever the paper reports (Basile, 2026-11-15).
   Pinned by `tests/test_audit.py::test_a_percentage_is_not_found_as_the_proportion_a_table_gives`.
+- **G14's places that owe no definition are read by their places, not their meaning
+  (decision 28).** A short form that stands only on the title page, in a statement, in a
+  keywords line or in a PDF's running line asks no definition; the places are found as
+  follows, and what lies outside them is read as the paper's text. Accepted.
+  - Where no heading names the Abstract, the title page runs to the first heading: an
+    Abstract set as no heading, a run-in "Abstract—" in a PDF that no heading is made of,
+    or an untitled opening paragraph is then on it, and a short form used only there is not
+    asked about; one the text uses again is. Pinned by
+    `tests/test_language.py::test_prose_wrapped_over_lines_is_read_as_one_paragraph`.
+  - More than 600 words before that heading, as in a PDF whose Introduction no heading
+    names (pdf-educ-B2 of the real-paper corpus), is no title page: the whole run is read,
+    its affiliations' state codes with it. Pinned by
+    `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
+  - A statement ends where its paragraph does: a funding statement run in from its bold
+    label and carried on in a second paragraph under no label (docx-psych-A1's authors'
+    initials) is read from there as text. Accepted.
+  - A keywords line is the label's line alone, since a PDF's text marks no paragraph: a
+    list carried onto a second line is read there. Accepted.
+  - A LaTeX statement is found under a heading, in an environment whose name is a
+    statement's (`acknowledgements`, `funding`) or after AASTeX's `\acknowledgments`; one
+    typed through another class's command, JMLR's `\acks{...}`, is read as text. Accepted.
+  - A running line is one the PDF repeats at the top or the foot of half its pages or more:
+    one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
+    (tex-astro-ga-B2), is read as text. Pinned by
+    `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

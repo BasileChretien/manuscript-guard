@@ -883,11 +883,13 @@ def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
 @st.composite
 def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
-    order drawn, and the abbreviations it leaves undefined, in order of the alphabet."""
+    order drawn, and the abbreviations it leaves undefined, in order of the alphabet. It opens
+    on a heading, so that its pieces are the paper's text: what stands before the first
+    heading is its title page to G14, which asks no definition there (decision 28)."""
     still = [written for written, _short in STILL_ABBREVIATIONS]
     planted = draw(st.permutations([*NOT_ABBREVIATIONS, *still]))
     text, _starts = _paragraphs(draw, planted)
-    return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
+    return "# Introduction\n\n" + text, sorted(short for _written, short in STILL_ABBREVIATIONS)
 
 
 #: A contributions statement as each is typed, `{}` the initials it names: under a heading
@@ -1151,10 +1153,11 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     )
     methods = ("# Methods", body("the UR and the CHU paid for the survey"))
     for at, mention in enumerate(OPENING_MENTIONS):
-        # With no title page, the title is read, and its PACES is undefined; a heading's
-        # words are not read for abbreviations anyway.
+        # With no title page, the title is read; but what stands before the first heading
+        # asks no definition (decision 28), so its PACES is not reported; nor is a heading's,
+        # whose words are not read for abbreviations anyway.
         heading = draw(st.sampled_from(TITLE_PAGE_TITLES))
-        shorts = ("CHU",) if heading.startswith("#") else ("CHU", "PACES")
+        shorts = ("CHU",)
         found[f"mentions-{at}"] = (
             paper(heading, mention, *methods),
             [("abbreviation-undefined", short) for short in shorts],
@@ -1162,6 +1165,72 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     found["sentence"] = (paper(OPENING_SENTENCE, *methods), [("abbreviation-undefined", "CHU")])
     return {name: (text.replace("\n", end), expected)
             for name, (text, expected) in found.items()}  # fmt: skip
+
+
+#: The places where G14 owes no definition of a short form (Basile, 2026-11-16, decision 28),
+#: each written several ways, `{}` the short forms it holds: a title page's lines, after the
+#: title and a line that reads as prose, so that G14's own title page finds none
+#: (`text/title_page.py`) and only the place does; a statement under a heading that names one
+#: and that `_QUIET` does not find, whose capitals were read before; a statement run in from
+#: its bold label, the same; a keywords line after the Abstract; and a line a PDF repeats at
+#: its pages' edges, given to the reading as such (`_file`'s `running`).
+UNDUE_TITLE_LINES = ("Ana Martin, {} Unit, Rouen, France", "Paul Girard and the {} group",
+                     "Correspondence: Lea Roux, {} Centre")  # fmt: skip
+UNDUE_PROSE_LINE = "This version of the paper is under review at a journal."
+UNDUE_STATEMENT_HEADINGS = ("# Data availability", "## Data availability statement",
+                            "# Ethics approval and consent to participate", "# Declarations",
+                            "# Availability of data and materials",
+                            "# Patient and public involvement")  # fmt: skip
+UNDUE_RUN_IN_LABELS = ("**Data availability:**", "**Ethics approval.**", "__Data sharing__:",
+                       "**Consent for publication:**")  # fmt: skip
+UNDUE_KEYWORDS_LINES = ("**Keywords:** {}; falls", "Key words: {}, falls",
+                        "Index Terms\N{EM DASH}{}, falls", "KEYWORDS - {}; falls",
+                        "*Key words*: {}; falls")  # fmt: skip
+UNDUE_RUNNING = "Journal of {}"
+#: The short forms the places hold, drawn in an order, none a word or a known form.
+UNDUE_FORMS = ("QXA", "QXB", "QXC", "QXD", "QXE", "QXF", "QXG", "QXH", "QXJ", "QXK")
+#: The kinds of place, in the order the paper has them.
+UNDUE_KINDS = ("title page", "statement heading", "statement run in", "keywords line",
+               "running line")  # fmt: skip
+
+
+@st.composite
+def undue_places(draw: st.DrawFn) -> tuple[str, list[int], list[str]]:
+    """A Markdown paper with every kind of `UNDUE_KINDS`, each written a way drawn, holding a
+    short form used nowhere else and one the Results also use undefined; and a short form
+    the title page uses before the Introduction defines it. With the lines that are a PDF's
+    running lines, from 1, and the short forms G14 reports, each used once in the main text:
+    those the Results use."""
+    forms = draw(st.permutations(UNDUE_FORMS))
+    only = dict(zip(UNDUE_KINDS, forms, strict=False))
+    also = dict(zip(UNDUE_KINDS, forms[len(UNDUE_KINDS):], strict=False))
+    defined = _DEFINED_SHORT
+    both = {kind: f"{only[kind]} and {also[kind]}" for kind in UNDUE_KINDS}
+    lines = draw(st.permutations(UNDUE_TITLE_LINES))
+    title = [f"Exam success and the {defined}", UNDUE_PROSE_LINE,
+             lines[0].format(both["title page"]), *lines[1:]]  # fmt: skip
+    keywords = draw(st.sampled_from(UNDUE_KEYWORDS_LINES)).format(both["keywords line"])
+    body = ["# Introduction", f"The {_DEFINED_LONG} ({defined}) was read. The {defined} rose.",
+            "# Methods", "We read the records.", "# Results",
+            "The " + ", the ".join(also[kind] for kind in UNDUE_KINDS) + " fell.",
+            "# Discussion", "It held."]  # fmt: skip
+    # The running line between three of the body's paragraphs, drawn.
+    gaps = sorted(draw(st.permutations([1, 3, 5, 7]))[:3], reverse=True)
+    running = UNDUE_RUNNING.format(both["running line"])
+    for gap in gaps:
+        body.insert(gap + 1, running)
+    blocks = [*title, "# Abstract", "We read 412 records.", keywords, *body,
+              f"{draw(st.sampled_from(UNDUE_RUN_IN_LABELS))} The {both['statement run in']} "
+              "hold the data.",
+              draw(st.sampled_from(UNDUE_STATEMENT_HEADINGS)),
+              f"The {both['statement heading']} approved it."]  # fmt: skip
+    text = "\n\n".join(blocks) + "\n"
+    numbers = [at for at, line in enumerate(text.split("\n"), 1) if line == running]
+    return text, numbers, sorted(also.values())
+
+
+#: The short form the Introduction defines, which the title uses before.
+_DEFINED_LONG, _DEFINED_SHORT = "signal detection ratio", "SDR"
 
 
 #: The openings an input of the `abbreviations` reading starts with, so that old and new
@@ -1176,7 +1245,25 @@ TITLE_PAGE_OPENINGS = (
                  "# Introduction\n\n")),
     "\n\n".join((TITLE_PAGE_TITLES[2], TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,
                  "Dear Editor,\n\n")),
+    # One G14's title page does not find, a line of it reading as prose, which ends at the
+    # Abstract all the same to the places that owe no definition (decision 28).
+    "\n\n".join((TITLE_PAGE_TITLES[0], UNDUE_PROSE_LINE,
+                 UNDUE_TITLE_LINES[0].format("QXA and NIH"), "# Abstract",
+                 "the NIH paid for the reports", UNDUE_KEYWORDS_LINES[0].format("QXB, CHU"),
+                 "\n")),
 )  # fmt: skip
+
+#: Blocks of the places that owe no definition (decision 28), for the `abbreviations` and
+#: `audit abbreviations` readings: each kind of statement and keywords line, holding a short
+#: form the text may use too, and one it does not.
+UNDUE_BLOCKS = tuple(
+    f"\n\n{written}\n\n"
+    for written in (
+        *(f"{heading}\n\nThe QXC and the NIH approved it." for heading in UNDUE_STATEMENT_HEADINGS),
+        *(f"{label} The QXD and the CHU hold the data." for label in UNDUE_RUN_IN_LABELS),
+        *(line.format("QXE, ROR") for line in UNDUE_KEYWORDS_LINES),
+    )
+)
 
 
 #: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.
@@ -17573,7 +17660,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {
             "text": st.tuples(
                 st.sampled_from(TITLE_PAGE_OPENINGS),
-                texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+                texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
             ).map(
                 lambda drawn: f"{drawn[0]}{drawn[1]}\n\n{GLOSSARY_OPENED}\n\n# Methods\n\n"
                 f"{INITIALS_NAMED}\n"
@@ -17590,7 +17677,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),  # fmt: skip
     "audit abbreviations": st.one_of(
         undefined_forms().map(lambda drawn: drawn[0][0][1]),
-        texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+        texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
     ),
     "tex outside maths": lines(),
     "title": lines(),

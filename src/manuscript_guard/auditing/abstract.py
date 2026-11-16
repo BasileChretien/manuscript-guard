@@ -586,16 +586,26 @@ def _words(text: str) -> set[str]:
 
 #: A number in scientific notation as TeX sets one, and a power of a number alone: an
 #: optional sign, a mantissa and a times sign, `\times`, `\cdot`, "×" or "·" (spaced or not,
-#: TeX's thin spaces among it), then a number, a caret and a braced exponent, `10^{-2}`,
-#: `10^{\,8}`, `2^{10}`, `10^{\alpha}`, or a single digit, `10^8`, `10^8.` at a sentence's
+#: any run of the gaps of `_GAP` around it), then a number, a caret and a braced exponent,
+#: `10^{-2}`, `10^{\,8}`, `2^{10}`, `10^{\alpha}`, or a single digit, `10^8`, `10^8.` at a
+#: sentence's
 #: end; or pandoc's superscript, `10^-2^`. A bare power is the same number with a mantissa
 #: of 1 and keeps its sign, `-10^{8}`. A power after a times sign with no mantissa before
 #: it, a column header's "(×10^8 cm^-3)", is a scale (`scale`), no number at all. Not
 #: `10^-2` nor `10^82` in maths, which TeX sets as 10 to the minus and 10 to the 8 before a
 #: 2: these are read as they were. The first number stands alone, after a sign, a times sign
-#: or a TeX command (`_base_alone`). A sign is one where `audit._NUMBER` reads one.
+#: or a TeX command (`_base_alone`); a power after a times sign after anything else,
+#: `k_2\times10^{3}`, is a scale. A sign is one where `audit._NUMBER` reads one. A mantissa
+#: is read as `audit._NUMBER` reads a number, its digits grouped by commas, a narrow or a
+#: no-break space, and in TeX by `\,` or a decimal comma `{,}` too (`_MANTISSA`).
 _TIMES = r"(?:\\times(?![A-Za-z])|\\cdot(?![A-Za-z])|\N{MULTIPLICATION SIGN}|\N{MIDDLE DOT})"
-_GAP = r"(?:[ \t]|\\[,;:!])*"
+#: What may stand between a mantissa, its times sign and its power: a space, a tab, a
+#: no-break, a thin or a narrow no-break space, TeX's tie `~` and its spaces `\,`, `\;`, `\:`,
+#: `\!` and `\ `, in any run and mix (round 2 of #696).
+_GAP = r"(?:[ \t~\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]|\\[,;:! ])*"
+#: A mantissa, as `audit._NUMBER` reads a number, and TeX's groupings of its digits.
+_MANTISSA = (r"\d(?:(?:[,\N{NARROW NO-BREAK SPACE}\N{NO-BREAK SPACE}]|\{,\}|\\,)?\d)*"
+             r"(?:\.\d+)?|(?<![\w.])\.\d+")
 #: The signs of a minus, the hyphen last, where a class of characters reads it as itself.
 _DASHES = "\N{MINUS SIGN}\N{EN DASH}-"
 
@@ -606,7 +616,8 @@ def _power_pattern() -> re.Pattern[str]:
 
     sign = rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-–]|−)"  # an en dash, a minus sign
     return re.compile(
-        rf"(?:(?P<sign>{sign})?(?<![\d.])(?P<mantissa>\d+(?:\.\d+)?){_GAP}{_TIMES}{_GAP}"
+        rf"(?:(?P<sign>{sign})?(?<![\d.])(?P<mantissa>{_MANTISSA}){_GAP}(?P<times>{_TIMES})"
+        rf"{_GAP}"
         rf"|(?P<scale>{_TIMES}){_GAP}|(?P<bare>{sign}))?"
         r"(?<![\d.])(?P<base>\d+(?:\.\d+)?)[ \t]*\^(?:"
         rf"(?P<raised>[+{_DASHES}]?\d+(?:\.\d+)?)\^"
@@ -641,6 +652,17 @@ class Power:
         return f"{self.sign}{self.mantissa}\N{MULTIPLICATION SIGN}{self.base}^{self.exponent}"
 
 
+def _mantissa(printed: str) -> str:
+    """A mantissa as it is looked for: its groupings taken out, `{,}` read as a comma, and
+    read as a number (`normalise_number`) unless a comma is left in it, which may be a
+    decimal comma or a thousands one: "1{,}5" stays "1,5", never 15 nor 1.5."""
+    from manuscript_guard.audit import normalise_number
+
+    plain = printed.replace("{,}", ",").replace("\\,", "")
+    plain = plain.replace("\N{NARROW NO-BREAK SPACE}", "").replace("\N{NO-BREAK SPACE}", "")
+    return plain if "," in plain else normalise_number(plain)
+
+
 def _base_alone(text: str, at: int) -> bool:
     """Whether a number at `at` stands alone, after no letter, digit, point or underscore,
     or after a TeX command's name, `\\times10^{8}`."""
@@ -663,11 +685,15 @@ def powers(text: str, read: str) -> list[Power]:
     found = []
     for match in _power_pattern().finditer(text):
         start, end = match.span()
-        first = match.start("mantissa") if match["mantissa"] is not None else match.start("base")
-        led = match["sign"] is not None or match["bare"] is not None or match["scale"] is not None
+        scale = match["scale"] is not None
+        if match["mantissa"] is not None and match["sign"] is None and not _base_alone(
+                text, match.start("mantissa")):  # fmt: skip
+            # `k_2\times10^{3}`: no mantissa, so a scale, read from its times sign.
+            start, scale = match.start("times"), True
+        led = match["sign"] is not None or match["bare"] is not None or scale
         kept = all(read[at] == text[at] for at in range(start, end)
                    if text[at].isdigit() or text[at] == "^")  # fmt: skip
-        if not (kept and (led or _base_alone(text, first))):
+        if not (kept and (led or _base_alone(text, match.start("base")))):
             continue
         name = next(one for one in ("raised", "digit", "group") if match[one] is not None)
         exponent = _EXPONENT_SPACE.sub("", match[name])
@@ -676,9 +702,9 @@ def powers(text: str, read: str) -> list[Power]:
         if _EXPONENT_NUMBER.fullmatch(exponent):
             exponent = normalise_number(exponent)
         sign = "-" if match["sign"] is not None or match["bare"] is not None else ""
-        found.append(Power(start, end, sign, normalise_number(match["mantissa"] or "1"),
-                           normalise_number(match["base"]), exponent,
-                           match["scale"] is not None))  # fmt: skip
+        mantissa = "1" if scale or match["mantissa"] is None else _mantissa(match["mantissa"])
+        found.append(Power(start, end, sign, mantissa, normalise_number(match["base"]),
+                           exponent, scale))  # fmt: skip
     return found
 
 
@@ -726,25 +752,29 @@ def _looked_for(piece: Piece, abstract: str, lines: set[int]) -> list[Looked]:
 
 
 def _joined(atoms: list[Atom], read: list[Power], text: str) -> Looked:
-    """Atoms and the powers they overlap, read as one: from the first of them to the last,
-    what stands outside the powers at its ends taken off, the `$` a Markdown atom of maths
-    keeps and the stop after `10^8.`; the powers, then the numbers of the atoms outside every
-    power. A scale is no number: atoms that hold nothing else give nothing to look for."""
+    """Atoms and the powers they overlap, read as one: the powers, then the numbers of the
+    atoms outside every power as the paper's reported text reads them, named from the first
+    of them to the last as printed. A scale is no number: atoms that hold nothing else give
+    nothing to look for, and a number beside one is named alone, "0.2" of a Markdown atom
+    "0.2)\\times10^{-2}" (round 2 of #696)."""
+    from manuscript_guard.audit import _NUMBER, _OPAQUE
+
     first = atoms[0]
-    start = min(first.start, read[0].start)
-    end = max(atoms[-1].end, read[-1].end)
-    while start < read[0].start and text[start] in "$([":
-        start += 1
-    while end > read[-1].end and text[end - 1] in "$.,;:!?)]":
-        end -= 1
-    outside = " ".join(
-        "".join(" " if any(p.start <= at < p.end for p in read) else text[at]
-                for at in range(atom.start, atom.end))
-        for atom in atoms)  # fmt: skip
+    named = [(power.start, power.end) for power in read if not power.scale]
+    alone = []
+    for atom in atoms:
+        blank = "".join(" " if any(p.start <= at < p.end for p in read) else text[at]
+                        for at in range(atom.start, atom.end))  # fmt: skip
+        blank = _OPAQUE.sub(lambda found: " " * len(found.group(0)), blank.replace(NUL, " "))
+        for found in _NUMBER.finditer(blank):
+            alone.append(found.group(0))
+            named.append((atom.start + found.start(), atom.start + found.end()))
     keys = tuple(power.key for power in read if not power.scale)
+    start = min((at for at, _end in named), default=first.start)
+    end = max((at for _start, at in named), default=first.end)
     atom = replace(first, text=text[start:end], start=start, end=end,
                    col=start - first.line_start + 1)  # fmt: skip
-    return Looked(atom, (*keys, *_numbers(outside)), frozenset(keys))
+    return Looked(atom, (*keys, *alone), frozenset(keys))
 
 
 # ------------------------------------------------------------------------------- reading

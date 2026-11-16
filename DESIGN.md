@@ -27900,7 +27900,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A power after a slash, a header's `n/10^8`, is a bare power, not a scale, and finds an
     Abstract's `10^8`; and what a match is worth counts no power. Accepted.
   - A mantissa in brackets, `(1.4 \pm 0.2) \times 10^{-2}`, is no mantissa: the power after
-    the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone. Accepted.
+    the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone, each named so.
+    So is a power after a times sign after a name, `k_2\times10^{3}`. Accepted.
+  - Any run of spaces, ties, `\,`, `\;`, `\:`, `\!`, `\ `, no-break, thin and narrow no-break
+    spaces may stand around the times sign (round 2 of #696). A mantissa is read as
+    `audit._NUMBER` reads a number, its digits grouped by commas, `\,` or a narrow or a
+    no-break space; one with a comma left in it, `1{,}5` or `1,500`, is looked for as
+    printed, since the comma can be a decimal one, so `1,500\times10^{3}` is not found
+    beside `1500\times10^{3}`. Accepted.
   - A .docx paragraph's raised run is printed flat, so "10" and a raised "-2" read "10-2", a
     range, in the Abstract and where the paper reports alike. Pinned by
     `tests/test_abstract_powers.py::test_a_docx_superscript_in_a_paragraph_is_read_flat`.

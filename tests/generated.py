@@ -9435,7 +9435,12 @@ POWER_EXPONENTS = {"power": 2, "power not found": 6, "scientific": 11,
                    "scale": 31, "scale in the abstract": 35}  # fmt: skip
 #: A times sign between a mantissa and its power, and the spaces either side of it.
 TIMES_SIGNS = (BACKSLASH + "times", BACKSLASH + "cdot")
-TIMES_GAPS = ("", " ", BACKSLASH + ",")
+#: Of them, the gaps a typist or TeX leaves beside a space and TeX's thin space: a tie, a
+#: control space, a no-break, a thin and a narrow no-break space, and runs of them, one of
+#: which every example draws (round 2 of #696).
+TIMES_TIES = ("~", BACKSLASH + " ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+              "\N{NARROW NO-BREAK SPACE}", BACKSLASH + ",~", "~" + BACKSLASH + "; ")
+TIMES_GAPS = ("", " ", BACKSLASH + ",", *TIMES_TIES)
 
 
 def _power(draw: st.DrawFn, base: str, value: int) -> str:
@@ -9446,9 +9451,9 @@ def _power(draw: st.DrawFn, base: str, value: int) -> str:
     return f"{base}^" + draw(st.sampled_from(spellings)).format(v=value)
 
 
-def _times(draw: st.DrawFn, mantissa: str, power: str) -> str:
-    """`mantissa` times `power`, the sign and the spaces drawn."""
-    gap = draw(st.sampled_from(TIMES_GAPS))
+def _times(draw: st.DrawFn, mantissa: str, power: str, gaps: tuple = TIMES_GAPS) -> str:
+    """`mantissa` times `power`, the sign and the spaces, of `gaps`, drawn."""
+    gap = draw(st.sampled_from(gaps))
     return f"{mantissa}{gap}{draw(st.sampled_from(TIMES_SIGNS))}{gap}{power}"
 
 
@@ -9479,10 +9484,12 @@ def _abstract_power(draw: st.DrawFn, kind: str
         methods.append(f"It was ${sign}{_times(draw, mantissa, again)}$ then.")
     elif kind == "scientific another mantissa":
         written, state = _times(draw, mantissa, power), "not found"
-        methods.append(f"It was ${_times(draw, other, again)}$, and {mantissa} the next.")
+        # Its parts, each printed apart: another mantissa, the bare power and the mantissa.
+        methods.append(f"It was ${_times(draw, other, again)}$, ${again}$ alone, and "
+                       f"{mantissa} the next.")  # fmt: skip
     elif kind == "power scaled":
         written, state = power, "not found"
-        methods.append(f"It was ${_times(draw, mantissa, again)}$ then.")
+        methods.append(f"It was ${_times(draw, mantissa, again, TIMES_TIES)}$ then.")
     elif kind == "power signed":
         written, state = f"-{power}", "not found"
         methods.append(f"It was ${again}$ then.")

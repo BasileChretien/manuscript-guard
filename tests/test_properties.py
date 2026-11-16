@@ -6972,19 +6972,29 @@ def _a_scale_or_a_mantissa_is_no_part_of_the_number(patch: pytest.MonkeyPatch) -
 
 
 def _a_mantissa_is_looked_for_alone(patch: pytest.MonkeyPatch) -> None:
-    """As at the head of round 1 of #696: `3\\times 10^{8}` was found as 3 and 10^8."""
+    """As at the head of round 1 of #696: `3\\times 10^{8}` in the Abstract was found as 3
+    and 10^8 apart. Only the Abstract's reading is broken, where the paper reports is not."""
     from manuscript_guard.auditing import abstract
 
-    _read_powers_as(patch, mantissa="1")
     real = abstract._joined
 
     def joined(atoms, read, text):
-        one = real(atoms, read, text)
-        alone = [part for power in read for part in abstract._numbers(
-            text[power.start : power.end].split("^")[0])]  # fmt: skip
+        bare = [dataclasses.replace(power, mantissa="1") for power in read]
+        one = real(atoms, bare, text)
+        alone = tuple(power.mantissa for power in read
+                      if not power.scale and power.mantissa != "1")  # fmt: skip
         return dataclasses.replace(one, parts=(*one.parts, *alone))
 
     patch.setattr(abstract, "_joined", joined)
+
+
+def _a_times_sign_s_gap_is_only_a_space(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 2 of #696: `5~\\times~10^{-2}` was the bare `10^{-2}`."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_GAP", r"(?:[ \t]|\\[,;:!])*")
+    narrow = abstract._power_pattern.__wrapped__()
+    patch.setattr(abstract, "_power_pattern", lambda: narrow)
 
 
 def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
@@ -27411,6 +27421,10 @@ BROKEN = {
     ),
     "a power of the Abstract has its mantissa looked for alone": (
         _a_mantissa_is_looked_for_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read with a space alone around its times sign": (
+        _a_times_sign_s_gap_is_only_a_space,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a power of the Abstract has its sign dropped": (

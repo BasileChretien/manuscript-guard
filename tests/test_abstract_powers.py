@@ -116,6 +116,9 @@ def test_a_power_only_the_discussion_prints_is_not_found(tmp_path: Path) -> None
      "3 \N{MULTIPLICATION SIGN} 10^{8}"),
     ("$-10^{8}$", "$-1@times 10^{8}$", "-10^{8}"),
     ("$10^{\N{EN DASH}2}$", "$10^{-2}$", "10^{\N{EN DASH}2}"),
+    ("$3~@times~10^{8}$", "$3@ @times\N{NO-BREAK SPACE}10^{8}$", "3~@times~10^{8}"),
+    ("$1@,500@times10^{3}$", "$1500 @times 10^{3}$", "1@,500@times10^{3}"),
+    ("$1{,}5@times10^{-3}$", "$1{,}5 @times 10^{-3}$", "1{,}5@times10^{-3}"),
 ])  # fmt: skip
 def test_a_number_in_scientific_notation_is_found_whole(tmp_path: Path, suffix: str,
                                                         abstract: str, results: str,
@@ -141,6 +144,18 @@ def test_a_number_in_scientific_notation_is_found_whole(tmp_path: Path, suffix: 
     # A column header's scale is no number.
     ("$10^{8}$", "Density ($@times 10^8$ cm$^{-3}$) was read.", "10^{8}"),
     ("$10^{-3}$", "Mass (\N{MULTIPLICATION SIGN}10^{-3}) was read.", "10^{-3}"),
+    # Round 2 of #696: every gap TeX or a typist leaves around a times sign.
+    *(row for gap in ("~", "@ ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+                      "\N{NARROW NO-BREAK SPACE}", "@,~", "~@; ")
+      for row in (("$10^{-2}$", f"$5{gap}@times{gap}10^{{-2}}$", "10^{-2}"),
+                  (f"$3{gap}@times{gap}10^{{8}}$", f"$5{gap}@times{gap}10^{{8}}$ in 3 runs",
+                   f"3{gap}@times{gap}10^{{8}}"))),
+    # A decimal comma or a digit group is part of the mantissa.
+    ("$1{,}5@times10^{-3}$", "$2{,}5@times10^{-3}$ in 1 run", "1{,}5@times10^{-3}"),
+    ("$1@,500@times10^{3}$", "$500@times10^{3}$ and $1{,}5@times10^{3}$",
+     "1@,500@times10^{3}"),
+    # A times sign after no number alone is a scale's.
+    ("$10^{3}$", "$k_2@times10^{3}$", "10^{3}"),
 ])  # fmt: skip
 def test_a_number_in_scientific_notation_is_never_found_by_a_part(
     tmp_path: Path, suffix: str, abstract: str, results: str, name: str
@@ -186,6 +201,19 @@ def test_no_finding_names_a_text_ending_in_a_caret_or_a_times_sign(
                                                                "\N{MULTIPLICATION SIGN}"))
                                        for text in named), named  # fmt: skip
     assert read.found == [], named
+
+
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+def test_a_bracketed_mantissa_s_numbers_are_named_as_looked_for(tmp_path: Path,
+                                                                 suffix: str) -> None:  # fmt: skip
+    """`(1.4 @pm 0.2)@times10^{-2}`: the power after the bracket is a scale, and 0.2 is
+    looked for and named alone, never "0.2)@times10^{-2}" (round 2 of #696)."""
+    read = _read(tmp_path, suffix, f"It was $(1.4 {B}pm 0.2){B}times10^{{-2}}$ here.",
+                 "It was so.")  # fmt: skip
+    named = _texts(read.not_found + read.found)
+    assert "0.2" in named, named
+    assert not any(text.endswith(("^", "times", "\N{MULTIPLICATION SIGN}", ")"))
+                   for text in named), named  # fmt: skip
 
 
 def test_pandoc_s_superscript_is_the_same_power(tmp_path: Path) -> None:

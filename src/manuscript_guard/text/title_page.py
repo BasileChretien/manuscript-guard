@@ -246,18 +246,29 @@ def title_page_end(
 def opening(
     seen: str, headings: Sequence[Heading], abstract_title: str | None = None
 ) -> tuple[int, bool] | None:
-    """Where the first block stands that opens the paper (`OPENING`), with whether it names
-    the Abstract: a heading or a paragraph that names a section a paper opens on,
-    "**Abstract**", "Introduction", a run-in label of one, "Abstract: ...", "Background:
-    ...", a letter's salutation, or a list of abbreviations; None where none does. `seen` and
+    """Where the first block stands that opens the paper (`OPENING`), with whether the
+    Abstract is named, there or after it: a heading or a paragraph that names a section a
+    paper opens on, "**Abstract**", "Introduction", "Key points", "Highlights", a run-in
+    label of one, "Abstract: ...", "Background: ...", a letter's salutation, or a list of
+    abbreviations; None where none does. A heading names the Abstract wherever it stands; a
+    paragraph only before the file's first heading, where a title page stands, so a protocol's
+    "**Abstract**" under "# Supplementary Table S1" names none (round 2 of #699). `seen` and
     `headings` are as `title_page_end` takes them. Whether the blocks before it hold a title
-    page's lines is not asked: G14 takes what stands before one that names the Abstract for
-    its title page whatever they hold, and none before any other (`gates/language.py`,
-    decision 28 and Basile's "No title page there", 2026-11-16)."""
+    page's lines is not asked: G14 takes what stands before the first opening for its title
+    page where the Abstract is named, whatever they hold, and none where it is not
+    (`gates/language.py`, decision 28 and Basile's "No title page there", 2026-11-16)."""
+    first_heading = min((heading.start for heading in headings), default=None)
+    opened: int | None = None
     for at, block in enumerate(_blocks(seen.replace(NUL, " "), headings)):
-        if _kind(block, abstract_title, first=at == 0) == OPENING:
-            return block.start, _names_the_abstract(block, abstract_title)
-    return None
+        if _kind(block, abstract_title, first=at == 0) != OPENING:
+            continue
+        if opened is None:
+            opened = block.start
+        titled = block.heading is not None or first_heading is None or (
+            block.start < first_heading)  # fmt: skip
+        if titled and _names_the_abstract(block, abstract_title):
+            return opened, True
+    return None if opened is None else (opened, False)
 
 
 def _names_the_abstract(block: _Block, abstract_title: str | None) -> bool:

@@ -1197,7 +1197,7 @@ UNDUE_RUNNING = "Journal of {}"
 UNDUE_ABSTRACTS = ("heading", "bold", "run in", "next file", "bold, next file", "none")
 #: The short forms the places hold, drawn in an order, none a word or a known form.
 UNDUE_FORMS = ("QXA", "QXB", "QXC", "QXD", "QXE", "QXF", "QXG", "QXH", "QXJ", "QXK", "QXL",
-               "QXM", "QXN", "QXP")  # fmt: skip
+               "QXM", "QXN", "QXP", "QXR", "QXS")  # fmt: skip
 #: The kinds of place, in the order the paper has them.
 UNDUE_KINDS = ("title page", "statement heading", "statement run in", "statement plain",
                "keywords line", "running line")  # fmt: skip
@@ -1206,18 +1206,24 @@ UNDUE_KINDS = ("title page", "statement heading", "statement run in", "statement
 @st.composite
 def undue_places(
     draw: st.DrawFn,
-) -> list[tuple[list[tuple[str, list[int]]], list[tuple[str, str]]]]:
+) -> list[tuple[list[tuple[str, list[int], bool]], list[tuple[str, str]]]]:
     """A Markdown paper for each way of `UNDUE_ABSTRACTS` the Abstract is named, each with
     every kind of `UNDUE_KINDS`, written a way drawn, holding a short form used nowhere else
     and one the Results also use undefined; a short form the title page uses before the
-    Introduction defines it; one the Abstract uses alone; and one in a sentence of the
-    Methods that opens on "Keyword-based". Each paper is its files, each with its lines a
-    PDF's running lines, from 1, and the findings G14 gives: each short form the text uses,
-    once, the Abstract's in the abstract where a heading names it, in the main text else."""
+    Introduction defines it; one the Abstract uses alone; one in a sentence of the Methods
+    that opens on "Keyword-based"; one in a sentence of the Discussion that opens on a
+    statement's name in plain type; and one in a supplement whose first heading opens
+    nothing and which has a protocol's "**Abstract**" after it (round 2 of #699). The
+    statement in plain type stands before any heading; "**Key points**" stands before the
+    Abstract, and ends its title page; the keywords line stands on the line after the
+    Abstract's last. Each paper is its files, each with its lines a PDF's running lines,
+    from 1, and whether it is the supplement's, and the findings G14 gives: each short form
+    the text uses, once, the Abstract's in the abstract where a heading names it, in the main
+    text else."""
     forms = draw(st.permutations(UNDUE_FORMS))
     only = dict(zip(UNDUE_KINDS, forms, strict=False))
     also = dict(zip(UNDUE_KINDS, forms[len(UNDUE_KINDS):], strict=False))
-    alone, keyword = forms[-2:]
+    alone, keyword, trap, supplied = forms[-4:]
     defined = _DEFINED_SHORT
     both = {kind: f"{only[kind]} and {also[kind]}" for kind in UNDUE_KINDS}
     lines = draw(st.permutations(UNDUE_TITLE_LINES))
@@ -1233,27 +1239,33 @@ def undue_places(
     running = UNDUE_RUNNING.format(both["running line"])
     for gap in gaps:
         body.insert(gap + 1, running)
-    end = [f"{draw(st.sampled_from(UNDUE_RUN_IN_LABELS))} The {both['statement run in']} "
+    labels = draw(st.permutations(UNDUE_PLAIN_LABELS))
+    plain = f"{labels[0]} The {both['statement plain']} paid."
+    end = [f"{labels[1]} the {trap} study paid little.",
+           f"{draw(st.sampled_from(UNDUE_RUN_IN_LABELS))} The {both['statement run in']} "
            "hold the data.",
-           f"{draw(st.sampled_from(UNDUE_PLAIN_LABELS))} The {both['statement plain']} paid.",
            draw(st.sampled_from(UNDUE_STATEMENT_HEADINGS)),
            f"The {both['statement heading']} approved it."]  # fmt: skip
+    points = ["**Key points**", "The exams rose."]
+    supplement = _undue_file(["# Supplementary Table S1", f"The {supplied} rose.", "**Abstract**",
+                              "Protocol text."], None, supplementary=True)  # fmt: skip
     papers = []
     for way in UNDUE_ABSTRACTS:
-        said = f"We read 412 records of the {alone}."
+        said = f"We read 412 records of the {alone}.\n{keywords}"
         opening = {"heading": ["# Abstract", said], "bold": ["**Abstract**", said],
                    "run in": [f"Abstract: {said}"], "next file": ["# Abstract", said],
                    "bold, next file": ["**Abstract**", said], "none": [said]}[way]
         if way == "next file":
-            files = [_undue_file(title, None),
-                     _undue_file([*opening, keywords, *body, *end], running)]
+            files = [_undue_file([*title, plain], None),
+                     _undue_file([*points, *opening, *body, *end], running)]
         elif way == "bold, next file":
-            files = [_undue_file([*title, *opening, keywords], None),
+            files = [_undue_file([*title, plain, *points, *opening], None),
                      _undue_file([*body, *end], running)]
         else:
-            files = [_undue_file([*title, *opening, keywords, *body, *end], running)]
+            files = [_undue_file([*title, plain, *points, *opening, *body, *end], running)]
+        files.append(supplement)
         where = "the abstract" if way in ("heading", "next file") else "the main text"
-        times = dict.fromkeys([*also.values(), keyword], "once")
+        times = dict.fromkeys([*also.values(), keyword, trap], "once")
         times[alone] = "once"
         if way == "none":
             # No title page: its short forms are the text's, and its use of the one the
@@ -1263,6 +1275,8 @@ def undue_places(
         found = [("abbreviation-undefined", f"{short} is used {count} in "
                   f"{where if short == alone else 'the main text'} as G14 reads it, and not "
                   "defined there") for short, count in times.items()]  # fmt: skip
+        found.append(("abbreviation-undefined", f"{supplied} is used once in the supplement "
+                      "as G14 reads it, and not defined there"))
         if way == "none":
             text = files[0][0]
             line = text.split("\n").index(body[1]) + 1
@@ -1272,10 +1286,14 @@ def undue_places(
     return papers
 
 
-def _undue_file(blocks: list[str], running: str | None) -> tuple[str, list[int]]:
-    """A file of `blocks`, each a paragraph, with the lines of it that are `running`."""
+def _undue_file(
+    blocks: list[str], running: str | None, *, supplementary: bool = False
+) -> tuple[str, list[int], bool]:
+    """A file of `blocks`, each a paragraph, with the lines of it that are `running`, and
+    whether it is the supplement's."""
     text = "\n\n".join(blocks) + "\n"
-    return text, [at for at, line in enumerate(text.split("\n"), 1) if line == running]
+    return text, [at for at, line in enumerate(text.split("\n"), 1) if line == running], (
+        supplementary)  # fmt: skip
 
 
 #: The short form the Introduction defines, which the title uses before.

@@ -757,13 +757,17 @@ def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, 
 _PLAIN_LABEL = re.compile(r"(?P<label>[A-Z][^\n:*_]{0,79}:)")
 
 
-def _run_in_named(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
+def _run_in_named(
+    hidden: str, headings: list[Heading], chain: list[Section] | None = None
+) -> list[tuple[int, int]]:
     """Where each paragraph runs that a bold label opens as `_run_in_statements` reads one,
     whose label names a statement (`STATEMENT_TITLE`) that `_QUIET` does not find: "**Data
     availability:**", "**Ethics approval**"; and each a label in plain type opens
-    (`_PLAIN_LABEL`) that names any statement, "Funding:", "Data Availability Statement:".
-    Its capitals are read as anywhere, but no use in it is owed a definition (`_undue`), as
-    in a statement under a heading that names one."""
+    (`_PLAIN_LABEL`) that names any statement, "Funding:", "Data Availability Statement:",
+    in the back matter only (`_in_back_matter`): "Data access: records came from ..." in a
+    Methods is the paper's sentence (round 2 of #699). `chain` is the headings the file opens
+    under. Its capitals are read as anywhere, but no use in it is owed a definition
+    (`_undue`), as in a statement under a heading that names one."""
     from manuscript_guard.text.section_names import STATEMENT_TITLE
 
     def statement(label: str) -> bool:
@@ -772,8 +776,25 @@ def _run_in_named(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]
     def named(label: str) -> bool:
         return statement(label) and not _names_a_statement(label)
 
-    return [*_labelled(hidden, headings, named),
-            *_labelled(hidden, headings, statement, _PLAIN_LABEL)]  # fmt: skip
+    plain = [span for span in _labelled(hidden, headings, statement, _PLAIN_LABEL)
+             if _in_back_matter(span[0], headings, chain or [])]  # fmt: skip
+    return [*_labelled(hidden, headings, named), *plain]
+
+
+def _in_back_matter(offset: int, headings: list[Heading], chain: list[Section]) -> bool:
+    """Whether every heading over `offset` names the back matter as the PDF's reader reads it
+    (`auditing.pdf._back_matter`): a statement's (`section_names.names_statement`) or the
+    reference list's; and so where no heading stands over it. `chain` is the headings the
+    file opens under, carried from the file before."""
+    over = [(section.level, section.title) for section in chain]
+    for heading in headings:
+        if heading.start >= offset:
+            break
+        while over and over[-1][0] >= heading.level:
+            over.pop()
+        over.append((heading.level, heading.title))
+    return all(names_statement(title) or Section(title=title, level=level, body="", line=0)
+               .is_references for level, title in over)  # fmt: skip
 
 
 def _labelled(
@@ -832,35 +853,25 @@ def _keywords_lists(text: str, hidden: str, headings: list[Heading]) -> dict[int
     return found
 
 
-#: A keywords line at a paragraph's start, the label with the keywords after it on its line:
+#: A keywords line at a line's start, the label with the keywords after it on its line:
 #: "Keywords", "Key words" or "Index Terms", in bold or in italics or not, then a colon, as
 #: `section_names.run_in_keywords` reads one, a dash with spaces, "KEYWORDS - ...", or an em
 #: dash, as IEEE sets "Index Terms—" and a LaTeX paper "\\textit{Keywords} ---".
-#: Not a word that only begins so, "Keyword-based retrieval" (round 1 of #699). The line
-#: alone: a PDF's text marks no paragraph, so a list carried onto a second line is read there
-#: (DESIGN.md, Known gaps).
+#: Not a word that only begins so, "Keyword-based retrieval" (round 1 of #699). At a line's
+#: start, not a paragraph's: one under the Abstract's last line with one line break between
+#: is a keywords line, and a PDF's text marks no paragraph (round 2). The line alone, so a
+#: list carried onto a second line is read there (DESIGN.md, Known gaps).
 _KEYWORDS_LINE = re.compile(
-    r"[ \t\x00*_]*(?:key[ \t]?words|index[ \t]+terms)[\x00*_]*"
+    r"^[ \t\x00*_]*(?:key[ \t]?words|index[ \t]+terms)[\x00*_]*"
     r"(?:[ \t]?:|[ \t\x00]*\N{EM DASH}|[ \t\x00]+(?:-{1,3}|\N{EN DASH})[ \t])[^\n]*\S",
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
 def _keywords_lines(hidden: str) -> list[tuple[int, int]]:
-    """Where each keywords line runs (`_KEYWORDS_LINE`) that opens a paragraph of `hidden`,
-    the file as G14 reads it with what is no prose blanked, from the paragraph's start to its
-    line's end."""
-    found: list[tuple[int, int]] = []
-    position = 0
-    while position < len(hidden):
-        position = _BLANK_LINES.match(hidden, position).end()
-        if position == len(hidden):
-            break
-        start, (_end, position) = position, _paragraph(hidden, position)
-        line = _KEYWORDS_LINE.match(hidden, start)
-        if line is not None:
-            found.append((start, line.end()))
-    return found
+    """Where each keywords line runs (`_KEYWORDS_LINE`) in `hidden`, the file as G14 reads it
+    with what is no prose blanked."""
+    return [(line.start(), line.end()) for line in _KEYWORDS_LINE.finditer(hidden)]
 
 
 def _lines_at(text: str, numbers: Iterable[int]) -> list[tuple[int, int]]:
@@ -1545,10 +1556,11 @@ def _file(
     )
     statements = _run_in_statements(hidden, headings)
     keywords = _keywords_lists(text, hidden, headings)
+    opened = list(chain)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
                        lists=unmarked_reference_lists(text), statements=statements,
                        keywords=keywords)  # fmt: skip
-    undue = _united([*_run_in_named(hidden, headings), *keywords.items(),
+    undue = _united([*_run_in_named(hidden, headings, opened), *keywords.items(),
                      *_keywords_lines(hidden), *_lines_at(text, running)])  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip

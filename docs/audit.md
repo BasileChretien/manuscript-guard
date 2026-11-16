@@ -159,13 +159,14 @@ or block G14 reads as the paper's opening, where that names the Abstract (a head
 "**Abstract**" in bold, "Abstract: ..."); where it names something else, or nothing opens
 the paper, there is no title page, and the cover's affiliations are asked about as before;
 in a statement, under a heading that names one ("Acknowledgements", "Funding", "Data
-availability", "Ethics approval") or run in from such a label, in bold or in plain type
-with its colon ("Funding:", as a PDF's text has it), and in a LaTeX
+availability", "Ethics approval") or run in from such a label in bold; run in from one in
+plain type with its colon ("Funding:", as a PDF's text has it) where only the back matter's
+headings, a statement's or the reference list's, or none, stand over it; and in a LaTeX
 paper's `acknowledgements` environment or AASTeX's `\acknowledgments`; in a "Keywords",
-"Key words" or "Index Terms" line at a paragraph's start, the label followed by a colon, a
+"Key words" or "Index Terms" line at a line's start, the label followed by a colon, a
 spaced dash or an em dash; and, in a PDF, in a line its text repeats at the top or the foot
-of half its pages or more, and of three at least, its digits read alike so that a running
-head with the page's number in it is one. A form the text uses too is listed as before, its
+of half its pages or more, and of three at least, a number at its start or end read alike
+so that a running head with the page's number in it is one. A form the text uses too is listed as before, its
 uses in those places not counted, and a use there before the text's definition is no use
 before it. What each place does to G14's four findings:
 

@@ -5453,17 +5453,22 @@ over by its reader (above), and nothing here changes how a LaTeX paper is read.
 findings the judges of the real-paper corpus marked false in 20 papers). A short form that
 stands only in these places asks no definition and is not counted, in `audit` and in `check`
 alike: the title page, all before the first heading or block the title page above reads as
-the paper's opening, where that names the Abstract (a heading, "**Abstract**" in bold, a
-run-in "Abstract: ..."), in the paper and in the supplement apart, a file with no heading
-read for it as one with one (`_fronts`); a LaTeX paper's, before where its first abstract
-runs, where no heading comes first. Where the opening names something else, or nothing
-opens the paper, there is no title page, and the text before the first heading is read as
-before (Basile, 2026-11-16, "No title page there"). A statement, under a
-heading `STATEMENT_TITLE` names or `_QUIET` finds, run in from such a bold label, and in
-LaTeX in an environment so named or after AASTeX's `\acknowledgments`; a keywords or Index
-Terms line, and the list under a "Keywords" heading; and, in a PDF, a line its text repeats
-word for word, its spaces made one, among the first or the last lines of half its pages or
-more and of three at least (`PdfText.repeated`), which the audit gives G14 by its lines. A
+the paper's opening ("**Key points**", "Highlights" among them), where the Abstract is named
+there or after it, by a heading wherever it stands, or by "**Abstract**" in bold or a
+run-in "Abstract: ..." before the file's first heading; in the paper and in the supplement
+apart, a file with no heading read for it as one with one (`_fronts`); a LaTeX paper's,
+before where its first abstract runs, where no heading comes first. Where the Abstract is
+not named so, there is no title page, and the text before the first heading is read as
+before (Basile, 2026-11-16, "No title page there"). A statement, under a heading
+`STATEMENT_TITLE` names or `_QUIET` finds, or run in from such a bold label; run in from
+such a label in plain type with its colon, "Funding:", only in the back matter as the PDF's
+reader reads it (`auditing.pdf._back_matter`): where every heading over it names a
+statement or the reference list, or none stands over it; and in LaTeX in an environment so
+named or after AASTeX's `\acknowledgments`. A "Keywords", "Key words" or "Index Terms" line
+at a line's start, and the list under a "Keywords" heading. And, in a PDF, a line its text
+repeats word for word, its spaces made one and a number at its start or its end read alike,
+among the first or the last lines of half its pages or more and of three at least
+(`PdfText.repeated`), which the audit gives G14 by its lines. A
 short form the text uses too is asked about as before, its uses in those places not
 counted, and a use there before the text's definition is no use before it. A definition in
 those places is still one, and a use there still keeps a definition from being unused: the
@@ -27919,6 +27924,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A statement ends where its paragraph does: a funding statement run in from its bold
     label and carried on in a second paragraph under no label (docx-psych-A1's authors'
     initials) is read from there as text. Accepted.
+  - A statement run in from a label in plain type is one only in the back matter: one under
+    the last section of the paper's text, a Conclusion or a Discussion, with no heading of its
+    own, is read as text, as "Funding: the QXG study paid little." in a Discussion must be
+    (round 2 of #699). Pinned by
+    `tests/test_g14_places.py::test_a_plain_label_in_the_paper_s_text_is_its_sentence`.
   - A keywords line is the label's line alone, since a PDF's text marks no paragraph: a
     list carried onto a second line is read there. Accepted.
   - A LaTeX statement is found under a heading, in an environment whose name is a

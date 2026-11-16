@@ -207,13 +207,55 @@ def test_a_bold_or_run_in_abstract_line_ends_a_title_page(tmp_path: Path) -> Non
 
 def test_a_statement_s_label_in_plain_type_opens_it(tmp_path: Path) -> None:
     """A run-in label of a statement in plain type, as a PDF's text has every one, at a
-    paragraph's start and with its colon: "Funding:", "Data Availability Statement:". Not
-    a statement's word inside a sentence (round 1 of #699)."""
-    text = ("# Introduction\n\nWe read the records.\n\nFunding: The QXF paid for it.\n\n"
-            "Data Availability Statement: The QXD holds the data.\n\n"
-            "We thank them. Funding: the QXG paid little.\n")  # fmt: skip
+    paragraph's start and with its colon: "Funding:", "Data Availability Statement:", where
+    no heading over it names a section the paper reports in. Not a statement's word inside
+    a sentence (round 1 of #699)."""
+    text = ("Funding: The QXF paid for it.\n\nData Availability Statement: The QXD holds the "
+            "data.\n\nWe thank them. Funding: the QXG paid little.\n")  # fmt: skip
     found = checked(tmp_path, {"main.md": text})
     assert [m.split()[0] for code, m in found if code == "abbreviation-undefined"] == ["QXG"]
+    # In the back matter: under a statement's heading.
+    found = checked(tmp_path / "back", {"main.md": "# Discussion\n\nIt held.\n\n# Declarations"
+                                                   "\n\nFunding: The QXF paid for it.\n"})
+    assert not found, found
+
+
+def test_a_plain_label_in_the_paper_s_text_is_its_sentence(tmp_path: Path) -> None:
+    """ "Funding: the QXG study paid little." in a Discussion and "Data access: records came
+    from the QXS." in a Methods are the paper's sentences: a section it reports in stands
+    over them (round 2 of #699). A bold label is read as before."""
+    text = ("# Methods\n\nData access: records came from the QXS.\n\n# Discussion\n\n"
+            "Funding: the QXG study paid little.\n\n**Data availability:** The QXD holds "
+            "them.\n")  # fmt: skip
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found
+            if code == "abbreviation-undefined"] == ["QXG", "QXS"], found  # fmt: skip
+
+
+def test_an_opening_before_the_named_abstract_ends_the_title_page(tmp_path: Path) -> None:
+    """ "**Key points**" before the heading that names the Abstract ends the title page, which
+    is one all the same (round 2 of #699)."""
+    text = ("The SDR of exams\n\nThis version is under review.\n\nAna Martin, UPV, Rouen\n\n"
+            "**Key points**\n\nThe QXK rose.\n\n# Abstract\n\nWe read records.\n")
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found] == ["QXK"], found
+
+
+def test_an_abstract_line_after_a_heading_makes_no_title_page(tmp_path: Path) -> None:
+    """A protocol's "**Abstract**" under a supplement's first heading names no Abstract: a
+    paragraph names it only before the file's first heading (round 2 of #699)."""
+    found = checked(tmp_path, {
+        "main.md": "# Introduction\n\nWe read the records.\n",
+        "supplementary/S1.md": "# Supplementary Table S1\n\nThe QXT rose.\n\n**Abstract**\n\n"
+                               "Protocol text.\n"})  # fmt: skip
+    assert [m.split()[0] for code, m in found] == ["QXT"], found
+
+
+def test_a_keywords_line_under_the_abstract_s_last_line(tmp_path: Path) -> None:
+    """A keywords line on the line after the Abstract's last, one line break between, as a
+    PDF's text and a pasted paper have it (round 2 of #699)."""
+    text = "# Abstract\n\nWe read records.\nKeywords: QXK; falls\n\n# Methods\n\nIt held.\n"
+    assert checked(tmp_path, {"main.md": text}) == []
 
 
 def test_a_word_that_begins_with_keyword_opens_no_keywords_line(tmp_path: Path) -> None:
@@ -372,3 +414,17 @@ def test_a_running_line_s_page_number_is_read_as_any_number() -> None:
                    for line in range(1, len(lines) + 1))  # fmt: skip
     pdf = PdfText(Path("p.pdf"), "pdftotext", 4, "\n".join(texts), places)
     assert sorted(texts[line - 1] for line in pdf.repeated) == ["QXH 1", "QXH 2", "QXH 3"]
+
+
+def test_digits_inside_a_line_are_its_own() -> None:
+    """A supplement whose pages each end on their figure's caption, "Figure S1. ROC of the
+    GBM model, fold 1", "Figure S2 ... fold 2": no running line, a number read alike only at
+    a line's start or end (round 2 of #699)."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    pages = [[*(f"line {_LETTERS[page]}{_LETTERS[at]}" for at in range(9)),
+              f"Figure S{page}. ROC of the GBM model, fold {page}"] for page in range(1, 5)]
+    texts = [text for page in pages for text in page]
+    places = tuple(Place(page, line) for page, lines in enumerate(pages, 1)
+                   for line in range(1, len(lines) + 1))  # fmt: skip
+    assert not PdfText(Path("p.pdf"), "pdftotext", 4, "\n".join(texts), places).repeated

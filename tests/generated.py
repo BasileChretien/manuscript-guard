@@ -714,6 +714,9 @@ DEFINING = (
     ("the Sloan Sky Survey (SSS DR2; York et al., 2000)", "(SSS", "SSS"),
     ("the Sloan Lens Survey (SLS DR1; York, 2000; Lee, 2001)", "(SLS", "SLS"),
     ("the rapidly brightening blazars (RB\nblazars)", "(RB", "RB"),
+    # Round 2 of #698: a note wrapped in its long form, read over the break, whose words'
+    # first letters spell the short form.
+    ("*Note.* GDQ = Geriatric\nDepression Questionnaire.", "GDQ =", "GDQ"),
     ("RA/NRA = risk/non-risk allele", "/NRA", "NRA"),
     ("EA/NEA = effect/non-effect allele", "EA/", "EA"),
     ("the ratio of far to near flux, known as FNR", "as FNR", "FNR"),
@@ -813,9 +816,12 @@ NOT_DEFINING = (
     ("DCQ = Small Developmental Coordination Questionnaire", "DCQ =", "DCQ"),
     ("KN: Kenya", "KN:", "KN"),
     ("> BDS = Beck\n> Depression Scale", "BDS =", "BDS"),
-    # Round 1 of #698: a long form ends at its line; a section's name before a colon is a
-    # label; and words after the separator that are no typed citation, a number among them.
-    ("*Note.* GDQ = Geriatric\nDepression Questionnaire.", "GDQ =", "GDQ"),
+    # Round 1 of #698: a long form ends at its line, where the words over the break do not
+    # spell the short form by their first letters (round 2), though they hold its letters; a
+    # section's name before a colon is a label; and words after the separator that are no
+    # typed citation, a number among them.
+    ("*Note.* WDQ = Weekly\ndiary of quality.", "WDQ =", "WDQ"),
+    ("*Note.* KDQ = Kidney\ndisease and quality.", "KDQ =", "KDQ"),
     ("RESULT: Rates Eased Slowly Until Late Testing.", "RESULT:", "RESULT"),
     ("**RESULTS:** Rates Eased Slowly Until Late Testing Soon.", "RESULTS:", "RESULTS"),
     ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),
@@ -966,19 +972,22 @@ def titled_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
             undefined.append(ABSTRACT_HEADING[1])
         # The text defines the heading's form again, and a table's note the text's: each
         # restates (Basile, 2026-11-16).
+        # A second section's heading defines a form only it defines (round 2 of #698).
         text += (f"{draw(between)} The {titled} was read.\n\n# Methods\n\n{heading}\n\n"
                  f"{draw(between)} The grip and {HEADING_RESTATED} ({headed}) was read, and the "
                  f"{headed} held. The {NOTED[0]} ({NOTED[1]}) was read.\n\n| Grip | n |\n|---|"
                  f"---|\n| 12 | 40 |\n\n*Note.* {NOTED[1]} = {NOTED[0]}.\n\nThe {NOTED[1]} "
-                 "held.\n")  # fmt: skip
+                 f"held.\n\n{ONLY_HEADED[0]}\n\n{draw(between)} The {ONLY_HEADED[1]} was "
+                 "read.\n")  # fmt: skip
         papers.append((text, sorted(undefined)))
     return papers
 
 
 #: The long form the text gives the section heading's short form again, and a definition a
-#: table's note gives again.
+#: table's note gives again; and a heading whose form nothing but the heading defines.
 HEADING_RESTATED = "electromyography"
 NOTED = ("hand grip strength", "HGS")
+ONLY_HEADED = ("## Knee extension torque (KET)", "KET")
 
 
 @st.composite

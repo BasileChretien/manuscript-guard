@@ -238,6 +238,14 @@ _PAIRED = re.compile(
     rf"(?<![\w/.\-])(?P<shorts>{_PARTS}(?:/{_PARTS})*)[ \t\N{{NO-BREAK SPACE}}]*(?P<sign>[=:])"
     r"(?=[ \t\N{NO-BREAK SPACE}]*(?P<long>[^;,.=:|()\[\]\r\n\x00]{1,300}))"
 )
+#: The same long form read over one line break, to the same ends, a blank line among them:
+#: what a note wrapped in its long form holds, "BDI = Beck Depression" over "Inventory."
+#: (round 2 of #698). `_paired` takes it only where its words spell the short form by their
+#: first letters (`_initials_spell`).
+_WRAPPED = re.compile(
+    r"[ \t\N{NO-BREAK SPACE}]*(?P<long>[^;,.=:|()\[\]\r\n\x00]{1,300}\r?\n"
+    r"[^;,.=:|()\[\]\r\n\x00]{1,300})"
+)
 #: The words that name a short form after its long form, as "long form (SHORT)" does:
 #: "the L/U ratio known as IRX", "recovered individuals, commonly referred to as SIR
 #: models", "the survey (hereafter SDSS)" (decision 29). Not a word's end: "so-called".
@@ -1356,7 +1364,12 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
             continue
         words = pair.group("long").split()
         if len(shorts) == 1:
-            readings = [(0, shorts[0], words)]
+            # A note wrapped in its long form, "BDI = Beck Depression" over "Inventory.", is
+            # read over the break where the words there spell the short form by their first
+            # letters, every word used; the line's alone otherwise (round 2 of #698).
+            wrapped = _WRAPPED.match(prose, pair.end())
+            over = wrapped.group("long").split() if wrapped is not None else []
+            readings = [(0, shorts[0], over if _initials_spell(shorts[0], over) else words)]
         else:
             joined = [at for at, word in enumerate(words) if word.count("/") == len(shorts) - 1]
             if len(joined) != 1:
@@ -1372,6 +1385,14 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
             if long is not None:
                 found.append((pair.start("shorts") + start, _stem(short, long), long))
     return found
+
+
+def _initials_spell(short: str, words: list[str]) -> bool:
+    """Do the first letters of `words`, each word's, spell the letters and digits of `short`,
+    in order and every word used: "Beck Depression Inventory" for BDI."""
+    wanted = [char.lower() for char in short if char.isalnum()]
+    firsts = [next((char for char in word if char.isalnum()), "").lower() for word in words]
+    return bool(words) and firsts == wanted
 
 
 def _named_as(prose: str) -> list[tuple[int, str, str]]:
@@ -1651,20 +1672,23 @@ def _titles(
 
 def _the_paper_s_title(headings: Sequence[Heading], *, opens: bool) -> frozenset[int]:
     """Where each heading starts that is the paper's title typed as a heading, which is no
-    section's heading and defines nothing (round 1 of #698): one over the Abstract or the
-    Introduction, as the audit reads the title (`auditing.abstract._over_the_paper`); and,
-    in the file the paper opens with, its first heading where it names no section and stands
-    over them as that reading would read it a level above the rest, "# Reporting odds ratio
-    (ROR) in older adults" before "# Introduction". `headings` have a `title`, a `level` and a
-    `start`."""
+    section's heading and defines nothing (round 1 of #698), in the file the paper opens with
+    (`opens`) and no other: one over the Abstract or the Introduction, as the audit reads
+    the title (`auditing.abstract._over_the_paper`); and the file's first heading where it
+    names no section and stands over them as that reading would read it a level above the
+    rest, "# Reporting odds ratio (ROR) in older adults" before "# Introduction". A file
+    input later, a LaTeX section's, holds no title (round 2). `headings` have a `title`, a
+    `level` and a `start`."""
     from manuscript_guard.auditing.abstract import _over_the_paper
 
+    if not opens:
+        return frozenset()
     sections = [Section(title=heading.title, level=heading.level, body="", line=0)
                 for heading in headings]  # fmt: skip
     over = _over_the_paper(sections)
     found = {heading.start for heading, section in zip(headings, sections, strict=True)
              if id(section) in over}  # fmt: skip
-    if opens and headings and section_name_alone(plain_title(headings[0].title)) is None:
+    if headings and section_name_alone(plain_title(headings[0].title)) is None:
         lifted = [Section(title=headings[0].title, level=0, body="", line=0), *sections[1:]]
         if id(lifted[0]) in _over_the_paper(lifted):
             found.add(headings[0].start)
@@ -1826,7 +1850,9 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
         document = read_document(root, supplementary=supplementary)
         for source, start, end in _stretches(document.sources):
             if source.path not in read:
-                read[source.path] = _latex_file(source, supplementary, abstract_title)
+                read[source.path] = _latex_file(
+                    source, supplementary, abstract_title,
+                    opens=source.path == document.sources[0].path)  # fmt: skip
             whole = read[source.path]
             outside = ((0, start), (end, len(source.text)))
             files.append(_assembled(
@@ -1900,7 +1926,11 @@ def _latex_cells(
     return tuple(cells)
 
 
-def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
+def _latex_file(
+    source: Source, supplementary: bool, abstract_title: str | None, *, opens: bool = True
+) -> _LatexFile:
+    """What G14 reads of a LaTeX file; `opens` where it is the document's entry file, whose
+    headings alone may be the paper's title (`_the_paper_s_title`)."""
     from manuscript_guard.text.latex.views import bindings, markdown_view
     from manuscript_guard.text.latex.words import _preamble, words
 
@@ -1923,7 +1953,7 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         words=_hide(seen.text, accessions),
         untitled=_hide(seen.text, [*titles, *accessions]),
         titles=_titles(_hide(seen.text, accessions), titles,
-                       _the_paper_s_title(source.reading.headings, opens=True)),
+                       _the_paper_s_title(source.reading.headings, opens=opens)),
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
@@ -2014,9 +2044,9 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             # the paper's terms (Basile, 2026-11-12).
             if region.scope is None or _on_the_title_page(file, offset):
                 continue
-            # A heading defines only as a section's heading of the main text (round 1 of
-            # #698).
-            if offset in file.in_headings and region.scope != BODY:
+            # A heading defines only as a section's heading of the main text, the paper's
+            # or the supplement's, and not in an Abstract (rounds 1 and 2 of #698).
+            if offset in file.in_headings and region.scope == ABSTRACT:
                 continue
             defined.add(short)
             defining.add((file.order, offset))

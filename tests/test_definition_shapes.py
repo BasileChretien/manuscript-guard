@@ -235,6 +235,64 @@ def test_a_sign_s_long_form_ends_at_its_line() -> None:
     assert read.definitions == [(0, "ESR", "erythrocyte sedimentation rate")], read.definitions
 
 
+def test_a_note_wrapped_in_its_long_form_is_read_across_the_break(project: Path) -> None:
+    """Round 2 of #698: a note wrapped in the middle of its long form, "BDI = Beck
+    Depression" over "Inventory.", was cut at its line and read as a second meaning, "Beck
+    Depression". The span over the break is the long form where its words' first letters
+    spell the short form, every word used; else the line's, as before."""
+    read = _file(0, Path("main.md"), "*Note.* BDI = Beck Depression\nInventory.\n", [], False)
+    assert [(short, long) for _at, short, long in read.definitions] == [
+        ("BDI", "Beck Depression Inventory")], read.definitions
+    assert _judged(project, "# Methods\n\nWe used the Beck Depression Inventory (BDI).\n\n# "
+                            "Results\n\n| Score | n |\n|---|---|\n| 12 | 40 |\n\n*Note.* BDI = "
+                            "Beck Depression\nInventory.\n\nThe BDI was low.\n") == []
+
+
+def test_a_pdf_s_note_wrapped_line_by_line_restates(tmp_path: Path, capsys) -> None:
+    """The same note in a PDF, a line of it to a line of the page (round 2 of #698)."""
+    from manuscript_guard.cli import main
+
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext is not installed")
+    lines = ["A study of things", "Methods", "We used the Beck Depression Inventory (BDI).",
+             "Results", "Note. BDI = Beck Depression", "Inventory.", "The BDI was low."]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1, per_column=40, head="Journal of Things",
+                              foot="Page", first_page=1))  # fmt: skip
+    assert main(["audit", str(paper), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    said = [f["message"] for f in report["findings"] if f["code"].startswith("abbreviation-")]
+    assert not [message for message in said if "BDI" in message], said
+
+
+def test_a_heading_defines_in_the_supplement(project: Path) -> None:
+    """Every feature covers the supplement: a heading's definition counts in its main text as
+    in the paper's (round 2 of #698)."""
+    folder = project / "manuscript" / "supplementary"
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir()
+    (folder / "S1.md").write_text("# Methods\n\n## Grip strength and electromyography (EMG)\n\n"
+                                  "The EMG was read.\n", encoding="utf-8")  # fmt: skip
+    report = check_language(load_project(project)[0])
+    assert not [f.message for f in report.findings if f.message.startswith("EMG ")], [
+        f.message for f in report.findings]
+
+
+def test_a_latex_input_file_s_first_heading_is_no_title(tmp_path: Path) -> None:
+    """The first heading read as the title is the opening file's only: an input file that
+    opens on "\\section{Data from the Sloan Sky Survey (SSS)}" before its Background
+    defines SSS (round 2 of #698)."""
+    (tmp_path / "sections").mkdir()
+    (tmp_path / "main.tex").write_text(_latex("\\section{Introduction}\nWe read it.\n\n"
+                                              "\\input{sections/data}\n"), encoding="utf-8")
+    (tmp_path / "sections" / "data.tex").write_text(
+        "\\section{Data from the Sloan Sky Survey (SSS)}\n\\subsection{Background}\n"
+        "The SSS was read.\n", encoding="utf-8")
+    defined = [found for read in _latex_read(tmp_path, None)
+               for _at, found, _long in read.definitions]  # fmt: skip
+    assert defined == ["SSS"], defined
+
+
 @pytest.mark.parametrize("label", ["RESULT:", "**RESULT:**", "Result:"])
 def test_a_section_s_name_before_a_colon_is_a_label(label: str) -> None:
     """A name on the closed list of section names before a colon (`SECTION_NAMES`), a

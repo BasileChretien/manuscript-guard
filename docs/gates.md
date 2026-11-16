@@ -42,7 +42,9 @@ shape. The shapes:
 - a short form after a spaced dash that ends its clause: "Basic Payment Scheme - BPS";
 - "X = long form" and "X: long form", in a sentence or a table's note, pair by pair, the long
   form being the words after the sign whole, give or take an article, two words at least,
-  on its line: "ESR = erythrocyte sedimentation rate; BDI = Beck Depression Inventory". Short
+  on its line, or over one line break where the words there spell the short form by their
+  first letters, every word used, "BDI = Beck Depression" over "Inventory.": "ESR =
+  erythrocyte sedimentation rate; BDI = Beck Depression Inventory". Short
   forms a slash joins are paired with the parts of the long form's one word a slash joins:
   "EA/NEA = effect/non-effect allele". A section's name before a colon, "RESULTS:", is a
   label;
@@ -52,10 +54,12 @@ shape. The shapes:
   form: `\citep[SDSS DR15;][]{key}`, or its second where the first is empty, `\citet[][BC03]{key}`;
 - an entry of a list of abbreviations.
 
-A definition in a section's heading of the main text counts as one in the text does; the
-paper's title typed as a heading defines nothing. A note's "X = long form", a caption and a
-heading may restate the text's definition, as tables are asked to define their own short
-forms; one that gives the form another long form is reported. A short form followed by a
+A definition in a section's heading of the main text, the paper's or the supplement's,
+counts as one in the text does; one in the Abstract's headings, and the paper's title typed
+as a heading, define nothing. A caption, a heading, and the shape a note is written in, "X =
+long form" or "X: long form", wherever it stands, a sentence of the text among them, may
+restate the text's definition, as tables are asked to define their own short forms; one
+that gives the form another long form is reported. A short form followed by a
 number with a decimal point, an equals sign and a number, or more than one word gives a
 statistic or a phrase and defines nothing: "(HR 1.32, 95% CI ...)", "OR = 1.52", "(MDD 40
 mg)". What these shapes miss is in DESIGN.md's Known gaps.

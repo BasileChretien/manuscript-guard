@@ -23803,17 +23803,25 @@ Open, recorded as each change landed:
     restates too, and a note written "Beck Depression Inventory (BDI)" under a table is a
     second definition.
     Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
-  - A heading defines only where it is a section's heading in the main text. The paper's
-    title typed as a heading is read as the audit reads it, a heading over the Abstract or
-    the Introduction, or the opening file's first heading, naming no section, before one
-    that does; a title over the Methods alone, or before no opening's heading, defines as a
-    heading does.
-    Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`.
+  - A heading defines only where it is a section's heading in a main text, the paper's or
+    the supplement's, not in an Abstract. The paper's title typed as a heading is read as the
+    audit reads it, in the file the paper opens with only: a heading over the Abstract or
+    the Introduction, or that file's first heading, naming no section, before one that does;
+    a title over the Methods alone, before no opening's heading, or in a file input after
+    the first, defines as a heading does.
+    Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`
+    and `tests/test_definition_shapes.py::test_a_latex_input_file_s_first_heading_is_no_title`.
   - After a sign the long form is the words after it whole, give or take an article, two
-    words at least, and on its line, as in "ROR (reporting odds ratio)": a country's code,
-    "XY: Kenya", one word, an instrument with a word before its letters, "DCQ = Small
-    Developmental Coordination Questionnaire", and a long form a LaTeX source wraps onto its
-    next line define nothing. A section's name before a colon is a label (`SECTION_NAMES`),
+    words at least, as in "ROR (reporting odds ratio)": a country's code, "XY: Kenya", one
+    word, and an instrument with a word before its letters, "DCQ = Small Developmental
+    Coordination Questionnaire", define nothing. It is the sign's line, or the words over one
+    line break where their first letters spell the short form, every word used, "BDI = Beck
+    Depression" over "Inventory."; a wrapped long form whose words do not spell it so, "Beck
+    Depression" over "Inventory for Youth" or one with "of" in it, is read on its first line
+    alone, where its letters may define it with fewer words or not at all.
+    Pinned by `tests/test_definition_shapes.py::test_a_note_wrapped_in_its_long_form_is_read_across_the_break`
+    and `tests/test_definition_shapes.py::test_a_sign_s_long_form_ends_at_its_line`.
+  - A section's name before a colon is a label (`SECTION_NAMES`),
     but a label not on that list, "AIM:", is read as any short form is. A colon that
     introduces words beginning with the short form's letters defines it all the same:
     "iterations of CAPs: Content Acquisition Podcasts Professional Development (CAP-PD)"

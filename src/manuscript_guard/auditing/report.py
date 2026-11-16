@@ -85,6 +85,38 @@ SET_ASIDE = "(years, citation and figure numbers, the 95 of a 95% CI and the lik
 NO_OUTPUTS = "No outputs given: no number was compared with the analysis"
 #: How many items of one kind are listed for one file before only a count.
 LISTED = 40
+#: The headings the questions to the author and the notes on their answers are shown under,
+#: apart from the findings (`question`).
+QUESTIONS = "Questions for the author (not counted by --strict):"
+ANSWERS = "On the answers given (a note, not counted by --strict):"
+
+
+def _asked(pdf: str) -> dict[str, str]:
+    """Each question by its code, as asked where the papers read are all PDFs ("all"), PDFs
+    beside papers of another kind ("some"), or none ("")."""
+    from manuscript_guard.auditing import abstract
+
+    if pdf == "all":
+        return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT_PDF,
+                abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS_PDF}  # fmt: skip
+    if pdf == "some":
+        return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT_MIXED,
+                abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS_MIXED}  # fmt: skip
+    return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT,
+            abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS}  # fmt: skip
+
+
+def _a_pdf(report) -> str:
+    """Whether the papers read, figures aside, are all PDFs, which cannot be given a heading
+    ("all"), PDFs beside papers of another kind ("some"), or none (""). The question is asked
+    once for the run, so a mixed run is asked in words true of both (round 2 of #697, and
+    the check of 643700b)."""
+    papers, pdfs = getattr(report, "papers", ()), getattr(report, "pdfs", None) or {}
+    if not pdfs:
+        return ""
+    other = any(path.suffix.lower() in (".docx", ".md", ".markdown", ".txt", ".tex")
+                for path in papers)  # fmt: skip
+    return "some" if other else "all"
 
 
 @dataclass(frozen=True)
@@ -110,14 +142,25 @@ class Item:
     #: (`auditing.undefined.listed`); for a paper's entries not sorted, each with its note
     #: and its place (`auditing.unsorted`).
     listed: dict | None = None
+    #: Whether it is a question to the author (`question`), which `--json` marks.
+    question: bool = False
 
     def as_dict(self) -> dict:
         return {
             "section": self.section, "gate": self.gate, "code": self.code,
-            "severity": self.severity, "counted": self.counted, "message": self.message,
+            "severity": self.severity, "counted": self.counted, "question": self.question,
+            "message": self.message,
             "path": None if self.path is None else str(self.path), "line": self.line,
             "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
+
+
+def question(section: str, code: str, message: str) -> Item:
+    """A question to the author: a finding of its own kind, where no exact rule can decide,
+    that says what the audit saw, asks one question and names the answer that ends it. It
+    never fails and never counts, at INFO, and the reports show it apart, under
+    `QUESTIONS` (Basile, 2026-11-16, decision 27)."""
+    return Item(section, "audit", code, message, INFO, False, question=True)
 
 
 def items(report) -> list[Item]:
@@ -175,7 +218,7 @@ def items(report) -> list[Item]:
     found += spreads.items(report)
     found += _non_negative_items(report)
     found += _flow_items(report)
-    found += _abstract_items(report.abstract)
+    found += _abstract_items(report.abstract, _a_pdf(report))
     found += [
         Item(SMALL_CELLS, "G2", "count-recoverable", d.message, FAIL, True, d.source, d.line,
              d.context)
@@ -433,15 +476,22 @@ def _flow_items(report) -> list[Item]:
     ]  # fmt: skip
 
 
-def _abstract_items(read) -> list[Item]:
+def _abstract_items(read, pdf: str = "") -> list[Item]:
     """What the Abstract against Results says, item by item: a conflict counted, the rest
-    not."""
+    not; where there is nothing to compare, the question to the author in place of the
+    reason, or the reason where they answered; and each note on the answers given."""
     if read is None:
         return []
+    answered = [Item(ABSTRACT, "audit", code, said, INFO, False)
+                for code, said in getattr(read, "answered", [])]  # fmt: skip
     if not read.compared:
-        return [Item(ABSTRACT, "audit", "abstract-not-compared", f"not compared: "
-                     f"{read.why_not}", INFO, False)]  # fmt: skip
+        asked = getattr(read, "question", "")
+        if asked:
+            return [*answered, question(ABSTRACT, asked, _asked(pdf)[asked])]
+        return [*answered, Item(ABSTRACT, "audit", "abstract-not-compared", f"not compared: "
+                                f"{read.why_not}", INFO, False)]  # fmt: skip
     return [
+        *answered,
         *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
                d.line, d.context) for d in read.conflicts),
         *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
@@ -772,8 +822,14 @@ WORDS = f"{WRITING} and {LANGUAGE} (not counted by --strict)"
 
 
 def _notes(report) -> list[tuple[str, list[str]]]:
-    """What was not read, or not read as given, under its heading, where there is any."""
+    """What was not read, or not read as given, under its heading, where there is any; and
+    first the questions to the author, and the notes on the answers given, each under a
+    heading of its own (`QUESTIONS`, `ANSWERS`), apart from the findings."""
+    asked = [item for item in _abstract_items(report.abstract, _a_pdf(report)) if item.question]
+    answered = [said for _code, said in getattr(report.abstract, "answered", None) or []]
     notes = (
+        (QUESTIONS, [item.message for item in asked]),
+        (ANSWERS, answered),
         ("Could not read:", report.unreadable),
         ("Outputs not read as given:", report.skipped),
         ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
@@ -838,12 +894,15 @@ def _closing(report) -> str:
             "`manuscript-guard init`.")  # fmt: skip
 
 
-def view(report, discrimination, root: Path | None = None, *, details: bool = False) -> dict:
+def view(report, discrimination, root: Path | None = None, *, details: bool = False,
+         page: bool = False) -> dict:
     """The report as the web page draws it: its first lines, what was not read, what each
     check found, the findings on the words by kind with every place of each, the other
     sections with something to show (every one with `details`), as their text, and its last
     line. The same content as `render`, every place of the words' findings in its fold, said
-    for a reader, who runs no script and types no flag (`reader.readable`)."""
+    for a reader, who runs no script and types no flag (`reader.readable`): with `page`, a
+    reader of the web page, told of the page's box or tick where a question names a flag;
+    else one of a copy the command line wrote, `--pdf`, told of the flag (round 1 of #697)."""
     from manuscript_guard.auditing.reader import readable
     from manuscript_guard.auditing.summary import STRICT, kinds, rows, standings
 
@@ -867,7 +926,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
                      in _sections(report, discrimination, root, show, details=details)
                      if heading != WORDS],  # fmt: skip
         "closing": _closing(report),
-    })
+    }, page=page)
 
 
 def _header(report) -> list[str]:

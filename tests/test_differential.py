@@ -75,6 +75,7 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: Abstract against Results writes a paper and its supplement and audits them.
 EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15,
                                             "abstract against results": 40,
+                                            "abstract questions": 40,
                                             "word abstract": 40,
                                             "written shares": 40}
 #: And how many when the two sides are this same source under two hash seeds.
@@ -367,6 +368,12 @@ CHANGED = {
         '_CLOSED_UP = re.compile(r"[():;]+")\n',
         '_CLOSED_UP = re.compile("(?!)")\n',
         "abstract against results",
+    ),
+    "an answer that the paper has no Abstract is not taken": (
+        "auditing/abstract.py",
+        '        read.question = "" if answers.no_abstract else ASKED_NO_ABSTRACT\n',
+        "        read.question = ASKED_NO_ABSTRACT\n",
+        "abstract questions",
     ),
     "a share off its counts in a sentence says nothing": (
         "audit.py",

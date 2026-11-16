@@ -138,7 +138,8 @@ const argument = (name) => (name.startsWith("-") ? "./" + name : name);
 // many of its items are done of how many, where it counts them.
 const told = (key, done, total) => self.postMessage({ step: { key, done, total } });
 
-function run({ paper, against, lookup, details, english = "", known = [] }) {
+function run({ paper, against, lookup, details, english = "", known = [], noAbstract = false,
+  noResults = false, results = "" }) {
   const [paperName, ...outputNames] = names([paper, ...against]);
   py.runPython(`import os, shutil
 os.chdir("/")
@@ -158,6 +159,10 @@ os.chdir("/work")`);
   // A word that starts with "-" would be read as an option; one such word is no word.
   const words = known.filter((word) => !word.startsWith("-"));
   if (words.length) args.push("--known", ...words);
+  if (noAbstract) args.push("--no-abstract");
+  if (noResults) args.push("--no-results");
+  // Joined to its flag, so that a heading that starts with "-" is read as the heading.
+  if (results) args.push(`--results=${results}`);
   if (lookup) args.push("--lookup");
   if (details) args.push("--details");
   performance.clearResourceTimings();

@@ -493,12 +493,14 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
         {"paper": "..", "against": []},
         {"paper": "paper.docx", "against": [], "english": "british",
          "known": ["CD", "-x", "licence"]},
+        {"paper": "paper.docx", "against": [], "noAbstract": True, "noResults": True,
+         "results": "-4. Electron temperature relations"},
     ]
     done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
                           capture_output=True, text=True, encoding="utf-8", timeout=60,
                           check=False)  # fmt: skip
     assert done.returncode == 0, done.stderr
-    kept, dashed, apart, twice, slash, dots, settings = json.loads(done.stdout)
+    kept, dashed, apart, twice, slash, dots, settings, answers = json.loads(done.stdout)
     assert kept == {"args": ["audit", "Mon article (v3).docx", "--against", "résultats 結果.json"],
                     "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"]}
     assert dashed == {"args": ["audit", "./-paper.docx", "--against", "./-results.json"],
@@ -512,6 +514,10 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
     # out (the author's audit, 2026-11-10).
     assert settings["args"] == ["audit", "paper.docx", "--english", "british", "--known", "CD",
                                 "licence"]
+    # The answers to the report's questions, a heading that starts with "-" joined to its
+    # flag, so that it is read as the heading (decision 27).
+    assert answers["args"] == ["audit", "paper.docx", "--no-abstract", "--no-results",
+                               "--results=-4. Electron temperature relations"]
 
 
 # --------------------------------------------------------------------- a command, printed

@@ -9504,7 +9504,18 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: with the list's next number, which resumes the list and is not found, a caption that ends
 #: it again, which is, and an entry with no number and a reference's shape, which resumes it
 #: too (rounds 1 and 2 of #692). In LaTeX none of them is, since the lines after
-#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps").
+#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps"). And a
+#: power in maths (`POWER_SPELLINGS`), which the Methods print again, spelled as drawn, and
+#: is found, and one only the Discussion prints, its base and its exponent apart in the
+#: Methods, which is not; each named whole, and neither by its base and a caret, as
+#: tex-astro-ga-B1 of the real-paper corpus had its `10^{-2}` named "10^". And a number in
+#: scientific notation, signed or not, which the Methods print again, found; one whose
+#: mantissa they print with another and alone, a bare power they print with a mantissa, one
+#: with a minus they print without, and one they print only as a column's scale, none of
+#: them found; and a scale in the Abstract, which is no number (round 1 of #696). And a
+#: number whose mantissa is the digit of a subscript before a times sign where the paper
+#: reports, `VCO~2~ \times10^{41}`, a scale in Markdown's text, not found; and one the paper
+#: prints with ties in maths over more than one line (`MATHS_OVER_LINES`), found.
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9519,7 +9530,110 @@ ABSTRACT_KINDS = (
     "share rounded up", "share off", "share closed up", "share without a denominator",
     "share after its counts", "share without a sign", "share with a decimal comma",
     "share season", "share season and year", "share count over", "share over a hundred",
+    "power", "power not found", "scientific", "scientific another mantissa", "power scaled",
+    "power signed", "scale", "scale in the abstract", "scale after a subscript",
+    "ties in maths across lines",
 )  # fmt: skip
+#: How a power's exponent is spelled in maths, `{v}` the exponent: braced, after a thin
+#: space, with its plus sign, and, a digit, unbraced; and what may stand before it.
+POWER_SPELLINGS = ("{{{v}}}", "{{" + BACKSLASH + ",{v}}}", "{{+{v}}}", "{v}")
+POWER_LEADS = ("", BACKSLASH + "sim ", BACKSLASH + "approx ")
+POWER_BASES = ("10", "2", "3")
+#: The first exponent each kind of power draws from, four apart, so that no kind's number is
+#: another's: a power of `ABSTRACT_KINDS` (round 1 of #696: a number in scientific notation,
+#: a mantissa times a power of ten, is one number; a scale, a power after a times sign with
+#: no mantissa before it, is none).
+POWER_EXPONENTS = {"power": 2, "power not found": 6, "scientific": 11,
+                   "scientific another mantissa": 15, "power scaled": 21, "power signed": 25,
+                   "scale": 31, "scale in the abstract": 35,
+                   "scale after a subscript": 41, "ties in maths across lines": 45}  # fmt: skip
+#: Maths over more than one line that holds a number in scientific notation with ties, `{}`
+#: the number: inline maths wrapped at a line break, and display maths on lines of its own
+#: (after the check of 191d0e7c2 in #696).
+MATHS_OVER_LINES = ("It was $" + BACKSLASH + "sim\n{}$ then.", "It was\n$$\n{}\n$$\nthen.")
+#: A times sign between a mantissa and its power, and the spaces either side of it.
+TIMES_SIGNS = (BACKSLASH + "times", BACKSLASH + "cdot")
+#: Of them, the gaps a typist or TeX leaves beside a space and TeX's thin space: a tie, a
+#: control space, a no-break, a thin and a narrow no-break space, and runs of them, one of
+#: which every example draws (round 2 of #696).
+TIMES_TIES = ("~", BACKSLASH + " ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+              "\N{NARROW NO-BREAK SPACE}", BACKSLASH + ",~", "~" + BACKSLASH + "; ")
+TIMES_GAPS = ("", " ", BACKSLASH + ",", *TIMES_TIES)
+
+
+def _power(draw: st.DrawFn, base: str, value: int) -> str:
+    """A power of `base` to `value`, spelled in one of `POWER_SPELLINGS` drawn that can
+    write it: a sign only braced, and only a digit unbraced."""
+    spellings = [one for one in POWER_SPELLINGS if (value > 0 or "+" not in one)
+                 and (one != "{v}" or 0 < value < 10)]  # fmt: skip
+    return f"{base}^" + draw(st.sampled_from(spellings)).format(v=value)
+
+
+def _times(draw: st.DrawFn, mantissa: str, power: str, gaps: tuple = TIMES_GAPS) -> str:
+    """`mantissa` times `power`, the sign and the spaces, of `gaps`, drawn."""
+    gap = draw(st.sampled_from(gaps))
+    return f"{mantissa}{gap}{draw(st.sampled_from(TIMES_SIGNS))}{gap}{power}"
+
+
+def _abstract_power(draw: st.DrawFn, kind: str
+                    ) -> tuple[str, list[str], list[str], list[tuple]]:  # fmt: skip
+    """A power of one of the power kinds of `ABSTRACT_KINDS`: the Abstract's sentence, the
+    Methods' and the Discussion's, and what is looked for: the number named whole, as found
+    or not, and the names that are no number, never looked for, absent."""
+    low = POWER_EXPONENTS[kind]
+    value = draw(st.integers(low, low + 3)) * draw(st.sampled_from((1, -1)))
+    base = "10" if kind not in ("power", "power not found") else draw(
+        st.sampled_from(POWER_BASES))  # fmt: skip
+    power, again = _power(draw, base, value), _power(draw, base, value)
+    mantissa = f"{draw(st.integers(1, 9))}.{draw(st.integers(1, 9))}"
+    other = f"{int(mantissa[0]) % 9 + 1}.{mantissa[2]}"
+    sign = draw(st.sampled_from(("", "-")))
+    methods: list = []
+    discussion: list[str] = []
+    if kind == "power":
+        written, state = power, "exact"
+        methods.append(f"It was ${again}$ then.")
+    elif kind == "power not found":
+        written, state = power, "not found"
+        discussion.append(f"It was ${power}$ then.")
+        methods.append(f"Of {base} runs, {value} was the shift.")
+    elif kind == "scientific":
+        written, state = sign + _times(draw, mantissa, power), "exact"
+        methods.append(f"It was ${sign}{_times(draw, mantissa, again)}$ then.")
+    elif kind == "scientific another mantissa":
+        written, state = _times(draw, mantissa, power), "not found"
+        # Its parts, each printed apart: another mantissa, the bare power and the mantissa.
+        methods.append(f"It was ${_times(draw, other, again)}$, ${again}$ alone, and "
+                       f"{mantissa} the next.")  # fmt: skip
+    elif kind == "power scaled":
+        written, state = power, "not found"
+        methods.append(f"It was ${_times(draw, mantissa, again, TIMES_TIES)}$ then.")
+    elif kind == "power signed":
+        written, state = f"-{power}", "not found"
+        methods.append(f"It was ${again}$ then.")
+    elif kind == "scale":
+        written, state = power, "not found"
+        methods.append(f"Counts (${TIMES_SIGNS[0]} {again}$ per ml) were read.")
+    elif kind == "ties in maths across lines":
+        written, state = _times(draw, mantissa, power), "exact"
+        tied = f"{mantissa}~{TIMES_SIGNS[0]}~{again}"
+        methods.append(draw(st.sampled_from(MATHS_OVER_LINES)).format(tied))
+    elif kind == "scale after a subscript":
+        # In Markdown's text `~` marks a subscript, no tie: its digit is no mantissa, and the
+        # power after the times sign a scale (after the check of b95b6a89f in #696).
+        digit = mantissa[0]
+        written, state = _times(draw, digit, power), "not found"
+        methods.append(Apart(f"It was VCO~{digit}~ {BACKSLASH}times{again} then.",
+                             f"It was VCO$_{digit}$ ${BACKSLASH}times{again}$ then."))
+    else:
+        times = draw(st.sampled_from(TIMES_SIGNS))
+        methods.append(f"It was ${again}$ then.")
+        return (f"Counts (${times} {power}$ per ml) were read here.", methods, discussion,
+                [(kind, power, "absent"), (kind, f"{times} {power}", "absent"),
+                 (kind, f"{base}^", "absent")])  # fmt: skip
+    lead = draw(st.sampled_from(POWER_LEADS))
+    return (f"The rate was ${lead}{written}$ here.", methods, discussion,
+            [(kind, written, state), (kind, f"{base}^", "absent")])
 #: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
 #: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
 SHARE_SHAPES = {
@@ -9825,6 +9939,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             found = kind in ("past the list", "past the list legend", "past the resumed list")
             looked.append((kind, shown, "exact" if found else "not found"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in POWER_EXPONENTS:
+            said, in_methods, in_discussion, planted = _abstract_power(draw, kind)
+            methods += in_methods
+            discussion += in_discussion
+            looked += planted
+            abstract.append((kind, said))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -10024,6 +10144,89 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
         else:
             made = _results_named(draw(st.sampled_from(NOT_THE_RESULTS)))
         papers.append((miss, *made, False))
+    return papers
+
+
+#: The descriptive titles a paper's results stand under where no heading names the Results,
+#: as tex-astro-ga-B2 of the real-paper corpus has them under "Electron temperature
+#: relations" (Basile, 2026-11-16, decision 27), and the titles a `--results` given for one
+#: of them names no heading by.
+DESCRIPTIVE_TITLES = ("Electron temperature relations", "Growth under drought",
+                      "Patterns of attendance", "Model comparison")  # fmt: skip
+UNMATCHED_TITLES = ("Findings of note", "Temperature relations", "Growth")
+#: How `--results` gives a descriptive title, `{}` the title as the paper writes it: as it
+#: is, in small letters, in capitals, numbered, and with a colon after it.
+ANSWER_WRITTEN = ("{}", "{lower}", "{upper}", "3. {}", "{}:")
+#: The kinds of paper and answer each example of `answered_papers` holds one of: no Abstract
+#: heading, asked and answered with `--no-abstract`; an Abstract heading and the answer
+#: that there is none; no Results heading, asked, answered with `--results`, given a title
+#: no heading has, and answered with `--no-results`; and a Results heading with the answer
+#: that there are none.
+#: Two more since round 1 of #697: the Discussion named as the Results, its Abstract's
+#: number given there alone, which is then found and said; and a title named that stands
+#: under the Discussion, which is said and not read, the question asked again.
+ANSWER_KINDS = ("no abstract", "no abstract answered", "abstract contradicted", "no results",
+                "results named", "results unmatched", "no results answered",
+                "results contradicted", "results reporting nothing",
+                "results under the discussion")  # fmt: skip
+
+
+@st.composite
+def answered_papers(draw: st.DrawFn) -> list[tuple[str, str, str, dict, dict]]:
+    """Papers the Abstract against Results asks about, each with and without its answer: for
+    each of `ANSWER_KINDS`, its kind, its Markdown, its LaTeX, the answers given as
+    `auditing.abstract.Answers` takes them, and what the section is to say: whether it
+    compares, the question it asks ("" for none) and the codes of its notes on the answers.
+    The descriptive title is drawn from `DESCRIPTIVE_TITLES` for each, the way `--results`
+    writes it from `ANSWER_WRITTEN`, and a title that names no heading from
+    `UNMATCHED_TITLES`, so that every kind is in every example."""
+    from manuscript_guard.auditing import abstract
+
+    papers = []
+    for kind in draw(st.permutations(ANSWER_KINDS)):
+        title = draw(st.sampled_from(DESCRIPTIVE_TITLES))
+        written = draw(st.sampled_from(ANSWER_WRITTEN)).format(
+            title, lower=title.lower(), upper=title.upper())  # fmt: skip
+        has_results = kind in ("no abstract", "no abstract answered", "abstract contradicted",
+                               "results contradicted")  # fmt: skip
+        markdown, latex = (_results_named("Data", under=title)
+                           if kind == "results under the discussion"
+                           else _results_named("Results" if has_results else title))
+        if kind == "results reporting nothing":
+            markdown = markdown.replace("It was 812.5 then.", "It held then.").replace(
+                "## Discussion\n\nIt was so.", "## Discussion\n\nIt was 812.5 so.")
+            latex = latex.replace("It was 812.5 then.", "It held then.").replace(
+                f"{BACKSLASH}section{{Discussion}}\nIt was so.",
+                f"{BACKSLASH}section{{Discussion}}\nIt was 812.5 so.")  # fmt: skip
+        if kind in ("no abstract", "no abstract answered"):
+            markdown = markdown.replace("## Abstract\n\n", "")
+            latex = latex.replace(f"{BACKSLASH}begin{{abstract}}\n", "").replace(
+                f"{BACKSLASH}end{{abstract}}\n", "")  # fmt: skip
+        answers = {
+            "no abstract": {}, "no abstract answered": {"no_abstract": True},
+            "abstract contradicted": {"no_abstract": True}, "no results": {},
+            "results named": {"results": (written,)},
+            "results unmatched": {"results": (draw(st.sampled_from(UNMATCHED_TITLES)),)},
+            "no results answered": {"no_results": True},
+            "results contradicted": {"no_results": True},
+            "results reporting nothing": {"results": (draw(st.sampled_from(
+                ("Discussion", "discussion", "4. DISCUSSION"))),)},
+            "results under the discussion": {"results": (written,)},
+        }[kind]  # fmt: skip
+        compared = kind in ("abstract contradicted", "results named", "results contradicted",
+                            "results reporting nothing")  # fmt: skip
+        question = {"no abstract": abstract.ASKED_NO_ABSTRACT, "no results":
+                    abstract.ASKED_NO_RESULTS, "results unmatched":
+                    abstract.ASKED_NO_RESULTS, "results under the discussion":
+                    abstract.ASKED_NO_RESULTS}.get(kind, "")  # fmt: skip
+        notes = {"abstract contradicted": [abstract.CONTRADICTED],
+                 "results contradicted": [abstract.CONTRADICTED],
+                 "results unmatched": [abstract.UNMATCHED],
+                 "results reporting nothing": [abstract.LIFTED],
+                 "results under the discussion": [abstract.NOT_TAKEN]}.get(kind, [])  # fmt: skip
+        papers.append((kind, markdown, latex, answers,
+                       {"compared": compared, "question": question, "notes": notes,
+                        "title": title}))  # fmt: skip
     return papers
 
 
@@ -17649,6 +17852,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         results_named_papers().flatmap(lambda drawn: st.sampled_from(
             [{"paper": markdown, "supplement": "Nothing.\n"} for _k, markdown, _t, _c in drawn])),
     ),  # fmt: skip
+    "abstract questions": answered_papers().flatmap(lambda drawn: st.sampled_from([
+        {"paper": markdown, "no abstract": answers.get("no_abstract", False),
+         "no results": answers.get("no_results", False),
+         "results": list(answers.get("results", ()))}
+        for _kind, markdown, _latex, answers, _wanted in drawn])),
     "causal words": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),
                               texts().map(lambda text: {"paper": text})),
     "cited sentences": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),

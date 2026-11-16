@@ -44,6 +44,7 @@ import pytest
 from generated import (
     ABSTRACT_BACKGROUND,
     AGREED,
+    BACKSLASH,
     BESIDE_A_BINDING,
     CAUSAL_PARTS,
     CLAIMED,
@@ -51,6 +52,7 @@ from generated import (
     DATA_IDENTIFIERS,
     DECLARED_TERMS,
     DEPOSIT_DOI,
+    DESCRIPTIVE_TITLES,
     EDIT_GAPS,
     EDIT_WORDS,
     FILLER,
@@ -85,6 +87,7 @@ from generated import (
     WRITTEN_WORDS,
     abstract_trees,
     alt_texts,
+    answered_papers,
     beside_edited,
     bindings,
     bold_planted,
@@ -6873,7 +6876,13 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
     resumes the list where it opens with the list's next number, wrapped, or has a
     reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
-    Without
+    A power in maths, `$10^{-2}$`, is read whole and found where the Methods print the same
+    power, however its exponent is spelled, and not where they give its base and exponent
+    apart; it is never named by its base and a caret (tex-astro-ga-B1). A number in
+    scientific notation is one number, its sign, mantissa and power: found where the Methods
+    print it again, and not where they print another mantissa, a bare power where they give
+    it a mantissa, a signed one where they drop the sign, nor one they give only as a scale;
+    a scale in the Abstract is no number (round 1 of #696). Without
     an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
     reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
     of #472), but for what stands after `thebibliography`, which stands under the section
@@ -6918,6 +6927,156 @@ def test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing
                        for name in RESULTS_BY_ANOTHER_NAME), read.why_not  # fmt: skip
 
 
+def _answered(text: str, suffix: str, answers: dict):
+    """The audit of one paper with the author's answers, and the Abstract against Results'
+    items as the report gives them."""
+    import tempfile
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.abstract import Answers
+    from manuscript_guard.auditing.report import ABSTRACT, items
+    from manuscript_guard.classify import Classifier
+
+    if not _AUDIT_RULES:
+        _AUDIT_RULES.append(Classifier.load(rendered=True))
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        report = audit([paper], None, classifier=_AUDIT_RULES[0], answers=Answers(**answers))
+    return report.abstract, [item for item in items(report) if item.section == ABSTRACT]
+
+
+@holds(10, answered_papers())
+def test_a_question_to_the_author_is_asked_until_answered_and_never_counts(
+    drawn: list[tuple[str, str, str, dict, dict]],
+) -> None:
+    """Basile, 2026-11-16, decision 27: where no heading names the Abstract, or none is read
+    as the Results, the section asks the author, at INFO, never counted and marked as a
+    question; `--no-abstract`, `--no-results` and `--results` with the title, written in any
+    case, numbered or with a colon, end it. An answer the paper's headings contradict is
+    said and the headings win; a title that names no heading is said and the question
+    stays, and so is one under the Discussion, which is not read; the Discussion named is
+    read as given, and said (round 1 of #697). A heading `--results` names is the Results
+    to this section alone: the parts the audit places each line in for its sentence
+    readers, and the causal words `--design observational` reads, are the same with the
+    answer and without it. In Markdown and LaTeX."""
+    from manuscript_guard.findings import INFO
+
+    for kind, markdown, latex, answers, wanted in drawn:
+        for text, suffix in ((markdown, ".md"), (latex, ".tex")):
+            read, said = _answered(text, suffix, answers)
+            assert read.compared == wanted["compared"], (kind, text)
+            asked = [item for item in said if item.question]
+            assert [item.code for item in asked] == ([wanted["question"]] if wanted["question"]
+                                                     else []), (kind, said)  # fmt: skip
+            assert all(item.severity == INFO and not item.counted for item in asked), asked
+            assert [code for code, _said in read.answered] == wanted["notes"], (kind, read)
+            if kind in ("results named", "results reporting nothing"):
+                assert read.matched == read.numbers == 1, (kind, text)
+                _read_by_no_other_reader(text, suffix, answers["results"])
+
+
+#: A claim of a cause, which `--design observational` reads in the Discussion.
+_CAUSE = "The drug causes the improvement."
+
+
+def _read_by_no_other_reader(text: str, suffix: str, named: tuple[str, ...]) -> None:
+    """The parts each line of a paper is placed in for the sentence readers (`_Source.part`),
+    and the causal words read, are the same whether `named` is given as the Results or not."""
+    import tempfile
+
+    from manuscript_guard.audit import AuditReport, _read_sources, audit
+    from manuscript_guard.auditing.abstract import Answers
+
+    text = text.replace("## Discussion\n\n", f"## Discussion\n\n{_CAUSE}\n\n").replace(
+        f"{BACKSLASH}section{{Discussion}}\n", f"{BACKSLASH}section{{Discussion}}\n{_CAUSE}\n")
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        lines = range(1, text.count("\n") + 2)
+
+        def parts(given: tuple[str, ...]) -> list:
+            sources = _read_sources(AuditReport(results_named=given), [paper], [])
+            return [[source.part(line) if source.part else None for line in lines]
+                    for source in sources]  # fmt: skip
+
+        assert parts(named) == parts(()), (named, text)
+        found = [[(one.line, one.part) for one in audit(
+            [paper], None, classifier=_AUDIT_RULES[0], design="observational",
+            answers=answers).causal.found] for answers in (None, Answers(results=named))]
+        assert found[0] and found[0] == found[1], (named, text, found)
+
+
+def _the_answers_are_ignored(patch: pytest.MonkeyPatch) -> None:
+    """`--no-abstract` and `--no-results` read and not given to the section."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.against_results
+    patch.setattr(abstract, "against_results",
+                  lambda pieces, answers=None, named=None: real(pieces, None, named))
+
+
+def _a_results_title_is_ignored(patch: pytest.MonkeyPatch) -> None:
+    """`--results` read and no heading placed by it."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.placed
+    patch.setattr(abstract, "placed", lambda sections, notes=frozenset(), lists=(), named=():
+                  real(sections, notes, lists, ()))  # fmt: skip
+
+
+def _a_question_is_asked_as_a_warning(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.auditing import report
+    from manuscript_guard.findings import WARN
+
+    real = report.question
+    patch.setattr(report, "question", lambda section, code, message: replace(
+        real(section, code, message), severity=WARN))  # fmt: skip
+
+
+def _a_results_title_is_a_part_s_results(patch: pytest.MonkeyPatch) -> None:
+    """`--results` given to the parts the audit's sentence readers place a line in, as
+    `audit._structure` has it to hand: the heading named is their Results."""
+    import manuscript_guard.audit as audit
+    from manuscript_guard.auditing.abstract import given_title
+
+    real_structure, real_parts = audit._structure, audit._parts
+
+    def structure(text, hidden, tables, document, spans, original, named=()):
+        given = {given_title(title) for title in named}
+
+        def parts(sections, document):
+            return real_parts([dataclasses.replace(s, title="Results")
+                               if given_title(s.title) in given else s for s in sections],
+                              document)  # fmt: skip
+
+        patch.setattr(audit, "_parts", parts)
+        try:
+            return real_structure(text, hidden, tables, document, spans, original, named)
+        finally:
+            patch.setattr(audit, "_parts", real_parts)
+
+    patch.setattr(audit, "_structure", structure)
+
+
+def _a_results_title_is_the_results_to_g8(patch: pytest.MonkeyPatch) -> None:
+    """`--results` made a heading the Results everywhere, as a name of `names_results`."""
+    from manuscript_guard.auditing import abstract, sentences
+    from manuscript_guard.gates import reported
+    from manuscript_guard.text import section_names
+
+    real = section_names.names_results
+
+    def names(title: str) -> bool:
+        return real(title) or section_names._whole(title) in {
+            one.lower() for one in DESCRIPTIVE_TITLES}
+
+    for module in (section_names, abstract, sentences, reported):
+        patch.setattr(module, "names_results", names)
+
+
 def _a_results_name_is_read_by_its_opening_words(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
     from manuscript_guard.text.section_names import _whole
@@ -6932,7 +7091,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.auditing import abstract
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    def placed(sections, notes=frozenset(), lists=()):
+    def placed(sections, notes=frozenset(), lists=(), named=()):
         walk = Walk()
         place = walk.placing(sections)
         where = abstract._searched(sections, place, walk, notes)
@@ -6941,7 +7100,7 @@ def _a_results_name_counts_wherever_it_stands(patch: pytest.MonkeyPatch) -> None
         results = (any(place(s.line) is REPORTED for s in sections
                        if abstract.names_results(s.title))
                    or any(abstract.names_results_like(s.title) for s in sections))
-        return abstract._past_the_lists(where, sections, lists, notes), has, results
+        return abstract._past_the_lists(where, sections, lists, notes), has, results, ()
 
     patch.setattr(abstract, "placed", placed)
 
@@ -7144,6 +7303,97 @@ def _compared_as(patch: pytest.MonkeyPatch, compared: bool) -> None:
         sources, pieces))  # fmt: skip
 
 
+def _a_power_is_read_as_its_atoms(patch: pytest.MonkeyPatch) -> None:
+    """As on 0223ca005: `10^{-2}` in LaTeX was "10^" and "-2"."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [])
+
+
+def _a_power_is_found_by_its_pieces(patch: pytest.MonkeyPatch) -> None:
+    """A power's base and exponent looked for as two numbers, as the body's bare numbers."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        one = real(atoms, read, text)
+        flat = re.sub(r"[\^{}]", " ", one.atom.text)
+        return dataclasses.replace(one, parts=tuple(abstract._numbers(flat)),
+                                   powered=frozenset())  # fmt: skip
+
+    patch.setattr(abstract, "_joined", joined)
+
+
+def _read_powers_as(patch: pytest.MonkeyPatch, **changed) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.powers
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [
+        dataclasses.replace(power, **changed) for power in real(text, read, tied)])  # fmt: skip
+
+
+def _a_scale_or_a_mantissa_is_no_part_of_the_number(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `$5\\times 10^{-2}$` and a header's
+    `(\\times 10^8 cm^-3)` found an Abstract's bare power."""
+    _read_powers_as(patch, mantissa="1", scale=False)
+
+
+def _a_mantissa_is_looked_for_alone(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `3\\times 10^{8}` in the Abstract was found as 3
+    and 10^8 apart. Only the Abstract's reading is broken, where the paper reports is not."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        bare = [dataclasses.replace(power, mantissa="1") for power in read]
+        one = real(atoms, bare, text)
+        alone = tuple(power.mantissa for power in read
+                      if not power.scale and power.mantissa != "1")  # fmt: skip
+        return dataclasses.replace(one, parts=(*one.parts, *alone))
+
+    patch.setattr(abstract, "_joined", joined)
+
+
+def _a_times_sign_s_gap_is_only_a_space(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 2 of #696: `5~\\times~10^{-2}` was the bare `10^{-2}`."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_GAP", r"(?:[ \t]|\\[,;:!])*")
+    narrow = abstract._power_pattern.__wrapped__()
+    patch.setattr(abstract, "_power_pattern", lambda: narrow)
+
+
+def _a_tie_is_a_gap_in_markdown_text(patch: pytest.MonkeyPatch) -> None:
+    """As at b95b6a89f: in Markdown, `VCO~2~ \\times10^{3}` was the number 2 times 10^3."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "ties", lambda path, text: None)
+
+
+def _markdown_maths_is_read_within_one_line(patch: pytest.MonkeyPatch) -> None:
+    """As at 191d0e7c2: maths wrapped at a line break, or display maths on lines of its own,
+    held no tie."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.markdown_maths
+
+    def one_line(text: str) -> list[tuple[int, int]]:
+        spans, offset = [], 0
+        for line in text.split("\n"):
+            spans += [(offset + start, offset + end) for start, end in real(line)]
+            offset += len(line) + 1
+        return spans
+
+    patch.setattr(abstract, "markdown_maths", one_line)
+
+
+def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `-10^{8}` was found as `10^{8}`."""
+    _read_powers_as(patch, sign="")
+
+
 def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
     _compared_as(patch, False)
 
@@ -7195,7 +7445,7 @@ def _an_abstract_number_is_looked_for_in_the_methods_and_results_alone(
     """As before 2026-11-11: a section of another name was not searched."""
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: place)
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes, given=(): place)
 
 
 def _the_opening_and_the_conclusion_are_searched(patch: pytest.MonkeyPatch) -> None:
@@ -7232,8 +7482,8 @@ def _a_note_is_searched(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
     real = abstract._searched
-    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes: real(
-        sections, place, walk, frozenset()))  # fmt: skip
+    patch.setattr(abstract, "_searched", lambda sections, place, walk, notes, given=(): real(
+        sections, place, walk, frozenset(), frozenset(given)))  # fmt: skip
 
 
 def _the_lines_past_a_list_are_not_searched(patch: pytest.MonkeyPatch) -> None:
@@ -7297,9 +7547,9 @@ def _a_heading_over_the_methods_is_the_paper_s_title(patch: pytest.MonkeyPatch) 
 
     real = abstract._searched
 
-    def searched(sections, place, walk, notes):
+    def searched(sections, place, walk, notes, given=frozenset()):
         patch.setattr(abstract, "_over_the_paper", lambda found: set(walk.titles))
-        return real(sections, place, walk, notes)
+        return real(sections, place, walk, notes, given)
 
     patch.setattr(abstract, "_searched", searched)
 
@@ -23276,6 +23526,26 @@ BROKEN = {
         _no_heading_is_the_results_by_another_name,
         test_the_results_by_another_name_are_the_results_to_the_abstract_and_nothing_like_them,
     ),
+    "an answer to the Abstract's question is ignored": (
+        _the_answers_are_ignored,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is ignored": (
+        _a_results_title_is_ignored,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a question to the author is asked as a warning": (
+        _a_question_is_asked_as_a_warning,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is a Results name everywhere": (
+        _a_results_title_is_the_results_to_g8,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is the Results of the sentence readers' parts": (
+        _a_results_title_is_a_part_s_results,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
     "an RRID keeps the punctuation after it": (
         _an_rrid_keeps_the_mark_after_it,
         test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
@@ -27647,6 +27917,38 @@ BROKEN = {
     ),
     "an estimate's words are not its abbreviation": (
         _an_estimates_words_are_not_its_abbreviation,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read as its atoms": (
+        _a_power_is_read_as_its_atoms,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by its base and its exponent apart": (
+        _a_power_is_found_by_its_pieces,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by another mantissa or a scale": (
+        _a_scale_or_a_mantissa_is_no_part_of_the_number,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its mantissa looked for alone": (
+        _a_mantissa_is_looked_for_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read with a space alone around its times sign": (
+        _a_times_sign_s_gap_is_only_a_space,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has a tie in Markdown's text read as a gap": (
+        _a_tie_is_a_gap_in_markdown_text,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has Markdown's maths read within one line": (
+        _markdown_maths_is_read_within_one_line,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its sign dropped": (
+        _a_power_s_sign_is_dropped,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (

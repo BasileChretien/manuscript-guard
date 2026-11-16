@@ -2773,6 +2773,42 @@ def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differ
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+@pytest.mark.parametrize(("printed", "changed"), [("1.4!times 10^{-2}", "1.4!times 10^{-3}"),
+                                                  ("1.4!times 10^{-2}", "1.5!times 10^{-2}"),
+                                                  ("10^{-2}", "-10^{-2}")])  # fmt: skip
+def test_an_abstract_s_power_the_results_print_another_way_is_said_not_found(
+    tmp_path: Path, suffix: str, printed: str, changed: str
+) -> None:
+    """tex-astro-ga-B1 of the real-paper corpus: a power in the Abstract's maths was read as
+    "10^" and "-2" in LaTeX and as printed in Markdown, and said not found whatever the
+    Results printed, so an exponent changed in the Abstract was said no differently from one
+    copied. A number in scientific notation is read whole, its sign, its mantissa and its
+    power: one the Results print is found, and one whose exponent, mantissa or sign differs
+    is not found, named whole, though the Results give each of its parts elsewhere (round 1
+    of #696)."""
+    from manuscript_guard.audit import audit
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\nThe mass was "
+             "$!sim PRINTED$ here.\n!end{abstract}\n!section{Results}\nThe mass was "
+             "$PRINTED$, and -3 the shift, 1.5 the next, $10^{-3}$ the rate.\n"
+             "!end{document}\n")  # fmt: skip
+    markdown = ("# A study\n\n## Abstract\n\nThe mass was $!sim PRINTED$ here.\n\n## Results"
+                "\n\nThe mass was $PRINTED$, and -3 the shift, 1.5 the next, $10^{-3}$ the "
+                "rate.\n")  # fmt: skip
+    paper = tmp_path / f"paper{suffix}"
+    text = (latex if suffix == ".tex" else markdown).replace("PRINTED", printed)
+    paper.write_text(text.replace("!", chr(92)), encoding="utf-8")
+    read = audit([paper], None).abstract
+    assert [c.text for c in read.found] == [printed.replace("!", chr(92))], read
+    assert read.not_found == [], read
+    paper.write_text(text.replace(f"{printed}$ here", f"{changed}$ here").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], None).abstract
+    assert [c.text for c in read.not_found] == [changed.replace("!", chr(92))], read
+    assert read.found == [], read
+
+
 def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
     tmp_path: Path,
 ) -> None:
@@ -2791,6 +2827,55 @@ def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
         paper.write_text(latex.replace("HEADING", heading).replace("!", chr(92)),
                          encoding="utf-8")  # fmt: skip
         assert main(["audit", str(paper), "--strict"]) == failed, heading
+
+
+def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_catch(
+    tmp_path: Path, capsys
+) -> None:
+    """Decision 27 (Basile, 2026-11-16): an Abstract whose interval differs from the one its
+    results give under a descriptive title (tex-astro-ga-B2 of the real-paper corpus) is
+    not compared, and the audit asks which heading holds them: the question never fails
+    --strict, whatever else it holds. Answered with `--results`, the conflict fails it."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.90).\n!end{abstract}\n!section{Data}\nWe did.\n"
+             "!section{Electron temperature relations}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n"
+             "!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict", "--json"]) == 0
+    asked = [one for one in json.loads(capsys.readouterr().out)["findings"] if one["question"]]
+    assert [(one["code"], one["counted"]) for one in asked] == [("question-no-results", False)]
+    assert main(["audit", str(paper), "--strict", "--results",
+                 "Electron temperature relations"]) == 1  # fmt: skip
+
+
+def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(
+    tmp_path: Path, capsys
+) -> None:
+    """`--results` is the Results to the audit's Abstract against Results alone, never to a
+    reader that places sentences in the paper's parts: the Discussion's claim of a cause is
+    said under `--design observational` as it was, its part the Discussion, with the
+    Discussion and the descriptive title named as the Results (round 1 of #697: the earlier
+    test read the raw text, and could not fail)."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A study\n\n## Abstract\n\nThe OR was 1.52 (95% CI 1.21-1.90).\n\n"
+                     "## Introduction\n\nIt matters.\n\n## Electron temperature relations\n\n"
+                     "The OR was 1.52 (95% CI 1.21-1.89).\n\n## Discussion\n\n"
+                     "The drug causes the improvement.\n", encoding="utf-8")  # fmt: skip
+
+    def causal(*given: str) -> list:
+        assert main(["audit", str(paper), "--json", "--design", "observational", *given]) == 0
+        return [(one["code"], one["line"], one["message"])
+                for one in json.loads(capsys.readouterr().out)["findings"]
+                if one["section"] == "Causal words"]  # fmt: skip
+
+    said = causal()
+    assert said and said == causal("--results", "Electron temperature relations",
+                                   "--results", "Discussion")
 
 
 def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(

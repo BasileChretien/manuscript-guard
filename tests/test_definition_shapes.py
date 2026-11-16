@@ -237,10 +237,19 @@ def test_a_note_whose_long_form_runs_onto_the_next_line_defines_nothing(note: st
 
 
 @pytest.mark.parametrize("note", ["*Note.* ESR = erythrocyte sedimentation rate.\nValues.",
-                                  "Values are medians.\nESR = erythrocyte sedimentation rate"])
-def test_a_note_ended_on_its_line_defines(note: str) -> None:
+                                  "Values are medians.\nESR = erythrocyte sedimentation rate",
+                                  # A new block on the next line ends it (round 4 of #698).
+                                  "- ESR = erythrocyte sedimentation rate\n- BDI = Beck Depression",
+                                  "*Note.* ESR = erythrocyte sedimentation rate\n| 1 | 2 |"])
+def test_a_note_ended_on_its_line_defines(note: str, tmp_path: Path) -> None:
     read = _file(0, Path("main.md"), f"{note}\n\nThe ESR held.\n", [], False)
-    assert [short for _at, short, _long in read.definitions] == ["ESR"], read.definitions
+    assert [short for _at, short, _long in read.definitions][:1] == ["ESR"], read.definitions
+    (tmp_path / "main.tex").write_text(_latex(
+        "\\begin{tablenotes}\n\\item ESR = erythrocyte sedimentation rate\n\\item BDI = Beck "
+        "Depression Inventory\\\\\nPDW = platelet distribution width\n\\end{tablenotes}\n"),
+        encoding="utf-8")  # fmt: skip
+    assert [short for read in _latex_read(tmp_path, None) for _at, short, _long
+            in read.definitions] == ["ESR", "BDI", "PDW"]  # fmt: skip
 
 
 def test_a_wrapped_note_beside_the_text_s_definition_says_nothing(project: Path) -> None:
@@ -287,7 +296,7 @@ def test_a_latex_input_file_s_first_heading_is_no_title(tmp_path: Path) -> None:
     (tmp_path / "main.tex").write_text(_latex("\\section{Introduction}\nWe read it.\n\n"
                                               "\\input{sections/data}\n"), encoding="utf-8")
     (tmp_path / "sections" / "data.tex").write_text(
-        "\\section{Data from the Sloan Sky Survey (SSS)}\n\\section{Background}\n"
+        "\\section{Data from the Sloan Sky Survey (SSS)}\n\\subsection{Background}\n"
         "The SSS was read.\n", encoding="utf-8")
     defined = [found for read in _latex_read(tmp_path, None)
                for _at, found, _long in read.definitions]  # fmt: skip

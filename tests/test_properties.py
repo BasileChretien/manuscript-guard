@@ -2589,7 +2589,7 @@ def _a_bracket_s_list_defines_whatever_its_words(patch: pytest.MonkeyPatch) -> N
 
 
 def _a_sign_after_a_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_paired", lambda prose: [])
+    patch.setattr(language_gate, "_paired", lambda prose, typed=None: [])
 
 
 def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -> None:
@@ -2631,10 +2631,10 @@ def _a_wrapped_note_defines_from_its_first_line(patch: pytest.MonkeyPatch) -> No
 def _a_section_s_name_before_a_colon_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
     real = language_gate._paired
 
-    def unlabelled(prose: str) -> list[tuple[int, str, str]]:
+    def unlabelled(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
         with pytest.MonkeyPatch.context() as inner:
             inner.setattr(language_gate, "section_name_alone", lambda text: None)
-            return real(prose)
+            return real(prose, typed)
 
     patch.setattr(language_gate, "_paired", unlabelled)
 
@@ -2715,7 +2715,7 @@ def _a_slash_pairs_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_slash_pairs_the_whole_long_form_with_each_part(patch: pytest.MonkeyPatch) -> None:
-    def paired(prose: str) -> list[tuple[int, str, str]]:
+    def paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
         found = []
         for pair in language_gate._PAIRED.finditer(prose):
             at = pair.start("shorts")

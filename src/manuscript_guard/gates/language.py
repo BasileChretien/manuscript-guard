@@ -243,6 +243,9 @@ _PAIRED = re.compile(
 #: wrapped long form cannot be told from a sentence after it (Basile, 2026-11-16, "Wrapped
 #: note defines nothing"). A block quote's line of `>` alone is a blank one.
 _RUNS_ON = re.compile(r"\r?\n(?![ \t>\N{NO-BREAK SPACE}]*(?:\r?\n|\Z))")
+#: A line that opens a new block, as typed, which ends the note's line as a blank one does:
+#: a list item, LaTeX's `\\item`, a table's row and a heading (round 4 of #698).
+_NEW_BLOCK = re.compile(r"[ \t>]*(?:[-*+][ \t]|\d{1,9}[.)][ \t]|\\item(?![A-Za-z])|\||#)")
 #: The words that name a short form after its long form, as "long form (SHORT)" does:
 #: "the L/U ratio known as IRX", "recovered individuals, commonly referred to as SIR
 #: models", "the survey (hereafter SDSS)" (decision 29). Not a word's end: "so-called".
@@ -1318,7 +1321,7 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
     bracketed = {at for at, _short, _long in found}
     found += [each for each in _dashed(prose, typed) if each[0] not in bracketed]
     taken = {at for at, _short, _long in found}
-    for each in (*listed, *_paired(prose), *_named_as(prose), *_cited_as(prose, typed)):
+    for each in (*listed, *_paired(prose, typed), *_named_as(prose), *_cited_as(prose, typed)):
         if each[0] not in taken:
             taken.add(each[0])
             found.append(each)
@@ -1345,7 +1348,7 @@ def _listed_inside(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, s
     return found
 
 
-def _paired(prose: str) -> list[tuple[int, str, str]]:
+def _paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
     """The definitions "X = long form" and "X: long form" (`_PAIRED`), one for each pair of
     a list: the long form after the sign is matched as one in brackets after its short form
     is (`_spelt_after`). Short forms a slash joins, "EA/NEA = effect/non-effect allele",
@@ -1359,7 +1362,10 @@ def _paired(prose: str) -> list[tuple[int, str, str]]:
         # never a short form (round 1 of #698).
         if pair.group("sign") == ":" and section_name_alone(pair.group("shorts")) is not None:
             continue
-        if _RUNS_ON.match(prose, pair.end("long")):
+        lines = typed if typed is not None and len(typed) == len(prose) else prose
+        ends = lines.find("\n", pair.end("long"))
+        if (_RUNS_ON.match(prose, pair.end("long")) and not _NEW_BLOCK.match(lines, ends + 1)
+                and not lines[:ends].rstrip().endswith("\\\\")):
             continue
         words = pair.group("long").split()
         if len(shorts) == 1:
@@ -1657,25 +1663,20 @@ def _titles(
 
 
 def _the_paper_s_title(headings: Sequence[Heading], *, opens: bool) -> frozenset[int]:
-    """Where each heading starts that is the paper's title typed as a heading, which is no
-    section's heading and defines nothing (round 1 of #698): one over the Abstract or the
-    Introduction, as the audit reads the title (`auditing.abstract._over_the_paper`); and,
-    in the file the paper opens with (`opens`) only, its first heading where it names no
-    section and stands over them as that reading would read it a level above the rest, "#
-    Reporting odds ratio (ROR) in older adults" before "# Introduction" (round 2).
-    `headings` have a `title`, a `level` and a `start`."""
+    """Where the heading starts that is the paper's title typed as a heading, which is no
+    section's heading and defines nothing (round 1 of #698): the first heading of the file
+    the paper opens with (`opens`), nothing of its text before it (round 4), where it names
+    no section and stands over the Abstract or the Introduction as the audit reads the title
+    (`auditing.abstract._over_the_paper`), read a level above the rest: "# Reporting odds
+    ratio (ROR) in older adults" before "# Introduction". `headings` have a `title`, a
+    `level` and a `start`."""
     from manuscript_guard.auditing.abstract import _over_the_paper
 
-    sections = [Section(title=heading.title, level=heading.level, body="", line=0)
-                for heading in headings]  # fmt: skip
-    over = _over_the_paper(sections)
-    found = {heading.start for heading, section in zip(headings, sections, strict=True)
-             if id(section) in over}  # fmt: skip
-    if opens and headings and section_name_alone(plain_title(headings[0].title)) is None:
-        lifted = [Section(title=headings[0].title, level=0, body="", line=0), *sections[1:]]
-        if id(lifted[0]) in _over_the_paper(lifted):
-            found.add(headings[0].start)
-    return frozenset(found)
+    if not (opens and headings) or section_name_alone(plain_title(headings[0].title)):
+        return frozenset()
+    lifted = [Section(title=headings[0].title, level=0, body="", line=0),
+              *(Section(title=one.title, level=one.level, body="", line=0) for one in headings[1:])]
+    return frozenset({headings[0].start} if id(lifted[0]) in _over_the_paper(lifted) else ())
 
 
 def _in_titles(titles: Iterable[tuple[int, str]]) -> list[tuple[int, str, str]]:
@@ -1801,7 +1802,7 @@ def _assembled(
     definitions = [*(each for each in sentences if each[0] not in entries), *listed]
     # A heading's definition and a note's, "X = long form", may restate the text's, as a
     # caption's may (Basile, 2026-11-16, "As a restatement"; round 1 of #698).
-    restated = {at for at, _short, _long in (*headed, *_paired(prose))}
+    restated = {at for at, _short, _long in (*headed, *_paired(prose, raw))}
     restating = frozenset(at for at, _short, _long in definitions
                           if at in restated or _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)

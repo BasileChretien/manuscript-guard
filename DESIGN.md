@@ -23805,10 +23805,9 @@ Open, recorded as each change landed:
     Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
   - A heading defines only where it is a section's heading in a main text, the paper's or
     the supplement's, not in an Abstract. The paper's title typed as a heading is read as the
-    audit reads it, a heading over the Abstract or the Introduction in any file, or the
-    first heading of the file the paper opens with, the first to print a heading, naming no
-    section, before one that does; a title over the Methods alone, before no opening's
-    heading, or first in a later file at its opening's level, defines as a heading does.
+    audit reads it, over the Abstract or the Introduction, and only as the first heading of
+    the file the paper opens with, the first to print a heading, naming no section; a title
+    over the Methods alone, or with a heading before it, defines as a heading does.
     Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`
     and `tests/test_definition_shapes.py::test_a_latex_input_file_s_first_heading_is_no_title`.
   - After a sign the long form is the words after it whole, give or take an article, two

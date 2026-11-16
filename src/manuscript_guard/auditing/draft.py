@@ -300,8 +300,11 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
 
     for run in report.gates:
         if not run.note:
-            # The short forms left undefined counted as the summary counts them.
-            checks += [(f"{name} on {run.paper.name}", "its words read", counted(found))
+            # The findings counted as the summary counts them, and G14's question on the
+            # short forms never defined, which the draft lists under Language and notation,
+            # as one: a check that asked something reported something (decision 30).
+            checks += [(f"{name} on {run.paper.name}", "its words read",
+                        counted(found) + sum(1 for one in found if one.question))
                        for name, found in (("Writing (G6)", run.writing),
                                            ("Language (G14)", run.language))]  # fmt: skip
     entries = sum(len(census.entries) for census in report.references)

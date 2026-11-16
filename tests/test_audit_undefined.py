@@ -1,11 +1,13 @@
-"""`audit` says the short forms a paper uses and does not define in one finding, and passes
-over those that journals' style guides say need no definition (`auditing.undefined`).
+"""`audit` asks of the short forms a paper uses and does not define in one question, and
+passes over those that journals' style guides say need no definition (`auditing.undefined`).
 
 The corpus run of 2026-11-11 audited 52 real preprints, and judges read a sample of the
 findings: 354 of the 427 `abbreviation-undefined` warnings they read were false, the field's
 own terms, institutions, gene and instrument names, often dozens to a paper, and the true
 ones were lost among them. The author decided on one finding per paper, with `--known` as its
-remedy, a sourced list of forms the audit does not report, and `check` unchanged.
+remedy, a sourced list of forms the audit does not report, and `check` unchanged. On
+2026-11-16 (decision 30) he made the finding a question to the author, in both readers: the
+judges' sample found 82% of the forms false, and no exact rule tells the rest apart.
 """
 
 from __future__ import annotations
@@ -49,22 +51,25 @@ def _json(paper: Path, capsys, *flags: str) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-def test_the_short_forms_left_undefined_are_one_finding_at_the_first_use(
+def test_the_short_forms_left_undefined_are_one_question_at_the_first_use(
     tmp_path: Path, capsys
 ) -> None:
-    """One finding where there were eight: the forms in the order of their first use, the
-    first quoted where it stands, the one the abstract alone leaves undefined said so, and
-    the forms on the list counted, named and passed over by the list's sources."""
+    """One question where there were eight warnings: the forms in the order of their first
+    use, the first quoted where it stands, the one the abstract alone leaves undefined said
+    so, and the forms on the list counted, named and passed over by the list's sources; then
+    whether any needs defining, and how to answer. A question never counts (decision 30)."""
     report = _json(written(tmp_path), capsys)
     (found,) = [f for f in report["findings"] if f["code"] == "abbreviation-undefined"]
     assert found["line"] == 3 and "HR" in found["context"]
-    assert found["message"].startswith(
-        "5 short forms are used and not defined as G14 reads the paper: 'HR' (in the abstract) "
-        "here, then SIGNA, CHUV, UMCG, NTNU; 3 more passed over (HIV, MRI and EEG), being on "
-        "the list of short forms that the Cochrane Style Manual, Brain's instructions to "
-        "authors and Medical Writing's instructions for authors (EMWA) say need no "
-        "definition"), found["message"]  # fmt: skip
-    assert "--known" in found["hint"]
+    assert found["message"] == (
+        "5 short forms are used and never defined as G14 reads the paper: 'HR' (in the "
+        "abstract) here, then SIGNA, CHUV, UMCG, NTNU; 3 more passed over (HIV, MRI and EEG), "
+        "being on the list of short forms that the Cochrane Style Manual, Brain's instructions "
+        "to authors and Medical Writing's instructions for authors (EMWA) say need no "
+        "definition. Do any of them need defining? Define each your readers may not know, at "
+        "its first use; pass those they know with `--known A B C`."), found["message"]
+    assert found["question"] is True and found["severity"] == "info"
+    assert found["counted"] is False and found["hint"] is None
     # Each form keeps what G14 said of it and where it is first used.
     assert [form["form"] for form in found["forms"]] == list(LISTED)
     assert [form["line"] for form in found["forms"]] == [3, 7, 7, 7, 7]
@@ -75,14 +80,22 @@ def test_the_short_forms_left_undefined_are_one_finding_at_the_first_use(
     assert found["passed_over_by"] == "journal_abbreviations.yaml"
 
 
-def test_the_summary_counts_the_forms_and_details_list_each(tmp_path: Path, capsys) -> None:
-    """The kind's line counts the five forms, not the one finding; `--details` gives each
-    form's first use with G14's words on it."""
+def test_the_question_is_asked_apart_and_details_list_each_form(tmp_path: Path, capsys) -> None:
+    """The question stands under the questions for the author, once, and is no kind of
+    finding on the words; the summary's line says it is asked; `--details` gives each form's
+    first use with G14's words on it."""
+    from manuscript_guard.auditing.report import QUESTIONS
+
     paper = written(tmp_path)
     main(["audit", str(paper)])
     out = capsys.readouterr().out
-    assert "Abbreviations used and not defined (G14, 5)" in out
-    assert out.count("short forms are used and not defined") == 1
+    assert out.count("short forms are used and never defined") == 1
+    asked = out.index(QUESTIONS)
+    assert asked < out.index("short forms are used and never defined") < out.index(
+        "What was checked:")
+    assert "Abbreviations used and not defined (G14" not in out
+    assert "1 question for the author on the short forms never defined" in out
+    assert "findings to look at" not in out
     main(["audit", str(paper), "--details"])
     out = capsys.readouterr().out
     assert "  Each short form used and not defined, where it is first used:" in out
@@ -169,18 +182,20 @@ def test_the_note_is_no_kind_of_finding_in_the_tallies(tmp_path: Path, capsys) -
 
 
 def test_details_and_the_referee_draft_count_the_forms(tmp_path: Path, capsys) -> None:
-    """`--details` and the referee draft's row count the forms, as the summary does (round 2
-    of #640, finding 2)."""
+    """`--details` says G14 asked its question, and the referee draft's row counts it as one
+    thing reported, which its Language and notation lists (decision 30; it counted the five
+    forms as five findings, round 2 of #640, finding 2)."""
     from manuscript_guard.audit import AuditReport
     from manuscript_guard.auditing.draft import _checks_of_audit
     from manuscript_guard.auditing.gates import run_gates
 
     paper = written(tmp_path)
     main(["audit", str(paper), "--details"])
-    assert "paper.md: 0 from G6, 5 from G14" in capsys.readouterr().out
+    assert ("paper.md: 0 from G6, 0 from G14, and its question for the author (under "
+            '"Questions for the author")') in capsys.readouterr().out
     report = AuditReport(gates=[run_gates(paper)])
     rows = {name: found for name, _said, found in _checks_of_audit(report, [])}
-    assert rows["Language (G14) on paper.md"] == 5, rows
+    assert rows["Language (G14) on paper.md"] == 1, rows
 
 
 #: An Abstract that defines QTR, read apart; the Acknowledgements, which use it first,
@@ -230,10 +245,10 @@ def test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files(
     assert "'ABC' here, then XYZ" in found["message"]
 
 
-def test_the_kinds_rank_and_the_papers_count_by_the_forms(tmp_path: Path, capsys) -> None:
-    """The kind of the short forms ranks by the forms it counts, above a kind of two
-    findings, and the summary's line and the paper's line count the forms as the kind's
-    line does (round 1 of #640, findings 2 and 3)."""
+def test_the_question_is_no_kind_and_the_papers_count_no_finding(tmp_path: Path, capsys) -> None:
+    """The question on the short forms is no kind of finding: the kinds hold G6's two alone,
+    and the summary's line and the paper's line count no finding of the forms (decision 30;
+    the kind ranked by its forms, round 1 of #640, findings 2 and 3)."""
     from manuscript_guard.auditing.summary import grouped, kinds
     from manuscript_guard.findings import WARN, Finding
 
@@ -245,11 +260,11 @@ def test_the_kinds_rank_and_the_papers_count_by_the_forms(tmp_path: Path, capsys
     found = [*phrasing, *undefined.one_finding(warnings)]
     lines = grouped(found, lambda path, line: f"line {line}")
     titles = [line.strip() for line in lines if line.startswith("  ") and "(G" in line]
-    assert titles[0] == "Abbreviations used and not defined (G14, 10)", titles
-    assert [kind["code"] for kind in kinds(found, lambda p, n: "")][0] == undefined.CODE
+    assert titles == ["Phrasing to look at (G6, 2)"], titles
+    assert [kind["code"] for kind in kinds(found, lambda p, n: "")] == ["ai-phrasing"]
     main(["audit", str(written(tmp_path))])
     out = capsys.readouterr().out
-    assert "5 findings to look at, in 1 kind" in out and "paper.md: 5 findings in 1 kind" in out
+    assert "findings to look at" not in out and "findings in 1 kind" not in out, out
 
 
 def test_covid_19_is_read_whole_and_never_reported(tmp_path: Path, capsys) -> None:
@@ -260,19 +275,21 @@ def test_covid_19_is_read_whole_and_never_reported(tmp_path: Path, capsys) -> No
     assert not [f for f in report["findings"] if f["gate"] == "G14"]
 
 
-def test_check_in_a_project_still_warns_of_each_form_and_reads_no_list(tmp_path: Path) -> None:
-    """`check` is unchanged: G14 gives a warning for each form, on the list or not, on the
-    same text the audit gave one finding for."""
+def test_check_in_a_project_asks_of_every_form_and_reads_no_list(tmp_path: Path) -> None:
+    """`check` asks one question of every form, on the list or not, on the same text the
+    audit asked of: it reads no list (decision 30; it gave a warning for each form)."""
     from manuscript_guard.auditing.gates import _stage, audit_project
-    from manuscript_guard.gates.language import check_language
+    from manuscript_guard.gates.language import Asked, check_language
 
     paper = written(tmp_path)
     root = tmp_path / "project"
     project = audit_project(root, _stage(paper), None)
-    warned = [f.message.split()[0] for f in check_language(project).findings
-              if f.code == "abbreviation-undefined"]  # fmt: skip
+    found = check_language(project).findings
+    (asked,) = [f for f in found if f.code == "abbreviation-undefined"]
+    assert isinstance(asked, Asked) and asked.question
+    warned = [form for form, _warning in asked.forms]
     assert sorted(warned) == sorted([*LISTED, "HIV", *PASSED]), warned
-    assert not any(isinstance(f, undefined.Undefined) for f in check_language(project).findings)
+    assert not any(isinstance(f, undefined.Undefined) for f in found)
 
 
 def test_the_finding_reads_what_g14_writes_of_one_form_in_each_part(tmp_path: Path) -> None:
@@ -285,7 +302,8 @@ def test_the_finding_reads_what_g14_writes_of_one_form_in_each_part(tmp_path: Pa
     staged = _Staged({"main.md": PAPER, "supplementary/s1.md": "# Methods\n\nThe QQQ ran.\n"},
                      {})  # fmt: skip
     project = audit_project(tmp_path / "project", staged, None)
-    warnings = [f for f in check_language(project).findings if f.code == undefined.CODE]
+    found = undefined.unasked(list(check_language(project).findings))
+    warnings = [f for f in found if f.code == undefined.CODE]
     scopes = {undefined._SAID.match(f.message)["scope"] for f in warnings}
     assert scopes == {"abstract", "main text", "supplement"}, [f.message for f in warnings]
 
@@ -310,8 +328,8 @@ needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc
 
 @needs_pandoc
 def test_the_commented_copy_puts_the_finding_on_the_first_form(tmp_path: Path, capsys) -> None:
-    """In the copy with comments, the one finding stands on the first use of the first form
-    it lists, the word its message quotes."""
+    """In the copy with comments, the one question stands on the first use of the first form
+    it lists, the word its message quotes, said as a question for the author."""
     from manuscript_guard.docxtext import comment_ranges, word_comments
 
     written(tmp_path)
@@ -322,7 +340,9 @@ def test_the_commented_copy_puts_the_finding_on_the_first_form(tmp_path: Path, c
     capsys.readouterr()
     ranges = comment_ranges(target)
     over = [ranges.get(one.identifier) for one in word_comments(target)
-            if "short forms are used and not defined" in one.text]  # fmt: skip
+            if "short forms are used and never defined" in one.text]  # fmt: skip
     assert over == ["HR"], (over, [one.text for one in word_comments(target)])
+    (said,) = [one.text for one in word_comments(target) if "never defined" in one.text]
+    assert said.startswith("A question for the author: 5 short forms") and "--known" in said
     with zipfile.ZipFile(target) as archive:
         assert archive.read("word/comments.xml")

@@ -5,17 +5,23 @@ defined, defined twice, defined for nothing or never defined; and it must stay q
 surname with two capitals, a Roman numeral, a heading in capitals and a contributor's
 initials. Every finding is a warning, so a noisy rule here costs nothing at the build and
 everything in attention: the quiet half is what keeps the warnings read.
+
+The short forms never defined are one question to the author (decision 30), which holds the
+warning G14 gives each: these tests of G14's reading take the warnings it holds (`warned`),
+and `tests/test_undefined_asked.py` holds the question.
 """
 
 from __future__ import annotations
 
 import re
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 import yaml
 
+from manuscript_guard.auditing.undefined import unasked
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _definitions, _file, _hidden, _latex_read, _long_form
@@ -42,7 +48,13 @@ def written(
         folder.mkdir()
         (folder / "S1.md").write_text(supplement, encoding="utf-8")
     projekt, _ = load_project(project)
-    return check_language(projekt, stage)
+    return warned(check_language(projekt, stage))
+
+
+def warned(report):
+    """G14's report with its question on the short forms never defined given back as the
+    warnings it holds, one for each form, in its place (`auditing.undefined.unasked`)."""
+    return replace(report, findings=tuple(unasked(list(report.findings))))
 
 
 def configured(project: Path, **settings) -> None:

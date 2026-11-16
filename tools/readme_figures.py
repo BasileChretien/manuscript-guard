@@ -95,6 +95,8 @@ def card_svg(palette: dict[str, str]) -> str:
 #: (0.2.475, 2026-11-05). The one warning of numerical provenance is G7's
 #: `pinning-unchecked`, "Zotero is not running, so citation keys were not checked for
 #: pinning": with Zotero open and read, `check` prints one warning fewer in both counts.
+#: The example's ROR, used and never defined, was a warning of G14's until decision 30
+#: (2026-11-16) made it a question to the author, which is no warning: one fewer in the last.
 #: `tests/test_docs.py` runs `check` on the example with Zotero taken as not running, and
 #: fails unless it prints these lines, in this order.
 CLEAN: list[tuple[str, str]] = [
@@ -103,7 +105,7 @@ CLEAN: list[tuple[str, str]] = [
     ("text", "  numerical provenance"),
     ("text", "    checked:     G2, G3, G7, G8: 0 failing, 1 warning"),
     ("soft", "  ..."),
-    ("ok", "0 failing, 16 warnings"),
+    ("ok", "0 failing, 15 warnings"),
 ]
 
 #: The edit the demo shows, read from `CARD`: the number typed, the binding it replaced, and

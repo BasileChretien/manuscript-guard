@@ -508,7 +508,33 @@ def _from_finding(section: str, finding: Finding, placer: object = None) -> Item
 
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint,
-                placer, listed(finding) or None)  # fmt: skip
+                placer, listed(finding) or None, finding.question)  # fmt: skip
+
+
+def words_of(run) -> list[Finding]:
+    """G6's and G14's findings on a paper, its questions to the author left out: those are
+    said apart (`asked_of_words`)."""
+    return [finding for finding in (*run.writing, *run.language) if not finding.question]
+
+
+def asked_of_words(report) -> list[str]:
+    """What G14 asks the author of each paper, the short forms used and never defined
+    (`auditing.undefined`), said with the report's other questions (`_notes`): at the place
+    of the first form, which its message quotes, as the findings on the words say a place
+    (`_placing`) after the paper's name, "paper.md, line 3: 2 short forms ...", or by its
+    path in the paper's folder in another file of it, "sections/methods.tex:3: ..."."""
+    asked = []
+    for run in report.gates:
+        show = _Show(None, report.placers).within(run.paper, run.places)
+        at = _placing(run.paper, show)
+        for finding in run.language:
+            if not finding.question:
+                continue
+            where = at(finding.path, finding.line)
+            if finding.path is None or Path(finding.path) == Path(run.paper):
+                where = f"{show(run.paper)}, {where}"
+            asked.append(f"{where}: {finding.message}")
+    return asked
 
 
 def failed(report) -> bool:
@@ -748,7 +774,7 @@ def _grouped_gates(report, show: _Show) -> list[str]:
         if run.note:
             lines.append(f"  {run.note}")
             continue
-        found = [*run.writing, *run.language]
+        found = words_of(run)
         if not found:
             continue
         converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
@@ -828,7 +854,7 @@ def _notes(report) -> list[tuple[str, list[str]]]:
     asked = [item for item in _abstract_items(report.abstract, _a_pdf(report)) if item.question]
     answered = [said for _code, said in getattr(report.abstract, "answered", None) or []]
     notes = (
-        (QUESTIONS, [item.message for item in asked]),
+        (QUESTIONS, [*(item.message for item in asked), *asked_of_words(report)]),
         (ANSWERS, answered),
         ("Could not read:", report.unreadable),
         ("Outputs not read as given:", report.skipped),
@@ -909,7 +935,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     show = _shown(root, report.placers)
     words = []
     for run in report.gates:
-        found = [*run.writing, *run.language]
+        found = words_of(run)
         at = _placing(run.paper, show.within(run.paper, run.places))
         words.append({"paper": show(run.paper), "note": run.note or None,
                       "converted": run.converted,
@@ -1184,12 +1210,16 @@ def _gates(report, root: Path | None, show: _Show) -> list[str]:
         if run.note:
             lines.append(f"  {run.note}")
             continue
+        # G14's question on the short forms never defined, which is said with the other
+        # questions and whose forms are listed below (decision 30).
+        asked = (f", and its question for the author (under \"{QUESTIONS.split(' (')[0]}\")"
+                 if any(finding.question for finding in run.language) else "")
         lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
-                     f"{counted(run.language)} from G14"
+                     f"{counted(run.language)} from G14{asked}"
                      + ("; lines are those of the text pandoc converts it to, as `init "
                         "--from` writes it" if run.converted and run.places is None
                         else ""))  # fmt: skip
-        found = (*run.writing, *run.language)
+        found = words_of(run)
         if found:
             lines.append(_rendered(found, root, show.within(run.paper, run.places)))
         lines += _each_form(run, show.within(run.paper, run.places))

@@ -74,7 +74,8 @@ def test_no_abstract_heading_is_a_question_its_answer_ends(tmp_path: Path, capsy
         ("abstract-not-compared", False, f"not compared: {abstract.SAID_NO_ABSTRACT}")]
     assert main(["audit", str(paper), "--no-abstract"]) == 0
     text = capsys.readouterr().out
-    assert report.QUESTIONS not in text and text.count(abstract.SAID_NO_ABSTRACT) == 1
+    # G14's question on OR and CI, never defined, is still asked (decision 30).
+    assert abstract.ASK_NO_ABSTRACT not in text and text.count(abstract.SAID_NO_ABSTRACT) == 1
 
 
 def test_a_paper_with_an_abstract_answered_as_having_none_is_compared_as_usual(
@@ -86,7 +87,7 @@ def test_a_paper_with_an_abstract_answered_as_having_none_is_compared_as_usual(
     found = _findings(capsys, paper, "--no-abstract")
     codes = [one["code"] for one in _of(found)]
     assert abstract.CONTRADICTED in codes and "abstract-conflict" in codes
-    assert not any(one["question"] for one in found)
+    assert not any(one["question"] for one in _of(found))
     assert main(["audit", str(paper), "--no-abstract", "--strict"]) == 1
     text = capsys.readouterr().out
     assert report.ANSWERS in text and "--no-abstract: a heading names the Abstract" in text
@@ -149,7 +150,9 @@ def test_a_paper_that_reports_no_results_is_answered_so(tmp_path: Path, capsys) 
 def test_a_question_is_marked_in_the_json_and_no_other_finding_is(tmp_path: Path, capsys) -> None:
     found = _findings(capsys, _write(tmp_path, UNLABELLED))
     assert all("question" in one for one in found)
-    assert [one["code"] for one in found if one["question"]] == [abstract.ASKED_NO_ABSTRACT]
+    # And G14's on the short forms never defined, OR and CI (decision 30).
+    assert [one["code"] for one in found if one["question"]] == [abstract.ASKED_NO_ABSTRACT,
+                                                                 "abbreviation-undefined"]
 
 
 def test_the_text_report_shows_the_questions_apart(tmp_path: Path, capsys) -> None:

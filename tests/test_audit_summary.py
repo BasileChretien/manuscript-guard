@@ -21,9 +21,11 @@ PAPER = (
 )
 #: What G14 says of each, in the text it reads.
 UNDEFINED_SAID = "is used once in the main text as G14 reads it, and not defined there"
-#: What the audit says of them all, in one finding (`auditing.undefined`).
-UNDEFINED_ONE = (f"{len(UNDEFINED)} short forms are used and not defined as G14 reads the "
+#: What the audit asks of them all, in one question (`auditing.undefined`, decision 30).
+UNDEFINED_ONE = (f"{len(UNDEFINED)} short forms are used and never defined as G14 reads the "
                  f"paper: '{UNDEFINED[0]}' here, then {', '.join(UNDEFINED[1:])}")
+#: The question it asks of them.
+ASKED = "Do any of them need defining?"
 
 
 def written(tmp_path: Path, text: str = PAPER) -> Path:
@@ -34,22 +36,22 @@ def written(tmp_path: Path, text: str = PAPER) -> Path:
 
 def test_the_report_says_what_each_check_found_before_its_sections(tmp_path: Path, capsys) -> None:
     """The checks that found nothing are a line each at the top, not a section each; the
-    findings on the words are grouped by kind, the first places of each listed and its hint
-    said once, where 103 findings took three lines each and repeated one hint 90 times."""
+    ten short forms never defined are one question at its place, before the checks, where
+    103 findings took three lines each and repeated one hint 90 times."""
     assert main(["audit", str(written(tmp_path))]) == 0
     out = capsys.readouterr().out
     glance = out.index("What was checked:")
-    assert glance < out.index("=== Writing (G6) and Language (G14)")
     for name in ("Numbers in the outputs", "Arithmetic", "Small cells", "Writing and language"):
         assert f"\n  {name} " in out[glance:], name
     assert "=== Numbers in the outputs ===" not in out and "=== Arithmetic ===" not in out
     assert "=== Small cells" not in out
-    # The ten short forms in one finding, counted as ten (the author's decision of
-    # 2026-11-11, after the corpus run: one warning each buried the true ones).
-    assert f"Abbreviations used and not defined (G14, {len(UNDEFINED)})" in out
-    assert f"    line 7: {UNDEFINED_ONE}" in out, out
+    # The ten short forms in one question, asked apart and no kind of finding on the words
+    # (decision 30; one finding counted as ten, the author's decision of 2026-11-11).
+    assert f"  paper.md, line 7: {UNDEFINED_ONE}" in out[:glance], out
+    assert "Abbreviations used and not defined" not in out
+    assert "=== Writing (G6) and Language (G14)" not in out
     assert UNDEFINED_SAID not in out and f"{DETAILS} lists every place" not in out
-    assert out.count("define each at its first use") == 1
+    assert out.count(ASKED) == 1
     assert f"Every place of every finding, with its context and what to do: {DETAILS}." in out
 
 
@@ -60,11 +62,11 @@ def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> 
     out = capsys.readouterr().out
     assert "What was checked:" in out
     assert "=== Numbers in the outputs ===" in out and "=== Arithmetic ===" in out
-    # The one finding, and the warning on each form it stands for, at its place.
+    # The one question, and the warning on each form it stands for, at its place.
     assert out.count(UNDEFINED_ONE) == 1
     assert out.count(UNDEFINED_SAID) == len(UNDEFINED)
     assert "    line 7: ROR " + UNDEFINED_SAID in out
-    assert out.count("define each at its first use") == 1
+    assert out.count(ASKED) == 1
     assert "Every place of every finding" not in out
 
 
@@ -121,8 +123,8 @@ def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, cap
                                           encoding="utf-8")  # fmt: skip
     main(["audit", str(tmp_path / "main.tex")])
     out = capsys.readouterr().out
-    said = "1 short form is used and not defined as G14 reads the paper: 'ROR' here"
-    assert f"    methods.tex:3: {said}" in out, out
+    said = "1 short form is used and never defined as G14 reads the paper: 'ROR' here"
+    assert f"  methods.tex:3: {said}" in out, out
     # By its path within the paper's folder, so two inputs of one name are told apart
     # (round 2 of #600).
     (tmp_path / "sections").mkdir()
@@ -131,7 +133,7 @@ def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, cap
     (tmp_path / "main.tex").write_text(main_tex.replace("{methods}", "{sections/methods}"),
                                        encoding="utf-8")  # fmt: skip
     main(["audit", str(tmp_path / "main.tex")])
-    assert "    sections/methods.tex:3: 1 short form" in capsys.readouterr().out
+    assert "  sections/methods.tex:3: 1 short form" in capsys.readouterr().out
 
 
 def test_a_failing_finding_on_the_words_says_so_and_a_phrase_shows_its_words() -> None:

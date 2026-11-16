@@ -18,6 +18,9 @@ import re
 NO_ABSTRACT_FIELD = "The paper has no Abstract"
 NO_RESULTS_FIELD = "The paper reports no results"
 RESULTS_FIELD = "The heading of its results"
+#: The page's box for `--known`, which answers G14's question on the short forms never
+#: defined (`auditing.undefined.ASK`).
+KNOWN_FIELD = "Words to leave alone"
 
 #: What a reader is told of a finding `--strict` counts. Not that the audit failed: without
 #: `--strict` it ends as having run (round 1 of #631).
@@ -72,6 +75,8 @@ _ON_THE_PAGE: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"--no-results: "), f'"{NO_RESULTS_FIELD}" ticked: '),
     (re.compile(r'--results "(.*?)": (?=no heading is|the heading )'),
      rf'"{RESULTS_FIELD}" given as "\1": '),
+    (re.compile(r"pass those they know with `--known A B C`"),
+     f'give those they know in "{KNOWN_FIELD}"'),
 )  # fmt: skip
 
 #: Markdown's marks of emphasis around words, which a .docx's converted text has where the

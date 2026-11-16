@@ -279,11 +279,12 @@ def run_gates(
         from manuscript_guard.auditing import code_names, undefined
         from manuscript_guard.findings import Report
 
-        # The short forms used and not defined in one finding (`auditing.undefined`), and the
-        # names from the code in another (`auditing.code_names`), made from G14's warnings in
-        # the order it gave them, its reading order, then sorted.
+        # The short forms used and not defined in one question (`auditing.undefined`), made
+        # again from the warnings G14's question on them holds, and the names from the code
+        # in one finding (`auditing.code_names`), from G14's warnings in the order it gave
+        # them, its reading order, then sorted.
         said = code_names.one_finding(
-            undefined.one_finding([put_back(f) for f in language.findings]))
+            undefined.one_finding([put_back(f) for f in undefined.unasked(language.findings)]))
         # Only a .docx is copied with its corrections in Track Changes, and only where asked.
         corrections = _corrections(project) if corrected and staged.converted else []
         return GateRun(

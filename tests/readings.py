@@ -2293,7 +2293,13 @@ def _abbreviations() -> Reading:
     def abbreviations(given: dict[str, Any]) -> dict[str, Any]:
         exact, lowered = _shipped()
         known = _Known(exact | set(given.get("known", ())), lowered)
-        return _told(_judge([_file(given["text"])], known, Path(".")))
+        report = _judge([_file(given["text"])], known, Path("."))
+        # G14's question on the short forms never defined, with each form it asks of and
+        # the warning on it, at its first use (decision 30).
+        asked = [{"question": True, "forms": [[form, warning.line, warning.message]
+                                              for form, warning in getattr(f, "forms", ())]}
+                 for f in report.findings if getattr(f, "question", False)]  # fmt: skip
+        return {**_told(report), "asked": asked}
 
     _file("")
     return abbreviations
@@ -2316,19 +2322,27 @@ def _abbreviation_edits() -> Reading:
 @reading("audit abbreviations")
 def _audit_abbreviations() -> Reading:
     """G14's findings on a paper as the audit gives them: the short forms used and not
-    defined in one finding, with each form's warning and the forms the list of journals'
-    style guides passes over (`auditing.undefined`)."""
+    defined in one question, made again from the warnings G14's own question holds, with
+    each form's warning and the forms the list of journals' style guides passes over
+    (`auditing.undefined`, decision 30)."""
     from manuscript_guard.auditing.undefined import one_finding
     from manuscript_guard.gates.language import _judge, _Known, _shipped
 
     def audited(text: str) -> list[dict[str, Any]]:
         exact, lowered = _shipped()
         found = _judge([_file(text)], _Known(exact, lowered), Path("."))
+        # G14's question given back as the warnings it holds, as `auditing.undefined.unasked`
+        # does, written out so that a base with no question reads the same.
+        warned: list = []
+        for f in found.findings:
+            asked = getattr(f, "question", False) and f.code == "abbreviation-undefined"
+            warned += [one for _form, one in f.forms] if asked else [f]
         return [{"code": f.code, "line": f.line, "message": f.message, "hint": f.hint,
+                 "severity": f.severity, "question": getattr(f, "question", False),
                  "forms": [[form, warning.line, warning.message]
                            for form, warning in getattr(f, "forms", ())],
                  "passed_over": list(getattr(f, "passed_over", ()))}
-                for f in one_finding(list(found.findings))]  # fmt: skip
+                for f in one_finding(warned)]  # fmt: skip
 
     _file("")
     return audited

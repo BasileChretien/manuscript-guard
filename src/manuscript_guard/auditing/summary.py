@@ -49,10 +49,13 @@ KINDS = {
 
 
 def kinds_of(found: list[Finding]) -> dict[tuple[str, str], list[Finding]]:
-    """`found` by gate and code, in the order each kind is first met."""
+    """`found` by gate and code, in the order each kind is first met; a question to the author,
+    G14's on the short forms never defined, is no kind of finding, and is said apart with the
+    other questions (`report.asked_of_words`)."""
     kinds: dict[tuple[str, str], list[Finding]] = {}
     for finding in found:
-        kinds.setdefault((finding.gate, finding.code), []).append(finding)
+        if not finding.question:
+            kinds.setdefault((finding.gate, finding.code), []).append(finding)
     return kinds
 
 
@@ -180,6 +183,12 @@ def _words(report) -> str:
     many = sum(1 for kind in kinds_of(found).values() if counted(kind))
     said = (f"{_n(counted(found), 'finding')} to look at, in {_n(many, 'kind')} "
             "(not counted by --strict)" if counted(found) else "")  # fmt: skip
+    # G14's question on the short forms used and never defined, which is no finding to look
+    # at and is said with the other questions (decision 30).
+    asked = sum(1 for finding in found if finding.question)
+    if asked:
+        said += ("; " if said else "") + (f"{_n(asked, 'question')} for the author on the "
+                                          "short forms never defined (not counted by --strict)")
     if unread:
         names = ", ".join(run.paper.name for run in unread)
         said += ("; " if said else "") + f"not run on {names}: see below"

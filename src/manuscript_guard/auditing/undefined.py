@@ -1,4 +1,4 @@
-"""The short forms a paper audited uses and does not define, said in one finding.
+"""The short forms a paper audited uses and does not define, asked of in one question.
 
 G14 gives `check` a warning for each abbreviation used and not defined, which a project's
 author answers one at a time. Run on 52 real preprints, the audit's were the noisiest it had:
@@ -9,6 +9,15 @@ short forms in the order the paper first uses them, at the first use of the firs
 `--known` as the remedy. Each form keeps the warning G14 gave it, its place, its count and
 its quote, which `--json` gives under the finding and `--details` lists.
 
+The finding is a question to the author, of the kind `report.question` makes (Basile,
+2026-11-16, decision 30): in the judges' sample of the corpus, 82% of the forms it listed
+were names, designations and everyday forms, which no exact rule tells from a short form
+that needs defining. So it asks whether any needs defining and says how to answer, by
+defining each at its first use or passing those the readers know with `--known`; it never
+fails, is never counted, and is shown with the report's questions to the author. G14 asks
+`check` the same, in one question for the paper (`gates.language.Asked`), which the audit
+takes back to the warnings it holds (`unasked`) and asks again in its own words.
+
 The order is G14's own: it gives its warnings part by part, the Abstract, the main text,
 then the supplement, and within each in the order of each form's first use as it reads the
 files, the paper's order and then the place in each (`_Mark.key`). So the warnings are taken
@@ -18,7 +27,7 @@ Methods, sorts first by its file's name (round 1 of #640).
 A form that journals' own style guides say needs no definition
 (`data/journal_abbreviations.yaml`) is not listed, and the finding says how many it passed
 over and by which list; where every form is on it, a note says so (`PASSED`). `check` reads
-neither: its warnings are G14's, one for each form.
+neither: its question is G14's, which lists every form.
 """
 
 from __future__ import annotations
@@ -31,7 +40,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.findings import INFO, WARN, Finding
+from manuscript_guard.findings import INFO, Finding
 
 #: The code of G14's warning for one short form used and not defined.
 CODE = "abbreviation-undefined"
@@ -46,10 +55,10 @@ _SCOPES = ("abstract", "main text", "supplement")
 #: holds that it matches what the gate writes.
 _SAID = re.compile(r"^(?P<form>\S+) is used (?:once|\d+ times) in the "
                    rf"(?P<scope>{'|'.join(_SCOPES)}) as G14 reads it, and not defined there")
-#: What the finding asks for, in the audit's own words (`auditing.gates.KNOWN`).
-HINT = ("define each at its first use, the long form then the short form in brackets; give "
-        "the ones the paper's readers take for words or names to the audit as known words "
-        '(on the page, "Words to leave alone"; on the command line, --known)')  # fmt: skip
+#: What the question asks, and how it is answered, after the forms it lists: on the page,
+#: "Words to leave alone" for `--known` (`reader._ON_THE_PAGE`).
+ASK = ("Do any of them need defining? Define each your readers may not know, at its first "
+       "use; pass those they know with `--known A B C`.")  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -62,16 +71,28 @@ class Listed(Finding):
 
     forms: tuple[tuple[str, Finding], ...] = ()
     each: str = ""
+    #: Whether it is a question to the author (`question`).
+    asked: bool = False
+
+    @property
+    def question(self) -> bool:
+        return self.asked
 
     @property
     def counted(self) -> int:
-        """How many words it lists: each once, though G14 reads the abstract apart; none for
-        the note on forms passed over (`PASSED`), which asks nothing."""
+        """How many words it lists, each once, though G14 reads the abstract apart: none for
+        a question, which is no finding to look at, nor for the note on forms passed over
+        (`PASSED`), which asks nothing."""
+        return 0 if self.asked else self.listing
+
+    @property
+    def listing(self) -> int:
+        """How many words it lists, each once, though G14 reads the abstract apart."""
         return len({form for form, _warning in self.forms})
 
     def as_dict(self) -> dict:
         out = {key: value for key, value in super().as_dict().items()
-               if key not in ("forms", "passed_over", "each")}  # fmt: skip
+               if key not in ("forms", "passed_over", "each", "asked")}  # fmt: skip
         return {**out, **listed(self)}
 
 
@@ -160,9 +181,10 @@ def _said(form: str, scopes: list[str]) -> str:
 
 
 def _message(forms: list[tuple[str, Finding]], passed: list[str]) -> str:
-    """"3 short forms are used and not defined as G14 reads the paper: 'XYZ' here, then
-    HR (in the abstract), QQQ; 2 more passed over (HIV and MRI), ...": the first quoted, so
-    that a comment on the .docx is anchored on it (`auditing.commented.words_of`)."""
+    """"3 short forms are used and never defined as G14 reads the paper: 'XYZ' here, then
+    HR (in the abstract), QQQ; 2 more passed over (HIV and MRI), .... Do any of them need
+    defining? ...": the first quoted, so that a comment on the .docx is anchored on it
+    (`auditing.commented.words_of`), then the question and its answer (`ASK`)."""
     scopes: dict[str, list[str]] = {}
     for form, warning in forms:
         said = _SAID.match(warning.message)
@@ -170,14 +192,14 @@ def _message(forms: list[tuple[str, Finding]], passed: list[str]) -> str:
     named = [_said(form, where) for form, where in scopes.items()]
     first = next(iter(scopes))
     count = len(scopes)
-    message = (f"{count} short form{'s are' if count != 1 else ' is'} used and not defined "
+    message = (f"{count} short form{'s are' if count != 1 else ' is'} used and never defined "
                f"as G14 reads the paper: '{first}'{named[0][len(first):]} here")  # fmt: skip
     if named[1:]:
         message += ", then " + ", ".join(named[1:])
     if passed:
         message += (f"; {len(passed)} more passed over ({_phrase(passed)}), being on the list "
                     f"of short forms that {_sources()} say need no definition")  # fmt: skip
-    return message
+    return f"{message}. {ASK}"
 
 
 def one_finding(found: list[Finding]) -> list[Finding]:
@@ -187,6 +209,20 @@ def one_finding(found: list[Finding]) -> list[Finding]:
     not G14's for one form is left as it is. Where every form is on the list, a note says
     which were passed over (`PASSED`) in their place."""
     return gathered(found, _form, _one)
+
+
+def unasked(found: list[Finding]) -> list[Finding]:
+    """`found`, G14's findings on a paper, with its question on the short forms used and
+    never defined (`gates.language.Asked`) given back as the warnings it holds, one for each
+    form, in its place and in the order G14 gave them: what `one_finding` makes the audit's
+    own question of."""
+    out: list[Finding] = []
+    for finding in found:
+        if finding.gate == "G14" and finding.code == CODE and finding.question:
+            out += [warning for _form, warning in getattr(finding, "forms", ())]
+        else:
+            out.append(finding)
+    return out
 
 
 def _form(finding: Finding) -> str | None:
@@ -212,9 +248,10 @@ def _ordered(mine: list[tuple[str, Finding]]) -> list[tuple[str, Finding]]:
 
 def _made(kept: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
     first = kept[0][1]
-    return Undefined(gate="G14", code=CODE, message=_message(kept, passed), severity=WARN,
+    return Undefined(gate="G14", code=CODE, message=_message(kept, passed), severity=INFO,
                      path=first.path, line=first.line, col=first.col, context=first.context,
-                     hint=HINT, forms=tuple(kept), passed_over=tuple(passed))  # fmt: skip
+                     hint=None, forms=tuple(kept), passed_over=tuple(passed),
+                     asked=True)  # fmt: skip
 
 
 def _noted(mine: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
@@ -232,5 +269,5 @@ def _noted(mine: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
                      hint=None, forms=(), passed_over=tuple(passed))  # fmt: skip
 
 
-__all__ = ["CODE", "EACH", "LIST", "PASSED", "Listed", "Undefined", "exempt", "gathered",
-           "listed", "one_finding"]
+__all__ = ["ASK", "CODE", "EACH", "LIST", "PASSED", "Listed", "Undefined", "exempt",
+           "gathered", "listed", "one_finding", "unasked"]

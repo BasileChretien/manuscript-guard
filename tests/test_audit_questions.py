@@ -323,6 +323,9 @@ def test_a_pdf_beside_a_word_paper_is_asked_in_words_true_of_both(
     papers = [pdf, word] if pdf_first else [word, pdf]
     asked = [item.message for item in report.items(audit(papers, None)) if item.question]
     assert asked == [abstract.ASK_NO_ABSTRACT_MIXED]
+    # The PDF's source is what is audited again, never the PDF (the check of 46b7bf8).
+    for question in (abstract.ASK_NO_ABSTRACT_MIXED, abstract.ASK_NO_RESULTS_MIXED):
+        assert "audited in the PDF's place" in question
 
 
 #: A paper whose results stand under a descriptive title, and whose Discussion claims a

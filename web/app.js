@@ -135,7 +135,8 @@ const booted = ask("boot").then((boot) => {
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
     listRequests("Requests to any other host while loading:", boot.loaded);
-  for (const id of ["paper", "against", "english", "known", "lookup", "run", "example"]) {
+  for (const id of ["paper", "against", "english", "known", "noabstract", "noresults", "results",
+    "lookup", "run", "example"]) {
     $(id).disabled = false;
   }
   window.mgReady = true;
@@ -418,6 +419,11 @@ async function check(paper) {
       english: $("english").value,
       // The words to leave alone, as typed: split at spaces, commas and semicolons.
       known: $("known").value.split(/[\s,;]+/).filter(Boolean),
+      // The answers to the report's questions (`audit --no-abstract`, `--no-results`,
+      // `--results`): one heading, as typed.
+      noAbstract: $("noabstract").checked,
+      noResults: $("noresults").checked,
+      results: $("results").value.trim(),
     });
     showReport(result, paper.name);
     $("netlog").textContent += "\n\n" + listRequests(

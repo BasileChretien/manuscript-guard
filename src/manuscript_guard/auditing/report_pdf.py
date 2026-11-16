@@ -429,12 +429,14 @@ def _closing(pdf: Pdf, view: dict, gates: int, ran: tuple[str, ...]) -> None:
     pdf.y = top - high - 10
 
 
-def report_pdf(report, discrimination, root: Path | None, paper_names: list[str]) -> bytes:
-    """The PDF of the audit `report`: its view with every place and every section."""
+def report_pdf(report, discrimination, root: Path | None, paper_names: list[str], *,
+               page: bool = False) -> bytes:  # fmt: skip
+    """The PDF of the audit `report`: its view with every place and every section, made for
+    the web page's reader with `page`, else for the command line's (`report.view`)."""
     from manuscript_guard import __version__
     from manuscript_guard.auditing.report import view
 
-    drawn = view(report, discrimination, root, details=True)
+    drawn = view(report, discrimination, root, details=True, page=page)
     names = ", ".join(paper_names) or "the paper"
     return written(drawn, f"Audit of {names}", __version__, ran=gates_run(report))
 

@@ -117,6 +117,46 @@ section in full and every finding with its place, its context and its hint, as o
 `--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
 paper someone else wrote: [For editors and reviewers](refereeing.md).
 
+**Questions for the author.** Where no exact rule can decide, the audit asks. A question
+says what the audit saw, asks one question and names the answer that ends it. It is a
+finding of its own kind: at INFO, never counted by `--strict`, marked `"question": true` in
+`--json` (every other finding has `"question": false`), with a code of its own. An answer
+lasts the run it is given in: a run without it asks again. The text report lists the
+questions under "Questions for the author", before what each check found, and the notes on
+the answers given under "On the answers given". The PDF `--pdf` writes, and a `--commented`
+or `--tracked` copy, which lists each as "A question for the author" in its comment on the
+first paragraph, name each answer's flag; the web page, and the PDF and the copy it makes,
+name the page's box or tick instead. `--report-draft`, for a referee, leaves the questions
+out and says under what was not checked why the Abstract was not compared, naming no one.
+Two questions are asked so far, both of the Abstract against Results:
+
+- **No Abstract found** (`question-no-abstract`): no heading names the Abstract. If the
+  paper's first paragraph, or the text under its title, is its Abstract, put the heading
+  "Abstract" over it and audit it again; a PDF cannot be given one, so for a PDF the
+  question asks for the heading in the document the PDF was made from, and for that
+  document to be audited; where a PDF is read beside a file of another kind, the one
+  question says both. If the paper has none, `--no-abstract` says so: the audit takes
+  the question as answered, and the report says once that the author says the paper has no
+  Abstract. Given for a paper that has a heading naming the Abstract, the paper's heading
+  wins: the Abstract is compared as usual, and a note says the answer was not taken
+  (`abstract-answer-contradicted`).
+- **No Results found** (`question-no-results`): no heading is "Results" or one of the names
+  they go by. `--results TITLE` names the heading that holds them, as many times as there
+  are such headings: a heading whose whole title is TITLE, case, a number before it and a
+  colon after it aside, is a Results heading to the Abstract against Results, and to no
+  other check (G8, the parts `--design` and `--cited` place a sentence in, are as before).
+  It is searched wherever it stands but in the Abstract, on the title page or under a
+  section that reports nothing; one that stands there is said and not read
+  (`results-heading-not-read`), a TITLE no heading has is said by its name
+  (`results-heading-unmatched`), and the question is asked again. A heading that is itself
+  such a section, `--results Discussion`, is read as the Results, as given, and said
+  (`results-heading-reports-nothing`): a number of the Abstract it repeats is then found
+  there. Where the results stand under a title that is read as no heading, typed in bold or
+  numbered by Word, the question asks for it to be made a heading (in a PDF, in the document
+  it was made from). A paper that reports no results, a methods paper, takes
+  `--no-results`, said once as `--no-abstract` is; given for a paper with a Results
+  heading, the heading wins, as above.
+
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
 on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the report in the shape `check --json` gives,
@@ -448,8 +488,8 @@ agree and the third does not; or a test with one test of the same kind, degrees 
 and statistic whose P cannot be the same. Two numbers agree where one value could be
 printed as both: 1.5 and 1.52 agree, 1.90 and 1.89 do not. A conflict is counted by
 `--strict`. Where two intervals or tests could be the counterpart, none is said. Where no
-file has an Abstract heading, or none a Results heading, the section says nothing was
-compared. A heading whose whole title, numbered or not, "&" read as "and", is the Results by
+file has an Abstract heading, or none a Results heading, nothing is compared, and the audit
+asks the author why (below, "Questions for the author"). A heading whose whole title, numbered or not, "&" read as "and", is the Results by
 another name is a Results heading here: "Experiments", "Experiments and results",
 "Experimental results", "Empirical results", "Empirical analysis", "Main results",
 "Evaluation", "Numerical results" or "Simulation results", besides those that open with

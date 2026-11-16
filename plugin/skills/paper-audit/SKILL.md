@@ -150,6 +150,12 @@ what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.o
 Crossref has no record; each PMID to PubMed), and keep the answers with `--lookup-cache DIR`
 if they will audit again.
 
+Where no rule can decide, the report asks under "Questions for the author" (`"question":
+true` in `--json`), never counted. Put each question to the author as it is written and
+pass only the answer they give: `--no-abstract` where the paper has no Abstract,
+`--results "<heading>"` for the heading that holds its results, `--no-results` for a paper
+that reports none. Never choose the heading yourself.
+
 ## 3. Read the report
 
 What was read and what was not comes first, then `What was checked`, a line for each check,

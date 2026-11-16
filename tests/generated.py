@@ -10038,6 +10038,89 @@ def results_named_papers(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     return papers
 
 
+#: The descriptive titles a paper's results stand under where no heading names the Results,
+#: as tex-astro-ga-B2 of the real-paper corpus has them under "Electron temperature
+#: relations" (Basile, 2026-11-16, decision 27), and the titles a `--results` given for one
+#: of them names no heading by.
+DESCRIPTIVE_TITLES = ("Electron temperature relations", "Growth under drought",
+                      "Patterns of attendance", "Model comparison")  # fmt: skip
+UNMATCHED_TITLES = ("Findings of note", "Temperature relations", "Growth")
+#: How `--results` gives a descriptive title, `{}` the title as the paper writes it: as it
+#: is, in small letters, in capitals, numbered, and with a colon after it.
+ANSWER_WRITTEN = ("{}", "{lower}", "{upper}", "3. {}", "{}:")
+#: The kinds of paper and answer each example of `answered_papers` holds one of: no Abstract
+#: heading, asked and answered with `--no-abstract`; an Abstract heading and the answer
+#: that there is none; no Results heading, asked, answered with `--results`, given a title
+#: no heading has, and answered with `--no-results`; and a Results heading with the answer
+#: that there are none.
+#: Two more since round 1 of #697: the Discussion named as the Results, its Abstract's
+#: number given there alone, which is then found and said; and a title named that stands
+#: under the Discussion, which is said and not read, the question asked again.
+ANSWER_KINDS = ("no abstract", "no abstract answered", "abstract contradicted", "no results",
+                "results named", "results unmatched", "no results answered",
+                "results contradicted", "results reporting nothing",
+                "results under the discussion")  # fmt: skip
+
+
+@st.composite
+def answered_papers(draw: st.DrawFn) -> list[tuple[str, str, str, dict, dict]]:
+    """Papers the Abstract against Results asks about, each with and without its answer: for
+    each of `ANSWER_KINDS`, its kind, its Markdown, its LaTeX, the answers given as
+    `auditing.abstract.Answers` takes them, and what the section is to say: whether it
+    compares, the question it asks ("" for none) and the codes of its notes on the answers.
+    The descriptive title is drawn from `DESCRIPTIVE_TITLES` for each, the way `--results`
+    writes it from `ANSWER_WRITTEN`, and a title that names no heading from
+    `UNMATCHED_TITLES`, so that every kind is in every example."""
+    from manuscript_guard.auditing import abstract
+
+    papers = []
+    for kind in draw(st.permutations(ANSWER_KINDS)):
+        title = draw(st.sampled_from(DESCRIPTIVE_TITLES))
+        written = draw(st.sampled_from(ANSWER_WRITTEN)).format(
+            title, lower=title.lower(), upper=title.upper())  # fmt: skip
+        has_results = kind in ("no abstract", "no abstract answered", "abstract contradicted",
+                               "results contradicted")  # fmt: skip
+        markdown, latex = (_results_named("Data", under=title)
+                           if kind == "results under the discussion"
+                           else _results_named("Results" if has_results else title))
+        if kind == "results reporting nothing":
+            markdown = markdown.replace("It was 812.5 then.", "It held then.").replace(
+                "## Discussion\n\nIt was so.", "## Discussion\n\nIt was 812.5 so.")
+            latex = latex.replace("It was 812.5 then.", "It held then.").replace(
+                f"{BACKSLASH}section{{Discussion}}\nIt was so.",
+                f"{BACKSLASH}section{{Discussion}}\nIt was 812.5 so.")  # fmt: skip
+        if kind in ("no abstract", "no abstract answered"):
+            markdown = markdown.replace("## Abstract\n\n", "")
+            latex = latex.replace(f"{BACKSLASH}begin{{abstract}}\n", "").replace(
+                f"{BACKSLASH}end{{abstract}}\n", "")  # fmt: skip
+        answers = {
+            "no abstract": {}, "no abstract answered": {"no_abstract": True},
+            "abstract contradicted": {"no_abstract": True}, "no results": {},
+            "results named": {"results": (written,)},
+            "results unmatched": {"results": (draw(st.sampled_from(UNMATCHED_TITLES)),)},
+            "no results answered": {"no_results": True},
+            "results contradicted": {"no_results": True},
+            "results reporting nothing": {"results": (draw(st.sampled_from(
+                ("Discussion", "discussion", "4. DISCUSSION"))),)},
+            "results under the discussion": {"results": (written,)},
+        }[kind]  # fmt: skip
+        compared = kind in ("abstract contradicted", "results named", "results contradicted",
+                            "results reporting nothing")  # fmt: skip
+        question = {"no abstract": abstract.ASKED_NO_ABSTRACT, "no results":
+                    abstract.ASKED_NO_RESULTS, "results unmatched":
+                    abstract.ASKED_NO_RESULTS, "results under the discussion":
+                    abstract.ASKED_NO_RESULTS}.get(kind, "")  # fmt: skip
+        notes = {"abstract contradicted": [abstract.CONTRADICTED],
+                 "results contradicted": [abstract.CONTRADICTED],
+                 "results unmatched": [abstract.UNMATCHED],
+                 "results reporting nothing": [abstract.LIFTED],
+                 "results under the discussion": [abstract.NOT_TAKEN]}.get(kind, [])  # fmt: skip
+        papers.append((kind, markdown, latex, answers,
+                       {"compared": compared, "question": question, "notes": notes,
+                        "title": title}))  # fmt: skip
+    return papers
+
+
 def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list], ...],
                     front: tuple[str, list]) -> tuple[str, dict[str, list]]:
     """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
@@ -17660,6 +17743,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         results_named_papers().flatmap(lambda drawn: st.sampled_from(
             [{"paper": markdown, "supplement": "Nothing.\n"} for _k, markdown, _t, _c in drawn])),
     ),  # fmt: skip
+    "abstract questions": answered_papers().flatmap(lambda drawn: st.sampled_from([
+        {"paper": markdown, "no abstract": answers.get("no_abstract", False),
+         "no results": answers.get("no_results", False),
+         "results": list(answers.get("results", ()))}
+        for _kind, markdown, _latex, answers, _wanted in drawn])),
     "causal words": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),
                               texts().map(lambda text: {"paper": text})),
     "cited sentences": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),

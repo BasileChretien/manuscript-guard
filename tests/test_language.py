@@ -2417,21 +2417,15 @@ def test_a_french_letter_s_title_page_is_not_read(project: Path) -> None:
 def test_prose_wrapped_over_lines_is_read_as_one_paragraph(project: Path) -> None:
     """An opening paragraph wrapped over several lines is one block: read a line at a time,
     its lines that name a department and a faculty were a title page's, and hid its CHU
-    (round 1 of #654). What stands before the first heading asks no definition since
-    decision 28, so its CHU is asked where the Introduction uses it too, and its first use
-    there is the one said."""
-    from manuscript_guard.gates.language import _file
-
+    (round 1 of #654)."""
     text = (
         "Teaching pharmacology to second-year students\n"
         "at the Department of Pharmacology, CHU de Rouen,\n"
         "and the Faculty of Medicine, Université de Rouen,\n"
         "was reviewed in 2021 and we found that it\n"
-        "was less used than the faculty.\n\n# Introduction\n\nThe CHU paid.\n"
+        "was less used than the faculty.\n\n# Introduction\n\nNothing.\n"
     )
-    assert _file(0, Path("main.md"), text, [], False).title_page == 0
-    assert found(written(project, text), "abbreviation-undefined") == [
-        "CHU is used once in the main text as G14 reads it, and not defined there"]
+    assert _named(written(project, text)) == {"CHU"}
 
 
 def test_nothing_on_the_title_page_defines_or_uses(project: Path) -> None:
@@ -2469,11 +2463,16 @@ def test_a_paper_with_no_title_page_is_read_whole(project: Path, opening: str) -
 
 def test_a_title_page_over_600_words_is_read(project: Path) -> None:
     """Six hundred words is more than a title page holds, as `init --from` counts one: a
-    longer run is read, as the paper's own text may be."""
+    longer run is read, as the paper's own text may be, and G14's title page finds none. What
+    stands before the heading that names the Abstract asks no definition all the same
+    (Basile, 2026-11-16, decision 28 and "No title page there", which set no limit to it), so
+    its CHU is asked where the Abstract uses it too, once."""
     affiliations = "".join(f"^{at}^ Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
                            for at in range(1, 80))  # fmt: skip
-    text = f"Exam success\n\nAna MARTIN^1^\n\n{affiliations}# Abstract\n\nNone.\n"
-    assert "CHU" in _named(written(project, text))
+    text = f"Exam success\n\nAna MARTIN^1^\n\n{affiliations}# Abstract\n\nThe CHU paid.\n"
+    assert _file(0, Path("main.md"), text, [], False).title_page == 0
+    assert found(written(project, text), "abbreviation-undefined") == [
+        "CHU is used once in the abstract as G14 reads it, and not defined there"]
 
 
 def test_the_supplement_s_title_page_is_not_read(project: Path) -> None:

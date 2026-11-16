@@ -557,8 +557,8 @@ def test_what_stops_a_reading_being_made_is_told_apart() -> None:
 #: that changes it, with `tests/readings.py` brought up to date in the same pull request.
 _ANOTHER_ARGUMENT = (
     "gates/language.py",
-    "    opens: bool | None = None,\n) -> _File:\n",
-    "    opens: bool | None = None,\n    *,\n    kind: str,\n) -> _File:\n",
+    "    running: Iterable[int] = (),\n) -> _File:\n",
+    "    running: Iterable[int] = (),\n    *,\n    kind: str,\n) -> _File:\n",
 )
 
 

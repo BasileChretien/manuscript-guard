@@ -5452,10 +5452,13 @@ over by its reader (above), and nothing here changes how a LaTeX paper is read.
 **No definition is asked where none is due** (Basile, 2026-11-16, decision 28, after 35
 findings the judges of the real-paper corpus marked false in 20 papers). A short form that
 stands only in these places asks no definition and is not counted, in `audit` and in `check`
-alike: the title page, all before the first heading that names the Abstract, or where none
-does before the first heading, in the paper and in the supplement apart (`_fronts`), short
-of a block the title page above reads as the paper's opening and of 600 words; a LaTeX
-paper's, before where its first abstract runs, or its first heading; a statement, under a
+alike: the title page, all before the first heading or block the title page above reads as
+the paper's opening, where that names the Abstract (a heading, "**Abstract**" in bold, a
+run-in "Abstract: ..."), in the paper and in the supplement apart, a file with no heading
+read for it as one with one (`_fronts`); a LaTeX paper's, before where its first abstract
+runs, where no heading comes first. Where the opening names something else, or nothing
+opens the paper, there is no title page, and the text before the first heading is read as
+before (Basile, 2026-11-16, "No title page there"). A statement, under a
 heading `STATEMENT_TITLE` names or `_QUIET` finds, run in from such a bold label, and in
 LaTeX in an environment so named or after AASTeX's `\acknowledgments`; a keywords or Index
 Terms line, and the list under a "Keywords" heading; and, in a PDF, a line its text repeats
@@ -27903,14 +27906,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   (decision 28).** A short form that stands only on the title page, in a statement, in a
   keywords line or in a PDF's running line asks no definition; the places are found as
   follows, and what lies outside them is read as the paper's text. Accepted.
-  - Where no heading names the Abstract, the title page runs to the first heading: an
-    Abstract set as no heading, a run-in "Abstract—" in a PDF that no heading is made of,
-    or an untitled opening paragraph is then on it, and a short form used only there is not
-    asked about; one the text uses again is. Pinned by
-    `tests/test_language.py::test_prose_wrapped_over_lines_is_read_as_one_paragraph`.
-  - More than 600 words before that heading, as in a PDF whose Introduction no heading
-    names (pdf-educ-B2 of the real-paper corpus), is no title page: the whole run is read,
-    its affiliations' state codes with it. Pinned by
+  - Where neither a heading nor a block G14 reads as the paper's opening names the
+    Abstract, there is no title page, and the cover's affiliations are asked about as
+    before (Basile, 2026-11-16, "No title page there"): a PDF with no Abstract heading,
+    pdf-educ-B2's WA and pdf-socio-A3's UGent, and one whose run-in "Abstract—" no heading
+    is made of, tex-cs-lg-B2's. Pinned by
+    `tests/test_g14_places.py::test_with_no_abstract_named_there_is_no_title_page`.
+  - Where the Abstract is named, all before it is the title page, however long: a cover
+    of more than 600 words, which G14's own title page does not take, asks no definition of
+    a short form used only there. Pinned by
     `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
   - A statement ends where its paragraph does: a funding statement run in from its bold
     label and carried on in a second paragraph under no label (docx-psych-A1's authors'

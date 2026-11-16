@@ -243,22 +243,36 @@ def title_page_end(
     return end if signals >= needed else None
 
 
-def opening_before(
-    seen: str, headings: Sequence[Heading], end: int, abstract_title: str | None = None
-) -> int | None:
-    """Where the first block before `end` stands that opens the paper (`OPENING`): a heading
-    or a paragraph that names a section a paper opens on, "**Abstract**", "Introduction", a
-    run-in label of one, "Background: ...", a letter's salutation, or a list of
-    abbreviations; None where none stands before it. `seen` and `headings` are as
-    `title_page_end` takes them. Whether the blocks before it hold a title page's lines is not
-    asked: G14 reads no definition as owed before it either way (`gates/language.py`, decision
-    28)."""
+def opening(
+    seen: str, headings: Sequence[Heading], abstract_title: str | None = None
+) -> tuple[int, bool] | None:
+    """Where the first block stands that opens the paper (`OPENING`), with whether it names
+    the Abstract: a heading or a paragraph that names a section a paper opens on,
+    "**Abstract**", "Introduction", a run-in label of one, "Abstract: ...", "Background:
+    ...", a letter's salutation, or a list of abbreviations; None where none does. `seen` and
+    `headings` are as `title_page_end` takes them. Whether the blocks before it hold a title
+    page's lines is not asked: G14 takes what stands before one that names the Abstract for
+    its title page whatever they hold, and none before any other (`gates/language.py`,
+    decision 28 and Basile's "No title page there", 2026-11-16)."""
     for at, block in enumerate(_blocks(seen.replace(NUL, " "), headings)):
-        if block.start >= end:
-            return None
         if _kind(block, abstract_title, first=at == 0) == OPENING:
-            return block.start
+            return block.start, _names_the_abstract(block, abstract_title)
     return None
+
+
+def _names_the_abstract(block: _Block, abstract_title: str | None) -> bool:
+    """Whether a block that opens the paper names the Abstract: a heading whose title does
+    (`section_names.names_abstract`), "Abstract" alone on a paragraph, in bold or not, or a
+    run-in label of it, "Abstract: ...", "**Abstract.** ..."; or the journal's name for it."""
+    from manuscript_guard.text.section_names import names_abstract
+
+    if block.heading is not None:
+        return names_abstract(block.heading.title, abstract_title)
+    joined = " ".join(_ESCAPE.sub(r"\1", block.text).split())
+    if names_abstract(plain(joined).rstrip(" :."), abstract_title):
+        return True
+    label = _RUN_IN.match(joined)
+    return label is not None and names_abstract(label.group("name"), abstract_title)
 
 
 def _blocks(seen: str, headings: Sequence[Heading]) -> Iterator[_Block]:
@@ -448,14 +462,9 @@ def _words(text: str) -> list[str]:
     return _WORD.findall(_RAISED.sub(" ", text))
 
 
-def words_in(text: str, start: int = 0, end: int | None = None) -> int:
-    """How many words stand in `text[start:end]`, as a title page's are counted against
-    `MOST_WORDS`."""
-    return len(_words(text[start:end]))
-
 
 def _key(name: str) -> str:
     return " ".join(name.casefold().split())
 
 
-__all__ = ["MOST_WORDS", "opening_before", "title_page_end", "two_sentences", "words_in"]
+__all__ = ["MOST_WORDS", "opening", "title_page_end", "two_sentences"]

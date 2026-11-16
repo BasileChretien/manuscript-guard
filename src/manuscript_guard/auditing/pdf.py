@@ -75,6 +75,8 @@ PDFINFO_SECONDS = 30
 #: the pages, and on this many at least (`PdfText.repeated`).
 REPEATED_SHARE = 0.5
 REPEATED_PAGES = 3
+#: A run of digits, read alike in a repeated line: the page's number in a running head.
+_DIGITS = re.compile(r"\d+")
 
 #: The names a line of a PDF is read as a heading by, standing alone, in any case: the same
 #: as a Word paragraph wholly in bold is read by in a document with no heading style.
@@ -164,9 +166,10 @@ class PdfText:
     def repeated(self) -> frozenset[int]:
         """The lines of the text, from 1, that stand where a running head or foot does and
         were not taken out with them (`proof.reading`, which takes out a line of one shape,
-        digits aside, alone on its page): each line whose words, its spaces made one, stand
-        among the first or the last lines of a page (`proof.reading._edge`) on half the pages
-        or more, and on three at least. G14 asks no definition of a short form there (Basile,
+        digits aside, alone on its page and on one side of the pages): each line whose words,
+        its spaces made one and each run of digits read alike, "QXH 2" as "QXH 3", stand among
+        the first or the last lines of a page (`proof.reading._edge`) on half the pages or
+        more, and on three at least. G14 asks no definition of a short form there (Basile,
         2026-11-16, decision 28)."""
         from manuscript_guard.proof.reading import _edge
 
@@ -178,7 +181,7 @@ class PdfText:
         at: dict[str, list[int]] = {}
         for page, lines in pages.items():
             for index, line in enumerate(lines):
-                words = " ".join(texts[line - 1].split())
+                words = _DIGITS.sub("#", " ".join(texts[line - 1].split()))
                 if words and _edge(index, lines):
                     on.setdefault(words, set()).add(page)
                     at.setdefault(words, []).append(line)

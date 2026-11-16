@@ -164,6 +164,69 @@ def test_unused_and_redefined_are_as_before(tmp_path: Path) -> None:
     assert [m.split()[0] for code, m in found if code == "abbreviation-redefined"] == ["SDR"]
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("The QXZ fell in 412 students.\n\n# Methods\n\nWe read the records.\n",
+     ("abbreviation-undefined", "QXZ is used once in the main text as G14 reads it, and not "
+      "defined there")),
+    ("The QXZ fell.\n\n# Methods\n\nThe quality index (QXZ) was read.\n",
+     ("abbreviation-undefined", "QXZ is used 2 times in the main text as G14 reads it, and "
+      "not defined there")),
+], ids=["used once", "used again under a heading"])  # fmt: skip
+def test_with_no_abstract_named_there_is_no_title_page(
+    tmp_path: Path, text: str, expected: tuple[str, str]
+) -> None:
+    """Basile, 2026-11-16, "No title page there": where neither a heading nor a block G14
+    reads as naming the Abstract names it, there is no title page, and the text before the
+    first heading is read as before (round 1 of #699)."""
+    assert checked(tmp_path, {"main.md": text}) == [expected]
+
+
+def test_a_file_that_opens_on_the_abstract_s_bold_line_has_no_title_page(tmp_path: Path) -> None:
+    """A file with no heading that opens on "**Abstract**" holds no title page, nor makes one
+    of itself for the file after it, in the paper and in the supplement (round 1 of #699)."""
+    found = checked(tmp_path, {
+        "01_abstract.md": "**Abstract**\n\nThe QXZ fell in 412 students.\n",
+        "02_main.md": "# Introduction\n\nWe read the records.\n",
+        "supplementary/S1.md": "**Abstract**\n\nThe QXY fell in 12 schools.\n",
+        "supplementary/S2.md": "# Methods\n\nWe read the records.\n",
+    })  # fmt: skip
+    assert sorted(message.split()[0] for code, message in found
+                  if code == "abbreviation-undefined") == ["QXY", "QXZ"], found  # fmt: skip
+
+
+def test_a_bold_or_run_in_abstract_line_ends_a_title_page(tmp_path: Path) -> None:
+    """The Abstract named by a bold line or a run-in label, as G14's title page reads one,
+    ends a title page as a heading does; its own text is read."""
+    title = "The SDR of exams\n\nThis version is under review.\n\nAna Martin, UPV, Rouen\n\n"
+    for at, opening in enumerate(("**Abstract**\n\nThe QXZ fell.", "Abstract: The QXZ fell.")):
+        text = title + opening + "\n\n# Introduction\n\nWe read the records.\n"
+        found = checked(tmp_path / str(at), {"main.md": text})
+        assert [m.split()[0] for code, m in found
+                if code == "abbreviation-undefined"] == ["QXZ"], (opening, found)  # fmt: skip
+
+
+def test_a_statement_s_label_in_plain_type_opens_it(tmp_path: Path) -> None:
+    """A run-in label of a statement in plain type, as a PDF's text has every one, at a
+    paragraph's start and with its colon: "Funding:", "Data Availability Statement:". Not
+    a statement's word inside a sentence (round 1 of #699)."""
+    text = ("# Introduction\n\nWe read the records.\n\nFunding: The QXF paid for it.\n\n"
+            "Data Availability Statement: The QXD holds the data.\n\n"
+            "We thank them. Funding: the QXG paid little.\n")  # fmt: skip
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found if code == "abbreviation-undefined"] == ["QXG"]
+
+
+def test_a_word_that_begins_with_keyword_opens_no_keywords_line(tmp_path: Path) -> None:
+    """ "Keyword-based retrieval used the QXZ index." is the Methods' sentence; a keywords
+    line is "Keywords", "Key words" or "Index Terms" then a colon, a spaced dash or an em
+    dash, at a paragraph's start (round 1 of #699)."""
+    text = ("# Methods\n\nKeyword-based retrieval used the QXZ index.\n\n"
+            "We read it. Keywords: the QXY was searched.\n\nKeywords - QXW; falls\n")
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found
+            if code == "abbreviation-undefined"] == ["QXY", "QXZ"], found  # fmt: skip
+
+
 LATEX = r"""\documentclass{aastex631}
 \begin{document}
 \title{The SDR of exam success}
@@ -269,13 +332,17 @@ def test_a_line_repeated_on_fewer_than_half_the_pages_is_read(
     assert {"SOCIAL", "FORUMS"} <= said, said
 
 
+#: Letters to tell lines apart by, since a repeated line's digits are read alike.
+_LETTERS = "abcdefghij"
+
+
 def test_a_pdf_s_repeated_lines_are_those_at_the_edges_of_half_its_pages() -> None:
     """`PdfText.repeated`: the line at an edge, its spaces made one, on half the pages or
     more and on three at least; not one standing amid a page's lines."""
     from manuscript_guard.auditing.pdf import PdfText, Place
 
     def page(number: int, head: int) -> list[str]:
-        lines = [f"line {number}.{at}" for at in range(9)]
+        lines = [f"line {_LETTERS[number]}{_LETTERS[at]}" for at in range(9)]
         return [*lines[:head], "HEAD  ONE" if number == 1 else "HEAD ONE", *lines[head:]]
 
     pages = [page(1, 0), page(2, 1), page(3, 9), page(4, 5)]
@@ -287,3 +354,21 @@ def test_a_pdf_s_repeated_lines_are_those_at_the_edges_of_half_its_pages() -> No
     assert sorted(pdf.repeated) == [1, 12, 30]
     # Three pages of eight are fewer than half.
     assert not PdfText(Path("p.pdf"), "pdftotext", 8, "\n".join(texts), places).repeated
+
+
+def test_a_running_line_s_page_number_is_read_as_any_number() -> None:
+    """ "QXH 2", "QXH 3" ...: a running line that holds the page's number is one line, each
+    run of digits read alike; the same shape amid a page's lines is no running line (round 1
+    of #699)."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    pages = [[f"line {_LETTERS[page]}{_LETTERS[at]}" for at in range(9)] for page in range(1, 5)]
+    pages[0].insert(0, "QXH 1")
+    pages[1].insert(0, "QXH 2")
+    pages[2].append("QXH 3")
+    pages[3].insert(5, "QXH 4")
+    texts = [text for page in pages for text in page]
+    places = tuple(Place(page, line) for page, lines in enumerate(pages, 1)
+                   for line in range(1, len(lines) + 1))  # fmt: skip
+    pdf = PdfText(Path("p.pdf"), "pdftotext", 4, "\n".join(texts), places)
+    assert sorted(texts[line - 1] for line in pdf.repeated) == ["QXH 1", "QXH 2", "QXH 3"]

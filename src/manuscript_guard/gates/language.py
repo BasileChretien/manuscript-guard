@@ -74,13 +74,12 @@ from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, ma
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
-    names_abstract,
     names_statement,
     section_name_alone,
 )
 from manuscript_guard.text.sections import Section
 from manuscript_guard.text.tables import table_lines
-from manuscript_guard.text.title_page import MOST_WORDS, opening_before, title_page_end, words_in
+from manuscript_guard.text.title_page import opening, title_page_end
 
 if TYPE_CHECKING:
     from manuscript_guard.text.latex.structure import Source
@@ -752,25 +751,41 @@ def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, 
     return _labelled(hidden, headings, _names_a_statement)
 
 
+#: A statement's run-in label in plain type at a paragraph's start, its colon after it:
+#: "Funding:", "Data Availability Statement:", as a PDF's text has every one, its bold lost.
+#: A capital first, eighty characters at most, no mark of emphasis in it.
+_PLAIN_LABEL = re.compile(r"(?P<label>[A-Z][^\n:*_]{0,79}:)")
+
+
 def _run_in_named(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
     """Where each paragraph runs that a bold label opens as `_run_in_statements` reads one,
     whose label names a statement (`STATEMENT_TITLE`) that `_QUIET` does not find: "**Data
-    availability:**", "**Ethics approval**". Its capitals are read as anywhere, but no use
-    in it is owed a definition (`_undue`), as in a statement under a heading that names one."""
+    availability:**", "**Ethics approval**"; and each a label in plain type opens
+    (`_PLAIN_LABEL`) that names any statement, "Funding:", "Data Availability Statement:".
+    Its capitals are read as anywhere, but no use in it is owed a definition (`_undue`), as
+    in a statement under a heading that names one."""
     from manuscript_guard.text.section_names import STATEMENT_TITLE
 
-    def named(label: str) -> bool:
-        label = _ESCAPE.sub(r"\1", label).strip()
-        return bool(STATEMENT_TITLE.match(label)) and not _names_a_statement(label)
+    def statement(label: str) -> bool:
+        return bool(STATEMENT_TITLE.match(_ESCAPE.sub(r"\1", label).strip()))
 
-    return _labelled(hidden, headings, named)
+    def named(label: str) -> bool:
+        return statement(label) and not _names_a_statement(label)
+
+    return [*_labelled(hidden, headings, named),
+            *_labelled(hidden, headings, statement, _PLAIN_LABEL)]  # fmt: skip
 
 
 def _labelled(
-    hidden: str, headings: list[Heading], names: Callable[[str], bool]
+    hidden: str,
+    headings: list[Heading],
+    names: Callable[[str], bool],
+    labels: re.Pattern[str] | None = None,
 ) -> list[tuple[int, int]]:
-    """Where each paragraph runs that opens with a bold label `names` takes, a label alone
-    with the paragraph under it (`_run_in_statements`)."""
+    """Where each paragraph runs that opens with a label `labels` reads, bold by default
+    (`_RUN_IN`, looked up when called), that `names` takes, a label alone with the paragraph
+    under it (`_run_in_statements`)."""
+    labels = labels or _RUN_IN
     starts = sorted(heading.start for heading in headings)
     found: list[tuple[int, int]] = []
     position = 0
@@ -780,7 +795,7 @@ def _labelled(
         if position == len(hidden):
             break
         start, (end, position) = position, _paragraph(hidden, position)
-        opening = _RUN_IN.match(hidden, start)
+        opening = labels.match(hidden, start)
         if opening is None:
             continue
         label, rest = opening.group("label"), hidden[opening.end() : end]
@@ -817,22 +832,35 @@ def _keywords_lists(text: str, hidden: str, headings: list[Heading]) -> dict[int
     return found
 
 
-#: A keywords line, the label at its start with the keywords after it: "Keywords: ...",
-#: "Key words - ...", "INDEX TERMS: ...", in bold or in italics or not, the label followed by
-#: a colon, as `section_names.run_in_keywords` reads one, or by a dash, as IEEE sets "Index
-#: Terms—" and a LaTeX paper "\\textit{Keywords} ---". The line alone: a PDF's text marks
-#: no paragraph, so a list carried onto a second line is read there (DESIGN.md, Known gaps).
+#: A keywords line at a paragraph's start, the label with the keywords after it on its line:
+#: "Keywords", "Key words" or "Index Terms", in bold or in italics or not, then a colon, as
+#: `section_names.run_in_keywords` reads one, a dash with spaces, "KEYWORDS - ...", or an em
+#: dash, as IEEE sets "Index Terms—" and a LaTeX paper "\\textit{Keywords} ---".
+#: Not a word that only begins so, "Keyword-based retrieval" (round 1 of #699). The line
+#: alone: a PDF's text marks no paragraph, so a list carried onto a second line is read there
+#: (DESIGN.md, Known gaps).
 _KEYWORDS_LINE = re.compile(
-    r"^[ \t\x00*_]*(?:key[ \t]?words?|index[ \t]+terms)[ \t\x00*_]*"
-    r"(?::|\N{EM DASH}|\N{EN DASH}|-{1,3})[^\n]*\S",
-    re.IGNORECASE | re.MULTILINE,
+    r"[ \t\x00*_]*(?:key[ \t]?words|index[ \t]+terms)[\x00*_]*"
+    r"(?:[ \t]?:|[ \t\x00]*\N{EM DASH}|[ \t\x00]+(?:-{1,3}|\N{EN DASH})[ \t])[^\n]*\S",
+    re.IGNORECASE,
 )
 
 
 def _keywords_lines(hidden: str) -> list[tuple[int, int]]:
-    """Where each keywords line runs (`_KEYWORDS_LINE`), in `hidden`, the file as G14 reads
-    it with what is no prose blanked."""
-    return [(line.start(), line.end()) for line in _KEYWORDS_LINE.finditer(hidden)]
+    """Where each keywords line runs (`_KEYWORDS_LINE`) that opens a paragraph of `hidden`,
+    the file as G14 reads it with what is no prose blanked, from the paragraph's start to its
+    line's end."""
+    found: list[tuple[int, int]] = []
+    position = 0
+    while position < len(hidden):
+        position = _BLANK_LINES.match(hidden, position).end()
+        if position == len(hidden):
+            break
+        start, (_end, position) = position, _paragraph(hidden, position)
+        line = _KEYWORDS_LINE.match(hidden, start)
+        if line is not None:
+            found.append((start, line.end()))
+    return found
 
 
 def _lines_at(text: str, numbers: Iterable[int]) -> list[tuple[int, int]]:
@@ -860,20 +888,18 @@ def _united(spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
     return tuple(out)
 
 
-def _front(hidden: str, headings: list[Heading], abstract_title: str | None) -> int | None:
-    """Where the paper's own text opens in a Markdown file, all before it its title page to
-    G14's places (Basile, 2026-11-16, decision 28): the first heading that names the Abstract,
-    as G14's scopes read one, or where none does the first heading; and before it, the first
-    block G14's title page reads as the paper's opening (`title_page.opening_before`),
-    "**Abstract**" in bold, "Background: ...", a letter's salutation. None where the file
-    holds no heading: a letter's whole text is its own."""
-    if not headings:
-        return None
-    named = next((heading.start for heading in headings
-                  if names_abstract(heading.title, abstract_title)), None)  # fmt: skip
-    bound = named if named is not None else min(heading.start for heading in headings)
-    opening = opening_before(hidden, headings, bound, abstract_title)
-    return bound if opening is None else opening
+def _front(
+    hidden: str, headings: list[Heading], abstract_title: str | None
+) -> tuple[int, bool] | None:
+    """Where the paper's own text opens in a Markdown file, with whether it opens on the
+    Abstract (Basile, 2026-11-16, decision 28 and "No title page there"): the first heading
+    or block G14's title page reads as the paper's opening (`title_page.opening`), a heading
+    that names the Abstract, "**Abstract**" in bold, "Abstract: ...", "# Introduction",
+    "Background: ...", a letter's salutation. A heading that opens nothing, "#
+    Acknowledgements" over a title page's thanks, is passed. Only one that names the Abstract
+    makes a title page of what stands before it (`_fronts`). None where nothing in the file
+    opens the paper, whether it holds a heading or not."""
+    return opening(hidden, headings, abstract_title)
 
 
 def _paragraph(text: str, start: int) -> tuple[int, int]:
@@ -1470,9 +1496,10 @@ class _File:
     #: Where the title page that opens the file ends, 0 where it opens with none
     #: (`text/title_page.py`): no abbreviation is read before it.
     title_page: int = 0
-    #: Where the paper's own text opens in the file, past its title page as G14's places
-    #: read it (`_front`); None where the file holds neither a heading nor an opening.
-    front: int | None = None
+    #: Where the paper's own text opens in the file, and whether it opens on the Abstract,
+    #: which makes what stands before it the title page to G14's places (`_front`,
+    #: `_fronts`); None where nothing in the file opens the paper.
+    front: tuple[int, bool] | None = None
     #: Where no use of a short form is owed its definition, besides the title page and the
     #: statements: a keywords line or section, a LaTeX statement, a PDF's running line; in
     #: order, none inside another (`_undue`).
@@ -1505,7 +1532,7 @@ def _file(
     """A Markdown file read. `opens` where it is the first file of the paper or of the
     supplement, which a title page may open; by default, where `order` is 0. `running` are
     the lines, from 1, that a PDF the file was staged from repeats at the top or the foot of
-    its pages (`auditing.pdf.PdfText.running_lines`)."""
+    its pages (`auditing.pdf.PdfText.repeated`)."""
     headings = find_headings(text)
     hidden, code = _views(text)
     if opens is None:
@@ -1688,20 +1715,24 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
     return files
 
 
-def _latex_front(source: Source, regions: list[_Region], start: int, end: int) -> int | None:
-    """Where the paper's own text opens in the stretch `[start, end)` of a LaTeX file, all
-    before it the title page to G14's places (decision 28): where an abstract runs first, as
-    the reader marks one (`Reading.abstracts`), or where none does, the first heading; None
+def _latex_front(
+    source: Source, regions: list[_Region], start: int, end: int
+) -> tuple[int, bool] | None:
+    """Where the paper's own text opens in the stretch `[start, end)` of a LaTeX file, with
+    whether it opens on the Abstract (decision 28 and "No title page there"): where an
+    abstract runs first, as the reader marks one (`Reading.abstracts`), what stands before it
+    the title page; or a heading before it or with none, which makes no title page. None
     where the stretch holds neither."""
     starts = [region.start for region in regions]
     if regions[bisect_right(starts, start) - 1].scope == ABSTRACT:
-        return start
+        return start, True
     abstract = next((region.start for region in regions if start <= region.start < end
                      and region.scope == ABSTRACT), None)  # fmt: skip
-    if abstract is not None:
-        return abstract
-    return next((heading.start for heading in source.reading.headings
-                 if start <= heading.start < end and heading.end != -1), None)  # fmt: skip
+    heading = next((heading.start for heading in source.reading.headings
+                    if start <= heading.start < end and heading.end != -1), None)  # fmt: skip
+    if abstract is not None and (heading is None or abstract <= heading):
+        return abstract, True
+    return None if heading is None else (heading, False)
 
 
 @dataclass(frozen=True)
@@ -1997,22 +2028,19 @@ def _undue(file: _File, offset: int, region: _Region, front: int) -> bool:
 
 def _fronts(files: list[_File]) -> dict[int, int]:
     """By a file's `order`, where the title page in it ends: in the paper and in the
-    supplement apart, each file before the first that holds a heading or an opening
-    (`_File.front`) is the title page whole, and that one up to it. None of a document whose
-    files hold neither, a letter's; and none where more words stand before it than a title
-    page holds (`title_page.MOST_WORDS`), as G14's title page reads it: a run that long is
-    read as the paper's own text may be."""
+    supplement apart, where the first file in which something opens the paper (`_File.front`)
+    opens it on the Abstract, each file before it is the title page whole, and that one up to
+    there. None where it opens otherwise, or nothing does: where nothing names the Abstract
+    there is no title page, and the text before the first heading is read as the paper's
+    (Basile, 2026-11-16, "No title page there")."""
     ends: dict[int, int] = {}
     for supplementary in (False, True):
         document = [file for file in files if file.supplementary == supplementary]
         first = next((at for at, file in enumerate(document) if file.front is not None), None)
-        if first is None:
+        if first is None or not document[first].front[1]:
             continue
-        before = [(file, len(file.text)) for file in document[:first]]
-        before.append((document[first], document[first].front or 0))
-        if sum(words_in(file.prose, 0, end) for file, end in before) > MOST_WORDS:
-            continue
-        ends.update((file.order, end) for file, end in before)
+        ends.update((file.order, len(file.text)) for file in document[:first])
+        ends[document[first].order] = document[first].front[0]
     return ends
 
 

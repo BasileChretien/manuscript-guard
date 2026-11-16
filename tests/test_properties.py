@@ -6632,8 +6632,13 @@ def _abstract_found(read) -> dict[str, list]:
                        for d in read.conflicts)  # fmt: skip
     states = {(c.line, c.text): state for state, listed in (
         ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found),
-        ("counts", read.from_counts), ("off", read.off_counts))
+        ("counts", read.from_counts), ("off", read.off_counts),
+        ("asked", [c for c, _places in read.only_in]), ("unsourced", read.unsourced))
         for c in listed}  # fmt: skip
+    # Each number read is said once: a question is never also not found (decision 27).
+    assert read.numbers == sum(len(listed) for listed in (
+        read.found, read.rounded, read.not_found, read.from_counts, read.off_counts,
+        read.only_in, read.unsourced)), states  # fmt: skip
     return {"conflicts": conflicts, "looked": states}
 
 
@@ -6817,8 +6822,39 @@ def _a_question_is_asked_as_a_warning(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.findings import WARN
 
     real = report.question
-    patch.setattr(report, "question", lambda section, code, message: replace(
-        real(section, code, message), severity=WARN))  # fmt: skip
+    patch.setattr(report, "question", lambda *given, **named: replace(
+        real(*given, **named), severity=WARN))  # fmt: skip
+
+
+def _a_number_found_nowhere_is_asked_about(patch: pytest.MonkeyPatch) -> None:
+    """The only-in question asked of every number not found, as though the Introduction gave
+    it (decision 27, part B)."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract._Elsewhere, "places", lambda self, parts, powered: [
+        (Path("paper.md"), ("Introduction",), 1)])  # fmt: skip
+
+
+def _a_background_number_is_not_looked_for_in_the_introduction(patch: pytest.MonkeyPatch) -> None:
+    """A Background number the Introduction gives asked about as one found only there."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract._Elsewhere, "state", lambda self, part, powered, introduction=False:
+                  "")  # fmt: skip
+
+
+def _a_question_is_counted_as_not_found(patch: pytest.MonkeyPatch) -> None:
+    """Each number asked about kept among those not found as well."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.against_results
+
+    def against(pieces, answers=None, named=None):
+        read = real(pieces, answers, named)
+        read.not_found += [c for c, _places in read.only_in] + read.unsourced
+        return read
+
+    patch.setattr(abstract, "against_results", against)
 
 
 def _a_results_title_is_a_part_s_results(patch: pytest.MonkeyPatch) -> None:
@@ -23322,6 +23358,18 @@ BROKEN = {
     "a question to the author is asked as a warning": (
         _a_question_is_asked_as_a_warning,
         test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a number found nowhere is asked whether it is the Introduction's": (
+        _a_number_found_nowhere_is_asked_about,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a Background number the Introduction gives is asked about": (
+        _a_background_number_is_not_looked_for_in_the_introduction,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a question to the author is counted as not found": (
+        _a_question_is_counted_as_not_found,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a title given as the Results' is a Results name everywhere": (
         _a_results_title_is_the_results_to_g8,

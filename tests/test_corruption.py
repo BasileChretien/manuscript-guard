@@ -2652,7 +2652,9 @@ def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_colum
     paper = tmp_path / "paper.pdf"
     paper.write_bytes(pdf([pieces]))
     read = audit([paper], None).abstract
-    assert read.compared and [c.text for c in read.not_found] == ["1,284"]
+    # Not found where the paper reports, and asked about as the Discussion's alone (part B).
+    assert read.compared and read.matched == 0
+    assert [c.text for c, _places in read.only_in] == ["1,284"]
 
 
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
@@ -2849,6 +2851,33 @@ def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_cat
     assert [(one["code"], one["counted"]) for one in asked] == [("question-no-results", False)]
     assert main(["audit", str(paper), "--strict", "--results",
                  "Electron temperature relations"]) == 1  # fmt: skip
+
+
+def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_warning(
+    tmp_path: Path, capsys
+) -> None:
+    """Decision 27, part B (Basile, 2026-11-16): a number the Introduction alone gives is
+    asked about (docx-med-B1 of the real-paper corpus), but one of the Abstract's Results the
+    paper gives nowhere, typed wrong, is still `abstract-not-found`, a warning, and never a
+    question; so is one only a reference entry or a statement gives."""
+    from manuscript_guard.cli import main
+
+    text = ("# A study\n\n## Abstract\n\nBackground: About 15 months.\n\nResults: Of 391 "
+            "children, 77 improved.\n\n## Introduction\n\nThe median is 15 months [1].\n\n"
+            "## Methods\n\nWe saw 391 children.\n\n## Results\n\nOf them, 77 improved.\n\n"
+            "## Funding\n\nGrant 412.\n\n## References\n\n1. Doe J. A title. BMJ. 2020;9:412.\n")
+    paper = tmp_path / "paper.md"
+    for typed in ("97 improved", "412 children"):
+        given = (text.replace("77 improved", typed, 1) if "improved" in typed
+                 else text.replace("Of 391 children", f"Of {typed}"))
+        paper.write_text(given, encoding="utf-8")
+        assert main(["audit", str(paper), "--json"]) == 0
+        found = [one for one in json.loads(capsys.readouterr().out)["findings"]
+                 if one["section"] == "Abstract against Results"]  # fmt: skip
+        number = typed.split()[0]
+        assert [(one["code"], one["severity"], one["question"]) for one in found
+                if one["message"].startswith(number)] == [
+            ("abstract-not-found", "warn", False)], (typed, found)  # fmt: skip
 
 
 def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(
@@ -3068,7 +3097,7 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
 ) -> None:
     """A number of the Abstract reported under "Participants" is found there, which it was
     not before (the real-paper corpus, 2026-11-11); changed there, it is not found, and
-    neither is one only the Discussion gives."""
+    neither is one only the Discussion gives, which is asked about (decision 27, part B)."""
     from manuscript_guard.audit import audit
 
     paper = tmp_path / "paper.md"
@@ -3077,7 +3106,8 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
         paper.write_text("# Paper\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n"
                          f"## Participants\n\n{participants}\n\n## Results\n\nIt was so.\n\n"
                          f"## Discussion\n\n{discussion}\n", encoding="utf-8")  # fmt: skip
-        return [c.text for c in audit([paper], None).abstract.not_found]
+        read = audit([paper], None).abstract
+        return [c.text for c in (*read.not_found, *(c for c, _places in read.only_in))]
 
     assert not_found("We enrolled 1,284 adults.", "It was so.") == []
     assert not_found("We enrolled 1,248 adults.", "It was so.") == ["1,284"]

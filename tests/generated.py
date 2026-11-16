@@ -9407,6 +9407,13 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: number whose mantissa is the digit of a subscript before a times sign where the paper
 #: reports, `VCO~2~ \times10^{41}`, a scale in Markdown's text, not found; and one the paper
 #: prints with ties in maths over more than one line (`MATHS_OVER_LINES`), found.
+#: Since decision 27, part B (Basile, 2026-11-16): a number only the Introduction, its
+#: material, the Discussion, a "Limitations" or the Conclusions give is asked about
+#: ("asked"), not said not found, and so is a power only the Discussion prints and, in
+#: LaTeX, a number in a note under the Discussion, which LaTeX prints in its sentence; and
+#: the Abstract opens on a Background, its run-in label drawn (`BACKGROUND_LABELS`), whose
+#: number found nowhere is asked about as the literature's ("unsourced") and whose number
+#: the Introduction gives is found.
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9423,8 +9430,21 @@ ABSTRACT_KINDS = (
     "share season", "share season and year", "share count over", "share over a hundred",
     "power", "power not found", "scientific", "scientific another mantissa", "power scaled",
     "power signed", "scale", "scale in the abstract", "scale after a subscript",
-    "ties in maths across lines",
+    "ties in maths across lines", "limitations", "background nowhere",
+    "background in the introduction",
 )  # fmt: skip
+#: The run-in labels a structured Abstract's Background opens on, `{}` the name, each of
+#: `auditing.abstract.BACKGROUND_PARTS` in the case drawn, and the label that ends it.
+BACKGROUND_LABELS = ("{}:", "**{}:**", "{}.", "{} and aims:")
+BACKGROUND_NAMES = ("Background", "BACKGROUND", "Introduction", "Context", "Rationale",
+                    "Objective", "Objectives")  # fmt: skip
+BACKGROUND_END = "Methods: The work was done."
+#: Where the numbers of the kinds that stand in a section reporting nothing start.
+ASIDE_BASES = {"limitations": 2000, "background nowhere": 2800,
+               "background in the introduction": 2900}  # fmt: skip
+#: What each kind of `ABSTRACT_KINDS` is found as in LaTeX where it is not Markdown's: a
+#: note under the Discussion is printed in its sentence there.
+IN_LATEX = {"note": "asked"}
 #: How a power's exponent is spelled in maths, `{v}` the exponent: braced, after a thin
 #: space, with its plus sign, and, a digit, unbraced; and what may stand before it.
 POWER_SPELLINGS = ("{{{v}}}", "{{" + BACKSLASH + ",{v}}}", "{{+{v}}}", "{v}")
@@ -9485,7 +9505,8 @@ def _abstract_power(draw: st.DrawFn, kind: str
         written, state = power, "exact"
         methods.append(f"It was ${again}$ then.")
     elif kind == "power not found":
-        written, state = power, "not found"
+        # The Discussion alone prints it: asked about (decision 27, part B).
+        written, state = power, "asked"
         discussion.append(f"It was ${power}$ then.")
         methods.append(f"Of {base} runs, {value} was the shift.")
     elif kind == "scientific":
@@ -9696,6 +9717,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     resumed: list[str] = ["", "", ""]
     back: list[str] = []
     conclusions: list[str] = []
+    limitations: list[str] = []
+    background: list[tuple[str, str]] = []
     looked: list[tuple[str, str, str]] = []
     for kind in draw(st.permutations(ABSTRACT_KINDS)):
         short, words = draw(st.sampled_from(ESTIMATE_NAMES))
@@ -9785,8 +9808,19 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                                  "conclusion": 1900}[kind])  # fmt: skip
             {"other section": elsewhere, "introduction": introduction,
              "conclusion": conclusions}[kind].append(f"It was {shown} then.")
-            looked.append((kind, shown, "exact" if kind == "other section" else "not found"))
+            looked.append((kind, shown, "exact" if kind == "other section" else "asked"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ASIDE_BASES:
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + ASIDE_BASES[kind])
+            if kind == "limitations":
+                limitations.append(f"It was {shown} then.")
+            elif kind == "background in the introduction":
+                introduction.append(f"It was {shown} then.")
+            looked.append((kind, shown, {"limitations": "asked", "background nowhere":
+                                         "unsourced"}.get(kind, "exact")))  # fmt: skip
+            (background if kind.startswith("background") else abstract).append(
+                (kind, f"The value was {shown} here."))
         elif kind in ABSTRACT_ELSEWHERE:
             value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             shown = str(value + ABSTRACT_ELSEWHERE[kind])
@@ -9800,7 +9834,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 after[kind].append(f"Doe J. A title. BMJ. 2020;1:{shown}.")
             else:
                 after[kind].append(f"It was {shown} then.")
-            looked.append((kind, shown, "exact" if kind == "over the methods" else "not found"))
+            looked.append((kind, shown, "exact" if kind == "over the methods" else
+                           "asked" if kind == "related work" else "not found"))  # fmt: skip
             abstract.append((kind, f"The value was {shown} here."))
         elif kind in PAST_THE_LIST:
             value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
@@ -9868,7 +9903,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                     discussion.append(f"| Group | Value |\n|---|---|\n| A | {shown} |")
                 else:
                     where[kind].append(f"It was {shown} then.")
-                looked.append((kind, shown, "not found" if kind == "not found" else "exact"))
+                # The Discussion alone gives it: asked about (decision 27, part B).
+                looked.append((kind, shown, "asked" if kind == "not found" else "exact"))
             abstract.append((kind, f"The value was {shown} here."))
     # The Abstract ends with a number in the Methods, which in LaTeX shares the line of
     # `\\end{abstract}` (round 1 of #472).
@@ -9876,6 +9912,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     methods.append(f"It was {closing} then.")
     looked.append(("closing", closing, "exact"))
     abstract.append(("closing", f"The value was {closing} here."))
+    # The Abstract opens on its Background, in the order drawn, its label on its first line,
+    # and the next part's label ends it.
+    label = draw(st.sampled_from(BACKGROUND_LABELS)).format(draw(st.sampled_from(
+        BACKGROUND_NAMES)))  # fmt: skip
+    background[0] = (background[0][0], f"{label} {background[0][1]}")
+    abstract[0:0] = [*background, ("background end", BACKGROUND_END)]
     lines = ["# A study", "", "## Abstract", ""]
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for kind, said in abstract:
@@ -9903,7 +9945,7 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                                      ("Statistical methods", "It was so.")]),
              ("Methods", methods), (draw(st.sampled_from(OTHER_SECTIONS)), elsewhere),
              ("Results and discussion", results), ("Discussion", discussion),
-             ("Conclusions", conclusions),
+             ("Limitations", limitations), ("Conclusions", conclusions),
              (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
              # An entry of a reference's shape, which a list must hold to end at a caption.
              # Numbered in a form drawn, the entry after the caption with the next number.
@@ -10138,7 +10180,8 @@ def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list],
             lines.append("")
         if kind in ("interval conflict", "test conflict"):
             expected["conflicts"].append([line, kind.split()[0]])
-        expected["looked"] += [[line, shown, PAST_THE_LIST_IN_LATEX.get(planted, state)]
+        expected["looked"] += [[line, shown, {**PAST_THE_LIST_IN_LATEX, **IN_LATEX}.get(
+                                   planted, state)]
                                for planted, shown, state in looked if planted == kind]
     for heading, part in parts:
         if heading == "References":

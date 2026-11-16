@@ -152,6 +152,9 @@ def _abstract(read) -> str:
             + (f"{len(read.from_counts)} given by the counts beside them, "
                if read.from_counts else "")
             + f"{len(read.not_found)} not found")  # fmt: skip
+    asked = len(getattr(read, "only_in", [])) + len(getattr(read, "unsourced", []))
+    if asked:
+        said += f"; {asked} asked of the author"
     if read.off_counts:
         said += f"; {_n(len(read.off_counts), 'percentage')} that the counts beside " + (
             "it do not give" if len(read.off_counts) == 1 else "them do not give")

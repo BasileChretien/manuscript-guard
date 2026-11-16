@@ -28,7 +28,8 @@ LANGUAGE_SECTIONS = frozenset({sections.WRITING, sections.LANGUAGE})
 #: the audit asks the author (`report.question`), which are the author's to answer and not a
 #: referee's, and whose reason "What was not checked" says.
 UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared",
-                             "question-no-abstract", "question-no-results"})
+                             "question-no-abstract", "question-no-results",
+                             "question-number-only-in", "question-background-unsourced"})
 #: The places listed for one code under Language and notation.
 FIRST_PLACES = 3
 #: What a draft always lists as not checked, whatever was given.

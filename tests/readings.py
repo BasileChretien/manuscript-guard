@@ -1914,6 +1914,14 @@ def _abstract_against_results() -> Reading:
                                for c in getattr(found, "off_counts", [])],
                 "arithmetic": [[d.source.name, d.line, d.message]
                                for d in getattr(found, "arithmetic", [])],
+                # Newer than the reading (decision 27, part B): the questions asked of
+                # single numbers, each with where it stands where the paper reports nothing.
+                "asked only in": [[c.source.name, c.line, c.text,
+                                   [[path.name, list(titles), line]
+                                    for path, titles, line in places]]
+                                  for c, places in getattr(found, "only_in", [])],
+                "asked of the background": [[c.source.name, c.line, c.text]
+                                            for c in getattr(found, "unsourced", [])],
                 "worth": None if worth is None else [worth.small_integers,
                                                      worth.medium_integers, worth.two_decimals],
             }  # fmt: skip

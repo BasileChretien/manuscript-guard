@@ -10645,6 +10645,22 @@ for nothing otherwise, a Discussion, which is read as given. `check` compares no
 of these; a question there would be answered by a setting in paper.yaml, as
 `code_names_kept` is.
 
+Part B asks two questions of single numbers once the Abstract is compared, each at the
+number, and neither is `abstract-not-found` nor counted in `abstract_not_found`. A number
+not found where the paper reports that the Introduction or its material, the Discussion, a
+"Limitations" or a conclusion gives, as the comparison matches one, is asked about
+(`question-number-only-in`): `placed` gives each such line an `Aside` holding the headings
+over it that report nothing, and the question names each section by its heading and first
+line and the `--results` that would read it, or asks for the number in the Methods or the
+Results. The title page, the statements, the notes, the keywords, a summary of the paper and
+the reference list count for nothing, as before. A number of a structured Abstract's
+Background, under a heading or a run-in label of `BACKGROUND_PARTS` to the next part's
+(`_PART_LABEL`), is looked for in the Introduction and its material too; found nowhere, it is
+asked about as the literature's (`question-background-unsourced`), which the paper's change
+answers. Of the 24 numbers the corpus run on 0223ca005 did not find, six became the first
+question, two the second, and tex-stat-ap-B2's two Background figures, which its
+Introduction gives with the WHO's name, are found.
+
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
 On the author's paper seven entries gave neither a DOI nor a PMID, and the audit listed all
@@ -27966,6 +27982,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
     given one, so its question asks for the heading in the document the PDF was made from
     and for that document to be audited. Until then the question is asked at each run.
     Pinned by `tests/test_audit_questions.py::test_a_pdf_s_question_asks_for_its_source_document`.
+- **A number of the Abstract found only where the paper reports nothing is matched there as
+  anywhere else.** The question asked of it (`question-number-only-in`) rests on the same
+  match as a number found where the paper reports: as printed, as a rounding, an identifier
+  and a power whole, so a number typed in a citation's brackets or a date there matches as
+  well (docx-sport-A3 of the real-paper corpus: its Abstract's "14%" against an
+  Introduction's "14"). The question names each section and its line, which the author
+  reads. Accepted.
+  - Only the Introduction and its material, the Discussion, a "Limitations" and a
+    conclusion count; a section of its own that reports nothing under another name, an
+    "Interpretation", does not, and a number found only there is not found. Accepted.
+  - A Word paper's Introduction with no heading of its own stands under the run-in
+    "Keywords:" that ends its Abstract, and the keywords count for nothing: a number only it
+    gives stays not found. Pinned by
+    `tests/test_audit_number_questions.py::test_a_number_a_statement_or_a_summary_alone_gives_stays_not_found`.
+  - A LaTeX paper's footnote is read in the section it is printed in, as before: a number
+    only a footnote under the Discussion gives is asked about. Pinned by
+    `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
+  - A section under another that reports nothing, a "Limitations" under the Discussion, is
+    searched only with both named, so its question names both for `--results`; the page
+    takes one heading, and says that pair as the command line does. Pinned by
+    `tests/test_audit_number_questions.py::test_the_page_asks_in_its_own_words`.
+- **A structured Abstract's Background ends at a label the audit knows.** Its run-in labels
+  are read by a closed list of names (`abstract.BACKGROUND_PARTS`, `_OTHER_PARTS`) where a
+  line opens or a sentence has ended, a capital first and a colon or a stop after: a part
+  under a label of another name, "Study question:", or one typed mid-sentence, is read as
+  the Background's still, and a Background with no label after it runs to the Abstract's
+  end, its numbers looked for in the Introduction too. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

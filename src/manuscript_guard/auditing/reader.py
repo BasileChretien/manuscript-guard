@@ -68,6 +68,10 @@ _ON_THE_PAGE: tuple[tuple[re.Pattern[str], str], ...] = (
      f'Check it again with that heading given as "{RESULTS_FIELD}"'),
     (re.compile(r"run it with `--no-results`"), f'check it again with "{NO_RESULTS_FIELD}" ticked'),
     (re.compile(r" and audit it again\b"), " and check it again"),
+    # A number found only where the paper reports nothing: the heading its answer names,
+    # one to a flag; a pair of flags, for a heading under another, the page cannot take.
+    (re.compile(r'run `audit` again with (?=`--results "[^"`]*"`)'), "check it again with "),
+    (re.compile(r'`--results "([^"`]*)"`'), rf'"\1" given as "{RESULTS_FIELD}"'),
     (re.compile(r"--no-abstract: "), f'"{NO_ABSTRACT_FIELD}" ticked: '),
     (re.compile(r"--no-results: "), f'"{NO_RESULTS_FIELD}" ticked: '),
     (re.compile(r'--results "(.*?)": (?=no heading is|the heading )'),

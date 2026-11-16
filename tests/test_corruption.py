@@ -30072,6 +30072,31 @@ def test_a_short_form_spelt_from_inside_an_aside_is_undefined(project: Path) -> 
     ]
 
 
+@pytest.mark.parametrize(
+    "note",
+    ["*Note.* ROR = rate of events among reports.",
+     "*Note.* ROR: rate of events among reports.",
+     "The analysis read the main measure, known as ROR, for each drug.",
+     "The analysis read the measure (ROR value) for each drug.",
+     "The analysis read the measures (ROR, PRR) for each drug."],
+)  # fmt: skip
+def test_a_new_shape_whose_words_do_not_match_still_leaves_the_form_undefined(
+    project: Path, note: str
+) -> None:
+    """Decision 29: G14 reads "X = long form", "X: long form", "known as X", "(X word)" and a
+    bracket of short forms as definitions, and their words decide, as a bracket's do. A
+    revision tidies the definition away and pastes a note or a sentence in one of these
+    shapes whose words do not spell ROR: ROR is still undefined where it is first used, and
+    not defined as the note's words."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "A signal was defined", f"{note}\n\nA signal was defined")
+    main_md(project).write_text(tidied, encoding="utf-8")
+    found = language_findings(project)
+    assert ("abbreviation-undefined", line_of(tidied, ABBREVIATED)) in found, found
+    assert not [code for code, _line in found if code != "abbreviation-undefined"], found
+
+
 def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
     project: Path,
 ) -> None:

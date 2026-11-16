@@ -57,16 +57,20 @@ _FOR_A_READER: tuple[tuple[re.Pattern[str], str], ...] = (
      "give the audit the analysis outputs to compare them with"),
     (re.compile(r"--against names the outputs to compare the numbers with\."),
      "no analysis outputs were given to compare the numbers with."),
-    # The answers to the audit's questions, as the page's form gives them (`QUESTIONS`).
+)  # fmt: skip
+#: The answers to the audit's questions as the web page's form gives them (`report.QUESTIONS`),
+#: said to the page's reader alone: a copy the command line writes, `--pdf`, `--commented`
+#: or `--tracked`, names the flag, since it has no such box (round 1 of #697).
+_ON_THE_PAGE: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"run `audit` again with `--no-abstract`"),
      f'check it again with "{NO_ABSTRACT_FIELD}" ticked'),
-    (re.compile(r'Run `audit` again with `--results "<that heading>"`; if the paper reports no '
-                r"results, run it with `--no-results`"),
-     f'Check it again with that heading given as "{RESULTS_FIELD}"; if the paper reports no '
-     f'results, check it again with "{NO_RESULTS_FIELD}" ticked'),
+    (re.compile(r'Run `audit` again with `--results "<that heading>"`'),
+     f'Check it again with that heading given as "{RESULTS_FIELD}"'),
+    (re.compile(r"run it with `--no-results`"), f'check it again with "{NO_RESULTS_FIELD}" ticked'),
+    (re.compile(r" and audit it again\b"), " and check it again"),
     (re.compile(r"--no-abstract: "), f'"{NO_ABSTRACT_FIELD}" ticked: '),
     (re.compile(r"--no-results: "), f'"{NO_RESULTS_FIELD}" ticked: '),
-    (re.compile(r'--results "(.*?)": (?=no heading is|the heading stands)'),
+    (re.compile(r'--results "(.*?)": (?=no heading is|the heading )'),
      rf'"{RESULTS_FIELD}" given as "\1": '),
 )  # fmt: skip
 
@@ -85,9 +89,11 @@ _HELD = re.compile(f"{_HOLD}(\\d+){_HOLD}")
 _NESTED = 3
 
 
-def for_a_reader(text: str) -> str:
-    """`text` without what it says only for a script or its command line (`_FOR_A_READER`)."""
-    for pattern, said in _FOR_A_READER:
+def for_a_reader(text: str, *, page: bool = False) -> str:
+    """`text` without what it says only for a script or its command line (`_FOR_A_READER`);
+    with `page`, for the web page's reader, each question's answer as the page's box or
+    tick (`_ON_THE_PAGE`)."""
+    for pattern, said in (*_FOR_A_READER, *(_ON_THE_PAGE if page else ())):
         text = pattern.sub(said, text)
     return text
 
@@ -131,16 +137,18 @@ def _kind(kind: dict) -> dict:
             "places": [_place(place) for place in kind["places"]]}  # fmt: skip
 
 
-def readable(view: dict) -> dict:
+def readable(view: dict, *, page: bool = False) -> dict:
     """The view the page and the PDF draw, said for a reader: every line of it through
     `for_a_reader`, and every finding's context as an excerpt. With the phrases that name
     `--strict` said otherwise, the line that says what it counts is left out too: the page
-    draws that line only where the view gives it (round 1 of #627)."""
+    draws that line only where the view gives it (round 1 of #627). With `page`, for the web
+    page's reader, where the questions to the author and the notes on their answers stand
+    (`report._notes`), each answer is the page's box or tick (`_ON_THE_PAGE`)."""
     return {
         **view,
         "strict": None,
         "header": [for_a_reader(line) for line in view["header"]],
-        "notes": [[for_a_reader(heading), [for_a_reader(item) for item in said]]
+        "notes": [[for_a_reader(heading), [for_a_reader(item, page=page) for item in said]]
                   for heading, said in view["notes"]],
         "checks": [[name, for_a_reader(said)] for name, said in view["checks"]],
         "words": [{**paper, "note": paper["note"] and for_a_reader(paper["note"]),

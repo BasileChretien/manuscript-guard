@@ -927,9 +927,9 @@ class _Source:
     latex: object = None
     #: The lines of a Markdown or a Word paper's headings, which are no sentences.
     heading_lines: frozenset[int] = frozenset()
-    #: Each title `--results` gives that a heading of its document has, and whether one
-    #: such heading was read as the Results (`auditing.abstract.placed`).
-    named: tuple[tuple[str, bool], ...] = ()
+    #: Each title `--results` gives that a heading of its document has, and how its headings
+    #: were read (`auditing.abstract.placed`).
+    named: tuple[tuple[str, str], ...] = ()
     #: Whether its lines are lines of paragraphs, wrapped as a PDF sets them, though not
     #: Markdown: a sentence goes on from one to the next (`auditing.pdf`).
     wrapped: bool = False
@@ -1809,15 +1809,13 @@ def _under(report: AuditReport, source: _Source, piece, line: int) -> str:
     return f'in "{title}", ' if "," in title else f"in {title}, "
 
 
-def _named(sources: list[_Source]) -> dict[str, bool]:
+def _named(sources: list[_Source]) -> dict[str, str]:
     """Each title `--results` gives that a heading of a paper has, as
-    `auditing.abstract.given_title` gives it, and whether one such heading, in any of them,
-    was read as the Results."""
-    found: dict[str, bool] = {}
-    for source in sources:
-        for title, taken in source.named:
-            found[title] = found.get(title, False) or taken
-    return found
+    `auditing.abstract.given_title` gives it, and how its headings were read, over all of
+    them (`auditing.abstract.merged`)."""
+    from manuscript_guard.auditing.abstract import merged
+
+    return merged([one for source in sources for one in source.named])
 
 
 def _piece(source: _Source, atoms: list[Atom]):

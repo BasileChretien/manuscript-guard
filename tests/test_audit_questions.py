@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -194,34 +195,136 @@ def test_a_referee_s_draft_leaves_the_question_to_the_author(tmp_path: Path, cap
     assert main(["audit", str(paper), "--report-draft", str(draft)]) == 0
     written = draft.read_text(encoding="utf-8")
     assert abstract.NO_ABSTRACT in written and abstract.ASK_NO_ABSTRACT not in written
+    # Answered, the draft says the audit was run with the answer, and names no one who gave
+    # it: the manuscript's authors told the referee's audit nothing (round 1 of #697).
+    answered = tmp_path / "answered.md"
+    assert main(["audit", str(paper), "--no-abstract", "--report-draft", str(answered)]) == 0
+    written = answered.read_text(encoding="utf-8")
+    assert abstract.TOLD[abstract.SAID_NO_ABSTRACT] in written
+    assert "the author says" not in written
+
+
+#: The paper's body in Word, with no heading that names the Abstract.
+UNLABELLED_BODY = (
+    "<w:p><w:r><w:t xml:space='preserve'>Of the patients, 412 improved.</w:t></w:r></w:p>"
+    "<w:p><w:pPr><w:pStyle w:val='Heading1'/></w:pPr><w:r><w:t>Results</w:t></w:r></w:p>"
+    "<w:p><w:r><w:t xml:space='preserve'>Of the patients, 40 improved.</w:t></w:r></w:p>"
+)
+
+
+def _comments(path: Path) -> list[str]:
+    from manuscript_guard.docxtext import word_comments
+
+    return [one.text for one in word_comments(path)]
+
+
+def _pdf_text(path: Path) -> str:
+    import pypdf
+
+    return " ".join(" ".join(page.extract_text() or "" for page in pypdf.PdfReader(path).pages
+                             ).split())  # fmt: skip
 
 
 def test_a_commented_copy_lists_a_question_as_one(tmp_path: Path) -> None:
+    """Round 1 of #697: a copy the command line writes names the flag that answers, and one
+    the web page writes names the page's tick, which the command line has none of."""
     from manuscript_guard.auditing.commented import QUESTION, notes_of
+    from manuscript_guard.auditing.reader import NO_ABSTRACT_FIELD
 
     paper = _write(tmp_path, UNLABELLED)
-    said = [note.comment for note in notes_of(audit([paper], None), paper)
-            if note.code == abstract.ASKED_NO_ABSTRACT]
-    assert len(said) == 1 and said[0].startswith(f"{QUESTION}: No heading names the Abstract")
+    for page, named, unnamed in ((False, "`--no-abstract`", "ticked"),
+                                 (True, f'"{NO_ABSTRACT_FIELD}" ticked', "--no-abstract")):
+        said = [note.comment for note in notes_of(audit([paper], None), paper, page=page)
+                if note.code == abstract.ASKED_NO_ABSTRACT]  # fmt: skip
+        assert len(said) == 1 and said[0].startswith(f"{QUESTION}: No heading names the Abstract")
+        assert named in said[0] and unnamed not in said[0], said
+
+
+def test_the_command_line_s_copies_name_the_flag_and_the_page_s_its_box(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """`--commented`, `--tracked` and `--pdf` from the command line ask for `--no-abstract`;
+    the copy and the PDF the web page makes from its audit ask for its tick."""
+    from test_audit_commented import docx
+
+    from manuscript_guard.auditing.reader import NO_ABSTRACT_FIELD
+
+    monkeypatch.chdir(tmp_path)
+    paper = docx(tmp_path / "paper.docx", UNLABELLED_BODY)
+    assert main(["audit", str(paper), "--commented", "commented.docx", "--tracked",
+                 "tracked.docx", "--pdf", "report.pdf"]) == 0  # fmt: skip
+    capsys.readouterr()
+    for said in (" ".join(_comments(tmp_path / "commented.docx")),
+                 " ".join(_comments(tmp_path / "tracked.docx")),
+                 _pdf_text(tmp_path / "report.pdf")):
+        assert "--no-abstract" in said and "ticked" not in said, said
+    web.view(["audit", "paper.docx"])
+    assert "error" not in web.commented("paper.docx", "page.docx")
+    assert "error" not in web.report_pdf("page.pdf")
+    for said in (" ".join(_comments(tmp_path / "page.docx")), _pdf_text(tmp_path / "page.pdf")):
+        assert f'"{NO_ABSTRACT_FIELD}" ticked' in said and "--no-abstract" not in said, said
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_pdf_s_question_asks_for_its_source_document(tmp_path: Path, capsys) -> None:
+    """pdf-socio-A3 and pdf-sport-A1 of the real-paper corpus open on an Abstract with no
+    label, which a PDF cannot be given: the question asks for the heading in the document
+    the PDF was made from, and for that one to be audited, offering nothing a PDF cannot
+    take (round 1 of #697)."""
+    from test_audit_pdf import write
+
+    lines = ["A study of things", "Of 412, 77 had it.", "Introduction", "It matters.",
+             "Results", "Of 412, 77 had it."]  # fmt: skip
+    asked = _of(_findings(capsys, write(tmp_path / "paper.pdf", lines)))
+    assert [one["message"] for one in asked if one["question"]] == [abstract.ASK_NO_ABSTRACT_PDF]
+    assert "the document the PDF was made from" in abstract.ASK_NO_ABSTRACT_PDF
+    assert "the document the PDF was made from" in abstract.ASK_NO_RESULTS_PDF
+    assert "Word" in abstract.ASK_NO_RESULTS and "Word" not in abstract.ASK_NO_RESULTS_PDF
+
+
+def test_a_section_that_reports_nothing_named_as_the_results_is_read_and_said(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #697: `--results Discussion` is the author's answer, and stands: the
+    Discussion is searched and an Abstract's number it repeats is found, and a note says
+    so, even beside a Results heading of the paper's own."""
+    paper = _write(tmp_path, "# A study\n\n## Abstract\n\nWe saw 812.5 of them.\n\n## Methods\n\n"
+                   "We did.\n\n## Results\n\nIt held.\n\n## Discussion\n\nWe saw 812.5.\n")
+    assert "abstract-not-found" in [one["code"] for one in _of(_findings(capsys, paper))]
+    found = _of(_findings(capsys, paper, "--results", "Discussion"))
+    assert [(one["code"], one["message"].split(":")[0]) for one in found] == [
+        (abstract.LIFTED, '--results "Discussion"')]
+
+
+#: A paper whose results stand under a descriptive title, and whose Discussion claims a
+#: cause: what the audit's sentences are placed in, and the causal words it reads there, are
+#: held with and without the titles given as the Results.
+CAUSAL = ("# A study\n\n## Abstract\n\nThe OR was 1.52 (95% CI 1.21-1.90).\n\n"
+          "## Introduction\n\nIt matters.\n\n## Electron temperature relations\n\n"
+          "The OR was 1.52 (95% CI 1.21-1.89).\n\n## Discussion\n\n"
+          "The drug causes the improvement.\n")
 
 
 def test_results_named_are_no_results_to_any_other_reader(tmp_path: Path) -> None:
-    """`--results` is the Results to the Abstract against Results alone: G8's reading of the
-    same headings, and the parts the audit's sentences are placed in, are unchanged."""
-    from manuscript_guard.auditing.sentences import RESULTS, placing
-    from manuscript_guard.gates.reported import REPORTED, Walk
-    from manuscript_guard.text.sections import scannable, split_sections
+    """`--results` is the Results to the Abstract against Results alone: the parts the
+    audit places each line in for its sentence readers, and the causal words `--design
+    observational` reads under the Discussion, are the same with and without the answer, a
+    descriptive title and the Discussion itself named."""
+    from manuscript_guard.audit import AuditReport, _read_sources
 
-    text = ("# A study\n\n## Abstract\n\nThe OR was 1.52 (95% CI 1.21-1.90).\n\n"
-            "## Introduction\n\nIt matters.\n\n## Electron temperature relations\n\n"
-            "The OR was 1.52 (95% CI 1.21-1.89).\n\n## Summary and discussion\n\nIt was so.\n")
-    paper = _write(tmp_path, text)
-    read = audit([paper], None, answers=Answers(results=("Electron temperature relations",)))
-    assert read.abstract.compared
-    sections = [s for s in split_sections(scannable(text)) if s.level]
-    heading = next(s for s in sections if s.title == "Electron temperature relations")
-    assert Walk().placing(sections)(heading.line + 1) is not REPORTED
-    assert placing(sections)(heading.line + 1).part != RESULTS
+    paper = _write(tmp_path, CAUSAL)
+    named = ("Electron temperature relations", "Discussion")
+    lines = range(1, CAUSAL.count("\n") + 2)
+
+    def parts(given: tuple[str, ...]) -> list:
+        source = _read_sources(AuditReport(results_named=given), [paper], [])[0]
+        return [source.part(line) for line in lines]
+
+    assert parts(named) == parts(())
+    found = [audit([paper], None, design="observational", answers=answers).causal.found
+             for answers in (None, Answers(results=named))]  # fmt: skip
+    assert found[0] == found[1] and [one.part for one in found[0]] == ["Discussion"], found
+    assert audit([paper], None, answers=Answers(results=named)).abstract.compared
 
 
 @pytest.mark.parametrize("flag", [["--no-abstract"], ["--no-results"], ["--results", "Data"]])

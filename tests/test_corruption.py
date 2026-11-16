@@ -2815,21 +2815,31 @@ def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_cat
                  "Electron temperature relations"]) == 1  # fmt: skip
 
 
-def test_a_heading_named_as_the_results_is_never_the_results_to_g8(tmp_path: Path) -> None:
-    """`--results` is the Results to the audit's Abstract against Results alone: in a
-    project, a key bound only under a descriptive title, beside a Results heading, is still
-    reported nowhere to G8, after an audit that named that title, which keeps nothing."""
+def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(
+    tmp_path: Path, capsys
+) -> None:
+    """`--results` is the Results to the audit's Abstract against Results alone, never to a
+    reader that places sentences in the paper's parts: the Discussion's claim of a cause is
+    said under `--design observational` as it was, its part the Discussion, with the
+    Discussion and the descriptive title named as the Results (round 1 of #697: the earlier
+    test read the raw text, and could not fail)."""
     from manuscript_guard.cli import main
-    from manuscript_guard.gates import reported
 
-    text = ("# Abstract\n\nWe saw {{results.a}}.\n\n# Methods\n\nWe did.\n\n"
-            "# Results\n\nIt held.\n\n# Electron temperature relations\n\nIt was {{results.a}}.\n")
     paper = tmp_path / "paper.md"
-    paper.write_text(text, encoding="utf-8")
-    assert main(["audit", str(paper), "--results", "Electron temperature relations"]) == 0
-    walk = reported.Walk()
-    given, found = walk.read(text)
-    assert [one.key for one in given if one.key not in found] == ["a"]
+    paper.write_text("# A study\n\n## Abstract\n\nThe OR was 1.52 (95% CI 1.21-1.90).\n\n"
+                     "## Introduction\n\nIt matters.\n\n## Electron temperature relations\n\n"
+                     "The OR was 1.52 (95% CI 1.21-1.89).\n\n## Discussion\n\n"
+                     "The drug causes the improvement.\n", encoding="utf-8")  # fmt: skip
+
+    def causal(*given: str) -> list:
+        assert main(["audit", str(paper), "--json", "--design", "observational", *given]) == 0
+        return [(one["code"], one["line"], one["message"])
+                for one in json.loads(capsys.readouterr().out)["findings"]
+                if one["section"] == "Causal words"]  # fmt: skip
+
+    said = causal()
+    assert said and said == causal("--results", "Electron temperature relations",
+                                   "--results", "Discussion")
 
 
 def test_a_template_s_abstract_command_that_differs_from_the_results_fails_an_audit(

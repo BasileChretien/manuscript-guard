@@ -199,13 +199,15 @@ def _paragraph(texts: list[tuple[str, list]], note: Note) -> tuple[int, tuple[in
     return None
 
 
-def notes_of(report, paper: Path) -> list[Note]:
+def notes_of(report, paper: Path, *, page: bool = False) -> list[Note]:
     """Every finding of the audit `report` on `paper`, and those on no file (a paper or an
     output that could not be read), as a note: anchored on its own words where its message
     names them and its quote holds them (`words_of`), else on its quote; with the place the
     report gives it, for the list on the first paragraph where it stands nowhere. Each says
     its section, its message, its hint, and whether `--strict` counts it, all as a reader is
-    told them, who runs no script and types no flag (`reader.for_a_reader`). A finding on
+    told them, who runs no script and types no flag (`reader.for_a_reader`), a question's
+    answer as the web page's box or tick with `page` and as its flag without (round 1 of
+    #697). A finding on
     another file the audit read, a supplement, an output, the journal's profile, is that
     file's, and not the document's."""
     from manuscript_guard.auditing.reader import FAILS, for_a_reader
@@ -220,7 +222,7 @@ def notes_of(report, paper: Path) -> list[Note]:
         said = f"{QUESTION}: {item.message}" if item.question else f"{item.section}: {item.message}"
         if item.hint:
             said += f"\nHint: {item.hint}"
-        said = for_a_reader(said)
+        said = for_a_reader(said, page=page)
         if item.counted:
             said += f"\n{FAILS}"
         placer = item.placer if item.placer is not None else placers.get(item.path)

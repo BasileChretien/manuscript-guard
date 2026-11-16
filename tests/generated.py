@@ -9933,9 +9933,13 @@ ANSWER_WRITTEN = ("{}", "{lower}", "{upper}", "3. {}", "{}:")
 #: that there is none; no Results heading, asked, answered with `--results`, given a title
 #: no heading has, and answered with `--no-results`; and a Results heading with the answer
 #: that there are none.
+#: Two more since round 1 of #697: the Discussion named as the Results, its Abstract's
+#: number given there alone, which is then found and said; and a title named that stands
+#: under the Discussion, which is said and not read, the question asked again.
 ANSWER_KINDS = ("no abstract", "no abstract answered", "abstract contradicted", "no results",
                 "results named", "results unmatched", "no results answered",
-                "results contradicted")  # fmt: skip
+                "results contradicted", "results reporting nothing",
+                "results under the discussion")  # fmt: skip
 
 
 @st.composite
@@ -9956,7 +9960,15 @@ def answered_papers(draw: st.DrawFn) -> list[tuple[str, str, str, dict, dict]]:
             title, lower=title.lower(), upper=title.upper())  # fmt: skip
         has_results = kind in ("no abstract", "no abstract answered", "abstract contradicted",
                                "results contradicted")  # fmt: skip
-        markdown, latex = _results_named("Results" if has_results else title)
+        markdown, latex = (_results_named("Data", under=title)
+                           if kind == "results under the discussion"
+                           else _results_named("Results" if has_results else title))
+        if kind == "results reporting nothing":
+            markdown = markdown.replace("It was 812.5 then.", "It held then.").replace(
+                "## Discussion\n\nIt was so.", "## Discussion\n\nIt was 812.5 so.")
+            latex = latex.replace("It was 812.5 then.", "It held then.").replace(
+                f"{BACKSLASH}section{{Discussion}}\nIt was so.",
+                f"{BACKSLASH}section{{Discussion}}\nIt was 812.5 so.")  # fmt: skip
         if kind in ("no abstract", "no abstract answered"):
             markdown = markdown.replace("## Abstract\n\n", "")
             latex = latex.replace(f"{BACKSLASH}begin{{abstract}}\n", "").replace(
@@ -9968,14 +9980,21 @@ def answered_papers(draw: st.DrawFn) -> list[tuple[str, str, str, dict, dict]]:
             "results unmatched": {"results": (draw(st.sampled_from(UNMATCHED_TITLES)),)},
             "no results answered": {"no_results": True},
             "results contradicted": {"no_results": True},
+            "results reporting nothing": {"results": (draw(st.sampled_from(
+                ("Discussion", "discussion", "4. DISCUSSION"))),)},
+            "results under the discussion": {"results": (written,)},
         }[kind]  # fmt: skip
-        compared = kind in ("abstract contradicted", "results named", "results contradicted")
+        compared = kind in ("abstract contradicted", "results named", "results contradicted",
+                            "results reporting nothing")  # fmt: skip
         question = {"no abstract": abstract.ASKED_NO_ABSTRACT, "no results":
                     abstract.ASKED_NO_RESULTS, "results unmatched":
+                    abstract.ASKED_NO_RESULTS, "results under the discussion":
                     abstract.ASKED_NO_RESULTS}.get(kind, "")  # fmt: skip
         notes = {"abstract contradicted": [abstract.CONTRADICTED],
                  "results contradicted": [abstract.CONTRADICTED],
-                 "results unmatched": [abstract.UNMATCHED]}.get(kind, [])  # fmt: skip
+                 "results unmatched": [abstract.UNMATCHED],
+                 "results reporting nothing": [abstract.LIFTED],
+                 "results under the discussion": [abstract.NOT_TAKEN]}.get(kind, [])  # fmt: skip
         papers.append((kind, markdown, latex, answers,
                        {"compared": compared, "question": question, "notes": notes,
                         "title": title}))  # fmt: skip

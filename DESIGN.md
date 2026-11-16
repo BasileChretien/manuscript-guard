@@ -10626,10 +10626,13 @@ marked `"question": true` in `--json` with a code of its own; it says what the a
 one question, and names the answer that ends it. The answer is recorded where the question
 names it: in `audit`, by the change to the paper or the flag. The reports show the questions
 apart, under "Questions for the author" before what each check found, and the notes on the
-answers under "On the answers given" (`report._notes`): the text, the page's and the PDF's
-view, which point at the page's box or tick for each answer (`reader.for_a_reader`), and the
-first paragraph's comment of a `--commented` or `--tracked` copy; `--report-draft`, for a
-referee, leaves the questions out. The first two are the Abstract against Results': no
+answers under "On the answers given" (`report._notes`): the text, the PDF's view and the
+first paragraph's comment of a `--commented` or `--tracked` copy, each naming the answer's
+flag, or, made by the web page, the page's box or tick (`reader.for_a_reader`, `page`; round
+1 of #697: the page's words were in the command line's copies, which have no box);
+`--report-draft`, for a referee, leaves the questions out and names no one who answered. A
+question asks only what is true of the paper read: of a PDF, which cannot be given a heading,
+it asks for one in the document the PDF was made from. The first two are the Abstract against Results': no
 heading names the Abstract (`question-no-abstract`, answered by a heading "Abstract" or by
 `--no-abstract`), and none is read as the Results (`question-no-results`, answered by
 `--results TITLE` or `--no-results`). `--results` makes a heading whose whole title is TITLE,
@@ -10637,7 +10640,8 @@ as `section_names` compares a whole name (`abstract.given_title`), a Results hea
 section alone (`abstract.placed`, `named`): searched whatever its name where it stands where
 the section searches, and read by no other check. An answer the paper's headings contradict
 is said and the headings win; a TITLE no heading has, or whose heading stands where nothing
-is searched, is said by its name. `check` compares no Abstract with the Results and asks none
+is searched, is said by its name, and so is one whose heading is itself a section searched
+for nothing otherwise, a Discussion, which is read as given. `check` compares no Abstract with the Results and asks none
 of these; a question there would be answered by a setting in paper.yaml, as
 `code_names_kept` is.
 
@@ -27915,6 +27919,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading `--results` names under a section that reports nothing, a Discussion, is not
     read as the Results; the author has to name the section over it. Pinned by
     `tests/test_audit_questions.py::test_a_results_title_that_names_no_heading_is_said`.
+  - No flag ends a question about a paper whose Abstract has no label, or whose results
+    stand under titles read as no heading (pdf-socio-A3, pdf-sport-A1, docx-psych-B1 of the
+    real-paper corpus): the answer is a heading added to the document, and a PDF cannot be
+    given one, so its question asks for the heading in the document the PDF was made from
+    and for that document to be audited. Until then the question is asked at each run.
+    Pinned by `tests/test_audit_questions.py::test_a_pdf_s_question_asks_for_its_source_document`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -6990,14 +6990,15 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--no-abstract",
         action="store_true",
-        help="the paper has no Abstract: the Abstract against Results no longer asks where "
-        "it is; a heading that names the Abstract is taken over this",
+        help="the paper has no Abstract: the Abstract against Results does not ask, in this "
+        "run, where it is; a heading that names the Abstract is taken over this",
     )
     audit.add_argument(
         "--no-results",
         action="store_true",
         help="the paper reports no results, a methods paper's: the Abstract against Results "
-        "no longer asks which heading holds them; a Results heading is taken over this",
+        "does not ask, in this run, which heading holds them; a Results heading is taken over "
+        "this",
     )
     audit.add_argument(
         "--results",

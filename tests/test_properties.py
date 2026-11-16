@@ -44,6 +44,7 @@ import pytest
 from generated import (
     ABSTRACT_BACKGROUND,
     AGREED,
+    BACKSLASH,
     BESIDE_A_BINDING,
     CAUSAL_PARTS,
     CLAIMED,
@@ -6733,12 +6734,12 @@ def test_a_question_to_the_author_is_asked_until_answered_and_never_counts(
     question; `--no-abstract`, `--no-results` and `--results` with the title, written in any
     case, numbered or with a colon, end it. An answer the paper's headings contradict is
     said and the headings win; a title that names no heading is said and the question
-    stays. A heading `--results` names is the Results to this section alone: G8 and the
-    parts the audit's sentences are placed in read it as before. In Markdown and LaTeX."""
-    from manuscript_guard.auditing.sentences import RESULTS, placing
+    stays, and so is one under the Discussion, which is not read; the Discussion named is
+    read as given, and said (round 1 of #697). A heading `--results` names is the Results
+    to this section alone: the parts the audit places each line in for its sentence
+    readers, and the causal words `--design observational` reads, are the same with the
+    answer and without it. In Markdown and LaTeX."""
     from manuscript_guard.findings import INFO
-    from manuscript_guard.gates.reported import REPORTED, Walk
-    from manuscript_guard.text.sections import scannable, split_sections
 
     for kind, markdown, latex, answers, wanted in drawn:
         for text, suffix in ((markdown, ".md"), (latex, ".tex")):
@@ -6749,13 +6750,40 @@ def test_a_question_to_the_author_is_asked_until_answered_and_never_counts(
                                                      else []), (kind, said)  # fmt: skip
             assert all(item.severity == INFO and not item.counted for item in asked), asked
             assert [code for code, _said in read.answered] == wanted["notes"], (kind, read)
-            if kind == "results named":
+            if kind in ("results named", "results reporting nothing"):
                 assert read.matched == read.numbers == 1, (kind, text)
-        if kind == "results named":
-            sections = [s for s in split_sections(scannable(markdown)) if s.level]
-            heading = next(s for s in sections if s.title == wanted["title"])
-            assert Walk().placing(sections)(heading.line + 2) is not REPORTED, markdown
-            assert placing(sections)(heading.line + 2).part != RESULTS, markdown
+                _read_by_no_other_reader(text, suffix, answers["results"])
+
+
+#: A claim of a cause, which `--design observational` reads in the Discussion.
+_CAUSE = "The drug causes the improvement."
+
+
+def _read_by_no_other_reader(text: str, suffix: str, named: tuple[str, ...]) -> None:
+    """The parts each line of a paper is placed in for the sentence readers (`_Source.part`),
+    and the causal words read, are the same whether `named` is given as the Results or not."""
+    import tempfile
+
+    from manuscript_guard.audit import AuditReport, _read_sources, audit
+    from manuscript_guard.auditing.abstract import Answers
+
+    text = text.replace("## Discussion\n\n", f"## Discussion\n\n{_CAUSE}\n\n").replace(
+        f"{BACKSLASH}section{{Discussion}}\n", f"{BACKSLASH}section{{Discussion}}\n{_CAUSE}\n")
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / f"paper{suffix}"
+        paper.write_text(text, encoding="utf-8")
+        lines = range(1, text.count("\n") + 2)
+
+        def parts(given: tuple[str, ...]) -> list:
+            sources = _read_sources(AuditReport(results_named=given), [paper], [])
+            return [[source.part(line) if source.part else None for line in lines]
+                    for source in sources]  # fmt: skip
+
+        assert parts(named) == parts(()), (named, text)
+        found = [[(one.line, one.part) for one in audit(
+            [paper], None, classifier=_AUDIT_RULES[0], design="observational",
+            answers=answers).causal.found] for answers in (None, Answers(results=named))]
+        assert found[0] and found[0] == found[1], (named, text, found)
 
 
 def _the_answers_are_ignored(patch: pytest.MonkeyPatch) -> None:
@@ -6785,6 +6813,31 @@ def _a_question_is_asked_as_a_warning(patch: pytest.MonkeyPatch) -> None:
     real = report.question
     patch.setattr(report, "question", lambda section, code, message: replace(
         real(section, code, message), severity=WARN))  # fmt: skip
+
+
+def _a_results_title_is_a_part_s_results(patch: pytest.MonkeyPatch) -> None:
+    """`--results` given to the parts the audit's sentence readers place a line in, as
+    `audit._structure` has it to hand: the heading named is their Results."""
+    import manuscript_guard.audit as audit
+    from manuscript_guard.auditing.abstract import given_title
+
+    real_structure, real_parts = audit._structure, audit._parts
+
+    def structure(text, hidden, tables, document, spans, original, named=()):
+        given = {given_title(title) for title in named}
+
+        def parts(sections, document):
+            return real_parts([dataclasses.replace(s, title="Results")
+                               if given_title(s.title) in given else s for s in sections],
+                              document)  # fmt: skip
+
+        patch.setattr(audit, "_parts", parts)
+        try:
+            return real_structure(text, hidden, tables, document, spans, original, named)
+        finally:
+            patch.setattr(audit, "_parts", real_parts)
+
+    patch.setattr(audit, "_structure", structure)
 
 
 def _a_results_title_is_the_results_to_g8(patch: pytest.MonkeyPatch) -> None:
@@ -23173,8 +23226,12 @@ BROKEN = {
         _a_question_is_asked_as_a_warning,
         test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
     ),
-    "a title given as the Results' is the Results to G8": (
+    "a title given as the Results' is a Results name everywhere": (
         _a_results_title_is_the_results_to_g8,
+        test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
+    ),
+    "a title given as the Results' is the Results of the sentence readers' parts": (
+        _a_results_title_is_a_part_s_results,
         test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
     ),
     "an RRID keeps the punctuation after it": (

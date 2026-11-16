@@ -229,7 +229,7 @@ def view(arguments: list[str]) -> dict:
     def told(report, discrimination) -> None:
         _AUDITED.append((report, discrimination))
         try:
-            made.append(drawn(report, discrimination, Path.cwd(), details=details))
+            made.append(drawn(report, discrimination, Path.cwd(), details=details, page=True))
         except Exception as exc:  # noqa: BLE001 - the text is printed whatever the view does
             if crashes.debugging():
                 raise
@@ -266,7 +266,8 @@ def commented(paper: str, target: str) -> dict:
         return {"error": f"{path.name} is not a .docx"}
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
-        written = write(path, Path(target), notes_of(_AUDITED[-1][0], path), date=date)
+        written = write(path, Path(target), notes_of(_AUDITED[-1][0], path, page=True),
+                        date=date)
     except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
         return {"error": str(exc)}
     return {"placed": written.placed, "listed": len(written.listed)}
@@ -282,7 +283,8 @@ def report_pdf(target: str) -> dict:
         return {"error": "no audit was run"}
     report, discrimination = _AUDITED[-1]
     try:
-        data = pdf_of(report, discrimination, Path.cwd(), [path.name for path in report.papers])
+        data = pdf_of(report, discrimination, Path.cwd(), [path.name for path in report.papers],
+                      page=True)
         Path(target).write_bytes(data)
     except (OSError, ValueError) as exc:
         return {"error": str(exc)}

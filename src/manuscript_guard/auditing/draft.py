@@ -24,8 +24,11 @@ FIRST = (f"Draft from manuscript-guard {__version__}: findings and their places 
 #: The sections a finding goes to the References or the Language part of the draft from.
 REFERENCE_SECTIONS = frozenset({sections.REFERENCES, sections.CITED, sections.SELF_CITATION})
 LANGUAGE_SECTIONS = frozenset({sections.WRITING, sections.LANGUAGE})
-#: The notes "What was not checked" says, left out of the further findings.
-UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared"})
+#: The notes "What was not checked" says, left out of the further findings; and the questions
+#: the audit asks the author (`report.question`), which are the author's to answer and not a
+#: referee's, and whose reason "What was not checked" says.
+UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared",
+                             "question-no-abstract", "question-no-results"})
 #: The places listed for one code under Language and notation.
 FIRST_PLACES = 3
 #: What a draft always lists as not checked, whatever was given.
@@ -206,7 +209,12 @@ def _unchecked_of_audit(report) -> list[str]:
                      "items, so no total, share, n or flow in them was checked; their numbers "
                      "were read as the text's.")  # fmt: skip
     if report.abstract is not None and not report.abstract.compared:
-        found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
+        from manuscript_guard.auditing.abstract import TOLD
+
+        # Who gave the answer the draft does not say: the manuscript's authors said nothing
+        # to the audit a referee ran (round 1 of #697).
+        why = TOLD.get(report.abstract.why_not, report.abstract.why_not)
+        found.append(f"The Abstract against Results: not compared, {why}.")
     titles = getattr(report, "titles", None) or []
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")

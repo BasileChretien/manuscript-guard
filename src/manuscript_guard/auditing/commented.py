@@ -61,6 +61,8 @@ _PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CONTENT = "http://schemas.openxmlformats.org/package/2006/content-types"
 #: Who the comments are by, as Word shows it beside each.
 AUTHOR = "manuscript-guard audit"
+#: What a question to the author is said as, apart from the findings (`report.question`).
+QUESTION = "A question for the author"
 #: A finding's own words as its message quotes them: 'behaviours', 'p<0.05'.
 _QUOTED = re.compile(r"'([^'\n]{1,60})'")
 #: Its first word, where the message opens with what it is about, a number or an
@@ -197,13 +199,15 @@ def _paragraph(texts: list[tuple[str, list]], note: Note) -> tuple[int, tuple[in
     return None
 
 
-def notes_of(report, paper: Path) -> list[Note]:
+def notes_of(report, paper: Path, *, page: bool = False) -> list[Note]:
     """Every finding of the audit `report` on `paper`, and those on no file (a paper or an
     output that could not be read), as a note: anchored on its own words where its message
     names them and its quote holds them (`words_of`), else on its quote; with the place the
     report gives it, for the list on the first paragraph where it stands nowhere. Each says
     its section, its message, its hint, and whether `--strict` counts it, all as a reader is
-    told them, who runs no script and types no flag (`reader.for_a_reader`). A finding on
+    told them, who runs no script and types no flag (`reader.for_a_reader`), a question's
+    answer as the web page's box or tick with `page` and as its flag without (round 1 of
+    #697). A finding on
     another file the audit read, a supplement, an output, the journal's profile, is that
     file's, and not the document's."""
     from manuscript_guard.auditing.reader import FAILS, for_a_reader
@@ -215,10 +219,10 @@ def notes_of(report, paper: Path) -> list[Note]:
     for item in items(report):
         if item.path is not None and Path(item.path).resolve() != target:
             continue
-        said = f"{item.section}: {item.message}"
+        said = f"{QUESTION}: {item.message}" if item.question else f"{item.section}: {item.message}"
         if item.hint:
             said += f"\nHint: {item.hint}"
-        said = for_a_reader(said)
+        said = for_a_reader(said, page=page)
         if item.counted:
             said += f"\n{FAILS}"
         placer = item.placer if item.placer is not None else placers.get(item.path)

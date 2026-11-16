@@ -122,6 +122,11 @@ _NO_ABSTRACT_ANSWER = ("; if it has none, run `audit` again with `--no-abstract`
 ASK_NO_ABSTRACT = f"{_ABSTRACT_SEEN} and audit it again{_NO_ABSTRACT_ANSWER}"
 ASK_NO_ABSTRACT_PDF = (f"{_ABSTRACT_SEEN} (a PDF cannot be given one) in the document the PDF "
                        f"was made from, and audit that document{_NO_ABSTRACT_ANSWER}")
+#: Asked where a PDF is read beside a file of another kind, the one question of the run being
+#: true of both (the check of 643700b, #697).
+ASK_NO_ABSTRACT_MIXED = (f"{_ABSTRACT_SEEN} (in a PDF's case, in the document the PDF was made "
+                         f"from, since a PDF cannot be given one) and audit it again"
+                         f"{_NO_ABSTRACT_ANSWER}")
 _RESULTS_SEEN = (
     f'No section is read as the Results (no heading is "Results" or one of the names they go '
     f"by: {_NAMES}), so the Abstract was not compared with them. Which heading holds the "
@@ -134,6 +139,9 @@ ASK_NO_RESULTS = (f"{_RESULTS_SEEN}a title typed in bold or numbered by Word, ma
                   f"heading, in Word by a heading style, and audit it again{_NO_RESULTS_ANSWER}")
 ASK_NO_RESULTS_PDF = (f"{_RESULTS_SEEN}make it a heading in the document the PDF was made from "
                       f"and audit that document{_NO_RESULTS_ANSWER}")
+ASK_NO_RESULTS_MIXED = (f"{_RESULTS_SEEN}a title typed in bold or numbered by Word, make it a "
+                        f"heading, in Word by a heading style and in a PDF's case in the "
+                        f"document the PDF was made from, and audit it again{_NO_RESULTS_ANSWER}")
 #: Why nothing was compared, where the author answered that there is nothing to compare;
 #: and the same in a referee's draft, which names no one (`draft`).
 SAID_NO_ABSTRACT = "the author says the paper has no Abstract"

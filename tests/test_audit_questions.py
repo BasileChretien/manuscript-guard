@@ -309,16 +309,20 @@ def test_a_section_searched_without_the_answer_named_as_the_results_is_not_said(
 
 
 @pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
-def test_a_pdf_beside_a_word_paper_is_asked_of_as_the_word_paper(tmp_path: Path) -> None:
-    """Round 2 of #697: the PDF wording only where every paper read, figures aside, is a
-    PDF: a supplement in PDF beside a Word paper leaves the Word paper's question."""
+@pytest.mark.parametrize("pdf_first", [True, False])
+def test_a_pdf_beside_a_word_paper_is_asked_in_words_true_of_both(
+    tmp_path: Path, pdf_first: bool
+) -> None:
+    """Round 2 of #697 and the check of 643700b: the question is asked once for the run, so a
+    PDF read beside a Word paper, either way round, is asked in words true of both."""
     from test_audit_commented import docx
     from test_audit_pdf import write
 
     pdf = write(tmp_path / "supplement.pdf", ["A supplement", "Of 412, 77 had it."])
     word = docx(tmp_path / "paper.docx", UNLABELLED_BODY)
-    asked = [item.message for item in report.items(audit([pdf, word], None)) if item.question]
-    assert asked == [abstract.ASK_NO_ABSTRACT]
+    papers = [pdf, word] if pdf_first else [word, pdf]
+    asked = [item.message for item in report.items(audit(papers, None)) if item.question]
+    assert asked == [abstract.ASK_NO_ABSTRACT_MIXED]
 
 
 #: A paper whose results stand under a descriptive title, and whose Discussion claims a

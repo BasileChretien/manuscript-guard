@@ -91,23 +91,32 @@ QUESTIONS = "Questions for the author (not counted by --strict):"
 ANSWERS = "On the answers given (a note, not counted by --strict):"
 
 
-def _asked(pdf: bool) -> dict[str, str]:
-    """Each question by its code, as asked of a paper that is a PDF or of one that is not."""
+def _asked(pdf: str) -> dict[str, str]:
+    """Each question by its code, as asked where the papers read are all PDFs ("all"), PDFs
+    beside papers of another kind ("some"), or none ("")."""
     from manuscript_guard.auditing import abstract
 
-    if pdf:
+    if pdf == "all":
         return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT_PDF,
                 abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS_PDF}  # fmt: skip
+    if pdf == "some":
+        return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT_MIXED,
+                abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS_MIXED}  # fmt: skip
     return {abstract.ASKED_NO_ABSTRACT: abstract.ASK_NO_ABSTRACT,
             abstract.ASKED_NO_RESULTS: abstract.ASK_NO_RESULTS}  # fmt: skip
 
 
-def _a_pdf(report) -> bool:
-    """Whether every paper read, figures aside, is a PDF, which cannot be given a heading: a
-    PDF supplement beside a Word paper leaves it the Word paper's (round 2 of #697)."""
+def _a_pdf(report) -> str:
+    """Whether the papers read, figures aside, are all PDFs, which cannot be given a heading
+    ("all"), PDFs beside papers of another kind ("some"), or none (""). The question is asked
+    once for the run, so a mixed run is asked in words true of both (round 2 of #697, and
+    the check of 643700b)."""
     papers, pdfs = getattr(report, "papers", ()), getattr(report, "pdfs", None) or {}
-    return bool(pdfs) and not any(path.suffix.lower() in (".docx", ".md", ".markdown", ".txt",
-                                                          ".tex") for path in papers)
+    if not pdfs:
+        return ""
+    other = any(path.suffix.lower() in (".docx", ".md", ".markdown", ".txt", ".tex")
+                for path in papers)  # fmt: skip
+    return "some" if other else "all"
 
 
 @dataclass(frozen=True)
@@ -467,7 +476,7 @@ def _flow_items(report) -> list[Item]:
     ]  # fmt: skip
 
 
-def _abstract_items(read, pdf: bool = False) -> list[Item]:
+def _abstract_items(read, pdf: str = "") -> list[Item]:
     """What the Abstract against Results says, item by item: a conflict counted, the rest
     not; where there is nothing to compare, the question to the author in place of the
     reason, or the reason where they answered; and each note on the answers given."""

@@ -2659,23 +2659,11 @@ def _a_line_break_in_a_bracket_is_no_space(patch: pytest.MonkeyPatch) -> None:
         patch.setattr(language_gate, name, re.compile(pattern.replace(broken, "")))
 
 
-def _the_paper_s_title_is_a_section_s_heading(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_the_paper_s_title", lambda headings, *, opens: frozenset())
-
-
-def _only_a_heading_over_the_paper_is_its_title(patch: pytest.MonkeyPatch) -> None:
-    """The first heading before the opening, at its level, read as a section's."""
-    from manuscript_guard.auditing.abstract import _over_the_paper
-    from manuscript_guard.text.sections import Section
-
-    def over(headings, *, opens: bool) -> frozenset[int]:
-        sections = [Section(title=heading.title, level=heading.level, body="", line=0)
-                    for heading in headings]  # fmt: skip
-        found = _over_the_paper(sections)
-        return frozenset(heading.start for heading, section in zip(headings, sections, strict=True)
-                         if id(section) in found)  # fmt: skip
-
-    patch.setattr(language_gate, "_the_paper_s_title", over)
+def _a_heading_defines_though_no_named_section_stands_over_it(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_under_a_section", lambda headings, chain=(): frozenset(
+        heading.start for heading in headings))  # fmt: skip
 
 
 def _a_heading_defines_in_any_part(patch: pytest.MonkeyPatch) -> None:
@@ -25985,12 +25973,8 @@ BROKEN = {
         _a_line_break_in_a_bracket_is_no_space,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "the paper's title is a section's heading": (
-        _the_paper_s_title_is_a_section_s_heading,
-        test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
-    ),
-    "only a heading over the paper is its title": (
-        _only_a_heading_over_the_paper_is_its_title,
+    "a heading defines though no named section stands over it": (
+        _a_heading_defines_though_no_named_section_stands_over_it,
         test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does,
     ),
     "a heading defines in any part": (

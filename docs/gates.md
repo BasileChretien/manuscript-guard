@@ -53,9 +53,10 @@ shape. The shapes:
   form: `\citep[SDSS DR15;][]{key}`, or its second where the first is empty, `\citet[][BC03]{key}`;
 - an entry of a list of abbreviations.
 
-A definition in a section's heading of the main text, the paper's or the supplement's,
-counts as one in the text does; one in the Abstract's headings, and the paper's title typed
-as a heading, define nothing. A caption, a heading, and the shape a note is written in, "X =
+A definition in a heading counts as one in the text does where a heading over it names a
+section, "## Force and electromyography (EMG)" under the Methods, in the paper's main text
+or the supplement's; one in the Abstract's headings, a title, and any heading with no named
+section over it define nothing. A caption, a heading, and the shape a note is written in, "X =
 long form" or "X: long form", wherever it stands, a sentence of the text among them, may
 restate the text's definition, as tables are asked to define their own short forms; one
 that gives the form another long form is reported. A short form followed by a

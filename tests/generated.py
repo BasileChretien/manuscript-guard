@@ -721,7 +721,7 @@ DEFINING = (
     ("the latent noise components, commonly referred to as LNC terms", "as LNC", "LNC"),
     ("a gait balance scale, called GBS, in all", "called GBS", "GBS"),
     ("the Deep Field Survey (hereafter DFS)", "hereafter DFS", "DFS"),
-    ("## Grip strength and electromyography (EMG)", "(EMG", "EMG"),
+    ("# Methods\n\n## Grip strength and electromyography (EMG)", "(EMG", "EMG"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends

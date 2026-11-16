@@ -23803,13 +23803,15 @@ Open, recorded as each change landed:
     restates too, and a note written "Beck Depression Inventory (BDI)" under a table is a
     second definition.
     Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
-  - A heading defines only where it is a section's heading in a main text, the paper's or
-    the supplement's, not in an Abstract. The paper's title typed as a heading is read as the
-    audit reads it, over the Abstract or the Introduction, and only as the first heading of
-    the file the paper opens with, the first to print a heading, naming no section; a title
-    over the Methods alone, or with a heading before it, defines as a heading does.
+  - A heading defines only where a heading over it names a section by the closed list
+    (`section_name_alone`), "## Force and electromyography (EMG)" under the Methods, in a
+    main text, the paper's or the supplement's, not in an Abstract (Basile, 2026-11-16,
+    "Only under a named section"). A title, and any heading with no such heading over it,
+    defines nothing, as before #698: so does a section of its own named otherwise,
+    "\section{Data from the Sloan Sky Survey (SSS)}", and a LaTeX file input under a
+    section of the file that inputs it is read from its own headings alone.
     Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`
-    and `tests/test_definition_shapes.py::test_a_latex_input_file_s_first_heading_is_no_title`.
+    and `tests/test_definition_shapes.py::test_a_heading_with_no_named_section_over_it_defines_nothing`.
   - After a sign the long form is the words after it whole, give or take an article, two
     words at least, as in "ROR (reporting odds ratio)": a country's code, "XY: Kenya", one
     word, and an instrument with a word before its letters, "DCQ = Small Developmental
@@ -23819,8 +23821,6 @@ Open, recorded as each change landed:
     Depression" over "Inventory.", defines nothing (Basile, 2026-11-16, "Wrapped note
     defines nothing"), so a short form only such a note defines is reported undefined.
     Accepted.
-  - A supplement's title typed as a heading over its Methods defines, as a heading in the
-    supplement's main text does. Accepted.
   - A section's name before a colon is a label (`SECTION_NAMES`),
     but a label not on that list, "AIM:", is read as any short form is. A colon that
     introduces words beginning with the short form's letters defines it all the same:

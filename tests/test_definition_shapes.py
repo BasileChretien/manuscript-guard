@@ -124,7 +124,7 @@ def _all_shapes() -> tuple[list[str], list[str], set[str]]:
 def test_each_shape_defines_where_its_words_hold_the_short_form(
     kind: str, sentence: str, short: str
 ) -> None:
-    read = _file(0, Path("main.md"), f"{sentence}\n", [], False)
+    read = _file(0, Path("main.md"), f"# Methods\n\n{sentence}\n", [], False)
     defined = {found for _at, found, _long in read.definitions}
     assert short in defined, (kind, read.definitions)
 
@@ -133,7 +133,7 @@ def test_each_shape_defines_where_its_words_hold_the_short_form(
 def test_each_shape_defines_nothing_where_its_words_do_not_match(
     kind: str, sentence: str, short: str
 ) -> None:
-    read = _file(0, Path("main.md"), f"{sentence}\n", [], False)
+    read = _file(0, Path("main.md"), f"# Methods\n\n{sentence}\n", [], False)
     assert short not in {found for _at, found, _long in read.definitions}, (kind, read.definitions)
 
 
@@ -202,12 +202,33 @@ def test_a_heading_that_the_text_defines_again_is_restated(project: Path) -> Non
     assert found == [], found
 
 
+@pytest.mark.parametrize("text", [
+    "# Methods\n\n## Statistical analysis (SA)\n\nThe SA was run.",
+    # docx-sport-A3: a subheading under a subsection of the Methods.
+    "# Materials and Methods\n\n## Apparatus\n\n### Grip and electromyography (EMG)\n\nThe EMG "
+    "was read."])  # fmt: skip
+def test_a_heading_under_a_named_section_defines(project: Path, text: str) -> None:
+    assert _judged(project, f"{text}\n") == []
+
+
+def test_a_title_in_the_second_file_of_a_paper_defines_nothing(project: Path) -> None:
+    """Round 5 of #698: a title page alone in `main.md`, the title a heading opening the
+    next file, defines nothing there; the text's definition is the only one."""
+    title = "# Reporting odds ratio (ROR) in older adults\n\n## Introduction\n\n"
+    for said, found in (("The reporting odds ratio (ROR) was computed, and the ROR was high.",
+                         []), ("The ROR was computed.", [("abbreviation-undefined", "ROR")])):
+        (project / "manuscript" / "01-main.md").write_text(f"{title}{said}\n", encoding="utf-8")
+        assert _judged(project, "Authors: A. Author\n") == found
+
+
 @pytest.mark.parametrize("title", [
     # The paper's title typed as a heading of the Introduction's level, or above the
     # Abstract or the Introduction (round 1 of #698).
     "# Reporting odds ratio (ROR) in older adults\n\n# Introduction",
     "# Reporting odds ratio (ROR) in older adults\n\n# Abstract\n\nIt was read.\n\n# Background",
     "# Reporting odds ratio (ROR) in older adults\n\n## Introduction",
+    # Round 5: a title under a heading that names no section, "Original article".
+    "# Original article\n\n## Reporting odds ratio (ROR) in older adults\n\n### Introduction",
 ])  # fmt: skip
 def test_the_paper_s_title_typed_as_a_heading_defines_nothing(project: Path, title: str) -> None:
     """The title is no section's heading in the main text: a short form it defines is still
@@ -288,20 +309,17 @@ def test_a_heading_defines_in_the_supplement(project: Path) -> None:
         f.message for f in report.findings]
 
 
-def test_a_latex_input_file_s_first_heading_is_no_title(tmp_path: Path) -> None:
-    """The first heading read as the title is the opening file's only: an input file that
-    opens on "\\section{Data from the Sloan Sky Survey (SSS)}" before its Background
-    defines SSS (round 2 of #698)."""
+def test_a_heading_with_no_named_section_over_it_defines_nothing(tmp_path: Path) -> None:
+    """Basile, 2026-11-16, "Only under a named section": a heading defines only under one
+    that names a section; "\\section{Data from the Sloan Sky Survey (SSS)}" with nothing
+    over it defines nothing, as before #698, and neither does a title."""
     (tmp_path / "sections").mkdir()
     (tmp_path / "main.tex").write_text(_latex("\\section{Introduction}\nWe read it.\n\n"
                                               "\\input{sections/data}\n"), encoding="utf-8")
     (tmp_path / "sections" / "data.tex").write_text(
         "\\section{Data from the Sloan Sky Survey (SSS)}\n\\subsection{Background}\n"
         "The SSS was read.\n", encoding="utf-8")
-    defined = [found for read in _latex_read(tmp_path, None)
-               for _at, found, _long in read.definitions]  # fmt: skip
-    assert defined == ["SSS"], defined
-    # The file the paper opens with is the first that prints a heading (round 3 of #698).
+    assert not [one for read in _latex_read(tmp_path, None) for one in read.definitions]
     root = tmp_path / "front"
     root.mkdir()
     (root / "main.tex").write_text(_latex("\\input{front}\n\\input{body}\n"), encoding="utf-8")

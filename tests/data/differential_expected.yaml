@@ -40,11 +40,6 @@ expected:
     why: >-
       the audit's list of short forms used and not defined is G14's, which reads decision
       29's shapes as definitions now: a form a new shape defines leaves the list
-  - reading: abbreviation edits
-    why: >-
-      a definition in a heading counts as one in the text does (decision 29), so one that
-      nothing uses again is written out where it stands, "electromyography (EMG)" in a
-      heading as in a sentence
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens

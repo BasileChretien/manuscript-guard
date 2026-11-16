@@ -1631,6 +1631,7 @@ def _file(
     spans = [_heading_span(text, heading) for heading in headings]
     prose = _hide(hidden, spans).replace(NUL, " ")
     statements = _run_in_statements(hidden, headings)
+    named = _under_a_section(headings, chain)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
                        lists=unmarked_reference_lists(text), statements=statements,
                        keywords=_keywords_lists(text, hidden, headings))  # fmt: skip
@@ -1648,35 +1649,35 @@ def _file(
         tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
         title_page=title_page,
-        titles=_titles(hidden, spans, _the_paper_s_title(headings, opens=opens)),
+        titles=_titles(hidden, spans, named),
     )  # fmt: skip
 
 
 def _titles(
-    words: str, spans: Iterable[tuple[int, int]], title: frozenset[int] = frozenset()
+    words: str, spans: Iterable[tuple[int, int]], named: frozenset[int]
 ) -> tuple[tuple[int, str], ...]:
     """Each heading's text in `words`, where it starts, every NUL a space: what a definition
-    in a heading is read in, each heading on its own. Not the paper's title typed as a
-    heading, whose starts are `title` (`_the_paper_s_title`)."""
+    in a heading is read in, each heading on its own. Only a heading under one that names a
+    section, whose starts are `named` (`_under_a_section`)."""
     return tuple((start, words[start:end].replace(NUL, " ")) for start, end in sorted(spans)
-                 if start not in title and words[start:end].strip(NUL + " \t\r\n"))  # fmt: skip
+                 if start in named and words[start:end].strip(NUL + " \t\r\n"))  # fmt: skip
 
 
-def _the_paper_s_title(headings: Sequence[Heading], *, opens: bool) -> frozenset[int]:
-    """Where the heading starts that is the paper's title typed as a heading, which is no
-    section's heading and defines nothing (round 1 of #698): the first heading of the file
-    the paper opens with (`opens`), nothing of its text before it (round 4), where it names
-    no section and stands over the Abstract or the Introduction as the audit reads the title
-    (`auditing.abstract._over_the_paper`), read a level above the rest: "# Reporting odds
-    ratio (ROR) in older adults" before "# Introduction". `headings` have a `title`, a
-    `level` and a `start`."""
-    from manuscript_guard.auditing.abstract import _over_the_paper
-
-    if not (opens and headings) or section_name_alone(plain_title(headings[0].title)):
-        return frozenset()
-    lifted = [Section(title=headings[0].title, level=0, body="", line=0),
-              *(Section(title=one.title, level=one.level, body="", line=0) for one in headings[1:])]
-    return frozenset({headings[0].start} if id(lifted[0]) in _over_the_paper(lifted) else ())
+def _under_a_section(headings: Sequence[Heading], chain: Iterable[Section] = ()) -> frozenset[int]:
+    """Where each heading starts that stands under a heading naming a section by the closed
+    list (`section_name_alone`), "## Force and electromyography (EMG)" under the Methods:
+    only such a heading defines (Basile, 2026-11-16, "Only under a named section"). A title,
+    or any heading with none such over it, defines nothing, as before #698. `chain` are the
+    headings a file opens under; `headings` have a `title`, a `level` and a `start`."""
+    over = [(one.level, section_name_alone(plain_title(one.title)) is not None) for one in chain]
+    found = set()
+    for heading in headings:
+        while over and over[-1][0] >= heading.level:
+            over.pop()
+        if any(named for _level, named in over):
+            found.add(heading.start)
+        over.append((heading.level, section_name_alone(plain_title(heading.title)) is not None))
+    return frozenset(found)
 
 
 def _in_titles(titles: Iterable[tuple[int, str]]) -> list[tuple[int, str, str]]:
@@ -1832,13 +1833,9 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
     for supplementary in (False, True):
         read: dict[str, _LatexFile] = {}
         document = read_document(root, supplementary=supplementary)
-        # The file the paper opens with: the first that prints a heading (round 3 of #698).
-        opener = next((source.path for source, start, end in _stretches(document.sources)
-                       if any(start <= h.start < end for h in source.reading.headings)), None)
         for source, start, end in _stretches(document.sources):
             if source.path not in read:
-                read[source.path] = _latex_file(source, supplementary, abstract_title,
-                                                opens=source.path == opener)  # fmt: skip
+                read[source.path] = _latex_file(source, supplementary, abstract_title)
             whole = read[source.path]
             outside = ((0, start), (end, len(source.text)))
             files.append(_assembled(
@@ -1912,11 +1909,7 @@ def _latex_cells(
     return tuple(cells)
 
 
-def _latex_file(
-    source: Source, supplementary: bool, abstract_title: str | None, *, opens: bool = True
-) -> _LatexFile:
-    """What G14 reads of a LaTeX file; `opens` where it is the document's entry file, whose
-    headings alone may be the paper's title (`_the_paper_s_title`)."""
+def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
     from manuscript_guard.text.latex.views import bindings, markdown_view
     from manuscript_guard.text.latex.words import _preamble, words
 
@@ -1939,7 +1932,7 @@ def _latex_file(
         words=_hide(seen.text, accessions),
         untitled=_hide(seen.text, [*titles, *accessions]),
         titles=_titles(_hide(seen.text, accessions), titles,
-                       _the_paper_s_title(source.reading.headings, opens=opens)),
+                       _under_a_section(source.reading.headings)),
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,

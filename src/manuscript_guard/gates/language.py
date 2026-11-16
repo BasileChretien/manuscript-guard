@@ -16,11 +16,12 @@ an abbreviation in a law review, so the list of what may stand undefined is data
 `language: known_abbreviations:` in `paper.yaml`.
 
 **Every finding is a warning.** A definition is recognised by its shape, a long form with
-the short form in brackets after it or the other way round, and the long form is matched to
-the short one letter by letter (Schwartz and Hearst, 2003). That reading is good and not
-exact: a name in capitals is not an abbreviation, and a definition written as a sentence
-("hereafter ROR") is not seen. A check that can be wrong may advise; it may not stop a
-build.
+the short form in brackets after it or the other way round, after a dash, an equals sign or
+a colon, after "known as" and its kin, or in a LaTeX citation's note (`_definitions`), and
+the long form is matched to the short one letter by letter (Schwartz and Hearst, 2003).
+That reading is good and not exact: a name in capitals is not an abbreviation, and a
+definition written as a sentence of another shape ("ROR stands for") is not seen. A check
+that can be wrong may advise; it may not stop a build.
 
 Three texts are read apart, because each is read apart. The abstract is indexed and read
 without the paper, so what it uses it must define. The main text does not inherit from the
@@ -135,6 +136,27 @@ _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[\s{re.escape(_QUOTES)}]*"
     r"(?:$|[;,:])"
 )
+# The short form opening a bracket before one more word or a whole number, and nothing
+# else: "changing-look AGNs (CL AGNs)", "the Achieving a Better Life Experience Act (ABLE
+# Act)", "the Electronic Supplementary Material (ESM 1)" (decision 29, the author,
+# 2026-11-16; three preprints of the real-paper corpus). A separator may end it where
+# nothing but space follows, as a citation the mask has blanked leaves pandoc's "[SDSS
+# DR15; @york2000]" and as a LaTeX citation's note is, `\\citep[SDSS DR15;][]{key}`. More
+# after it is a sentence's, "Wortmannin (PI3K inhibitor, 2180)", and a statistic is none:
+# "(HR 1.32, 95% CI ...)", "(MDD 40 mg)".
+_OPENS_BEFORE = re.compile(
+    rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[{re.escape(_QUOTES)}]*"
+    rf"[ \t\N{{NO-BREAK SPACE}}]+[{re.escape(_QUOTES)}]*"
+    rf"(?:(?=[^\W_]*[^\W\d_]){_PARTS}|\d+)[\s{re.escape(_QUOTES)}]*(?:[;,]\s*)?$"
+)
+# A bracket that lists short forms and nothing else, "(CAP, CAP-T, CAP-TV, CAP-PD)" (an
+# education preprint of the real-paper corpus): each is read against the words before
+# the bracket, as one alone is.
+_LISTED = re.compile(
+    rf"[\s{re.escape(_QUOTES)}]*{_PARTS}[\s{re.escape(_QUOTES)}]*"
+    rf"(?:[;,][\s{re.escape(_QUOTES)}]*{_PARTS}[\s{re.escape(_QUOTES)}]*)+$"
+)
+_LISTED_ITEM = re.compile(_PARTS)
 # The short form closing a bracket after a semicolon or a comma, its long form before the
 # separator: "(i.e. time to task failure; TTF)" (an exercise physiology preprint of the
 # real-paper corpus), "[that is, the hazard ratio, HR]". The last separator is the one.
@@ -196,6 +218,36 @@ _TYPED_BREAK = rf"{_TYPED_GAP}(?:\n{_TYPED_GAP})?"
 _BOUND = re.compile(
     rf"{_MARKS}(?:{_TYPED_GAP}(?:[:,]|{_DASH}))?{_TYPED_BREAK}"
     rf"(?:\{{\{{\s*|\\mg(?![A-Za-z])\s*(?:\[[^\]\n]*\]\s*)?\{{\s*){_VALUE_BINDING}"
+)
+#: A short form, then an equals sign or a colon, then its long form, which runs to a
+#: separator, a stop, a bracket, a table cell's bar or the paragraph's end: a table's note,
+#: "ESR= erythrocyte sedimentation rate; BDI = Beck Depression Inventory", "EA/NEA =
+#: effect/non-effect allele" (decision 29; three preprints of the real-paper corpus), or a
+#: sentence's. Several short forms a slash joins are paired with the parts of the long
+#: form's word a slash joins (`_paired`). Nothing that joins a word stands before it, so
+#: `p_exp = ...` names no `exp`. The long form goes on over a line break only onto a line
+#: that opens with a word, as a wrapped line does: not onto a block quote's next line. It is
+#: looked ahead to, so that a pair after a label, "Countries: CM: Cameroon", is read as well
+#: as the label.
+_PAIRED = re.compile(
+    rf"(?<![\w/.\-])(?P<shorts>{_PARTS}(?:/{_PARTS})*)[ \t\N{{NO-BREAK SPACE}}]*[=:]"
+    r"(?=[ \t\N{NO-BREAK SPACE}]*(?P<long>(?:[^;,.=:|()\[\]\n\x00]"
+    r"|\r?\n(?=[ \t\N{NO-BREAK SPACE}]*[^\W\d_])){1,300}))"
+)
+#: The words that name a short form after its long form, as "long form (SHORT)" does:
+#: "the L/U ratio known as IRX", "recovered individuals, commonly referred to as SIR
+#: models", "the survey (hereafter SDSS)" (decision 29). Not a word's end: "so-called".
+_NAMED_AS = re.compile(
+    r"(?<![\w-])(?:(?:commonly[ \t\N{NO-BREAK SPACE}\n]+)?referred[ \t\N{NO-BREAK SPACE}\n]+to"
+    r"[ \t\N{NO-BREAK SPACE}\n]+as|known[ \t\N{NO-BREAK SPACE}\n]+as|called|hereafter,?)"
+    rf"[ \t\N{{NO-BREAK SPACE}}\n]+{_MARKS}(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
+)
+#: A LaTeX citation with its optional arguments, natbib's and biblatex's: `\\citep[SDSS
+#: DR15;][]{key}`, `\\citet[][BC03]{key}`, `\\autocite[MaNGA]{key}`. Which command cites is
+#: the reader's call (`text.latex.mask._cites`).
+_CITATION = re.compile(
+    r"\\(?P<name>[A-Za-z]+)\*?[ \t]*\[(?P<first>[^\[\]{}\n]{0,300})\]"
+    r"(?:[ \t]*\[(?P<second>[^\[\]{}\n]{0,300})\])?[ \t]*\{"
 )
 #: The end of a line, after a closing mark and a citation: where a list item's ends.
 _LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
@@ -1016,8 +1068,9 @@ def _stem(short: str, long: str) -> str:
 
 
 def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
-    """A definition with its short form in the bracket: "reporting odds ratio (ROR)"."""
-    opening = _OPENS_WITH.match(bracket.group(1))
+    """A definition with its short form in the bracket: "reporting odds ratio (ROR)", and
+    before one more word or a number, "changing-look AGNs (CL AGNs)" (`_OPENS_BEFORE`)."""
+    opening = _OPENS_WITH.match(bracket.group(1)) or _OPENS_BEFORE.match(bracket.group(1))
     if opening is None or not _may_be_defined(opening.group("short")):
         return None
     short = opening.group("short")
@@ -1168,19 +1221,27 @@ def _long_after(
     # The search starts a short form's length back, so it can start inside a word.
     if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
         return None
-    words = bracket.group(1).split()
+    long = _spelt_after(short, bracket.group(1).split())
+    if long is None:
+        return None
+    return head, _stem(short, long), long
+
+
+def _spelt_after(short: str, words: list[str]) -> str | None:
+    """The long form `short` abbreviates where `words` stand after it and are its long form
+    whole, give or take an article: "ROR (see the ratio results)" matches its letters from
+    "ratio" on and defines nothing. Two words at least, and within Schwartz and Hearst's
+    bound."""
     if not 2 <= len(words) <= _window(short):
         return None
     joined = " ".join(words)
     long = _long_form(_singular(short), joined)
     if long is None:
         return None
-    # The long form has to be the bracket, give or take an article: "ROR (see the ratio
-    # results)" matches its letters from "ratio" on and defines nothing.
     rest = joined[: joined.rfind(long)].strip(_EDGES + " ").lower()
     if rest and rest + " " not in _ARTICLES:
         return None
-    return head, _stem(short, long), long
+    return long
 
 
 def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
@@ -1189,8 +1250,16 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
     (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"; in
     either, the short form closing the bracket after a separator with its long form before
     that, "(i.e. time to task failure; TTF)"; and the short form after a dash, "Basic
-    Payment Scheme - BPS", read by the text as `typed` too where that is given."""
+    Payment Scheme - BPS", read by the text as `typed` too where that is given.
+
+    And the shapes of decision 29 (the author, 2026-11-16), each only saying where a long
+    form and a short form stand, the letters deciding as they do for the rest: each short
+    form of a bracket that lists them, "(CAP, CAP-T)"; "X = long form" and "X: long form"
+    (`_paired`); "known as X" and its kin (`_named_as`); and a LaTeX citation's optional
+    argument opening with the short form, `\\citep[SDSS DR15;][]{key}`, after its long form
+    (`_cited_as`), read in `typed`."""
     found: list[tuple[int, str, str]] = []
+    listed: list[tuple[int, str, str]] = []
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
@@ -1198,15 +1267,116 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
                       or _short_closing(bracket))  # fmt: skip
         if definition is not None:
             found.append(definition)
+        listed += _listed_inside(prose, bracket)
     for bracket in _SQUARE.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
         definition = _short_inside(prose, bracket) or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
+        listed += _listed_inside(prose, bracket)
     # A short form a bracket already defines where it stands is not defined there again.
     bracketed = {at for at, _short, _long in found}
-    return found + [each for each in _dashed(prose, typed) if each[0] not in bracketed]
+    found += [each for each in _dashed(prose, typed) if each[0] not in bracketed]
+    taken = {at for at, _short, _long in found}
+    for each in (*listed, *_paired(prose), *_named_as(prose), *_cited_as(prose, typed)):
+        if each[0] not in taken:
+            taken.add(each[0])
+            found.append(each)
+    return found
+
+
+def _listed_inside(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, str]]:
+    """Each short form of a bracket that lists short forms and nothing else, "Content
+    Acquisition Podcasts (CAP, CAP-T, CAP-TV)", whose letters the words before the bracket
+    hold: each is read against those words on its own, as it would be alone in the
+    bracket, so one long form may define several. None where an item is not a short form."""
+    inside = bracket.group(1)
+    if _LISTED.match(inside) is None:
+        return []
+    items = list(_LISTED_ITEM.finditer(inside))
+    if not all(_may_be_defined(item.group(0)) for item in items):
+        return []
+    before = _paragraph_before(prose, bracket.start())
+    found = []
+    for item in items:
+        long = _read_back(item.group(0), before)
+        if long is not None:
+            found.append((bracket.start(1) + item.start(), _stem(item.group(0), long), long))
+    return found
+
+
+def _paired(prose: str) -> list[tuple[int, str, str]]:
+    """The definitions "X = long form" and "X: long form" (`_PAIRED`), one for each pair of
+    a list: the long form after the sign is matched as one in brackets after its short form
+    is (`_spelt_after`). Short forms a slash joins, "EA/NEA = effect/non-effect allele",
+    are each paired with the part of the long form's one word a slash joins in as many
+    parts, the rest of its words shared: "effect allele" and "non-effect allele". Where no
+    word, or more than one, has as many parts, none of them is read."""
+    found = []
+    for pair in _PAIRED.finditer(prose):
+        shorts = pair.group("shorts").split("/")
+        words = pair.group("long").split()
+        if len(shorts) == 1:
+            readings = [(0, shorts[0], words)]
+        else:
+            joined = [at for at, word in enumerate(words) if word.count("/") == len(shorts) - 1]
+            if len(joined) != 1:
+                continue
+            parts = words[joined[0]].split("/")
+            readings, start = [], 0
+            for short, part in zip(shorts, parts, strict=True):
+                readings.append((start, short, [*words[: joined[0]], part,
+                                                *words[joined[0] + 1 :]]))  # fmt: skip
+                start += len(short) + 1
+        for start, short, spelt in readings:
+            long = _spelt_after(short, spelt) if _may_be_defined(short) else None
+            if long is not None:
+                found.append((pair.start("shorts") + start, _stem(short, long), long))
+    return found
+
+
+def _named_as(prose: str) -> list[tuple[int, str, str]]:
+    """The definitions "long form, known as X" and its kin (`_NAMED_AS`), read as "long form
+    (X)" is: the long form at the end of the words before."""
+    found = []
+    for named in _NAMED_AS.finditer(prose):
+        short = named.group("short")
+        if not _may_be_defined(short):
+            continue
+        long = _read_back(short, _paragraph_before(prose, named.start()))
+        if long is not None:
+            found.append((named.start("short"), _stem(short, long), long))
+    return found
+
+
+def _cited_as(prose: str, typed: str | None) -> list[tuple[int, str, str]]:
+    """The definitions a LaTeX citation's optional argument gives, "the Sloan Digital Sky
+    Survey \\citep[SDSS DR15;][]{key}": its note opens with the short form as a bracket
+    would (`_OPENS_WITH`, `_OPENS_BEFORE`), and the long form stands before the command,
+    as before "(SDSS)". The note is the first argument, or the second where the first is
+    empty, `\\citet[][BC03]{key}`. Read only where the reader blanked the command and kept
+    the note as words, which is a citation's in LaTeX."""
+    from manuscript_guard.text.latex.mask import _cites
+
+    if typed is None or len(typed) != len(prose) or "\\" not in typed:
+        return []
+    found = []
+    for cited in _CITATION.finditer(typed):
+        group = "first" if cited.group("first").strip() or cited.group("second") is None \
+            else "second"  # fmt: skip
+        start, end = cited.span(group)
+        if not _cites(cited.group("name")) or prose[cited.start() : start].strip():
+            continue
+        note = prose[start:end]
+        opening = _OPENS_WITH.match(note) or _OPENS_BEFORE.match(note)
+        if opening is None or not _may_be_defined(opening.group("short")):
+            continue
+        short = opening.group("short")
+        long = _read_back(short, _paragraph_before(prose, cited.start()))
+        if long is not None:
+            found.append((start + opening.start("short"), _stem(short, long), long))
+    return found
 
 
 def _listed_as(form: str, known: _Known) -> bool:
@@ -1405,9 +1575,8 @@ def _file(
     title_page = (title_page_end(hidden, headings, abstract_title) or 0) if opens else 0
     # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
     # not where a reader expects it defined: the abbreviations are read without them.
-    prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
-        NUL, " "
-    )
+    spans = [_heading_span(text, heading) for heading in headings]
+    prose = _hide(hidden, spans).replace(NUL, " ")
     statements = _run_in_statements(hidden, headings)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
                        lists=unmarked_reference_lists(text), statements=statements,
@@ -1425,8 +1594,21 @@ def _file(
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
-        title_page=title_page,
+        title_page=title_page, titles=_titles(hidden, spans),
     )  # fmt: skip
+
+
+def _titles(words: str, spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, str], ...]:
+    """Each heading's text in `words`, where it starts, every NUL a space: what a definition
+    in a heading is read in, each heading on its own."""
+    return tuple((start, words[start:end].replace(NUL, " ")) for start, end in sorted(spans)
+                 if words[start:end].strip(NUL + " \t\r\n"))  # fmt: skip
+
+
+def _in_titles(titles: Iterable[tuple[int, str]]) -> list[tuple[int, str, str]]:
+    """The definitions in each heading of `titles` (`_titles`), at their places in the file."""
+    return [(start + at, short, long) for start, title in titles
+            for at, short, long in _definitions(title)]  # fmt: skip
 
 
 def _markdown_tables(text: str) -> tuple[tuple[int, int], ...]:
@@ -1515,10 +1697,21 @@ def _initials(prose: str, spans: Iterable[tuple[int, int]]) -> frozenset[str]:
 
 
 def _assembled(
-    order: int, path: Path, text: str, hidden: str, prose: str, regions: list[_Region], **more
+    order: int,
+    path: Path,
+    text: str,
+    hidden: str,
+    prose: str,
+    regions: list[_Region],
+    *,
+    titles: tuple[tuple[int, str], ...] = (),
+    **more,
 ) -> _File:
     """A file read: its regions, its definitions, and the texts each reading reads in. A
-    glossary's entries are definitions, after those of its sentences."""
+    glossary's entries are definitions, after those of its sentences, and one of them stands
+    where a sentence's would. `titles` are the headings' texts (`_titles`): a definition in
+    a heading counts as one in the text does (decision 29, the author, 2026-11-16), "Force
+    and electromyography (EMG)", though no use in a heading is read."""
     ends = [*(region.start for region in regions[1:]), len(text)]
     spans = list(zip(regions, ends, strict=True))
     references = [(region.start, end) for region, end in spans if region.scope is None]
@@ -1529,7 +1722,9 @@ def _assembled(
     listed = [(entry.at, _stem(entry.short, entry.long), entry.long)
               for span in glossaries for entry in glossary.entries(prose, raw, span)
               if _may_be_defined(entry.short)]  # fmt: skip
-    definitions = [*_definitions(prose, raw), *listed]
+    entries = {at for at, _short, _long in listed}
+    sentences = [*_definitions(prose, raw), *_in_titles(titles)]
+    definitions = [*(each for each in sentences if each[0] not in entries), *listed]
     restating = frozenset(at for at, _short, _long in definitions
                           if _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)
@@ -1571,6 +1766,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
                 tables=whole.cells, initials=whole.initials,
+                titles=tuple(title for title in whole.titles if start <= title[0] < end),
             ))  # fmt: skip
     return files
 
@@ -1597,6 +1793,8 @@ class _LatexFile:
     initials: frozenset[str] = frozenset()
     #: Where its tables' cells run (`_latex_cells`).
     cells: tuple[tuple[int, int], ...] = ()
+    #: Its headings' texts, where each starts (`_titles`).
+    titles: tuple[tuple[int, str], ...] = ()
 
 
 #: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
@@ -1653,6 +1851,7 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         view=_hide(markdown_view(source, bindings(source)[0]), accessions),
         words=_hide(seen.text, accessions),
         untitled=_hide(seen.text, [*titles, *accessions]),
+        titles=_titles(_hide(seen.text, accessions), titles),
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,

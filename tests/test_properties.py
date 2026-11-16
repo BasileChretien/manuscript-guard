@@ -2143,7 +2143,12 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
     it; one followed by a colon defines where its letters are found before the bracket, as
     any short form does, one per word or not; one whose letters are found only inside a
     bracket its long form would open defines nothing, though the words before each hold its
-    letters. A short form after a spaced dash defines only where it ends its clause."""
+    letters. A short form after a spaced dash defines only where it ends its clause.
+
+    And decision 29's shapes, each read through the same letters: a word or a whole number
+    after a bracket's short form and nothing else, each short form of a bracket that lists
+    them, "X = long form" and "X: long form" with the long form the words after the sign
+    whole, short forms a slash joins, "known as X" and its kin, and a heading."""
     text, planted = drawn
     read = _file(0, Path("main.md"), text, [], False)
     defined = {at: short for at, short, _long in read.definitions}
@@ -2519,6 +2524,122 @@ def _a_bracket_s_last_word_is_spelt_from_before_the_bracket(patch: pytest.Monkey
 
 def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_dashed", lambda prose, typed=None: [])
+
+
+# Decision 29: each new shape not read, and each read without the letters matched.
+
+
+def _a_word_after_a_bracket_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_OPENS_BEFORE", re.compile("(?!)"))
+
+
+def _a_word_after_a_bracket_s_short_form_defines_whatever_its_words(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    real = language_gate._short_inside
+
+    def unmatched(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+        opening = language_gate._OPENS_BEFORE.match(bracket.group(1))
+        if opening is None or language_gate._OPENS_WITH.match(bracket.group(1)):
+            return real(prose, bracket)
+        return bracket.start(1) + opening.start("short"), opening.group("short"), "words"
+
+    patch.setattr(language_gate, "_short_inside", unmatched)
+
+
+def _a_word_and_more_after_a_bracket_s_short_form_defines(patch: pytest.MonkeyPatch) -> None:
+    """"Wortmannin (PI3K inhibitor, 2180)" defined PI3K (the corpus run of decision 29)."""
+    pattern = language_gate._OPENS_BEFORE.pattern
+    assert pattern.endswith(r"(?:[;,]\s*)?$"), pattern
+    patch.setattr(language_gate, "_OPENS_BEFORE", re.compile(pattern[:-1]))
+
+
+def _a_bracket_s_list_defines_only_its_first(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_listed_inside", lambda prose, bracket: [])
+
+
+def _a_bracket_s_list_defines_whatever_its_words(patch: pytest.MonkeyPatch) -> None:
+    def listed(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, str]]:
+        if language_gate._LISTED.match(bracket.group(1)) is None:
+            return []
+        return [(bracket.start(1) + item.start(), item.group(0), "words")
+                for item in language_gate._LISTED_ITEM.finditer(bracket.group(1))]  # fmt: skip
+
+    patch.setattr(language_gate, "_listed_inside", listed)
+
+
+def _a_sign_after_a_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_paired", lambda prose: [])
+
+
+def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -> None:
+    """The long form after a sign is found among its words, as before a bracket: "DCQ =
+    Small Developmental Coordination Questionnaire" defines DCQ."""
+    real = language_gate._spelt_after
+
+    def found(short: str, words: list[str]) -> str | None:
+        return real(short, words) or language_gate._read_back(short, " ".join(words))
+
+    patch.setattr(language_gate, "_spelt_after", found)
+
+
+def _a_sign_s_long_form_is_one_word_or_more(patch: pytest.MonkeyPatch) -> None:
+    """"CM: Cameroon", a country's code, read as a definition."""
+    real = language_gate._spelt_after
+
+    def found(short: str, words: list[str]) -> str | None:
+        return real(short, words) or (words[0] if len(words) == 1
+                                       and language_gate._long_form(short, words[0]) else None)
+
+    patch.setattr(language_gate, "_spelt_after", found)
+
+
+def _a_sign_s_long_form_runs_into_a_block_quote_s_next_line(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._PAIRED.pattern
+    wrapped = r"\r?\n(?=[ \t\N{NO-BREAK SPACE}]*[^\W\d_])"
+    assert wrapped in pattern, pattern
+    patch.setattr(language_gate, "_PAIRED",
+                  re.compile(pattern.replace(wrapped, r"\r?\n(?![ \t\r]*\n)")))  # fmt: skip
+
+
+def _a_slash_pairs_nothing(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._PAIRED.pattern
+    assert "(?:/" in pattern, pattern
+    patch.setattr(language_gate, "_PAIRED", re.compile(pattern.replace("(?:/", "(?:\\/(?!)")))
+
+
+def _a_slash_pairs_the_whole_long_form_with_each_part(patch: pytest.MonkeyPatch) -> None:
+    def paired(prose: str) -> list[tuple[int, str, str]]:
+        found = []
+        for pair in language_gate._PAIRED.finditer(prose):
+            at = pair.start("shorts")
+            for short in pair.group("shorts").split("/"):
+                found.append((at, short, pair.group("long").strip()))
+                at += len(short) + 1
+        return found
+
+    patch.setattr(language_gate, "_paired", paired)
+
+
+def _known_as_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_named_as", lambda prose: [])
+
+
+def _known_as_defines_whatever_its_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_named_as", lambda prose: [
+        (named.start("short"), named.group("short"), "words")
+        for named in language_gate._NAMED_AS.finditer(prose)])  # fmt: skip
+
+
+def _only_known_as_names_a_short_form(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._NAMED_AS.pattern
+    kin = "|called|hereafter,?"
+    assert kin in pattern, pattern
+    patch.setattr(language_gate, "_NAMED_AS", re.compile(pattern.replace(kin, "")))
+
+
+def _a_heading_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_in_titles", lambda titles: [])
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -25696,6 +25817,66 @@ BROKEN = {
     ),
     "a line break ends a dash's paragraph": (
         _a_line_break_ends_a_dash_s_paragraph,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a word after a bracket's short form defines nothing": (
+        _a_word_after_a_bracket_s_short_form_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a word after a bracket's short form defines whatever its words": (
+        _a_word_after_a_bracket_s_short_form_defines_whatever_its_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a word and more after a bracket's short form defines": (
+        _a_word_and_more_after_a_bracket_s_short_form_defines,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket's list defines only its first": (
+        _a_bracket_s_list_defines_only_its_first,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket's list defines whatever its words": (
+        _a_bracket_s_list_defines_whatever_its_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "an equals sign or a colon after a short form defines nothing": (
+        _a_sign_after_a_short_form_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a sign's long form need not be the words after it whole": (
+        _a_sign_s_long_form_need_not_be_the_words_whole,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a sign's long form may be one word": (
+        _a_sign_s_long_form_is_one_word_or_more,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a sign's long form runs into a block quote's next line": (
+        _a_sign_s_long_form_runs_into_a_block_quote_s_next_line,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a slash pairs no short forms": (
+        _a_slash_pairs_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a slash pairs each short form with the whole long form": (
+        _a_slash_pairs_the_whole_long_form_with_each_part,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "known as and its kin define nothing": (
+        _known_as_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "known as defines whatever its words": (
+        _known_as_defines_whatever_its_words,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "only known as and referred to as name a short form": (
+        _only_known_as_names_a_short_form,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a heading defines nothing": (
+        _a_heading_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a dash's clause is not read past a line break": (

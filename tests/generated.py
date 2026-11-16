@@ -697,6 +697,26 @@ DEFINING = (
      "\N{EN DASH} DPS", "DPS"),
     ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
      "\N{EN DASH} LSS", "LSS"),
+    # Decision 29 (the author, 2026-11-16; the real-paper corpus): a word or a whole number
+    # after the short form in its bracket, and pandoc's citation prefix so; each short form
+    # of a bracket that lists them; "X = long form" and "X: long form", pair by pair, a
+    # long form wrapped onto the next line, and short forms a slash joins paired with the
+    # long form's parts; "known as X" and each of its kin; and a heading.
+    ("the rapidly varying quasars (RV quasars)", "(RV", "RV"),
+    ("the Online Supplementary Appendix (OSA 2)", "(OSA", "OSA"),
+    ("the Sloan Sky Survey [SSS DR2; @york2000]", "[SSS", "SSS"),
+    ("the Teacher Video Modules (TVM, VM)", ", VM", "VM"),
+    ("GDS = Geriatric Depression Scale; HAQ= Health Assessment Questionnaire", "HAQ=", "HAQ"),
+    ("Countries: MMQ: Memory Mood Questionnaire, given to all", "MMQ:", "MMQ"),
+    ("*Note.* BAI = Beck Anxiety\nInventory.", "BAI =", "BAI"),
+    ("RA/NRA = risk/non-risk allele", "/NRA", "NRA"),
+    ("EA/NEA = effect/non-effect allele", "EA/", "EA"),
+    ("the ratio of far to near flux, known as FNR", "as FNR", "FNR"),
+    ("the latent bias components, referred to as LBC terms", "as LBC", "LBC"),
+    ("the latent noise components, commonly referred to as LNC terms", "as LNC", "LNC"),
+    ("a gait balance scale, called GBS, in all", "called GBS", "GBS"),
+    ("the Deep Field Survey (hereafter DFS)", "hereafter DFS", "DFS"),
+    ("## Grip strength and electromyography (EMG)", "(EMG", "EMG"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -776,6 +796,23 @@ NOT_DEFINING = (
     ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
     ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
      "OR"),
+    # Decision 29's shapes with words that do not hold the short form's letters, or with
+    # more than a word after a bracket's short form, or a long form that is not the words
+    # after the sign whole: a word before its letters, one word, a block quote's next line,
+    # a statistic; short forms a slash joins with no long form to pair; and a heading.
+    ("the bright quasars (QV quasars)", "(QV", "QV"),
+    ("the online files (XSA 2)", "(XSA", "XSA"),
+    ("the protein kinase inhibitor (PKI blocker, 2180)", "(PKI", "PKI"),
+    ("the Teacher Video Modules (TVM, QZ)", ", QZ", "QZ"),
+    ("PSQ = the sleep score", "PSQ =", "PSQ"),
+    ("DCQ = Small Developmental Coordination Questionnaire", "DCQ =", "DCQ"),
+    ("KN: Kenya", "KN:", "KN"),
+    ("> BDS = Beck\n> Depression Scale", "BDS =", "BDS"),
+    ("the odds ratio OR = 1.52 in all", "OR =", "OR"),
+    ("XA/YNA = effect allele", "/YNA", "YNA"),
+    ("the main survey, known as XQZ", "as XQZ", "XQZ"),
+    ("a scale called WTB in all", "called WTB", "WTB"),
+    ("## Grip strength (EGX)", "(EGX", "EGX"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as

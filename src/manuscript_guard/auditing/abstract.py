@@ -33,7 +33,12 @@ the whole body (Basile, 2026-11-13).
   reports: an identifier was otherwise never found, even beside its copy in the Methods (a
   preprint of the real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the
   audit's against the outputs, and the section ends with what one is worth, the roundings
-  counted in.
+  counted in. A number in scientific notation, `3\\times 10^{8}`, and a power, `10^{-2}`,
+  `10^8`, `10^-2^`, are read whole, in the Abstract and where the paper reports alike
+  (`powers`), and found only where the same sign, mantissa and power are printed; a scale,
+  a power after a times sign with no mantissa, is no number. Read as atoms, LaTeX's
+  `10^{-2}`, its braces blanked, was "10^" and "-2" (tex-astro-ga-B1 of the real-paper
+  corpus; round 1 of #696).
 * **From its counts.** A percentage the Abstract writes beside both its counts, "164 out
   of 250 (66%)", "66% (164/250)" (`stats.shares.written_shares`), is held to them, as a
   table's n (%) is to its denominator, and not looked for: one they give is explained by
@@ -58,13 +63,15 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
+from functools import cache
 from math import ceil, floor
 from pathlib import Path
 
 from manuscript_guard.stats.intervals import ReportedInterval, reported_intervals
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
+from manuscript_guard.text.markdown_maths import markdown_maths
 from manuscript_guard.text.section_names import (
     _METHOD_TITLE,
     _whole,
@@ -210,6 +217,9 @@ class Piece:
     results: bool
     atoms: tuple[Atom, ...]
     lined: str = ""
+    #: The file's text as its atoms are reported from, at the offsets of `hidden`: where a
+    #: power's exponent is read (`powers`), whose braces a LaTeX file's `hidden` blanks.
+    text: str = ""
 
     def line(self, at: int) -> int:
         """The line of the file offset `at` stands on."""
@@ -708,6 +718,239 @@ def _words(text: str) -> set[str]:
     return found - {""}
 
 
+# -------------------------------------------------------------------------------- powers
+
+#: A number in scientific notation as TeX sets one, and a power of a number alone: an
+#: optional sign, a mantissa and a times sign, `\times`, `\cdot`, "×" or "·" (spaced or not,
+#: any run of the gaps of `_GAP` around it), then a number, a caret and a braced exponent,
+#: `10^{-2}`, `10^{\,8}`, `2^{10}`, `10^{\alpha}`, or a single digit, `10^8`, `10^8.` at a
+#: sentence's
+#: end; or pandoc's superscript, `10^-2^`. A bare power is the same number with a mantissa
+#: of 1 and keeps its sign, `-10^{8}`. A power after a times sign with no mantissa before
+#: it, a column header's "(×10^8 cm^-3)", is a scale (`scale`), no number at all. Not
+#: `10^-2` nor `10^82` in maths, which TeX sets as 10 to the minus and 10 to the 8 before a
+#: 2: these are read as they were. The first number stands alone, after a sign, a times sign
+#: or a TeX command (`_base_alone`); a power after a times sign after anything else,
+#: `k_2\times10^{3}`, is a scale. A sign is one where `audit._NUMBER` reads one. A mantissa
+#: is its digits grouped as `audit._NUMBER` groups them, by commas, a narrow or a no-break
+#: space, and in TeX by `\,` or a decimal comma `{,}` too, with a digit after each separator,
+#: and a point and its digits after them (`_MANTISSA`).
+_TIMES = r"(?:\\times(?![A-Za-z])|\\cdot(?![A-Za-z])|\N{MULTIPLICATION SIGN}|\N{MIDDLE DOT})"
+#: What may stand between a mantissa, its times sign and its power: a space, a tab, a
+#: no-break, a thin or a narrow no-break space, TeX's tie `~` and its spaces `\,`, `\;`, `\:`,
+#: `\!` and `\ `, in any run and mix (round 2 of #696); the tie only where a `~` is one
+#: (`ties`); and a line break with no blank line after it, a space in TeX and in Markdown.
+_GAP = (r"(?:[ \t~\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]|\\[,;:! ]"
+        r"|\n(?![ \t]*(?:\n|$)))*")
+#: A mantissa: digits grouped as `audit._NUMBER` groups them and as TeX does, a digit after
+#: each separator.
+_MANTISSA = (r"\d(?:(?:[,\N{NARROW NO-BREAK SPACE}\N{NO-BREAK SPACE}]|\{,\}|\\,)?\d)*"
+             r"(?:\.\d+)?|(?<![\w.])\.\d+")
+#: The signs of a minus, the hyphen last, where a class of characters reads it as itself.
+_DASHES = "\N{MINUS SIGN}\N{EN DASH}-"
+
+
+@cache
+def _power_pattern() -> re.Pattern[str]:
+    from manuscript_guard.audit import _SIGN_MAY_FOLLOW
+
+    sign = rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-–]|−)"  # an en dash, a minus sign
+    return re.compile(
+        rf"(?:(?P<sign>{sign})?(?<![\d.])(?P<mantissa>{_MANTISSA}){_GAP}(?P<times>{_TIMES})"
+        rf"{_GAP}"
+        rf"|(?P<scale>{_TIMES}){_GAP}|(?P<bare>{sign}))?"
+        r"(?<![\d.])(?P<base>\d+(?:\.\d+)?)[ \t]*\^(?:"
+        rf"(?P<raised>[+{_DASHES}]?\d+(?:\.\d+)?)\^"
+        r"|[ \t]*\{(?P<group>(?:[^{}\n]|\{[^{}\n]*\})*)\}"
+        r"|[ \t]*(?P<digit>\d)(?!\d|\.\d))"
+    )
+
+
+#: What a braced exponent is read without: TeX's spaces and the commands that print one.
+_EXPONENT_SPACE = re.compile(r"\\[,;:! ]|~|\s+")
+_EXPONENT_NUMBER = re.compile(rf"[+{_DASHES}]?\d+(?:\.\d+)?")
+
+
+@dataclass(frozen=True)
+class Power:
+    """A number in scientific notation or a power where a file prints one, from `start` to
+    `end` of its text: its sign, "-" or "", its mantissa, "1" for a bare power, its base and
+    its exponent, each read as a number where it is one (`normalise_number`); or a scale, no
+    number. What it is looked for as is all four (`key`): `10^{-2}`, `10^{-2.0}`,
+    `1\\times10^{-2}` and `10^-2^` are one number, `5\\times10^{-2}` and `-10^{-2}` others."""
+
+    start: int
+    end: int
+    sign: str
+    mantissa: str
+    base: str
+    exponent: str
+    scale: bool = False
+
+    @property
+    def key(self) -> str:
+        return f"{self.sign}{self.mantissa}\N{MULTIPLICATION SIGN}{self.base}^{self.exponent}"
+
+
+def _mantissa(printed: str) -> str:
+    """A mantissa as it is looked for: its groupings taken out, `{,}` read as a comma, and
+    read as a number (`normalise_number`) unless a comma is left in it, which may be a
+    decimal comma or a thousands one: "1{,}5" stays "1,5", never 15 nor 1.5."""
+    from manuscript_guard.audit import normalise_number
+
+    plain = printed.replace("{,}", ",").replace("\\,", "")
+    plain = plain.replace("\N{NARROW NO-BREAK SPACE}", "").replace("\N{NO-BREAK SPACE}", "")
+    return plain if "," in plain else normalise_number(plain)
+
+
+def _base_alone(text: str, at: int) -> bool:
+    """Whether a number at `at` stands alone, after no letter, digit, point or underscore,
+    or after a TeX command's name, `\\times10^{8}`."""
+    letters = at
+    while letters > 0 and text[letters - 1].isascii() and text[letters - 1].isalpha():
+        letters -= 1
+    if letters < at:
+        return letters > 0 and text[letters - 1] == "\\"
+    return at == 0 or not (text[at - 1].isalnum() or text[at - 1] in "._")
+
+
+#: What a `~` is read as where it is no tie: no gap, as no character of `_GAP` is.
+_NO_TIE = "\x01"
+
+
+def ties(path: Path, text: str) -> tuple[tuple[int, int], ...] | None:
+    """Where a `~` in a file's text is TeX's tie, a gap around a times sign (`_GAP`): all of
+    a LaTeX file's (None); in Markdown, only inside maths as pandoc finds it
+    (`text.markdown_maths`), since in its text a `~` marks pandoc's subscript, `CO~2~`, and
+    so it does in `\\(...\\)`, which pandoc's Markdown reads as no maths; in a .docx or a
+    PDF nowhere, where it is a tilde (Basile, after the checks of b95b6a89f and 191d0e7c2
+    in #696)."""
+    suffix = path.suffix.lower()
+    if suffix == ".tex":
+        return None
+    return tuple(markdown_maths(text)) if suffix in (".md", ".markdown", ".txt") else ()
+
+
+def _untied(text: str, tied: tuple[tuple[int, int], ...] | None) -> str:
+    """`text` with each `~` outside `tied` made `_NO_TIE`, at the same offsets."""
+    if tied is None or "~" not in text:
+        return text
+    out, at = [], 0
+    for start, end in tied:
+        out += [text[at:start].replace("~", _NO_TIE), text[start:end]]
+        at = end
+    out.append(text[at:].replace("~", _NO_TIE))
+    return "".join(out)
+
+
+def powers(text: str, read: str,
+           tied: tuple[tuple[int, int], ...] | None = None) -> list[Power]:  # fmt: skip
+    """Each number in scientific notation, power and scale `text` prints where `read`, its
+    masked text at the same offsets with what is not read blanked, keeps every digit and the
+    caret: one in a comment, in code a mask hides or on a line not read is none. A `~` is a
+    gap only within `tied`, everywhere where it is None (`ties`)."""
+    from manuscript_guard.audit import normalise_number
+
+    if len(text) != len(read):
+        return []
+    found = []
+    for match in _power_pattern().finditer(_untied(text, tied)):
+        start, end = match.span()
+        scale = match["scale"] is not None
+        if match["mantissa"] is not None and match["sign"] is None and not _base_alone(
+                text, match.start("mantissa")):  # fmt: skip
+            # `k_2\times10^{3}`: no mantissa, so a scale, read from its times sign.
+            start, scale = match.start("times"), True
+        led = match["sign"] is not None or match["bare"] is not None or scale
+        kept = all(read[at] == text[at] for at in range(start, end)
+                   if text[at].isdigit() or text[at] == "^")  # fmt: skip
+        if not (kept and (led or _base_alone(text, match.start("base")))):
+            continue
+        # Each part from `text` itself, never from the copy `_untied` made: no `_NO_TIE` in it.
+        name = next(one for one in ("raised", "digit", "group") if match[one] is not None)
+        exponent = _EXPONENT_SPACE.sub("", text[match.start(name) : match.end(name)])
+        if not exponent:
+            continue
+        if _EXPONENT_NUMBER.fullmatch(exponent):
+            exponent = normalise_number(exponent)
+        sign = "-" if match["sign"] is not None or match["bare"] is not None else ""
+        printed = text[match.start("mantissa") : match.end("mantissa")]
+        mantissa = "1" if scale or match["mantissa"] is None else _mantissa(printed)
+        base = normalise_number(text[match.start("base") : match.end("base")])
+        found.append(Power(start, end, sign, mantissa, base, exponent, scale))
+    return found
+
+
+@dataclass(frozen=True)
+class Looked:
+    """What the section looks for in an Abstract: an atom, or the atoms of one power or more
+    read as one (`_looked_for`), as an atom spanning them; its parts as printed; and which of
+    them are powers, looked for among the powers where the paper reports alone."""
+
+    atom: Atom
+    parts: tuple[str, ...]
+    powered: frozenset[str] = frozenset()
+
+
+def _looked_for(piece: Piece, abstract: str, lines: set[int]) -> list[Looked]:
+    """Each thing one file's Abstract gives to be looked for, in order: an atom of its lines,
+    with its parts (`printed_parts`), or the atoms that overlap a power its text prints
+    (`powers`), with any other power they overlap, read as one: the powers, and the numbers
+    of those atoms outside them as the paper's reported text reads them (`_numbers`). Read
+    as atoms, `10^{-2}` in LaTeX, whose braces are blanked, was "10^" and "-2", a number the
+    paper does not hold and one it may (tex-astro-ga-B1 of the real-paper corpus); and
+    `10^8` was looked for as printed among numbers no power is one of."""
+    atoms = [atom for atom in piece.atoms if atom.line in lines]
+    groups: list[tuple[list[int], list[Power]]] = []
+    tied = ties(piece.path, piece.text)
+    for power in powers(piece.text, abstract, tied) if piece.text else ():
+        over = [at for at, atom in enumerate(atoms)
+                if atom.start < power.end and power.start < atom.end]  # fmt: skip
+        if not over:
+            continue
+        if groups and groups[-1][0][-1] >= over[0]:
+            held, read = groups[-1]
+            groups[-1] = (sorted({*held, *over}), [*read, power])
+        else:
+            groups.append((over, [power]))
+    opened = {group[0][0]: group for group in groups}
+    inside = {at for group in groups for at in group[0]}
+    found = []
+    for at, atom in enumerate(atoms):
+        if at in opened:
+            held, read = opened[at]
+            found.append(_joined([atoms[one] for one in held], read, piece.text))
+        elif at not in inside:
+            found.append(Looked(atom, tuple(printed_parts(atom.text))))
+    return found
+
+
+def _joined(atoms: list[Atom], read: list[Power], text: str) -> Looked:
+    """Atoms and the powers they overlap, read as one: the powers, then the numbers of the
+    atoms outside every power as the paper's reported text reads them, named from the first
+    of them to the last as printed. A scale is no number: atoms that hold nothing else give
+    nothing to look for, and a number beside one is named alone, "0.2" of a Markdown atom
+    "0.2)\\times10^{-2}" (round 2 of #696)."""
+    from manuscript_guard.audit import _NUMBER, _OPAQUE
+
+    first = atoms[0]
+    named = [(power.start, power.end) for power in read if not power.scale]
+    alone = []
+    for atom in atoms:
+        blank = "".join(" " if any(p.start <= at < p.end for p in read) else text[at]
+                        for at in range(atom.start, atom.end))  # fmt: skip
+        blank = _OPAQUE.sub(lambda found: " " * len(found.group(0)), blank.replace(NUL, " "))
+        for found in _NUMBER.finditer(blank):
+            alone.append(found.group(0))
+            named.append((atom.start + found.start(), atom.start + found.end()))
+    keys = tuple(power.key for power in read if not power.scale)
+    start = min((at for at, _end in named), default=first.start)
+    end = max((at for _start, at in named), default=first.end)
+    atom = replace(first, text=text[start:end], start=start, end=end,
+                   col=start - first.line_start + 1)  # fmt: skip
+    return Looked(atom, (*keys, *alone), frozenset(keys))
+
+
 # ------------------------------------------------------------------------------- reading
 
 
@@ -775,6 +1018,9 @@ def against_results(pieces: list[Piece], answers: Answers | None = None,
     exact = {normalise_number(number) for number in printed}
     rounded = {found for number in printed for found in coarser(number)}
     words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
+    printed_powers = {power.key for piece, _abstract, reported, _lines in split if piece.text
+                      for power in powers(piece.text, reported, ties(piece.path, piece.text))
+                      if not power.scale}  # fmt: skip
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
     intervals = [(piece, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip
@@ -783,17 +1029,18 @@ def against_results(pieces: list[Piece], answers: Answers | None = None,
     for piece, abstract, _reported, lines in split:
         spans = _conflicts(read, piece, abstract, intervals, tests)
         written = _shares(read, piece, abstract)
-        for atom in piece.atoms:
-            if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
+        for looked in _looked_for(piece, abstract, lines):
+            atom, parts = looked.atom, list(looked.parts)
+            if any(start <= atom.start < end for start, end in spans):
                 continue
-            parts = printed_parts(atom.text)
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
             off, parts = _off_its_counts(atom, parts, written)
-            states = [_state(part, exact, rounded, words) for part in parts]
+            states = [("exact" if part in printed_powers else "") if part in looked.powered
+                      else _state(part, exact, rounded, words) for part in parts]  # fmt: skip
             if off:
                 read.off_counts.append(candidate)
             elif off is not None and "" not in states:

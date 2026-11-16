@@ -2229,7 +2229,7 @@ from generated import undue_places  # noqa: E402
 
 @holds(30, undue_places())
 def test_no_definition_is_asked_where_none_is_due(
-    drawn: list[tuple[list[tuple[str, list[int], bool]], list[tuple[str, str]]]],
+    drawn: list[tuple[list[tuple[str, list[int]]], list[tuple[str, str]]]],
 ) -> None:
     """A short form that stands only on the title page, which a heading, a line in bold or a
     run-in label naming the Abstract ends, in its file or in the next; in a statement under a
@@ -2237,17 +2237,14 @@ def test_no_definition_is_asked_where_none_is_due(
     line; or in a line a PDF repeats at its pages' edges asks no definition. One the Results
     use too is asked there, each of its uses in those places counted for nothing; a title's
     use before the Introduction defines it is no use before the definition; and a sentence
-    that opens on "Keyword-based", one in the Discussion that opens on a statement's name in
-    plain type and a protocol's "**Abstract**" under a supplement's first heading are the
-    text's (Basile, 2026-11-16, decision 28; rounds 1 and 2 of #699)."""
+    that opens on "Keyword-based" is the text's (Basile, 2026-11-16, decision 28; round 1 of
+    #699)."""
     nothing = language_gate._Known(frozenset(), frozenset())
     for files, expected in drawn:
-        chains: dict[bool, list] = {False: [], True: []}
-        read = []
-        for order, (text, running, supplementary) in enumerate(files):
-            opens = not any(other[2] == supplementary for other in files[:order])
-            read.append(_file(order, Path(f"{order}.md"), text, chains[supplementary],
-                              supplementary, opens=opens, running=running))  # fmt: skip
+        chain: list = []
+        read = [_file(order, Path(f"{order}.md"), text, chain, False, opens=order == 0,
+                      running=running)
+                for order, (text, running) in enumerate(files)]  # fmt: skip
         report = language_gate._judge(read, nothing, Path("."))
         found = sorted((f.code, f.message) for f in report.findings)
         assert found == expected, files
@@ -2262,7 +2259,7 @@ def _a_statement_s_heading_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_statement_run_in_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_run_in_named", lambda hidden, headings, chain=None: [])
+    patch.setattr(language_gate, "_run_in_named", lambda hidden, headings: [])
 
 
 def _a_keywords_line_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
@@ -2313,81 +2310,6 @@ def _a_file_with_no_heading_opens_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "opening",
                   lambda seen, headings, title=None: real(seen, headings, title) if headings
                   else None)  # fmt: skip
-
-
-def _the_first_opening_alone_names_the_abstract(patch: pytest.MonkeyPatch) -> None:
-    """Round 1 of #699: "**Key points**" before the Abstract opened the paper on no Abstract,
-    and there was no title page."""
-    from manuscript_guard.text import title_page
-
-    def first(seen, headings, abstract_title=None):
-        for at, block in enumerate(title_page._blocks(seen.replace("\0", " "), headings)):
-            if title_page._kind(block, abstract_title, first=at == 0) == title_page.OPENING:
-                return block.start, title_page._names_the_abstract(block, abstract_title)
-        return None
-
-    patch.setattr(language_gate, "opening", first)
-
-
-def _a_paragraph_names_the_abstract_after_a_heading(patch: pytest.MonkeyPatch) -> None:
-    """Round 1 of #699: a protocol's "**Abstract**" under a supplement's first heading made
-    the title page of all before it."""
-    from manuscript_guard.text import title_page
-
-    real = title_page.opening
-
-    def anywhere(seen, headings, title=None):
-        unbounded = real(seen, [], title)
-        return unbounded if unbounded and unbounded[1] else real(seen, headings, title)
-
-    patch.setattr(language_gate, "opening", anywhere)
-
-
-def _a_plain_label_in_the_text_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
-    """Rounds 1 and 2 of #699 at their widest: a statement's name in plain type with its
-    colon opened a statement wherever its paragraph stood."""
-    from manuscript_guard.text.section_names import STATEMENT_TITLE
-
-    patch.setattr(language_gate, "_closing_labels", lambda hidden, headings: (
-        language_gate._labelled(hidden, headings, lambda label: bool(STATEMENT_TITLE.match(
-            label)), language_gate._PLAIN_LABEL)))  # fmt: skip
-
-
-def _the_reference_list_ends_no_run_of_statements(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_ends_the_text", lambda title: False)
-
-
-def _a_keywords_line_may_follow_any_line(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_after_a_sentence", lambda text, start: True)
-
-
-def _a_keywords_label_may_be_in_small_letters(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_KEYWORDS_LINE", re.compile(
-        language_gate._KEYWORDS_LINE.pattern, re.MULTILINE | re.IGNORECASE))  # fmt: skip
-
-
-def _no_first_heading_is_the_paper_s_title(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.text import title_page
-
-    patch.setattr(title_page, "_titled", lambda headings: False)
-
-
-def _a_keywords_line_opens_a_paragraph_only(patch: pytest.MonkeyPatch) -> None:
-    """Round 1 of #699: a keywords line on the line after the Abstract's last was none."""
-
-    def opening_paragraphs(hidden: str) -> list[tuple[int, int]]:
-        found, position = [], 0
-        while position < len(hidden):
-            position = language_gate._BLANK_LINES.match(hidden, position).end()
-            if position == len(hidden):
-                break
-            start, (_end, position) = position, language_gate._paragraph(hidden, position)
-            line = language_gate._KEYWORDS_LINE.match(hidden, start)
-            if line is not None:
-                found.append((start, line.end()))
-        return found
-
-    patch.setattr(language_gate, "_keywords_lines", opening_paragraphs)
 
 
 def _a_use_where_none_is_due_comes_before_the_definition(patch: pytest.MonkeyPatch) -> None:
@@ -26073,38 +25995,6 @@ BROKEN = {
     ),
     "a file with no heading opens nothing": (
         _a_file_with_no_heading_opens_nothing,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "the first opening alone names the abstract": (
-        _the_first_opening_alone_names_the_abstract,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "a paragraph names the abstract after a heading": (
-        _a_paragraph_names_the_abstract_after_a_heading,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "a plain label in the text opens a statement": (
-        _a_plain_label_in_the_text_opens_a_statement,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "the reference list ends no run of statements": (
-        _the_reference_list_ends_no_run_of_statements,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "a keywords line may follow any line": (
-        _a_keywords_line_may_follow_any_line,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "a keywords label may be in small letters": (
-        _a_keywords_label_may_be_in_small_letters,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "no first heading is the paper's title": (
-        _no_first_heading_is_the_paper_s_title,
-        test_no_definition_is_asked_where_none_is_due,
-    ),
-    "a keywords line opens a paragraph only": (
-        _a_keywords_line_opens_a_paragraph_only,
         test_no_definition_is_asked_where_none_is_due,
     ),
     "a use where no definition is due comes before the definition": (

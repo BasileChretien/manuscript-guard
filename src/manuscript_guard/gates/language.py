@@ -760,72 +760,20 @@ _PLAIN_LABEL = re.compile(r"(?P<label>[A-Z][^\n:*_]{0,79}:)")
 def _run_in_named(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
     """Where each paragraph runs that a bold label opens as `_run_in_statements` reads one,
     whose label names a statement (`STATEMENT_TITLE`) that `_QUIET` does not find: "**Data
-    availability:**", "**Ethics approval**"; and each statement in plain type that ends the
-    text (`_closing_labels`), "Funding:", "Data Availability Statement:". Its capitals are
-    read as anywhere, but no use in it is owed a definition (`_undue`), as in a statement
-    under a heading that names one."""
+    availability:**", "**Ethics approval**"; and each a label in plain type opens
+    (`_PLAIN_LABEL`) that names any statement, "Funding:", "Data Availability Statement:".
+    Its capitals are read as anywhere, but no use in it is owed a definition (`_undue`), as
+    in a statement under a heading that names one."""
     from manuscript_guard.text.section_names import STATEMENT_TITLE
+
+    def statement(label: str) -> bool:
+        return bool(STATEMENT_TITLE.match(_ESCAPE.sub(r"\1", label).strip()))
 
     def named(label: str) -> bool:
-        label = _ESCAPE.sub(r"\1", label).strip()
-        return bool(STATEMENT_TITLE.match(label)) and not _names_a_statement(label)
+        return statement(label) and not _names_a_statement(label)
 
-    return [*_labelled(hidden, headings, named), *_closing_labels(hidden, headings)]
-
-
-def _closing_labels(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
-    """Where each statement run in from its label in plain type runs (`_PLAIN_LABEL`), a
-    statement's name and a colon at a paragraph's start: only within a run of such labels
-    that ends the text before the reference list (Basile, 2026-11-16, round 3 of #699), as
-    MDPI sets "Author Contributions:", "Funding:" and "Data Availability Statement:" after
-    its Conclusions. A label is one where it and every paragraph after it, up to the
-    reference list's heading (`_ends_the_text`) or the end of the file, is such a label's: its
-    paragraph, or, under a label alone, the paragraph under it. A label with more text of
-    its section after it, "Funding: the QXG study paid little." amid a Discussion, or a
-    heading of another kind, is read as text. The headings over it decide nothing."""
-    from manuscript_guard.text.section_names import STATEMENT_TITLE
-
-    titled = {heading.start: heading for heading in headings}
-    items: list[tuple[int, int, str]] = []
-    position = 0
-    while position < len(hidden):
-        position = _BLANK_LINES.match(hidden, position).end()
-        if position == len(hidden):
-            break
-        start, (end, position) = position, _paragraph(hidden, position)
-        if not hidden[start:end].strip(" \t\r\n" + NUL):
-            continue
-        heading = titled.get(start)
-        if heading is not None:
-            items.append((start, end, "end" if _ends_the_text(heading.title) else "heading"))
-            continue
-        label = _PLAIN_LABEL.match(hidden, start)
-        rest = hidden[label.end() : end] if label is not None else ""
-        if label is not None and STATEMENT_TITLE.match(label["label"]) and (
-                _a_label(label["label"], rest)):  # fmt: skip
-            items.append((start, end, "alone" if _alone(rest) else "label"))
-        else:
-            items.append((start, end, "text"))
-    found: list[tuple[int, int]] = []
-    closing = True
-    for at in range(len(items) - 1, -1, -1):
-        start, end, kind = items[at]
-        if kind == "end":
-            closing = True
-        elif kind == "text" and at > 0 and items[at - 1][2] == "alone":
-            continue
-        elif kind in ("heading", "text"):
-            closing = False
-        elif closing:
-            under = kind == "alone" and at + 1 < len(items) and items[at + 1][2] == "text"
-            found.append((start, items[at + 1][1] if under else end))
-    return found
-
-
-def _ends_the_text(title: str) -> bool:
-    """Whether a heading is the reference list's, which ends the text a run of statements in
-    plain type closes (`_closing_labels`)."""
-    return Section(title=title, level=1, body="", line=0).is_references
+    return [*_labelled(hidden, headings, named),
+            *_labelled(hidden, headings, statement, _PLAIN_LABEL)]  # fmt: skip
 
 
 def _labelled(
@@ -884,40 +832,35 @@ def _keywords_lists(text: str, hidden: str, headings: list[Heading]) -> dict[int
     return found
 
 
-#: A keywords line, the label with the keywords after it on its line: "Keywords", "Key words"
-#: or "Index Terms", a capital first, in bold or in italics or not, then a colon, as
+#: A keywords line at a paragraph's start, the label with the keywords after it on its line:
+#: "Keywords", "Key words" or "Index Terms", in bold or in italics or not, then a colon, as
 #: `section_names.run_in_keywords` reads one, a dash with spaces, "KEYWORDS - ...", or an em
-#: dash, as IEEE sets "Index Terms—" and a LaTeX paper "\\textit{Keywords} ---". Not a word
-#: that only begins so, "Keyword-based retrieval" (round 1 of #699), nor "keywords:" in small
-#: letters. It stands at a paragraph's start, or at a line's start after a line that ends a
-#: sentence (`_after_a_sentence`), as under the Abstract's last line with one line break
-#: between and in a PDF's text, which marks no paragraph (Basile, 2026-11-16, round 3). The
-#: line alone, so a list carried onto a second line is read there (DESIGN.md, Known gaps).
+#: dash, as IEEE sets "Index Terms—" and a LaTeX paper "\\textit{Keywords} ---".
+#: Not a word that only begins so, "Keyword-based retrieval" (round 1 of #699). The line
+#: alone: a PDF's text marks no paragraph, so a list carried onto a second line is read there
+#: (DESIGN.md, Known gaps).
 _KEYWORDS_LINE = re.compile(
-    r"^[ \t\x00*_]*(?:K(?i:ey[ \t]?words)|I(?i:ndex[ \t]+terms))[\x00*_]*"
+    r"[ \t\x00*_]*(?:key[ \t]?words|index[ \t]+terms)[\x00*_]*"
     r"(?:[ \t]?:|[ \t\x00]*\N{EM DASH}|[ \t\x00]+(?:-{1,3}|\N{EN DASH})[ \t])[^\n]*\S",
-    re.MULTILINE,
+    re.IGNORECASE,
 )
-#: What ends a sentence, at the end of the line before a keywords line.
-_SENTENCE_ENDS = ".?!"
 
 
 def _keywords_lines(hidden: str) -> list[tuple[int, int]]:
-    """Where each keywords line runs (`_KEYWORDS_LINE`) in `hidden`, the file as G14 reads it
-    with what is no prose blanked, that opens a paragraph or follows a line ending a
-    sentence (`_after_a_sentence`)."""
-    return [(line.start(), line.end()) for line in _KEYWORDS_LINE.finditer(hidden)
-            if _after_a_sentence(hidden, line.start())]  # fmt: skip
-
-
-def _after_a_sentence(text: str, start: int) -> bool:
-    """Whether the line opening at `start` opens a paragraph, the line before it blank or
-    none, or follows a line that ends a sentence, on a stop, a question mark or an
-    exclamation mark: "We sorted the records by\\nKeywords: ..." is one sentence."""
-    if start == 0:
-        return True
-    before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1].rstrip(" \t\r" + NUL)
-    return not before or before[-1] in _SENTENCE_ENDS
+    """Where each keywords line runs (`_KEYWORDS_LINE`) that opens a paragraph of `hidden`,
+    the file as G14 reads it with what is no prose blanked, from the paragraph's start to its
+    line's end."""
+    found: list[tuple[int, int]] = []
+    position = 0
+    while position < len(hidden):
+        position = _BLANK_LINES.match(hidden, position).end()
+        if position == len(hidden):
+            break
+        start, (_end, position) = position, _paragraph(hidden, position)
+        line = _KEYWORDS_LINE.match(hidden, start)
+        if line is not None:
+            found.append((start, line.end()))
+    return found
 
 
 def _lines_at(text: str, numbers: Iterable[int]) -> list[tuple[int, int]]:
@@ -948,16 +891,14 @@ def _united(spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
 def _front(
     hidden: str, headings: list[Heading], abstract_title: str | None
 ) -> tuple[int, bool] | None:
-    """Where the paper's own text opens in a Markdown file, and whether the Abstract is
-    named there or after it (Basile, 2026-11-16, decision 28 and "No title page there";
-    rounds 2 and 3 of #699): the first heading or block G14's title page reads as the paper's
-    opening (`title_page.opening`), "**Key points**", "# Abstract", "# Introduction",
-    "Background: ...", a letter's salutation; a heading that opens nothing, "#
-    Acknowledgements" over a title page's thanks, is passed. The Abstract is named by a
-    heading wherever it stands, and by "**Abstract**" or "Abstract: ..." before the file's
-    first heading or under a first heading that is the paper's title. Where it is named,
-    what stands before the opening is the title page (`_fronts`). None where nothing in the
-    file opens the paper, whether it holds a heading or not."""
+    """Where the paper's own text opens in a Markdown file, with whether it opens on the
+    Abstract (Basile, 2026-11-16, decision 28 and "No title page there"): the first heading
+    or block G14's title page reads as the paper's opening (`title_page.opening`), a heading
+    that names the Abstract, "**Abstract**" in bold, "Abstract: ...", "# Introduction",
+    "Background: ...", a letter's salutation. A heading that opens nothing, "#
+    Acknowledgements" over a title page's thanks, is passed. Only one that names the Abstract
+    makes a title page of what stands before it (`_fronts`). None where nothing in the file
+    opens the paper, whether it holds a heading or not."""
     return opening(hidden, headings, abstract_title)
 
 
@@ -2087,12 +2028,11 @@ def _undue(file: _File, offset: int, region: _Region, front: int) -> bool:
 
 def _fronts(files: list[_File]) -> dict[int, int]:
     """By a file's `order`, where the title page in it ends: in the paper and in the
-    supplement apart, the first file in which something opens the paper (`_File.front`), where
-    the Abstract is named there or after the opening, is the title page up to the opening, and
-    each file before it is the title page whole. None where the first opening is followed by
-    no Abstract so named, or nothing opens the paper: there is no title page, and the text
-    before the first heading is read as the paper's (Basile, 2026-11-16, "No title page
-    there")."""
+    supplement apart, where the first file in which something opens the paper (`_File.front`)
+    opens it on the Abstract, each file before it is the title page whole, and that one up to
+    there. None where it opens otherwise, or nothing does: where nothing names the Abstract
+    there is no title page, and the text before the first heading is read as the paper's
+    (Basile, 2026-11-16, "No title page there")."""
     ends: dict[int, int] = {}
     for supplementary in (False, True):
         document = [file for file in files if file.supplementary == supplementary]

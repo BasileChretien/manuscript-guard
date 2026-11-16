@@ -155,21 +155,18 @@ of 2026-11-11: 354 of 427 of these warnings that judges read on 52 preprints wer
 the field's own terms, and the true ones were lost among them).
 No definition is asked of a short form that stands only where none is due (decision 28,
 2026-11-16), in the audit as in `check`: on the title page, all before the first heading
-or block G14 reads as the paper's opening, where the Abstract is named there or after it (a
-heading, or "**Abstract**" in bold or "Abstract: ..." before the first heading or under a
-first heading that is the paper's title); where it is not, there is no title page, and the
-cover's affiliations are asked about as before;
+or block G14 reads as the paper's opening, where that names the Abstract (a heading,
+"**Abstract**" in bold, "Abstract: ..."); where it names something else, or nothing opens
+the paper, there is no title page, and the cover's affiliations are asked about as before;
 in a statement, under a heading that names one ("Acknowledgements", "Funding", "Data
-availability", "Ethics approval") or run in from such a label in bold; run in from one in
-plain type with its colon ("Funding:", as a PDF's text has it) within the run of such labels
-that ends the text before the reference list, as MDPI sets them after its Conclusions; and
-in a LaTeX paper's `acknowledgements` environment or AASTeX's `\acknowledgments`; in a
-"Keywords", "Key words" or "Index Terms" line, a capital first, at a paragraph's start or
-after a line ending a sentence, the label followed by a colon, a spaced dash or an em dash;
-and, in a PDF, in a line its text repeats at the top or the foot of half its pages or more,
-and of three at least, each run of digits read alike so that a running head with the
-page's number in it, "QXH Journal | Page 3 of 12", is one, and never a line with a
-caption's shape, "Figure S1. ...". A form the text uses too is listed as before, its
+availability", "Ethics approval") or run in from such a label, in bold or in plain type
+with its colon ("Funding:", as a PDF's text has it), and in a LaTeX
+paper's `acknowledgements` environment or AASTeX's `\acknowledgments`; in a "Keywords",
+"Key words" or "Index Terms" line at a paragraph's start, the label followed by a colon, a
+spaced dash or an em dash; and, in a PDF, in a line its text repeats at the top or the foot
+of half its pages or more, and of three at least, its digits read alike so that a running
+head with the page's number in it is one, and never a line with a caption's shape, "Figure
+S1. ...", which each page's figure has its own of. A form the text uses too is listed as before, its
 uses in those places not counted, and a use there before the text's definition is no use
 before it. What each place does to G14's four findings:
 

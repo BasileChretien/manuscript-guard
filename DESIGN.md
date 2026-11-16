@@ -5453,25 +5453,19 @@ over by its reader (above), and nothing here changes how a LaTeX paper is read.
 findings the judges of the real-paper corpus marked false in 20 papers). A short form that
 stands only in these places asks no definition and is not counted, in `audit` and in `check`
 alike: the title page, all before the first heading or block the title page above reads as
-the paper's opening ("**Key points**", "Highlights" among them), where the Abstract is named
-there or after it, by a heading wherever it stands, or by "**Abstract**" in bold or a
-run-in "Abstract: ..." before the file's first heading, or under a first heading that is the
-paper's title, as `auditing.abstract._over_the_paper` reads one; in the paper and in the supplement
-apart, a file with no heading read for it as one with one (`_fronts`); a LaTeX paper's,
-before where its first abstract runs, where no heading comes first. Where the Abstract is
-not named so, there is no title page, and the text before the first heading is read as
-before (Basile, 2026-11-16, "No title page there"). A statement, under a heading
-`STATEMENT_TITLE` names or `_QUIET` finds, or run in from such a bold label; run in from
-such a label in plain type with its colon, "Funding:", within the run of such labels that
-ends the text before the reference list, as MDPI sets them after its Conclusions
-(`_closing_labels`), whatever headings stand over it; and in LaTeX in an environment so
-named or after AASTeX's `\acknowledgments`. A "Keywords", "Key words" or "Index Terms" line,
-a capital first, at a paragraph's start or after a line ending a sentence, and the list
-under a "Keywords" heading. And, in a PDF, a line its text repeats word for word, its spaces
-made one and each run of digits read alike, among the first or the last lines of half its
-pages or more and of three at least, never a line with a caption's shape
-(`PdfText.repeated`), which the audit gives G14 by its lines (Basile, 2026-11-16, round 3
-of #699). A
+the paper's opening, where that names the Abstract (a heading, "**Abstract**" in bold, a
+run-in "Abstract: ..."), in the paper and in the supplement apart, a file with no heading
+read for it as one with one (`_fronts`); a LaTeX paper's, before where its first abstract
+runs, where no heading comes first. Where the opening names something else, or nothing
+opens the paper, there is no title page, and the text before the first heading is read as
+before (Basile, 2026-11-16, "No title page there"). A statement, under a
+heading `STATEMENT_TITLE` names or `_QUIET` finds, run in from such a bold label, and in
+LaTeX in an environment so named or after AASTeX's `\acknowledgments`; a keywords or Index
+Terms line, and the list under a "Keywords" heading; and, in a PDF, a line its text repeats
+word for word, its spaces made one and each run of digits read alike, among the first or the
+last lines of half its pages or more and of three at least, never a line with a caption's
+shape (`PdfText.repeated`; `reference_lists.is_no_entry`, round 3 of #699), which the
+audit gives G14 by its lines. A
 short form the text uses too is asked about as before, its uses in those places not
 counted, and a use there before the text's definition is no use before it. A definition in
 those places is still one, and a use there still keeps a definition from being unused: the
@@ -27927,16 +27921,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A statement ends where its paragraph does: a funding statement run in from its bold
     label and carried on in a second paragraph under no label (docx-psych-A1's authors'
     initials) is read from there as text. Accepted.
-  - A statement run in from a label in plain type is one only in the run of such labels
-    that ends the text: one followed by any other paragraph of its section, a bold statement
-    among them, or by a heading other than the reference list's, is read as text, as
-    "Funding: the QXG study paid little." in a Discussion must be (round 3 of #699). Pinned by
-    `tests/test_g14_places.py::test_a_plain_label_in_the_paper_s_text_is_its_sentence`.
-  - A running line is read with its digits alike; a line with a caption's shape is never
-    one, so a running head that opens like a caption, "Supplementary Table S2 (continued)"
-    over each page of a long table, is read as text. Accepted.
   - A keywords line is the label's line alone, since a PDF's text marks no paragraph: a
     list carried onto a second line is read there. Accepted.
+  - A statement's name in plain type with its colon opens a statement at any paragraph's
+    start, in the paper's own text too: a Methods' "Data access: records came from ..." and
+    a Discussion's "Funding: the ... study paid little." ask nothing. Rounds 2 and 3 of #699
+    read it only in the back matter, then only in the run of such labels ending the text;
+    each was found to miss real statements, a label ending one file of several and a run
+    broken by a figure's legend, and round 1's reading was put back (Basile, 2026-11-16,
+    "Exact rules, then end"). Pinned by
+    `tests/test_g14_places.py::test_a_statement_s_name_in_plain_type_opens_one_wherever_it_stands`.
+  - A keywords line is found at a paragraph's start only, its label in any case: one on the
+    line after the Abstract's last, with one line break between, is the Abstract's text, and
+    a paragraph of prose that opens on "keywords:" is a keywords line. Rounds 2 and 3 of
+    #699 read it at a line's start, then after a line ending a sentence, which a hard line
+    break, emphasis or a note's mark at the line's end hid; round 1's reading was put back.
+    Pinned by
+    `tests/test_g14_places.py::test_a_keywords_line_is_read_at_a_paragraph_s_start_only`.
+  - The first block that opens the paper alone decides the title page: "**Key points**" or
+    "Highlights" before the heading that names the Abstract leaves no title page, and a
+    protocol's "**Abstract**" under a supplement's first heading makes the title page of
+    all before it. Rounds 2 and 3 of #699 looked past the first block and bounded where a
+    paragraph names the Abstract, by the first heading, then by one read as the paper's
+    title, which took a protocol's heading for one; round 1's reading was put back. Pinned by
+    `tests/test_g14_places.py::test_the_first_opening_block_alone_decides_the_title_page`.
+  - MDPI's order, its statements in plain type after the Conclusions, then
+    "Abbreviations:" and its list, then the references: each statement and the list's
+    opening line ask nothing, and the list's lines define as a list's do, so a short form
+    the text uses before only the list spells it out is reported as used before it is
+    defined. Pinned by `tests/test_g14_places.py::test_mdpi_s_abbreviations_before_the_references`.
   - A LaTeX statement is found under a heading, in an environment whose name is a
     statement's (`acknowledgements`, `funding`) or after AASTeX's `\acknowledgments`; one
     typed through another class's command, JMLR's `\acks{...}`, is read as text. Accepted.

@@ -1172,10 +1172,9 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
 #: title and a line that reads as prose, so that G14's own title page finds none
 #: (`text/title_page.py`) and only the place does; a statement under a heading that names one
 #: and that `_QUIET` does not find, whose capitals were read before; a statement run in from
-#: its bold label, the same; one run in from its label in plain type, as a PDF's text has it,
-#: in the run of such labels that ends the text before the reference list; a keywords line
-#: on the line after the Abstract's last; and a line a PDF repeats at its pages' edges, given
-#: to the reading as such (`_file`'s `running`).
+#: its bold label, the same; one run in from its label in plain type, as a PDF's text has it;
+#: a keywords line after the Abstract; and a line a PDF repeats at its pages' edges, given to
+#: the reading as such (`_file`'s `running`).
 UNDUE_TITLE_LINES = ("Ana Martin, {} Unit, Rouen, France", "Paul Girard and the {} group",
                      "Correspondence: Lea Roux, {} Centre")  # fmt: skip
 UNDUE_PROSE_LINE = "This version of the paper is under review at a journal."
@@ -1186,21 +1185,19 @@ UNDUE_STATEMENT_HEADINGS = ("# Data availability", "## Data availability stateme
 UNDUE_RUN_IN_LABELS = ("**Data availability:**", "**Ethics approval.**", "__Data sharing__:",
                        "**Consent for publication:**")  # fmt: skip
 UNDUE_PLAIN_LABELS = ("Funding:", "Data Availability Statement:", "Conflicts of interest:",
-                      "Acknowledgements:", "Ethics approval:", "Author Contributions:")  # fmt: skip
+                      "Acknowledgements:", "Ethics approval:")  # fmt: skip
 UNDUE_KEYWORDS_LINES = ("**Keywords:** {}; falls", "Key words: {}, falls",
                         "Index Terms\N{EM DASH}{}, falls", "KEYWORDS - {}; falls",
                         "*Key words*: {}; falls")  # fmt: skip
 UNDUE_RUNNING = "Journal of {}"
 #: The ways the Abstract is named, each of which ends a title page: a heading, a line in
 #: bold, a run-in label; the heading in a file after the title page's own, and the line in
-#: bold ending a file with no heading; the line in bold under the paper's title as a heading
-#: over the whole paper (round 3 of #699); and none, where there is no title page (Basile,
+#: bold ending a file with no heading; and none, where there is no title page (Basile,
 #: 2026-11-16, "No title page there").
-UNDUE_ABSTRACTS = ("heading", "bold", "run in", "next file", "bold, next file",
-                   "bold under the title", "none")  # fmt: skip
+UNDUE_ABSTRACTS = ("heading", "bold", "run in", "next file", "bold, next file", "none")
 #: The short forms the places hold, drawn in an order, none a word or a known form.
 UNDUE_FORMS = ("QXA", "QXB", "QXC", "QXD", "QXE", "QXF", "QXG", "QXH", "QXJ", "QXK", "QXL",
-               "QXM", "QXN", "QXP", "QXR", "QXS", "QXV", "QXW")  # fmt: skip
+               "QXM", "QXN", "QXP")  # fmt: skip
 #: The kinds of place, in the order the paper has them.
 UNDUE_KINDS = ("title page", "statement heading", "statement run in", "statement plain",
                "keywords line", "running line")  # fmt: skip
@@ -1209,79 +1206,55 @@ UNDUE_KINDS = ("title page", "statement heading", "statement run in", "statement
 @st.composite
 def undue_places(
     draw: st.DrawFn,
-) -> list[tuple[list[tuple[str, list[int], bool]], list[tuple[str, str]]]]:
+) -> list[tuple[list[tuple[str, list[int]]], list[tuple[str, str]]]]:
     """A Markdown paper for each way of `UNDUE_ABSTRACTS` the Abstract is named, each with
     every kind of `UNDUE_KINDS`, written a way drawn, holding a short form used nowhere else
     and one the Results also use undefined; a short form the title page uses before the
-    Introduction defines it; one the Abstract uses alone; and, each the text's, one in a
-    sentence of the Methods that opens on "Keyword-based", one after "Keywords:" on a line
-    under one that ends no sentence, one after "keywords:" in small letters, one in a
-    sentence of the Discussion that opens on a statement's name in plain type and goes on,
-    and one in a supplement whose first heading opens nothing and which has a protocol's
-    "**Abstract**" after it (rounds 2 and 3 of #699). "**Key points**" stands before the
-    Abstract, and ends its title page; the keywords line stands on the line after the
-    Abstract's last; the statements in plain type end the text, before its reference list.
-    Each paper is its files, each with its lines a PDF's running lines, from 1, and whether
-    it is the supplement's, and the findings G14 gives: each short form the text uses, once,
-    the Abstract's in the abstract where a heading names it, in the main text else."""
+    Introduction defines it; one the Abstract uses alone; and one in a sentence of the
+    Methods that opens on "Keyword-based". Each paper is its files, each with its lines a
+    PDF's running lines, from 1, and the findings G14 gives: each short form the text uses,
+    once, the Abstract's in the abstract where a heading names it, in the main text else."""
     forms = draw(st.permutations(UNDUE_FORMS))
     only = dict(zip(UNDUE_KINDS, forms, strict=False))
     also = dict(zip(UNDUE_KINDS, forms[len(UNDUE_KINDS):], strict=False))
-    alone, keyword, wrapped, small, trap, supplied = forms[-6:]
+    alone, keyword = forms[-2:]
     defined = _DEFINED_SHORT
     both = {kind: f"{only[kind]} and {also[kind]}" for kind in UNDUE_KINDS}
     lines = draw(st.permutations(UNDUE_TITLE_LINES))
     title = [f"Exam success and the {defined}", UNDUE_PROSE_LINE,
              lines[0].format(both["title page"]), *lines[1:]]  # fmt: skip
     keywords = draw(st.sampled_from(UNDUE_KEYWORDS_LINES)).format(both["keywords line"])
-    labels = draw(st.permutations(UNDUE_PLAIN_LABELS))
     body = ["# Introduction", f"The {_DEFINED_LONG} ({defined}) was read. The {defined} rose.",
-            "# Methods", f"Keyword-based retrieval used the {keyword} index.",
-            f"We sorted the records by\nKeywords: the {wrapped} terms first.",
-            f"We sorted them.\nkeywords: the {small} terms came first.",
-            "# Results", "The " + ", the ".join(also[kind] for kind in UNDUE_KINDS) + " fell.",
-            draw(st.sampled_from(UNDUE_STATEMENT_HEADINGS)),
-            f"The {both['statement heading']} approved it.",
-            "# Discussion", "It held.", f"{labels[1]} the {trap} study paid little.",
-            "It held again.",
-            f"{draw(st.sampled_from(UNDUE_RUN_IN_LABELS))} The {both['statement run in']} "
-            "hold the data."]  # fmt: skip
-    # The running line after three of the body's paragraphs of prose, drawn.
-    prose = [at for at, block in enumerate(body) if not block.startswith("#")]
+            "# Methods", f"Keyword-based retrieval used the {keyword} index.", "# Results",
+            "The " + ", the ".join(also[kind] for kind in UNDUE_KINDS) + " fell.",
+            "# Discussion", "It held."]  # fmt: skip
+    # The running line between three of the body's paragraphs, drawn.
+    gaps = sorted(draw(st.permutations([1, 3, 5, 7]))[:3], reverse=True)
     running = UNDUE_RUNNING.format(both["running line"])
-    for gap in sorted(draw(st.permutations(prose))[:3], reverse=True):
+    for gap in gaps:
         body.insert(gap + 1, running)
-    # The statements in plain type that end the text, each on its own or alone over its
-    # paragraph; then the reference list.
-    end = [f"{labels[0]} The {both['statement plain']} paid.", labels[2],
-           "The authors declare none.", "# References", "Smith A. A study of exams. 2020."]
-    points = ["**Key points**", "The exams rose."]
-    supplement = _undue_file(["# Supplementary Table S1", f"The {supplied} rose.", "**Abstract**",
-                              "Protocol text."], None, supplementary=True)  # fmt: skip
+    end = [f"{draw(st.sampled_from(UNDUE_RUN_IN_LABELS))} The {both['statement run in']} "
+           "hold the data.",
+           f"{draw(st.sampled_from(UNDUE_PLAIN_LABELS))} The {both['statement plain']} paid.",
+           draw(st.sampled_from(UNDUE_STATEMENT_HEADINGS)),
+           f"The {both['statement heading']} approved it."]  # fmt: skip
     papers = []
     for way in UNDUE_ABSTRACTS:
-        said = f"We read 412 records of the {alone}.\n{keywords}"
+        said = f"We read 412 records of the {alone}."
         opening = {"heading": ["# Abstract", said], "bold": ["**Abstract**", said],
                    "run in": [f"Abstract: {said}"], "next file": ["# Abstract", said],
-                   "bold, next file": ["**Abstract**", said],
-                   "bold under the title": ["**Abstract**", said], "none": [said]}[way]
-        text = [*body, *end]
+                   "bold, next file": ["**Abstract**", said], "none": [said]}[way]
         if way == "next file":
             files = [_undue_file(title, None),
-                     _undue_file([*points, *opening, *text], running)]
+                     _undue_file([*opening, keywords, *body, *end], running)]
         elif way == "bold, next file":
-            files = [_undue_file([*title, *points, *opening], None),
-                     _undue_file(text, running)]
-        elif way == "bold under the title":
-            # The title a heading over the paper, its sections a level under it.
-            deeper = [f"#{block}" if block.startswith("#") else block for block in text]
-            files = [_undue_file([f"# {title[0]}", *title[1:], *points, *opening, *deeper],
-                                 running)]  # fmt: skip
+            files = [_undue_file([*title, *opening, keywords], None),
+                     _undue_file([*body, *end], running)]
         else:
-            files = [_undue_file([*title, *points, *opening, *text], running)]
-        files.append(supplement)
+            files = [_undue_file([*title, *opening, keywords, *body, *end], running)]
         where = "the abstract" if way in ("heading", "next file") else "the main text"
-        times = dict.fromkeys([*also.values(), keyword, wrapped, small, trap, alone], "once")
+        times = dict.fromkeys([*also.values(), keyword], "once")
+        times[alone] = "once"
         if way == "none":
             # No title page: its short forms are the text's, and its use of the one the
             # Introduction defines comes before the definition.
@@ -1290,24 +1263,19 @@ def undue_places(
         found = [("abbreviation-undefined", f"{short} is used {count} in "
                   f"{where if short == alone else 'the main text'} as G14 reads it, and not "
                   "defined there") for short, count in times.items()]  # fmt: skip
-        found.append(("abbreviation-undefined", f"{supplied} is used once in the supplement "
-                      "as G14 reads it, and not defined there"))
         if way == "none":
-            line = files[0][0].split("\n").index(body[1]) + 1
+            text = files[0][0]
+            line = text.split("\n").index(body[1]) + 1
             found.append(("abbreviation-used-before-defined",
                           f"{defined} is used here, and defined later at 0.md:{line}"))
         papers.append((files, sorted(found)))
     return papers
 
 
-def _undue_file(
-    blocks: list[str], running: str | None, *, supplementary: bool = False
-) -> tuple[str, list[int], bool]:
-    """A file of `blocks`, each a paragraph, with the lines of it that are `running`, and
-    whether it is the supplement's."""
+def _undue_file(blocks: list[str], running: str | None) -> tuple[str, list[int]]:
+    """A file of `blocks`, each a paragraph, with the lines of it that are `running`."""
     text = "\n\n".join(blocks) + "\n"
-    return text, [at for at, line in enumerate(text.split("\n"), 1) if line == running], (
-        supplementary)  # fmt: skip
+    return text, [at for at, line in enumerate(text.split("\n"), 1) if line == running]
 
 
 #: The short form the Introduction defines, which the title uses before.

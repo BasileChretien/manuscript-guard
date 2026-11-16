@@ -207,97 +207,13 @@ def test_a_bold_or_run_in_abstract_line_ends_a_title_page(tmp_path: Path) -> Non
 
 def test_a_statement_s_label_in_plain_type_opens_it(tmp_path: Path) -> None:
     """A run-in label of a statement in plain type, as a PDF's text has every one, at a
-    paragraph's start and with its colon: "Funding:", "Data Availability Statement:", in the
-    run of such labels that ends the text. Not a statement's word inside a sentence (rounds 1
-    and 3 of #699)."""
-    text = ("We thank them. Funding: the QXG paid little.\n\nFunding: The QXF paid for it.\n\n"
-            "Data Availability Statement: The QXD holds the data.\n")  # fmt: skip
+    paragraph's start and with its colon: "Funding:", "Data Availability Statement:". Not
+    a statement's word inside a sentence (round 1 of #699)."""
+    text = ("# Introduction\n\nWe read the records.\n\nFunding: The QXF paid for it.\n\n"
+            "Data Availability Statement: The QXD holds the data.\n\n"
+            "We thank them. Funding: the QXG paid little.\n")  # fmt: skip
     found = checked(tmp_path, {"main.md": text})
     assert [m.split()[0] for code, m in found if code == "abbreviation-undefined"] == ["QXG"]
-    # In the back matter: under a statement's heading.
-    found = checked(tmp_path / "back", {"main.md": "# Discussion\n\nIt held.\n\n# Declarations"
-                                                   "\n\nFunding: The QXF paid for it.\n"})
-    assert not found, found
-
-
-def test_a_plain_label_in_the_paper_s_text_is_its_sentence(tmp_path: Path) -> None:
-    """ "Funding: the QXG study paid little." in a Discussion and "Data access: records came
-    from the QXS." in a Methods are the paper's sentences: a section it reports in stands
-    over them (round 2 of #699). A bold label is read as before."""
-    text = ("# Methods\n\nData access: records came from the QXS.\n\n# Discussion\n\n"
-            "Funding: the QXG study paid little.\n\n**Data availability:** The QXD holds "
-            "them.\n")  # fmt: skip
-    found = checked(tmp_path, {"main.md": text})
-    assert [m.split()[0] for code, m in found
-            if code == "abbreviation-undefined"] == ["QXG", "QXS"], found  # fmt: skip
-
-
-@pytest.mark.parametrize("text", [
-    # MDPI's: after "5. Conclusions", with no heading of their own, before the reference list.
-    "# Conclusions\n\nIt held.\n\nFunding: The QXF paid for it.\n\n# References\n\nA. 2020.\n",
-    # The same at the end of the file, one label alone over its paragraph.
-    "# Conclusions\n\nIt held.\n\nAuthor Contributions: QXA wrote it.\n\nFunding:\n\n"
-    "The QXF paid for it.\n\nData Availability Statement: The QXD holds the data.\n",
-    # Under a level-1 title over the whole paper.
-    "# The SDR of exams\n\n**Abstract**\n\nWe read records.\n\n## Introduction\n\nIt held."
-    "\n\n## Conclusions\n\nIt held.\n\nFunding: The QXF paid.\n\nData Availability "
-    "Statement: The QXD holds them.\n",
-], ids=["before the references", "at the file's end", "under a title over the paper"])  # fmt: skip
-def test_the_statements_in_plain_type_that_end_the_text_are_statements(
-    tmp_path: Path, text: str
-) -> None:
-    """ "A plain label is a statement within a run of such labels that ends the text before
-    the references" (Basile, 2026-11-16, round 3 of #699): the headings over it decide
-    nothing."""
-    assert checked(tmp_path, {"main.md": text}) == []
-
-
-def test_a_bold_abstract_under_the_paper_s_title_as_a_heading_ends_its_title_page(
-    tmp_path: Path,
-) -> None:
-    """A Markdown paper whose title is a heading over it keeps its title page: "**Abstract**"
-    under it names the Abstract (round 3 of #699)."""
-    text = ("# The SDR of exams\n\nAna Martin, UPV, Rouen\n\n**Abstract**\n\nWe read records."
-            "\n\n## Introduction\n\nIt held.\n")  # fmt: skip
-    assert checked(tmp_path, {"main.md": text}) == []
-
-
-@pytest.mark.parametrize("text", [
-    "# Methods\n\nWe sorted the records by\nkeywords: the QXA terms first.\n",
-    "# Methods\n\nWe sorted the records by\nKeywords: the QXA terms first.\n",
-    "# Methods\n\nWe sorted them.\nkeywords: the QXA terms came first.\n",
-], ids=["small letters, wrapped", "a capital, wrapped", "small letters, after a sentence"])
-def test_a_keywords_word_in_wrapped_prose_is_the_text_s(tmp_path: Path, text: str) -> None:
-    """A keywords line is a capitalised label at a paragraph's start or after a line ending a
-    sentence (Basile, 2026-11-16, round 3 of #699)."""
-    found = checked(tmp_path, {"main.md": text})
-    assert [m.split()[0] for code, m in found] == ["QXA"], found
-
-
-def test_an_opening_before_the_named_abstract_ends_the_title_page(tmp_path: Path) -> None:
-    """ "**Key points**" before the heading that names the Abstract ends the title page, which
-    is one all the same (round 2 of #699)."""
-    text = ("The SDR of exams\n\nThis version is under review.\n\nAna Martin, UPV, Rouen\n\n"
-            "**Key points**\n\nThe QXK rose.\n\n# Abstract\n\nWe read records.\n")
-    found = checked(tmp_path, {"main.md": text})
-    assert [m.split()[0] for code, m in found] == ["QXK"], found
-
-
-def test_an_abstract_line_after_a_heading_makes_no_title_page(tmp_path: Path) -> None:
-    """A protocol's "**Abstract**" under a supplement's first heading names no Abstract: a
-    paragraph names it only before the file's first heading (round 2 of #699)."""
-    found = checked(tmp_path, {
-        "main.md": "# Introduction\n\nWe read the records.\n",
-        "supplementary/S1.md": "# Supplementary Table S1\n\nThe QXT rose.\n\n**Abstract**\n\n"
-                               "Protocol text.\n"})  # fmt: skip
-    assert [m.split()[0] for code, m in found] == ["QXT"], found
-
-
-def test_a_keywords_line_under_the_abstract_s_last_line(tmp_path: Path) -> None:
-    """A keywords line on the line after the Abstract's last, one line break between, as a
-    PDF's text and a pasted paper have it (round 2 of #699)."""
-    text = "# Abstract\n\nWe read records.\nKeywords: QXK; falls\n\n# Methods\n\nIt held.\n"
-    assert checked(tmp_path, {"main.md": text}) == []
 
 
 def test_a_word_that_begins_with_keyword_opens_no_keywords_line(tmp_path: Path) -> None:
@@ -477,7 +393,7 @@ def test_a_running_line_with_its_page_number_inside_it_is_one() -> None:
 def test_digits_inside_a_line_are_its_own() -> None:
     """A supplement whose pages each end on their figure's caption, "Figure S1. ROC of the
     GBM model, fold 1", "Figure S2 ... fold 2": no running line, a line with a caption's shape
-    never one (rounds 2 and 3 of #699)."""
+    never one (round 3 of #699)."""
     from manuscript_guard.auditing.pdf import PdfText, Place
 
     pages = [[*(f"line {_LETTERS[page]}{_LETTERS[at]}" for at in range(9)),
@@ -486,3 +402,56 @@ def test_digits_inside_a_line_are_its_own() -> None:
     places = tuple(Place(page, line) for page, lines in enumerate(pages, 1)
                    for line in range(1, len(lines) + 1))  # fmt: skip
     assert not PdfText(Path("p.pdf"), "pdftotext", 4, "\n".join(texts), places).repeated
+
+
+# --------------------------------------------- the limits of round 1's reading (round 3 of #699)
+
+
+def test_a_statement_s_name_in_plain_type_opens_one_wherever_it_stands(tmp_path: Path) -> None:
+    """A label in plain type that names a statement opens one at any paragraph's start, in the
+    paper's own text too: a Methods' "Data access: ..." and a Discussion's "Funding: ..."
+    ask nothing (DESIGN.md, Known gaps; rounds 2 and 3 of #699 tried narrower rules and were
+    put back)."""
+    text = ("# Methods\n\nData access: records came from the QXS.\n\n# Discussion\n\n"
+            "Funding: the QXG study paid little.\n\nIt held.\n")  # fmt: skip
+    assert checked(tmp_path, {"main.md": text}) == []
+
+
+def test_a_keywords_line_is_read_at_a_paragraph_s_start_only(tmp_path: Path) -> None:
+    """A keywords line on the line after the Abstract's last, one line break between, is read
+    as the Abstract's text; a paragraph of prose that opens on "keywords:" is a keywords line
+    (DESIGN.md, Known gaps)."""
+    found = checked(tmp_path, {"main.md": "# Abstract\n\nWe read records.\nKeywords: QXK; falls"
+                                          "\n\n# Methods\n\nIt held.\n"})  # fmt: skip
+    assert [m.split()[0] for code, m in found] == ["QXK"], found
+    found = checked(tmp_path / "prose", {"main.md": "# Methods\n\nkeywords: the QXA terms came "
+                                                    "first, and the rest after.\n"})  # fmt: skip
+    assert found == [], found
+
+
+def test_the_first_opening_block_alone_decides_the_title_page(tmp_path: Path) -> None:
+    """The first block that opens the paper decides: "**Key points**" before the heading that
+    names the Abstract leaves no title page, and a protocol's "**Abstract**" under a
+    supplement's first heading makes one of all before it (DESIGN.md, Known gaps)."""
+    text = ("The SDR of exams\n\nThis version is under review.\n\nAna Martin, UPV, Rouen\n\n"
+            "**Key points**\n\nThe exams rose.\n\n# Abstract\n\nWe read records.\n")
+    found = checked(tmp_path, {"main.md": text})
+    assert [m.split()[0] for code, m in found] == ["SDR", "UPV"], found
+    found = checked(tmp_path / "supplement", {
+        "main.md": "# Introduction\n\nWe read the records.\n",
+        "supplementary/S1.md": "# Supplementary Table S1\n\nThe QXT rose.\n\n**Abstract**\n\n"
+                               "Protocol text.\n"})  # fmt: skip
+    assert found == [], found
+
+
+def test_mdpi_s_abbreviations_before_the_references(tmp_path: Path) -> None:
+    """MDPI's order: the statements in plain type after the Conclusions, then "Abbreviations:"
+    with its list, then the references. Each statement asks nothing; the list's lines define
+    as a list's do, so a short form the text uses before only the list spells it out is
+    reported as such (DESIGN.md, Known gaps)."""
+    text = ("# Introduction\n\nThe QXL rose.\n\n# Conclusions\n\nIt held.\n\n"
+            "Funding: The QXF paid for it.\n\nAbbreviations: The following abbreviations are "
+            "used in this manuscript:\n\nQXL: quality index\n\n# References\n\nA. 2020.\n")
+    assert checked(tmp_path, {"main.md": text}) == [(
+        "abbreviation-used-before-defined", "QXL is used here and not spelt out; only the list "
+        "of abbreviations defines it, at manuscript/main.md:13")]

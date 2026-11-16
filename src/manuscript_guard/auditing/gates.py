@@ -129,6 +129,10 @@ class _Staged:
     said: Callable[[int | None], str] | None = None
     #: For a .docx, where each line of the converted text stands (`auditing.paragraphs`).
     places: object = None
+    #: For a PDF, by the staged file's name, the lines of it, from 1, that the PDF repeats at
+    #: the top or the foot of its pages (`auditing.pdf.PdfText.repeated`), where G14 asks no
+    #: definition of a short form.
+    running: dict[str, frozenset[int]] = field(default_factory=dict)
 
 
 def _staged_pdf(paper: Path) -> _Staged:
@@ -147,15 +151,20 @@ def _staged_pdf(paper: Path) -> _Staged:
               else {line: (title, 1) for line, title in pdf.headings})  # fmt: skip
     staged: list[str] = []
     lines: list[int] = []
+    repeated = pdf.repeated
+    running: list[int] = []
     for at, text in enumerate(pdf.text.split("\n"), 1):
         said = ["", f"{'#' * levels[at][1]} {levels[at][0]}", ""] if at in levels else [text]
+        if at in repeated and at not in levels:
+            running.append(len(staged) + 1)
         if at in pdf.run_in:
             # The rest of a run-in label's line is the Abstract's first text.
             said.append(after_label(text))
         staged += said
         lines += [at] * len(said)
     return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
-                   unplaced=placed is None, said=pdf.said)  # fmt: skip
+                   unplaced=placed is None, said=pdf.said,
+                   running={"main.md": frozenset(running)})  # fmt: skip
 
 
 def _stage(paper: Path, tree=None) -> _Staged:
@@ -260,7 +269,7 @@ def run_gates(
                                  word=staged.converted)  # fmt: skip
         try:
             writing = check_writing(project, submission=residue)
-            language = check_language(project)
+            language = check_language(project, running=staged.running)
         except Exception as exc:  # noqa: BLE001 - a gate that raised is said, not hidden
             from manuscript_guard.diagnostics import crashes
 

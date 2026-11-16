@@ -1445,7 +1445,7 @@ def test_an_entry_of_the_list_is_said_as_one(project: Path) -> None:
 
 @pytest.mark.parametrize(
     "after",
-    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "
+    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Limitations\n\nUMC: the "
      "centre was consulted."],
     ids=["a sentence", "a line shaped like an entry", "a heading"],
 )  # fmt: skip
@@ -2465,11 +2465,16 @@ def test_a_paper_with_no_title_page_is_read_whole(project: Path, opening: str) -
 
 def test_a_title_page_over_600_words_is_read(project: Path) -> None:
     """Six hundred words is more than a title page holds, as `init --from` counts one: a
-    longer run is read, as the paper's own text may be."""
+    longer run is read, as the paper's own text may be, and G14's title page finds none. What
+    stands before the heading that names the Abstract asks no definition all the same
+    (Basile, 2026-11-16, decision 28 and "No title page there", which set no limit to it), so
+    its CHU is asked where the Abstract uses it too, once."""
     affiliations = "".join(f"^{at}^ Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
                            for at in range(1, 80))  # fmt: skip
-    text = f"Exam success\n\nAna MARTIN^1^\n\n{affiliations}# Abstract\n\nNone.\n"
-    assert "CHU" in _named(written(project, text))
+    text = f"Exam success\n\nAna MARTIN^1^\n\n{affiliations}# Abstract\n\nThe CHU paid.\n"
+    assert _file(0, Path("main.md"), text, [], False).title_page == 0
+    assert found(written(project, text), "abbreviation-undefined") == [
+        "CHU is used once in the abstract as G14 reads it, and not defined there"]
 
 
 def test_the_supplement_s_title_page_is_not_read(project: Path) -> None:
@@ -2521,11 +2526,14 @@ def test_a_keywords_list_under_its_heading_is_read_with_the_abstract(project: Pa
 def test_a_keywords_list_not_after_the_abstract_is_read_as_before(project: Path) -> None:
     """A "Keywords" heading after the reference list, or anywhere but after the Abstract,
     takes no scope of the section before it: its list is read as the main text, as before,
-    and a short form it never defines is said undefined (round 2 of #689: it took the
-    reference list's scope and was not read)."""
-    report = written(project, "# Introduction\n\nText.\n\n# References\n\nHicks A. 2004.\n\n"
-                              "# Keywords\n\nXQZ; falls\n")  # fmt: skip
-    assert any("XQZ" in said for said in found(report, "abbreviation-undefined")), found(report)
+    so what it defines is defined there (round 2 of #689: it took the reference list's scope
+    and was not read). A short form it lists asks no definition (decision 28)."""
+    report = written(project, "# Introduction\n\nThe ROR rose.\n\n# References\n\n"
+                              "Hicks A. 2004.\n\n# Keywords\n\nreporting odds ratio (ROR); "
+                              "XQZ; falls\n")  # fmt: skip
+    assert found(report, "abbreviation-used-before-defined") == [
+        "ROR is used here, and defined later at manuscript/main.md:11"], found(report)
+    assert not found(report, "abbreviation-undefined"), found(report)
 
 
 def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> None:

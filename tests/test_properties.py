@@ -2252,6 +2252,109 @@ def _no_title_page_is_found(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "title_page_end", lambda *args, **kwargs: None)
 
 
+from generated import undue_places  # noqa: E402
+
+
+@holds(30, undue_places())
+def test_no_definition_is_asked_where_none_is_due(
+    drawn: list[tuple[list[tuple[str, list[int]]], list[tuple[str, str]]]],
+) -> None:
+    """A short form that stands only on the title page, which a heading, a line in bold or a
+    run-in label naming the Abstract ends, in its file or in the next; in a statement under a
+    heading that names one, or run in from its label, in bold or in plain type; in a keywords
+    line; or in a line a PDF repeats at its pages' edges asks no definition. One the Results
+    use too is asked there, each of its uses in those places counted for nothing; a title's
+    use before the Introduction defines it is no use before the definition; and a sentence
+    that opens on "Keyword-based" is the text's (Basile, 2026-11-16, decision 28; round 1 of
+    #699)."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for files, expected in drawn:
+        chain: list = []
+        read = [_file(order, Path(f"{order}.md"), text, chain, False, opens=order == 0,
+                      running=running)
+                for order, (text, running) in enumerate(files)]  # fmt: skip
+        report = language_gate._judge(read, nothing, Path("."))
+        found = sorted((f.code, f.message) for f in report.findings)
+        assert found == expected, files
+
+
+def _the_title_page_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_fronts", lambda files: {})
+
+
+def _a_statement_s_heading_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "names_statement", lambda title: False)
+
+
+def _a_statement_run_in_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_run_in_named", lambda hidden, headings: [])
+
+
+def _a_keywords_line_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_keywords_lines", lambda hidden: [])
+
+
+def _a_running_line_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_lines_at", lambda text, numbers: [])
+
+
+def _a_statement_s_label_in_plain_type_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_PLAIN_LABEL", re.compile(r"(?!)"))
+
+
+def _a_line_that_begins_with_keyword_is_a_keywords_line(patch: pytest.MonkeyPatch) -> None:
+    """The pattern of round 0 of #699: "Keyword" with any letters after it, then a dash."""
+    patch.setattr(language_gate, "_KEYWORDS_LINE", re.compile(
+        r"[ \t\x00*_]*(?:key[ \t]?words?|index[ \t]+terms)[ \t\x00*_]*"
+        r"(?::|\N{EM DASH}|\N{EN DASH}|-{1,3})[^\n]*\S", re.IGNORECASE))  # fmt: skip
+
+
+def _only_a_heading_names_the_abstract(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._names_the_abstract
+    patch.setattr(title_page, "_names_the_abstract",
+                  lambda block, title: block.heading is not None and real(block, title))
+
+
+def _any_heading_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
+    """Round 0 of #699: where nothing named the Abstract, the first heading ended a title
+    page all the same."""
+    real = language_gate._fronts
+
+    def fronts(files):
+        for file in files:
+            if file.front is not None:
+                file.front = (file.front[0], True)
+        return real(files)
+
+    patch.setattr(language_gate, "_fronts", fronts)
+
+
+def _a_file_with_no_heading_opens_nothing(patch: pytest.MonkeyPatch) -> None:
+    """Round 0 of #699: a file with no heading held no opening, and was the title page whole
+    where a later file held one."""
+    real = language_gate.opening
+    patch.setattr(language_gate, "opening",
+                  lambda seen, headings, title=None: real(seen, headings, title) if headings
+                  else None)  # fmt: skip
+
+
+def _a_use_where_none_is_due_comes_before_the_definition(patch: pytest.MonkeyPatch) -> None:
+    """Uses in those places asked nothing, but counted before the definition, as before."""
+    real = language_gate._collect
+
+    def counted(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            for short, uses in scope.used.items():
+                if short in scope.defined:
+                    scope.used[short] = [dataclasses.replace(use, undue=False) for use in uses]
+        return scopes
+
+    patch.setattr(language_gate, "_collect", counted)
+
+
 def _only_an_abstract_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import title_page
 
@@ -26438,6 +26541,50 @@ BROKEN = {
     "no title page is found": (
         _no_title_page_is_found,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "the title page is read as text": (
+        _the_title_page_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statement's heading is read as text": (
+        _a_statement_s_heading_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statement run in from its label is read as text": (
+        _a_statement_run_in_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a keywords line is read as text": (
+        _a_keywords_line_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a pdf's running line is read as text": (
+        _a_running_line_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statement's label in plain type is read as text": (
+        _a_statement_s_label_in_plain_type_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a line that begins with keyword is a keywords line": (
+        _a_line_that_begins_with_keyword_is_a_keywords_line,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "only a heading names the abstract": (
+        _only_a_heading_names_the_abstract,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "any heading ends a title page": (
+        _any_heading_ends_a_title_page,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a file with no heading opens nothing": (
+        _a_file_with_no_heading_opens_nothing,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a use where no definition is due comes before the definition": (
+        _a_use_where_none_is_due_comes_before_the_definition,
+        test_no_definition_is_asked_where_none_is_due,
     ),
     "only an abstract ends a title page": (
         _only_an_abstract_ends_a_title_page,

@@ -5449,6 +5449,29 @@ each rule leans the other way. A LaTeX paper is not read so: the title page its 
 writes, `\author`, `\affil`, `\address` and the rest of `FRONT_MATTER_COMMANDS`, is passed
 over by its reader (above), and nothing here changes how a LaTeX paper is read.
 
+**No definition is asked where none is due** (Basile, 2026-11-16, decision 28, after 35
+findings the judges of the real-paper corpus marked false in 20 papers). A short form that
+stands only in these places asks no definition and is not counted, in `audit` and in `check`
+alike: the title page, all before the first heading or block the title page above reads as
+the paper's opening, where that names the Abstract (a heading, "**Abstract**" in bold, a
+run-in "Abstract: ..."), in the paper and in the supplement apart, a file with no heading
+read for it as one with one (`_fronts`); a LaTeX paper's, before where its first abstract
+runs, where no heading comes first. Where the opening names something else, or nothing
+opens the paper, there is no title page, and the text before the first heading is read as
+before (Basile, 2026-11-16, "No title page there"). A statement, under a
+heading `STATEMENT_TITLE` names or `_QUIET` finds, run in from such a bold label, and in
+LaTeX in an environment so named or after AASTeX's `\acknowledgments`; a keywords or Index
+Terms line, and the list under a "Keywords" heading; and, in a PDF, a line its text repeats
+word for word, its spaces made one and each run of digits read alike, among the first or the
+last lines of half its pages or more and of three at least, never a line with a caption's
+shape (`PdfText.repeated`; `reference_lists.is_no_entry`, round 3 of #699), which the
+audit gives G14 by its lines. A
+short form the text uses too is asked about as before, its uses in those places not
+counted, and a use there before the text's definition is no use before it. A definition in
+those places is still one, and a use there still keeps a definition from being unused: the
+title page above, whose words are read for neither, is unchanged. Known gaps says where the
+places end.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -27972,6 +27995,59 @@ What papers converted from Word showed (see "What papers converted from Word sho
   match luck: 0.85 stands 77 times in psych-B2's tables, nearly all an interval's bound, so
   any Abstract's 85% would be found there whatever the paper reports (Basile, 2026-11-15).
   Pinned by `tests/test_audit.py::test_a_percentage_is_not_found_as_the_proportion_a_table_gives`.
+- **G14's places that owe no definition are read by their places, not their meaning
+  (decision 28).** A short form that stands only on the title page, in a statement, in a
+  keywords line or in a PDF's running line asks no definition; the places are found as
+  follows, and what lies outside them is read as the paper's text. Accepted.
+  - Where neither a heading nor a block G14 reads as the paper's opening names the
+    Abstract, there is no title page, and the cover's affiliations are asked about as
+    before (Basile, 2026-11-16, "No title page there"): a PDF with no Abstract heading,
+    pdf-educ-B2's WA and pdf-socio-A3's UGent, and one whose run-in "Abstract—" no heading
+    is made of, tex-cs-lg-B2's. Pinned by
+    `tests/test_g14_places.py::test_with_no_abstract_named_there_is_no_title_page`.
+  - Where the Abstract is named, all before it is the title page, however long: a cover
+    of more than 600 words, which G14's own title page does not take, asks no definition of
+    a short form used only there. Pinned by
+    `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
+  - A statement ends where its paragraph does: a funding statement run in from its bold
+    label and carried on in a second paragraph under no label (docx-psych-A1's authors'
+    initials) is read from there as text. Accepted.
+  - A keywords line is the label's line alone, since a PDF's text marks no paragraph: a
+    list carried onto a second line is read there. Accepted.
+  - A statement's name in plain type with its colon opens a statement at any paragraph's
+    start, in the paper's own text too: a Methods' "Data access: records came from ..." and
+    a Discussion's "Funding: the ... study paid little." ask nothing. Rounds 2 and 3 of #699
+    read it only in the back matter, then only in the run of such labels ending the text;
+    each was found to miss real statements, a label ending one file of several and a run
+    broken by a figure's legend, and round 1's reading was put back (Basile, 2026-11-16,
+    "Exact rules, then end"). Pinned by
+    `tests/test_g14_places.py::test_a_statement_s_name_in_plain_type_opens_one_wherever_it_stands`.
+  - A keywords line is found at a paragraph's start only, its label in any case: one on the
+    line after the Abstract's last, with one line break between, is the Abstract's text, and
+    a paragraph of prose that opens on "keywords:" is a keywords line. Rounds 2 and 3 of
+    #699 read it at a line's start, then after a line ending a sentence, which a hard line
+    break, emphasis or a note's mark at the line's end hid; round 1's reading was put back.
+    Pinned by
+    `tests/test_g14_places.py::test_a_keywords_line_is_read_at_a_paragraph_s_start_only`.
+  - The first block that opens the paper alone decides the title page: "**Key points**" or
+    "Highlights" before the heading that names the Abstract leaves no title page, and a
+    protocol's "**Abstract**" under a supplement's first heading makes the title page of
+    all before it. Rounds 2 and 3 of #699 looked past the first block and bounded where a
+    paragraph names the Abstract, by the first heading, then by one read as the paper's
+    title, which took a protocol's heading for one; round 1's reading was put back. Pinned by
+    `tests/test_g14_places.py::test_the_first_opening_block_alone_decides_the_title_page`.
+  - MDPI's order, its statements in plain type after the Conclusions, then
+    "Abbreviations:" and its list, then the references: each statement and the list's
+    opening line ask nothing, and the list's lines define as a list's do, so a short form
+    the text uses before only the list spells it out is reported as used before it is
+    defined. Pinned by `tests/test_g14_places.py::test_mdpi_s_abbreviations_before_the_references`.
+  - A LaTeX statement is found under a heading, in an environment whose name is a
+    statement's (`acknowledgements`, `funding`) or after AASTeX's `\acknowledgments`; one
+    typed through another class's command, JMLR's `\acks{...}`, is read as text. Accepted.
+  - A running line is one the PDF repeats at the top or the foot of half its pages or more:
+    one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
+    (tex-astro-ga-B2), is read as text. Pinned by
+    `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
   "·") and a power, and a power alone, a number with a caret and a braced exponent or a

@@ -30353,6 +30353,23 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     ]
 
 
+def test_a_short_form_used_undefined_in_the_results_is_still_reported(project: Path) -> None:
+    """Decision 28: no definition is asked of a short form that stands only in a statement,
+    a keywords line or the title page. One the Results use undefined is reported all the
+    same, at its use there, though the funding statement, the data availability statement
+    and a keywords line after the Abstract use it first, and they count for nothing; and the
+    short form only the funding statement names is not."""
+    mended = with_ror_defined(project)
+    slipped = mended.replace(
+        "\n# Introduction", "\n**Keywords:** UMC; hepatotoxicity\n\n# Introduction", 1
+    ).replace("{{table.baseline}}", "The UMC coded the reports.\n\n{{table.baseline}}", 1
+    ).replace("This work received no funding.", "The UMC and the ANR paid for this work."
+    ).replace("No real patient data were used", "The UMC holds no real patient data")  # fmt: skip
+    assert slipped.count("UMC") == 4, "the fixture changed under this test"
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(slipped, "The UMC c"))]
+
+
 def test_an_author_s_initials_are_no_slip_and_an_institution_s_acronym_is(
     project: Path,
 ) -> None:

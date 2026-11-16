@@ -26,20 +26,21 @@
 expected:
   - reading: abbreviations
     why: >-
-      G14 reads four more shapes as a definition, each through the letters it matched
-      before: a word or a whole number after a bracket's short form and nothing else, "(CL
-      AGNs)", "(ESM 1)", and each short form of a bracket that lists them; "X = long form"
-      and "X: long form" pair by pair, the long form the words after the sign whole, short
-      forms a slash joins paired with its parts; "known as X", "referred to as X", "called
-      X", "hereafter X"; a LaTeX citation's note opening with the short form; and a
-      definition in a section's heading of the main text, the paper's title apart; a note's
-      "X = long form" and a heading restate the text's definition, as a caption does
-      (Basile, 2026-11-16, decision 29 and "As a restatement", after 41 forms the judges of
-      the real-paper corpus found defined in these shapes)
+      a short form that stands only where no definition is due asks none and counts no use:
+      on the title page, all before the first heading or block G14's title page reads as the
+      paper's opening, where it names the Abstract, and no title page where it does not (Basile,
+      "No title page there"); in a statement, under a heading `STATEMENT_TITLE` names or run
+      in from such a label, in bold or in plain type with its colon; in a "Keywords", "Key
+      words" or "Index Terms" line at a paragraph's start; and in a line a PDF repeats at its
+      pages' edges. One the text uses too is asked as before, those uses not counted,
+      and a use there is no use before the definition; redefined and unused are as they were
+      (Basile, 2026-11-16, decision 28, after 35 findings the judges marked false in 20 papers
+      of the real-paper corpus)
   - reading: audit abbreviations
     why: >-
-      the audit's list of short forms used and not defined is G14's, which reads decision
-      29's shapes as definitions now: a form a new shape defines leaves the list
+      the audit's one finding of the short forms used and not defined lists none that stands
+      only where no definition is due, and counts no use there, as G14 now reads them
+      (decision 28, the entry for `abbreviations`)
   - reading: abstract against results
     why: >-
       a power in the Abstract, `$10^{-2}$`, `$10^8$` or pandoc's `10^-2^`, and a number in

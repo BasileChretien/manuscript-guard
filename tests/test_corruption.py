@@ -2773,6 +2773,42 @@ def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differ
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+@pytest.mark.parametrize("suffix", [".tex", ".md"])
+@pytest.mark.parametrize(("printed", "changed"), [("1.4!times 10^{-2}", "1.4!times 10^{-3}"),
+                                                  ("1.4!times 10^{-2}", "1.5!times 10^{-2}"),
+                                                  ("10^{-2}", "-10^{-2}")])  # fmt: skip
+def test_an_abstract_s_power_the_results_print_another_way_is_said_not_found(
+    tmp_path: Path, suffix: str, printed: str, changed: str
+) -> None:
+    """tex-astro-ga-B1 of the real-paper corpus: a power in the Abstract's maths was read as
+    "10^" and "-2" in LaTeX and as printed in Markdown, and said not found whatever the
+    Results printed, so an exponent changed in the Abstract was said no differently from one
+    copied. A number in scientific notation is read whole, its sign, its mantissa and its
+    power: one the Results print is found, and one whose exponent, mantissa or sign differs
+    is not found, named whole, though the Results give each of its parts elsewhere (round 1
+    of #696)."""
+    from manuscript_guard.audit import audit
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\nThe mass was "
+             "$!sim PRINTED$ here.\n!end{abstract}\n!section{Results}\nThe mass was "
+             "$PRINTED$, and -3 the shift, 1.5 the next, $10^{-3}$ the rate.\n"
+             "!end{document}\n")  # fmt: skip
+    markdown = ("# A study\n\n## Abstract\n\nThe mass was $!sim PRINTED$ here.\n\n## Results"
+                "\n\nThe mass was $PRINTED$, and -3 the shift, 1.5 the next, $10^{-3}$ the "
+                "rate.\n")  # fmt: skip
+    paper = tmp_path / f"paper{suffix}"
+    text = (latex if suffix == ".tex" else markdown).replace("PRINTED", printed)
+    paper.write_text(text.replace("!", chr(92)), encoding="utf-8")
+    read = audit([paper], None).abstract
+    assert [c.text for c in read.found] == [printed.replace("!", chr(92))], read
+    assert read.not_found == [], read
+    paper.write_text(text.replace(f"{printed}$ here", f"{changed}$ here").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], None).abstract
+    assert [c.text for c in read.not_found] == [changed.replace("!", chr(92))], read
+    assert read.found == [], read
+
+
 def test_an_abstract_that_differs_from_results_by_another_name_fails_an_audit(
     tmp_path: Path,
 ) -> None:

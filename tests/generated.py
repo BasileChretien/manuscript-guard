@@ -9531,7 +9531,18 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: with the list's next number, which resumes the list and is not found, a caption that ends
 #: it again, which is, and an entry with no number and a reference's shape, which resumes it
 #: too (rounds 1 and 2 of #692). In LaTeX none of them is, since the lines after
-#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps").
+#: `thebibliography` stand under the section before it (DESIGN.md, "Known gaps"). And a
+#: power in maths (`POWER_SPELLINGS`), which the Methods print again, spelled as drawn, and
+#: is found, and one only the Discussion prints, its base and its exponent apart in the
+#: Methods, which is not; each named whole, and neither by its base and a caret, as
+#: tex-astro-ga-B1 of the real-paper corpus had its `10^{-2}` named "10^". And a number in
+#: scientific notation, signed or not, which the Methods print again, found; one whose
+#: mantissa they print with another and alone, a bare power they print with a mantissa, one
+#: with a minus they print without, and one they print only as a column's scale, none of
+#: them found; and a scale in the Abstract, which is no number (round 1 of #696). And a
+#: number whose mantissa is the digit of a subscript before a times sign where the paper
+#: reports, `VCO~2~ \times10^{41}`, a scale in Markdown's text, not found; and one the paper
+#: prints with ties in maths over more than one line (`MATHS_OVER_LINES`), found.
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9546,7 +9557,110 @@ ABSTRACT_KINDS = (
     "share rounded up", "share off", "share closed up", "share without a denominator",
     "share after its counts", "share without a sign", "share with a decimal comma",
     "share season", "share season and year", "share count over", "share over a hundred",
+    "power", "power not found", "scientific", "scientific another mantissa", "power scaled",
+    "power signed", "scale", "scale in the abstract", "scale after a subscript",
+    "ties in maths across lines",
 )  # fmt: skip
+#: How a power's exponent is spelled in maths, `{v}` the exponent: braced, after a thin
+#: space, with its plus sign, and, a digit, unbraced; and what may stand before it.
+POWER_SPELLINGS = ("{{{v}}}", "{{" + BACKSLASH + ",{v}}}", "{{+{v}}}", "{v}")
+POWER_LEADS = ("", BACKSLASH + "sim ", BACKSLASH + "approx ")
+POWER_BASES = ("10", "2", "3")
+#: The first exponent each kind of power draws from, four apart, so that no kind's number is
+#: another's: a power of `ABSTRACT_KINDS` (round 1 of #696: a number in scientific notation,
+#: a mantissa times a power of ten, is one number; a scale, a power after a times sign with
+#: no mantissa before it, is none).
+POWER_EXPONENTS = {"power": 2, "power not found": 6, "scientific": 11,
+                   "scientific another mantissa": 15, "power scaled": 21, "power signed": 25,
+                   "scale": 31, "scale in the abstract": 35,
+                   "scale after a subscript": 41, "ties in maths across lines": 45}  # fmt: skip
+#: Maths over more than one line that holds a number in scientific notation with ties, `{}`
+#: the number: inline maths wrapped at a line break, and display maths on lines of its own
+#: (after the check of 191d0e7c2 in #696).
+MATHS_OVER_LINES = ("It was $" + BACKSLASH + "sim\n{}$ then.", "It was\n$$\n{}\n$$\nthen.")
+#: A times sign between a mantissa and its power, and the spaces either side of it.
+TIMES_SIGNS = (BACKSLASH + "times", BACKSLASH + "cdot")
+#: Of them, the gaps a typist or TeX leaves beside a space and TeX's thin space: a tie, a
+#: control space, a no-break, a thin and a narrow no-break space, and runs of them, one of
+#: which every example draws (round 2 of #696).
+TIMES_TIES = ("~", BACKSLASH + " ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+              "\N{NARROW NO-BREAK SPACE}", BACKSLASH + ",~", "~" + BACKSLASH + "; ")
+TIMES_GAPS = ("", " ", BACKSLASH + ",", *TIMES_TIES)
+
+
+def _power(draw: st.DrawFn, base: str, value: int) -> str:
+    """A power of `base` to `value`, spelled in one of `POWER_SPELLINGS` drawn that can
+    write it: a sign only braced, and only a digit unbraced."""
+    spellings = [one for one in POWER_SPELLINGS if (value > 0 or "+" not in one)
+                 and (one != "{v}" or 0 < value < 10)]  # fmt: skip
+    return f"{base}^" + draw(st.sampled_from(spellings)).format(v=value)
+
+
+def _times(draw: st.DrawFn, mantissa: str, power: str, gaps: tuple = TIMES_GAPS) -> str:
+    """`mantissa` times `power`, the sign and the spaces, of `gaps`, drawn."""
+    gap = draw(st.sampled_from(gaps))
+    return f"{mantissa}{gap}{draw(st.sampled_from(TIMES_SIGNS))}{gap}{power}"
+
+
+def _abstract_power(draw: st.DrawFn, kind: str
+                    ) -> tuple[str, list[str], list[str], list[tuple]]:  # fmt: skip
+    """A power of one of the power kinds of `ABSTRACT_KINDS`: the Abstract's sentence, the
+    Methods' and the Discussion's, and what is looked for: the number named whole, as found
+    or not, and the names that are no number, never looked for, absent."""
+    low = POWER_EXPONENTS[kind]
+    value = draw(st.integers(low, low + 3)) * draw(st.sampled_from((1, -1)))
+    base = "10" if kind not in ("power", "power not found") else draw(
+        st.sampled_from(POWER_BASES))  # fmt: skip
+    power, again = _power(draw, base, value), _power(draw, base, value)
+    mantissa = f"{draw(st.integers(1, 9))}.{draw(st.integers(1, 9))}"
+    other = f"{int(mantissa[0]) % 9 + 1}.{mantissa[2]}"
+    sign = draw(st.sampled_from(("", "-")))
+    methods: list = []
+    discussion: list[str] = []
+    if kind == "power":
+        written, state = power, "exact"
+        methods.append(f"It was ${again}$ then.")
+    elif kind == "power not found":
+        written, state = power, "not found"
+        discussion.append(f"It was ${power}$ then.")
+        methods.append(f"Of {base} runs, {value} was the shift.")
+    elif kind == "scientific":
+        written, state = sign + _times(draw, mantissa, power), "exact"
+        methods.append(f"It was ${sign}{_times(draw, mantissa, again)}$ then.")
+    elif kind == "scientific another mantissa":
+        written, state = _times(draw, mantissa, power), "not found"
+        # Its parts, each printed apart: another mantissa, the bare power and the mantissa.
+        methods.append(f"It was ${_times(draw, other, again)}$, ${again}$ alone, and "
+                       f"{mantissa} the next.")  # fmt: skip
+    elif kind == "power scaled":
+        written, state = power, "not found"
+        methods.append(f"It was ${_times(draw, mantissa, again, TIMES_TIES)}$ then.")
+    elif kind == "power signed":
+        written, state = f"-{power}", "not found"
+        methods.append(f"It was ${again}$ then.")
+    elif kind == "scale":
+        written, state = power, "not found"
+        methods.append(f"Counts (${TIMES_SIGNS[0]} {again}$ per ml) were read.")
+    elif kind == "ties in maths across lines":
+        written, state = _times(draw, mantissa, power), "exact"
+        tied = f"{mantissa}~{TIMES_SIGNS[0]}~{again}"
+        methods.append(draw(st.sampled_from(MATHS_OVER_LINES)).format(tied))
+    elif kind == "scale after a subscript":
+        # In Markdown's text `~` marks a subscript, no tie: its digit is no mantissa, and the
+        # power after the times sign a scale (after the check of b95b6a89f in #696).
+        digit = mantissa[0]
+        written, state = _times(draw, digit, power), "not found"
+        methods.append(Apart(f"It was VCO~{digit}~ {BACKSLASH}times{again} then.",
+                             f"It was VCO$_{digit}$ ${BACKSLASH}times{again}$ then."))
+    else:
+        times = draw(st.sampled_from(TIMES_SIGNS))
+        methods.append(f"It was ${again}$ then.")
+        return (f"Counts (${times} {power}$ per ml) were read here.", methods, discussion,
+                [(kind, power, "absent"), (kind, f"{times} {power}", "absent"),
+                 (kind, f"{base}^", "absent")])  # fmt: skip
+    lead = draw(st.sampled_from(POWER_LEADS))
+    return (f"The rate was ${lead}{written}$ here.", methods, discussion,
+            [(kind, written, state), (kind, f"{base}^", "absent")])
 #: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
 #: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
 SHARE_SHAPES = {
@@ -9852,6 +9966,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             found = kind in ("past the list", "past the list legend", "past the resumed list")
             looked.append((kind, shown, "exact" if found else "not found"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in POWER_EXPONENTS:
+            said, in_methods, in_discussion, planted = _abstract_power(draw, kind)
+            methods += in_methods
+            discussion += in_discussion
+            looked += planted
+            abstract.append((kind, said))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400

@@ -309,6 +309,18 @@ def test_code_spans_are_found_in_linear_time(assert_linear) -> None:
     assert_linear(escaped, code_spans, 2000, "escaped backticks after long runs of backslashes")
 
 
+def test_markdown_maths_is_found_in_linear_time(assert_linear) -> None:
+    """Maths is looked for from each `$` to the next one in its paragraph, and past code read
+    once (#696): dollar signs that open nothing, `$5` prices, one `$$` that never closes, and
+    runs of backticks between them must not make the time grow faster than the text."""
+    from manuscript_guard.text.markdown_maths import markdown_maths
+
+    def dollars(count: int) -> str:
+        return "$$ open " + " ".join(f"${n % 9} a$b `c` $ x" for n in range(count)) + "\n"
+
+    assert_linear(dollars, markdown_maths, 2000, "dollar signs that open no maths")
+
+
 def test_masked_link_brackets_are_passed_over_in_linear_time(assert_linear) -> None:
     """A link's target is looked for at each `](` left unmasked: one in a comment costs
     nothing, where each was a search to the next `)` (round 3 of #589)."""

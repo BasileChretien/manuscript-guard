@@ -6764,7 +6764,13 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     not (Basile, 2026-11-15, after pdf-psych-B3), nor is one in an entry after them, which
     resumes the list where it opens with the list's next number, wrapped, or has a
     reference's shape, while one in a caption after that entry is (rounds 1 and 2 of #692).
-    Without
+    A power in maths, `$10^{-2}$`, is read whole and found where the Methods print the same
+    power, however its exponent is spelled, and not where they give its base and exponent
+    apart; it is never named by its base and a caret (tex-astro-ga-B1). A number in
+    scientific notation is one number, its sign, mantissa and power: found where the Methods
+    print it again, and not where they print another mantissa, a bare power where they give
+    it a mantissa, a signed one where they drop the sign, nor one they give only as a scale;
+    a scale in the Abstract is no number (round 1 of #696). Without
     an Abstract heading, or a Results heading, nothing is compared. The same paper in LaTeX
     reads alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1
     of #472), but for what stands after `thebibliography`, which stands under the section
@@ -7183,6 +7189,97 @@ def _compared_as(patch: pytest.MonkeyPatch, compared: bool) -> None:
         dataclasses.replace(report, abstract=dataclasses.replace(report.abstract,
                                                                  compared=compared)),
         sources, pieces))  # fmt: skip
+
+
+def _a_power_is_read_as_its_atoms(patch: pytest.MonkeyPatch) -> None:
+    """As on 0223ca005: `10^{-2}` in LaTeX was "10^" and "-2"."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [])
+
+
+def _a_power_is_found_by_its_pieces(patch: pytest.MonkeyPatch) -> None:
+    """A power's base and exponent looked for as two numbers, as the body's bare numbers."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        one = real(atoms, read, text)
+        flat = re.sub(r"[\^{}]", " ", one.atom.text)
+        return dataclasses.replace(one, parts=tuple(abstract._numbers(flat)),
+                                   powered=frozenset())  # fmt: skip
+
+    patch.setattr(abstract, "_joined", joined)
+
+
+def _read_powers_as(patch: pytest.MonkeyPatch, **changed) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.powers
+    patch.setattr(abstract, "powers", lambda text, read, tied=None: [
+        dataclasses.replace(power, **changed) for power in real(text, read, tied)])  # fmt: skip
+
+
+def _a_scale_or_a_mantissa_is_no_part_of_the_number(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `$5\\times 10^{-2}$` and a header's
+    `(\\times 10^8 cm^-3)` found an Abstract's bare power."""
+    _read_powers_as(patch, mantissa="1", scale=False)
+
+
+def _a_mantissa_is_looked_for_alone(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `3\\times 10^{8}` in the Abstract was found as 3
+    and 10^8 apart. Only the Abstract's reading is broken, where the paper reports is not."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._joined
+
+    def joined(atoms, read, text):
+        bare = [dataclasses.replace(power, mantissa="1") for power in read]
+        one = real(atoms, bare, text)
+        alone = tuple(power.mantissa for power in read
+                      if not power.scale and power.mantissa != "1")  # fmt: skip
+        return dataclasses.replace(one, parts=(*one.parts, *alone))
+
+    patch.setattr(abstract, "_joined", joined)
+
+
+def _a_times_sign_s_gap_is_only_a_space(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 2 of #696: `5~\\times~10^{-2}` was the bare `10^{-2}`."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_GAP", r"(?:[ \t]|\\[,;:!])*")
+    narrow = abstract._power_pattern.__wrapped__()
+    patch.setattr(abstract, "_power_pattern", lambda: narrow)
+
+
+def _a_tie_is_a_gap_in_markdown_text(patch: pytest.MonkeyPatch) -> None:
+    """As at b95b6a89f: in Markdown, `VCO~2~ \\times10^{3}` was the number 2 times 10^3."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "ties", lambda path, text: None)
+
+
+def _markdown_maths_is_read_within_one_line(patch: pytest.MonkeyPatch) -> None:
+    """As at 191d0e7c2: maths wrapped at a line break, or display maths on lines of its own,
+    held no tie."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.markdown_maths
+
+    def one_line(text: str) -> list[tuple[int, int]]:
+        spans, offset = [], 0
+        for line in text.split("\n"):
+            spans += [(offset + start, offset + end) for start, end in real(line)]
+            offset += len(line) + 1
+        return spans
+
+    patch.setattr(abstract, "markdown_maths", one_line)
+
+
+def _a_power_s_sign_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    """As at the head of round 1 of #696: `-10^{8}` was found as `10^{8}`."""
+    _read_powers_as(patch, sign="")
 
 
 def _the_abstract_s_share_is_read_again(patch: pytest.MonkeyPatch) -> None:
@@ -27652,6 +27749,38 @@ BROKEN = {
     ),
     "an estimate's words are not its abbreviation": (
         _an_estimates_words_are_not_its_abbreviation,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read as its atoms": (
+        _a_power_is_read_as_its_atoms,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by its base and its exponent apart": (
+        _a_power_is_found_by_its_pieces,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is found by another mantissa or a scale": (
+        _a_scale_or_a_mantissa_is_no_part_of_the_number,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its mantissa looked for alone": (
+        _a_mantissa_is_looked_for_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract is read with a space alone around its times sign": (
+        _a_times_sign_s_gap_is_only_a_space,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has a tie in Markdown's text read as a gap": (
+        _a_tie_is_a_gap_in_markdown_text,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has Markdown's maths read within one line": (
+        _markdown_maths_is_read_within_one_line,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a power of the Abstract has its sign dropped": (
+        _a_power_s_sign_is_dropped,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (

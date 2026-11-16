@@ -1823,7 +1823,7 @@ def _piece(source: _Source, atoms: list[Atom]):
     from manuscript_guard.auditing.abstract import Piece
 
     return Piece(source.path, source.hidden, source.place, source.table_lines, source.abstract,
-                 source.results, tuple(atoms), _lined(source))  # fmt: skip
+                 source.results, tuple(atoms), _lined(source), source.text)  # fmt: skip
 
 
 def _flows(report: AuditReport, source: _Source) -> None:

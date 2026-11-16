@@ -27984,6 +27984,47 @@ What papers converted from Word showed (see "What papers converted from Word sho
     one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
     (tex-astro-ga-B2), is read as text. Pinned by
     `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
+- **An Abstract's power is found only as the same number in the same notation.** A number in
+  scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
+  "·") and a power, and a power alone, a number with a caret and a braced exponent or a
+  single digit after it, `10^{-2}`, `10^8`, or pandoc's superscript `10^-2^`, are read whole
+  (`auditing.abstract.powers`), in the Abstract and where the paper reports alike. Each is
+  found only where the paper prints the same sign, mantissa, base and exponent, each read as
+  a number, a bare power with a mantissa of 1, however the exponent is spelled: braced or
+  not, after a thin space, with a plus sign or an en dash. A power after a times sign with
+  no mantissa before it, a column header's "(×10^8 cm^-3)", is a scale and no number on
+  either side. Read as atoms, LaTeX's `10^{-2}`, whose braces the reader blanks, was "10^"
+  and "-2", and the finding named "10^" (tex-astro-ga-B1 of the real-paper corpus, on
+  0223ca005); a mantissa, a scale and a sign were then no part of the number (round 1 of
+  #696). Accepted.
+  - A number is not found where the paper gives its value in another notation, 0.01 for
+    `10^{-2}`, `\num{1e-2}` or "1e-2", nor where it prints `10^-2` or `10^82` in maths, which
+    TeX sets as a power of a sign or of one digit and the reader reads as printed. Accepted.
+  - A power after a slash, a header's `n/10^8`, is a bare power, not a scale, and finds an
+    Abstract's `10^8`; and what a match is worth counts no power. Accepted.
+  - A mantissa in brackets, `(1.4 \pm 0.2) \times 10^{-2}`, is no mantissa: the power after
+    the bracket is a scale, and 1.4 and 0.2 are looked for as numbers alone, each named so.
+    So is a power after a times sign after a name, `k_2\times10^{3}`. Accepted.
+  - Any run of spaces, ties, `\,`, `\;`, `\:`, `\!`, `\ `, no-break, thin and narrow no-break
+    spaces, and line breaks with no blank line after them, may stand around the times sign
+    (round 2 of #696); a `~` is a tie only in a LaTeX file and inside a Markdown paper's
+    maths, since in Markdown's text it marks a subscript, so `VCO~2~ \times10^{3}` holds a
+    scale and no mantissa (Basile, after the check of b95b6a89f). Markdown's maths is found
+    as pandoc's `tex_math_dollars` finds it (`text.markdown_maths`; Basile, after the check
+    of 191d0e7c2): `$...$` within a paragraph across line breaks, opened before a non-space
+    and closed after one with no digit after it, `$$...$$` across lines, none from an
+    escaped `\$` nor in a code span, a fenced code block or an HTML comment, found first by
+    the mask's own readers and with their limits (`text.masking._code_spans`); `\(...\)` is
+    no maths, as pandoc's Markdown reads it by default, and a `~` there is a subscript's.
+    An indented code block is not read as code, and a `$` in one can open maths that runs
+    out of it to the next `$`. A mantissa is its digits grouped as `audit._NUMBER`
+    groups them, by commas, `\,` or a narrow or a no-break space, with a digit after each
+    separator; one with a comma left in it, `1{,}5` or `1,500`, is looked for with the same
+    digits and comma, since the comma can be a decimal one, so `1,500\times10^{3}` is not
+    found beside `1500\times10^{3}`. Accepted.
+  - A .docx paragraph's raised run is printed flat, so "10" and a raised "-2" read "10-2", a
+    range, in the Abstract and where the paper reports alike. Pinned by
+    `tests/test_abstract_powers.py::test_a_docx_superscript_in_a_paragraph_is_read_flat`.
 - **An answer to the audit's questions lasts one run.** `--no-abstract`, `--no-results` and
   `--results` are given on each run of `audit`; nothing keeps them beside the paper, so a
   run without them asks again. The page takes one heading for `--results`, where the

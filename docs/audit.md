@@ -134,7 +134,8 @@ Two questions are asked so far, both of the Abstract against Results:
   paper's first paragraph, or the text under its title, is its Abstract, put the heading
   "Abstract" over it and audit it again; a PDF cannot be given one, so for a PDF the
   question asks for the heading in the document the PDF was made from, and for that
-  document to be audited. If the paper has none, `--no-abstract` says so: the audit takes
+  document to be audited; where a PDF is read beside a file of another kind, the one
+  question says both. If the paper has none, `--no-abstract` says so: the audit takes
   the question as answered, and the report says once that the author says the paper has no
   Abstract. Given for a paper that has a heading naming the Abstract, the paper's heading
   wins: the Abstract is compared as usual, and a note says the answer was not taken

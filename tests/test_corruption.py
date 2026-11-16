@@ -2654,7 +2654,7 @@ def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_colum
     read = audit([paper], None).abstract
     # Not found where the paper reports, and asked about as the Discussion's alone (part B).
     assert read.compared and read.matched == 0
-    assert [c.text for c, _places in read.only_in] == ["1,284"]
+    assert [c.text for c, *_rest in read.only_in] == ["1,284"]
 
 
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
@@ -3107,7 +3107,7 @@ def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found
                          f"## Participants\n\n{participants}\n\n## Results\n\nIt was so.\n\n"
                          f"## Discussion\n\n{discussion}\n", encoding="utf-8")  # fmt: skip
         read = audit([paper], None).abstract
-        return [c.text for c in (*read.not_found, *(c for c, _places in read.only_in))]
+        return [c.text for c in (*read.not_found, *(c for c, *_rest in read.only_in))]
 
     assert not_found("We enrolled 1,284 adults.", "It was so.") == []
     assert not_found("We enrolled 1,248 adults.", "It was so.") == ["1,284"]

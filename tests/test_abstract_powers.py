@@ -105,7 +105,7 @@ def test_a_power_only_the_discussion_prints_is_not_found(tmp_path: Path) -> None
     Discussion alone prints is asked about (decision 27, part B), read whole there too."""
     read = _read(tmp_path, ".tex", "It was $10^{-2}$ here.", "It was so.",
                  "It was $10^{-2}$ here.")  # fmt: skip
-    assert _texts([c for c, _places in read.only_in]) == ["10^{-2}"]
+    assert _texts([c for c, *_rest in read.only_in]) == ["10^{-2}"]
     assert read.found == read.not_found == []
 
 

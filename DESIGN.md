@@ -10654,12 +10654,16 @@ over it that report nothing, and the question names each section by its heading 
 line and the `--results` that would read it, or asks for the number in the Methods or the
 Results. The title page, the statements, the notes, the keywords, a summary of the paper and
 the reference list count for nothing, as before. A number of a structured Abstract's
-Background, under a heading or a run-in label of `BACKGROUND_PARTS` to the next part's
-(`_PART_LABEL`), is looked for in the Introduction and its material too; found nowhere, it is
-asked about as the literature's (`question-background-unsourced`), which the paper's change
-answers. Of the 24 numbers the corpus run on 0223ca005 did not find, six became the first
-question, two the second, and tex-stat-ap-B2's two Background figures, which its
-Introduction gives with the WHO's name, are found.
+Background, under a heading or a run-in label of `BACKGROUND_PARTS` to the next run-in label
+of any wording (`label_ends`), is looked for in the Introduction and its material too, as
+printed and then as a rounding; found nowhere, it is asked about as the literature's
+(`question-background-unsourced`), which the paper's change answers. A referee's draft says
+each of the two among its findings, in words that name no flag and say the author is asked
+(`Item.refereed`, round 1 of #700). The summary says the questions open, "2 questions", for
+a check that has nothing else to say, where it said "clear" or "not run" (`summary.ASKED`;
+Basile, 2026-11-17, "Show the questions"). Of the 24 numbers the corpus run on 0223ca005 did
+not find, six became the first question, two the second, and tex-stat-ap-B2's two Background
+figures, which its Introduction gives with the WHO's name, are found.
 
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
@@ -27995,7 +27999,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A Word paper's Introduction with no heading of its own stands under the run-in
     "Keywords:" that ends its Abstract, and the keywords count for nothing: a number only it
     gives stays not found. Pinned by
-    `tests/test_audit_number_questions.py::test_a_number_a_statement_or_a_summary_alone_gives_stays_not_found`.
+    `tests/test_audit_number_questions.py::test_a_word_introduction_with_no_heading_under_its_keywords_counts_for_nothing`.
   - A LaTeX paper's footnote is read in the section it is printed in, as before: a number
     only a footnote under the Discussion gives is asked about. Pinned by
     `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
@@ -28003,12 +28007,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     searched only with both named, so its question names both for `--results`; the page
     takes one heading, and says that pair as the command line does. Pinned by
     `tests/test_audit_number_questions.py::test_the_page_asks_in_its_own_words`.
-- **A structured Abstract's Background ends at a label the audit knows.** Its run-in labels
-  are read by a closed list of names (`abstract.BACKGROUND_PARTS`, `_OTHER_PARTS`) where a
-  line opens or a sentence has ended, a capital first and a colon or a stop after: a part
-  under a label of another name, "Study question:", or one typed mid-sentence, is read as
-  the Background's still, and a Background with no label after it runs to the Abstract's
-  end, its numbers looked for in the Introduction too. Accepted.
+- **A structured Abstract's Background is read by its run-in labels.** It opens on a label
+  of `abstract.BACKGROUND_PARTS` and ends at the next run-in label of any wording where a
+  line opens or a sentence has ended: a word with a capital first and up to five more, and a
+  colon, or a part's name the audit knows with a colon or a stop (`label_ends`; round 1 of
+  #700: by the closed list alone, it ran on past JAMA's "Design, Setting, and
+  Participants:"). A label typed mid-sentence, or with a stop after a name the list does not
+  hold, "Study question.", does not end it; a sentence opening on a few words and a colon,
+  "In Japan: ...", ends it early; and a Background with no label after it runs to the
+  Abstract's end, its numbers looked for in the Introduction too. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

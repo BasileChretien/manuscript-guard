@@ -1918,8 +1918,8 @@ def _abstract_against_results() -> Reading:
                 # single numbers, each with where it stands where the paper reports nothing.
                 "asked only in": [[c.source.name, c.line, c.text,
                                    [[path.name, list(titles), line]
-                                    for path, titles, line in places]]
-                                  for c, places in getattr(found, "only_in", [])],
+                                    for path, titles, line in asked[0]], list(asked[1:])]
+                                  for c, *asked in getattr(found, "only_in", [])],
                 "asked of the background": [[c.source.name, c.line, c.text]
                                             for c in getattr(found, "unsourced", [])],
                 "worth": None if worth is None else [worth.small_integers,

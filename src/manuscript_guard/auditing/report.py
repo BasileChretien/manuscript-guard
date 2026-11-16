@@ -144,6 +144,9 @@ class Item:
     listed: dict | None = None
     #: Whether it is a question to the author (`question`), which `--json` marks.
     question: bool = False
+    #: What a referee's draft says of a question in its place (`draft`), naming no flag: ""
+    #: for a question the draft leaves to the author whole.
+    refereed: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -156,13 +159,14 @@ class Item:
 
 
 def question(section: str, code: str, message: str, path: Path | None = None,
-             line: int | None = None, context: str | None = None) -> Item:  # fmt: skip
+             line: int | None = None, context: str | None = None,
+             refereed: str = "") -> Item:  # fmt: skip
     """A question to the author: a finding of its own kind, where no exact rule can decide,
     that says what the audit saw, asks one question and names the answer that ends it. It
     never fails and never counts, at INFO, and the reports show it apart, under
     `QUESTIONS` (Basile, 2026-11-16, decision 27); one asked of a number stands at it."""
     return Item(section, "audit", code, message, INFO, False, path, line, context,
-                question=True)  # fmt: skip
+                question=True, refereed=refereed)  # fmt: skip
 
 
 def items(report) -> list[Item]:
@@ -490,7 +494,9 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
         ASK_BACKGROUND,
         ASKED_BACKGROUND,
         ASKED_ONLY_IN,
+        REFEREE_BACKGROUND,
         asked_only_in,
+        referee_only_in,
     )
 
     show = _Show(None, placers)
@@ -507,13 +513,14 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
 
     return [
         *answered,
-        *(question(ABSTRACT, ASKED_ONLY_IN, asked_only_in(
-              c.text, [(titles, at(found_in, line, c.source))
-                       for found_in, titles, line in places]),
-              c.source, c.line, c.context)
-          for c, places in getattr(read, "only_in", [])),
+        *(question(ABSTRACT, ASKED_ONLY_IN, asked_only_in(c.text, said, parts), c.source,
+                   c.line, c.context, referee_only_in(c.text, said, parts))
+          for c, said, parts in ((c, [(titles, at(found_in, line, c.source))
+                                      for found_in, titles, line in places], parts)
+                                 for c, places, parts in getattr(read, "only_in", []))),
         *(question(ABSTRACT, ASKED_BACKGROUND, ASK_BACKGROUND.format(c.text), c.source, c.line,
-                   c.context) for c in getattr(read, "unsourced", [])),
+                   c.context, REFEREE_BACKGROUND.format(c.text))
+          for c in getattr(read, "unsourced", [])),
         *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
                d.line, d.context) for d in read.conflicts),
         *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
@@ -930,7 +937,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     reader of the web page, told of the page's box or tick where a question names a flag;
     else one of a copy the command line wrote, `--pdf`, told of the flag (round 1 of #697)."""
     from manuscript_guard.auditing.reader import readable
-    from manuscript_guard.auditing.summary import STRICT, kinds, rows, standings
+    from manuscript_guard.auditing.summary import STRICT, asked, kinds, rows, standings
 
     show = _shown(root, report.placers)
     words = []
@@ -946,6 +953,8 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
         "checks": [[name, said] for name, said in rows(report)],
         # Where each check stands, by its name: what the PDF colours its tile by.
         "standing": standings(report),
+        # How many questions each check asks, what a tile that stands "asked" says.
+        "asked": asked(report),
         "strict": STRICT,
         "words": words,
         "sections": [[heading, "\n".join(said)] for heading, said
@@ -1170,9 +1179,12 @@ def _abstract(read, show) -> list[str]:
 def _asked_of_numbers(read) -> str:
     """The questions asked of the Abstract's numbers, as the section's first line counts
     them, where there are any: none of them is not found (`QUESTIONS`)."""
-    asked = len(getattr(read, "only_in", [])) + len(getattr(read, "unsourced", []))
+    from manuscript_guard.auditing.summary import questions_open
+
+    asked = questions_open(read)
     heading = QUESTIONS.split(" (")[0]
-    return f', {asked} asked of the author (under "{heading}")' if asked else ""
+    many = "question" if asked == 1 else "questions"
+    return f', {asked} {many} for the author (under "{heading}")' if asked else ""
 
 
 def _from_counts(read) -> str:

@@ -9,7 +9,8 @@ section, as `--details` gives them), so that the PDF, the page and the text say 
 
 * a cover band with the title, and the report's first lines;
 * "What was checked": a tile for each check in the colour of where it stands
-  (`summary.standings`: nothing found, to look at, counted as an error, not run), what it
+  (`summary.standings`: nothing found, to look at, counted as an error, not run, or the
+  questions to the author open, "2 QUESTIONS"), what it
   found, and a link to its section;
 * what was not read, and how the headings were read;
 * the findings on the words by kind, each kind with its count, its hint once in a box, and
@@ -28,7 +29,7 @@ import datetime
 import re
 from pathlib import Path
 
-from manuscript_guard.auditing.summary import CLEAR, COUNTED, LOOK, NOT_RUN
+from manuscript_guard.auditing.summary import ASKED, CLEAR, COUNTED, LOOK, NOT_RUN
 from manuscript_guard.pdfwriter import HEIGHT, MARGIN, WIDTH, Margins, Pdf, fitted, rgb
 
 #: How far a line of a section's text is set in for each space it opens with.
@@ -57,7 +58,14 @@ STANDING = {
     LOOK: (rgb("#a8650a"), "TO LOOK AT"),
     COUNTED: (rgb("#b3261e"), "COUNTED AS AN ERROR"),
     NOT_RUN: (rgb("#7a8294"), "NOT RUN"),
+    # Said with their number, "2 QUESTIONS" (`asked_words`; Basile, 2026-11-17).
+    ASKED: (rgb("#1f5f8b"), "QUESTIONS"),
 }
+
+
+def asked_words(count: int) -> str:
+    """What the tile of a check that asks the author `count` questions says."""
+    return f"{count} QUESTION" + ("" if count == 1 else "S")
 COLUMN = WIDTH - 2 * MARGIN
 #: The months in English, whatever the machine's language: the report is in English.
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
@@ -253,7 +261,10 @@ def _glance(pdf: Pdf, view: dict) -> None:
         top = pdf.ensure(high + gap)
         for column, (name, _said, names, saids) in enumerate(drawn):
             x = MARGIN + column * (wide + gap)
-            color, words = STANDING[standing.get(name, LOOK)]
+            state = standing.get(name, LOOK)
+            color, words = STANDING[state]
+            if state == ASKED:
+                words = asked_words((view.get("asked") or {}).get(name, 0))
             pdf.rect(x, top, wide, high, PANEL, 6)
             pdf.rect(x + 7, top - 8, 3.5, high - 16, color, 1.75)
             pdf.put(words, x=x + 18, top=top - 9, kind="bold", size=7, color=color)

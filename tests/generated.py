@@ -9434,11 +9434,16 @@ ABSTRACT_KINDS = (
     "background in the introduction",
 )  # fmt: skip
 #: The run-in labels a structured Abstract's Background opens on, `{}` the name, each of
-#: `auditing.abstract.BACKGROUND_PARTS` in the case drawn, and the label that ends it.
+#: `auditing.abstract.BACKGROUND_PARTS` in the case drawn, and the part after it, its label
+#: drawn: one the audit names, and JAMA's and others' it does not, which end it all the same
+#: (round 1 of #700).
 BACKGROUND_LABELS = ("{}:", "**{}:**", "{}.", "{} and aims:")
 BACKGROUND_NAMES = ("Background", "BACKGROUND", "Introduction", "Context", "Rationale",
                     "Objective", "Objectives")  # fmt: skip
-BACKGROUND_END = "Methods: The work was done."
+BACKGROUND_ENDS = ("Methods: The work was done.",
+                   "Design, Setting, and Participants: All took part.",
+                   "Main Outcomes and Measures: Deaths.", "Study design: A cohort.",
+                   "Findings: It held.")  # fmt: skip
 #: Where the numbers of the kinds that stand in a section reporting nothing start.
 ASIDE_BASES = {"limitations": 2000, "background nowhere": 2800,
                "background in the introduction": 2900}  # fmt: skip
@@ -9917,7 +9922,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     label = draw(st.sampled_from(BACKGROUND_LABELS)).format(draw(st.sampled_from(
         BACKGROUND_NAMES)))  # fmt: skip
     background[0] = (background[0][0], f"{label} {background[0][1]}")
-    abstract[0:0] = [*background, ("background end", BACKGROUND_END)]
+    ends = draw(st.sampled_from(BACKGROUND_ENDS))
+    abstract[0:0] = [*background, ("background end", ends)]
     lines = ["# A study", "", "## Abstract", ""]
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for kind, said in abstract:

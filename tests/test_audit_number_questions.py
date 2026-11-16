@@ -257,8 +257,9 @@ def test_the_text_report_lists_the_questions_apart_and_counts_them(
     text = capsys.readouterr().out
     asked, checked = text.index(report.QUESTIONS), text.index("What was checked:")
     assert "391 in the Abstract is found only under" in text[asked:checked]
-    assert '0 not found, 1 asked of the author (under "Questions for the author").' in text
-    assert "0 not found; 1 asked of the author" in text
+    assert '0 not found, 1 question for the author (under "Questions for the author").' in text
+    # The summary says the questions open, not "clear" (Basile, 2026-11-17).
+    assert "0 not found; 1 question for the author (not counted by --strict)" in text
     assert "NOT FOUND IN" not in text
 
 
@@ -279,11 +280,14 @@ def test_the_page_asks_in_its_own_words(tmp_path: Path, monkeypatch) -> None:
     assert '--results "Discussion" --results "Limitations"' in for_a_reader(pair, page=True)
 
 
-def test_a_draft_leaves_the_questions_out_and_the_pdf_and_the_copy_ask_them(
+def test_a_draft_says_what_the_author_is_asked_and_the_pdf_and_the_copy_ask_it(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
-    """`--report-draft` is a referee's, and asks the author nothing; `--pdf` and the
-    `--commented` copy ask, the copy at the Abstract's number."""
+    """Round 1 of #700: `--report-draft`, a referee's, says each question asked of a number
+    in a referee's words, the number and where it stands, that the author is asked, and no
+    flag; its Abstract row counts it. Left out, the "391" base listed as not found vanished
+    and the draft looked clean. `--pdf` and the `--commented` copy ask, the copy at the
+    Abstract's number, and the PDF's tile says the question open."""
     from test_audit_commented import docx
     from test_audit_questions import _comments, _pdf_text
 
@@ -293,8 +297,21 @@ def test_a_draft_leaves_the_questions_out_and_the_pdf_and_the_copy_ask_them(
     paper = _write(tmp_path, POPULATION)
     assert main(["audit", str(paper), "--report-draft", "draft.md", "--pdf", "report.pdf"]) == 0
     capsys.readouterr()
-    assert "391 in the Abstract is found only" not in (tmp_path / "draft.md").read_text("utf-8")
-    assert "391 in the Abstract is found only" in _pdf_text(tmp_path / "report.pdf")
+    draft = (tmp_path / "draft.md").read_text("utf-8")
+    assert ('391 in the Abstract is found only under "Introduction" (line '
+            in draft), draft  # fmt: skip
+    assert ("the author is asked whether the paper reports it there or gives it as "
+            "background") in draft
+    assert "--results" not in draft and "`audit`" not in draft
+    assert "Abstract against Results:" not in draft.split("## Checks that ran")[1]
+    background = _write(tmp_path, BACKGROUND, name="bg")
+    assert main(["audit", str(background), "--report-draft", "background.md"]) == 0
+    capsys.readouterr()
+    draft = (tmp_path / "background.md").read_text("utf-8")
+    assert abstract.REFEREE_BACKGROUND.format("15") in draft
+    assert abstract.ASK_BACKGROUND.format("15") not in draft
+    pdf = _pdf_text(tmp_path / "report.pdf")
+    assert "391 in the Abstract is found only" in pdf and "1 QUESTION " in pdf
     body = "".join(
         f"<w:p>{style}<w:r><w:t xml:space='preserve'>{said}</w:t></w:r></w:p>"
         for style, said in (("<w:pPr><w:pStyle w:val='Heading1'/></w:pPr>", "Abstract"),
@@ -322,3 +339,116 @@ def test_a_number_in_another_file_is_named_by_its_file(tmp_path: Path) -> None:
     asked = [item.message for item in report.items(audit([main_paper, other], None))
              if item.code == abstract.ASKED_ONLY_IN]
     assert len(asked) == 1 and '"Introduction" (other.md:7)' in asked[0], asked
+
+
+# ------------------------------------------------------------------------- round 1 of #700
+
+#: The shape of a JAMA Abstract: its Objective, then labels the audit's list of part names
+#: does not hold, the study's own numbers under them.
+JAMA = ("# A cohort\n\n## Abstract\n\nObjective: To assess mortality. LABEL A cohort of 1,248 "
+        "adults. Results: Mortality fell.\n\n## Methods\n\nWe enrolled 1,284 adults.\n\n"
+        "## Results\n\nMortality fell.\n")
+
+
+@pytest.mark.parametrize("label", [
+    "Design, Setting, and Participants:", "Exposures:", "Main Outcomes and Measures:",
+    "Study design:", "**Design, Setting, and Participants:**", "Methods:", "Findings:",
+    "DESIGN, SETTING, AND PARTICIPANTS:",
+])  # fmt: skip
+def test_a_background_ends_at_the_next_label_of_any_wording(
+    tmp_path: Path, capsys, label: str
+) -> None:
+    """Round 1 of #700: the Background ran on to the next label of the closed list, and
+    JAMA's are not on it, so the study's own "1,248", given nowhere, was asked about as the
+    literature's and its warning lost. It ends at the next run-in label of any wording."""
+    said = _of(_found(capsys, _write(tmp_path, JAMA.replace("LABEL", label))))
+    assert [(one["code"], one["message"].split()[0]) for one in said] == [
+        ("abstract-not-found", "1,248")], (label, said)
+
+
+def test_a_background_figure_rounded_in_the_introduction_is_found_as_a_rounding(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #700: a Background's "15" the Introduction gives as "15.2", and the
+    Discussion as printed, is a rounding found in the Introduction, not a question naming
+    the Discussion."""
+    text = BACKGROUND.replace("The tumour is\ncommon.", "The tumour is common.").replace(
+        "The tumour is common.", "The median survival is 15.2 months [1].").replace(
+        "Macrophages make up 30-40% of its mass.", "It is common.") + (
+        "\n## Discussion\n\nIt was 15 months.\n")  # fmt: skip
+    read = audit([_write(tmp_path, text)], None).abstract
+    assert [c.text for c in read.rounded] == ["15"] and not read.only_in, read
+
+
+def test_a_number_s_part_found_elsewhere_is_left_out_of_its_question(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #700: where the Methods give "30" of "30-40%" and the Discussion alone
+    "40%", the question names the part that stands only there."""
+    text = ("# A study\n\n## Abstract\n\nIt was 30-40% here.\n\n## Methods\n\nWe had 30.\n\n"
+            "## Results\n\nIt held.\n\n## Discussion\n\nUp to 40% of them.\n")
+    said = _of(_found(capsys, _write(tmp_path, text)))
+    assert [one["code"] for one in said] == [abstract.ASKED_ONLY_IN], said
+    assert said[0]["message"].startswith(
+        'Of 30-40% in the Abstract, 40 is found only under "Discussion"'), said[0]["message"]
+
+
+def test_a_heading_given_already_is_named_again_with_the_one_under_it(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #700: with `--results "Discussion"`, a "Limitations" under it is still
+    searched for nothing; the question names both, not "Limitations" alone, whose answer
+    then asked for "Discussion" again."""
+    paper = _write(tmp_path, LIMITED.replace("## Limitations", "### Limitations"))
+    said = _of(_found(capsys, paper, "--results", "Discussion"))
+    asked = [one["message"] for one in said if one["code"] == abstract.ASKED_ONLY_IN]
+    assert len(asked) == 1 and '`--results "Discussion" --results "Limitations"`' in asked[0]
+    said = _of(_found(capsys, paper, "--results", "Discussion", "--results", "Limitations"))
+    assert abstract.ASKED_ONLY_IN not in [one["code"] for one in said]
+
+
+def test_a_word_introduction_with_no_heading_under_its_keywords_counts_for_nothing(
+    tmp_path: Path, capsys
+) -> None:
+    """The Known gap as it stands in Word: an Introduction with no heading of its own, under
+    the run-in "Keywords:" that ends the Abstract, counts for nothing, and its number is not
+    found, not asked about."""
+    from test_audit import heading, make_docx, para
+
+    body = (heading("Abstract") + para("Of 391 children, all took part.")
+            + para("Keywords: falls; children") + para("The population included 391 children.")
+            + heading("Methods") + para("We rated them.") + heading("Results")
+            + para("It worked."))  # fmt: skip
+    said = _of(_found(capsys, make_docx(tmp_path / "paper.docx", body)))
+    assert [one["code"] for one in said] == ["abstract-not-found"], said
+
+
+def test_the_summary_says_the_questions_open_instead_of_clear(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Basile, 2026-11-17, "Show the questions": the Abstract against Results stands
+    `ASKED` where it asks and has nothing else to say, its tile saying how many, on the
+    page and in the PDF; part A's questions too, where they stand alone. A question still
+    never fails --strict."""
+    from test_audit_questions import UNLABELLED
+
+    from manuscript_guard.auditing.report_pdf import asked_words
+    from manuscript_guard.auditing.summary import ASKED, LOOK, asked, standings
+
+    monkeypatch.chdir(tmp_path)
+    for text, count in ((POPULATION, 1), (BACKGROUND, 2), (UNLABELLED, 1)):
+        paper = _write(tmp_path, text)
+        found = audit([paper], None)
+        assert standings(found)["Abstract against Results"] == ASKED, text
+        assert asked(found) == {"Abstract against Results": count}
+        view = web.view(["audit", "paper.md"])["view"]
+        assert view["standing"]["Abstract against Results"] == ASKED
+        assert view["asked"] == {"Abstract against Results": count}
+        line = dict(view["checks"])["Abstract against Results"]
+        assert line.endswith(f"{count} question{'s' if count > 1 else ''} for the author"), line
+        assert main(["audit", str(paper), "--strict"]) == 0
+    assert asked_words(1) == "1 QUESTION" and asked_words(2) == "2 QUESTIONS"
+    # Beside a number not found, the tile is to look at, and its line counts the question.
+    both = _write(tmp_path, POPULATION.replace("51 educators and", "51 educators, 17 aides and"))
+    found = audit([both], None)
+    assert standings(found)["Abstract against Results"] == LOOK

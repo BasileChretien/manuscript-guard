@@ -177,7 +177,7 @@ def test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it(
     paper = tmp_path / "paper.tex"
     paper.write_text(latex("\\section{Discussion}\nWomen fall.\n"), encoding="utf-8")
     assert not_found(paper) == []
-    assert [c.text for c, _places in audit([paper], None).abstract.only_in] == ["33.2%"]
+    assert [c.text for c, *_rest in audit([paper], None).abstract.only_in] == ["33.2%"]
     paper.write_text(latex(""), encoding="utf-8")
     assert not_found(paper) == []
 

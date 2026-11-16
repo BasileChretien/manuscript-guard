@@ -198,22 +198,47 @@ ASK_BACKGROUND = ("{0} in the Abstract's Background is given nowhere in the pape
                   "the literature? The Introduction should give it, with its source.")  # fmt: skip
 
 
-def asked_only_in(text: str, places: list[tuple[tuple[str, ...], str]]) -> str:
-    """The question asked of a number of the Abstract found only in sections that report
-    nothing (`ASKED_ONLY_IN`): each, by the titles of the headings over it that report
-    nothing and where it stands there as the report says a place, and the answer, the
-    `--results` that names those headings, or the number given in the Methods or the
-    Results."""
+def _only_in_seen(text: str, places: list[tuple[tuple[str, ...], str]],
+                  parts: tuple[str, ...] = ()) -> str:  # fmt: skip
+    """What the audit saw of a number of the Abstract found only in sections that report
+    nothing: each section by the titles of the headings over it that report nothing and
+    where it stands there, as the report says a place; and, where some of the number's parts
+    are found where the paper reports, the parts that are not (round 1 of #700)."""
     where = " and ".join(f"under {', '.join(map(_quoted, titles))} ({at})"
                          for titles, at in places)  # fmt: skip
+    subject = (f"Of {text} in the Abstract, {' and '.join(parts)} is" if parts
+               else f"{text} in the Abstract is")
+    return (f"{subject} found only {where}, where the comparison does not look for the "
+            "Abstract's numbers")
+
+
+def asked_only_in(text: str, places: list[tuple[tuple[str, ...], str]],
+                  parts: tuple[str, ...] = ()) -> str:  # fmt: skip
+    """The question asked of a number of the Abstract found only in sections that report
+    nothing (`ASKED_ONLY_IN`): what the audit saw (`_only_in_seen`), and the answer, the
+    `--results` that names every heading over it that reports nothing, or the number given
+    in the Methods or the Results."""
     flags = " or ".join(dict.fromkeys(
         "`" + " ".join(f'--results "{title}"' for title in titles) + "`"
         for titles, _at in places))  # fmt: skip
-    return (f"{text} in the Abstract is found only {where}, where the comparison does not "
-            "look for the Abstract's numbers. Is that where the paper reports it, or is it "
-            f"background? If the paper reports it there, run `audit` again with {flags}, "
+    return (f"{_only_in_seen(text, places, parts)}. Is that where the paper reports it, or is "
+            f"it background? If the paper reports it there, run `audit` again with {flags}, "
             "and the audit then takes that heading as the Results; otherwise give it in the "
             "Methods or the Results.")
+
+
+def referee_only_in(text: str, places: list[tuple[tuple[str, ...], str]],
+                    parts: tuple[str, ...] = ()) -> str:  # fmt: skip
+    """The same question as a referee's draft says it (`draft`): what the audit saw, and
+    that the author is asked, naming no flag (round 1 of #700)."""
+    return (f"{_only_in_seen(text, places, parts)}: the author is asked whether the paper "
+            "reports it there or gives it as background.")
+
+
+#: A Background figure given nowhere, as a referee's draft says it.
+REFEREE_BACKGROUND = ("{0} in the Abstract's Background is given nowhere in the paper: the "
+                      "author is asked whether it is from the literature, which the "
+                      "Introduction should give with its source.")  # fmt: skip
 
 
 def _quoted(title: str) -> str:
@@ -237,22 +262,54 @@ _OTHER_PARTS = (*sorted(ABSTRACT_PARTS), "aim", "aims", "purpose", "design", "se
 _LIMITATIONS = ("limitations", "strengths and limitations")
 
 
-def _label() -> re.Pattern[str]:
-    """A run-in label of a structured Abstract's part, where a line opens or a sentence has
-    ended: one of `BACKGROUND_PARTS` or `_OTHER_PARTS`, or two joined by "and" or "&", the
-    first named `first`, a capital first, emphasis around it or not, and a colon or a stop
-    after it: "Background:", "**Objectives.**", "Background and aims:", "METHODS:". A Word
-    paper's structured Abstract is often one paragraph, "Background: ... Methods: ...", its
-    labels inside the line (docx-sport-A3 of the real-paper corpus)."""
+#: Where a run-in label may stand: where a line opens, or a sentence has ended. A Word
+#: paper's structured Abstract is often one paragraph, "Background: ... Methods: ...", its
+#: labels inside the line (docx-sport-A3 of the real-paper corpus).
+_LABEL_OPENS = r"(?:^|(?<=[.!?])(?=[ \t]))[ \t*_]*"
+
+
+def _label(names: tuple[str, ...]) -> re.Pattern[str]:
+    """A run-in label of one of `names`, or of two joined by "and" or "&", the first named
+    `first`, a capital first, emphasis around it or not, and a colon or a stop after it:
+    "Background:", "**Objectives.**", "Background and aims:", "METHODS:"."""
     every = "|".join(re.escape(name).replace(r"\ ", r"\s+")
-                     for name in sorted({*BACKGROUND_PARTS, *_OTHER_PARTS}, key=len,
+                     for name in sorted({*names, *BACKGROUND_PARTS, *_OTHER_PARTS}, key=len,
                                         reverse=True))  # fmt: skip
-    return re.compile(rf"(?:^|(?<=[.!?])(?=[ \t]))[ \t*_]*(?=(?-i:[A-Z]))(?P<first>{every})"
+    first = "|".join(re.escape(name).replace(r"\ ", r"\s+")
+                     for name in sorted(names, key=len, reverse=True))  # fmt: skip
+    return re.compile(rf"{_LABEL_OPENS}(?=(?-i:[A-Z]))(?P<first>{first})"
                       rf"(?:\s*(?:and|&)\s*(?:{every}))?[*_]*[ \t]*[:.]",
                       re.IGNORECASE | re.MULTILINE)  # fmt: skip
 
 
-_PART_LABEL = _label()
+#: A label that opens the Background, and one that opens any part: a part's name the audit
+#: knows, with a colon or a stop after it; or a run-in label of any wording, a word with a
+#: capital first and up to five more words of letters, commas and "&" allowed between them,
+#: and a colon after it, as structured Abstracts write theirs: JAMA's "Design, Setting, and
+#: Participants:", "Main Outcomes and Measures:", "Exposures:", "Study design:", Elsevier's
+#: "Findings:". Read by the closed list alone, a Background ran on past JAMA's labels into
+#: the study's own numbers (round 1 of #700). A sentence that opens on a few words and a
+#: colon ends the Background too, early: its numbers after are then read as the rest of the
+#: Abstract's are.
+_BACKGROUND_LABEL = _label(BACKGROUND_PARTS)
+_KNOWN_LABEL = _label((*BACKGROUND_PARTS, *_OTHER_PARTS))
+_LABEL_REST = r"[\w'\N{RIGHT SINGLE QUOTATION MARK}-]*"
+_LABEL_WORD = rf"[^\W\d_]{_LABEL_REST}"
+_ANY_LABEL = re.compile(rf"{_LABEL_OPENS}[A-Z]{_LABEL_REST}"
+                        rf"(?:(?:,?[ \t]+|[ \t]*&[ \t]*)(?:{_LABEL_WORD}|&)){{0,5}}"
+                        r",?[*_]*[ \t]*:", re.MULTILINE)  # fmt: skip
+
+
+def label_ends(text: str) -> list[tuple[int, int, bool]]:
+    """Each run-in label of a part in `text`, in order, as its start, its end and whether it
+    opens the Background (`_BACKGROUND_LABEL`, `_KNOWN_LABEL`, `_ANY_LABEL`)."""
+    found: dict[int, tuple[int, bool]] = {}
+    for pattern in (_ANY_LABEL, _KNOWN_LABEL):
+        for match in pattern.finditer(text):
+            found.setdefault(match.start(), (match.end(), False))
+    for match in _BACKGROUND_LABEL.finditer(text):
+        found[match.start()] = (match.end(), True)
+    return [(start, end, opens) for start, (end, opens) in sorted(found.items())]
 
 
 @dataclass(frozen=True)
@@ -354,8 +411,9 @@ class AbstractRead:
     answered: list = field(default_factory=list)
     #: The questions asked of single numbers, none of which is `not_found`: each number found
     #: only in sections that report nothing (`Aside`), as its `Candidate` with where it
-    #: stands there, each `(path, titles, line)`, a section's first line; and each of the
-    #: Abstract's Background found nowhere, as its `Candidate`.
+    #: stands there, each `(path, titles, line)`, a section's first line, and the parts of it
+    #: that stand only there where others are found ("40%" of "30-40%"), () where none is;
+    #: and each of the Abstract's Background found nowhere, as its `Candidate`.
     only_in: list = field(default_factory=list)
     unsourced: list = field(default_factory=list)
 
@@ -529,10 +587,12 @@ def _set_aside(where: Callable[[int], object], sections: list[Section], walk,
         chain.append(section)
         starts.append(section.line)
         named = [one for one in chain if id(one) not in titles]
-        nothing = [one for one in named
-                   if _reports_nothing(one, walk) and given_title(one.title) not in given]
+        # Every heading over it that reports nothing, one `--results` gave already among them:
+        # each is to be named for the line to be searched (round 1 of #700).
+        nothing = [one for one in named if _reports_nothing(one, walk)]
+        unanswered = any(given_title(one.title) not in given for one in nothing)
         asides.append(Aside(tuple(" ".join(plain_title(one.title).split()) for one in nothing))
-                      if nothing and all(_may_report(one) for one in nothing) else None)
+                      if unanswered and all(_may_report(one) for one in nothing) else None)
         opens = next((at for at, one in enumerate(chain) if names_abstract(one.title)), None)
         background.append(opens is not None and any(
             _whole(one.title) in BACKGROUND_PARTS for one in chain[opens + 1 :]))  # fmt: skip
@@ -1233,7 +1293,10 @@ def against_results(pieces: list[Piece], answers: Answers | None = None,
                 missing = [part for part, state in zip(parts, states, strict=True) if not state]
                 places = aside.places(missing, looked.powered)
                 if places:
-                    read.only_in.append((candidate, places))
+                    # The parts missing, where some of the atom's are found: "40%" of
+                    # "30-40%" (round 1 of #700).
+                    read.only_in.append((candidate, places, () if len(missing) == len(parts)
+                                         else tuple(missing)))
                 elif background(atom):
                     read.unsourced.append(candidate)
                 else:
@@ -1249,14 +1312,13 @@ def against_results(pieces: list[Piece], answers: Answers | None = None,
 def _in_background(piece: Piece, abstract: str, lines: set[int]) -> Callable[[Atom], bool]:
     """Whether an atom of one file's Abstract stands in its Background: on a line under a
     heading of `BACKGROUND_PARTS` there (`InBackground`), or from a run-in label of one,
-    "Background:", to the next label of a part, "Methods:", or the Abstract's end
-    (`_PART_LABEL`)."""
+    "Background:", to the next label of a part of any wording, "Methods:", "Design,
+    Setting, and Participants:", or the Abstract's end (`label_ends`)."""
     headed = {line for line in lines if piece.place is not None
               and isinstance(piece.place(line), InBackground)}  # fmt: skip
-    labels = list(_PART_LABEL.finditer(abstract)) if lines else []
-    spans = [(found.start(), labels[at + 1].start() if at + 1 < len(labels) else len(abstract))
-             for at, found in enumerate(labels)
-             if _whole(found["first"]) in BACKGROUND_PARTS]  # fmt: skip
+    labels = label_ends(abstract) if lines else []
+    spans = [(start, labels[at + 1][0] if at + 1 < len(labels) else len(abstract))
+             for at, (start, _end, opens) in enumerate(labels) if opens]  # fmt: skip
     return lambda atom: atom.line in headed or any(start <= atom.start < end
                                                     for start, end in spans)
 
@@ -1310,38 +1372,39 @@ class _Elsewhere:
                     if place is not None and not power.scale:
                         self.powers.setdefault(power.key, []).append(place)
 
-    def _found(self, part: str, powered: bool) -> tuple[str, list]:
-        """Where one part of an Abstract's atom stands among these lines, and how: "exact",
-        "rounded" or "", as `_state` reads it where the paper reports."""
+    def _found(self, part: str, powered: bool) -> tuple[list, list]:
+        """Where one part of an Abstract's atom stands among these lines as printed, and
+        where only as a rounding, as `_state` reads it where the paper reports: a power and a
+        word holding letters as printed alone."""
         from manuscript_guard.audit import normalise_number
 
         if powered:
-            return ("exact", self.powers[part]) if part in self.powers else ("", [])
+            return self.powers.get(part, []), []
         value = normalise_number(part)
-        if value in self.exact:
-            return "exact", self.exact[value]
         places = _decimal(part)
         if places is None:
-            found = (self.words.get(part, []) if any(c.isalpha() for c in part) else [])
-            return ("exact" if found else ""), found
-        found = self.rounded.get((value, places[1]), [])
-        return ("rounded" if found else ""), found
+            words = self.words.get(part, []) if any(c.isalpha() for c in part) else []
+            return [*self.exact.get(value, []), *words], []
+        return self.exact.get(value, []), self.rounded.get((value, places[1]), [])
 
     def state(self, part: str, powered: bool, *, introduction: bool = False) -> str:
-        """How one part is found among these lines, in the Introduction and its material
-        alone with `introduction`."""
-        state, found = self._found(part, powered)
+        """How one part is found among these lines, "exact", "rounded" or "": as printed
+        first, then as a rounding; in the Introduction and its material alone with
+        `introduction`, so that a rounding there is seen beside a number printed elsewhere
+        (round 1 of #700)."""
+        exact, rounded = self._found(part, powered)
         if introduction:
-            found = [one for one in found if Aside(one[1]).introduction]
-        return state if found else ""
+            exact = [one for one in exact if Aside(one[1]).introduction]
+            rounded = [one for one in rounded if Aside(one[1]).introduction]
+        return "exact" if exact else "rounded" if rounded else ""
 
     def places(self, parts: list[str], powered: frozenset[str]) -> list[tuple]:
-        """Where the parts not found where the paper reports stand among these lines, each
-        section by its first line and in the order of the files and their lines; none
-        unless every part stands in one."""
+        """Where the parts not found where the paper reports stand among these lines, as
+        printed or as a rounding, each section by its first line and in the order of the
+        files and their lines; none unless every part stands in one."""
         found: dict[tuple, int] = {}
         for part in parts:
-            _state, where_found = self._found(part, part in powered)
+            where_found = [one for listed in self._found(part, part in powered) for one in listed]
             if not where_found:
                 return []
             for path, titles, line in where_found:

@@ -6633,7 +6633,7 @@ def _abstract_found(read) -> dict[str, list]:
     states = {(c.line, c.text): state for state, listed in (
         ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found),
         ("counts", read.from_counts), ("off", read.off_counts),
-        ("asked", [c for c, _places in read.only_in]), ("unsourced", read.unsourced))
+        ("asked", [c for c, *_rest in read.only_in]), ("unsourced", read.unsourced))
         for c in listed}  # fmt: skip
     # Each number read is said once: a question is never also not found (decision 27).
     assert read.numbers == sum(len(listed) for listed in (
@@ -6843,6 +6843,28 @@ def _a_background_number_is_not_looked_for_in_the_introduction(patch: pytest.Mon
                   "")  # fmt: skip
 
 
+def _a_statement_or_a_summary_may_report(patch: pytest.MonkeyPatch) -> None:
+    """The statements, the reference list and a summary of the paper let in among the
+    sections whose numbers are asked about (round 1 of #700)."""
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import names_paper_summary, names_statement
+
+    real = abstract._may_report
+    patch.setattr(abstract, "_may_report", lambda section: real(section) or bool(
+        section.is_references or names_statement(section.title)
+        or names_paper_summary(section.title)))  # fmt: skip
+
+
+def _only_a_background_label_ends_a_background(patch: pytest.MonkeyPatch) -> None:
+    """A Background run on past every other part's label, to the next Background's or the
+    Abstract's end (round 1 of #700)."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.label_ends
+    patch.setattr(abstract, "label_ends", lambda text: [
+        one for one in real(text) if one[2]])  # fmt: skip
+
+
 def _a_question_is_counted_as_not_found(patch: pytest.MonkeyPatch) -> None:
     """Each number asked about kept among those not found as well."""
     from manuscript_guard.auditing import abstract
@@ -6851,7 +6873,7 @@ def _a_question_is_counted_as_not_found(patch: pytest.MonkeyPatch) -> None:
 
     def against(pieces, answers=None, named=None):
         read = real(pieces, answers, named)
-        read.not_found += [c for c, _places in read.only_in] + read.unsourced
+        read.not_found += [c for c, *_rest in read.only_in] + read.unsourced
         return read
 
     patch.setattr(abstract, "against_results", against)
@@ -23365,6 +23387,14 @@ BROKEN = {
     ),
     "a Background number the Introduction gives is asked about": (
         _a_background_number_is_not_looked_for_in_the_introduction,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a statement, the references or a summary is asked about as the Introduction is": (
+        _a_statement_or_a_summary_may_report,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "only a Background's own label ends a Background": (
+        _only_a_background_label_ends_a_background,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a question to the author is counted as not found": (

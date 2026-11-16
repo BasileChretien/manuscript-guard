@@ -2541,7 +2541,7 @@ def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_rep
     read = _abstract_of(tmp_path, text)
     assert sorted(c.text for c in read.not_found) == ["7.25", "rs4242"], [
         c.text for c in read.not_found]  # fmt: skip
-    assert [c.text for c, _places in read.only_in] == ["rs1101"]
+    assert [c.text for c, *_rest in read.only_in] == ["rs1101"]
     assert read.found == [] and read.rounded == []
 
 
@@ -2682,7 +2682,7 @@ def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argu
     read = audit([paper], []).abstract
     assert read is not None and read.compared
     assert sorted(c.text for c in read.found) == ["41.7", "52.3", "63.9", "74.1"]
-    assert sorted(c.text for c, _places in read.only_in) == ["17.4", "28.8", "85.6", "96.2"]
+    assert sorted(c.text for c, *_rest in read.only_in) == ["17.4", "28.8", "85.6", "96.2"]
     assert read.not_found == []
 
 
@@ -2724,7 +2724,7 @@ def test_an_abstract_number_is_not_found_where_the_paper_does_not_report(
     assert read is not None and read.compared
     asked = kind in ("related work", "prior work")
     assert [c.text for c in read.not_found] == ([] if asked else ["18.7%"]), kind
-    assert [c.text for c, _places in read.only_in] == (["18.7%"] if asked else []), kind
+    assert [c.text for c, *_rest in read.only_in] == (["18.7%"] if asked else []), kind
     assert read.found == read.rounded == [], kind
 
 

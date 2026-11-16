@@ -127,11 +127,15 @@ the answers given under "On the answers given". The PDF `--pdf` writes, and a `-
 or `--tracked` copy, which lists each as "A question for the author" in its comment at the
 number it asks about, or on the first paragraph where it asks of none, name each answer's
 flag; the web page, and the PDF and the copy it makes, name the page's box, tick or field
-instead. `--report-draft`, for a referee, leaves the questions out and says under what was
-not checked why the Abstract was not compared, naming no one. Four questions are asked so
-far, all of the Abstract against Results; `--json` counts the two asked of single numbers,
-`abstract_asked_only_in` and `abstract_asked_background`, and `abstract_not_found` counts
-neither:
+instead. `--report-draft`, for a referee, says under what was not checked why the Abstract
+was not compared, naming no one, and says each question asked of a number among the further
+findings in a referee's words: the number, where it stands, and that the author is asked,
+naming no flag. Where a check asks questions and has nothing else to say, its line in "What
+was checked" and its tile on the page and in the PDF say how many are open, "2 QUESTIONS",
+not that nothing was found; a question still never fails a build (Basile, 2026-11-17).
+Four questions are asked so far, all of the Abstract against Results; `--json` counts the
+two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_background`, and
+`abstract_not_found` counts neither:
 
 - **No Abstract found** (`question-no-abstract`): no heading names the Abstract. If the
   paper's first paragraph, or the text under its title, is its Abstract, put the heading
@@ -165,18 +169,21 @@ neither:
   comparison matches one (as printed, as a rounding, an identifier whole, a power whole).
   It is no `abstract-not-found` warning: the question names each section it stands in by
   its heading and its first line there, and asks whether the paper reports it there or
-  gives it as background. If it reports it there, `--results` with that heading reads the
-  section as the Results, as above, and the number is found; a section under another that
-  reports nothing, a "Limitations" under the Discussion, is named with both, and needs
-  both. Otherwise the number is to be given in the Methods or the Results. A number found
+  gives it as background; where some of the number's parts are found where the paper
+  reports, "30" of "30-40%", it names the part that is not. If it reports it there,
+  `--results` with that heading reads the section as the Results, as above, and the number
+  is found; a section under another that reports nothing, a "Limitations" under the
+  Discussion, is named with both, and needs both, one given already among them. Otherwise the number is to be given in the Methods or the Results. A number found
   only on the title page, in a statement, a note, the keywords, a summary of the paper or
   the reference list is not found, as before.
 - **A Background figure given nowhere** (`question-background-unsourced`): a structured
   Abstract's part titled or run in as Background, Introduction, Context, Rationale or
   Objective ("Background:", "**Objectives.**", a heading "Background" under the Abstract)
-  runs to the next part's label or heading. A number there is looked for where the paper
-  reports and in the Introduction and its material too, where a figure from the literature
-  is given with its source: found there, it is found. One found nowhere is asked about: it
+  runs to the next part's heading, or to its next run-in label of any wording, a few words
+  with a capital first and a colon, JAMA's "Design, Setting, and Participants:" as well as
+  "Methods:". A number there is looked for where the paper reports and in the Introduction
+  and its material too, where a figure from the literature is given with its source: found
+  there, as printed or as a rounding, it is found. One found nowhere is asked about: it
   is given nowhere in the paper; is it from the literature? The Introduction should give
   it, with its source, and that change to the paper ends the question. A number in any
   other part of the Abstract is read as before.

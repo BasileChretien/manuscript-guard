@@ -384,6 +384,9 @@ function outcome(view, inPdf = true) {
   if (count("look")) said.push(`${checks(count("look"))} found something for you to look at`);
   if (count("counted")) said.push(`${checks(count("counted"))} found something counted as an error`);
   if (count("not run")) said.push(`${checks(count("not run"))} could not run`);
+  // The questions open, which never count as an error (Basile, 2026-11-17).
+  const asked = Object.values(view.asked || {}).reduce((sum, n) => sum + n, 0);
+  if (asked) said.push(`${asked} question${asked === 1 ? "" : "s"} for you to answer`);
   return `${said.join(", ")}. ${where}`;
 }
 

@@ -2530,16 +2530,18 @@ def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_rep
     tmp_path: Path,
 ) -> None:
     """An identifier is found only as printed: "rs4242" is not found where the Methods give
-    4242 alone, nor "rs1101" where only the Discussion gives it; nor is a number found as a
-    rounding of an identifier's, or as a word: 7.25 is not found beside "v7.3"."""
+    4242 alone, and "rs1101", which only the Discussion gives, is asked about (decision 27,
+    part B), as a whole word there; nor is a number found as a rounding of an identifier's,
+    or as a word: 7.25 is not found beside "v7.3"."""
     text = (
         "# A study\n\n## Abstract\n\nVariant rs4242 and rs1101 gave 7.25 here.\n\n"
         "## Methods\n\nIt was 4242 then, with v7.3.\n\n## Results\n\nIt was so.\n\n"
-        "## Discussion\n\nWe saw rs1101.\n"
+        "## Discussion\n\nWe saw rs1101, and 4242 and 7.3 again.\n"
     )
     read = _abstract_of(tmp_path, text)
-    assert sorted(c.text for c in read.not_found) == ["7.25", "rs1101", "rs4242"], [
+    assert sorted(c.text for c in read.not_found) == ["7.25", "rs4242"], [
         c.text for c in read.not_found]  # fmt: skip
+    assert [c.text for c, *_rest in read.only_in] == ["rs1101"]
     assert read.found == [] and read.rounded == []
 
 
@@ -2638,8 +2640,9 @@ def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys)
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
+    # Given in the Discussion, it would be asked about instead (decision 27, part B).
     paper.write_text("# A study\n\n## Abstract\n\nIt was 41.7 here.\n\n## Results\n\nIt was "
-                     "so.\n\n## Discussion\n\nIt was 41.7 here.\n", encoding="utf-8")  # fmt: skip
+                     "so.\n\n## Discussion\n\nIt was 41.6 here.\n", encoding="utf-8")  # fmt: skip
     main(["audit", str(paper), "--json"])
     import json
 
@@ -2662,7 +2665,8 @@ def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argu
     a section of another name than the Methods or the Results, "Participants", "Study
     design", "Data analysis and results", an appendix, had its Abstract's number said not
     found. Every section is searched now but the Abstract, the Introduction, the Discussion
-    and a conclusion; a number only there is still not found."""
+    and a conclusion; a number only there is not found, and is asked about (decision 27,
+    part B)."""
     paper = tmp_path / "paper.md"
     paper.write_text(
         "# A study\n\n## Abstract\n\n"
@@ -2678,7 +2682,8 @@ def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argu
     read = audit([paper], []).abstract
     assert read is not None and read.compared
     assert sorted(c.text for c in read.found) == ["41.7", "52.3", "63.9", "74.1"]
-    assert sorted(c.text for c in read.not_found) == ["17.4", "28.8", "85.6", "96.2"]
+    assert sorted(c.text for c, *_rest in read.only_in) == ["17.4", "28.8", "85.6", "96.2"]
+    assert read.not_found == []
 
 
 @pytest.mark.parametrize(("kind", "paper"), [
@@ -2710,12 +2715,17 @@ def test_an_abstract_number_is_not_found_where_the_paper_does_not_report(
     """Round 1 of #641: searched wider, the Abstract against Results took a number repeated
     in a summary of the paper, an Abstract in another language, the title page, a section
     of the Introduction's material, a statement or a note for one the paper reports, and a
-    stale 18.7% in the Abstract beside the Results' 17.8% was said found."""
+    stale 18.7% in the Abstract beside the Results' 17.8% was said found. One only the
+    Introduction's material gives is asked about rather than said not found (decision 27,
+    part B); found it never is."""
     path = tmp_path / "paper.md"
     path.write_text(paper, encoding="utf-8")
     read = audit([path], []).abstract
     assert read is not None and read.compared
-    assert [c.text for c in read.not_found] == ["18.7%"], kind
+    asked = kind in ("related work", "prior work")
+    assert [c.text for c in read.not_found] == ([] if asked else ["18.7%"]), kind
+    assert [c.text for c, *_rest in read.only_in] == (["18.7%"] if asked else []), kind
+    assert read.found == read.rounded == [], kind
 
 
 def test_text_over_a_methods_subsection_is_searched(tmp_path: Path) -> None:

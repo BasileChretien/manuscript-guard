@@ -144,14 +144,35 @@ def _arithmetic(report) -> str:
     return said or "nothing disagrees with the numbers beside it"
 
 
+def questions_open(read) -> int:
+    """How many questions the Abstract against Results asks the author: one of each number
+    found only where the paper reports nothing or of a Background figure given nowhere, once
+    compared; else the one asked of its Abstract or its Results, where one is."""
+    if read is None:
+        return 0
+    if not read.compared:
+        return 1 if getattr(read, "question", "") else 0
+    return len(getattr(read, "only_in", [])) + len(getattr(read, "unsourced", []))
+
+
+def _questions(count: int) -> str:
+    """"2 questions for the author (not counted by --strict)": what the summary says of the
+    questions open (Basile, 2026-11-17, "Show the questions")."""
+    return f"{_n(count, 'question')} for the author (not counted by --strict)"
+
+
 def _abstract(read) -> str:
     if not read.compared:
-        return f"not compared: {read.why_not}"
+        asked = questions_open(read)
+        return f"not compared: {read.why_not}" + (f"; {_questions(asked)}" if asked else "")
     said = (f"{_n(read.numbers, 'number')}: {read.matched} found where the paper reports its "
             f"results, {len(read.rounded)} only as a rounding, "
             + (f"{len(read.from_counts)} given by the counts beside them, "
                if read.from_counts else "")
             + f"{len(read.not_found)} not found")  # fmt: skip
+    asked = questions_open(read)
+    if asked:
+        said += f"; {_questions(asked)}"
     if read.off_counts:
         said += f"; {_n(len(read.off_counts), 'percentage')} that the counts beside " + (
             "it do not give" if len(read.off_counts) == 1 else "them do not give")
@@ -324,13 +345,24 @@ def rows(report) -> list[tuple[str, str]]:
 
 
 #: Where each check stands, as the PDF's summary colours it: nothing found, something for a
-#: reader to look at, something `--strict` counts, or not run.
+#: reader to look at, something `--strict` counts, or not run; and questions to the author
+#: open where nothing else is to say, which never fail and never count (Basile, 2026-11-17:
+#: "The summary says how many questions are open ("2 questions") instead of "clear"").
 CLEAR, LOOK, COUNTED, NOT_RUN = "clear", "look", "counted", "not run"
+ASKED = "asked"
+
+
+def asked(report) -> dict[str, int]:
+    """How many questions each check of `rows` asks the author, where it asks any: what the
+    tile of one that stands `ASKED` says."""
+    count = questions_open(report.abstract)
+    return {"Abstract against Results": count} if count else {}
 
 
 def standings(report) -> dict[str, str]:
-    """Where each check of `rows` stands (`CLEAR`, `LOOK`, `COUNTED` or `NOT_RUN`), from what
-    it found, not from its line's words: the PDF's summary draws each check in its colour."""
+    """Where each check of `rows` stands (`CLEAR`, `LOOK`, `COUNTED`, `NOT_RUN` or, with
+    questions open and nothing else to say, `ASKED`), from what it found, not from its
+    line's words: the PDF's summary draws each check in its colour."""
     from manuscript_guard.auditing.report import MEMBERSHIP
 
     # A paper that could not be read, or one that gave no number, leaves the checks of its
@@ -356,6 +388,8 @@ def standings(report) -> dict[str, str]:
     if read is not None:
         out["Abstract against Results"] = (NOT_RUN if not read.compared else of(
             bool(read.conflicts), bool(read.not_found or read.rounded), numbers=True))
+        if questions_open(read) and out["Abstract against Results"] in (CLEAR, NOT_RUN):
+            out["Abstract against Results"] = ASKED
     if report.gates:
         ran = [run for run in report.gates if not (run.note and not run.writing
                                                    and not run.language)]  # fmt: skip
@@ -435,5 +469,6 @@ def _flagged(name: str, present, mine: list) -> str:
     return LOOK if looked else CLEAR
 
 
-__all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "counted", "shown",
-           "grouped", "kinds", "kinds_of", "rows", "standings"]  # fmt: skip
+__all__ = ["ASKED", "CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "asked", "checks",
+           "counted", "shown", "grouped", "kinds", "kinds_of", "questions_open", "rows",
+           "standings"]  # fmt: skip

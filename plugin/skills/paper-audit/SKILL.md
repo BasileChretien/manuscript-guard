@@ -154,7 +154,10 @@ Where no rule can decide, the report asks under "Questions for the author" (`"qu
 true` in `--json`), never counted. Put each question to the author as it is written and
 pass only the answer they give: `--no-abstract` where the paper has no Abstract,
 `--results "<heading>"` for the heading that holds its results, `--no-results` for a paper
-that reports none. Never choose the heading yourself.
+that reports none. Never choose the heading yourself. A number of the Abstract found only in
+the Introduction, the Discussion, a "Limitations" or a conclusion, and a Background figure
+given nowhere, are asked about too: whether the paper reports it there, or where its source
+is, is the author's to say.
 
 ## 3. Read the report
 

@@ -4,38 +4,56 @@ its count's of the column's n, something to ask the author rather than a finding
 2026-11-16, decision 31: "Both").
 
 * **An adjustment statement** names a multiple-comparison adjustment of P values, in exact
-  words, with no scoring: Bonferroni, Holm (Holm-Bonferroni), Hochberg, Benjamini-Hochberg,
-  Benjamini-Yekutieli, the false discovery rate or FDR, Šidák, Tukey, Dunnett, or "adjusted
-  (corrected) for multiple comparisons (testing)". "Adjusted for age and sex" names
-  covariates and is none. The test's own sentence saying so is read already, and the test
-  not judged (`stats/reported.QUIET`); this is a paper that says it once, in its Methods.
-  An adjustment only makes a P larger, so a P stated wholly above the range its statistic
-  gives is what an adjustment gives (`larger`), and is asked about; one below it is wrong
-  under any adjustment, and stays a finding.
-* **A weighted table** says so in its caption, its cells (its header and its rows' labels)
-  or its note: "weighted %", "weighted percentages", "weighted n", "weighted statistics",
-  "percentages are weighted", "survey-weighted", "inverse probability weighted", "IPW".
-  "Unweighted" is none, and "weighted mean" or "weighted median" names an estimate, not the
-  table's shares.
+  words, with no scoring. The false discovery rate or FDR, "adjusted (corrected) for
+  multiple comparisons (testing)" and "multiple-comparison correction" stand alone. A
+  method's surname, Bonferroni, Holm, Hochberg, Benjamini, Yekutieli, Šidák, Tukey or
+  Dunnett, counts only beside a word of `METHOD_WORDS` in the same clause ("Holm
+  correction", "Bonferroni-corrected", "Tukey's HSD"), and never followed by "et al." or
+  "and colleagues", which cite a paper. A match whose clause holds a word of negation before
+  it (`NEGATION`: "P values were not adjusted for multiple comparisons") is none, and the
+  search goes on after it; a clause ends at `;`, `:`, `,` and the sentence's end.
+  "Adjusted for age and sex" names covariates and is none. The test's own sentence saying
+  so is read already, and the test not judged (`stats/reported.QUIET`); this is a paper
+  that says it once, in its Methods. An adjustment only makes a P larger, so a P stated
+  wholly above the range its statistic gives is what an adjustment gives (`larger`), and is
+  asked about; one below it is wrong under any adjustment, and stays a finding.
+* **A weighted table** says so in words of `WEIGHTED`: "weighted %", "weighted
+  percentages", "weighted n", "weighted statistics", "percentages are weighted",
+  "survey-weighted", "inverse probability weighted", "IPW", "IPTW". "Unweighted" is none,
+  "weighted mean" or "weighted median" names an estimate, not the table's shares, and words
+  whose clause holds before them a word of `NOT_WEIGHTED` ("Before IPTW") are none.
 """
 
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 from manuscript_guard.stats.reported import Reported, Verdict, _places, _shown
 
-#: A multiple-comparison adjustment of P values, named.
+#: A multiple-comparison adjustment of P values named by words that need no other.
 ADJUSTMENT = re.compile(
-    r"\bBonferroni\b|\bHolm\b|\bHochberg\b|\bBenjamini\b|\bYekutieli\b"
-    r"|(?i:\bfalse[- ]discovery[- ]rates?\b)|\bFDR\b"
-    r"|\b[S\N{LATIN CAPITAL LETTER S WITH CARON}]id[a\N{LATIN SMALL LETTER A WITH ACUTE}]k\b"
-    r"|\bTukey\b|\bDunnett\b"
-    r"|\b(?:adjust|correct)(?:ed|ing|ions?|ments?|s)?\s+for\s+multiple\s+"
-    r"(?:comparisons?|testing|tests)\b"
-    r"|\bmultiple[- ](?:comparisons?|testing)[- ](?:adjustments?|corrections?)\b",
+    r"(?i:\bfalse[- ]discovery[- ]rates?\b)|\bFDR\b"
+    r"|(?i:\b(?:adjust|correct)(?:ed|ing|ions?|ments?|s)?\s+for\s+multiple\s+"
+    r"(?:comparisons?|testing|tests)\b)"
+    r"|(?i:\bmultiple[- ](?:comparisons?|testing)[- ](?:adjustments?|corrections?)\b)",
 )
+#: The surname of a method of adjustment, which counts only beside a word of
+#: `METHOD_WORDS` in its clause.
+NAMES = re.compile(
+    r"\b(?:Bonferroni|Holm|Hochberg|Benjamini|Yekutieli|Tukey|Dunnett"
+    r"|[S\N{LATIN CAPITAL LETTER S WITH CARON}]id[a\N{LATIN SMALL LETTER A WITH ACUTE}]k)\b"
+)
+#: What makes a surname a method's.
+METHOD_WORDS = re.compile(
+    r"(?i:\b(?:correct(?:ions?|ed)|adjust(?:ments?|ed)|methods?|procedures?|tests?"
+    r"|post[- ]hoc|step[- ]?down)\b)|\bHSD\b"
+)
+#: What after a surname cites a paper: "Holm et al.", "Hochberg and colleagues".
+_CITED = re.compile(r"(?i:\s*(?:et\.?\s+al\b|and\s+(?:colleagues|co-?workers)\b))")
+#: A word of negation, which before an adjustment in its clause says none was made.
+NEGATION = re.compile(r"(?i:\b(?:not|without|never|nor|neither)\b|\bno\b(?!\.)|n't\b)")
 #: What says a table's shares or counts are weighted.
 WEIGHTED = re.compile(
     r"(?i:(?<![a-z-])weighted\s*(?:\\?%|percent\w*|proportions?\b|shares?\b|n\b|counts?\b"
@@ -45,8 +63,16 @@ WEIGHTED = re.compile(
     r"|(?i:\bsurvey[- ]weighted\b|\binverse[- ]probability(?:[- ]of[- ]treatment)?[- ]weight\w*)"
     r"|\bIPT?W\b"
 )
+#: What before words of weighting in their clause says the numbers are not weighted:
+#: "Before IPTW", "prior to weighting", "crude".
+NOT_WEIGHTED = re.compile(
+    r"(?i:\b(?:before|prior|pre|without|not|never|nor|neither|unweighted|crude)\b"
+    r"|\bno\b(?!\.)|n't\b)"
+)
 #: Where a sentence ends: a stop before a capital or a bracket, or a blank line.
 _SENTENCE_END = re.compile(r"[.!?](?=\s+[A-Z(\[])|\n[ \t]*\n")
+#: Where a clause ends, within its sentence.
+_CLAUSE_END = re.compile(r"[;:,]")
 #: How long a quote is kept whole, and how much of a longer one is kept each side of the
 #: words it is quoted for.
 _WHOLE, _SIDE = 160, 70
@@ -60,22 +86,69 @@ class Said:
     quote: str
 
 
+def _ends(text: str, lines: bool, cuts: tuple[int, ...]) -> list[int]:
+    """Where `text`'s sentences end, sorted: `_SENTENCE_END`, each line with `lines`, and
+    each offset of `cuts`."""
+    ends = [end.end() for end in _SENTENCE_END.finditer(text)] + list(cuts)
+    if lines:
+        ends += [at + 1 for at, char in enumerate(text) if char == "\n"]
+    return sorted(ends)
+
+
+def _clause(text: str, found: re.Match[str], ends: list[int]) -> tuple[int, int]:
+    """Where the clause `found` stands in runs: from the last end of a sentence or a clause
+    before it to the first after it."""
+    start = ends[bisect_right(ends, found.start()) - 1] if bisect_right(ends, found.start()) \
+        else 0  # fmt: skip
+    after = bisect_left(ends, found.end())
+    stop = ends[after] if after < len(ends) else len(text)
+    marks = [mark.end() for mark in _CLAUSE_END.finditer(text, start, found.start())]
+    start = max([start, *marks])
+    following = _CLAUSE_END.search(text, found.end(), stop)
+    return start, following.start() if following else stop
+
+
+def negated(before: str) -> bool:
+    """Whether the words of a clause before an adjustment say none was made."""
+    return bool(NEGATION.search(before))
+
+
+def _a_statement(text: str, found: re.Match[str], ends: list[int]) -> bool:
+    """Whether a match of `ADJUSTMENT` or `NAMES` states an adjustment: not negated in its
+    clause, and a surname not cited and beside a word of `METHOD_WORDS`."""
+    start, stop = _clause(text, found, ends)
+    if negated(text[start : found.start()]):
+        return False
+    if found.re is NAMES:
+        if _CITED.match(text, found.end()):
+            return False
+        return bool(METHOD_WORDS.search(text, start, stop))
+    return True
+
+
 def adjustment(text: str, *, lines: bool = False, cuts: tuple[int, ...] = ()) -> Said | None:
     """The first statement in `text` that names a multiple-comparison adjustment, quoted in
     its sentence; None where there is none. With `lines`, a line ends a sentence too, as a
     paragraph does in a .docx read a paragraph to a line; and so does each offset of `cuts`,
     where a heading starts or ends."""
-    found = ADJUSTMENT.search(text)
-    if found is None:
-        return None
-    return Said(found.start(), quoted(text, found, lines=lines, cuts=cuts))
+    ends = _ends(text, lines, cuts)
+    matches = sorted([*ADJUSTMENT.finditer(text), *NAMES.finditer(text)],
+                     key=lambda one: one.start())  # fmt: skip
+    for found in matches:
+        if _a_statement(text, found, ends):
+            return Said(found.start(), quoted(text, found, lines=lines, cuts=cuts))
+    return None
 
 
 def weighting(text: str) -> Said | None:
-    """The first words in `text` that say a table's shares are weighted, quoted; None where
-    none do."""
-    found = WEIGHTED.search(text)
-    return None if found is None else Said(found.start(), quoted(text, found, lines=True))
+    """The first words in `text` that say a table's shares are weighted and whose clause
+    holds no word of `NOT_WEIGHTED` before them, quoted; None where none do."""
+    ends = _ends(text, True, ())
+    for found in WEIGHTED.finditer(text):
+        start, _stop = _clause(text, found, ends)
+        if not NOT_WEIGHTED.search(text, start, found.start()):
+            return Said(found.start(), quoted(text, found, lines=True))
+    return None
 
 
 def quoted(text: str, found: re.Match[str], *, lines: bool = False,
@@ -130,5 +203,6 @@ REFEREE_P = ("{described}; the paper says its P values are adjusted {said}, and 
              "makes a P larger: the author is asked whether it is the adjusted P.")
 
 
-__all__ = ["ADJUSTMENT", "ASK_P_HINT", "REFEREE_P", "WEIGHTED", "Said", "adjustment",
-           "asked_p", "larger", "quoted", "weighting"]  # fmt: skip
+__all__ = ["ADJUSTMENT", "ASK_P_HINT", "METHOD_WORDS", "NAMES", "NEGATION", "NOT_WEIGHTED",
+           "REFEREE_P", "WEIGHTED", "Said", "adjustment", "asked_p", "larger", "negated", "quoted",
+           "weighting"]  # fmt: skip

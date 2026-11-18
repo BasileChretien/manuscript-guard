@@ -30,7 +30,7 @@ from manuscript_guard.text.tables import Table
 ASKED_ADJUSTED = "question-p-adjusted"
 ASKED_WEIGHTED = "question-share-weighted"
 #: A table's name as its legend opens with it: "Table 2", "Table S1a", "eTable 3".
-_NAME = re.compile(r"(?:Supplementary\s+|e|S)?Table\s+[A-Za-z]?\d+[A-Za-z]?")
+_NAME = re.compile(r"(?i:(?:Supplementary\s+|e|S)?Table)\s+[A-Za-z]?\d+[A-Za-z]?")
 
 
 @dataclass(frozen=True)
@@ -92,86 +92,152 @@ def asked_p(test, verdict, statement_of: Statement, path: Path, placers: dict,
 
 @dataclass(frozen=True)
 class Weighted:
-    """What says a table's shares are weighted: the table's name and the words quoted."""
+    """What says shares are weighted: what says it, "Table 2" or "Table 2's column", and
+    the words quoted."""
 
     name: str
     quote: str
 
 
+@dataclass(frozen=True)
+class Weighting:
+    """What says a table's shares are weighted: for the whole table, its caption, a row's
+    label or its note; for single columns, the header cells over them, by column."""
+
+    whole: Weighted | None = None
+    columns: tuple[tuple[int, Weighted], ...] = ()
+
+    def of(self, column: int | None) -> Weighted | None:
+        """What says the shares of `column` are weighted, or None."""
+        return self.whole or dict(self.columns).get(column)
+
+
+#: A legend, as `text.captioned` reads one, "table" in any case: "TABLE 2.", "**Table 1:**".
+LEGEND = re.compile(
+    r"[ \t]*[*_]*(?i:(?:Supplementary[ \t]+|e|S)?Table)[ \t]+[A-Za-z]?\d+[A-Za-z]?[*_]*"
+    "(?:[ \t]*[.:|\N{EN DASH}\N{EM DASH}-]|[ \t]+(?=[A-Z]))"
+)
+#: What a table's note opens with: "Note", "Notes", "Abbreviations", or a footnote's mark,
+#: a lowercase letter alone, an asterisk, a dagger, a section sign, a raised mark.
+NOTE_MARK = re.compile(
+    r"[ \t]*(?:[*_]{0,2}(?i:notes?|abbreviations?)\b|[a-z](?=[\s.):,])"
+    r"|[*\N{DAGGER}\N{DOUBLE DAGGER}\N{SECTION SIGN}]|\^[^^\s]{1,8}\^|<sup>"
+    rf"|[\N{{SUPERSCRIPT ONE}}\N{{SUPERSCRIPT TWO}}\N{{SUPERSCRIPT THREE}}"
+    rf"{chr(0x2070)}-{chr(0x209F)}{chr(0x1D43)}-{chr(0x1DBF)}])"
+)
+
+
 def weighted_tables(tables: list[Table], *, text: str, kind: str, latex=None
-                    ) -> list[Weighted | None]:  # fmt: skip
+                    ) -> list[Weighting | None]:  # fmt: skip
     """For each of `tables`, what says its shares are weighted, None where nothing does.
     `text` is the file's text a line to each line its tables' cells name, `kind` "docx",
-    "markdown" or "latex", `latex` a LaTeX file's `Source`."""
+    "markdown" or "latex", `latex` a LaTeX file's `Source`. A caption is a legend or
+    pandoc's; a note is the paragraph after the table where it opens with a note's mark
+    (`NOTE_MARK`) and is no table's caption; in LaTeX, the float's text outside the table."""
     if kind == "latex":
         around = _latex_floats(latex)
-        return [_weighted(table, *around.get(table[0][0].line, ("", ""))) if table and table[0]
+        return [_weighting(table, *around.get(table[0][0].line, ("", ""))) if _cells(table)
                 else None for table in tables]  # fmt: skip
-    if kind == "docx":
-        from manuscript_guard.text.captioned import docx_captioned
-
-        lines = text.split("\n")
-        # Each table alone: a table with no cell has no lines to find its caption by.
-        return [_weighted(table, docx_captioned(lines, [table])[0].caption,
-                          _docx_note(lines, table))
-                if any(row for row in table) else None for table in tables]  # fmt: skip
-    from manuscript_guard.text.captioned import markdown_captioned
-
     lines = text.split("\n")
-    captions = {found.line: found.caption for found in markdown_captioned(text)}
-    return [_weighted(table, captions.get(table[0][0].line, ""), _markdown_note(lines, table))
-            if table and table[0] else None for table in tables]  # fmt: skip
+    captions = [_caption_of(lines, table, kind) if _cells(table) else ""
+                for table in tables]  # fmt: skip
+    taken = {_plain(caption) for caption in captions if caption}
+    return [_weighting(table, caption, _note(lines, table, taken, kind)) if _cells(table) else None
+            for table, caption in zip(tables, captions, strict=True)]  # fmt: skip
 
 
-def _weighted(table: Table, caption: str, note: str) -> Weighted | None:
-    """What says `table`'s shares are weighted, in its caption, its cells or its note."""
-    cells = " | ".join(" ".join(cell.text.split()) for row in table for cell in row)
-    for words in (caption, cells, note):
-        said: Said | None = weighting(words)
-        if said is not None:
-            named = _NAME.search(caption)
-            return Weighted(named.group(0) if named else "This table", said.quote)
-    return None
+def _cells(table: Table) -> list[int]:
+    return [cell.line for row in table for cell in row]
 
 
-def _docx_note(lines: list[str], table: Table) -> str:
-    """The paragraph after a .docx's table, read a paragraph to a line, unless it is a
-    caption (`_a_caption`)."""
-    from manuscript_guard.text.captioned import _beside
-
-    cells = [cell.line for row in table for cell in row]
-    inside = set(range(min(cells), max(cells) + 1))
-    after = _beside(lines, max(cells) + 1, 1, inside)
-    return "" if _a_caption(after) else after
-
-
-def _markdown_note(lines: list[str], table: Table) -> str:
-    """The paragraph after a Markdown table, past one blank line, unless it is a caption
-    (`_a_caption`)."""
-    last = max(cell.line for row in table for cell in row)
-    taken, at = [], last + 1
-    if at <= len(lines) and not lines[at - 1].strip():
-        at += 1
-    while at <= len(lines) and lines[at - 1].strip() and not lines[at - 1].lstrip().startswith(
-            ("|", "+")):  # fmt: skip
-        taken.append(lines[at - 1])
-        at += 1
-    note = " ".join(taken)
-    return "" if _a_caption(note) else note
+def _plain(text: str) -> str:
+    return " ".join(text.split())
 
 
 def _a_caption(paragraph: str) -> bool:
-    """Whether a paragraph after a table is a caption, "Table 2. ..." or pandoc's "Table:
-    ...": the next table's, whose weighting is not this one's, or this table's own, which its
-    caption gives already."""
-    from manuscript_guard.text.captioned import _LEGEND, _PANDOC
+    """Whether a paragraph is shaped as a caption: a legend, "table" in any case, or
+    pandoc's "Table: ..."."""
+    from manuscript_guard.text.captioned import _PANDOC
 
-    return bool(_LEGEND.match(paragraph) or _PANDOC.match(paragraph))
+    return bool(LEGEND.match(paragraph) or _PANDOC.match(paragraph))
+
+
+def _caption_of(lines: list[str], table: Table, kind: str) -> str:
+    """A table's caption: the paragraph before it where it is a legend, "table" in any case,
+    or pandoc's; in Markdown, else pandoc's after it. A legend after a table may be the next
+    table's, as `text.captioned` would take it, so it is no caption here: one whose
+    weighting is the next table's let off the table before it (round 1 of #703)."""
+    from manuscript_guard.text.captioned import _PANDOC, _beside
+
+    cells = _cells(table)
+    if kind == "docx":
+        before = _beside(lines, min(cells) - 1, -1, set(range(min(cells), max(cells) + 1)))
+        return before if _a_caption(before) else ""
+    before = _paragraph(lines, min(cells) - 1, -1)
+    if _a_caption(before):
+        return before
+    after = _paragraph(lines, max(cells) + 1, 1)
+    return after if _PANDOC.match(after) else ""
+
+
+def _paragraph(lines: list[str], start: int, step: int) -> str:
+    """The paragraph next to a table from line `start` (from 1) in the direction of `step`,
+    past one blank line, as one line; "" at a table's row or the end of the text."""
+    at = start
+    if 1 <= at <= len(lines) and not lines[at - 1].strip(" \t|"):
+        at += step
+    taken = []
+    while 1 <= at <= len(lines) and lines[at - 1].strip(" \t|"):
+        if lines[at - 1].lstrip().startswith(("|", "+")):
+            break
+        taken.append(lines[at - 1])
+        at += step
+    return _plain(" ".join(taken if step > 0 else taken[::-1]))
+
+
+def _note(lines: list[str], table: Table, captions: set[str], kind: str) -> str:
+    """The paragraph after a table where it is its note: it opens with a note's mark, and is
+    no caption, this table's, the next one's or any other's."""
+    cells = _cells(table)
+    if kind == "docx":
+        from manuscript_guard.text.captioned import _beside
+
+        # Past the lines of nothing but a cell's edge, as the table's rows are read.
+        note = _beside(lines, max(cells) + 1, 1, set(range(min(cells), max(cells) + 1)))
+    else:
+        note = _paragraph(lines, max(cells) + 1, 1)
+    if not note or _a_caption(note) or note in captions or not NOTE_MARK.match(note):
+        return ""
+    return note
+
+
+def _weighting(table: Table, caption: str, note: str) -> Weighting | None:
+    """What says `table`'s shares are weighted: its caption, a row's label (the cells of its
+    first column) or its note for the whole table, else each header cell for its columns."""
+    from manuscript_guard.stats.shares import _SHARE, _clean, _columns
+
+    named = _NAME.search(caption)
+    name = named.group(0) if named else "This table"
+    for words in (caption, note, *(row[0].text for row in table if row)):
+        said: Said | None = weighting(_plain(words))
+        if said is not None:
+            return Weighting(whole=Weighted(name, said.quote))
+    columns: list[tuple[int, Weighted]] = []
+    for row in table:
+        placed = list(_columns(row))[1:]
+        if any(_SHARE.fullmatch(_clean(cell.text)[0]) for _column, cell in placed):
+            break
+        for column, cell in placed:
+            said = weighting(_plain(cell.text))
+            if said is not None:
+                columns += [(each, Weighted(f"{name}'s column", said.quote))
+                            for each in range(column, column + max(cell.span, 1))]  # fmt: skip
+    return Weighting(columns=tuple(columns)) if columns else None
 
 
 def _latex_floats(source) -> dict[int, tuple[str, str]]:
     """Each LaTeX table by its header row's line: the caption of the float it stands in, and
-    all of that float's text, which holds its notes."""
+    that float's text outside the table, which holds its notes."""
     from manuscript_guard.text.captioned import _floats, latex_captioned
     from manuscript_guard.text.latex.tables import spanned_tables
 
@@ -184,7 +250,7 @@ def _latex_floats(source) -> dict[int, tuple[str, str]]:
         low, high = next(((low, high) for low, high in floats if low <= start and end <= high),
                          (start, end))  # fmt: skip
         line = table[0][0].line
-        found[line] = (captions.get(line, ""), source.text[low:high])
+        found[line] = (captions.get(line, ""), source.text[low:start] + " " + source.text[end:high])
     return found
 
 
@@ -199,11 +265,13 @@ def asked_share(share: Share, weighted: Weighted, path: Path, described: str) ->
     message = (f"{weighted.name} says its shares are weighted (\"{weighted.quote}\"). "
                f"{share.printed} is not {shown}. Is {share.percent}% the weighted share? If "
                "so nothing is wrong; if not, check the count, the share and the column's n.")
-    named = "this table" if weighted.name == "This table" else weighted.name
+    named = weighted.name[0].lower() + weighted.name[1:] if weighted.name.startswith(
+        "This table") else weighted.name
     refereed = (f"{described}; {named} says its shares are weighted (\"{weighted.quote}\"): "
                 "the author is asked whether it is the weighted share.")
     return Asked(path, share.line, message, share.context, ASKED_WEIGHTED, refereed)
 
 
-__all__ = ["ASKED_ADJUSTED", "ASKED_WEIGHTED", "Asked", "Statement", "Weighted", "asked_p",
-           "asked_share", "statement", "weighted_tables"]  # fmt: skip
+__all__ = ["ASKED_ADJUSTED", "ASKED_WEIGHTED", "LEGEND", "NOTE_MARK", "Asked", "Statement",
+           "Weighted", "Weighting", "asked_p", "asked_share", "statement",
+           "weighted_tables"]  # fmt: skip

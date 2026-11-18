@@ -3070,6 +3070,44 @@ def test_g8_warns_of_a_p_smaller_than_its_statistic_in_a_manuscript_that_adjusts
                                                                   False)]  # fmt: skip
 
 
+def test_a_larger_p_is_found_in_a_paper_that_says_it_did_not_adjust(
+    tmp_path: Path, project: Path,
+) -> None:
+    """Round 1 of #703: "P values were not adjusted for multiple comparisons." said none was
+    made, and was read as a statement, so the larger P was asked about in both readers. It is
+    a number that does not fit in the audit and G8's warning in `check`."""
+    from manuscript_guard.audit import audit
+
+    said = "P values were not adjusted for multiple comparisons."
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Methods\n\n{said}\n\n# Results\n\nThe arms differed, t(23) = 2.71, "
+                     "P = 0.048.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n{said} The arms differed, "
+                    "t(23) = 2.71, p = .048.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #703: "TABLE 2. Weighted percentages." after a table with no note was no
+    legend to the reader, and became that table's note, so its share off the column's n was
+    let off. It is a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Counts.\n\n{table}\n\nTABLE 2. Weighted "
+                     f"percentages.\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [7]
+
+
 def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
     tmp_path: Path,
 ) -> None:

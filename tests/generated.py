@@ -17800,33 +17800,66 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
 
 # ------------------------------------- a P an adjustment explains, a share a weighting does
 
-#: Statements that a paper's P values are adjusted for multiple comparisons, each in its own
-#: words (decision 31).
-ADJUSTMENT_STATEMENTS = (
-    "P values were adjusted by the Bonferroni method.", "We applied the Holm-Bonferroni "
-    "procedure.", "The Benjamini-Hochberg procedure controlled the false discovery rate.",
-    "Hochberg's step-up procedure was used.", "Tests were corrected with FDR.",
-    "Pairwise contrasts used Tukey's HSD.", "Each arm was compared with control by Dunnett's "
-    "test.", "All P values were adjusted for multiple testing.", "Results were corrected for "
-    "multiple comparisons.", "A multiple-comparison correction was applied.",
-    "We used the \N{LATIN CAPITAL LETTER S WITH CARON}id\N{LATIN SMALL LETTER A WITH ACUTE}k "
-    "correction.", "The Benjamini-Yekutieli procedure was used.",
-)  # fmt: skip
+#: Statements that a paper's P values are adjusted for multiple comparisons, by kind: a
+#: method's surname beside a word of a method, the false discovery rate, "adjusted for
+#: multiple comparisons", and "multiple-comparison correction" (decision 31).
+ADJUSTMENT_STATEMENTS = {
+    "surname": (
+        "P values were adjusted by the Bonferroni method.", "We applied the Holm-Bonferroni "
+        "procedure.", "Hochberg's step-up procedure was used.", "Pairwise contrasts used "
+        "Tukey's HSD.", "Each arm was compared with control by Dunnett's test.",
+        "We used the \N{LATIN CAPITAL LETTER S WITH CARON}id\N{LATIN SMALL LETTER A WITH ACUTE}k "
+        "correction.", "The Benjamini-Yekutieli procedure was used.", "Greenhouse-Geisser and "
+        "Bonferroni corrections were applied where necessary.",
+    ),
+    "false discovery rate": (
+        "We controlled the false discovery rate at 5%.", "Tests were corrected with FDR.",
+        "After controlling for multiple comparisons using False Discovery Rate, one remained.",
+    ),
+    "for multiple": (
+        "All P values were adjusted for multiple testing.", "Results were corrected for "
+        "multiple comparisons.", "We correct for multiple comparisons throughout.",
+        "A correction for multiple tests was made.",
+    ),
+    "compound": ("A multiple-comparison correction was applied.", "Multiple testing "
+                 "adjustment was made."),
+}  # fmt: skip
 #: What adjusts an estimate for covariates, and says nothing of its P values.
 COVARIATE_ADJUSTMENTS = (
     "Models were adjusted for age and sex.", "Estimates were adjusted for baseline values.",
     "Results were corrected for baseline imbalance.", "We adjusted for multiple confounders.",
 )  # fmt: skip
+#: Statements that no adjustment was made, negated in their clause before the words.
+NEGATED_STATEMENTS = (
+    "P values were not adjusted for multiple comparisons.", "No correction for multiple "
+    "testing was applied.", "We did not correct for multiple comparisons.", "There was no "
+    "multiple-comparison correction.", "Tests were done without Bonferroni correction.",
+    "We didn't adjust for multiple testing.",
+)  # fmt: skip
+#: A method's surname that cites a paper, or stands beside no word of a method.
+SURNAMES_CITED = (
+    "This follows the procedure as Holm et al. reported it.", "Hochberg and colleagues "
+    "showed it.", "Tukey and coworkers described the test of additivity.", "As Bonferroni "
+    "noted in 1936, inequalities hold.", "Outliers were found with Tukey's fences.",
+)  # fmt: skip
 #: The words that say a table's shares are weighted, and where in the table each stands.
 WEIGHTINGS = ("weighted %", "weighted percentages", "survey-weighted", "IPW", "weighted n",
               "inverse probability weighted", "Weighted statistics")  # fmt: skip
 WEIGHTED_PLACES = ("caption", "header", "label", "note")
-#: The kinds of test an adjusted paper prints, each in each example: a P larger than its
-#: statistic gives, asked about there; one smaller, found; and an interval whose P is on the
-#: other side of its level, found.
+#: The headers of a crude column beside a weighted one: none says its shares are weighted.
+CRUDE_HEADERS = ("Before IPTW", "Unweighted n (%)", "Crude", "Prior to weighting")
+#: Tables that say nothing of weights, each a way one was taken for weighted: a plain one,
+#: one followed by a sentence of the text on weighting, and one followed by the next
+#: table's legend in capitals, which says that table is weighted.
+UNWEIGHTED_KINDS = ("plain", "sentence after", "capital legend after")
+#: The kinds of test each paper prints: a P larger than its statistic gives, asked about
+#: where the paper adjusts; one smaller, found; and an interval whose P is on the other side
+#: of its level, found.
 ADJUSTED_KINDS = ("larger", "smaller", "interval")
-#: What `adjusted_papers` names the numbers that do not fit by, as `audit` gives them.
+#: What `adjusted_papers` names the numbers that do not fit by, as `audit` gives them, and
+#: G8's questions and warnings.
 UNFIT = "does-not-fit"
+G8_ASKED, G8_WARNED = "G8 asked", "G8 warned"
 
 
 def _a_test(draw: st.DrawFn, kind: str) -> str:
@@ -17848,69 +17881,134 @@ def _a_test(draw: st.DrawFn, kind: str) -> str:
     return f"t({df}) = {t:.2f}, P = {shown:.4f}"
 
 
-def _a_table(draw: st.DrawFn, number: int, place: str | None) -> tuple[list[str], int, int]:
-    """Table `number`, its words of weighting at `place` (None for none): its lines, and the
-    lines in it from 1 of a share off its column's n and of one that fits it."""
-    words = draw(st.sampled_from(WEIGHTINGS)) if place else ""
+def _shares(draw: st.DrawFn, *, below: bool = False) -> tuple[int, int, Decimal, Decimal]:
+    """A column's n, a count, the share it gives of n, and a share off it by 3 to 9. With
+    `below`, the share is at most 40% and the one off it lower, so that two of them side by
+    side never add up to 100, which reads them as shares of the row's total."""
     n = draw(st.integers(400, 2000))
-    k = draw(st.integers(n // 4, 3 * n // 4))
+    k = draw(st.integers(n // 4, 2 * n // 5 if below else 3 * n // 4))
     fits = Decimal(100 * k) / n
-    off = fits + draw(st.integers(3, 9)) * draw(st.sampled_from((1, -1)))
-    caption = f"Table {number}. Characteristics" + (f", {words}." if place == "caption" else ".")
-    header = f"Exposed{', ' + words if place == 'header' else ''} (n = {n})"
-    label = f"Male sex{' (' + words + ')' if place == 'label' else ''}, n (%)"
-    note = f"Note. The shares are {words}." if place == "note" else "Note. As read."
-    rows = [f"| {label} | {k} ({off:.1f}%) |", f"| Smokers, n (%) | {k} ({fits:.1f}%) |"]
+    sign = -1 if below else draw(st.sampled_from((1, -1)))
+    return n, k, fits, fits + draw(st.integers(3, 9)) * sign
+
+
+def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False
+             ) -> tuple[list[str], dict[str, list[int]]]:  # fmt: skip
+    """Table `number` of `kind`, a place of `WEIGHTED_PLACES` its words of weighting stand
+    at, or one of `UNWEIGHTED_KINDS`: its lines, and the lines in it, from 1, of its shares
+    off their column's n, under `ASKED_WEIGHTED` where its weighting lets them off and under
+    `UNFIT` where it does not. With `capitals`, its legend is in capitals and bold."""
+    words = draw(st.sampled_from(WEIGHTINGS))
+    n, k, fits, off = _shares(draw, below=kind == "header")
+    legend = f"**TABLE {number}.**" if capitals else f"Table {number}."
+    caption = f"{legend} Characteristics" + (f", {words}." if kind == "caption" else ".")
+    label = f"Male sex{' (' + words + ')' if kind == 'label' else ''}, n (%)"
+    if kind == "header":
+        crude = draw(st.sampled_from(CRUDE_HEADERS))
+        weighted = draw(st.sampled_from(("After IPTW", "Weighted %", f"Exposed, {words}")))
+        rows = [f"| {label} | {k} ({off:.1f}%) | {k} ({off:.1f}%) |",
+                f"| Smokers, n (%) | {k} ({fits:.1f}%) | {k} ({fits:.1f}%) |"]
+        header = [f"| Characteristic | {crude} (n = {n}) | {weighted} (n = {n}) |", "|---|---|---|"]
+    else:
+        rows = [f"| {label} | {k} ({off:.1f}%) |", f"| Smokers, n (%) | {k} ({fits:.1f}%) |"]
+        header = [f"| Characteristic | Exposed (n = {n}) |", "|---|---|"]
     order = draw(st.permutations(rows))
-    lines = [caption, "", f"| Characteristic | {header} |", "|---|---|", *order, "", note]
-    return lines, 5 + order.index(rows[0]), 5 + order.index(rows[1])
+    if kind == "note":
+        after = [f"Note. The shares are {words}."]
+    elif kind == "sentence after":
+        after = [draw(st.sampled_from(("After inverse probability weighting, the groups were "
+                                       "balanced.", "Weighted percentages follow below.")))]
+    elif kind == "capital legend after":
+        after = []
+    else:
+        after = draw(st.sampled_from((["Note. As read."], [])))
+    lines = [caption, "", *header, *order, ""] + ([*after, ""] if after else [])
+    off_line = 5 + order.index(rows[0])
+    found: dict[str, list[int]] = {ASKED_WEIGHTED_CODE: [], UNFIT: []}
+    # A header's weighted column is asked about on the row off its n, and its crude column
+    # found on the same row.
+    if kind in ("caption", "label", "note", "header"):
+        found[ASKED_WEIGHTED_CODE].append(off_line)
+    if kind not in ("caption", "label", "note"):
+        found[UNFIT].append(off_line)
+    return lines, found
+
+
+#: The audit's code for a share its table's weighting lets off, as `auditing.adjusted` has it.
+ASKED_WEIGHTED_CODE = "question-share-weighted"
+ASKED_ADJUSTED_CODE = "question-p-adjusted"
+
+
+def _tables(draw: st.DrawFn) -> tuple[list[str], dict[str, list[int]]]:
+    """One table of each of `WEIGHTED_PLACES` and of `UNWEIGHTED_KINDS`, in an order drawn,
+    the table followed by a legend in capitals standing right before the table weighted in
+    its caption, whose legend that is; and where their shares off their n are said."""
+    kinds = list(draw(st.permutations((*WEIGHTED_PLACES, *UNWEIGHTED_KINDS))))
+    kinds.remove("caption")
+    kinds.insert(kinds.index("capital legend after") + 1, "caption")
+    lines: list[str] = []
+    found: dict[str, list[int]] = {ASKED_WEIGHTED_CODE: [], UNFIT: []}
+    for number, kind in enumerate(kinds, start=1):
+        table, said = _a_table(draw, number, kind, capitals=kind == "caption")
+        start = len(lines)
+        lines += table
+        for code, at in said.items():
+            found[code] += [start + line for line in at]
+    return lines, found
+
+
+def _a_paper(draw: st.DrawFn, statement: str | None, tables: bool
+             ) -> tuple[str, dict[str, list[int]]]:  # fmt: skip
+    """A paper whose Methods give a covariate adjustment, a negated statement and a cited
+    surname, and `statement` where one is given, in its Methods or its Discussion; whose
+    Results print each of `ADJUSTED_KINDS` in an order drawn, and with `tables` each table of
+    `_tables`; with a reference list naming Bonferroni where it makes no statement. And where
+    the audit and G8 say each."""
+    after = draw(st.booleans())
+    said = [draw(st.sampled_from(COVARIATE_ADJUSTMENTS)), draw(st.sampled_from(
+        NEGATED_STATEMENTS)), draw(st.sampled_from(SURNAMES_CITED))]
+    said = list(draw(st.permutations(said)))
+    if statement is not None and not after:
+        said.append(statement)
+    lines = ["# Methods", "", f"We read the records. {' '.join(said)}", "", "# Results", ""]
+    kinds = draw(st.permutations(ADJUSTED_KINDS))
+    at = {}
+    for kind in kinds:
+        at[kind] = len(lines) + 1
+        lines += [f"The groups differed, {_a_test(draw, kind)}.", ""]
+    found: dict[str, list[int]] = {ASKED_ADJUSTED_CODE: [], ASKED_WEIGHTED_CODE: [], UNFIT: [],
+                                   G8_ASKED: [], G8_WARNED: []}  # fmt: skip
+    if tables:
+        table_lines, in_tables = _tables(draw)
+        start = len(lines)
+        lines += table_lines
+        for code, lines_of in in_tables.items():
+            found[code] += [start + line for line in lines_of]
+    lines += ["# Discussion", "", "The groups differed." + (
+        f" {statement}" if statement is not None and after else ""), ""]
+    if statement is None:
+        lines += ["# References", "", "1. Bonferroni CE. Teoria statistica delle classi. Pubbl "
+                  "R Ist Sup Sci Econ Commer Firenze. 1936;8:3-62.", ""]  # fmt: skip
+    asked = statement is not None
+    found[ASKED_ADJUSTED_CODE if asked else UNFIT].append(at["larger"])
+    found[UNFIT] += [at["smaller"], at["interval"]]
+    found[G8_ASKED if asked else G8_WARNED].append(at["larger"])
+    found[G8_WARNED].append(at["smaller"])
+    return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 
 
 @st.composite
 def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str, list]]]:
-    """Two Markdown papers, one that says its P values are adjusted (a statement of
-    `ADJUSTMENT_STATEMENTS`, in its Methods or its Discussion) and one that does not, each
-    with a covariate adjustment, each test of `ADJUSTED_KINDS` in its Results in an order
-    drawn, a weighted table (its words at a place drawn of `WEIGHTED_PLACES`) and one that
-    says nothing, in an order drawn; the second with a reference list that names Bonferroni.
-    And where `audit` says each: the lines of its questions, by code, and of the numbers that
-    do not fit (decision 31)."""
-    from manuscript_guard.auditing.adjusted import ASKED_ADJUSTED, ASKED_WEIGHTED
-
-    statement = draw(st.sampled_from(ADJUSTMENT_STATEMENTS))
-    covariate = draw(st.sampled_from(COVARIATE_ADJUSTMENTS))
-    after = draw(st.booleans())
-    kinds = draw(st.permutations(ADJUSTED_KINDS))
-    tests = {kind: _a_test(draw, kind) for kind in kinds}
-    weighted_first = draw(st.booleans())
-    place = draw(st.sampled_from(WEIGHTED_PLACES))
-    tables = [_a_table(draw, 1, place if weighted_first else None),
-              _a_table(draw, 2, None if weighted_first else place)]
+    """A paper for each kind of `ADJUSTMENT_STATEMENTS`, which states it in words drawn of
+    that kind, and one that states none and holds the tables (`_a_paper`); each with a
+    covariate adjustment, a negated statement and a cited surname. And where the audit asks of
+    each paper's numbers, by code, where it says they do not fit, and where G8 asks and warns
+    (decision 31, and round 1 of #703)."""
     papers, expected = {}, {}
-    for adjusted in (True, False):
-        methods = f"We read the records. {covariate}" + (
-            f" {statement}" if adjusted and not after else "")
-        lines = ["# Methods", "", methods, "", "# Results", ""]
-        at = {}
-        for kind in kinds:
-            at[kind] = len(lines) + 1
-            lines += [f"The groups differed, {tests[kind]}.", ""]
-        found: dict[str, list[int]] = {ASKED_ADJUSTED: [], ASKED_WEIGHTED: [], UNFIT: []}
-        for index, (table, off, _fits) in enumerate(tables):
-            start = len(lines)
-            lines += [*table, ""]
-            weighted = (index == 0) == weighted_first
-            found[ASKED_WEIGHTED if weighted else UNFIT].append(start + off)
-        lines += ["# Discussion", "", "The groups differed." + (
-            f" {statement}" if adjusted and after else ""), ""]
-        if not adjusted:
-            lines += ["# References", "", "1. Bonferroni CE. Teoria statistica delle classi. "
-                      "Pubbl R Ist Sup Sci Econ Commer Firenze. 1936;8:3-62.", ""]  # fmt: skip
-        found[ASKED_ADJUSTED if adjusted else UNFIT].append(at["larger"])
-        found[UNFIT] += [at["smaller"], at["interval"]]
-        name = "adjusted" if adjusted else "unadjusted"
-        papers[name] = "\n".join(lines)
-        expected[name] = {code: sorted(lines_of) for code, lines_of in found.items()}
+    for kind in draw(st.permutations(sorted(ADJUSTMENT_STATEMENTS))):
+        statement = draw(st.sampled_from(ADJUSTMENT_STATEMENTS[kind]))
+        papers[kind], expected[kind] = _a_paper(draw, statement, False)
+    papers["none"], expected["none"] = _a_paper(draw, None, True)
     return papers, expected
 
 

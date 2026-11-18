@@ -133,8 +133,9 @@ findings in a referee's words: the number, where it stands, and that the author 
 naming no flag. Where a check asks questions and has nothing else to say, its line in "What
 was checked" and its tile on the page and in the PDF say how many are open, "2 QUESTIONS",
 not that nothing was found; a question still never fails a build (Basile, 2026-11-17).
-Six questions are asked so far, four of the Abstract against Results and two of the
-Arithmetic; `--json` counts the two of the Abstract asked of single numbers,
+Seven questions are asked so far: four of the Abstract against Results, below; two of the
+Arithmetic, below; and G14's one on the short forms never defined (under Writing and
+Language, further down). `--json` counts the two of the Abstract asked of single numbers,
 `abstract_asked_only_in` and `abstract_asked_background`, and `abstract_not_found` counts
 neither; it counts the Arithmetic's as `asked_p_adjusted` and `asked_share_weighted`, where
 any is asked, and neither is a number that does not fit:
@@ -191,10 +192,15 @@ any is asked, and neither is a number that does not fit:
   other part of the Abstract is read as before.
 - **A P its paper's adjustment may explain** (`question-p-adjusted`): the paper says, once,
   anywhere outside its reference list, that its P values are adjusted for multiple
-  comparisons, in words of a closed list (Bonferroni, Holm, Hochberg, Benjamini-Hochberg,
-  Benjamini-Yekutieli, the false discovery rate or FDR, Šidák, Tukey, Dunnett, "adjusted
-  (corrected) for multiple comparisons (testing)"; "adjusted for age and sex" is none), and
-  a P is larger than the whole range its statistic gives. An adjustment only makes a P
+  comparisons, in words of a closed list, and a P is larger than the whole range its
+  statistic gives. The false discovery rate or FDR, "adjusted (corrected) for multiple
+  comparisons (testing)" and "multiple-comparison correction" stand alone; a method's
+  surname (Bonferroni, Holm, Hochberg, Benjamini, Yekutieli, Šidák, Tukey, Dunnett) counts
+  only beside a word of a method in its clause ("Holm correction", "Bonferroni-corrected",
+  "Tukey's HSD"), and never as "Holm et al." or "Hochberg and colleagues". A clause that
+  says, before the words, that none was made ("P values were not adjusted for multiple
+  comparisons", "No correction for multiple testing") states nothing, and nor does
+  "adjusted for age and sex". An adjustment only makes a P
   larger, so the question quotes the statement and its place, says the P and what the
   statistic gives on its own, and asks whether it is the adjusted P. Saying so beside the
   test ("Holm-adjusted P = 0.048") ends it: a test its sentence calls adjusted is not
@@ -202,11 +208,14 @@ any is asked, and neither is a number that does not fit:
   a number that does not fit, and so does an interval's P, since an adjustment may widen the
   interval as well, or not. A LaTeX paper is read as one across its files.
 - **A share its table's weighting may explain** (`question-share-weighted`): an n (%) off its
-  column's n in a table whose caption, header, a row's label or note says its shares are
-  weighted ("weighted %", "weighted percentages", "weighted n", "weighted statistics",
-  "survey-weighted", "inverse probability weighted", "IPW"; not "unweighted", nor "weighted
-  mean"). The note is the paragraph after the table in Markdown and in a .docx, and all of
-  the float in LaTeX. The question says the share is not its count's of the column's n and
+  column's n in a table whose caption, a row's label or note says its shares are weighted,
+  or under a column whose header does ("weighted %", "weighted percentages", "weighted n",
+  "weighted statistics", "survey-weighted", "inverse probability weighted", "IPW", "After
+  IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A header lets off its column
+  alone. The caption is a legend ("Table 2.", in any case) or pandoc's; the note is the
+  paragraph after the table where it opens with "Note", "Abbreviations" or a footnote's mark,
+  and is no table's caption, in Markdown and in a .docx, and the float's text outside the
+  table in LaTeX. The question says the share is not its count's of the column's n and
   asks whether it is the weighted share; if so, nothing is wrong. Another table of the same
   paper is held to its n as before, and a sentence elsewhere that says the paper weights
   lets off no table.

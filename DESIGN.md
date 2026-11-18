@@ -10730,7 +10730,9 @@ Two more are the arithmetic's, in both readers where both read the number (decis
 adjusted for multiple comparisons (`stats/adjusted.py`: a closed list of names and phrases,
 read as exact words, "adjusted for age and sex" none) has a P larger than the whole range its
 statistic gives asked about: an adjustment only makes a P larger, so that is what one gives.
-The audit asks `question-p-adjusted`; `check`'s G8 asks with `findings.Question`, keeping the
+A method's surname counts only beside a word of a method in its clause and never as a
+citation, and a word of negation before the words in their clause undoes them (round 1 of
+#703). The audit asks `question-p-adjusted`; `check`'s G8 asks with `findings.Question`, keeping the
 code `p-inconsistent` or `p-decision-error` as G14 keeps `abbreviation-undefined`, so that
 `next` routes it with G8's (the `questions` rule) and its hint says the answer: "adjusted"
 beside the test, which `stats/reported.QUIET` already reads. A smaller P is wrong under any
@@ -10738,7 +10740,9 @@ adjustment and stays a finding. An interval's P (`p-against-interval`) stays a f
 an adjustment may widen the interval as well as raise the P, or touch only one, and no exact
 rule says which way the two would then disagree. A table whose caption, cells or note says
 its shares are weighted has a share off its column's n asked about in the audit
-(`question-share-weighted`, `auditing/adjusted.py`); only that table's. `check` holds no n
+(`question-share-weighted`, `auditing/adjusted.py`); only that table's, and where a header
+says it, only that column's. A note opens with a note's mark and is no table's caption, and
+a legend is read whatever the case of "table" (round 1 of #703). `check` holds no n
 (%) of a project's tables to a denominator (`gates/custodian.py` reads the margins only for
 the counts a total gives away), so the weighting has nothing to let off there. Both audit
 questions stand at the number, under "Questions for the author" with their place, are
@@ -16853,24 +16857,35 @@ been sorted yet.
     `tests/test_undefined_asked.py::test_check_asks_one_question_listing_every_form_at_its_first_use`.
 
 - **A paper's statement that it adjusts its P values is read by its words alone, and for
-  every test.** The words are a closed list, read with no scoring (decision 31), so a
-  statement that no adjustment was made ("P values were not adjusted for multiple
-  comparisons"), one that adjusts some tests ("for the secondary outcomes only"), and a name
-  used in another sense (a classifier's false discovery rate, as tex-stat-ap-A2 gives it;
-  Tukey's fences) are each a statement, and every P of the paper larger than its statistic
-  gives is asked about rather than found. A smaller P is still found. Pinned by
-  `tests/test_adjusted_weighted.py::test_a_statement_is_read_by_its_words_alone`.
+  every test.** The words are a closed list, read with no scoring (decision 31): the false
+  discovery rate and "adjusted for multiple comparisons" alone, a method's surname beside a
+  word of a method in its clause, and none where a word of negation stands before them in
+  their clause or the surname cites a paper ("Holm et al."; round 1 of #703). So a statement
+  that adjusts some tests ("for the secondary outcomes only"), one negated after its words
+  ("The Bonferroni correction was not applied"), and a name used in another sense (a
+  classifier's false discovery rate, as tex-stat-ap-A2 gives it; Tukey's test of
+  additivity) are each a statement, and every P of the paper larger than its statistic
+  gives is asked about rather than found. A smaller P is still found. A negation the list
+  does not hold ("none survived", "omitted") does not undo a statement, and one it does
+  hold falls back to main's finding wherever it stands before the words in their clause.
+  Pinned by `tests/test_adjusted_weighted.py::test_a_statement_is_read_by_its_words_alone`.
   - A figure given with `--figures` is read as no part of a paper, and its tests under no
     statement. Accepted.
 
-- **A table's shares are taken as weighted only where the table says so.** Its caption,
-  cells or note must hold words of the closed list; a sentence elsewhere, "Descriptive
-  statistics were weighted to be nationally representative", names no table by an exact
-  rule, so it lets off none, and docx-psych-B2's 31 supplementary shares off their column's n
-  stay findings though its Methods says they are weighted. Words outside the list ("%,
-  weighted"), and a note that is not the paragraph right after the table, say nothing.
-  `check` holds no share to a denominator, so there is nothing to let off there. Pinned by
-  `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`.
+- **A table's shares are taken as weighted only where the table says so.** Its caption (a
+  legend or pandoc's), a row's label, its note (the paragraph after it, where it opens with
+  "Note", "Abbreviations" or a footnote's mark and is no table's caption; in LaTeX, the
+  float's text outside the table) or, for one column alone, the header over it, must hold
+  words of the closed list with no word such as "before", "prior" or "unweighted" before
+  them in their clause (round 1 of #703). A sentence elsewhere, "Descriptive statistics were
+  weighted to be nationally representative", names no table by an exact rule, so it lets
+  off none, and docx-psych-B2's 31 supplementary shares off their column's n stay findings
+  though its Methods says they are weighted. Words outside the list ("%, weighted"), a note
+  that opens on no mark, and a .docx's paragraph before a table that is no legend say
+  nothing. `check` holds no share to a denominator, so there is nothing to let off there.
+  Pinned by
+  `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`
+  and `tests/test_adjusted_weighted.py::test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note`.
 
 - **A block the LaTeX reader skips in the body is matched by its text, and nothing in it is
   read.** A `\makeatletter` runs to the first `\makeatother` and a conditional to its

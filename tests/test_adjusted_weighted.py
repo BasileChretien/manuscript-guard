@@ -85,10 +85,35 @@ def test_each_named_adjustment_is_a_statement(said: str) -> None:
     "Estimates were corrected for baseline values.",
     "We adjusted for multiple confounders.",
     "The fdr column is blank.",
+    # Negated, in its clause before the words (round 1 of #703).
+    "P values were not adjusted for multiple comparisons.",
+    "No correction for multiple testing was applied.",
+    "We did not correct for multiple comparisons.",
+    "There was no multiple-comparison correction.",
+    "Tests were done without Bonferroni correction.",
+    "We didn't adjust for multiple testing.",
+    # A surname that cites a paper, or stands beside no word of a method.
+    "This follows the procedure as Holm et al. reported it.",
+    "Hochberg and colleagues showed the test was conservative.",
+    "Tukey and coworkers described the test of additivity.",
+    "Outliers were found with Tukey's fences.",
+    "As Bonferroni noted in 1936, inequalities hold.",
 ])  # fmt: skip
-def test_a_covariate_adjustment_and_other_words_are_no_statement(said: str) -> None:
-    """ "Adjusted for age and sex" names covariates, not an adjustment of P values."""
+def test_a_covariate_adjustment_a_negation_and_a_citation_are_no_statement(said: str) -> None:
+    """ "Adjusted for age and sex" names covariates, not an adjustment of P values; a
+    statement its clause negates before the words says none was made; a method's surname
+    that cites a paper ("Holm et al."), or stands beside no word of a method in its clause, is
+    no statement."""
     assert adjustment(said) is None
+
+
+def test_the_search_goes_on_past_a_negated_or_cited_match() -> None:
+    """A negated clause, or a cited surname, is passed over and the next match read."""
+    for text in ("No correction was needed for the primary outcome; secondary outcomes were "
+                 "corrected for multiple comparisons.",
+                 "As Holm et al. showed, P values were adjusted by the Bonferroni method."):
+        found = adjustment(text)
+        assert found is not None and text[found.start:].startswith(("corrected", "Bonferroni"))
 
 
 @pytest.mark.parametrize("said", [
@@ -96,30 +121,32 @@ def test_a_covariate_adjustment_and_other_words_are_no_statement(said: str) -> N
     "Weighted n", "Survey-weighted proportions.", "Inverse probability weighted cohort.",
     "Data are IPW estimates.", "1Weighted statistics computed using the survey package.",
     "Percentages are weighted to the census.", "Weighted \\% of each category.",
+    "After IPTW (n = 1200)", "No. (weighted %)",
 ])  # fmt: skip
 def test_each_weighting_said_is_read(said: str) -> None:
     assert weighting(said) is not None, said
 
 
 @pytest.mark.parametrize("said", [
-    "Unweighted n (%).", "Weighted mean (SD).", "Weighted median.", "Population-weighted "
-    "meta-analysis.", "Inverse-variance weighting.",
+    "Unweighted n (%).", "unweighted", "Weighted mean (SD).", "Weighted median.",
+    "Population-weighted meta-analysis.", "Inverse-variance weighting.", "Before IPTW (n = 1200)",
+    "Prior to weighting, n (%)", "Crude, not weighted %",
 ])  # fmt: skip
 def test_an_estimate_weighted_and_unweighted_shares_are_no_weighting(said: str) -> None:
     assert weighting(said) is None, said
 
 
 @pytest.mark.parametrize("said", [
-    "P values were not adjusted for multiple comparisons.",
     "The Bonferroni correction was applied to the secondary outcomes only.",
     "The FDR of the classifier was 0.30.",
-    "Outliers were found with Tukey's fences.",
+    "Tukey's test for nonadditivity was run.",
+    "The Bonferroni correction was not applied.",
 ])  # fmt: skip
 def test_a_statement_is_read_by_its_words_alone(said: str) -> None:
-    """The limits of exact words (DESIGN.md, Known gaps): a statement that no adjustment was
-    made, one that adjusts some tests, and a name in another sense (tex-stat-ap-A2's false
-    discovery rate of a classifier) are each read as a statement, and the paper's larger P
-    values asked about."""
+    """The limits of exact words (DESIGN.md, Known gaps): a statement that adjusts some tests,
+    a name in another sense (tex-stat-ap-A2's false discovery rate of a classifier, Tukey's
+    test of additivity) and a statement negated after its words are each read as a
+    statement, and the paper's larger P values asked about."""
     assert adjustment(said) is not None
 
 
@@ -216,7 +243,9 @@ def test_a_weighted_table_asks_of_its_share_and_lets_off_no_other(
     report = audited(tmp_path, TABLES.format(**{**PLAIN, where: words}))
     (asked,) = report.arithmetic_asked
     assert asked.code == ASKED_WEIGHTED and asked.line == 7, asked
-    assert asked.message.startswith("Table 1 says its shares are weighted (\"")
+    # A header's words let off its column alone, and say so (round 1 of #703).
+    said = "Table 1's column" if where == "header" else "Table 1"
+    assert asked.message.startswith(f"{said} says its shares are weighted (\"")
     assert asked.message.endswith("\"). 640 (58.0%) is not 640 of 1200 (53.3%). Is 58.0% the "
                                   "weighted share? If so nothing is wrong; if not, check the "
                                   "count, the share and the column's n.")  # fmt: skip
@@ -287,6 +316,122 @@ def test_a_docx_says_both_questions_at_their_paragraphs(tmp_path: Path) -> None:
     assert ('("Greenhouse-Geisser and Bonferroni corrections were applied where necessary.", '
             "Methods, paragraph 1)") in report.arithmetic_asked[0].message
     assert report.disagreements == []
+
+
+# ------------------------------------------------- round 1 of #703: what is no statement, no note
+
+NEGATED = ("P values were not adjusted for multiple comparisons.",
+           "No correction for multiple testing was applied.",
+           "We did not correct for multiple comparisons.")  # fmt: skip
+
+
+@pytest.mark.parametrize("said", NEGATED)
+def test_a_negated_statement_leaves_the_larger_p_a_finding(tmp_path: Path, said: str) -> None:
+    """The audit gives the number that does not fit, as main does, and asks nothing."""
+    report = audited(tmp_path, f"# Methods\n\n{said}\n\n# Results\n\nThe groups differed, "
+                               "t(23) = 2.71, P = 0.048.\n")  # fmt: skip
+    assert report.arithmetic_asked == []
+    (found,) = report.disagreements
+    assert found.message.endswith("and the text says P = 0.048")
+
+
+@pytest.mark.parametrize("said", [
+    "This follows the procedure as Holm et al. reported it.",
+    "Hochberg and colleagues showed it.",
+])  # fmt: skip
+def test_a_cited_surname_leaves_the_larger_p_a_finding(tmp_path: Path, said: str) -> None:
+    report = audited(tmp_path, f"# Methods\n\n{said}\n\n# Results\n\nThe groups differed, "
+                               "t(23) = 2.71, P = 0.048.\n")  # fmt: skip
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+
+
+@pytest.mark.parametrize("said", ["We used the Holm correction.", "Bonferroni-corrected P values "
+                                  "are given."])  # fmt: skip
+def test_a_method_s_surname_beside_its_word_still_asks(tmp_path: Path, said: str) -> None:
+    report = audited(tmp_path, f"# Methods\n\n{said}\n\n# Results\n\nThe groups differed, "
+                               "t(23) = 2.71, P = 0.048.\n")  # fmt: skip
+    assert [d.code for d in report.arithmetic_asked] == [ASKED_ADJUSTED]
+
+
+#: A table with no note, then a legend in capitals of a table said to be weighted.
+CAPITALS = ("# Results\n\nTable 1. Counts.\n\n| Characteristic | Exposed (n = 1200) |\n|---|---|\n"
+            "| Male sex, n (%) | 640 (58.0%) |\n\n{after}\n\n| Characteristic | Exposed (n = 1200) "
+            "|\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |\n")  # fmt: skip
+
+
+@pytest.mark.parametrize("after", ["TABLE 2. Weighted percentages.",
+                                   "**TABLE 2.** Weighted percentages.",
+                                   "*Table 2. Weighted percentages.*"])  # fmt: skip
+def test_a_next_legend_in_any_case_is_no_note_of_the_table_before(
+    tmp_path: Path, after: str
+) -> None:
+    """Round 1 of #703: "TABLE 2." was not taken for a legend, and became Table 1's note, so
+    Table 1's share was let off. Table 1's stays a finding; Table 2's, under its legend, is
+    asked about."""
+    report = audited(tmp_path, CAPITALS.format(after=after))
+    assert [d.line for d in report.disagreements] == [7]
+    assert [d.line for d in report.arithmetic_asked] == [13]
+
+
+def test_a_next_legend_in_capitals_is_no_note_in_a_docx(tmp_path: Path) -> None:
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    body = (_para("Results") + _para("Table 1. Counts.") + table
+            + _para("TABLE 2. Weighted percentages.") + table)
+    report = audit([_docx(tmp_path / "paper.docx", body)], None)
+    assert len(report.disagreements) == 1 and len(report.arithmetic_asked) == 1
+    assert report.disagreements[0].line < report.arithmetic_asked[0].line
+
+
+def test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note(tmp_path: Path) -> None:
+    """A table's note opens with "Note", "Abbreviations" or a footnote's mark: a sentence of
+    the text after the table that says the groups were weighted lets off nothing; and in a
+    .docx, a paragraph before a table that is no legend is no caption."""
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    for after in ("After inverse probability weighting, the groups were balanced.",
+                  "Weighted percentages follow in Table 2."):
+        report = audited(tmp_path, f"# Results\n\nTable 1. Counts.\n\n{table}\n\n{after}\n")
+        assert report.arithmetic_asked == [] and len(report.disagreements) == 1, after
+    for note in ("Note. Shares are survey-weighted.", "a Weighted percentages.",
+                 "* IPW estimates."):
+        report = audited(tmp_path, f"# Results\n\nTable 1. Counts.\n\n{table}\n\n{note}\n")
+        assert len(report.arithmetic_asked) == 1, note
+    body = (_para("Shares below are weighted percentages of each group.")
+            + f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+            f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    report = audit([_docx(tmp_path / "before.docx", body)], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+
+
+@pytest.mark.parametrize(("crude", "weighted"), [("Before IPTW", "After IPTW"),
+                                                 ("Unweighted n (%)", "Weighted %")])  # fmt: skip
+def test_a_header_lets_off_its_column_alone(tmp_path: Path, crude: str, weighted: str) -> None:
+    """A word of weighting in a column's header lets off that column, not the crude one
+    beside it."""
+    text = (f"# Results\n\nTable 1. Balance.\n\n| Characteristic | {crude} (n = 1200) | "
+            f"{weighted} (n = 1200) |\n|---|---|---|\n| Male sex, n (%) | 640 (58.0%) | "
+            "640 (58.0%) |\n")  # fmt: skip
+    report = audited(tmp_path, text)
+    assert len(report.disagreements) == 1 and len(report.arithmetic_asked) == 1
+    assert report.arithmetic_asked[0].message.startswith("Table 1's column says its shares")
+
+
+def test_a_latex_float_s_note_says_its_table_is_weighted(tmp_path: Path) -> None:
+    """In LaTeX the float's text outside its table, its caption and its notes, is read: a
+    float whose notes say its percentages are weighted has its share asked about; the same
+    table in a float that says nothing keeps its finding."""
+    table = ("\\begin{tabular}{ll}\nCharacteristic & Exposed (n = 1200) \\\\\n"
+             "Male sex, n (\\%) & 640 (58.0\\%) \\\\\n\\end{tabular}\n")  # fmt: skip
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        f"\\begin{{table}}\n\\caption{{Counts.}}\n{table}"
+        "\\begin{flushleft}Note. Percentages are weighted.\\end{flushleft}\n\\end{table}\n"
+        f"\\begin{{table}}\n\\caption{{Counts again.}}\n{table}\\end{{table}}\n"
+        "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert len(report.arithmetic_asked) == 1 and len(report.disagreements) == 1
+    assert report.arithmetic_asked[0].line < report.disagreements[0].line
 
 
 # ----------------------------------------------------------- the report, its JSON and --strict
@@ -401,6 +546,15 @@ def test_check_with_a_covariate_adjustment_warns_of_both(project: Path) -> None:
                  "The arms differed again, t(23) = 2.71, p = .002.")  # fmt: skip
     found = _g8(project)
     assert len(found) == 2 and not any(f.question for f in found)
+
+
+@pytest.mark.parametrize("said", NEGATED)
+def test_check_warns_of_a_larger_p_where_the_statement_is_negated(project: Path,
+                                                                 said: str) -> None:  # fmt: skip
+    """Round 1 of #703: G8 gives `p-inconsistent` at WARN, as main does."""
+    _sentence_in(project, said, "The arms differed, t(23) = 2.71, p = .048.")
+    (found,) = [f for f in _g8(project) if "t(23) = 2.71" in (f.context or "")]
+    assert (found.code, found.severity, found.question) == ("p-inconsistent", WARN, False)
 
 
 def test_check_names_the_file_of_a_statement_in_another(project: Path) -> None:

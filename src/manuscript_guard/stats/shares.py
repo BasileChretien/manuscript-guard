@@ -137,6 +137,9 @@ class Share:
     #: Why its denominator may be another, where the table says so.
     uncertain: str | None
     context: str
+    #: The first column the cell stands in, counted as `_columns` counts them; None for a
+    #: share a sentence writes.
+    column: int | None = None
 
 
 @dataclass(frozen=True)
@@ -170,7 +173,7 @@ def table_shares(table: Table) -> list[Share]:
                 percent=match.group("percent"),
                 over=_whole(own) if own else row.over.get(column), own=bool(own),
                 row_total=across, run_total=down, label=row.label,
-                uncertain=_uncertain(row, cell), context=row.context,
+                uncertain=_uncertain(row, cell), context=row.context, column=column,
             ))  # fmt: skip
     return found
 

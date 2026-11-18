@@ -3149,6 +3149,41 @@ def test_a_share_is_found_under_its_own_numbered_legend_with_a_subtitle_between(
     assert all(d.line != 9 for d in report.arithmetic_asked)
 
 
+def test_a_share_is_found_under_its_legend_below_a_comment_of_several_lines(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #703: legends were read on a mask that drops a comment's line breaks, so
+    below a comment of three lines "Table 1. Counts." took the words of the paragraph under
+    it, "Unlike the survey-weighted Table 2, ...", and Table 1's share was let off. It is a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\n<!-- Draft\nfor co-authors\n-->\n\nTable 1. Counts.\n\nUnlike "
+                     "the survey-weighted Table 2, this table\ngives crude counts of\nthe 1200 "
+                     f"patients.\n\n{table}\n\nTable 2. Weighted percentages.\n\nValues are n "
+                     f"(%).\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [15]
+
+
+def test_a_share_is_found_under_a_sentence_that_opens_on_table_n_and_a_bracket(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #703: "Table 1 (weighted percentages) describes the cohort." was read as a
+    legend that said its table weighted; it is a sentence, and the share a number that does
+    not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"Table 1 (weighted percentages) describes the cohort.\n\n{table}\n\n"
+                     "Table: Characteristics.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and [d.line for d in report.disagreements] == [5]
+
+
 def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: Path) -> None:
     """Three legends for two tables read: the legends do not number the file's tables, so no
     caption counts, and the share under "Table 1. Weighted percentages." is a number that does

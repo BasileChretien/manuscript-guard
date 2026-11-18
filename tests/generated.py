@@ -17918,14 +17918,15 @@ def _shares(draw: st.DrawFn, *, below: bool = False) -> tuple[int, int, Decimal,
 
 
 def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
-             after: bool = False, subtitle: bool = False,
+             after: bool = False, subtitle: bool | tuple[str, ...] = False,
              ) -> tuple[list[str], dict[str, list[list[Any]]]]:  # fmt: skip
     """Table `number` of `kind`, a place of `WEIGHTED_PLACES` its words of weighting stand
     at, or one of `UNWEIGHTED_KINDS`: its lines, and each share off its column's n, by its
     line in the table from 1 and its cell as printed, under `SHARES_ASKED` where its
     weighting lets it off and `SHARES_UNFIT` where it does not. With `capitals`, its legend
     is in capitals and bold; with `after`, its legend stands after it and it has no note;
-    with `subtitle`, a paragraph stands between the legend and the table. A header's crude
+    with `subtitle`, a paragraph stands between the legend and the table, its text where it
+    is one. A header's crude
     and weighted columns have counts of their own, in an order drawn."""
     words = draw(st.sampled_from(WEIGHTINGS))
     n, k, fits, off = _shares(draw, below=kind == "header")
@@ -17968,7 +17969,8 @@ def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
     else:
         below = draw(st.sampled_from((["Note. As read."], [])))
     table = [*header, *order, ""]
-    between = ["Values are n (%).", ""] if subtitle else []
+    between = ([*subtitle, ""] if isinstance(subtitle, tuple)
+               else ["Values are n (%).", ""] if subtitle else [])  # fmt: skip
     lines = ([*table, *between, caption, ""] if after else [caption, "", *between, *table]) + (
         [*below, ""] if below else [])
     off_line = (3 if after else 5 + len(between)) + order.index(rows[0])
@@ -17977,6 +17979,11 @@ def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
     return lines, found
 
 
+#: The paragraph between the first table's legend and the table, which names the other
+#: tables weighted, and the comment over several lines above the tables (round 3 of #703).
+LEAD_SUBTITLE = ("Unlike the survey-weighted tables below, this one", "gives crude counts of",
+                 "the patients.")
+COMMENT_ABOVE = ("<!-- Draft", "for co-authors", "-->")
 #: The audit's codes, as `auditing.adjusted` has them.
 ASKED_WEIGHTED_CODE = "question-share-weighted"
 ASKED_ADJUSTED_CODE = "question-p-adjusted"
@@ -17999,12 +18006,18 @@ def _tables(draw: st.DrawFn, *, after: bool = False) -> tuple[list[str], dict[st
     else:
         kinds.remove("caption")
         kinds.insert(kinds.index("capital legend after") + 1, "caption")
+        # First, a table that says nothing of weights, a paragraph over several lines between
+        # its legend and it that names the others weighted: read on lines a comment above
+        # shifts, its legend took that paragraph's words (round 3 of #703).
+        kinds.insert(0, "lead")
     lines: list[str] = []
     found: dict[str, list] = {SHARES_ASKED: [], SHARES_UNFIT: []}
     for number, kind in enumerate(kinds, start=1):
+        subtitle: bool | tuple[str, ...] = draw(st.booleans()) or (kind == "caption" and not after)
+        if kind == "lead":
+            kind, subtitle = "plain", LEAD_SUBTITLE
         table, said = _a_table(draw, number, kind, capitals=kind == "caption" and not after,
-                               after=after, subtitle=draw(st.booleans()) or (
-                                   kind == "caption" and not after))  # fmt: skip
+                               after=after, subtitle=subtitle)  # fmt: skip
         start = len(lines)
         lines += table
         for code, shares in said.items():
@@ -18036,7 +18049,8 @@ def _a_paper(draw: st.DrawFn, statement: str | None, tables: str
     found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
                               UNFIT: [], G8_ASKED: [], G8_WARNED: []}  # fmt: skip
     if tables:
-        lines += ["The characteristics were tabulated.", ""]
+        # A comment over several lines above the tables (round 3 of #703).
+        lines += ["The characteristics were tabulated.", "", *COMMENT_ABOVE, ""]
         table_lines, in_tables = _tables(draw, after=tables == "after")
         start = len(lines)
         lines += table_lines
@@ -18055,20 +18069,23 @@ def _a_paper(draw: st.DrawFn, statement: str | None, tables: str
     return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 
 
-#: How a file's legends fail to number its tables, each a file of `_unnumbered`: a legend for
-#: a table given as a picture, a table that runs on under its legend again, and a legend of
-#: another form (Basile, 2026-11-18).
+#: How a file's legends fail to caption its tables, each a file of `_unnumbered`: a legend
+#: for a table given as a picture, a table that runs on under its legend again, a legend of
+#: another form (Basile, 2026-11-18); and legends that number the tables read but reach none,
+#: the first a picture's, standing before the second's legend, the last table with none
+#: (round 3 of #703).
 UNNUMBERED = {
     "picture": ("Table 1.", "Table 2.", "Table 3. Weighted n."),
     "continued": ("Table 1.", "Table 2.", "Table 2 (continued)."),
     "forms": ("Table 1.", "Table S1.", None),
+    "unreached": ("Table 1.", "Table 2.", None),
 }
 
 
 def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
-    """A file whose legends do not number its tables (`UNNUMBERED`): its first table says in
-    its legend that its shares are weighted, and its second and any third say nothing. No
-    caption counts, so each share off its n is found."""
+    """A file whose legends caption none of its tables (`UNNUMBERED`): its first legend says
+    its table's shares are weighted, and its second and any third say nothing. No caption
+    counts, so each share off its n is found."""
     first, second, third = UNNUMBERED[how]
     lines = ["# Results", ""]
     found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
@@ -18077,11 +18094,17 @@ def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
                f"{second} Characteristics."]
     if third is not None and how == "continued":
         legends.append(third)
+    if how == "unreached":
+        # The first legend's table is a picture: the legend stands before the second's, and
+        # the second's before its table, which the last table, with no legend, follows.
+        lines += [legends.pop(0), ""]
+        legends.append("")
     for legend in legends:
         n, k, fits, off = _shares(draw)
-        lines += [legend, "", f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
-                  f"| Male sex, n (%) | {k} ({off:.1f}%) |",
-                  f"| Smokers, n (%) | {k} ({fits:.1f}%) |", ""]
+        lines += ([legend, ""] if legend else []) + [
+            f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
+            f"| Male sex, n (%) | {k} ({off:.1f}%) |", f"| Smokers, n (%) | {k} ({fits:.1f}%) |",
+            ""]  # fmt: skip
         found[SHARES_UNFIT].append([len(lines) - 2, f"{k} ({off:.1f}%)"])
     if third is not None and how == "picture":
         lines += [third, ""]

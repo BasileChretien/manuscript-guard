@@ -2037,7 +2037,15 @@ def _weighted(source: _Source) -> tuple:
     docx = "docx" if is_docx(source.path) else "markdown"
     kind = "latex" if source.latex is not None else docx
     return tuple(weighted_tables(list(source.tables), text=source.text, kind=kind,
-                                 latex=source.latex, masked=source.hidden))  # fmt: skip
+                                 latex=source.latex, masked=_legend_mask(source)))  # fmt: skip
+
+
+def _legend_mask(source: _Source) -> str:
+    """What a source's legends are looked for in: its masked text with every line break of
+    its text kept (`_lined`), so that a comment of several lines above a legend leaves its
+    lines where the text has them (round 3 of #703: `hidden` shifted every later line, and a
+    legend read on one line took its words from another)."""
+    return _lined(source) or source.hidden
 
 
 def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | None = None,

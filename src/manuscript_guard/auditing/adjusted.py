@@ -122,7 +122,7 @@ class Weighting:
 LEGEND = re.compile(
     r"[ \t]*[*_]*(?P<form>(?i:(?:Supplementary[ \t]+|e|S)?Table))[ \t]+(?P<letter>[A-Za-z]?)"
     r"(?P<number>\d+)(?P<tail>[A-Za-z]?)[*_]*"
-    "(?:[ \t]*[.:|(\N{EN DASH}\N{EM DASH}-]|[ \t]+(?=[A-Z]))"
+    "(?:[ \t]*[.:|\N{EN DASH}\N{EM DASH}-]|[ \t]*\\((?i:continued)|[ \t]+(?=[A-Z]))"
 )
 #: What a table's note opens with: "Note", "Notes", "Abbreviations", or a footnote's mark,
 #: a lowercase letter alone, an asterisk, a dagger or a section sign before a space, a raised
@@ -229,7 +229,11 @@ def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list
     2026-11-18). Only where the file's legends number its tables: all in one form ("Table
     N", or all "Table SN", "Table AN" ...), numbered 1 to the number of tables read, each
     once. Else no table has one: a table given as a picture, a "Table 2 (continued)", or a
-    "Table S1" beside a "Table 1" says the legends and the tables read do not match."""
+    "Table S1" beside a "Table 1" says the legends and the tables read do not match. A legend
+    reaches its table across no other table and no other legend (round 3 of #703: a legend of
+    a table given as a picture, before the next table's legend, reached the table after it);
+    one that cannot reach its table captions nothing, and the file's other legends caption
+    their tables still."""
     legends = [(paragraph, found) for paragraph in paragraphs
                if (found := LEGEND.match(paragraph.text)) is not None]  # fmt: skip
     forms = {(found["form"].lower(), found["letter"].upper(), found["tail"].lower())
@@ -238,16 +242,24 @@ def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list
     if len(forms) != 1 or numbers != list(range(1, len(tables) + 1)):
         return [""] * len(tables)
     spans = [(min(_cells(table)), max(_cells(table))) for table in tables]
+    others = [paragraph for paragraph, _found in legends]
     captions = [""] * len(tables)
     for paragraph, found in legends:
         at = int(found["number"]) - 1
         first, last = spans[at]
-        before = paragraph.last < first and (at == 0 or paragraph.first > spans[at - 1][1])
+        before = paragraph.last < first and (at == 0 or paragraph.first > spans[at - 1][1]) \
+            and not across_a_legend(paragraph.last, first, others)  # fmt: skip
         after = paragraph.first > last and (at + 1 == len(tables)
-                                            or paragraph.last < spans[at + 1][0])  # fmt: skip
+                                            or paragraph.last < spans[at + 1][0]) \
+            and not across_a_legend(last, paragraph.first, others)  # fmt: skip
         if before or after:
             captions[at] = paragraph.text
     return captions
+
+
+def across_a_legend(low: int, high: int, legends: list[_Paragraph]) -> bool:
+    """Whether a legend stands between lines `low` and `high`, from 1, both left out."""
+    return any(low < legend.first and legend.last < high for legend in legends)
 
 
 def _pandoc_captions(lines: list[str], tables: list[Table]) -> list[str]:

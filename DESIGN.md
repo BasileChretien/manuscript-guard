@@ -10745,9 +10745,12 @@ it only that column's, and where a row's label says it only that row's. A note o
 note's mark and is no caption, and a legend, read whatever the case of "table", captions
 the table its number names (Basile, 2026-11-18, after the scoped check of round 2 of #703,
 where a guess at where a file's legends stood gave one table the next one's legend): "Table
-N" captions the Nth table read, standing before it or after it with no other table
-between, where the file's legends number its tables 1 to the count read, in one form, each
-once; else no legend captions any. pandoc's own caption syntax, "Table: ...", is its
+N" captions the Nth table read, standing before it or after it with no other table and no
+other legend between (round 3 of #703), where the file's legends number its tables 1 to the
+count read, in one form, each once; else no legend captions any. Legends are read on the
+masked text with every line break of the text kept (`audit._legend_mask`), so a comment of
+several lines leaves them on their lines, and "(" after "Table N" opens a legend only as
+"(continued". pandoc's own caption syntax, "Table: ...", is its
 table's, as pandoc gives it; where a numbered legend captions the same table, both are its
 caption, each being exact by its own rule, so that a word of weighting in either lets the
 table off. `check` holds no n
@@ -16899,9 +16902,10 @@ been sorted yet.
   `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`
   and `tests/test_adjusted_weighted.py::test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note`.
   - A file whose legends do not number its tables (a table given as a picture, a "Table 2
-    (continued)", a "Table S1" beside a "Table 1", a legend whose table another table stands
-    between) lets off no table by its caption, so a weighted table's shares are findings
-    there, as on main. Pinned by
+    (continued)", a "Table S1" beside a "Table 1") lets off no table by its caption, so a
+    weighted table's shares are findings there, as on main. Where they do, a legend that
+    cannot reach the table its number names, another table or another legend between them,
+    captions nothing, and the file's other legends caption their tables still. Pinned by
     `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_none`.
   - In a .docx, a footnote's raised mark typed outside a table runs on into its word as the
     reader reads it ("aPercentages are weighted."), so a note that opens on one is not read,

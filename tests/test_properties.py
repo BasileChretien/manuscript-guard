@@ -23918,6 +23918,22 @@ def _a_legend_captions_the_table_next_to_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(adjusted, "numbered_captions", numbered_captions)
 
 
+def _legends_read_on_a_mask_that_drops_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    """As at 99b7107: legends were read on `hidden`, which keeps no line break of a comment,
+    so below a comment of several lines a legend took the words of another line."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "_legend_mask", lambda source: source.hidden)
+
+
+def _a_legend_reaches_across_another(patch: pytest.MonkeyPatch) -> None:
+    """As at 99b7107: a legend reached its table across another legend, so a picture's
+    legend before the next table's let that table off."""
+    from manuscript_guard.auditing import adjusted
+
+    patch.setattr(adjusted, "across_a_legend", lambda low, high, legends: False)
+
+
 def _a_comma_ends_the_negated_clause(patch: pytest.MonkeyPatch) -> None:
     """A comma ends the clause a negation is looked for in: "P values were not, however,
     adjusted for multiple comparisons." was a statement that they were (the scoped check of
@@ -30761,6 +30777,14 @@ BROKEN = {
     ),
     "a comma ends the clause a negation is looked for in": (
         _a_comma_ends_the_negated_clause,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "legends read on a mask that drops line breaks": (
+        _legends_read_on_a_mask_that_drops_line_breaks,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a legend reaches its table across another legend": (
+        _a_legend_reaches_across_another,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
 }

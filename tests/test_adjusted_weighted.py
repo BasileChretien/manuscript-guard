@@ -543,12 +543,60 @@ def test_a_legend_captions_the_table_its_number_names_in_a_docx(tmp_path: Path) 
 def test_legends_that_do_not_number_the_tables_caption_none(tmp_path: Path,
                                                            legends: str) -> None:  # fmt: skip
     """The rule holds only where the file's legends number its tables 1 to the count read,
-    in one form, each once: else no caption counts, and each share off its n is a finding,
-    as on main. A legend that numbers a table it cannot reach, another table between them,
-    captions nothing."""
+    in one form, each once: else no legend captions any table, and each share off its n is a
+    finding, as on main. Where they do, a legend that cannot reach the table its number
+    names, another table between them, captions nothing; the file's other legends still
+    caption theirs ("Table 1. Counts." its table, in the last case)."""
     report = audited(tmp_path, "# Results\n\n" + legends.format(table=TABLE))
     assert report.arithmetic_asked == [], report.arithmetic_asked
     assert len(report.disagreements) == legends.count("{table}")
+
+
+def test_a_legend_reaches_its_table_across_no_other_legend(tmp_path: Path) -> None:
+    """Round 3 of #703: a legend of a table given as a picture, "Table 1. Weighted
+    percentages.", then "Table 2. Counts." and its table, then a table with no legend. The
+    legends number the two tables read, but neither reaches its own: the first table's,
+    "Table 1", stands across "Table 2"'s legend, and "Table 2"'s across the first table. No
+    share is let off. Legends before their tables, after them, and with a subtitle between
+    caption as before."""
+    text = (f"# Results\n\nTable 1. Weighted percentages.\n\nTable 2. Counts.\n\n{TABLE}\n\n"
+            f"{TABLE}\n")
+    report = audited(tmp_path, text)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+    for shape, asked in ((SUBTITLED_BEFORE, 17), (SUBTITLED_AFTER, 7)):
+        report = audited(tmp_path, shape.format(table=TABLE))
+        assert [d.line for d in report.arithmetic_asked] == [asked]
+
+
+#: A comment over three lines above the tables, and a paragraph between Table 1's legend and
+#: its table that names the other table as weighted (round 3 of #703).
+COMMENTED = ("# Results\n\n<!-- Draft\nfor co-authors\n-->\n\nTable 1. Counts.\n\nUnlike the "
+             "survey-weighted Table 2, this table\ngives crude counts of\nthe 1200 patients.\n\n"
+             "{table}\n\nTable 2. Weighted percentages.\n\nValues are n (%).\n\n{table}\n")
+
+
+def test_legends_are_read_on_their_own_lines_below_a_comment(tmp_path: Path) -> None:
+    """Round 3 of #703: legends were read on the mask, which keeps no line break of a
+    comment, so below a comment of three lines every line was read two lines too early, and
+    "Table 1. Counts." took the words of the paragraph under it, "survey-weighted". Table 1's
+    share is a finding at line 15; Table 2's is asked about at line 23."""
+    report = audited(tmp_path, COMMENTED.format(table=TABLE))
+    assert [d.line for d in report.disagreements] == [15]
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (23, "Table 2")]
+
+
+def test_a_parenthesis_after_table_n_opens_a_legend_only_as_continued(tmp_path: Path) -> None:
+    """Round 3 of #703: "Table 1 (weighted percentages) describes the cohort." is a sentence,
+    not a legend; the table's caption is pandoc's, "Characteristics.", and its share a
+    finding. "Table 2 (continued)" is a legend still, and breaks the numbering."""
+    report = audited(tmp_path, f"Table 1 (weighted percentages) describes the cohort.\n\n{TABLE}"
+                               "\n\nTable: Characteristics.\n")  # fmt: skip
+    assert report.arithmetic_asked == [] and [d.line for d in report.disagreements] == [5]
+    from manuscript_guard.auditing.adjusted import LEGEND
+
+    assert LEGEND.match("Table 2 (continued)") and LEGEND.match("TABLE 2 (Continued).")
+    assert not LEGEND.match("Table 1 (weighted percentages) describes the cohort.")
 
 
 def test_pandoc_s_caption_counts_for_its_own_table(tmp_path: Path) -> None:

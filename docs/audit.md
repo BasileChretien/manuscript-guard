@@ -216,7 +216,10 @@ any is asked, and neither is a number that does not fit:
   "IPW", "After IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A row's label lets
   off its row alone, and a header its column. A table's caption is the legend that numbers
   it: "Table N" (in any case) captions the Nth table of the file, standing before it or after
-  it, with other paragraphs between but no other table. This holds only where the file's
+  it, with other paragraphs between but no other table and no other legend; one that cannot
+  reach its table captions nothing, and the file's other legends caption theirs still. A
+  sentence that opens on "Table 1 (" is no legend, unless the bracket says "(continued". This
+  holds only where the file's
   legends number its tables: all in one form ("Table N", or all "Table SN", ...), numbered 1
   to the number of tables read, each once. Otherwise no legend captions any table there, as
   where a table is given as a picture, a "Table 2 (continued)" stands under a table, or a

@@ -58,6 +58,8 @@ from generated import (
     FILLER,
     FIXED_LINKS,
     FOLDED,
+    G8_ASKED,
+    G8_WARNED,
     HELD,
     INCH_MARK,
     INPUTS,
@@ -73,6 +75,8 @@ from generated import (
     RESIDUE,
     RESIDUE_LOOKALIKES,
     RESULTS_BY_ANOTHER_NAME,
+    SHARES_ASKED,
+    SHARES_UNFIT,
     SHORT_QUOTATION,
     SIGNS_TYPED,
     SOURCE_GAPS,
@@ -82,10 +86,12 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    UNFIT,
     UNITS_TYPED,
     WORD_EDITS,
     WRITTEN_WORDS,
     abstract_trees,
+    adjusted_papers,
     alt_texts,
     answered_papers,
     beside_edited,
@@ -23790,6 +23796,175 @@ def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
                   lambda old, new: [("replace", 0, len(old), 0, len(new))])  # fmt: skip
 
 
+# ------------------------------------- a P an adjustment explains, a share a weighting does
+
+
+def _asked_and_unfit(text: str) -> dict[str, list[int]]:
+    """Where `audit` asks of a Markdown paper's numbers, by code, and where it says they do
+    not fit; and where G8 asks and warns of its tests' P values, through the path `check`
+    takes (`adjustment_said`, `_p_finding`); as `adjusted_papers` gives them."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.adjusted import ASKED_ADJUSTED, ASKED_WEIGHTED
+    from manuscript_guard.gates import recomputed
+    from manuscript_guard.stats.reported import judge, reported_tests
+    from manuscript_guard.text.masking import mask
+
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / "paper.md"
+        paper.write_text(text, encoding="utf-8")
+        report = audit([paper], None)
+        printed = mask(text)
+        adjusted = recomputed.adjustment_said(Path(folder), [(paper, text, printed, False)])
+        g8 = [recomputed._p_finding(test, verdict, 0.05, adjusted, paper, text, printed)
+              for test in reported_tests(printed)
+              if (verdict := judge(test)) is not None and verdict.inconsistent]  # fmt: skip
+    # Each share by its line and its cell as printed, so that which column is let off shows.
+    shares = [d for d in report.disagreements if d.message.startswith("n (%) ")]
+    return {
+        ASKED_ADJUSTED: sorted(d.line for d in report.arithmetic_asked
+                               if d.code == ASKED_ADJUSTED),
+        SHARES_ASKED: sorted([d.line, re.search(r'"\)\. (.+?) is not \d', d.message)[1]]
+                             for d in report.arithmetic_asked if d.code == ASKED_WEIGHTED),
+        SHARES_UNFIT: sorted([d.line, re.match(r"n \(%\) (.+?): ", d.message)[1]]
+                             for d in shares),
+        UNFIT: sorted(d.line for d in report.disagreements if d not in shares),
+        G8_ASKED: sorted(f.line for f in g8 if f.question),
+        G8_WARNED: sorted(f.line for f in g8 if not f.question)}  # fmt: skip
+
+
+@holds(15, adjusted_papers())
+def test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else(
+    drawn: tuple[dict[str, str], dict[str, dict[str, list[int]]]],
+) -> None:
+    """Decision 31 (Basile, 2026-11-16), and round 1 of #703. A paper for each kind of
+    statement that its P values are adjusted for multiple comparisons (a method's surname
+    beside a word of a method, the false discovery rate, "adjusted for multiple comparisons",
+    "multiple-comparison correction"), in its Methods or its Discussion: a P larger than its
+    statistic gives is asked about, by the audit and by G8; a smaller one, and an interval's
+    P, are numbers that do not fit, and G8 warns of the smaller. A paper that states none, but
+    adjusts its models for covariates, says no correction was made and cites Holm et al.,
+    and names Bonferroni in its reference list, has all three as numbers that do not fit and
+    G8 warns of both. Each paper holds such a covariate adjustment, negation and citation.
+    In the paper that states none, a share off its column's n is asked about in each table
+    that says its shares are weighted, in its caption, a row's label or its note, and in a
+    header's column alone; and is a number that does not fit in a table that says nothing,
+    one followed by a sentence on weighting, and one followed by the next table's legend in
+    capitals."""
+    papers, expected = drawn
+    for name, text in papers.items():
+        assert _asked_and_unfit(text) == expected[name], (name, text)
+
+
+def _a_smaller_p_is_let_off(patch: pytest.MonkeyPatch) -> None:
+    """Every P off its statistic read as larger: an adjustment taken to explain a P smaller
+    than its statistic gives, which no adjustment does."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "larger", lambda verdict: True)
+
+
+def _g8_asks_whatever_the_side(patch: pytest.MonkeyPatch) -> None:
+    """G8 asks of a P off its statistic on either side of the range, where the audit asks
+    only of a larger one."""
+    from manuscript_guard.gates import recomputed
+
+    patch.setattr(recomputed, "larger", lambda verdict: True)
+
+
+def _a_covariate_adjustment_adjusts_p(patch: pytest.MonkeyPatch) -> None:
+    """"Adjusted for" any words read as an adjustment of P values: "adjusted for age and sex"
+    let a paper's larger P off."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "ADJUSTMENT", re.compile(
+        adjusted.ADJUSTMENT.pattern + r"|\b(?:adjust|correct)(?:ed|ing)?\s+for\b"))
+
+
+def _a_negated_statement_counts(patch: pytest.MonkeyPatch) -> None:
+    """As at c5ab26e: "P values were not adjusted for multiple comparisons." was a statement
+    that they were."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "negated", lambda before, after="": False)
+
+
+def _a_negation_after_the_words_is_missed(patch: pytest.MonkeyPatch) -> None:
+    """As at 37c8238: "Correction for multiple comparisons was not performed." was a statement
+    that it was, its negation coming after the words."""
+    from manuscript_guard.stats import adjusted
+
+    real = adjusted.negated
+    patch.setattr(adjusted, "negated", lambda before, after="": real(before, ""))
+
+
+def _a_legend_captions_the_table_next_to_it(patch: pytest.MonkeyPatch) -> None:
+    """As at 37c8238 and a9b0c25: a table took the legend next to it, the nearest before it
+    with no table between, else after it, whatever its number and whether the file's legends
+    number its tables."""
+    from manuscript_guard.auditing import adjusted
+
+    def numbered_captions(paragraphs, tables):
+        spans = [(min(adjusted._cells(t)), max(adjusted._cells(t))) for t in tables]
+        legends = [p for p in paragraphs if adjusted.LEGEND.match(p.text)]
+        found = []
+        for at, (first, last) in enumerate(spans):
+            low = spans[at - 1][1] if at else 0
+            high = spans[at + 1][0] if at + 1 < len(spans) else 10**9
+            before = [p for p in legends if low < p.first and p.last < first]
+            after = [p for p in legends if last < p.first and p.last < high]
+            found.append(before[-1].text if before else after[0].text if after else "")
+        return found
+
+    patch.setattr(adjusted, "numbered_captions", numbered_captions)
+
+
+def _legends_read_on_a_mask_that_drops_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    """As at 99b7107: legends were read on `hidden`, which keeps no line break of a comment,
+    so below a comment of several lines a legend took the words of another line."""
+    import manuscript_guard.audit as audit
+
+    patch.setattr(audit, "_legend_mask", lambda source: source.hidden)
+
+
+def _a_legend_reaches_across_another(patch: pytest.MonkeyPatch) -> None:
+    """As at 99b7107: a legend reached its table across another legend, so a picture's
+    legend before the next table's let that table off."""
+    from manuscript_guard.auditing import adjusted
+
+    patch.setattr(adjusted, "across_a_legend", lambda low, high, legends: False)
+
+
+def _a_comma_ends_the_negated_clause(patch: pytest.MonkeyPatch) -> None:
+    """A comma ends the clause a negation is looked for in: "P values were not, however,
+    adjusted for multiple comparisons." was a statement that they were (the scoped check of
+    round 2 of #703)."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "_NEGATION_END", re.compile(r"[;:,]"))
+
+
+def _a_capitalised_next_legend_leaks(patch: pytest.MonkeyPatch) -> None:
+    """As at c5ab26e: a legend read only as "Table", so "TABLE 2." after a table with no note
+    was its note."""
+    from manuscript_guard.auditing import adjusted
+
+    patch.setattr(adjusted, "LEGEND", re.compile(adjusted.LEGEND.pattern.replace("(?i:", "(?:")))
+
+
+def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
+    """A paper's one weighted table taken for all its tables."""
+    from manuscript_guard.auditing import adjusted
+
+    real = adjusted.weighted_tables
+
+    def weighted_tables(tables, **given):
+        found = real(tables, **given)
+        said = next((one for one in found if one is not None and one.whole is not None), None)
+        return [said for _table in found]
+
+    patch.setattr(adjusted, "weighted_tables", weighted_tables)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -30567,6 +30742,50 @@ BROKEN = {
     "a blank line in a comment ends a sentence of what the audit reads": (
         _a_comment_s_blank_line_ends_a_sentence,
         test_the_audit_reads_a_markdown_paper_on_the_lines_it_has,
+    ),
+    "a smaller P is let off as a question": (
+        _a_smaller_p_is_let_off,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a covariate adjustment is read as one of P values": (
+        _a_covariate_adjustment_adjusts_p,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "one weighted table lets off another": (
+        _one_weighted_table_lets_off_all,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "G8 asks whatever the side of the range": (
+        _g8_asks_whatever_the_side,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a negated statement counts": (
+        _a_negated_statement_counts,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a capitalised next caption leaks": (
+        _a_capitalised_next_legend_leaks,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a negation after the words is missed": (
+        _a_negation_after_the_words_is_missed,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a legend captions the table next to it whatever its number": (
+        _a_legend_captions_the_table_next_to_it,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a comma ends the clause a negation is looked for in": (
+        _a_comma_ends_the_negated_clause,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "legends read on a mask that drops line breaks": (
+        _legends_read_on_a_mask_that_drops_line_breaks,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a legend reaches its table across another legend": (
+        _a_legend_reaches_across_another,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
 }
 

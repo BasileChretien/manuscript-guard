@@ -275,7 +275,7 @@ checked like any other.
 | `declared-same-but-differs` | two keys declared one quantity with `same_as=` have drifted apart |
 | `comparison-contradicted` | a sign beside the binding ("all Fs <") is false of the value: emit more digits, or type its bound |
 | `interval-reversed` | the text quotes the upper bound first; swap the two bindings |
-| `relation-broken`, `flow-broken`, `relation-rounding`, `relation-unresolved` | see [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md) |
+| `relation-broken`, `flow-broken`, `relation-rounding`, `relation-unresolved`, `p-inconsistent`, `p-decision-error` | see [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md) |
 | `estimate-outside-interval`, `interval-inverted` | fix the interval in the analysis, with `interval()` |
 | `quoted-alone` | a warning: a p value quoted in a sentence without its estimate, or a share without either of its counts. Quote them together: n/N (%) |
 | `interval-not-quoted-whole` | a warning: the estimate is quoted, and no sentence anywhere quotes both bounds of its interval |

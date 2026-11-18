@@ -3041,6 +3041,196 @@ def test_a_share_its_counts_do_not_give_in_the_results_is_a_number_that_does_not
                   "12 of 24"]  # fmt: skip
 
 
+def test_a_p_smaller_than_its_statistic_gives_is_found_in_a_paper_that_adjusts(
+    tmp_path: Path,
+) -> None:
+    """Decision 31: a paper that says its P values are Holm-adjusted has a larger P asked
+    about, since an adjustment makes a P larger; a P smaller than its t gives is wrong under
+    any adjustment and is still a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\nAll P values were Holm-adjusted.\n\n# Results\n\nThe arms "
+                     "differed, t(23) = 2.71, P = 0.002.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == []
+    (found,) = report.disagreements
+    assert found.message.endswith("and the text says P = 0.002"), found
+
+
+def test_g8_warns_of_a_p_smaller_than_its_statistic_in_a_manuscript_that_adjusts(
+    project: Path,
+) -> None:
+    """The same in `check`: G8 warns, and asks nothing."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nAll P values were Holm-adjusted. "
+                    "The arms differed, t(23) = 2.71, p = .002.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_larger_p_is_found_in_a_paper_that_says_it_did_not_adjust(
+    tmp_path: Path, project: Path,
+) -> None:
+    """Round 1 of #703: "P values were not adjusted for multiple comparisons." said none was
+    made, and was read as a statement, so the larger P was asked about in both readers. It is
+    a number that does not fit in the audit and G8's warning in `check`."""
+    from manuscript_guard.audit import audit
+
+    said = "P values were not adjusted for multiple comparisons."
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Methods\n\n{said}\n\n# Results\n\nThe arms differed, t(23) = 2.71, "
+                     "P = 0.048.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n{said} The arms differed, "
+                    "t(23) = 2.71, p = .048.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_larger_p_is_found_where_the_negation_follows_the_words(
+    tmp_path: Path, project: Path,
+) -> None:
+    """Round 2 of #703: "Correction for multiple comparisons was not performed." was read as
+    a statement, its negation coming after the words, and the larger P asked about in both
+    readers. It is a number that does not fit in the audit and G8's warning in `check`."""
+    from manuscript_guard.audit import audit
+
+    said = "Correction for multiple comparisons was not performed."
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Methods\n\n{said}\n\n# Results\n\nThe arms differed, t(23) = 2.71, "
+                     "P = 0.048.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n{said} The arms differed, "
+                    "t(23) = 2.71, p = .048.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_share_is_found_under_a_table_whose_legend_after_it_says_counts(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #703: legends standing after their tables, "Table 1. Weighted percentages."
+    under the first table was taken for the caption of the second, whose share off its n,
+    under "Table 2. Counts.", was let off as Table 1's. It is a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nThe groups were compared.\n\n{table}\n\nTable 1. Weighted "
+                     f"percentages.\n\n{table}\n\nTable 2. Counts.\n\n# Discussion\n\nNo more.\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [13]
+
+
+def test_a_share_is_found_under_its_own_numbered_legend_with_a_subtitle_between(
+    tmp_path: Path,
+) -> None:
+    """The scoped check of round 2 of #703: legends before their tables, a subtitle between
+    each and its table, were read as standing after them, and Table 1's share off its n was
+    let off under Table 2's legend. "Table 1. Counts." captions Table 1, whose share is a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Counts.\n\nValues are n (%).\n\n{table}\n\nTable 2. "
+                     f"Weighted percentages.\n\nValues are n (%).\n\n{table}\n", encoding="utf-8")
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [9]
+    assert all(d.line != 9 for d in report.arithmetic_asked)
+
+
+def test_a_share_is_found_under_its_legend_below_a_comment_of_several_lines(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #703: legends were read on a mask that drops a comment's line breaks, so
+    below a comment of three lines "Table 1. Counts." took the words of the paragraph under
+    it, "Unlike the survey-weighted Table 2, ...", and Table 1's share was let off. It is a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\n<!-- Draft\nfor co-authors\n-->\n\nTable 1. Counts.\n\nUnlike "
+                     "the survey-weighted Table 2, this table\ngives crude counts of\nthe 1200 "
+                     f"patients.\n\n{table}\n\nTable 2. Weighted percentages.\n\nValues are n "
+                     f"(%).\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [15]
+
+
+def test_a_share_is_found_under_a_sentence_that_opens_on_table_n_and_a_bracket(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #703: "Table 1 (weighted percentages) describes the cohort." was read as a
+    legend that said its table weighted; it is a sentence, and the share a number that does
+    not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"Table 1 (weighted percentages) describes the cohort.\n\n{table}\n\n"
+                     "Table: Characteristics.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and [d.line for d in report.disagreements] == [5]
+
+
+def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: Path) -> None:
+    """Three legends for two tables read: the legends do not number the file's tables, so no
+    caption counts, and the share under "Table 1. Weighted percentages." is a number that does
+    not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
+                     f"Counts.\n\n{table}\n\nTable 3. Weighted n.\n", encoding="utf-8")
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+
+
+def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #703: "TABLE 2. Weighted percentages." after a table with no note was no
+    legend to the reader, and became that table's note, so its share off the column's n was
+    let off. It is a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Counts.\n\n{table}\n\nTABLE 2. Weighted "
+                     f"percentages.\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [7]
+
+
+def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
+    tmp_path: Path,
+) -> None:
+    """Decision 31: Table 1 says its shares are weighted, and its share off the column's n is
+    asked about; Table 2 of the same paper says nothing, and the same share off is still a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
+                     f"Counts.\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.arithmetic_asked] == [7]
+    assert [d.line for d in report.disagreements] == [13]
+
+
 def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:
     """Round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, 75.0%, not 12,
     under every heading, as were the phases, stages and types of a clinical paper. A range

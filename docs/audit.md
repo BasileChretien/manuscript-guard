@@ -133,9 +133,12 @@ findings in a referee's words: the number, where it stands, and that the author 
 naming no flag. Where a check asks questions and has nothing else to say, its line in "What
 was checked" and its tile on the page and in the PDF say how many are open, "2 QUESTIONS",
 not that nothing was found; a question still never fails a build (Basile, 2026-11-17).
-Four questions are asked so far, all of the Abstract against Results; `--json` counts the
-two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_background`, and
-`abstract_not_found` counts neither:
+Seven questions are asked so far: four of the Abstract against Results, below; two of the
+Arithmetic, below; and G14's one on the short forms never defined (under Writing and
+Language, further down). `--json` counts the two of the Abstract asked of single numbers,
+`abstract_asked_only_in` and `abstract_asked_background`, and `abstract_not_found` counts
+neither; it counts the Arithmetic's as `asked_p_adjusted` and `asked_share_weighted`, where
+any is asked, and neither is a number that does not fit:
 
 - **No Abstract found** (`question-no-abstract`): no heading names the Abstract. If the
   paper's first paragraph, or the text under its title, is its Abstract, put the heading
@@ -187,6 +190,49 @@ two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_backgr
   is given nowhere in the paper; is it from the literature? The Introduction should give
   it, with its source, and that change to the paper ends the question. A number in any
   other part of the Abstract is read as before.
+- **A P its paper's adjustment may explain** (`question-p-adjusted`): the paper says, once,
+  anywhere outside its reference list, that its P values are adjusted for multiple
+  comparisons, in words of a closed list, and a P is larger than the whole range its
+  statistic gives. The false discovery rate or FDR, "adjusted (corrected) for multiple
+  comparisons (testing)" and "multiple-comparison correction" stand alone; a method's
+  surname (Bonferroni, Holm, Hochberg, Benjamini, Yekutieli, Šidák, Tukey, Dunnett) counts
+  only beside a word of a method in its clause ("Holm correction", "Bonferroni-corrected",
+  "Tukey's HSD"), and never as a citation: "Holm et al.", "Hochberg and colleagues",
+  "(Dunnett, 1955)", "Holm (1979)", "Dunnett [12]". A clause that says, before the words or
+  after them, that none was made ("P values were not adjusted for multiple comparisons",
+  "Correction for multiple comparisons was not performed") states nothing, a comma
+  ending no such clause ("P values were not, however, adjusted ..."); nor does "adjusted
+  for age and sex". An adjustment only makes a P
+  larger, so the question quotes the statement and its place, says the P and what the
+  statistic gives on its own, and asks whether it is the adjusted P. Saying so beside the
+  test ("Holm-adjusted P = 0.048") ends it: a test its sentence calls adjusted is not
+  recomputed. A P smaller than its statistic gives is wrong under any adjustment and stays
+  a number that does not fit, and so does an interval's P, since an adjustment may widen the
+  interval as well, or not. A LaTeX paper is read as one across its files.
+- **A share its table's weighting may explain** (`question-share-weighted`): an n (%) off its
+  column's n in a table whose caption or note says its shares are weighted, in a row whose
+  label does, or under a column whose header does ("weighted %", "weighted percentages",
+  "weighted n", "weighted statistics", "survey-weighted", "inverse probability weighted",
+  "IPW", "After IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A row's label lets
+  off its row alone, and a header its column. A table's caption is the legend that numbers
+  it: "Table N" (in any case) captions the Nth table of the file, standing before it or after
+  it, with other paragraphs between but no other table and no other legend; one that cannot
+  reach its table captions nothing, and the file's other legends caption theirs still. A
+  sentence that opens on "Table 1 (" is no legend, unless the bracket says "(continued". This
+  holds only where the file's
+  legends number its tables: all in one form ("Table N", or all "Table SN", ...), numbered 1
+  to the number of tables read, each once. Otherwise no legend captions any table there, as
+  where a table is given as a picture, a "Table 2 (continued)" stands under a table, or a
+  "Table S1" stands beside a "Table 1" (Basile, 2026-11-18). In Markdown, pandoc's own
+  caption, "Table: ...", is its table's too. The
+  note is the paragraph after the table where it opens with "Note", "Abbreviations" or a
+  footnote's mark (a lowercase letter, or an asterisk, a dagger or a section sign before a
+  space), and is no caption, in Markdown and in a .docx; in a .docx a raised mark typed
+  outside a table reads run on into its word, "aPercentages ...", so such a note is not
+  read. In LaTeX the note is the float's text outside the table. The question says the share is not its count's of the column's n and
+  asks whether it is the weighted share; if so, nothing is wrong. Another table of the same
+  paper is held to its n as before, and a sentence elsewhere that says the paper weights
+  lets off no table.
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests

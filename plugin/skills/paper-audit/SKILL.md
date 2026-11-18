@@ -158,7 +158,13 @@ pass only the answer they give: `--no-abstract` where the paper has no Abstract,
 that reports none. Never choose the heading yourself. A number of the Abstract found only in
 the Introduction, the Discussion, a "Limitations" or a conclusion, and a Background figure
 given nowhere, are asked about too: whether the paper reports it there, or where its source
-is, is the author's to say.
+is, is the author's to say. So is a P larger than its statistic gives, where the paper says
+its P values are adjusted for multiple comparisons (Holm, Bonferroni, the false discovery
+rate): ask whether it is the adjusted P, and if it is, the answer is the paper's, "adjusted"
+said beside the test; never decide it yourself. A share off its column's n in a table that
+says it is weighted is asked about the same way: whether it is the weighted share. A
+smaller P, an interval's P, and a share in a table that says nothing of weights stay numbers
+that do not fit.
 
 ## 3. Read the report
 

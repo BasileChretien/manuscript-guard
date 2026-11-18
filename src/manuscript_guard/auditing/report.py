@@ -197,6 +197,7 @@ def items(report) -> list[Item]:
              d.context)
         for d in report.disagreements
     ]  # fmt: skip
+    found += _arithmetic_questions(report)
     found += [
         Item(ARITHMETIC, "audit", "sum-off", d.message, FAIL, True, d.source, d.line, d.context)
         for d in report.sums_off
@@ -267,6 +268,14 @@ def items(report) -> list[Item]:
             + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
+
+
+def _arithmetic_questions(report) -> list[Item]:
+    """Each question asked of a number that may fit after all, at the number: a P larger than
+    its statistic gives in a paper that says its P values are adjusted, a share off its
+    column's n in a table that says it is weighted (`auditing.adjusted`, decision 31)."""
+    return [question(ARITHMETIC, d.code, d.message, d.source, d.line, d.context, d.refereed)
+            for d in getattr(report, "arithmetic_asked", [])]  # fmt: skip
 
 
 def _title_items(report) -> list[Item]:
@@ -566,6 +575,16 @@ def asked_of_words(report) -> list[str]:
     return asked
 
 
+def asked_of_numbers(report) -> list[str]:
+    """Each question asked of a number of the arithmetic (`_arithmetic_questions`), said with
+    the report's other questions (`_notes`) after its place, as the report says a place:
+    "paper.md:12: ...", "paper.docx, Results, paragraph 3: ...", "paper.pdf, page 2, line
+    14: ..."."""
+    show = _Show(None, report.placers)
+    return [f"{show.located(d.source, d.line)}: {d.message}"
+            for d in getattr(report, "arithmetic_asked", [])]  # fmt: skip
+
+
 def failed(report) -> bool:
     """What `--strict` fails on."""
     return any(item.counted for item in items(report))
@@ -593,6 +612,8 @@ def as_json(report, discrimination) -> str:
         "flows": report.flows_read,
         "flows_named": report.flows_named,
         "flows_broken": len(report.flows_broken),
+        # The questions asked of numbers that may fit after all, by kind (decision 31).
+        **_arithmetic_counts(report),
         **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
         **_reader_counts(report),
@@ -680,6 +701,18 @@ def _reader_counts(report) -> dict[str, int]:
         if said.journal:
             counts["self_citation_journal"] = len(said.in_journal)
     return counts
+
+
+def _arithmetic_counts(report) -> dict[str, int]:
+    """The questions asked of a P an adjustment may explain and of a share weighting may, by
+    kind, where any is asked."""
+    from manuscript_guard.auditing.adjusted import ASKED_ADJUSTED, ASKED_WEIGHTED
+
+    asked = [d.code for d in getattr(report, "arithmetic_asked", [])]
+    if not asked:
+        return {}
+    return {"asked_p_adjusted": asked.count(ASKED_ADJUSTED),
+            "asked_share_weighted": asked.count(ASKED_WEIGHTED)}  # fmt: skip
 
 
 def _abstract_counts(read) -> dict[str, int]:
@@ -783,7 +816,8 @@ def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
     return bool(report.sums_off or report.over_n or report.over_n_rounding
                 or report.disagreements or report.whole_numbers or report.flows_read
-                or report.flow_notes or report.binary or report.non_negative)  # fmt: skip
+                or report.flow_notes or report.binary or report.non_negative
+                or getattr(report, "arithmetic_asked", None))  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -887,7 +921,8 @@ def _notes(report) -> list[tuple[str, list[str]]]:
                                               report.placers) if item.question]
     answered = [said for _code, said in getattr(report.abstract, "answered", None) or []]
     notes = (
-        (QUESTIONS, [*(item.message for item in asked), *asked_of_words(report)]),
+        (QUESTIONS, [*asked_of_numbers(report), *(item.message for item in asked),
+                     *asked_of_words(report)]),
         (ANSWERS, answered),
         ("Could not read:", report.unreadable),
         ("Outputs not read as given:", report.skipped),
@@ -1113,6 +1148,14 @@ def _arithmetic(report, show) -> list[str]:
             for item in listed:
                 lines.append(f"    {show.at(source, item.line)}: {item.message}")
                 lines.append(f"      {item.context}")
+    asked = len(getattr(report, "arithmetic_asked", []))
+    if asked:
+        lines += [""] if lines else []
+        heading = QUESTIONS.split(" (")[0]
+        lines.append(f"  {asked} {'question' if asked == 1 else 'questions'} for the author "
+                     "on numbers that may fit after all, a P the paper's adjustment for "
+                     "multiple comparisons may explain or a share its table's weighting may "
+                     f"(under \"{heading}\"; not counted by --strict).")  # fmt: skip
     if report.whole_numbers:
         lines += [""] if lines else []
         lines.append(

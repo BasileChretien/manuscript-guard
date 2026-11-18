@@ -16907,6 +16907,11 @@ been sorted yet.
     cannot reach the table its number names, another table or another legend between them,
     captions nothing, and the file's other legends caption their tables still. Pinned by
     `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_none`.
+  - A comment of several lines inside a legend's paragraph ends the legend where the
+    comment opens, since legends are read with each line of the file kept, though pandoc
+    reads the paragraph whole. "Table 1. Baseline characteristics," over a comment, then
+    "weighted by IPTW.", is therefore no weighted legend, and its table's shares stay
+    findings, as on main (scoped check of 162310d of #703). Accepted.
   - In a .docx, a footnote's raised mark typed outside a table runs on into its word as the
     reader reads it ("aPercentages are weighted."), so a note that opens on one is not read,
     and its table's shares stay findings. Accepted.

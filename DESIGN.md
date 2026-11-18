@@ -5591,7 +5591,8 @@ Used before defined, redefined and unused stay warnings.
 
 The worked example found its own slip the first time the gate ran: the Introduction writes
 "(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
-records are tied to the text they read, so `check` on the example prints that one warning.
+records are tied to the text they read, so `check` on the example asks that one question (a
+warning until decision 30).
 `CI` is listed in the example's `paper.yaml` to show the setting.
 
 ## One term for one thing is declared, not guessed
@@ -10710,7 +10711,7 @@ Basile, 2026-11-17, "Show the questions"). Of the 24 numbers the corpus run on 0
 not find, six became the first question, two the second, and tex-stat-ap-B2's two Background
 figures, which its Introduction gives with the WHO's name, are found.
 
-The third is G14's, in both readers (decision 30): the short forms used and never defined,
+Another is G14's, in both readers (decision 30): the short forms used and never defined,
 one question for the paper at the first one's first use, answered by `--known` in the audit
 (on the page, "Words to leave alone") and by `language: known_abbreviations`, quoted, in a
 project's paper.yaml. It is `check`'s first question, `findings.Question`, the smallest kind

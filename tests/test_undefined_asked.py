@@ -232,3 +232,43 @@ def test_next_on_the_example_lists_its_question(project: Path, capsys) -> None:
     assert main(["next", str(project), "--all"]) == 0
     out = capsys.readouterr().out
     assert "question for the author from G14" in out and "ROR at manuscript/" in out
+
+
+def test_the_pdf_s_words_tile_says_the_question_and_links_to_it(
+    tmp_path: Path, capsys
+) -> None:
+    """A paper whose only finding on the words is G14's question: its tile says "1 QUESTION"
+    and links to the questions to the author, where the question stands, there being no
+    words section to go to (round 2 of #701)."""
+    import io
+    import sys
+
+    import pypdf
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_report_pdf import _destinations, _tops_of_links_to  # noqa: E402
+
+    from manuscript_guard.auditing.summary import ASKED, asked, standings
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Abstract\n\nWe read 412 reports.\n\n# Methods\n\nThe XYZ was read. "
+                     "The XYZ held.\n\n# Results\n\nOf 412 reports, 77 were serious.\n",
+                     encoding="utf-8")  # fmt: skip
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing.gates import run_gates
+
+    report = AuditReport(gates=[run_gates(paper)])
+    assert standings(report)["Writing and language"] == ASKED
+    assert asked(report) == {"Writing and language": 1}
+    target = tmp_path / "report.pdf"
+    assert main(["audit", str(paper), "--pdf", str(target)]) == 0
+    capsys.readouterr()
+    reader = pypdf.PdfReader(io.BytesIO(target.read_bytes()), strict=True)
+    first = " ".join(reader.pages[0].extract_text().split())
+    assert "1 QUESTION" in first, first
+    marks, links = _destinations(reader)
+    assert "Writing and language" not in marks
+    assert marks["Questions for the author"] in links(reader.pages[0])
+    # From the tile, in "What was checked" over the contents, not only from the contents.
+    tops = _tops_of_links_to(reader, reader.pages[0], marks["Questions for the author"])
+    assert any(top > marks["In this report"][1] for top in tops), tops

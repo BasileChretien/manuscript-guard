@@ -106,6 +106,7 @@ def _drawn(view: dict, title: str, version: str, ran: tuple[str, ...], on: datet
     for at, (heading, said) in enumerate(view["notes"]):
         _note(pdf, heading, said, _note_key(at))
     _words(pdf, view)
+    _words_asked_go_to_the_questions(pdf, view)
     for heading, text in view["sections"]:
         _section(pdf, heading, text)
     _closing(pdf, view, len(GATES), ran)
@@ -333,6 +334,20 @@ def _words(pdf: Pdf, view: dict) -> None:
               size=9, color=MUTED)  # fmt: skip
         for place, kind in enumerate(paper["kinds"]):
             _kind(pdf, kind, _kind_key(at, place))
+
+
+def _words_asked_go_to_the_questions(pdf: Pdf, view: dict) -> None:
+    """The words' tile, where it stands `ASKED` and no paper's words are drawn, G14's
+    question being all they have, goes to the questions to the author, where that question
+    stands: else the tile linked nowhere (round 2 of #701)."""
+    if _key("Writing") in pdf.places:
+        return
+    if (view.get("standing") or {}).get("Writing and language") != ASKED:
+        return
+    for at, (heading, _said) in enumerate(view["notes"]):
+        if heading.startswith("Questions for the author") and _note_key(at) in pdf.places:
+            pdf.places[_key("Writing")] = pdf.places[_note_key(at)]
+            return
 
 
 def _kind(pdf: Pdf, kind: dict, key: str | None = None) -> None:

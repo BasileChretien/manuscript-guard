@@ -3234,6 +3234,61 @@ def test_the_short_forms_never_defined_are_one_question(
                 if f.code == language_gate.UNDEFINED]  # fmt: skip
 
 
+@holds(30, undefined_forms())
+def test_the_words_tile_says_the_question_open(
+    drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
+) -> None:
+    """Basile, 2026-11-17, "Show the questions": where G14's question on the short forms
+    never defined is all the words have, the summary's tile for them stands asked and says
+    how many, one for each paper; beside a finding to look at, it is to look at, and the
+    question is still counted (round 2 of #701)."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing import undefined
+    from manuscript_guard.auditing.gates import GateRun
+    from manuscript_guard.auditing.summary import ASKED, LOOK, asked, standings
+    from manuscript_guard.findings import WARN, Finding
+
+    files, _listed, _passed = drawn
+    read = [_file(order, Path(name), text, [], supplementary)
+            for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
+    nothing = language_gate._Known(frozenset(), frozenset())
+    found = undefined.one_finding(undefined.unasked(
+        list(language_gate._judge(read, nothing, Path(".")).findings)))
+    (question,) = [f for f in found if f.question]
+    alone = AuditReport(gates=[GateRun(Path(files[0][0]), language=[question])])
+    assert standings(alone)["Writing and language"] == ASKED
+    assert asked(alone) == {"Writing and language": 1}
+    two = AuditReport(gates=[GateRun(Path(name), language=[question])
+                             for name in ("a.md", "b.md")])  # fmt: skip
+    assert asked(two) == {"Writing and language": 2}
+    warned = Finding("G14", "abbreviation-unused", "unused", WARN, line=1)
+    beside = AuditReport(gates=[GateRun(Path(files[0][0]), language=[question, warned])])
+    assert standings(beside)["Writing and language"] == LOOK
+    assert asked(beside) == {"Writing and language": 1}
+
+
+def _the_words_are_not_counted_as_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import summary
+
+    real = summary.asked
+    patch.setattr(summary, "asked", lambda report: {
+        name: count for name, count in real(report).items() if name != "Writing and language"})
+
+
+def _the_words_tile_never_stands_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import summary
+
+    real = summary.standings
+
+    def standings(report) -> dict:
+        out = real(report)
+        if out.get("Writing and language") == summary.ASKED:
+            out["Writing and language"] = summary.CLEAR
+        return out
+
+    patch.setattr(summary, "standings", standings)
+
+
 def _the_question_is_a_warning(patch: pytest.MonkeyPatch) -> None:
     @dataclasses.dataclass(frozen=True)
     class Warned(language_gate.Asked):
@@ -26878,6 +26933,14 @@ BROKEN = {
     "G14's question on the short forms never defined is a warning": (
         _the_question_is_a_warning,
         test_the_short_forms_never_defined_are_one_question,
+    ),
+    "the words' question is not counted as asked": (
+        _the_words_are_not_counted_as_asked,
+        test_the_words_tile_says_the_question_open,
+    ),
+    "the words' tile never stands asked": (
+        _the_words_tile_never_stands_asked,
+        test_the_words_tile_says_the_question_open,
     ),
     "G14's question keeps only the first entry of each form": (
         _only_the_first_entry_of_each_form_is_kept,

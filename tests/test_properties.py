@@ -75,6 +75,8 @@ from generated import (
     RESIDUE,
     RESIDUE_LOOKALIKES,
     RESULTS_BY_ANOTHER_NAME,
+    SHARES_ASKED,
+    SHARES_UNFIT,
     SHORT_QUOTATION,
     SIGNS_TYPED,
     SOURCE_GAPS,
@@ -23816,9 +23818,16 @@ def _asked_and_unfit(text: str) -> dict[str, list[int]]:
         g8 = [recomputed._p_finding(test, verdict, 0.05, adjusted, paper, text, printed)
               for test in reported_tests(printed)
               if (verdict := judge(test)) is not None and verdict.inconsistent]  # fmt: skip
-    return {code: sorted(d.line for d in report.arithmetic_asked if d.code == code)
-            for code in (ASKED_ADJUSTED, ASKED_WEIGHTED)} | {
-        UNFIT: sorted(d.line for d in report.disagreements),
+    # Each share by its line and its cell as printed, so that which column is let off shows.
+    shares = [d for d in report.disagreements if d.message.startswith("n (%) ")]
+    return {
+        ASKED_ADJUSTED: sorted(d.line for d in report.arithmetic_asked
+                               if d.code == ASKED_ADJUSTED),
+        SHARES_ASKED: sorted([d.line, re.search(r'"\)\. (.+?) is not \d', d.message)[1]]
+                             for d in report.arithmetic_asked if d.code == ASKED_WEIGHTED),
+        SHARES_UNFIT: sorted([d.line, re.match(r"n \(%\) (.+?): ", d.message)[1]]
+                             for d in shares),
+        UNFIT: sorted(d.line for d in report.disagreements if d not in shares),
         G8_ASKED: sorted(f.line for f in g8 if f.question),
         G8_WARNED: sorted(f.line for f in g8 if not f.question)}  # fmt: skip
 
@@ -23876,7 +23885,24 @@ def _a_negated_statement_counts(patch: pytest.MonkeyPatch) -> None:
     that they were."""
     from manuscript_guard.stats import adjusted
 
-    patch.setattr(adjusted, "negated", lambda before: False)
+    patch.setattr(adjusted, "negated", lambda before, after="": False)
+
+
+def _a_negation_after_the_words_is_missed(patch: pytest.MonkeyPatch) -> None:
+    """As at 37c8238: "Correction for multiple comparisons was not performed." was a statement
+    that it was, its negation coming after the words."""
+    from manuscript_guard.stats import adjusted
+
+    real = adjusted.negated
+    patch.setattr(adjusted, "negated", lambda before, after="": real(before, ""))
+
+
+def _a_legend_after_a_table_captions_the_next(patch: pytest.MonkeyPatch) -> None:
+    """As at 37c8238: the paragraph before a table was its caption, though it was the legend
+    standing after the table before it."""
+    from manuscript_guard.auditing import adjusted
+
+    patch.setattr(adjusted, "layout", lambda befores, afters: "before")
 
 
 def _a_capitalised_next_legend_leaks(patch: pytest.MonkeyPatch) -> None:
@@ -23895,7 +23921,7 @@ def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
 
     def weighted_tables(tables, **given):
         found = real(tables, **given)
-        said = next((one for one in found if one is not None), None)
+        said = next((one for one in found if one is not None and one.whole is not None), None)
         return [said for _table in found]
 
     patch.setattr(adjusted, "weighted_tables", weighted_tables)
@@ -30701,6 +30727,14 @@ BROKEN = {
     ),
     "a capitalised next caption leaks": (
         _a_capitalised_next_legend_leaks,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a negation after the words is missed": (
+        _a_negation_after_the_words_is_missed,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a legend after a table captions the next": (
+        _a_legend_after_a_table_captions_the_next,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
 }

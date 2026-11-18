@@ -98,12 +98,22 @@ def test_each_named_adjustment_is_a_statement(said: str) -> None:
     "Tukey and coworkers described the test of additivity.",
     "Outliers were found with Tukey's fences.",
     "As Bonferroni noted in 1936, inequalities hold.",
+    # Negated after the words, and across a comma (round 2 of #703).
+    "Correction for multiple comparisons was not performed.",
+    "Adjustment for multiple comparisons was not made.",
+    "The Bonferroni correction was not applied.",
+    "P values were not, however, adjusted for multiple comparisons.",
+    "No adjustment, such as the Bonferroni correction, was made.",
+    # A surname followed by a year or a number in brackets cites a paper.
+    "Groups were compared with the Kruskal-Wallis test (Dunnett, 1955).",
+    "Each arm was compared with the test of Dunnett [12].",
+    "The test follows Holm (1979).",
 ])  # fmt: skip
 def test_a_covariate_adjustment_a_negation_and_a_citation_are_no_statement(said: str) -> None:
     """ "Adjusted for age and sex" names covariates, not an adjustment of P values; a
-    statement its clause negates before the words says none was made; a method's surname
-    that cites a paper ("Holm et al."), or stands beside no word of a method in its clause, is
-    no statement."""
+    statement its clause negates, before the words or after them, says none was made; a
+    method's surname that cites a paper ("Holm et al.", "(Dunnett, 1955)", "Holm (1979)",
+    "Dunnett [12]"), or stands beside no word of a method in its clause, is no statement."""
     assert adjustment(said) is None
 
 
@@ -140,13 +150,12 @@ def test_an_estimate_weighted_and_unweighted_shares_are_no_weighting(said: str) 
     "The Bonferroni correction was applied to the secondary outcomes only.",
     "The FDR of the classifier was 0.30.",
     "Tukey's test for nonadditivity was run.",
-    "The Bonferroni correction was not applied.",
 ])  # fmt: skip
 def test_a_statement_is_read_by_its_words_alone(said: str) -> None:
     """The limits of exact words (DESIGN.md, Known gaps): a statement that adjusts some tests,
-    a name in another sense (tex-stat-ap-A2's false discovery rate of a classifier, Tukey's
-    test of additivity) and a statement negated after its words are each read as a
-    statement, and the paper's larger P values asked about."""
+    and a name in another sense (tex-stat-ap-A2's false discovery rate of a classifier,
+    Tukey's test of additivity), are each read as a statement, and the paper's larger P
+    values asked about."""
     assert adjustment(said) is not None
 
 
@@ -244,7 +253,7 @@ def test_a_weighted_table_asks_of_its_share_and_lets_off_no_other(
     (asked,) = report.arithmetic_asked
     assert asked.code == ASKED_WEIGHTED and asked.line == 7, asked
     # A header's words let off its column alone, and say so (round 1 of #703).
-    said = "Table 1's column" if where == "header" else "Table 1"
+    said = {"header": "Table 1's column", "label": "Table 1's row"}.get(where, "Table 1")
     assert asked.message.startswith(f"{said} says its shares are weighted (\"")
     assert asked.message.endswith("\"). 640 (58.0%) is not 640 of 1200 (53.3%). Is 58.0% the "
                                   "weighted share? If so nothing is wrong; if not, check the "
@@ -322,7 +331,11 @@ def test_a_docx_says_both_questions_at_their_paragraphs(tmp_path: Path) -> None:
 
 NEGATED = ("P values were not adjusted for multiple comparisons.",
            "No correction for multiple testing was applied.",
-           "We did not correct for multiple comparisons.")  # fmt: skip
+           "We did not correct for multiple comparisons.",
+           # Negated after the words (round 2 of #703).
+           "Correction for multiple comparisons was not performed.",
+           "Adjustment for multiple comparisons was not made.",
+           "The Bonferroni correction was not applied.")  # fmt: skip
 
 
 @pytest.mark.parametrize("said", NEGATED)
@@ -407,13 +420,99 @@ def test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note(tmp_path: Path
                                                  ("Unweighted n (%)", "Weighted %")])  # fmt: skip
 def test_a_header_lets_off_its_column_alone(tmp_path: Path, crude: str, weighted: str) -> None:
     """A word of weighting in a column's header lets off that column, not the crude one
-    beside it."""
-    text = (f"# Results\n\nTable 1. Balance.\n\n| Characteristic | {crude} (n = 1200) | "
-            f"{weighted} (n = 1200) |\n|---|---|---|\n| Male sex, n (%) | 640 (58.0%) | "
-            "640 (58.0%) |\n")  # fmt: skip
+    beside it, in either order: each column's count is its own, so the share asked about is
+    the weighted column's and the share found the crude one's (round 2 of #703)."""
+    for crude_first in (True, False):
+        cells = ("640 (58.0%)", "700 (62.0%)")
+        heads = (crude, weighted) if crude_first else (weighted, crude)
+        text = (f"# Results\n\nTable 1. Balance.\n\n| Characteristic | {heads[0]} (n = 1200) | "
+                f"{heads[1]} (n = 1200) |\n|---|---|---|\n| Male sex, n (%) | {cells[0]} | "
+                f"{cells[1]} |\n")  # fmt: skip
+        report = audited(tmp_path, text)
+        (found,), (question,) = report.disagreements, report.arithmetic_asked
+        asked, kept = (cells[1], cells[0]) if crude_first else cells
+        assert question.message.startswith("Table 1's column says its shares")
+        assert f"). {asked} is not" in question.message, question.message
+        assert found.message.startswith(f"n (%) {kept}"), found.message
+
+
+def test_a_row_label_lets_off_its_row_alone(tmp_path: Path) -> None:
+    """Round 2 of #703: a row labelled "Weighted n" lets off its own row; the crude column's
+    share off its n in another row is still a finding."""
+    text = ("# Results\n\nTable 1. Balance.\n\n| Characteristic | Before IPTW (n = 1200) | "
+            "After IPTW (n = 1200) |\n|---|---|---|\n| Weighted n (%) | 600 (55.0%) | "
+            "600 (55.0%) |\n| Male sex, n (%) | 640 (58.0%) | 700 (62.0%) |\n")  # fmt: skip
     report = audited(tmp_path, text)
+    assert [(d.line, d.message.split(":")[0]) for d in report.disagreements] == [
+        (8, "n (%) 640 (58.0%)")]
+    assert sorted((d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked) == [
+        (7, "Table 1's row"), (7, "Table 1's row"), (8, "Table 1's column")]
+
+
+#: Two tables whose legends stand after them, the first said to be weighted.
+LEGENDS_AFTER = ("# Results\n\nThe groups were compared.\n\n{table}\n\nTable 1. Weighted "
+                 "percentages.\n\n{table}\n\nTable 2. Counts.\n\n# Discussion\n\nNo more.\n")
+TABLE = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+
+
+def test_a_legend_after_its_table_is_its_own_and_no_caption_of_the_next(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #703: where a file's legends stand after their tables, "Table 1. Weighted
+    percentages." under the first table is its own; the second table's share, under "Table 2.
+    Counts.", is a finding, and was asked about as Table 1's."""
+    report = audited(tmp_path, LEGENDS_AFTER.format(table=TABLE))
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (7, "Table 1")]
+    assert [d.line for d in report.disagreements] == [13]
+
+
+def test_a_legend_after_its_table_is_its_own_in_a_docx(tmp_path: Path) -> None:
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    body = (_para("Results") + _para("The groups were compared.") + table
+            + _para("Table 1. Weighted percentages.") + table + _para("Table 2. Counts.")
+            + _para("Discussion"))
+    report = audit([_docx(tmp_path / "paper.docx", body)], None)
     assert len(report.disagreements) == 1 and len(report.arithmetic_asked) == 1
-    assert report.arithmetic_asked[0].message.startswith("Table 1's column says its shares")
+    assert report.arithmetic_asked[0].line < report.disagreements[0].line
+    assert report.arithmetic_asked[0].message.startswith("Table 1 says")
+
+
+def test_a_legend_between_two_tables_where_the_file_says_neither_is_nobody_s(
+    tmp_path: Path,
+) -> None:
+    """A legend that stands between two tables, in a file whose other legends say neither
+    where they stand, is either's: it captions neither, and both shares are findings."""
+    text = f"# Results\n\n{TABLE}\n\nTable 2. Weighted percentages.\n\n{TABLE}\n"
+    report = audited(tmp_path, text)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+
+
+@pytest.mark.parametrize("after", ["*After inverse probability weighting, the groups were "
+                                   "balanced.*", "**Table 2** weighted percentages"])
+def test_emphasis_after_a_table_with_no_note_is_no_note(tmp_path: Path, after: str) -> None:
+    """Round 2 of #703: an asterisk opens a note only before a space; emphasis glued to a word
+    is no footnote's mark."""
+    report = audited(tmp_path, f"# Results\n\nTable 1. Counts.\n\n{TABLE}\n\n{after}\n")
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+
+
+def test_a_docx_note_whose_raised_mark_runs_into_its_word_is_not_read(tmp_path: Path) -> None:
+    """A footnote's raised mark in a .docx paragraph outside a table runs on into the next
+    word as the reader reads it, "aPercentages are weighted.", so the note is not read and
+    the share stays a finding (DESIGN.md, Known gaps); "a Percentages", typed with a space,
+    is."""
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    raised = ("<w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:t>a</w:t></w:r>"
+              "<w:r><w:t>Percentages are weighted.</w:t></w:r></w:p>")
+    report = audit([_docx(tmp_path / "raised.docx", _para("Table 1. Counts.") + table
+                          + raised)], None)  # fmt: skip
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+    report = audit([_docx(tmp_path / "typed.docx", _para("Table 1. Counts.") + table
+                          + _para("a Percentages are weighted."))], None)  # fmt: skip
+    assert len(report.arithmetic_asked) == 1
 
 
 def test_a_latex_float_s_note_says_its_table_is_weighted(tmp_path: Path) -> None:

@@ -197,10 +197,12 @@ any is asked, and neither is a number that does not fit:
   comparisons (testing)" and "multiple-comparison correction" stand alone; a method's
   surname (Bonferroni, Holm, Hochberg, Benjamini, Yekutieli, Šidák, Tukey, Dunnett) counts
   only beside a word of a method in its clause ("Holm correction", "Bonferroni-corrected",
-  "Tukey's HSD"), and never as "Holm et al." or "Hochberg and colleagues". A clause that
-  says, before the words, that none was made ("P values were not adjusted for multiple
-  comparisons", "No correction for multiple testing") states nothing, and nor does
-  "adjusted for age and sex". An adjustment only makes a P
+  "Tukey's HSD"), and never as a citation: "Holm et al.", "Hochberg and colleagues",
+  "(Dunnett, 1955)", "Holm (1979)", "Dunnett [12]". A clause that says, before the words or
+  after them, that none was made ("P values were not adjusted for multiple comparisons",
+  "Correction for multiple comparisons was not performed") states nothing, a comma
+  ending no such clause ("P values were not, however, adjusted ..."); nor does "adjusted
+  for age and sex". An adjustment only makes a P
   larger, so the question quotes the statement and its place, says the P and what the
   statistic gives on its own, and asks whether it is the adjusted P. Saying so beside the
   test ("Holm-adjusted P = 0.048") ends it: a test its sentence calls adjusted is not
@@ -208,14 +210,19 @@ any is asked, and neither is a number that does not fit:
   a number that does not fit, and so does an interval's P, since an adjustment may widen the
   interval as well, or not. A LaTeX paper is read as one across its files.
 - **A share its table's weighting may explain** (`question-share-weighted`): an n (%) off its
-  column's n in a table whose caption, a row's label or note says its shares are weighted,
-  or under a column whose header does ("weighted %", "weighted percentages", "weighted n",
-  "weighted statistics", "survey-weighted", "inverse probability weighted", "IPW", "After
-  IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A header lets off its column
-  alone. The caption is a legend ("Table 2.", in any case) or pandoc's; the note is the
-  paragraph after the table where it opens with "Note", "Abbreviations" or a footnote's mark,
-  and is no table's caption, in Markdown and in a .docx, and the float's text outside the
-  table in LaTeX. The question says the share is not its count's of the column's n and
+  column's n in a table whose caption or note says its shares are weighted, in a row whose
+  label does, or under a column whose header does ("weighted %", "weighted percentages",
+  "weighted n", "weighted statistics", "survey-weighted", "inverse probability weighted",
+  "IPW", "After IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A row's label lets
+  off its row alone, and a header its column. The caption is a legend ("Table 2.", in any
+  case) or pandoc's, read where the file's legends stand: before their tables, or after
+  them, where a legend under a table is that table's own and never the next one's caption;
+  a legend between two tables, in a file whose legends say neither, captions neither. The
+  note is the paragraph after the table where it opens with "Note", "Abbreviations" or a
+  footnote's mark (a lowercase letter, or an asterisk, a dagger or a section sign before a
+  space), and is no caption, in Markdown and in a .docx; in a .docx a raised mark typed
+  outside a table reads run on into its word, "aPercentages ...", so such a note is not
+  read. In LaTeX the note is the float's text outside the table. The question says the share is not its count's of the column's n and
   asks whether it is the weighted share; if so, nothing is wrong. Another table of the same
   paper is held to its n as before, and a sentence elsewhere that says the paper weights
   lets off no table.

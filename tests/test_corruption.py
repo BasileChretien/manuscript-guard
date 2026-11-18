@@ -3092,6 +3092,45 @@ def test_a_larger_p_is_found_in_a_paper_that_says_it_did_not_adjust(
                                                                   False)]  # fmt: skip
 
 
+def test_a_larger_p_is_found_where_the_negation_follows_the_words(
+    tmp_path: Path, project: Path,
+) -> None:
+    """Round 2 of #703: "Correction for multiple comparisons was not performed." was read as
+    a statement, its negation coming after the words, and the larger P asked about in both
+    readers. It is a number that does not fit in the audit and G8's warning in `check`."""
+    from manuscript_guard.audit import audit
+
+    said = "Correction for multiple comparisons was not performed."
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Methods\n\n{said}\n\n# Results\n\nThe arms differed, t(23) = 2.71, "
+                     "P = 0.048.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 1
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n{said} The arms differed, "
+                    "t(23) = 2.71, p = .048.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_share_is_found_under_a_table_whose_legend_after_it_says_counts(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #703: legends standing after their tables, "Table 1. Weighted percentages."
+    under the first table was taken for the caption of the second, whose share off its n,
+    under "Table 2. Counts.", was let off as Table 1's. It is a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nThe groups were compared.\n\n{table}\n\nTable 1. Weighted "
+                     f"percentages.\n\n{table}\n\nTable 2. Counts.\n\n# Discussion\n\nNo more.\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [13]
+
+
 def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
     tmp_path: Path,
 ) -> None:

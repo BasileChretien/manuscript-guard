@@ -2096,8 +2096,9 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
             counted("shares")
             if not off(share):
                 continue
-            # A word in a column's header lets off that column alone (round 1 of #703).
-            said = weighted.of(share.column) if weighted is not None else None
+            # A word in a column's header lets off that column alone, and a row's label that
+            # row (rounds 1 and 2 of #703).
+            said = weighted.of(share.column, share.line) if weighted is not None else None
             if said is not None:
                 asked.append(asked_share(share, said, path, described_share(share)))
                 continue

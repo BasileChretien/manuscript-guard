@@ -50,9 +50,14 @@ METHOD_WORDS = re.compile(
     r"(?i:\b(?:correct(?:ions?|ed)|adjust(?:ments?|ed)|methods?|procedures?|tests?"
     r"|post[- ]hoc|step[- ]?down)\b)|\bHSD\b"
 )
-#: What after a surname cites a paper: "Holm et al.", "Hochberg and colleagues".
-_CITED = re.compile(r"(?i:\s*(?:et\.?\s+al\b|and\s+(?:colleagues|co-?workers)\b))")
-#: A word of negation, which before an adjustment in its clause says none was made.
+#: What after a surname cites a paper: "Holm et al.", "Hochberg and colleagues", a year,
+#: "(Dunnett, 1955)", "Holm (1979)", or a number in brackets, "Dunnett [12]" (round 2 of
+#: #703).
+_CITED = re.compile(
+    r"(?i:\s*(?:et\.?\s+al\b|and\s+(?:colleagues|co-?workers)\b))"
+    r"|,?\s*\(?\s*(?:1[6-9]|20)\d{2}[a-z]?\b|\s*\[\s*\d"
+)
+#: A word of negation, which anywhere in an adjustment's clause says none was made.
 NEGATION = re.compile(r"(?i:\b(?:not|without|never|nor|neither)\b|\bno\b(?!\.)|n't\b)")
 #: What says a table's shares or counts are weighted.
 WEIGHTED = re.compile(
@@ -71,8 +76,11 @@ NOT_WEIGHTED = re.compile(
 )
 #: Where a sentence ends: a stop before a capital or a bracket, or a blank line.
 _SENTENCE_END = re.compile(r"[.!?](?=\s+[A-Z(\[])|\n[ \t]*\n")
-#: Where a clause ends, within its sentence.
+#: Where a clause ends, within its sentence; and where one ends that a negation is looked
+#: for in, which a comma does not end: "P values were not, however, adjusted ..." (round 2
+#: of #703).
 _CLAUSE_END = re.compile(r"[;:,]")
+_NEGATION_END = re.compile(r"[;:]")
 #: How long a quote is kept whole, and how much of a longer one is kept each side of the
 #: words it is quoted for.
 _WHOLE, _SIDE = 160, 70
@@ -95,30 +103,35 @@ def _ends(text: str, lines: bool, cuts: tuple[int, ...]) -> list[int]:
     return sorted(ends)
 
 
-def _clause(text: str, found: re.Match[str], ends: list[int]) -> tuple[int, int]:
+def _clause(text: str, found: re.Match[str], ends: list[int],
+            marks: re.Pattern[str] = _CLAUSE_END) -> tuple[int, int]:  # fmt: skip
     """Where the clause `found` stands in runs: from the last end of a sentence or a clause
-    before it to the first after it."""
+    (`marks`) before it to the first after it."""
     start = ends[bisect_right(ends, found.start()) - 1] if bisect_right(ends, found.start()) \
         else 0  # fmt: skip
     after = bisect_left(ends, found.end())
     stop = ends[after] if after < len(ends) else len(text)
-    marks = [mark.end() for mark in _CLAUSE_END.finditer(text, start, found.start())]
-    start = max([start, *marks])
-    following = _CLAUSE_END.search(text, found.end(), stop)
+    start = max([start, *(mark.end() for mark in marks.finditer(text, start, found.start()))])
+    following = marks.search(text, found.end(), stop)
     return start, following.start() if following else stop
 
 
-def negated(before: str) -> bool:
-    """Whether the words of a clause before an adjustment say none was made."""
-    return bool(NEGATION.search(before))
+def negated(before: str, after: str = "") -> bool:
+    """Whether the words of a clause before an adjustment, or after it, say none was made:
+    "No correction for multiple testing was applied", "Correction for multiple comparisons
+    was not performed" (rounds 1 and 2 of #703)."""
+    return bool(NEGATION.search(before) or NEGATION.search(after))
 
 
 def _a_statement(text: str, found: re.Match[str], ends: list[int]) -> bool:
     """Whether a match of `ADJUSTMENT` or `NAMES` states an adjustment: not negated in its
-    clause, and a surname not cited and beside a word of `METHOD_WORDS`."""
-    start, stop = _clause(text, found, ends)
-    if negated(text[start : found.start()]):
+    clause, before it or after it, which only `;`, `:` and the sentence's end end; and a
+    surname not cited and beside a word of `METHOD_WORDS` in its clause, which a comma ends
+    too."""
+    low, high = _clause(text, found, ends, _NEGATION_END)
+    if negated(text[low : found.start()], text[found.end() : high]):
         return False
+    start, stop = _clause(text, found, ends)
     if found.re is NAMES:
         if _CITED.match(text, found.end()):
             return False

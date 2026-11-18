@@ -316,15 +316,16 @@ def test_a_column_headed_result_in_the_discussion_opens_no_results(
 ) -> None:
     """Round 1 of #687: a table's column headed "Result" in the Discussion opened a Results
     there, and an Abstract's number the Results do not give but the Discussion repeats after
-    the table was found. The column is no heading: the number is not found."""
+    the table was found. The column is no heading: the number is not found where the paper
+    reports, and is asked about as one the Discussion alone gives (decision 27, part B)."""
     rows = ["Abstract", "In all, 1,284 adults were enrolled.", "Introduction", _LONG,
             "Methods", _LONG, "Results", _LONG, "Discussion", _LONG, *_table(),
             "In all, 1,284 adults were enrolled, as earlier work found."]  # fmt: skip
     path = tmp_path / "paper.pdf"
     path.write_bytes(_set(rows))
     _code, report, _err = audited(capsys, str(path))
-    assert report["abstract_compared"]
-    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+    assert report["abstract_compared"] and report["counts"]["abstract_matched"] == 0
+    assert [f["context"] for f in found(report, "question-number-only-in")] == [
         "In all, 1,284 adults were enrolled."]
 
 

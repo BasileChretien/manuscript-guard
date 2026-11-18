@@ -45,15 +45,14 @@ expected:
       and whether it is a question; the entry it replaces, decision 28's, is spent
   - reading: abstract against results
     why: >-
-      a power in the Abstract, `$10^{-2}$`, `$10^8$` or pandoc's `10^-2^`, and a number in
-      scientific notation, `$-3.2 \times 10^{8}$`, are read whole and found where the paper
-      reports the same sign, mantissa and power, its exponent spelled any way, and not where
-      it gives a part apart, another mantissa or sign, or the power only as a scale after a
-      times sign, which is no number; the base read a power as printed,
-      never found among the paper's bare numbers, and in LaTeX, whose braces the reader
-      blanks, as "10^" and "-2", each looked for alone (tex-astro-ga-B1 of the real-paper
-      corpus, its Abstract's `10^{-2}` named "10^"); the entry it replaces, for the comments
-      of several lines (#693), is spent
+      a number of the Abstract not found where the paper reports that the Introduction, its
+      material, the Discussion, a "Limitations" or the Conclusions give is asked about,
+      `question-number-only-in`, and no longer listed as not found; the Abstract's
+      Background, which the generated papers now open on, has its numbers looked for in the
+      Introduction too, found there, and asked about where found nowhere,
+      `question-background-unsourced` (Basile, 2026-11-16, decision 27, part B: docx-med-B1,
+      pdf-med-A1, docx-socio-A1 and docx-pharm-epi-B2 of the real-paper corpus); the entry
+      it replaces, for powers read whole (#696), is spent
   - reading: pdf headings
     why: >-
       where no line names the Abstract alone, a line before a PDF's first heading that opens

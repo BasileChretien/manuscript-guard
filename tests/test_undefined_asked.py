@@ -14,6 +14,7 @@ shows it apart, under "Questions for the author".
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -61,7 +62,8 @@ def test_check_asks_one_question_listing_every_form_at_its_first_use(tmp_path: P
         "manuscript/main.md:3 (in the abstract), SIGNA at manuscript/main.md:7, CHUV at "
         "manuscript/main.md:7, QXZ at manuscript/supplementary/S1.md:3 (in the supplement). "
         "Do any of them need defining?"), asked.message
-    assert asked.hint == ASK_HINT and "`language: known_abbreviations` in paper.yaml" in ASK_HINT
+    assert asked.hint == ASK_HINT and ("in quotes, under `language: known_abbreviations` in "
+                                       "paper.yaml") in ASK_HINT
     assert "define the others at their first use" in ASK_HINT
     # Each form keeps the warning G14 gave it, at its first use.
     assert [(form, warning.line) for form, warning in asked.forms] == [
@@ -88,6 +90,18 @@ def test_known_abbreviations_end_the_question_form_by_form(tmp_path: Path) -> No
     assert asked.message.startswith("2 short forms are used and never defined")
     every = {"language": {"known_abbreviations": ["HR", "SIGNA", "CHUV", "QXZ"]}}
     assert asked_of(root, every) == []
+
+
+def test_a_form_listed_in_quotes_in_paper_yaml_ends_its_question(tmp_path: Path) -> None:
+    """The answer in quotes, as the question says (round 1 of #701): "NO" listed as YAML text
+    ends NO's question; unquoted, YAML reads it as a no, the list holds "False", and NO is
+    still asked of."""
+    root = staged(tmp_path, "# Methods\n\nThe NO level was read.\n", None)
+    quoted = yaml.safe_load('language:\n  known_abbreviations: ["NO"]\n')
+    assert asked_of(root, quoted) == []
+    bare = yaml.safe_load("language:\n  known_abbreviations: [NO]\n")
+    (asked,) = asked_of(root, bare)
+    assert [form for form, _warning in asked.forms] == ["NO"]
 
 
 def test_no_warning_is_left_and_the_rest_of_g14_is_as_it_was(tmp_path: Path) -> None:
@@ -172,3 +186,49 @@ def test_the_audit_s_question_is_not_counted_by_strict(tmp_path: Path, capsys) -
     said = json.loads(capsys.readouterr().out)
     (asked,) = [f for f in said["findings"] if f["code"] == UNDEFINED]
     assert asked["question"] is True and asked["counted"] is False and said["ok"]
+
+
+def _asked_state(root: Path):
+    """A project whose one open item is G14's question: nothing fails or warns, and, viewed at
+    drafting where paper.yaml says submission, no stage is to move to and no step is due."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_guide import settled  # noqa: E402
+
+    staged(root)
+    (asked,) = asked_of(root)
+    return settled(root, stage="drafting", declared_stage="submission",
+                   findings=(asked,)), asked
+
+
+def test_next_names_the_question_where_it_is_the_only_open_item(tmp_path: Path) -> None:
+    """Basile, 2026-11-17, "Show the questions", for `next` too (round 1 of #701): where the
+    question is all that is open, `next` names it, says how it is answered and sends it to
+    manuscript-writing, never "Nothing to do"; with `--all` as well. It fails nothing and is
+    no warning there either, and the Stop hook's line has its "Next:"."""
+    from manuscript_guard.guide import decide, render
+    from manuscript_guard.guide.rules import first_action
+
+    state, asked = _asked_state(tmp_path)
+    actions = decide(state)
+    (action,) = actions
+    assert (action.rule, action.skill, action.who) == ("questions", "manuscript-writing",
+                                                      "author")  # fmt: skip
+    assert action.findings == (asked,) and "known_abbreviations" in action.title
+    for every in (False, True):
+        said = render(state, actions, every=every)
+        assert "Nothing to do" not in said, said
+        assert "1 question for the author from G14" in said and asked.message in said
+        assert "0 failing, 0 warnings, 1 notes" in said
+    assert first_action(lambda bindable, checker: state).title == action.title
+    # The same view with no question open has nothing to do.
+    empty = dataclasses.replace(state, findings=())
+    assert decide(empty) == [] and "Nothing to do" in render(empty, [])
+
+
+def test_next_on_the_example_lists_its_question(project: Path, capsys) -> None:
+    """The example's ROR, never defined, is among what `next --all` lists."""
+    assert main(["next", str(project), "--all"]) == 0
+    out = capsys.readouterr().out
+    assert "question for the author from G14" in out and "ROR at manuscript/" in out

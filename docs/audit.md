@@ -124,11 +124,18 @@ finding of its own kind: at INFO, never counted by `--strict`, marked `"question
 lasts the run it is given in: a run without it asks again. The text report lists the
 questions under "Questions for the author", before what each check found, and the notes on
 the answers given under "On the answers given". The PDF `--pdf` writes, and a `--commented`
-or `--tracked` copy, which lists each as "A question for the author" in its comment on the
-first paragraph, name each answer's flag; the web page, and the PDF and the copy it makes,
-name the page's box or tick instead. `--report-draft`, for a referee, leaves the questions
-out and says under what was not checked why the Abstract was not compared, naming no one.
-Two questions are asked so far, both of the Abstract against Results:
+or `--tracked` copy, which lists each as "A question for the author" in its comment at the
+number it asks about, or on the first paragraph where it asks of none, name each answer's
+flag; the web page, and the PDF and the copy it makes, name the page's box, tick or field
+instead. `--report-draft`, for a referee, says under what was not checked why the Abstract
+was not compared, naming no one, and says each question asked of a number among the further
+findings in a referee's words: the number, where it stands, and that the author is asked,
+naming no flag. Where a check asks questions and has nothing else to say, its line in "What
+was checked" and its tile on the page and in the PDF say how many are open, "2 QUESTIONS",
+not that nothing was found; a question still never fails a build (Basile, 2026-11-17).
+Four questions are asked so far, all of the Abstract against Results; `--json` counts the
+two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_background`, and
+`abstract_not_found` counts neither:
 
 - **No Abstract found** (`question-no-abstract`): no heading names the Abstract. If the
   paper's first paragraph, or the text under its title, is its Abstract, put the heading
@@ -156,6 +163,30 @@ Two questions are asked so far, both of the Abstract against Results:
   it was made from). A paper that reports no results, a methods paper, takes
   `--no-results`, said once as `--no-abstract` is; given for a paper with a Results
   heading, the heading wins, as above.
+- **A number found only where the paper reports nothing** (`question-number-only-in`): a
+  number of the Abstract not found where the paper reports, that the Introduction or its
+  material, the Discussion, a "Limitations" or a conclusion gives, matched as the
+  comparison matches one (as printed, as a rounding, an identifier whole, a power whole).
+  It is no `abstract-not-found` warning: the question names each section it stands in by
+  its heading and its first line there, and asks whether the paper reports it there or
+  gives it as background; where some of the number's parts are found where the paper
+  reports, "30" of "30-40%", it names the part that is not. If it reports it there,
+  `--results` with that heading reads the section as the Results, as above, and the number
+  is found; a section under another that reports nothing, a "Limitations" under the
+  Discussion, is named with both, and needs both, one given already among them. Otherwise the number is to be given in the Methods or the Results. A number found
+  only on the title page, in a statement, a note, the keywords, a summary of the paper or
+  the reference list is not found, as before.
+- **A Background figure given nowhere** (`question-background-unsourced`): a structured
+  Abstract's part titled or run in as Background, Introduction, Context, Rationale or
+  Objective ("Background:", "**Objectives.**", a heading "Background" under the Abstract)
+  runs to the next part's heading, or to its next run-in label of any wording, a few words
+  with a capital first and a colon, JAMA's "Design, Setting, and Participants:" as well as
+  "Methods:". A number there is looked for where the paper reports and in the Introduction
+  and its material too, where a figure from the literature is given with its source: found
+  there, as printed or as a rounding, it is found. One found nowhere is asked about: it
+  is given nowhere in the paper; is it from the literature? The Introduction should give
+  it, with its source, and that change to the paper ends the question. A number in any
+  other part of the Abstract is read as before.
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
@@ -197,7 +228,8 @@ lists it (the Cochrane Style Manual, Brain's instructions to authors and Medical
 and leaves out a form with a common second meaning in another field. Where every form left
 undefined is on the list, a note (`abbreviations-passed-over`) says how many were passed
 over, which, and by which list. `check` reads no such list, and asks the same question
-in a project, of every form, answered under `language: known_abbreviations` in paper.yaml
+in a project, of every form, answered by listing each, in quotes, under `language:
+known_abbreviations` in paper.yaml
 (the corpus run of 2026-11-11: 354 of 427 of the warnings it gave, one for each form, that
 judges read on 52 preprints were false, the field's own terms, and the true ones were lost
 among them; in the judges' later sample, 82%).

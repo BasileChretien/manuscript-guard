@@ -3177,10 +3177,27 @@ def test_the_short_forms_never_defined_are_one_question(
     the main text and the supplement, with its first use, the list of journals' style guides
     read nowhere; whether any needs defining, and the answer that ends it, in paper.yaml. It
     never fails and is no warning, at any stage. A form the project knows leaves it; with
-    every form known, nothing is asked (Basile, 2026-11-16, decision 30)."""
+    every form known, nothing is asked (Basile, 2026-11-16, decision 30).
+
+    What it lists is worked out from the files drawn, not from the question: the Abstract's
+    HR and HIV on its line, then each form of the main text at its first use, file after
+    file, HIV again among them, then the supplement's; a form undefined in two parts is
+    listed in each (round 1 of #701)."""
+    from manuscript_guard.auditing.undefined import unasked
     from manuscript_guard.policy import STAGES
 
     files, listed, passed = drawn
+    expected: list[tuple[str, str, int, str]] = [
+        (form, files[0][0], 3, " (in the abstract)") for form in ("HR", "HIV")]
+    for name, text, supplementary in files:
+        seen: list[str] = []
+        for found in re.finditer(r"the (\S+) was given", text):
+            if found[1] not in seen:
+                seen.append(found[1])
+                expected.append((found[1], name, text.count("\n", 0, found.start()) + 1,
+                                 " (in the supplement)" if supplementary else ""))
+    distinct = len({form for form, *_rest in expected})
+    said = ", ".join(f"{form} at {name}:{line}{scope}" for form, name, line, scope in expected)
     read = [_file(order, Path(name), text, [], supplementary)
             for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
 
@@ -3192,14 +3209,20 @@ def test_the_short_forms_never_defined_are_one_question(
     (asked,) = [f for f in report.findings if f.code == language_gate.UNDEFINED]
     warnings = [warning for _form, warning in asked.forms]
     forms = [form for form, _warning in asked.forms]
-    assert set(forms) == {*listed, *passed}, (forms, files)
+    assert {*listed, *passed} == {form for form, *_rest in expected}, files
+    # Each form with its repeats, at its place, as G14's warnings on them say.
+    held = [(form, Path(w.path).as_posix(), w.line) for form, w in asked.forms]
+    assert held == [(form, name, line) for form, name, line, _scope in expected], (held, files)
+    unpacked = [(w.message.split()[0], Path(w.path).as_posix(), w.line)
+                for w in unasked(list(report.findings)) if w.code == language_gate.UNDEFINED]
+    assert unpacked == held, unpacked
+    assert asked.message == (
+        f"{distinct} short forms are used and never defined as G14 reads the paper: {said}. "
+        "Do any of them need defining?"), asked.message
     assert asked.question and asked.severity == "info", asked
     assert asked.hint == language_gate.ASK_HINT and "known_abbreviations" in asked.hint
     assert (asked.path, asked.line, asked.context) == (warnings[0].path, warnings[0].line,
                                                         warnings[0].context)  # fmt: skip
-    places = [f"{form} at {Path(w.path).as_posix()}:{w.line}" for form, w in asked.forms]
-    assert all(place in asked.message for place in places), (asked.message, places)
-    assert asked.message.endswith(". Do any of them need defining?"), asked.message
     for stage in (None, *STAGES):
         at = judged(frozenset(), stage)
         assert at.ok and not [f for f in at.warnings if f.code == language_gate.UNDEFINED]
@@ -3217,6 +3240,21 @@ def _the_question_is_a_warning(patch: pytest.MonkeyPatch) -> None:
         severity: str = "warn"
 
     patch.setattr(language_gate, "Asked", Warned)
+
+
+def _only_the_first_entry_of_each_form_is_kept(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._one_question
+
+    def first_only(findings: list, undefined: list) -> list:
+        kept, seen = [], set()
+        for entry in undefined:
+            if entry[0] not in seen:
+                seen.add(entry[0])
+                kept.append(entry)
+        dropped = {id(entry[2]) for entry in undefined if entry not in kept}
+        return real([f for f in findings if id(f) not in dropped], kept)
+
+    patch.setattr(language_gate, "_one_question", first_only)
 
 
 def _a_known_form_is_still_asked(patch: pytest.MonkeyPatch) -> None:
@@ -7019,8 +7057,13 @@ def _abstract_found(read) -> dict[str, list]:
                        for d in read.conflicts)  # fmt: skip
     states = {(c.line, c.text): state for state, listed in (
         ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found),
-        ("counts", read.from_counts), ("off", read.off_counts))
+        ("counts", read.from_counts), ("off", read.off_counts),
+        ("asked", [c for c, *_rest in read.only_in]), ("unsourced", read.unsourced))
         for c in listed}  # fmt: skip
+    # Each number read is said once: a question is never also not found (decision 27).
+    assert read.numbers == sum(len(listed) for listed in (
+        read.found, read.rounded, read.not_found, read.from_counts, read.off_counts,
+        read.only_in, read.unsourced)), states  # fmt: skip
     return {"conflicts": conflicts, "looked": states}
 
 
@@ -7204,8 +7247,61 @@ def _a_question_is_asked_as_a_warning(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.findings import WARN
 
     real = report.question
-    patch.setattr(report, "question", lambda section, code, message: replace(
-        real(section, code, message), severity=WARN))  # fmt: skip
+    patch.setattr(report, "question", lambda *given, **named: replace(
+        real(*given, **named), severity=WARN))  # fmt: skip
+
+
+def _a_number_found_nowhere_is_asked_about(patch: pytest.MonkeyPatch) -> None:
+    """The only-in question asked of every number not found, as though the Introduction gave
+    it (decision 27, part B)."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract._Elsewhere, "places", lambda self, parts, powered: [
+        (Path("paper.md"), ("Introduction",), 1)])  # fmt: skip
+
+
+def _a_background_number_is_not_looked_for_in_the_introduction(patch: pytest.MonkeyPatch) -> None:
+    """A Background number the Introduction gives asked about as one found only there."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract._Elsewhere, "state", lambda self, part, powered, introduction=False:
+                  "")  # fmt: skip
+
+
+def _a_statement_or_a_summary_may_report(patch: pytest.MonkeyPatch) -> None:
+    """The statements, the reference list and a summary of the paper let in among the
+    sections whose numbers are asked about (round 1 of #700)."""
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import names_paper_summary, names_statement
+
+    real = abstract._may_report
+    patch.setattr(abstract, "_may_report", lambda section: real(section) or bool(
+        section.is_references or names_statement(section.title)
+        or names_paper_summary(section.title)))  # fmt: skip
+
+
+def _only_a_background_label_ends_a_background(patch: pytest.MonkeyPatch) -> None:
+    """A Background run on past every other part's label, to the next Background's or the
+    Abstract's end (round 1 of #700)."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.label_ends
+    patch.setattr(abstract, "label_ends", lambda text: [
+        one for one in real(text) if one[2]])  # fmt: skip
+
+
+def _a_question_is_counted_as_not_found(patch: pytest.MonkeyPatch) -> None:
+    """Each number asked about kept among those not found as well."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.against_results
+
+    def against(pieces, answers=None, named=None):
+        read = real(pieces, answers, named)
+        read.not_found += [c for c, *_rest in read.only_in] + read.unsourced
+        return read
+
+    patch.setattr(abstract, "against_results", against)
 
 
 def _a_results_title_is_a_part_s_results(patch: pytest.MonkeyPatch) -> None:
@@ -23710,6 +23806,26 @@ BROKEN = {
         _a_question_is_asked_as_a_warning,
         test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
     ),
+    "a number found nowhere is asked whether it is the Introduction's": (
+        _a_number_found_nowhere_is_asked_about,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a Background number the Introduction gives is asked about": (
+        _a_background_number_is_not_looked_for_in_the_introduction,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a statement, the references or a summary is asked about as the Introduction is": (
+        _a_statement_or_a_summary_may_report,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "only a Background's own label ends a Background": (
+        _only_a_background_label_ends_a_background,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a question to the author is counted as not found": (
+        _a_question_is_counted_as_not_found,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
     "a title given as the Results' is a Results name everywhere": (
         _a_results_title_is_the_results_to_g8,
         test_a_question_to_the_author_is_asked_until_answered_and_never_counts,
@@ -26761,6 +26877,10 @@ BROKEN = {
     ),
     "G14's question on the short forms never defined is a warning": (
         _the_question_is_a_warning,
+        test_the_short_forms_never_defined_are_one_question,
+    ),
+    "G14's question keeps only the first entry of each form": (
+        _only_the_first_entry_of_each_form_is_kept,
         test_the_short_forms_never_defined_are_one_question,
     ),
     "G14 asks of a short form the project knows": (

@@ -2588,9 +2588,11 @@ UNDEFINED = "abbreviation-undefined"
 _SCOPE_SAID = {ABSTRACT: " (in the abstract)", SUPPLEMENT: " (in the supplement)"}
 _ABSTRACT_DEFINES = " (the abstract defines it, and is read apart from the paper)"
 #: How the question is answered: by the author, form by form.
-ASK_HINT = ("list those your readers know under `language: known_abbreviations` in paper.yaml, "
-            "and define the others at their first use, the long form then the short form in "
-            "brackets")  # fmt: skip
+#: In quotes: unquoted, YAML reads NO, ON and YES as booleans, and the list then holds
+#: "False" (round 1 of #701).
+ASK_HINT = ("list those your readers know, in quotes, under `language: known_abbreviations` in "
+            "paper.yaml, and define the others at their first use, the long form then the "
+            "short form in brackets")  # fmt: skip
 
 
 @dataclass(frozen=True)

@@ -12,11 +12,13 @@ nothing reads a clock, and the file is written once (mode "x"), never over one t
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.auditing import report as sections
 from manuscript_guard.auditing.report import Item
+from manuscript_guard.auditing.summary import questions_open
 from manuscript_guard.findings import INFO
 
 FIRST = (f"Draft from manuscript-guard {__version__}: findings and their places only; the "
@@ -26,7 +28,9 @@ REFERENCE_SECTIONS = frozenset({sections.REFERENCES, sections.CITED, sections.SE
 LANGUAGE_SECTIONS = frozenset({sections.WRITING, sections.LANGUAGE})
 #: The notes "What was not checked" says, left out of the further findings; and the questions
 #: the audit asks the author (`report.question`), which are the author's to answer and not a
-#: referee's, and whose reason "What was not checked" says.
+#: referee's, and whose reason "What was not checked" says. A question asked of a number is
+#: said among the further findings, in the referee's words (`Item.refereed`): left out, the
+#: numbers base listed as not found vanished from the draft (round 1 of #700).
 UNCHECKED_CODES = frozenset({"journal-not-checked", "abstract-not-compared",
                              "question-no-abstract", "question-no-results"})
 #: The places listed for one code under Language and notation.
@@ -295,7 +299,7 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
         checks.append(("Abstract against Results",
                        _read(abstract.numbers, "number", more="of the Abstract read"),
                        len(abstract.conflicts) + len(abstract.not_found)
-                       + len(abstract.rounded)))  # fmt: skip
+                       + len(abstract.rounded) + questions_open(abstract)))  # fmt: skip
     from manuscript_guard.auditing.summary import counted
 
     for run in report.gates:
@@ -391,8 +395,10 @@ def for_package(package, flags: list[str], show: Show) -> str:
 
 
 def for_audit(report, flags: list[str], show: Show) -> str:
-    """The draft of an audit's report (`auditing.report.items`)."""
-    items = sections.items(report)
+    """The draft of an audit's report (`auditing.report.items`), each question asked of a
+    number said as a referee is told it (`Item.refereed`)."""
+    items = [replace(item, message=item.refereed) if item.refereed else item
+             for item in sections.items(report)]  # fmt: skip
     exact = [(item, "") for item in items if item.counted]
     unchecked = _unchecked_of_audit(report)
     further = [(item, "") for item in items if not item.counted

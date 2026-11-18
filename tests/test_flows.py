@@ -240,8 +240,10 @@ def test_the_abstract_is_held_to_what_the_paper_reports(tmp_path: Path) -> None:
     assert [c.message.split(", and")[0] for c in read.conflicts] == [
         "the Abstract gives OR 1.52 (95% CI 1.21 to 1.90)",
         "the Abstract gives t(48) = 2.10, P = 0.03"]
-    # 99 is printed in the Discussion only, which is no place the paper reports.
-    assert [c.text for c in read.not_found] == ["99"]
+    # 99 is printed in the Discussion only, which is no place the paper reports: asked about
+    # (decision 27, part B), and not found where the paper reports.
+    assert read.not_found == []
+    assert [c.text for c, *_rest in read.only_in] == ["99"]
     assert [c.text for c in read.rounded] == ["53%"]
     assert read.matched == 1  # 412, in the Methods
     assert read.discrimination is not None
@@ -318,9 +320,17 @@ def test_strict_counts_a_broken_flow_and_a_conflict_and_not_a_number_not_found(
     said = json.loads(capsys.readouterr().out)
     counted = sorted({f["code"] for f in said["findings"] if f["counted"]})
     assert counted == ["abstract-conflict"]
-    assert said["counts"]["abstract_not_found"] == 1
+    # The Discussion's 99 is asked about (decision 27, part B); given nowhere, it is not
+    # found, and --strict counts neither.
+    assert said["counts"]["abstract_not_found"] == 0
+    assert said["counts"]["abstract_asked_only_in"] == 1
     assert said["counts"]["abstract_matched_as_rounding"] == 1
     assert said["abstract_compared"] and said["what_an_abstract_match_is_worth"]
+    (tmp_path / "n.md").write_text(PAPER.replace("As 99 died", "As 98 died"), encoding="utf-8")
+    assert main(["audit", str(tmp_path / "n.md"), "--strict", "--json"]) == 1
+    said = json.loads(capsys.readouterr().out)
+    assert sorted({f["code"] for f in said["findings"] if f["counted"]}) == ["abstract-conflict"]
+    assert said["counts"]["abstract_not_found"] == 1
     flow = "\n## Participant flow\n\n" + FLOW.replace("149", "148")
     (tmp_path / "f.md").write_text(clean + flow, encoding="utf-8")
     assert main(["audit", str(tmp_path / "f.md"), "--strict"]) == 1
@@ -483,7 +493,9 @@ def test_each_file_is_placed_by_its_own_headings(tmp_path: Path) -> None:
     (tmp_path / "2.md").write_text("## Discussion\n\nIt was 812.5.\n", encoding="utf-8")
     (tmp_path / "3.md").write_text("## Results\n\nNone.\n", encoding="utf-8")
     read = audit([tmp_path / name for name in ("1.md", "2.md", "3.md")], None).abstract
-    assert [c.text for c in read.not_found] == ["733.1"]
+    # 733.1 stands only in 1.md's Discussion: asked about (decision 27, part B).
+    assert read.not_found == [] and read.matched == 1
+    assert [c.text for c, *_rest in read.only_in] == ["733.1"]
 
 
 def test_a_single_item_under_a_stage_is_an_exclusion_whatever_it_counts() -> None:

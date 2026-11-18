@@ -5578,7 +5578,8 @@ form, 1,004 over the corpus. G14 now asks one question for the paper
 (`gates.language.Asked`, a `findings.Question`), at the first form's first use, in its
 reading order (the abstract, the main text, the supplement): it lists every form with its
 first use, asks "Do any of them need defining?", and names the answer, listing those the
-readers know under `language: known_abbreviations` in paper.yaml and defining the others,
+readers know, in quotes, under `language: known_abbreviations` in paper.yaml and defining
+the others,
 which ends it form by form. It holds the warning G14 gave each form (`forms`), which
 `--json` gives with `"question": true`. A question is a note, INFO: never a failure, never
 counted as a warning, so it changes no exit code and no count at any stage (before, the
@@ -9632,6 +9633,7 @@ another order give the same answer:
 | 6 | `failures` | the rest that fails, in gate order |
 | 7 | `co-author-checks` | from internal review, a round with answers outstanding, stale or disagreeing |
 | 8 | `warnings` | one action for each skill |
+| 8 | `questions` | the questions to the author still open (G14's, decision 30), one for each code, with its answer, so that `next` never says there is nothing to do while one is open |
 | 9 | `advance` | nothing fails now: preview the next stage with `check --stage`, or `set stage` |
 | 10 | `optional` | nothing fails, from internal review on: panel, co-author's page, build, package, approvals; the pack and the proof at submission |
 
@@ -10688,17 +10690,39 @@ for nothing otherwise, a Discussion, which is read as given. `check` compares no
 of these; a question there would be answered by a setting in paper.yaml, as
 `code_names_kept` is.
 
+Part B asks two questions of single numbers once the Abstract is compared, each at the
+number, and neither is `abstract-not-found` nor counted in `abstract_not_found`. A number
+not found where the paper reports that the Introduction or its material, the Discussion, a
+"Limitations" or a conclusion gives, as the comparison matches one, is asked about
+(`question-number-only-in`): `placed` gives each such line an `Aside` holding the headings
+over it that report nothing, and the question names each section by its heading and first
+line and the `--results` that would read it, or asks for the number in the Methods or the
+Results. The title page, the statements, the notes, the keywords, a summary of the paper and
+the reference list count for nothing, as before. A number of a structured Abstract's
+Background, under a heading or a run-in label of `BACKGROUND_PARTS` to the next run-in label
+of any wording (`label_ends`), is looked for in the Introduction and its material too, as
+printed and then as a rounding; found nowhere, it is asked about as the literature's
+(`question-background-unsourced`), which the paper's change answers. A referee's draft says
+each of the two among its findings, in words that name no flag and say the author is asked
+(`Item.refereed`, round 1 of #700). The summary says the questions open, "2 questions", for
+a check that has nothing else to say, where it said "clear" or "not run" (`summary.ASKED`;
+Basile, 2026-11-17, "Show the questions"). Of the 24 numbers the corpus run on 0223ca005 did
+not find, six became the first question, two the second, and tex-stat-ap-B2's two Background
+figures, which its Introduction gives with the WHO's name, are found.
+
 The third is G14's, in both readers (decision 30): the short forms used and never defined,
 one question for the paper at the first one's first use, answered by `--known` in the audit
-(on the page, "Words to leave alone") and by `language: known_abbreviations` in a
+(on the page, "Words to leave alone") and by `language: known_abbreviations`, quoted, in a
 project's paper.yaml. It is `check`'s first question, `findings.Question`, the smallest kind
 that matches the audit's: INFO, never a failure or a warning, `"question": true` in
 `--json`, shown apart under "Questions for the author" in the text. In the audit it stands
 under the questions with its place, "paper.md, line 7: ...", and is no kind of finding on
 the words (`summary.kinds_of`); `--details` still lists each form's first use under the
-words. The referee's draft keeps it under Language and notation, where the warnings stood,
-and counts it as one thing G14 reported: the forms are a referee's to read, though the
-answer is the author's.
+words. The summary says it open, "1 question", for the words where nothing else is found,
+on the text's line, the PDF's tile and the page, as part B's do (`summary.ASKED`, "Show the
+questions"). The referee's draft keeps it under Language and notation, where the warnings
+stood, and counts it as one thing G14 reported, as it lists part B's among its findings: the
+forms are a referee's to read, though the answer is the author's.
 
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
@@ -16799,11 +16823,6 @@ been sorted yet.
   counts it as no warning and fails on it at no stage, submission included: the author
   answers form by form, by defining it or listing it under `language: known_abbreviations`
   (Basile, 2026-11-16, decision 30, at this cost). Accepted.
-  - The PDF's tile for the words stands as it would with no question (`clear` where nothing
-    else is found), though the summary's line beside it says the question was asked.
-    Accepted.
-  - `next` builds its actions from failures and warnings, so it builds none for the
-    question, which it counts among the notes; `check` prints it. Accepted.
   - A paper with a great many forms gets one long message, every form named in it with
     its first use. Pinned by
     `tests/test_undefined_asked.py::test_check_asks_one_question_listing_every_form_at_its_first_use`.
@@ -28153,6 +28172,36 @@ What papers converted from Word showed (see "What papers converted from Word sho
     given one, so its question asks for the heading in the document the PDF was made from
     and for that document to be audited. Until then the question is asked at each run.
     Pinned by `tests/test_audit_questions.py::test_a_pdf_s_question_asks_for_its_source_document`.
+- **A number of the Abstract found only where the paper reports nothing is matched there as
+  anywhere else.** The question asked of it (`question-number-only-in`) rests on the same
+  match as a number found where the paper reports: as printed, as a rounding, an identifier
+  and a power whole, so a number typed in a citation's brackets or a date there matches as
+  well (docx-sport-A3 of the real-paper corpus: its Abstract's "14%" against an
+  Introduction's "14"). The question names each section and its line, which the author
+  reads. Accepted.
+  - Only the Introduction and its material, the Discussion, a "Limitations" and a
+    conclusion count; a section of its own that reports nothing under another name, an
+    "Interpretation", does not, and a number found only there is not found. Accepted.
+  - A Word paper's Introduction with no heading of its own stands under the run-in
+    "Keywords:" that ends its Abstract, and the keywords count for nothing: a number only it
+    gives stays not found. Pinned by
+    `tests/test_audit_number_questions.py::test_a_word_introduction_with_no_heading_under_its_keywords_counts_for_nothing`.
+  - A LaTeX paper's footnote is read in the section it is printed in, as before: a number
+    only a footnote under the Discussion gives is asked about. Pinned by
+    `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
+  - A section under another that reports nothing, a "Limitations" under the Discussion, is
+    searched only with both named, so its question names both for `--results`; the page
+    takes one heading, and says that pair as the command line does. Pinned by
+    `tests/test_audit_number_questions.py::test_the_page_asks_in_its_own_words`.
+- **A structured Abstract's Background is read by its run-in labels.** It opens on a label
+  of `abstract.BACKGROUND_PARTS` and ends at the next run-in label of any wording where a
+  line opens or a sentence has ended: a word with a capital first and up to five more, and a
+  colon, or a part's name the audit knows with a colon or a stop (`label_ends`; round 1 of
+  #700: by the closed list alone, it ran on past JAMA's "Design, Setting, and
+  Participants:"). A label typed mid-sentence, or with a stop after a name the list does not
+  hold, "Study question.", does not end it; a sentence opening on a few words and a colon,
+  "In Japan: ...", ends it early; and a Background with no label after it runs to the
+  Abstract's end, its numbers looked for in the Introduction too. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

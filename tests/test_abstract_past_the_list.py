@@ -166,7 +166,8 @@ def test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it(
 ) -> None:
     """Not changed (Basile's decision named Word, PDF and Markdown): LaTeX prints no heading
     for a reference list, so what stands after it is under the section before it, searched
-    where that section reports and not under a Discussion (DESIGN.md, "Known gaps")."""
+    where that section reports and not under a Discussion (DESIGN.md, "Known gaps"), where
+    it is asked about as the Discussion's (decision 27, part B)."""
     def latex(before: str) -> str:
         return ("\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\n"
                 + SAID.replace("%", "\\%") + "\n\\end{abstract}\n\\section{Methods}\n"
@@ -175,7 +176,8 @@ def test_a_latex_paper_s_lines_after_its_list_stand_under_the_section_before_it(
 
     paper = tmp_path / "paper.tex"
     paper.write_text(latex("\\section{Discussion}\nWomen fall.\n"), encoding="utf-8")
-    assert not_found(paper) == ["33.2%"]
+    assert not_found(paper) == []
+    assert [c.text for c, *_rest in audit([paper], None).abstract.only_in] == ["33.2%"]
     paper.write_text(latex(""), encoding="utf-8")
     assert not_found(paper) == []
 

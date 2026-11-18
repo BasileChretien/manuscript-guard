@@ -293,7 +293,8 @@ def test_a_section_that_reports_nothing_named_as_the_results_is_read_and_said(
     so, even beside a Results heading of the paper's own."""
     paper = _write(tmp_path, "# A study\n\n## Abstract\n\nWe saw 812.5 of them.\n\n## Methods\n\n"
                    "We did.\n\n## Results\n\nIt held.\n\n## Discussion\n\nWe saw 812.5.\n")
-    assert "abstract-not-found" in [one["code"] for one in _of(_findings(capsys, paper))]
+    # Unanswered, the number is asked about, as one the Discussion alone gives (part B).
+    assert abstract.ASKED_ONLY_IN in [one["code"] for one in _of(_findings(capsys, paper))]
     found = _of(_findings(capsys, paper, "--results", "Discussion"))
     assert [(one["code"], one["message"].split(":")[0]) for one in found] == [
         (abstract.LIFTED, '--results "Discussion"')]

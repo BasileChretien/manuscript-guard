@@ -300,6 +300,33 @@ def _warnings(state: State) -> list[Action]:
     return actions
 
 
+def _questions(state: State) -> list[Action]:
+    """The questions to the author still open, G14's on the short forms never defined
+    (decision 30): one action for each code, sent where its code is routed, saying how it is
+    answered. A question fails nothing and counts nowhere; it is said so that `next` never
+    says there is nothing to do while one is open (Basile, 2026-11-17, "Show the
+    questions")."""
+    by_code: dict[str, list[Finding]] = {}
+    for finding in state.findings:
+        if finding.question:
+            by_code.setdefault(finding.code, []).append(finding)
+    actions = []
+    for code, group in by_code.items():
+        ordered = _in_order(group, state.root)
+        first = ordered[0]
+        route = route_for(first)
+        skill = route.skill if route is not None and route.skill else GATE_SKILLS.get(first.gate)
+        many = len(ordered)
+        title = (f"{many} question{'s' if many != 1 else ''} for the author from {first.gate}"
+                 + (f": {first.hint}" if first.hint else ""))  # fmt: skip
+        actions.append(Action(
+            id=f"questions:{code}", rule="questions", tier=8, title=title, why=WHY["questions"],
+            who=AUTHOR, skill=skill, argv=argv(state, "check"), codes=(code,),
+            findings=tuple(ordered), key=(_rank(first.gate), "~questions", code, 0),
+        ))  # fmt: skip
+    return actions
+
+
 def _advance(state: State) -> list[Action]:
     """The stage after the one paper.yaml declares, never before it: a view `--stage` gives
     of an earlier stage moves nothing, and the move is the author's to make."""
@@ -471,6 +498,7 @@ RULES: tuple[Rule, ...] = (
     Rule("failures", 6, _is_project, _tiered("failures", 6, "Put right")),
     Rule("co-author-checks", 7, _is_project, _co_author_checks),
     Rule("warnings", 8, _is_project, _warnings),
+    Rule("questions", 8, _is_project, _questions),
     Rule("advance", 9, _is_project, _advance),
     Rule("optional", 10, _is_project, _optional),
 )  # fmt: skip

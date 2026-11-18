@@ -5214,7 +5214,8 @@ answers in any field. The gate asks only the second kind:
   defines it;
 - `abbreviation-redefined`: it is defined a second time, or as two different things;
 - `abbreviation-unused`: it is defined and nothing uses it afterwards;
-- `abbreviation-undefined`: it is used and never defined.
+- `abbreviation-undefined`: short forms are used and never defined, one question to the
+  author for the paper (decision 30, below).
 
 **A definition is read by its shape.** A long form with the short form in brackets after
 it, or the short form with the long form in brackets, where the letters of the short form
@@ -5568,9 +5569,30 @@ undefined abbreviation fail a submission build. Run on the realistic manuscript 
 statistics package. The first review's probes in chemistry and physics added formulas
 and unit symbols to what it got wrong, and the rules for those are a reading too. A check that is wrong that often may advise; it may not stop a build.
 
+**The short forms never defined are a question (Basile, 2026-11-16, decision 30: "Question,
+both").** In the judges' sample of the real-paper corpus, 82% of G14's undefined short
+forms were false: names (BOSS, 2MASS, STARLIGHT), designations (ISO-Oph31) and everyday
+forms (TV, GDP), which no exact rule tells from a short form that needs its definition;
+decisions 28 and 29 had taken out the cases that have one. `check` gave a warning for each
+form, 1,004 over the corpus. G14 now asks one question for the paper
+(`gates.language.Asked`, a `findings.Question`), at the first form's first use, in its
+reading order (the abstract, the main text, the supplement): it lists every form with its
+first use, asks "Do any of them need defining?", and names the answer, listing those the
+readers know, in quotes, under `language: known_abbreviations` in paper.yaml and defining
+the others,
+which ends it form by form. It holds the warning G14 gave each form (`forms`), which
+`--json` gives with `"question": true`. A question is a note, INFO: never a failure, never
+counted as a warning, so it changes no exit code and no count at any stage (before, the
+warnings warned at every stage and failed at none: no stage's behaviour changed but the
+count of warnings). `Report.render` shows the questions apart, under "Questions for the
+author", after the findings. The audit takes the question back to the warnings it holds
+(`auditing.undefined.unasked`) and asks its own, in its words (`auditing.undefined`).
+Used before defined, redefined and unused stay warnings.
+
 The worked example found its own slip the first time the gate ran: the Introduction writes
 "(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
-records are tied to the text they read, so `check` on the example prints that one warning.
+records are tied to the text they read, so `check` on the example asks that one question (a
+warning until decision 30).
 `CI` is listed in the example's `paper.yaml` to show the setting.
 
 ## One term for one thing is declared, not guessed
@@ -9612,6 +9634,7 @@ another order give the same answer:
 | 6 | `failures` | the rest that fails, in gate order |
 | 7 | `co-author-checks` | from internal review, a round with answers outstanding, stale or disagreeing |
 | 8 | `warnings` | one action for each skill |
+| 8 | `questions` | the questions to the author still open (G14's, decision 30), one for each code, with its answer, so that `next` never says there is nothing to do while one is open |
 | 9 | `advance` | nothing fails now: preview the next stage with `check --stage`, or `set stage` |
 | 10 | `optional` | nothing fails, from internal review on: panel, co-author's page, build, package, approvals; the pack and the proof at submission |
 
@@ -10687,6 +10710,20 @@ a check that has nothing else to say, where it said "clear" or "not run" (`summa
 Basile, 2026-11-17, "Show the questions"). Of the 24 numbers the corpus run on 0223ca005 did
 not find, six became the first question, two the second, and tex-stat-ap-B2's two Background
 figures, which its Introduction gives with the WHO's name, are found.
+
+Another is G14's, in both readers (decision 30): the short forms used and never defined,
+one question for the paper at the first one's first use, answered by `--known` in the audit
+(on the page, "Words to leave alone") and by `language: known_abbreviations`, quoted, in a
+project's paper.yaml. It is `check`'s first question, `findings.Question`, the smallest kind
+that matches the audit's: INFO, never a failure or a warning, `"question": true` in
+`--json`, shown apart under "Questions for the author" in the text. In the audit it stands
+under the questions with its place, "paper.md, line 7: ...", and is no kind of finding on
+the words (`summary.kinds_of`); `--details` still lists each form's first use under the
+words. The summary says it open, "1 question", for the words where nothing else is found,
+on the text's line, the PDF's tile and the page, as part B's do (`summary.ASKED`, "Show the
+questions"). The referee's draft keeps it under Language and notation, where the warnings
+stood, and counts it as one thing G14 reported, as it lists part B's among its findings: the
+forms are a referee's to read, though the answer is the author's.
 
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
@@ -16780,6 +16817,16 @@ limit as it is written: a change that closes the gap or moves it fails one of th
 entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
+
+- **A short form that needs its definition and is never given one is asked about, not
+  warned of.** G14's one question on the short forms never defined lists it beside the
+  names, designations and everyday forms it cannot tell it from, and a project's `check`
+  counts it as no warning and fails on it at no stage, submission included: the author
+  answers form by form, by defining it or listing it under `language: known_abbreviations`
+  (Basile, 2026-11-16, decision 30, at this cost). Accepted.
+  - A paper with a great many forms gets one long message, every form named in it with
+    its first use. Pinned by
+    `tests/test_undefined_asked.py::test_check_asks_one_question_listing_every_form_at_its_first_use`.
 
 - **A block the LaTeX reader skips in the body is matched by its text, and nothing in it is
   read.** A `\makeatletter` runs to the first `\makeatother` and a conditional to its
@@ -27541,13 +27588,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     fill as X, so an IEEE paper's tenth table's marker, "[Insert Table X here]", fails as a
     slot. Pinned by
     `tests/test_corruption.py::test_a_placeholder_in_the_manuscript_fails[[Insert Table X here]]`.
-- **The audit's one finding on short forms left undefined, and its list.** The author's
+- **The audit's one question on short forms left undefined, and its list.** The author's
   decision of 2026-11-11, after the corpus of 52 real preprints, in which 354 of the 427
   `abbreviation-undefined` warnings judges read were false (`auditing.undefined`). The
-  audit says those of one paper in one finding, at the first use of the first form, and
+  audit asks of those of one paper in one question (decision 30), at the first form's use, and
   passes over the forms on a list of what journals' style guides say needs no definition.
   Pinned by
-  `tests/test_audit_undefined.py::test_the_short_forms_left_undefined_are_one_finding_at_the_first_use`.
+  `tests/test_audit_undefined.py::test_the_short_forms_left_undefined_are_one_question_at_the_first_use`.
   - The list of forms journals' style guides say need no definition,
     `data/journal_abbreviations.yaml`, is the same for every paper audited, of any field: a
     form on it is passed over in a paper where it means something else. The forms whose

@@ -249,15 +249,15 @@ def test_a_docx_s_words_are_placed_by_heading_and_paragraph(tmp_path: Path, caps
     subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
                    timeout=120)  # fmt: skip
     report, text = _audited(capsys, str(tmp_path / "paper.docx"))
-    said = "1 short form is used and not defined as G14 reads the paper: 'XYZ' here"
-    assert f"Methods, paragraph 3: {said}" in text, text
+    said = "1 short form is used and never defined as G14 reads the paper: 'XYZ' here"
+    assert f"paper.docx, Methods, paragraph 3: {said}" in text, text
     # A place in the paper the finding is on, named without the paper's name again (the
     # author's audit, 2026-11-11).
     assert "it was defined at Methods, paragraph 1" in text, text
     assert "at paper.docx, Methods" not in text
     assert "pandoc converts it to" not in text
     (undefined,) = [f for f in report["findings"] if f["code"] == "abbreviation-undefined"]
-    # The one finding, and each form it lists, placed in the document (`auditing.undefined`).
+    # The one question, and each form it lists, placed in the document (`auditing.undefined`).
     xyz = [undefined, *(form for form in undefined["forms"] if form["form"] == "XYZ")]
     assert [(f["heading"], f["paragraph"]) for f in xyz] == [("Methods", 3)] * 2
     # The draft of a referee's report places them the same way (review of #616).
@@ -266,5 +266,5 @@ def test_a_docx_s_words_are_placed_by_heading_and_paragraph(tmp_path: Path, caps
     capsys.readouterr()
     said = [line for line in draft.read_text(encoding="utf-8").splitlines()
             if line.startswith("- `abbreviation-undefined`")]  # fmt: skip
-    assert said == ["- `abbreviation-undefined` (G14, warn): 1, at paper.docx Methods, "
+    assert said == ["- `abbreviation-undefined` (G14, info): 1, at paper.docx Methods, "
                     "paragraph 3"], said

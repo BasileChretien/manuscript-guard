@@ -2162,6 +2162,17 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
             assert at not in defined, (short, text)
 
 
+def _g14_warned(files: list, known, root: Path, stage: str | None = None):
+    """G14's report on files read, its question on the short forms never defined given back
+    as the warnings it holds, one for each form, in its place (`auditing.undefined.unasked`):
+    what the properties of G14's reading hold. The question itself is held by
+    `test_the_short_forms_never_defined_are_one_question` (decision 30)."""
+    from manuscript_guard.auditing.undefined import unasked
+
+    report = language_gate._judge(files, known, root, stage)
+    return dataclasses.replace(report, findings=tuple(unasked(list(report.findings))))
+
+
 from generated import titled_papers  # noqa: E402
 
 
@@ -2175,7 +2186,7 @@ def test_the_paper_s_title_defines_nothing_and_a_section_s_heading_does(
     it; a section's heading in the main text defines."""
     nothing = language_gate._Known(frozenset(), frozenset())
     for text, undefined in drawn:
-        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+        report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing,
                                       Path("."))  # fmt: skip
         found = sorted((f.code, f.message.split()[0]) for f in report.findings
                        if f.code.startswith("abbreviation-"))  # fmt: skip
@@ -2197,7 +2208,7 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     the label inside it."""
     text, undefined = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
-    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
     # The manuscript has no heading, and the note that says so is no abbreviation's.
     found = sorted((f.code, f.message.split()[0]) for f in report.findings
                    if f.code.startswith("abbreviation-"))  # fmt: skip
@@ -2219,7 +2230,7 @@ def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
     statement, and the part of an initial with a hyphen."""
     text, undefined = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
-    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
     found = sorted((f.code, f.message.split()[0]) for f in report.findings)
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
@@ -2242,7 +2253,7 @@ def test_the_title_page_is_not_read_for_abbreviations(
     university in a sentence (Basile, 2026-11-12)."""
     nothing = language_gate._Known(frozenset(), frozenset())
     for name, (text, expected) in drawn.items():
-        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+        report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing,
                                       Path("."))  # fmt: skip
         found = sorted((f.code, f.message.split()[0]) for f in report.findings)
         assert found == expected, (name, text)
@@ -2273,7 +2284,7 @@ def test_no_definition_is_asked_where_none_is_due(
         read = [_file(order, Path(f"{order}.md"), text, chain, False, opens=order == 0,
                       running=running)
                 for order, (text, running) in enumerate(files)]  # fmt: skip
-        report = language_gate._judge(read, nothing, Path("."))
+        report = _g14_warned(read, nothing, Path("."))
         found = sorted((f.code, f.message) for f in report.findings)
         assert found == expected, files
 
@@ -3101,7 +3112,7 @@ def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
 
     def undefined(statistics: bool, asked: frozenset[str]) -> list[str]:
         known = language_gate._asked(nothing, statistics, asked)
-        report = language_gate._judge(read, known, Path("."))
+        report = _g14_warned(read, known, Path("."))
         return sorted(f.message.split()[0] for f in report.findings)
 
     assert undefined(False, frozenset()) == sorted(STATISTICS_NOT), text
@@ -3127,31 +3138,182 @@ from generated import JOURNALS_EXEMPT, JOURNALS_SUPPLEMENT, undefined_forms  # n
 def test_the_audit_says_the_short_forms_left_undefined_in_one_finding(
     drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
 ) -> None:
-    """The audit makes G14's warnings on the short forms used and not defined one finding,
+    """The audit makes G14's warnings on the short forms used and not defined one question,
     at the first use of the first form it lists: each form once, the one only the Abstract
     leaves undefined and the one only the supplement does among them, in the order G14 reads
     them, file after file in the paper's order, whatever their paths, with the warning on
     each; the forms on the list of journals' style guides passed over, counted and named in
-    the order of theirs, a form undefined in the Abstract and the main text once. The other
-    findings are G14's as they were."""
+    the order of theirs, a form undefined in the Abstract and the main text once; then the
+    question and its answer. It counts nothing (decision 30). The other findings are G14's as
+    they were."""
     from manuscript_guard.auditing import undefined
 
     files, listed, passed = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     read = [_file(order, Path(name), text, [], supplementary)
             for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
-    found = list(language_gate._judge(read, nothing, Path(".")).findings)
+    found = list(_g14_warned(read, nothing, Path(".")).findings)
     audited = undefined.one_finding(found)
     (one,) = [f for f in audited if f.code == undefined.CODE]
     assert [form for form, _warning in one.forms] == listed, files
     assert list(one.passed_over) == passed, files
-    assert one.counted == len(listed) and set(passed) <= set(JOURNALS_EXEMPT)
+    assert one.question and one.severity == "info" and one.counted == 0
+    assert one.listing == len(listed) and set(passed) <= set(JOURNALS_EXEMPT)
+    assert one.message.endswith(f". {undefined.ASK}") and one.hint is None, one.message
     first = one.forms[0][1]
     assert (one.path, one.line, one.context) == (first.path, first.line, first.context)
     assert f"'{listed[0]}'" in one.message, one.message
     assert f"({', '.join(passed[:-1])} and {passed[-1]})" in one.message, one.message
     assert f"{JOURNALS_SUPPLEMENT} (in the supplement)" in one.message, one.message
     assert [f for f in audited if f is not one] == [f for f in found if f.code != undefined.CODE]
+
+
+@holds(60, undefined_forms())
+def test_the_short_forms_never_defined_are_one_question(
+    drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
+) -> None:
+    """G14 asks one question of the short forms a paper uses and never defines, where it gave
+    a warning for each: at the first one's first use, every form it read, in the Abstract,
+    the main text and the supplement, with its first use, the list of journals' style guides
+    read nowhere; whether any needs defining, and the answer that ends it, in paper.yaml. It
+    never fails and is no warning, at any stage. A form the project knows leaves it; with
+    every form known, nothing is asked (Basile, 2026-11-16, decision 30).
+
+    What it lists is worked out from the files drawn, not from the question: the Abstract's
+    HR and HIV on its line, then each form of the main text at its first use, file after
+    file, HIV again among them, then the supplement's; a form undefined in two parts is
+    listed in each (round 1 of #701)."""
+    from manuscript_guard.auditing.undefined import unasked
+    from manuscript_guard.policy import STAGES
+
+    files, listed, passed = drawn
+    expected: list[tuple[str, str, int, str]] = [
+        (form, files[0][0], 3, " (in the abstract)") for form in ("HR", "HIV")]
+    for name, text, supplementary in files:
+        seen: list[str] = []
+        for found in re.finditer(r"the (\S+) was given", text):
+            if found[1] not in seen:
+                seen.append(found[1])
+                expected.append((found[1], name, text.count("\n", 0, found.start()) + 1,
+                                 " (in the supplement)" if supplementary else ""))
+    distinct = len({form for form, *_rest in expected})
+    said = ", ".join(f"{form} at {name}:{line}{scope}" for form, name, line, scope in expected)
+    read = [_file(order, Path(name), text, [], supplementary)
+            for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
+
+    def judged(known: frozenset[str], stage: str | None = None):
+        return language_gate._judge(read, language_gate._Known(known, frozenset()), Path("."),
+                                    stage)  # fmt: skip
+
+    report = judged(frozenset())
+    (asked,) = [f for f in report.findings if f.code == language_gate.UNDEFINED]
+    warnings = [warning for _form, warning in asked.forms]
+    forms = [form for form, _warning in asked.forms]
+    assert {*listed, *passed} == {form for form, *_rest in expected}, files
+    # Each form with its repeats, at its place, as G14's warnings on them say.
+    held = [(form, Path(w.path).as_posix(), w.line) for form, w in asked.forms]
+    assert held == [(form, name, line) for form, name, line, _scope in expected], (held, files)
+    unpacked = [(w.message.split()[0], Path(w.path).as_posix(), w.line)
+                for w in unasked(list(report.findings)) if w.code == language_gate.UNDEFINED]
+    assert unpacked == held, unpacked
+    assert asked.message == (
+        f"{distinct} short forms are used and never defined as G14 reads the paper: {said}. "
+        "Do any of them need defining?"), asked.message
+    assert asked.question and asked.severity == "info", asked
+    assert asked.hint == language_gate.ASK_HINT and "known_abbreviations" in asked.hint
+    assert (asked.path, asked.line, asked.context) == (warnings[0].path, warnings[0].line,
+                                                        warnings[0].context)  # fmt: skip
+    for stage in (None, *STAGES):
+        at = judged(frozenset(), stage)
+        assert at.ok and not [f for f in at.warnings if f.code == language_gate.UNDEFINED]
+    # The forms known, one of every two in the order asked, leave the question.
+    known = frozenset(forms[::2])
+    (left,) = [f for f in judged(known).findings if f.code == language_gate.UNDEFINED]
+    assert [form for form, _warning in left.forms] == [f for f in forms if f not in known]
+    assert not [f for f in judged(frozenset(forms)).findings
+                if f.code == language_gate.UNDEFINED]  # fmt: skip
+
+
+@holds(30, undefined_forms())
+def test_the_words_tile_says_the_question_open(
+    drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
+) -> None:
+    """Basile, 2026-11-17, "Show the questions": where G14's question on the short forms
+    never defined is all the words have, the summary's tile for them stands asked and says
+    how many, one for each paper; beside a finding to look at, it is to look at, and the
+    question is still counted (round 2 of #701)."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing import undefined
+    from manuscript_guard.auditing.gates import GateRun
+    from manuscript_guard.auditing.summary import ASKED, LOOK, asked, standings
+    from manuscript_guard.findings import WARN, Finding
+
+    files, _listed, _passed = drawn
+    read = [_file(order, Path(name), text, [], supplementary)
+            for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
+    nothing = language_gate._Known(frozenset(), frozenset())
+    found = undefined.one_finding(undefined.unasked(
+        list(language_gate._judge(read, nothing, Path(".")).findings)))
+    (question,) = [f for f in found if f.question]
+    alone = AuditReport(gates=[GateRun(Path(files[0][0]), language=[question])])
+    assert standings(alone)["Writing and language"] == ASKED
+    assert asked(alone) == {"Writing and language": 1}
+    two = AuditReport(gates=[GateRun(Path(name), language=[question])
+                             for name in ("a.md", "b.md")])  # fmt: skip
+    assert asked(two) == {"Writing and language": 2}
+    warned = Finding("G14", "abbreviation-unused", "unused", WARN, line=1)
+    beside = AuditReport(gates=[GateRun(Path(files[0][0]), language=[question, warned])])
+    assert standings(beside)["Writing and language"] == LOOK
+    assert asked(beside) == {"Writing and language": 1}
+
+
+def _the_words_are_not_counted_as_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import summary
+
+    real = summary.asked
+    patch.setattr(summary, "asked", lambda report: {
+        name: count for name, count in real(report).items() if name != "Writing and language"})
+
+
+def _the_words_tile_never_stands_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import summary
+
+    real = summary.standings
+
+    def standings(report) -> dict:
+        out = real(report)
+        if out.get("Writing and language") == summary.ASKED:
+            out["Writing and language"] = summary.CLEAR
+        return out
+
+    patch.setattr(summary, "standings", standings)
+
+
+def _the_question_is_a_warning(patch: pytest.MonkeyPatch) -> None:
+    @dataclasses.dataclass(frozen=True)
+    class Warned(language_gate.Asked):
+        severity: str = "warn"
+
+    patch.setattr(language_gate, "Asked", Warned)
+
+
+def _only_the_first_entry_of_each_form_is_kept(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._one_question
+
+    def first_only(findings: list, undefined: list) -> list:
+        kept, seen = [], set()
+        for entry in undefined:
+            if entry[0] not in seen:
+                seen.add(entry[0])
+                kept.append(entry)
+        dropped = {id(entry[2]) for entry in undefined if entry not in kept}
+        return real([f for f in findings if id(f) not in dropped], kept)
+
+    patch.setattr(language_gate, "_one_question", first_only)
+
+
+def _a_known_form_is_still_asked(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate._Known, "__contains__", lambda self, form: False)
 
 
 def _the_journals_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -3189,7 +3351,7 @@ def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text
 
     def findings(text: str, stage: str | None = None) -> list:
         read = [_file(0, Path("main.md"), text, [], False)]
-        return list(language_gate._judge(read, nothing, Path("."), stage).findings)
+        return list(_g14_warned(read, nothing, Path("."), stage).findings)
 
     for stage in (None, *STAGES):
         headed = findings(drawn["headed"], stage)
@@ -3218,7 +3380,7 @@ def test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them(
 
     def findings(text: str) -> list:
         read = [_file(0, Path("main.md"), text, [], False)]
-        report = language_gate._judge(read, nothing, Path("."))
+        report = _g14_warned(read, nothing, Path("."))
         return sorted((f.code, f.message.split()[0]) for f in report.findings
                       if f.code != "no-headings")  # fmt: skip
 
@@ -11888,7 +12050,7 @@ def _passed_over(text: str) -> dict[str, Any]:
     spelt = judge_spelling([Passage(file.path, file.text, file.spelt, file.line_of)], "en-GB",
                            [], PAPER)  # fmt: skip
     exact, lowered = language_gate._shipped()
-    named = language_gate._judge([file], language_gate._Known(exact, lowered), Path("."))
+    named = _g14_warned([file], language_gate._Known(exact, lowered), Path("."))
     counts = sections_module.measure(text)
     return {
         "spelling": [(f.code, f.line, f.message) for f in spelt.findings],
@@ -13656,10 +13818,10 @@ def _g14_of_rrids(files: list, root: Path) -> list[tuple[str, str]]:
     """What G14's abbreviations and code names say of files read: each finding's code and the
     word its message opens with."""
     from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
-    from manuscript_guard.gates.language import _judge, _Known, _shipped
+    from manuscript_guard.gates.language import _Known, _shipped
 
     exact, lowered = _shipped()
-    said = list(_judge(files, _Known(exact, lowered), root).findings)
+    said = list(_g14_warned(files, _Known(exact, lowered), root).findings)
     prose = [Prose(one.path, one.text, one.printed, one.code, one.line_of) for one in files]
     said += judge_code_names(prose, Names(), "drafting").findings
     return sorted((f.code, f.message.split(" ", 1)[0].strip("'")) for f in said
@@ -22435,11 +22597,11 @@ def test_a_keywords_list_under_its_heading_is_the_abstract_s_to_g14(
     Introduction defines it, nor is the Abstract's definition unused; what follows the list
     is the main text's; and under a heading that only opens with the word, the list is the
     main text's as before (round 1 of #689)."""
-    from manuscript_guard.gates.language import _file, _judge, _Known, _shipped
+    from manuscript_guard.gates.language import _file, _Known, _shipped
 
     exact, lowered = _shipped()
     for text, shorts, codes in drawn:
-        found = _judge([_file(0, MAIN, text, [], False)], _Known(exact, lowered), Path("."))
+        found = _g14_warned([_file(0, MAIN, text, [], False)], _Known(exact, lowered), Path("."))
         said = {f.code for f in found.findings if f.code.startswith("abbreviation")
                 and f.message.split()[0] in shorts.split()}  # fmt: skip
         assert said == codes, (text, [f.message for f in found.findings])
@@ -26767,6 +26929,26 @@ BROKEN = {
     "the audit reads no list of journals' style guides": (
         _the_journals_list_is_not_read,
         test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "G14's question on the short forms never defined is a warning": (
+        _the_question_is_a_warning,
+        test_the_short_forms_never_defined_are_one_question,
+    ),
+    "the words' question is not counted as asked": (
+        _the_words_are_not_counted_as_asked,
+        test_the_words_tile_says_the_question_open,
+    ),
+    "the words' tile never stands asked": (
+        _the_words_tile_never_stands_asked,
+        test_the_words_tile_says_the_question_open,
+    ),
+    "G14's question keeps only the first entry of each form": (
+        _only_the_first_entry_of_each_form_is_kept,
+        test_the_short_forms_never_defined_are_one_question,
+    ),
+    "G14 asks of a short form the project knows": (
+        _a_known_form_is_still_asked,
+        test_the_short_forms_never_defined_are_one_question,
     ),
     "the audit lists the short forms left undefined last first": (
         _the_short_forms_are_listed_last_first,

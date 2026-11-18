@@ -26,21 +26,23 @@
 expected:
   - reading: abbreviations
     why: >-
-      a short form that stands only where no definition is due asks none and counts no use:
-      on the title page, all before the first heading or block G14's title page reads as the
-      paper's opening, where it names the Abstract, and no title page where it does not (Basile,
-      "No title page there"); in a statement, under a heading `STATEMENT_TITLE` names or run
-      in from such a label, in bold or in plain type with its colon; in a "Keywords", "Key
-      words" or "Index Terms" line at a paragraph's start; and in a line a PDF repeats at its
-      pages' edges. One the text uses too is asked as before, those uses not counted,
-      and a use there is no use before the definition; redefined and unused are as they were
-      (Basile, 2026-11-16, decision 28, after 35 findings the judges marked false in 20 papers
-      of the real-paper corpus)
+      the warnings on the short forms used and never defined, one for each form, are one
+      question to the author for the paper, at the first form's first use, a note that never
+      fails and is no warning: it lists every form at its first use, asks whether any needs
+      defining, and is answered by listing those the readers know under `language:
+      known_abbreviations` in paper.yaml and defining the others; the reading gives the forms
+      it asks of. Used before defined, redefined and unused are as they were (Basile,
+      2026-11-16, decision 30: 82% of the undefined forms the judges read in the real-paper
+      corpus were names, designations and everyday forms); the entry it replaces, decision
+      28's, is spent
   - reading: audit abbreviations
     why: >-
-      the audit's one finding of the short forms used and not defined lists none that stands
-      only where no definition is due, and counts no use there, as G14 now reads them
-      (decision 28, the entry for `abbreviations`)
+      the audit's one finding of the short forms used and not defined is a question to the
+      author, made again from the warnings G14's question holds: "never defined", then
+      whether any needs defining and how to answer, with `--known`; at INFO, with no hint,
+      never counted (decision 30, the entry for `abbreviations`); the reading takes G14's
+      question back to its warnings as `auditing.undefined.unasked` does, and gives each finding's severity
+      and whether it is a question; the entry it replaces, decision 28's, is spent
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its
@@ -179,10 +181,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G2 reads no number of a typed reference list, under a heading or a title in bold that
-      names one, up to where `text.reference_lists` ends it, so its years, volumes, pages
-      and terms are no longer counted or failed (decision 5, 2026-11-11: the real-paper
-      corpus rebuilt with init --from)
+      G14's warnings on the short forms used and never defined, one for each form, are one
+      question to the author, a note marked `"question": true` with the forms it lists, so
+      `check`'s count of warnings, in the closing lines and in what it printed, is one fewer
+      for each form, and no exit code changes (decision 30, the entry for `abbreviations`);
+      the entry it replaces, decision 5's, is spent
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

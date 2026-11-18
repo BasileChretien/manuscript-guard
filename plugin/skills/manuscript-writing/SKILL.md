@@ -154,14 +154,14 @@ write it out.
 The abstract is read without the paper, so it carries its own definitions and the main
 text starts again. A supplement may rely on what the main text defined.
 
-G14 reports the four ways this goes wrong, as warnings:
+G14 reports four ways this goes wrong:
 
 | Code | What happened | What to do |
 |---|---|---|
 | `abbreviation-used-before-defined` | the short form appears above its definition | move the definition to the first use |
 | `abbreviation-redefined` | it is defined twice, or as two things | keep the first definition; if the meanings differ, give the second its own short form |
 | `abbreviation-unused` | it is defined and nothing uses it | write the long form and drop the brackets |
-| `abbreviation-undefined` | it is used and never defined | define it at first use |
+| `abbreviation-undefined` | never defined: one question for all | define, or list as known below |
 
 The check reads capitals, so it also reports names: a trial, a statistics package, an
 agency. And some journals let a few abbreviations stand. Those go in `paper.yaml`, written

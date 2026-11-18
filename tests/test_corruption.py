@@ -2848,7 +2848,9 @@ def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_cat
     paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
     assert main(["audit", str(paper), "--strict", "--json"]) == 0
     asked = [one for one in json.loads(capsys.readouterr().out)["findings"] if one["question"]]
-    assert [(one["code"], one["counted"]) for one in asked] == [("question-no-results", False)]
+    # And G14's on OR and CI, never defined, which never fails --strict either (decision 30).
+    assert [(one["code"], one["counted"]) for one in asked] == [
+        ("question-no-results", False), ("abbreviation-undefined", False)]
     assert main(["audit", str(paper), "--strict", "--results",
                  "Electron temperature relations"]) == 1  # fmt: skip
 
@@ -14176,9 +14178,12 @@ def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
 
 
 def _g14(root: Path) -> list:
+    """G14's findings, its question on the short forms never defined as the warning it holds
+    on each (decision 30)."""
+    from manuscript_guard.auditing.undefined import unasked
     from manuscript_guard.gates import check_language
 
-    return list(check_language(load_project(root)[0]).findings)
+    return unasked(list(check_language(load_project(root)[0]).findings))
 
 
 @pytest.mark.parametrize(
@@ -29873,11 +29878,14 @@ ABBREVIATED = "The ROR was computed from"
 
 
 def language_findings(root: Path, stage: str | None = None) -> list[tuple[str, int]]:
+    """G14's findings by code and line, its question on the short forms never defined as the
+    warning it holds on each, at the form's first use (decision 30)."""
+    from manuscript_guard.auditing.undefined import unasked
     from manuscript_guard.gates import check_language
 
     report = check_language(load_project(root)[0], stage)
     assert report.ok, "G14 warns; it does not fail"
-    return sorted((f.code, f.line) for f in report.findings)
+    return sorted((f.code, f.line) for f in unasked(list(report.findings)))
 
 
 def with_ror_defined(root: Path) -> str:
@@ -29897,6 +29905,13 @@ def line_of(text: str, needle: str) -> int:
 def test_the_example_s_undefined_abbreviation_is_caught(project: Path) -> None:
     text = main_md(project).read_text(encoding="utf-8")
     assert language_findings(project) == [("abbreviation-undefined", line_of(text, "(ROR "))]
+    # Caught as a question to the author, which is no warning (decision 30).
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(project)[0])
+    (asked,) = report.findings
+    assert asked.question and asked.severity == "info" and not report.warnings
+    assert [form for form, _warning in asked.forms] == ["ROR"]
 
 
 def test_the_mended_example_has_nothing_to_report(project: Path) -> None:
@@ -29904,6 +29919,22 @@ def test_the_mended_example_has_nothing_to_report(project: Path) -> None:
     reporting the corrupted one."""
     with_ror_defined(project)
     assert language_findings(project) == []
+
+
+def test_a_short_form_used_before_its_definition_is_still_a_warning(project: Path) -> None:
+    """Only the short forms never defined became a question to the author (decision 30): a
+    use of ROR above the sentence that defines it is still a warning, counted as one by
+    `check`, and nothing is asked."""
+    from manuscript_guard.gates import check_language
+
+    early = with_ror_defined(project).replace("# Introduction\n\n",
+                                              "# Introduction\n\nThe ROR was raised.\n\n", 1)
+    main_md(project).write_text(early, encoding="utf-8")
+    report = check_language(load_project(project)[0])
+    (before,) = report.findings
+    assert (before.code, before.line) == ("abbreviation-used-before-defined",
+                                          line_of(early, "The ROR was raised"))  # fmt: skip
+    assert before.severity == "warn" and not before.question and report.warnings == (before,)
 
 
 def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:

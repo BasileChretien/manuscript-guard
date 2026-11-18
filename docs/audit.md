@@ -208,22 +208,31 @@ and the field's terms (`--known CHU QR licence`): G14 neither asks for them to b
 reports their spelling, nor reads them as names from code. A G14 hint that tells a project
 to set something in `paper.yaml` names these instead, which a paper audited alone sets them
 with.
-The short forms the paper uses and does not define are one finding, not a warning each: it
-lists them in the order G14 reads them (the Abstract, the main text file after file in the
-paper's order, then the supplement), stands at the first use of the first, and has
-`--known` as its remedy, and the summary counts the forms, ranking the kind by them. `--json` keeps, under the
-finding, each form with G14's warning on it and where it is first used (`forms`), and
-`--details` lists them; the copy with comments puts the finding on the first form. A form
+The short forms the paper uses and does not define are one question to the author, not a
+warning each (decision 30, 2026-11-16): it lists them in the order G14 reads them (the
+Abstract, the main text file after file in the paper's order, then the supplement), stands
+at the first use of the first, and asks "Do any of them need defining? Define each your
+readers may not know, at its first use; pass those they know with `--known A B C`." The
+forms `--known` names leave it. Like the Abstract's questions it is a note, never counted
+by `--strict` and no kind of finding on the words: the report shows it under "Questions for
+the author" with its place, the summary's line says it was asked, the page names its box,
+"Words to leave alone", for `--known`, and the PDF and the copies with comments and with
+tracked changes name the flag. `--json` marks it `"question": true` and keeps, under it,
+each form with G14's warning on it and where it is first used (`forms`), and `--details`
+lists them; the copy with comments puts the question on the first form. The referee's draft
+lists it under Language and notation. A form
 that journals' own style guides say needs no definition is not listed, and the finding says
 how many it passed over and names them: the list,
 `src/manuscript_guard/data/journal_abbreviations.yaml`, cites for each entry the guide that
 lists it (the Cochrane Style Manual, Brain's instructions to authors and Medical Writing's),
 and leaves out a form with a common second meaning in another field. Where every form left
 undefined is on the list, a note (`abbreviations-passed-over`) says how many were passed
-over, which, and by which list. `check` reads no such list and still gives
-one warning for each form, which a project's author answers one at a time (the corpus run
-of 2026-11-11: 354 of 427 of these warnings that judges read on 52 preprints were false,
-the field's own terms, and the true ones were lost among them).
+over, which, and by which list. `check` reads no such list, and asks the same question
+in a project, of every form, answered by listing each, in quotes, under `language:
+known_abbreviations` in paper.yaml
+(the corpus run of 2026-11-11: 354 of 427 of the warnings it gave, one for each form, that
+judges read on 52 preprints were false, the field's own terms, and the true ones were lost
+among them; in the judges' later sample, 82%).
 No definition is asked of a short form that stands only where none is due (decision 28,
 2026-11-16), in the audit as in `check`: on the title page, all before the first heading
 or block G14 reads as the paper's opening, where that names the Abstract (a heading,

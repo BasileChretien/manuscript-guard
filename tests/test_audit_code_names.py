@@ -93,7 +93,8 @@ def test_the_summary_counts_the_names_and_details_list_each(tmp_path: Path, caps
     out = capsys.readouterr().out
     assert "  Each name written the way a name in code is, where it is first used:" in out, out
     assert "    line 7: 'trust_in_science' is written with underscores" in out, out
-    assert "paper.md: 0 from G6, 4 from G14" in out, out
+    # SIGNA, the fourth, is in G14's question, said apart (decision 30).
+    assert "paper.md: 0 from G6, 3 from G14, and its question for the author" in out, out
 
 
 def test_known_words_are_taken_off_the_list_of_the_finding(tmp_path: Path, capsys) -> None:

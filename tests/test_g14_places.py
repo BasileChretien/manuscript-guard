@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from manuscript_guard.auditing.undefined import unasked
 from manuscript_guard.cli import main
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates import check_language
@@ -86,14 +87,15 @@ NOT_ASKED = ("UPV", "LLM", "MB", "NRC", "FWO", "DANS", "SDR")
 
 
 def checked(tmp_path: Path, files: dict[str, str]) -> list[tuple[str, str]]:
-    """G14's abbreviation findings as `check` gives them on a manuscript of `files`."""
+    """G14's abbreviation findings as `check` gives them on a manuscript of `files`, its
+    question on the short forms never defined as the warning it holds on each (decision 30)."""
     root = tmp_path / "project"
     for name, text in files.items():
         path = root / "manuscript" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     report = check_language(Project(root=root, paper={}, authors=None))
-    return sorted((f.code, f.message) for f in report.findings
+    return sorted((f.code, f.message) for f in unasked(list(report.findings))
                   if f.code.startswith("abbreviation"))  # fmt: skip
 
 

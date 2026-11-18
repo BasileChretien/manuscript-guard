@@ -33,6 +33,7 @@ Within a tier, actions go in gate order, upstream first, then by code, file and 
 | 6 | `failures` | everything else that fails, by code |
 | 7 | `co-author-checks` | from `internal-review`, a round of co-authors' checks is open: answers outstanding, stale or in disagreement |
 | 8 | `warnings` | warnings, one action for each skill |
+| 8 | `questions` | the questions to the author still open, G14's on the short forms never defined, one action for each code, with its answer; a question fails nothing and counts nowhere |
 | 9 | `advance` | nothing fails now: see what the stage after the one `paper.yaml` declares asks (`check --stage <next>`), or ask the author to move to it (`set stage <next>`). A view of an earlier stage (`--stage`) offers no move |
 | 10 | `optional` | nothing fails, from `internal-review` on: the review panel, a co-author's page, the build, the package, approvals, and at `submission` the pack and the proof |
 

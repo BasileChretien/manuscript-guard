@@ -49,10 +49,13 @@ KINDS = {
 
 
 def kinds_of(found: list[Finding]) -> dict[tuple[str, str], list[Finding]]:
-    """`found` by gate and code, in the order each kind is first met."""
+    """`found` by gate and code, in the order each kind is first met; a question to the author,
+    G14's on the short forms never defined, is no kind of finding, and is said apart with the
+    other questions (`report.asked_of_words`)."""
     kinds: dict[tuple[str, str], list[Finding]] = {}
     for finding in found:
-        kinds.setdefault((finding.gate, finding.code), []).append(finding)
+        if not finding.question:
+            kinds.setdefault((finding.gate, finding.code), []).append(finding)
     return kinds
 
 
@@ -201,6 +204,12 @@ def _words(report) -> str:
     many = sum(1 for kind in kinds_of(found).values() if counted(kind))
     said = (f"{_n(counted(found), 'finding')} to look at, in {_n(many, 'kind')} "
             "(not counted by --strict)" if counted(found) else "")  # fmt: skip
+    # G14's question on the short forms used and never defined, which is no finding to look
+    # at and is said with the other questions (decision 30).
+    asked = sum(1 for finding in found if finding.question)
+    if asked:
+        said += ("; " if said else "") + (f"{_n(asked, 'question')} for the author on the "
+                                          "short forms never defined (not counted by --strict)")
     if unread:
         names = ", ".join(run.paper.name for run in unread)
         said += ("; " if said else "") + f"not run on {names}: see below"
@@ -355,8 +364,15 @@ ASKED = "asked"
 def asked(report) -> dict[str, int]:
     """How many questions each check of `rows` asks the author, where it asks any: what the
     tile of one that stands `ASKED` says."""
-    count = questions_open(report.abstract)
-    return {"Abstract against Results": count} if count else {}
+    counts = {"Abstract against Results": questions_open(report.abstract),
+              "Writing and language": words_asked(report)}
+    return {name: count for name, count in counts.items() if count}
+
+
+def words_asked(report) -> int:
+    """How many questions G14 asks the author of the papers' words: one for each paper whose
+    short forms are used and never defined (decision 30)."""
+    return sum(1 for run in report.gates or [] for finding in run.language if finding.question)
 
 
 def standings(report) -> dict[str, str]:
@@ -397,6 +413,9 @@ def standings(report) -> dict[str, str]:
         found = (any(getattr(f, "counted", 1) for run in ran for f in (*run.writing, *run.language))
                  or len(ran) < len(report.gates))  # fmt: skip
         out["Writing and language"] = NOT_RUN if not ran else of(False, found)
+        # G14's question open where nothing else is to say ("Show the questions").
+        if words_asked(report) and out["Writing and language"] == CLEAR:
+            out["Writing and language"] = ASKED
     if report.references:
         counted = [census for census in report.references if not census.note]
         problems = any(census.problems or census.unsent for census in counted)
@@ -471,4 +490,4 @@ def _flagged(name: str, present, mine: list) -> str:
 
 __all__ = ["ASKED", "CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "asked", "checks",
            "counted", "shown", "grouped", "kinds", "kinds_of", "questions_open", "rows",
-           "standings"]  # fmt: skip
+           "standings", "words_asked"]  # fmt: skip

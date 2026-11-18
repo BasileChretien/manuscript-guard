@@ -142,9 +142,16 @@ def test_g14_reads_the_twins_words_as_the_examples(project: Path, tmp_path: Path
     latex = check_language(load_project(root)[0])
     assert latex.counts == example.counts
     assert example.counts["notation_intervals"] > 0 and example.counts["notation_percents"] > 0
-    assert [(f.code, f.message) for f in latex.findings] == [
-        (f.code, f.message) for f in example.findings
+    # G14's question on the short forms never defined names each at its file and line,
+    # main.tex's and main.md's (decision 30): held by the warnings it holds on each, and by
+    # its forms.
+    from manuscript_guard.auditing.undefined import unasked
+
+    assert [(f.code, f.message) for f in unasked(list(latex.findings))] == [
+        (f.code, f.message) for f in unasked(list(example.findings))
     ]
+    assert [[form for form, _w in getattr(f, "forms", ())] for f in latex.findings] == [
+        [form for form, _w in getattr(f, "forms", ())] for f in example.findings]
 
 
 def test_g6_reads_the_twins_prose_as_the_examples(project: Path, tmp_path: Path) -> None:

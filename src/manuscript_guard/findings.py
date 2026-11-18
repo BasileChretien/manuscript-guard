@@ -47,10 +47,38 @@ class Finding:
                 where += f":{self.col}"
         return where
 
+    @property
+    def question(self) -> bool:
+        """Whether it is a question to the author (`Question`), which no other finding is."""
+        return False
+
     def as_dict(self) -> dict:
         out = asdict(self)
         out["path"] = None if self.path is None else str(self.path)
         return out
+
+
+@dataclass(frozen=True)
+class Question(Finding):
+    """A question to the author: what a gate saw where no exact rule can decide, one question,
+    and the answer that ends it. It never fails and is never counted as a warning, so it
+    changes no exit code at any stage: a note (INFO), which `--json` marks
+    `"question": true` and the text shows apart, under `QUESTIONS` (Basile, 2026-11-16,
+    decisions 27 and 30). The stage leaves it as it is: `policy.apply_stage` moves only
+    failures."""
+
+    severity: str = INFO
+
+    @property
+    def question(self) -> bool:
+        return True
+
+    def as_dict(self) -> dict:
+        return {**super().as_dict(), "question": True}
+
+
+#: The heading the text puts the questions to the author under, apart from the findings.
+QUESTIONS = "Questions for the author (they never fail, and are not counted as warnings):"
 
 
 @dataclass(frozen=True)
@@ -124,24 +152,40 @@ class Report:
         )
 
     def render(self, root: Path | None = None) -> str:
+        """The findings, failures first, a few lines each; then the questions to the author,
+        apart, under `QUESTIONS`; then the counts."""
         lines: list[str] = []
-        for finding in self.sorted().findings:
-            where = finding.located()
-            if root is not None and finding.path is not None:
-                try:
-                    rel = finding.path.relative_to(root)
-                    where = where.replace(str(finding.path), str(rel), 1)
-                except ValueError:
-                    pass
-            lines.append(f"  [{finding.severity.upper():4}] {finding.gate} {where}")
-            lines.append(f"         {finding.message}")
-            if finding.context:
-                lines.append(f"         > {finding.context}")
-            if finding.hint:
-                lines.append(f"         hint: {finding.hint}")
+        found = self.sorted().findings
+        for finding in found:
+            if not finding.question:
+                lines += _rendered(finding, root)
+        asked = [finding for finding in found if finding.question]
+        if asked:
+            lines += ["", QUESTIONS] if lines else [QUESTIONS]
+            for finding in asked:
+                lines += _rendered(finding, root)
         if self.counts:
             lines.append("  " + "  ".join(f"{k}={v}" for k, v in sorted(self.counts.items())))
         return "\n".join(lines) if lines else "  (nothing to report)"
+
+
+def _rendered(finding: Finding, root: Path | None) -> list[str]:
+    """One finding as `Report.render` prints it: its severity, gate and place, its message,
+    its context and its hint."""
+    where = finding.located()
+    if root is not None and finding.path is not None:
+        try:
+            rel = finding.path.relative_to(root)
+            where = where.replace(str(finding.path), str(rel), 1)
+        except ValueError:
+            pass
+    lines = [f"  [{finding.severity.upper():4}] {finding.gate} {where}",
+             f"         {finding.message}"]  # fmt: skip
+    if finding.context:
+        lines.append(f"         > {finding.context}")
+    if finding.hint:
+        lines.append(f"         hint: {finding.hint}")
+    return lines
 
 
 def merge_all(reports: list[Report]) -> Report:

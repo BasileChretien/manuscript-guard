@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import shutil
 import unicodedata
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 import yaml
 
+from manuscript_guard.auditing.undefined import unasked
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.text.latex.mask import NUL
@@ -43,7 +45,9 @@ def _latex(project: Path, files: dict[str, str], **paper) -> object:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     document.update(paper)
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    return check_language(load_project(project)[0])
+    # G14's question on the short forms never defined as the warning it holds on each.
+    report = check_language(load_project(project)[0])
+    return replace(report, findings=tuple(unasked(list(report.findings))))
 
 
 # ---------------------------------------------------------------- the view

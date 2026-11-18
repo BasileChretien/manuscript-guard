@@ -13,9 +13,13 @@ import pytest
 
 from manuscript_guard.cli import main
 
+#: Its XYZ and CI, never defined, are G14's question to the author, said with the report's
+#: questions and no kind of finding on the words (decision 30); its ICU, used before the
+#: sentence that defines it, is a kind of G14's, which the words' section is drawn for.
 PAPER = (
     "# Abstract\n\nOf the patients, 412 improved.\n\n# Methods\n\nThe XYZ panel read every "
-    "record (CI 0.1 to 0.2).\n\n# Results\n\nOf the patients, 40 improved (p ≥ 0.05).\n"
+    "record (CI 0.1 to 0.2). The ICU was full. The intensive care unit (ICU) was busy.\n\n"
+    "# Results\n\nOf the patients, 40 improved (p ≥ 0.05).\n"
 )
 
 
@@ -57,11 +61,14 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     text = "".join(page.extract_text() for page in reader.pages)
     # The Abstract's 412, not found where the paper reports, with its quote.
     assert "Of the patients, 412 improved." in text
+    # G14's question, which a reader of the PDF finds with the report's questions.
+    assert "Questions for the author" in text and "never defined" in text
     # The report's last line, as the text and the page end with it (round 1 of #618).
     assert "bind the numbers instead" in " ".join(text.split())
-    # The title's bookmark holds the checks' table's and the contents', and no other.
+    # The title's bookmark holds the checks' table's, the contents' and, the paper's XYZ and
+    # CI being G14's question, the questions' (decision 30), and no other.
     top = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
-    assert top["/Count"] == 2
+    assert top["/Count"] == 3 and (1, "Questions for the author") in titles
 
 
 def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(

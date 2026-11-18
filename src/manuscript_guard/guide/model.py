@@ -252,6 +252,8 @@ WHY = {
     "co-author-checks": "Rule co-author-checks (tier 7): a round of co-authors' checks is "
     "open, and an answer about changed text counts for nothing.",
     "warnings": "Rule warnings (tier 8): nothing fails, but these are worth reading now.",
+    "questions": "Rule questions (tier 8): no exact rule decides these, so the gate asks the "
+    "author; a question fails nothing and counts nowhere, and its answer is the author's.",
     "advance": "Rule advance (tier 9): nothing fails at this stage.",
     "optional": "Rule optional (tier 10): a step an author may take once nothing fails at "
     "internal review or later; none is required by a gate.",

@@ -13,9 +13,14 @@ why it works the same in any field:
 The last is the one that depends on the reader. "DNA" is a word in a genetics journal and
 an abbreviation in a law review, so the list of what may stand undefined is data
 (`data/abbreviations.yaml`, kept short) and the project's to extend, under
-`language: known_abbreviations:` in `paper.yaml`.
+`language: known_abbreviations:` in `paper.yaml`. Most of what is left undefined in a real
+paper is a name, a designation or a form every reader knows (82% of those the judges read in
+the corpus of 52 preprints), which no exact rule tells from a short form that needs its
+definition. So the last is one question to the author for the paper (`Asked`), listing
+every form at its first use, answered by defining each or listing it as known (Basile,
+2026-11-16, decision 30). A question never fails and is not counted as a warning.
 
-**Every finding is a warning.** A definition is recognised by its shape, a long form with
+**Every other finding is a warning.** A definition is recognised by its shape, a long form with
 the short form in brackets after it or the other way round, after a dash, an equals sign or
 a colon, after "known as" and its kin, or in a LaTeX citation's note (`_definitions`), and
 the long form is matched to the short one letter by letter (Schwartz and Hearst, 2003).
@@ -54,7 +59,7 @@ from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.contracts.results import Results, load_results
 from manuscript_guard.corrections import Edit
-from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Question, Report
 from manuscript_guard.gates import glossary
 from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
 from manuscript_guard.gates.notation import judge_notation, notation_edits
@@ -2438,6 +2443,9 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         )
 
     findings: list[Finding] = []
+    # Each short form used and not defined: its form, how the question lists it, and G14's
+    # warning on it, made one question at the end (`_one_question`).
+    undefined: list[tuple[str, str, Finding]] = []
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
     title_paged = _on_title_pages(files)
@@ -2551,24 +2559,86 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             # gaps), so a use or a definition there is not counted (corpus round, 2026-11-10).
             message = (f"{short} is used {times} in the {scope.name} as G14 reads it, and not "
                        "defined there")  # fmt: skip
-            if scope.name == BODY and short in scopes[ABSTRACT].defined:
+            abstract_defines = scope.name == BODY and short in scopes[ABSTRACT].defined
+            if abstract_defines:
                 message += "; the abstract defines it, and is read apart from the paper"
-            findings.append(
-                finding(
-                    "abbreviation-undefined",
-                    uses[0],
-                    short,
-                    message,
-                    "define it at first use, or list it in quotes under `language: "
-                    "known_abbreviations:` in paper.yaml if this journal's readers take it "
-                    "for a word or a name",
-                )
+            one = finding(
+                UNDEFINED,
+                uses[0],
+                short,
+                message,
+                "define it at first use, or list it in quotes under `language: "
+                "known_abbreviations:` in paper.yaml if this journal's readers take it "
+                "for a word or a name",
             )
+            findings.append(one)
+            said = _ABSTRACT_DEFINES if abstract_defines else _SCOPE_SAID.get(scope.name, "")
+            undefined.append((short, f"{short} at {where(uses[0])}{said}", one))
 
     return Report(
-        tuple(findings),
+        tuple(_one_question(findings, undefined)),
         {"abbreviations_read": len(everything), "abbreviations_defined": len(defined_anywhere)},
     )
+
+
+#: The code of G14's question on the short forms used and never defined.
+UNDEFINED = "abbreviation-undefined"
+#: What the question says of a form used and not defined in a part read apart from the main
+#: text, and of one the abstract alone defines.
+_SCOPE_SAID = {ABSTRACT: " (in the abstract)", SUPPLEMENT: " (in the supplement)"}
+_ABSTRACT_DEFINES = " (the abstract defines it, and is read apart from the paper)"
+#: How the question is answered: by the author, form by form.
+#: In quotes: unquoted, YAML reads NO, ON and YES as booleans, and the list then holds
+#: "False" (round 1 of #701).
+ASK_HINT = ("list those your readers know, in quotes, under `language: known_abbreviations` in "
+            "paper.yaml, and define the others at their first use, the long form then the "
+            "short form in brackets")  # fmt: skip
+
+
+@dataclass(frozen=True)
+class Asked(Question):
+    """G14's one question on the short forms a paper uses and never defines, at the first
+    one's first use: whether any needs defining, where no exact rule can tell a short form
+    that does from a name, a designation or an everyday form (Basile, 2026-11-16, decision
+    30: 82% of those the judges read in the corpus were). `forms` holds each form with what
+    G14 says of it, at its first use, in G14's reading order: the abstract, the main text,
+    the supplement, and in each by first use."""
+
+    forms: tuple[tuple[str, Finding], ...] = ()
+
+    def as_dict(self) -> dict:
+        out = {key: value for key, value in super().as_dict().items() if key != "forms"}
+        out["forms"] = [{"form": form, "message": warning.message,
+                         "path": None if warning.path is None else str(warning.path),
+                         "line": warning.line, "context": warning.context}
+                        for form, warning in self.forms]  # fmt: skip
+        return out
+
+
+def _one_question(
+    findings: list[Finding], undefined: list[tuple[str, str, Finding]]
+) -> list[Finding]:
+    """`findings` with the warnings on the short forms used and not defined made one question
+    (`Asked`) where the first of them stood; as they were where there is none. `undefined`
+    holds each warning with its form and how the question lists it."""
+    if not undefined:
+        return findings
+    first = undefined[0][2]
+    count = len({form for form, _said, _warning in undefined})
+    listed = ", ".join(said for _form, said, _warning in undefined)
+    message = (f"{count} short form{'s are' if count != 1 else ' is'} used and never defined as "
+               f"G14 reads the paper: {listed}. Do any of them need defining?")  # fmt: skip
+    question = Asked(gate=GATE, code=UNDEFINED, message=message, path=first.path,
+                     line=first.line, context=first.context, hint=ASK_HINT,
+                     forms=tuple((form, warning) for form, _said, warning in undefined))
+    taken = {id(warning) for _form, _said, warning in undefined}
+    out: list[Finding] = []
+    for one in findings:
+        if id(one) == id(first):
+            out.append(question)
+        elif id(one) not in taken:
+            out.append(one)
+    return out
 
 
 def check_language(

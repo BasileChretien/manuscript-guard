@@ -447,14 +447,18 @@ def test_the_summary_says_the_questions_open_instead_of_clear(
     from manuscript_guard.auditing.summary import ASKED, LOOK, asked, standings
 
     monkeypatch.chdir(tmp_path)
-    for text, count in ((POPULATION, 1), (BACKGROUND, 2), (UNLABELLED, 1)):
+    # With whether G14 asks of the paper's short forms never defined: UNLABELLED's OR and CI.
+    for text, count, words in ((POPULATION, 1, 0), (BACKGROUND, 2, 0), (UNLABELLED, 1, 1)):
         paper = _write(tmp_path, text)
         found = audit([paper], None)
         assert standings(found)["Abstract against Results"] == ASKED, text
         assert asked(found) == {"Abstract against Results": count}
         view = web.view(["audit", "paper.md"])["view"]
         assert view["standing"]["Abstract against Results"] == ASKED
-        assert view["asked"] == {"Abstract against Results": count}
+        # And G14's question on the short forms never defined, where the paper has one, is
+        # counted for the words (decision 30).
+        assert view["asked"] == {"Abstract against Results": count,
+                                 **({"Writing and language": words} if words else {})}
         line = dict(view["checks"])["Abstract against Results"]
         assert line.endswith(f"{count} question{'s' if count > 1 else ''} for the author"), line
         assert main(["audit", str(paper), "--strict"]) == 0

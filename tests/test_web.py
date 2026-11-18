@@ -547,17 +547,22 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     (tmp_path / "paper.md").write_text(
         "# Methods\n\n" + " ".join(f"The {short} was computed." for short in undefined)
         + " It was done, highlighting the importance of the method."
+        # A kind of G14's, now the short forms never defined are a question (decision 30).
+        + " The ICU was full. The intensive care unit (ICU) was busy."
         + "\n\n| Group | n |\n|---|---|\n| A | 3 |\n| B | 4 |\n| Total | 9 |\n",
         encoding="utf-8")  # fmt: skip
     result = web.view(["audit", "paper.md"])
     assert result["out"] == web.run(["audit", "paper.md"])["out"]
     view = json.loads(json.dumps(result))["view"]
     assert [name for name, _said in view["checks"]][:2] == ["Numbers in the outputs", "Arithmetic"]
-    (kind,) = [kind for paper in view["words"] for kind in paper["kinds"]
-               if kind["code"] == "abbreviation-undefined"]  # fmt: skip
-    # One finding for the ten short forms, counted as ten (`auditing.undefined`).
-    assert kind["count"] == len(undefined) and len(kind["places"]) == 1
-    assert kind["hint"] and all(place["hint"] is None for place in kind["places"])
+    # One question for the ten short forms, asked apart with the other questions and no
+    # kind of finding on the words, answered in the page's box (decision 30).
+    assert not [kind for paper in view["words"] for kind in paper["kinds"]
+                if kind["code"] == "abbreviation-undefined"]  # fmt: skip
+    (asked,) = [said for heading, notes in view["notes"] if heading.startswith("Questions")
+                for said in notes if "never defined" in said]  # fmt: skip
+    assert asked.startswith("paper.md, line 3: 10 short forms are used and never defined")
+    assert asked.endswith('give those they know in "Words to leave alone".'), asked
     headings = [heading for heading, _text in view["sections"]]
     assert "Arithmetic" in headings and not any("Language (G14)" in h for h in headings)
     assert web.view(["audit", "paper.md", "--json"])["view"] is None
@@ -582,8 +587,8 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
                 if kind["code"] == code for place in kind["places"]]  # fmt: skip
 
     assert contexts(view, "ai-phrasing") and all(contexts(view, "ai-phrasing"))
-    assert contexts(view, "abbreviation-undefined") == [None]
-    assert all(contexts(full, "abbreviation-undefined"))
+    assert contexts(view, "abbreviation-used-before-defined") == [None]
+    assert all(contexts(full, "abbreviation-used-before-defined"))
     # Under DEBUG a view that cannot be drawn raises, as `main` does; without it, the text is
     # kept. A text that cannot be rendered draws no view either.
     drawn = report_module.view

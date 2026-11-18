@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+from manuscript_guard.auditing.undefined import unasked
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _file, _latex_read
@@ -178,7 +179,8 @@ def _judged(project: Path, text: str) -> list[tuple[str, str]]:
     shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
     (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
     report = check_language(load_project(project)[0])
-    return sorted((f.code, f.message.split()[0]) for f in report.findings)
+    # G14's question on the short forms never defined as the warning it holds on each.
+    return sorted((f.code, f.message.split()[0]) for f in unasked(list(report.findings)))
 
 
 def test_a_note_that_repeats_the_text_s_definition_restates_it(project: Path) -> None:
@@ -305,8 +307,9 @@ def test_a_heading_defines_in_the_supplement(project: Path) -> None:
     (folder / "S1.md").write_text("# Methods\n\n## Grip strength and electromyography (EMG)\n\n"
                                   "The EMG was read.\n", encoding="utf-8")  # fmt: skip
     report = check_language(load_project(project)[0])
-    assert not [f.message for f in report.findings if f.message.startswith("EMG ")], [
-        f.message for f in report.findings]
+    found = unasked(list(report.findings))
+    assert not [f.message for f in found if f.message.startswith("EMG ")], [
+        f.message for f in found]
 
 
 def test_a_heading_with_no_named_section_over_it_defines_nothing(tmp_path: Path) -> None:
@@ -420,7 +423,8 @@ def test_a_latex_heading_defines(tmp_path: Path) -> None:
 
 def _check(project: Path) -> set[str]:
     report = check_language(load_project(project)[0])
-    return _undefined([f.message for f in report.findings if f.code == "abbreviation-undefined"])
+    return _undefined([f.message for f in unasked(list(report.findings))
+                       if f.code == "abbreviation-undefined"])
 
 
 def test_check_reads_each_shape_in_a_markdown_project(project: Path) -> None:

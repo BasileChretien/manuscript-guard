@@ -79,7 +79,7 @@
         "rule": {
           "enum": ["cannot-check", "start", "stale-results", "plan", "choose-journal",
                    "choose-english", "choose-guideline", "choose-study-type", "provenance",
-                   "failures", "co-author-checks", "warnings", "advance", "optional"]
+                   "failures", "co-author-checks", "warnings", "questions", "advance", "optional"]
         },
         "tier": { "type": "integer", "minimum": 0, "maximum": 10 },
         "title": { "$ref": "#/$defs/text" },

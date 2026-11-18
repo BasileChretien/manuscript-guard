@@ -17798,6 +17798,122 @@ def rrid_sentences(draw: st.DrawFn) -> tuple[str, str, list, list]:
         read_tex  # fmt: skip
 
 
+# ------------------------------------- a P an adjustment explains, a share a weighting does
+
+#: Statements that a paper's P values are adjusted for multiple comparisons, each in its own
+#: words (decision 31).
+ADJUSTMENT_STATEMENTS = (
+    "P values were adjusted by the Bonferroni method.", "We applied the Holm-Bonferroni "
+    "procedure.", "The Benjamini-Hochberg procedure controlled the false discovery rate.",
+    "Hochberg's step-up procedure was used.", "Tests were corrected with FDR.",
+    "Pairwise contrasts used Tukey's HSD.", "Each arm was compared with control by Dunnett's "
+    "test.", "All P values were adjusted for multiple testing.", "Results were corrected for "
+    "multiple comparisons.", "A multiple-comparison correction was applied.",
+    "We used the \N{LATIN CAPITAL LETTER S WITH CARON}id\N{LATIN SMALL LETTER A WITH ACUTE}k "
+    "correction.", "The Benjamini-Yekutieli procedure was used.",
+)  # fmt: skip
+#: What adjusts an estimate for covariates, and says nothing of its P values.
+COVARIATE_ADJUSTMENTS = (
+    "Models were adjusted for age and sex.", "Estimates were adjusted for baseline values.",
+    "Results were corrected for baseline imbalance.", "We adjusted for multiple confounders.",
+)  # fmt: skip
+#: The words that say a table's shares are weighted, and where in the table each stands.
+WEIGHTINGS = ("weighted %", "weighted percentages", "survey-weighted", "IPW", "weighted n",
+              "inverse probability weighted", "Weighted statistics")  # fmt: skip
+WEIGHTED_PLACES = ("caption", "header", "label", "note")
+#: The kinds of test an adjusted paper prints, each in each example: a P larger than its
+#: statistic gives, asked about there; one smaller, found; and an interval whose P is on the
+#: other side of its level, found.
+ADJUSTED_KINDS = ("larger", "smaller", "interval")
+#: What `adjusted_papers` names the numbers that do not fit by, as `audit` gives them.
+UNFIT = "does-not-fit"
+
+
+def _a_test(draw: st.DrawFn, kind: str) -> str:
+    """A t test whose P is twice to five times the one its statistic gives (`larger`), a
+    fifth to a half of it (`smaller`); or a ratio whose interval excludes 1 beside a P above
+    0.05 (`interval`)."""
+    from manuscript_guard.stats.special import p_t
+
+    if kind == "interval":
+        estimate = draw(st.integers(160, 300)) / 100
+        spread = draw(st.integers(115, 130)) / 100
+        low, high = estimate / spread, estimate * spread
+        return (f"OR {estimate:.2f} (95% CI {low:.2f}-{high:.2f}), "
+                f"P = {draw(st.integers(20, 80)) / 100:.2f}")  # fmt: skip
+    t, df = draw(st.integers(200, 300)) / 100, draw(st.integers(12, 60))
+    p = p_t(t, df)
+    factor = draw(st.integers(2, 5))
+    shown = min(p * factor, 0.95) if kind == "larger" else p / factor
+    return f"t({df}) = {t:.2f}, P = {shown:.4f}"
+
+
+def _a_table(draw: st.DrawFn, number: int, place: str | None) -> tuple[list[str], int, int]:
+    """Table `number`, its words of weighting at `place` (None for none): its lines, and the
+    lines in it from 1 of a share off its column's n and of one that fits it."""
+    words = draw(st.sampled_from(WEIGHTINGS)) if place else ""
+    n = draw(st.integers(400, 2000))
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    fits = Decimal(100 * k) / n
+    off = fits + draw(st.integers(3, 9)) * draw(st.sampled_from((1, -1)))
+    caption = f"Table {number}. Characteristics" + (f", {words}." if place == "caption" else ".")
+    header = f"Exposed{', ' + words if place == 'header' else ''} (n = {n})"
+    label = f"Male sex{' (' + words + ')' if place == 'label' else ''}, n (%)"
+    note = f"Note. The shares are {words}." if place == "note" else "Note. As read."
+    rows = [f"| {label} | {k} ({off:.1f}%) |", f"| Smokers, n (%) | {k} ({fits:.1f}%) |"]
+    order = draw(st.permutations(rows))
+    lines = [caption, "", f"| Characteristic | {header} |", "|---|---|", *order, "", note]
+    return lines, 5 + order.index(rows[0]), 5 + order.index(rows[1])
+
+
+@st.composite
+def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str, list]]]:
+    """Two Markdown papers, one that says its P values are adjusted (a statement of
+    `ADJUSTMENT_STATEMENTS`, in its Methods or its Discussion) and one that does not, each
+    with a covariate adjustment, each test of `ADJUSTED_KINDS` in its Results in an order
+    drawn, a weighted table (its words at a place drawn of `WEIGHTED_PLACES`) and one that
+    says nothing, in an order drawn; the second with a reference list that names Bonferroni.
+    And where `audit` says each: the lines of its questions, by code, and of the numbers that
+    do not fit (decision 31)."""
+    from manuscript_guard.auditing.adjusted import ASKED_ADJUSTED, ASKED_WEIGHTED
+
+    statement = draw(st.sampled_from(ADJUSTMENT_STATEMENTS))
+    covariate = draw(st.sampled_from(COVARIATE_ADJUSTMENTS))
+    after = draw(st.booleans())
+    kinds = draw(st.permutations(ADJUSTED_KINDS))
+    tests = {kind: _a_test(draw, kind) for kind in kinds}
+    weighted_first = draw(st.booleans())
+    place = draw(st.sampled_from(WEIGHTED_PLACES))
+    tables = [_a_table(draw, 1, place if weighted_first else None),
+              _a_table(draw, 2, None if weighted_first else place)]
+    papers, expected = {}, {}
+    for adjusted in (True, False):
+        methods = f"We read the records. {covariate}" + (
+            f" {statement}" if adjusted and not after else "")
+        lines = ["# Methods", "", methods, "", "# Results", ""]
+        at = {}
+        for kind in kinds:
+            at[kind] = len(lines) + 1
+            lines += [f"The groups differed, {tests[kind]}.", ""]
+        found: dict[str, list[int]] = {ASKED_ADJUSTED: [], ASKED_WEIGHTED: [], UNFIT: []}
+        for index, (table, off, _fits) in enumerate(tables):
+            start = len(lines)
+            lines += [*table, ""]
+            weighted = (index == 0) == weighted_first
+            found[ASKED_WEIGHTED if weighted else UNFIT].append(start + off)
+        lines += ["# Discussion", "", "The groups differed." + (
+            f" {statement}" if adjusted and after else ""), ""]
+        if not adjusted:
+            lines += ["# References", "", "1. Bonferroni CE. Teoria statistica delle classi. "
+                      "Pubbl R Ist Sup Sci Econ Commer Firenze. 1936;8:3-62.", ""]  # fmt: skip
+        found[ASKED_ADJUSTED if adjusted else UNFIT].append(at["larger"])
+        found[UNFIT] += [at["smaller"], at["interval"]]
+        name = "adjusted" if adjusted else "unadjusted"
+        papers[name] = "\n".join(lines)
+        expected[name] = {code: sorted(lines_of) for code, lines_of in found.items()}
+    return papers, expected
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "pdf headings": st.one_of(
@@ -18042,6 +18158,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
          "no results": answers.get("no_results", False),
          "results": list(answers.get("results", ()))}
         for _kind, markdown, _latex, answers, _wanted in drawn])),
+    # Each of the two papers: the one that says it adjusts its P values, and the one that
+    # does not.
+    "numbers asked": adjusted_papers().flatmap(lambda drawn: st.sampled_from(
+        sorted(drawn[0].values()))),
     "causal words": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),
                               texts().map(lambda text: {"paper": text})),
     "cited sentences": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),

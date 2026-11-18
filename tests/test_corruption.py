@@ -3041,6 +3041,52 @@ def test_a_share_its_counts_do_not_give_in_the_results_is_a_number_that_does_not
                   "12 of 24"]  # fmt: skip
 
 
+def test_a_p_smaller_than_its_statistic_gives_is_found_in_a_paper_that_adjusts(
+    tmp_path: Path,
+) -> None:
+    """Decision 31: a paper that says its P values are Holm-adjusted has a larger P asked
+    about, since an adjustment makes a P larger; a P smaller than its t gives is wrong under
+    any adjustment and is still a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\nAll P values were Holm-adjusted.\n\n# Results\n\nThe arms "
+                     "differed, t(23) = 2.71, P = 0.002.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == []
+    (found,) = report.disagreements
+    assert found.message.endswith("and the text says P = 0.002"), found
+
+
+def test_g8_warns_of_a_p_smaller_than_its_statistic_in_a_manuscript_that_adjusts(
+    project: Path,
+) -> None:
+    """The same in `check`: G8 warns, and asks nothing."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nAll P values were Holm-adjusted. "
+                    "The arms differed, t(23) = 2.71, p = .002.\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in _recomputed(project).findings if "t(23) = 2.71" in (f.context or "")]
+    assert [(f.code, f.severity, f.question) for f in found] == [("p-inconsistent", "warn",
+                                                                  False)]  # fmt: skip
+
+
+def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
+    tmp_path: Path,
+) -> None:
+    """Decision 31: Table 1 says its shares are weighted, and its share off the column's n is
+    asked about; Table 2 of the same paper says nothing, and the same share off is still a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
+                     f"Counts.\n\n{table}\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert [d.line for d in report.arithmetic_asked] == [7]
+    assert [d.line for d in report.disagreements] == [13]
+
+
 def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:
     """Round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, 75.0%, not 12,
     under every heading, as were the phases, stages and types of a clinical paper. A range

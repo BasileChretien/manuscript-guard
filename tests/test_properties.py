@@ -82,10 +82,12 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    UNFIT,
     UNITS_TYPED,
     WORD_EDITS,
     WRITTEN_WORDS,
     abstract_trees,
+    adjusted_papers,
     alt_texts,
     answered_papers,
     beside_edited,
@@ -23790,6 +23792,72 @@ def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
                   lambda old, new: [("replace", 0, len(old), 0, len(new))])  # fmt: skip
 
 
+# ------------------------------------- a P an adjustment explains, a share a weighting does
+
+
+def _asked_and_unfit(text: str) -> dict[str, list[int]]:
+    """Where `audit` asks of a Markdown paper's numbers, by code, and where it says they do
+    not fit, as `adjusted_papers` gives them."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.adjusted import ASKED_ADJUSTED, ASKED_WEIGHTED
+
+    with tempfile.TemporaryDirectory() as folder:
+        paper = Path(folder) / "paper.md"
+        paper.write_text(text, encoding="utf-8")
+        report = audit([paper], None)
+    return {code: sorted(d.line for d in report.arithmetic_asked if d.code == code)
+            for code in (ASKED_ADJUSTED, ASKED_WEIGHTED)} | {
+        UNFIT: sorted(d.line for d in report.disagreements)}  # fmt: skip
+
+
+@holds(25, adjusted_papers())
+def test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else(
+    drawn: tuple[dict[str, str], dict[str, dict[str, list[int]]]],
+) -> None:
+    """Decision 31 (Basile, 2026-11-16): in a paper that says its P values are adjusted for
+    multiple comparisons, in its Methods or its Discussion, in any words of the list, a P
+    larger than its statistic gives is asked about; a smaller one, and an interval's P, are
+    numbers that do not fit. The same paper that says only that its models are adjusted for
+    covariates, and names Bonferroni in its reference list, has all three as numbers that do
+    not fit. In both, a share off its column's n is asked about in the table that says its
+    shares are weighted, in its caption, its header, a row's label or its note, and is a
+    number that does not fit in the table that says nothing."""
+    papers, expected = drawn
+    for name, text in papers.items():
+        assert _asked_and_unfit(text) == expected[name], (name, text)
+
+
+def _a_smaller_p_is_let_off(patch: pytest.MonkeyPatch) -> None:
+    """Every P off its statistic read as larger: an adjustment taken to explain a P smaller
+    than its statistic gives, which no adjustment does."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "larger", lambda verdict: True)
+
+
+def _a_covariate_adjustment_adjusts_p(patch: pytest.MonkeyPatch) -> None:
+    """"Adjusted for" any words read as an adjustment of P values: "adjusted for age and sex"
+    let a paper's larger P off."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "ADJUSTMENT", re.compile(
+        adjusted.ADJUSTMENT.pattern + r"|\b(?:adjust|correct)(?:ed|ing)?\s+for\b"))
+
+
+def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
+    """A paper's one weighted table taken for all its tables."""
+    from manuscript_guard.auditing import adjusted
+
+    real = adjusted.weighted_tables
+
+    def weighted_tables(tables, **given):
+        found = real(tables, **given)
+        said = next((one for one in found if one is not None), None)
+        return [said for _table in found]
+
+    patch.setattr(adjusted, "weighted_tables", weighted_tables)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -30567,6 +30635,18 @@ BROKEN = {
     "a blank line in a comment ends a sentence of what the audit reads": (
         _a_comment_s_blank_line_ends_a_sentence,
         test_the_audit_reads_a_markdown_paper_on_the_lines_it_has,
+    ),
+    "a smaller P is let off as a question": (
+        _a_smaller_p_is_let_off,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a covariate adjustment is read as one of P values": (
+        _a_covariate_adjustment_adjusts_p,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "one weighted table lets off another": (
+        _one_weighted_table_lets_off_all,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
 }
 

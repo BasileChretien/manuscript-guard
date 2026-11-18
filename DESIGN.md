@@ -10725,6 +10725,30 @@ questions"). The referee's draft keeps it under Language and notation, where the
 stood, and counts it as one thing G14 reported, as it lists part B's among its findings: the
 forms are a referee's to read, though the answer is the author's.
 
+Two more are the arithmetic's, in both readers where both read the number (decision 31,
+"Both"). A paper that says once, anywhere outside its reference list, that its P values are
+adjusted for multiple comparisons (`stats/adjusted.py`: a closed list of names and phrases,
+read as exact words, "adjusted for age and sex" none) has a P larger than the whole range its
+statistic gives asked about: an adjustment only makes a P larger, so that is what one gives.
+The audit asks `question-p-adjusted`; `check`'s G8 asks with `findings.Question`, keeping the
+code `p-inconsistent` or `p-decision-error` as G14 keeps `abbreviation-undefined`, so that
+`next` routes it with G8's (the `questions` rule) and its hint says the answer: "adjusted"
+beside the test, which `stats/reported.QUIET` already reads. A smaller P is wrong under any
+adjustment and stays a finding. An interval's P (`p-against-interval`) stays a finding too:
+an adjustment may widen the interval as well as raise the P, or touch only one, and no exact
+rule says which way the two would then disagree. A table whose caption, cells or note says
+its shares are weighted has a share off its column's n asked about in the audit
+(`question-share-weighted`, `auditing/adjusted.py`); only that table's. `check` holds no n
+(%) of a project's tables to a denominator (`gates/custodian.py` reads the margins only for
+the counts a total gives away), so the weighting has nothing to let off there. Both audit
+questions stand at the number, under "Questions for the author" with their place, are
+counted in `--json` as `asked_p_adjusted` and `asked_share_weighted`, and make the
+Arithmetic's tile say "N QUESTIONS" where it has nothing else to say. In the corpus run on
+0223ca005 seven P values became questions, six of docx-sport-A3 ("Bonferroni corrections
+were applied where necessary") and one of docx-psych-A3 (the false discovery rate), the
+latter in `check` too; no share did, since docx-psych-B2's weighted supplementary tables say
+so only in its Methods (Known gaps).
+
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
 On the author's paper seven entries gave neither a DOI nor a PMID, and the audit listed all
@@ -16827,6 +16851,26 @@ been sorted yet.
   - A paper with a great many forms gets one long message, every form named in it with
     its first use. Pinned by
     `tests/test_undefined_asked.py::test_check_asks_one_question_listing_every_form_at_its_first_use`.
+
+- **A paper's statement that it adjusts its P values is read by its words alone, and for
+  every test.** The words are a closed list, read with no scoring (decision 31), so a
+  statement that no adjustment was made ("P values were not adjusted for multiple
+  comparisons"), one that adjusts some tests ("for the secondary outcomes only"), and a name
+  used in another sense (a classifier's false discovery rate, as tex-stat-ap-A2 gives it;
+  Tukey's fences) are each a statement, and every P of the paper larger than its statistic
+  gives is asked about rather than found. A smaller P is still found. Pinned by
+  `tests/test_adjusted_weighted.py::test_a_statement_is_read_by_its_words_alone`.
+  - A figure given with `--figures` is read as no part of a paper, and its tests under no
+    statement. Accepted.
+
+- **A table's shares are taken as weighted only where the table says so.** Its caption,
+  cells or note must hold words of the closed list; a sentence elsewhere, "Descriptive
+  statistics were weighted to be nationally representative", names no table by an exact
+  rule, so it lets off none, and docx-psych-B2's 31 supplementary shares off their column's n
+  stay findings though its Methods says they are weighted. Words outside the list ("%,
+  weighted"), and a note that is not the paragraph right after the table, say nothing.
+  `check` holds no share to a denominator, so there is nothing to let off there. Pinned by
+  `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`.
 
 - **A block the LaTeX reader skips in the body is matched by its text, and nothing in it is
   read.** A `\makeatletter` runs to the first `\makeatother` and a conditional to its

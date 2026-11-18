@@ -1956,6 +1956,26 @@ def _abstract_questions() -> Reading:
     return read
 
 
+@reading("numbers asked")
+def _numbers_asked() -> Reading:
+    """What `audit` says in its Arithmetic of a Markdown paper's numbers that do not fit the
+    ones beside them, and of those it asks the author about instead (decision 31): each item,
+    by its code, its line, its severity, whether `--strict` counts it and whether it is a
+    question."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.report import ARITHMETIC, items
+
+    def read(given: str) -> list[list[Any]]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper = Path(folder) / "paper.md"
+            paper.write_text(given, encoding="utf-8")
+            report = audit([paper], None)
+            return sorted([item.code, item.line, item.severity, item.counted, item.question]
+                          for item in items(report) if item.section == ARITHMETIC)
+
+    return read
+
+
 @reading("word abstract")
 def _word_abstract() -> Reading:
     """What `audit` says of a Word paper's Abstract against its Results, the paper's body

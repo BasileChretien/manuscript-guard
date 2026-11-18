@@ -136,6 +136,8 @@ def _arithmetic(report) -> str:
     if report.disagreements:
         said += ("; " if said else "") + (
             f"{_n(len(report.disagreements), 'number')} that may not fit the ones beside it")
+    if asked := arithmetic_asked(report):
+        said += ("; " if said else "") + _questions(asked)
     if off := len(report.sds_off):
         said += ("; " if said else "") + _n(off, "SD") + (
             " that cannot go with its mean and n" if off == 1 else
@@ -364,9 +366,17 @@ ASKED = "asked"
 def asked(report) -> dict[str, int]:
     """How many questions each check of `rows` asks the author, where it asks any: what the
     tile of one that stands `ASKED` says."""
-    counts = {"Abstract against Results": questions_open(report.abstract),
+    counts = {"Arithmetic": arithmetic_asked(report),
+              "Abstract against Results": questions_open(report.abstract),
               "Writing and language": words_asked(report)}
     return {name: count for name, count in counts.items() if count}
+
+
+def arithmetic_asked(report) -> int:
+    """How many questions the arithmetic asks the author: one for each P a paper's adjustment
+    for multiple comparisons may explain, and each share its table's weighting may (decision
+    31)."""
+    return len(getattr(report, "arithmetic_asked", None) or [])
 
 
 def words_asked(report) -> int:
@@ -400,6 +410,9 @@ def standings(report) -> dict[str, str]:
                                  or report.sds_off or report.binary_off), numbers=True),
            "Small cells": of(bool(report.recovered), bool(report.recovered_by_n),
                              numbers=True)}  # fmt: skip
+    # Its questions open where nothing else is to say (decision 31, "Show the questions").
+    if arithmetic_asked(report) and out["Arithmetic"] == CLEAR:
+        out["Arithmetic"] = ASKED
     read = report.abstract
     if read is not None:
         out["Abstract against Results"] = (NOT_RUN if not read.compared else of(
@@ -488,6 +501,7 @@ def _flagged(name: str, present, mine: list) -> str:
     return LOOK if looked else CLEAR
 
 
-__all__ = ["ASKED", "CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "asked", "checks",
+__all__ = ["ASKED", "CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "arithmetic_asked",
+           "asked", "checks",
            "counted", "shown", "grouped", "kinds", "kinds_of", "questions_open", "rows",
            "standings", "words_asked"]  # fmt: skip

@@ -164,6 +164,10 @@ class AuditReport:
     #: Each test whose P does not follow from its statistic. No backing set is needed for
     #: these, and they are listed apart: --strict does not count them.
     disagreements: list[Disagreement] = field(default_factory=list)
+    #: Each of those that may fit after all, asked of the author instead (`auditing.adjusted`):
+    #: a P larger than its statistic gives, in a paper that says its P values are adjusted,
+    #: and a share off its column's n, in a table that says its shares are weighted.
+    arithmetic_asked: list = field(default_factory=list)
     #: The rows --whole-numbers named, and how many means were read in them.
     whole_numbers: tuple[str, ...] = ()
     means_read: int = 0
@@ -1644,11 +1648,12 @@ def audit(
         sources.append(_Source(path, text, hidden, text, text, (), False, True))
 
     report.papers = tuple(source.path for source in sources)
+    adjusted = _adjusted(report, sources[:read])
     pieces = []
     for source in sources:
         report.read["tables"] = report.read.get("tables", 0) + len(source.tables)
         report.read["headings"] = report.read.get("headings", 0) + len(source.heading_lines)
-        atoms = _read_numbers(report, source, classifier, values)
+        atoms = _read_numbers(report, source, classifier, values, adjusted.get(source.path))
         _flows(report, source)
         pieces.append(_piece(source, atoms))
     from manuscript_guard.auditing.abstract import against_results
@@ -1673,6 +1678,34 @@ def audit(
         # The papers' tables, not the figures'.
         report.baseline = baseline.baseline_tables(sources[:read], design)
     return report
+
+
+def _adjusted(report: AuditReport, sources: list[_Source]) -> dict[Path, object]:
+    """Each paper's file, a LaTeX paper's every file, by its path, with the first statement
+    the paper makes that its P values are adjusted for multiple comparisons
+    (`auditing.adjusted.statement`), where it makes one: its files read in order, outside its
+    reference list."""
+    from manuscript_guard.auditing import sentences
+    from manuscript_guard.auditing.adjusted import statement
+
+    paper_of = {path: tree.entry for tree in report.trees for path, _source in tree.files}
+    first: dict[Path, object] = {}
+    for source in sources:
+        paper = paper_of.get(source.path, source.path)
+        if paper in first:
+            continue
+        # A heading ends the sentence before it and opens none: "Methods" is no part of the
+        # statement under it.
+        cuts = (sentences.latex_cuts(source.latex) if source.latex is not None else tuple(
+            at for span in sentences.line_spans(source.text, source.heading_lines)
+            for at in span))  # fmt: skip
+        found = statement(source.path, source.hidden, _lined(source) or source.hidden,
+                          lines=source.lines_are_blocks and not source.wrapped,
+                          cuts=tuple(cuts))  # fmt: skip
+        if found is not None:
+            first[paper] = found
+    return {source.path: first[paper_of.get(source.path, source.path)] for source in sources
+            if paper_of.get(source.path, source.path) in first}  # fmt: skip
 
 
 def _in_order(report: AuditReport, sources: list[_Source], papers: list[Path]) -> list:
@@ -1856,10 +1889,12 @@ def _flows(report: AuditReport, source: _Source) -> None:
 
 
 def _read_numbers(
-    report: AuditReport, source: _Source, classifier: Classifier, values: set[str]
+    report: AuditReport, source: _Source, classifier: Classifier, values: set[str],
+    adjusted: object = None,
 ) -> list[Atom]:
     """Every number of one source, classified and, where outputs were given, compared; the
-    numbers the classifier left unexplained are returned, for the Abstract against Results."""
+    numbers the classifier left unexplained are returned, for the Abstract against Results.
+    `adjusted` is where its paper says its P values are adjusted, None where it does not."""
     rendered_only = {
         rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
     }
@@ -1872,7 +1907,9 @@ def _read_numbers(
         _memo={},
     )
     path, text, hidden = source.path, source.text, source.hidden
-    found = _disagreements(path, hidden, list(source.tables), report.read, _lined(source))
+    found, asked = _disagreements(path, hidden, list(source.tables), report.read, _lined(source),
+                                  _Asking(adjusted, _weighted(source), report.placers))
+    report.arithmetic_asked += asked
     if report.whole_numbers:
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
                        key=lambda d: d.line)  # fmt: skip
@@ -1979,20 +2016,53 @@ def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
                                        found.member.context or found.line.context))  # fmt: skip
 
 
+@dataclass(frozen=True)
+class _Asking:
+    """What lets a number that does not fit be asked about instead (`auditing.adjusted`):
+    where the paper says its P values are adjusted, None where it does not; for each table,
+    what says its shares are weighted, or None; and what places a line of each paper."""
+
+    adjusted: object = None
+    weighted: tuple = ()
+    placers: dict = field(default_factory=dict)
+
+
+def _weighted(source: _Source) -> tuple:
+    """For each table of `source`, what says its shares are weighted, or None
+    (`auditing.adjusted.weighted_tables`). A PDF has none read as cells."""
+    from manuscript_guard.auditing.adjusted import weighted_tables
+
+    if not source.tables:
+        return ()
+    docx = "docx" if is_docx(source.path) else "markdown"
+    kind = "latex" if source.latex is not None else docx
+    return tuple(weighted_tables(list(source.tables), text=source.text, kind=kind,
+                                 latex=source.latex))  # fmt: skip
+
+
 def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | None = None,
-                   lined: str = "") -> list[Disagreement]:  # fmt: skip
+                   lined: str = "", asking: _Asking | None = None,
+                   ) -> tuple[list[Disagreement], list]:  # fmt: skip
     """The tests in a paper whose P does not follow from the statistic beside it, the
     estimates whose interval or P does not fit them, and the n (%) in its tables whose share
-    is not what the count gives of its denominator, read in its text as masked (`_masked`).
-    `read` counts the tests judged, the intervals and the shares read. Each is said at its
-    line in `lined`, `hidden` with every line break of the file (`_lined`), where it is given."""
+    is not what the count gives of its denominator, read in its text as masked (`_masked`);
+    and apart, those `asking` lets be asked of the author instead (`auditing.adjusted`): a P
+    larger than its statistic gives, where the paper says its P values are adjusted, and a
+    share in a table that says it is weighted. An interval's P is never asked about: an
+    adjustment may widen the interval too, or not. `read` counts the tests judged, the
+    intervals and the shares read. Each is said at its line in `lined`, `hidden` with every
+    line break of the file (`_lined`), where it is given."""
+    from manuscript_guard.auditing.adjusted import asked_p, asked_share
+    from manuscript_guard.stats.adjusted import larger
+
     read = {} if read is None else read
     lines = lined or hidden
+    asking = asking or _Asking()
 
     def counted(kind: str) -> None:
         read[kind] = read.get(kind, 0) + 1
 
-    found = []
+    found, asked = [], []
     for test in reported_tests(hidden):
         verdict = judge(test)
         if verdict is not None:
@@ -2000,10 +2070,12 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
         if verdict is None or not verdict.inconsistent:
             continue
         context = " ".join(hidden[test.start : test.end].replace("\x00", " ").split())
-        found.append(
-            Disagreement(path, lines.count("\n", 0, test.start) + 1,
-                         described(test, verdict), context)  # fmt: skip
-        )
+        line, said = lines.count("\n", 0, test.start) + 1, described(test, verdict)
+        if asking.adjusted is not None and larger(verdict):
+            asked.append(asked_p(test, verdict, asking.adjusted, path, asking.placers, said,
+                                 context, line))  # fmt: skip
+            continue
+        found.append(Disagreement(path, line, said, context))
     # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
     for interval in reported_intervals(hidden):
         counted("intervals")
@@ -2018,12 +2090,17 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
         if verdict is not None:
             found.append(Disagreement(path, line, described_against(interval, verdict), context))
     # And each n (%) in a table against its denominator (`stats/shares.py`).
-    for table in tables:
+    for at, table in enumerate(tables):
+        weighted = asking.weighted[at] if at < len(asking.weighted) else None
         for share in table_shares(table):
             counted("shares")
-            if off(share):
-                found.append(Disagreement(path, share.line, described_share(share), share.context))
-    return sorted(found, key=lambda d: d.line)
+            if not off(share):
+                continue
+            if weighted is not None:
+                asked.append(asked_share(share, weighted, path, described_share(share)))
+                continue
+            found.append(Disagreement(path, share.line, described_share(share), share.context))
+    return sorted(found, key=lambda d: d.line), sorted(asked, key=lambda d: d.line)
 
 
 # --------------------------------------------------------------------------- discrimination

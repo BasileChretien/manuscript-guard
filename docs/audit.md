@@ -133,9 +133,11 @@ findings in a referee's words: the number, where it stands, and that the author 
 naming no flag. Where a check asks questions and has nothing else to say, its line in "What
 was checked" and its tile on the page and in the PDF say how many are open, "2 QUESTIONS",
 not that nothing was found; a question still never fails a build (Basile, 2026-11-17).
-Four questions are asked so far, all of the Abstract against Results; `--json` counts the
-two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_background`, and
-`abstract_not_found` counts neither:
+Six questions are asked so far, four of the Abstract against Results and two of the
+Arithmetic; `--json` counts the two of the Abstract asked of single numbers,
+`abstract_asked_only_in` and `abstract_asked_background`, and `abstract_not_found` counts
+neither; it counts the Arithmetic's as `asked_p_adjusted` and `asked_share_weighted`, where
+any is asked, and neither is a number that does not fit:
 
 - **No Abstract found** (`question-no-abstract`): no heading names the Abstract. If the
   paper's first paragraph, or the text under its title, is its Abstract, put the heading
@@ -187,6 +189,27 @@ two asked of single numbers, `abstract_asked_only_in` and `abstract_asked_backgr
   is given nowhere in the paper; is it from the literature? The Introduction should give
   it, with its source, and that change to the paper ends the question. A number in any
   other part of the Abstract is read as before.
+- **A P its paper's adjustment may explain** (`question-p-adjusted`): the paper says, once,
+  anywhere outside its reference list, that its P values are adjusted for multiple
+  comparisons, in words of a closed list (Bonferroni, Holm, Hochberg, Benjamini-Hochberg,
+  Benjamini-Yekutieli, the false discovery rate or FDR, Šidák, Tukey, Dunnett, "adjusted
+  (corrected) for multiple comparisons (testing)"; "adjusted for age and sex" is none), and
+  a P is larger than the whole range its statistic gives. An adjustment only makes a P
+  larger, so the question quotes the statement and its place, says the P and what the
+  statistic gives on its own, and asks whether it is the adjusted P. Saying so beside the
+  test ("Holm-adjusted P = 0.048") ends it: a test its sentence calls adjusted is not
+  recomputed. A P smaller than its statistic gives is wrong under any adjustment and stays
+  a number that does not fit, and so does an interval's P, since an adjustment may widen the
+  interval as well, or not. A LaTeX paper is read as one across its files.
+- **A share its table's weighting may explain** (`question-share-weighted`): an n (%) off its
+  column's n in a table whose caption, header, a row's label or note says its shares are
+  weighted ("weighted %", "weighted percentages", "weighted n", "weighted statistics",
+  "survey-weighted", "inverse probability weighted", "IPW"; not "unweighted", nor "weighted
+  mean"). The note is the paragraph after the table in Markdown and in a .docx, and all of
+  the float in LaTeX. The question says the share is not its count's of the column's n and
+  asks whether it is the weighted share; if so, nothing is wrong. Another table of the same
+  paper is held to its n as before, and a sentence elsewhere that says the paper weights
+  lets off no table.
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests

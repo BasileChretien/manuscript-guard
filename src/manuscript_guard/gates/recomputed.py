@@ -11,7 +11,11 @@ gives (`stats/reported.py` says how both are read).
 `p-inconsistent`: the two do not meet. `p-decision-error`: they fall on either side of the
 significance level, the one the analysis emits as `param.alpha` or 0.05. Both are warnings:
 a test the sentence does not call one-sided or adjusted may still be one, and the reading
-of a sentence is the reading of a sentence.
+of a sentence is the reading of a sentence. Where the manuscript says anywhere that its P
+values are adjusted for multiple comparisons (`stats/adjusted.py`), a P stated wholly above
+the range its statistic gives is what an adjustment gives, and either is a question to the
+author (`findings.Question`), at INFO, never counted, quoting the statement and its place; a
+P below it stays a warning (Basile, 2026-11-16, decision 31).
 
 And an estimate printed with its confidence interval (`stats/intervals.py`): one outside its
 own interval, `interval-excludes-estimate`; a ratio's interval that its estimate does not
@@ -28,10 +32,14 @@ not exclude ratios far from 1, `no-effect-from-interval`, a note.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
+
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Question, Report
+from manuscript_guard.stats.adjusted import ASK_P_HINT, adjustment, asked_p, larger
 from manuscript_guard.stats.interval_words import HINTS, NO_EFFECT, Worded, worded
 from manuscript_guard.stats.interval_words import described as described_words
 from manuscript_guard.stats.intervals import (
@@ -62,7 +70,11 @@ def alpha_of(results: Results) -> float:
 
 
 def check_recomputed(project: Project, namespace: dict[str, Value], results: Results) -> Report:
-    """Each test statistic the manuscript prints whose P does not follow from it."""
+    """Each test statistic the manuscript prints whose P does not follow from it: a question
+    where the manuscript says its P values are adjusted and the P is larger (`_p_finding`).
+    An interval's P (`p-against-interval`) stays a warning there: an adjustment may widen the
+    interval as well as raise the P, or neither, so no exact rule says which way it would
+    make them disagree."""
     alpha = alpha_of(results)
     displays = {ref: value.display for ref, value in namespace.items()}
     findings: list[Finding] = []
@@ -70,14 +82,18 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
     # Each file as Markdown writes it, its values put in: a LaTeX file's Markdown view, which
     # holds its lines where the `.tex` has them, `\\mg{results.key}` as `{{results.key}}`.
     # Nothing reads TeX after, so a `%` in a display is the character (step 8).
+    files = []
     for bound in bound_files(project):
-        path = bound.path
         put = _put_in(bound.view, displays) if bound.latex else substitute(bound.view, displays)
         # Read as masked, a comment's line breaks hidden with it, so that no sentence ends at
         # a blank line inside one; and each finding's line counted in `put`, at the same
         # offsets with every line break, where a P after a comment of several lines was said
         # that many lines too early.
-        printed = mask(put)
+        files.append((bound, put, mask(put)))
+    adjusted = adjustment_said(project.root, [(bound.path, put, printed, bound.latex)
+                                              for bound, put, printed in files])  # fmt: skip
+    for bound, put, printed in files:
+        path = bound.path
         for test in reported_tests(printed):
             verdict = judge(test, alpha)
             if verdict is None:
@@ -85,21 +101,7 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
             judged += 1
             if not verdict.inconsistent:
                 continue
-            findings.append(
-                Finding(
-                    gate=GATE,
-                    code="p-decision-error" if verdict.decision else "p-inconsistent",
-                    severity=WARN,
-                    message=described(test, verdict, alpha),
-                    path=path,
-                    line=put.count("\n", 0, test.start) + 1,
-                    context=" ".join(printed[test.start : test.end].replace(NUL, " ").split()),
-                    hint="check the statistic, its degrees of freedom and the P against the "
-                    "analysis; two bound values may come from two analyses, the crude and "
-                    "the adjusted. A one-sided, adjusted or exact test is not recomputed "
-                    "where the sentence says it is one",
-                )
-            )
+            findings.append(_p_finding(test, verdict, alpha, adjusted, path, put, printed))
         intervals = reported_intervals(printed)
         for interval in intervals:
             judged_intervals += 1
@@ -110,6 +112,68 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
         tuple(findings),
         {"p_values_recomputed": judged, "printed_intervals_read": judged_intervals},
     )
+
+
+#: What the warning on a P that does not follow from its statistic advises.
+HINT = ("check the statistic, its degrees of freedom and the P against the analysis; two "
+        "bound values may come from two analyses, the crude and the adjusted. A one-sided, "
+        "adjusted or exact test is not recomputed where the sentence says it is one")
+
+
+@dataclass(frozen=True)
+class Adjusted:
+    """Where the manuscript says its P values are adjusted: the file, the line from 1, the
+    file as a question names it from another ("manuscript/methods.md"), and the quote."""
+
+    path: Path
+    line: int
+    named: str
+    quote: str
+
+    def said(self, path: Path) -> str:
+        """'("...", line 12)', or with the file's name where `path` is another file."""
+        place = f"line {self.line}" if self.path == path else f"{self.named}:{self.line}"
+        return f'("{self.quote}", {place})'
+
+
+def _p_finding(test, verdict, alpha: float, adjusted: Adjusted | None, path: Path, put: str,
+               printed: str) -> Finding:  # fmt: skip
+    """The warning on a P that does not follow from its statistic, or, where the manuscript
+    says its P values are adjusted and the P is larger, the question (decision 31)."""
+    line = put.count("\n", 0, test.start) + 1
+    context = " ".join(printed[test.start : test.end].replace(NUL, " ").split())
+    code = "p-decision-error" if verdict.decision else "p-inconsistent"
+    if adjusted is not None and larger(verdict):
+        return Question(gate=GATE, code=code, message=asked_p(test, verdict, adjusted.said(path)),
+                        path=path, line=line, context=context, hint=ASK_P_HINT)  # fmt: skip
+    return Finding(gate=GATE, code=code, severity=WARN, message=described(test, verdict, alpha),
+                   path=path, line=line, context=context, hint=HINT)  # fmt: skip
+
+
+def adjustment_said(root: Path, files: list[tuple[Path, str, str, bool]]) -> Adjusted | None:
+    """The first statement the manuscript's files make that its P values are adjusted for
+    multiple comparisons (`stats.adjusted.adjustment`), outside a reference list typed in a
+    Markdown file. Each file is given as its path, its text with every line break, that text
+    masked, and whether it is a LaTeX file's view, which prints no reference list."""
+    for path, put, printed, latex in files:
+        said = adjustment(printed if latex else _without_lists(printed))
+        if said is not None:
+            try:
+                named = path.relative_to(root).as_posix()
+            except ValueError:
+                named = path.name
+            return Adjusted(path, put.count("\n", 0, said.start) + 1, named, said.quote)
+    return None
+
+
+def _without_lists(text: str) -> str:
+    """`text` with each reference list typed in it blanked, its line breaks kept."""
+    from manuscript_guard.text.reference_lists import reference_lists
+
+    for start, end in reference_lists(text):
+        text = text[:start] + "".join(c if c == "\n" else " " for c in text[start:end]) + \
+            text[end:]  # fmt: skip
+    return text
 
 
 def _put_in(view: str, displays: dict[str, str]) -> str:

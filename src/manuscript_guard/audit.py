@@ -2037,7 +2037,7 @@ def _weighted(source: _Source) -> tuple:
     docx = "docx" if is_docx(source.path) else "markdown"
     kind = "latex" if source.latex is not None else docx
     return tuple(weighted_tables(list(source.tables), text=source.text, kind=kind,
-                                 latex=source.latex))  # fmt: skip
+                                 latex=source.latex, masked=source.hidden))  # fmt: skip
 
 
 def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | None = None,

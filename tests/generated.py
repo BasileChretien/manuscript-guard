@@ -17918,13 +17918,15 @@ def _shares(draw: st.DrawFn, *, below: bool = False) -> tuple[int, int, Decimal,
 
 
 def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
-             after: bool = False) -> tuple[list[str], dict[str, list[list[Any]]]]:  # fmt: skip
+             after: bool = False, subtitle: bool = False,
+             ) -> tuple[list[str], dict[str, list[list[Any]]]]:  # fmt: skip
     """Table `number` of `kind`, a place of `WEIGHTED_PLACES` its words of weighting stand
     at, or one of `UNWEIGHTED_KINDS`: its lines, and each share off its column's n, by its
     line in the table from 1 and its cell as printed, under `SHARES_ASKED` where its
     weighting lets it off and `SHARES_UNFIT` where it does not. With `capitals`, its legend
-    is in capitals and bold; with `after`, its legend stands after it and it has no note. A
-    header's crude and weighted columns have counts of their own, in an order drawn."""
+    is in capitals and bold; with `after`, its legend stands after it and it has no note;
+    with `subtitle`, a paragraph stands between the legend and the table. A header's crude
+    and weighted columns have counts of their own, in an order drawn."""
     words = draw(st.sampled_from(WEIGHTINGS))
     n, k, fits, off = _shares(draw, below=kind == "header")
     legend = f"**TABLE {number}.**" if capitals else f"Table {number}."
@@ -17932,8 +17934,8 @@ def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
     label = f"Male sex{' (' + words + ')' if kind == 'label' else ''}, n (%)"
     found: dict[str, list[list[Any]]] = {SHARES_ASKED: [], SHARES_UNFIT: []}
     if kind == "header":
-        _n, k2, fits2, off2 = _shares(draw, below=True)
-        k2 = k2 if k2 != k else k2 + 1
+        # The weighted column's own count, of the same n, at most 40% of it as the crude one.
+        k2 = draw(st.integers(n // 4, 2 * n // 5).filter(lambda other: other != k))
         fits2 = Decimal(100 * k2) / n
         off2 = fits2 - (fits - off)
         crude = draw(st.sampled_from(CRUDE_HEADERS))
@@ -17966,9 +17968,10 @@ def _a_table(draw: st.DrawFn, number: int, kind: str, *, capitals: bool = False,
     else:
         below = draw(st.sampled_from((["Note. As read."], [])))
     table = [*header, *order, ""]
-    lines = ([*table, caption, ""] if after else [caption, "", *table]) + (
+    between = ["Values are n (%).", ""] if subtitle else []
+    lines = ([*table, *between, caption, ""] if after else [caption, "", *between, *table]) + (
         [*below, ""] if below else [])
-    off_line = (3 if after else 5) + order.index(rows[0])
+    off_line = (3 if after else 5 + len(between)) + order.index(rows[0])
     for code, printed in offs:
         found[code].append([off_line, printed])
     return lines, found
@@ -17985,6 +17988,9 @@ def _tables(draw: st.DrawFn, *, after: bool = False) -> tuple[list[str], dict[st
     right before the table weighted in its caption, whose legend that is. With `after`, their
     legends after them, one of each of `AFTER_PLACES` and a plain one, which stands after the
     table weighted in its legend. And where their shares off their n are said."""
+    # The table weighted in its legend stands after one with no note, a subtitle between its
+    # legend and it: its legend stands right after the table before it, whose number it is
+    # not (the scoped check of round 2 of #703).
     places = AFTER_PLACES if after else (*WEIGHTED_PLACES, *UNWEIGHTED_KINDS)
     kinds = list(draw(st.permutations((*places, "plain") if after else places)))
     if after:
@@ -17997,7 +18003,8 @@ def _tables(draw: st.DrawFn, *, after: bool = False) -> tuple[list[str], dict[st
     found: dict[str, list] = {SHARES_ASKED: [], SHARES_UNFIT: []}
     for number, kind in enumerate(kinds, start=1):
         table, said = _a_table(draw, number, kind, capitals=kind == "caption" and not after,
-                               after=after)  # fmt: skip
+                               after=after, subtitle=draw(st.booleans()) or (
+                                   kind == "caption" and not after))  # fmt: skip
         start = len(lines)
         lines += table
         for code, shares in said.items():
@@ -18048,14 +18055,49 @@ def _a_paper(draw: st.DrawFn, statement: str | None, tables: str
     return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 
 
+#: How a file's legends fail to number its tables, each a file of `_unnumbered`: a legend for
+#: a table given as a picture, a table that runs on under its legend again, and a legend of
+#: another form (Basile, 2026-11-18).
+UNNUMBERED = {
+    "picture": ("Table 1.", "Table 2.", "Table 3. Weighted n."),
+    "continued": ("Table 1.", "Table 2.", "Table 2 (continued)."),
+    "forms": ("Table 1.", "Table S1.", None),
+}
+
+
+def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
+    """A file whose legends do not number its tables (`UNNUMBERED`): its first table says in
+    its legend that its shares are weighted, and its second and any third say nothing. No
+    caption counts, so each share off its n is found."""
+    first, second, third = UNNUMBERED[how]
+    lines = ["# Results", ""]
+    found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
+                              UNFIT: [], G8_ASKED: [], G8_WARNED: []}  # fmt: skip
+    legends = [f"{first} Characteristics, {draw(st.sampled_from(WEIGHTINGS))}.",
+               f"{second} Characteristics."]
+    if third is not None and how == "continued":
+        legends.append(third)
+    for legend in legends:
+        n, k, fits, off = _shares(draw)
+        lines += [legend, "", f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
+                  f"| Male sex, n (%) | {k} ({off:.1f}%) |",
+                  f"| Smokers, n (%) | {k} ({fits:.1f}%) |", ""]
+        found[SHARES_UNFIT].append([len(lines) - 2, f"{k} ({off:.1f}%)"])
+    if third is not None and how == "picture":
+        lines += [third, ""]
+    lines += ["# Discussion", "", "No more.", ""]
+    return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
+
+
 @st.composite
 def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str, list]]]:
     """A paper for each kind of `ADJUSTMENT_STATEMENTS`, which states it in words drawn of
-    that kind, and two that state none, one with its tables' legends before them and one
-    with them after (`_a_paper`); each with a covariate adjustment, a negated statement and a
-    cited surname of each kind. And where the audit asks of each paper's numbers, by code,
-    where it says they do not fit, each share by its cell, and where G8 asks and warns
-    (decision 31, and rounds 1 and 2 of #703)."""
+    that kind, and two that state none, one with its tables' legends before them, a legend
+    right after the table before its own, and one with them after (`_a_paper`); each with a
+    covariate adjustment, a negated statement and a cited surname of each kind. And a file
+    for each way of `UNNUMBERED` its legends fail to number its tables. And where the audit
+    asks of each paper's numbers, by code, where it says they do not fit, each share by its
+    cell, and where G8 asks and warns (decision 31, and rounds 1 and 2 of #703)."""
     papers, expected = {}, {}
     for kind in draw(st.permutations(sorted(ADJUSTMENT_STATEMENTS))):
         statement = draw(st.sampled_from(ADJUSTMENT_STATEMENTS[kind]))
@@ -18063,6 +18105,8 @@ def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str
     for layout in ("before", "after"):
         papers[f"none, legends {layout}"], expected[f"none, legends {layout}"] = _a_paper(
             draw, None, layout)
+    for how in UNNUMBERED:
+        papers[f"unnumbered, {how}"], expected[f"unnumbered, {how}"] = _unnumbered(draw, how)
     return papers, expected
 
 

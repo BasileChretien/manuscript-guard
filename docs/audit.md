@@ -214,10 +214,14 @@ any is asked, and neither is a number that does not fit:
   label does, or under a column whose header does ("weighted %", "weighted percentages",
   "weighted n", "weighted statistics", "survey-weighted", "inverse probability weighted",
   "IPW", "After IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A row's label lets
-  off its row alone, and a header its column. The caption is a legend ("Table 2.", in any
-  case) or pandoc's, read where the file's legends stand: before their tables, or after
-  them, where a legend under a table is that table's own and never the next one's caption;
-  a legend between two tables, in a file whose legends say neither, captions neither. The
+  off its row alone, and a header its column. A table's caption is the legend that numbers
+  it: "Table N" (in any case) captions the Nth table of the file, standing before it or after
+  it, with other paragraphs between but no other table. This holds only where the file's
+  legends number its tables: all in one form ("Table N", or all "Table SN", ...), numbered 1
+  to the number of tables read, each once. Otherwise no legend captions any table there, as
+  where a table is given as a picture, a "Table 2 (continued)" stands under a table, or a
+  "Table S1" stands beside a "Table 1" (Basile, 2026-11-18). In Markdown, pandoc's own
+  caption, "Table: ...", is its table's too. The
   note is the paragraph after the table where it opens with "Note", "Abbreviations" or a
   footnote's mark (a lowercase letter, or an asterisk, a dagger or a section sign before a
   space), and is no caption, in Markdown and in a .docx; in a .docx a raised mark typed

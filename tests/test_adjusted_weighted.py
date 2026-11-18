@@ -479,14 +479,88 @@ def test_a_legend_after_its_table_is_its_own_in_a_docx(tmp_path: Path) -> None:
     assert report.arithmetic_asked[0].message.startswith("Table 1 says")
 
 
-def test_a_legend_between_two_tables_where_the_file_says_neither_is_nobody_s(
-    tmp_path: Path,
-) -> None:
-    """A legend that stands between two tables, in a file whose other legends say neither
-    where they stand, is either's: it captions neither, and both shares are findings."""
+def test_one_legend_for_two_tables_captions_neither(tmp_path: Path) -> None:
+    """One legend for two tables does not number them: it captions neither, and both
+    shares are findings."""
     text = f"# Results\n\n{TABLE}\n\nTable 2. Weighted percentages.\n\n{TABLE}\n"
     report = audited(tmp_path, text)
     assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+
+
+#: Legends before their tables, a subtitle between each and its table: the scoped check of
+#: round 2 of #703, where Table 1 took Table 2's legend.
+SUBTITLED_BEFORE = ("# Results\n\nTable 1. Counts.\n\nValues are n (%).\n\n{table}\n\nTable 2. "
+                    "Weighted percentages.\n\nValues are n (%).\n\n{table}\n")
+#: Legends after their tables, a subtitle between each table and its legend.
+SUBTITLED_AFTER = ("# Results\n\nThe groups were compared.\n\n{table}\n\nValues are n (%).\n\n"
+                   "Table 1. Weighted percentages.\n\n{table}\n\nValues are n (%).\n\n"
+                   "Table 2. Counts.\n\n# Discussion\n\nNo more.\n")
+
+
+def test_a_legend_captions_the_table_its_number_names(tmp_path: Path) -> None:
+    """Basile, 2026-11-18, after the scoped check of round 2 of #703: "Table N" captions the
+    Nth table, before it or after it, with paragraphs between but no table. Legends before
+    their tables with a subtitle between: Table 1's share, under "Table 1. Counts.", is a
+    finding, and was asked about under Table 2's legend; Table 2's, under "Table 2. Weighted
+    percentages.", is asked about. Legends after their tables, the same."""
+    report = audited(tmp_path, SUBTITLED_BEFORE.format(table=TABLE))
+    assert [d.line for d in report.disagreements] == [9]
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (17, "Table 2")]
+    report = audited(tmp_path, SUBTITLED_AFTER.format(table=TABLE))
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (7, "Table 1")]
+    assert [d.line for d in report.disagreements] == [15]
+
+
+def test_a_legend_captions_the_table_its_number_names_in_a_docx(tmp_path: Path) -> None:
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    for paragraphs, weighted in (
+            (["Table 1. Counts.", "Values are n (%).", table, "Table 2. Weighted percentages.",
+              "Values are n (%).", table], 2),
+            (["The groups were compared.", table, "Values are n (%).", "Table 1. Weighted "
+              "percentages.", table, "Values are n (%).", "Table 2. Counts."], 1)):  # fmt: skip
+        body = "".join(one if one.startswith("<w:tbl>") else _para(one) for one in paragraphs)
+        report = audit([_docx(tmp_path / f"paper{weighted}.docx", body)], None)
+        (found,), (asked,) = report.disagreements, report.arithmetic_asked
+        assert asked.message.startswith(f"Table {weighted} says"), asked.message
+        assert (asked.line > found.line) == (weighted == 2)
+
+
+@pytest.mark.parametrize("legends", [
+    # Three legends and two tables read: the third table given as a picture.
+    "Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 3. "
+    "Weighted n.\n",
+    # A table that runs on under its legend again.
+    "Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 2 "
+    "(continued)\n\n{table}\n",
+    # Two forms of legend in one file.
+    "Table 1. Weighted percentages.\n\n{table}\n\nTable S1. Counts.\n\n{table}\n",
+    # A legend whose number names no table it can reach.
+    "Table 2. Weighted percentages.\n\n{table}\n\nTable 1. Counts.\n\n{table}\n",
+])  # fmt: skip
+def test_legends_that_do_not_number_the_tables_caption_none(tmp_path: Path,
+                                                           legends: str) -> None:  # fmt: skip
+    """The rule holds only where the file's legends number its tables 1 to the count read,
+    in one form, each once: else no caption counts, and each share off its n is a finding,
+    as on main. A legend that numbers a table it cannot reach, another table between them,
+    captions nothing."""
+    report = audited(tmp_path, "# Results\n\n" + legends.format(table=TABLE))
+    assert report.arithmetic_asked == [], report.arithmetic_asked
+    assert len(report.disagreements) == legends.count("{table}")
+
+
+def test_pandoc_s_caption_counts_for_its_own_table(tmp_path: Path) -> None:
+    """pandoc's caption, "Table: ...", is its table's, before it or after it, where no legend
+    numbers the file's tables; and beside a legend that numbers them, both are the table's
+    caption."""
+    report = audited(tmp_path, f"# Results\n\n{TABLE}\n\nTable: Weighted percentages.\n")
+    assert len(report.arithmetic_asked) == 1 and report.disagreements == []
+    report = audited(tmp_path, f"# Results\n\nTable 1. Counts.\n\n{TABLE}\n\nTable: Weighted "
+                               "percentages.\n")  # fmt: skip
+    (asked,) = report.arithmetic_asked
+    assert asked.message.startswith("Table 1 says") and report.disagreements == []
 
 
 @pytest.mark.parametrize("after", ["*After inverse probability weighting, the groups were "

@@ -33,8 +33,10 @@ expected:
       asked about, `question-p-adjusted`, and where a table's caption, cells or note says its
       shares are weighted, a share off its column's n is, `question-share-weighted`; each is a
       question at INFO, never counted, where the base gives a number that does not fit. A
-      smaller P, an interval's P and a share of a table that says nothing stay numbers that
-      do not fit (Basile, 2026-11-16, decision 31: docx-sport-A3 and docx-psych-A3 of the
+      smaller P, an interval's P, a share of a table that says nothing, and a share of a
+      file whose legends do not number its tables (a legend captions the table its number
+      names, Basile, 2026-11-18) stay numbers that do not fit, so the inputs of such a file
+      read alike (Basile, 2026-11-16, decision 31: docx-sport-A3 and docx-psych-A3 of the
       real-paper corpus)
   - reading: abbreviations
     why: >-

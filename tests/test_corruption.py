@@ -3131,6 +3131,38 @@ def test_a_share_is_found_under_a_table_whose_legend_after_it_says_counts(
     assert [d.line for d in report.disagreements] == [13]
 
 
+def test_a_share_is_found_under_its_own_numbered_legend_with_a_subtitle_between(
+    tmp_path: Path,
+) -> None:
+    """The scoped check of round 2 of #703: legends before their tables, a subtitle between
+    each and its table, were read as standing after them, and Table 1's share off its n was
+    let off under Table 2's legend. "Table 1. Counts." captions Table 1, whose share is a
+    number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Counts.\n\nValues are n (%).\n\n{table}\n\nTable 2. "
+                     f"Weighted percentages.\n\nValues are n (%).\n\n{table}\n", encoding="utf-8")
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == [9]
+    assert all(d.line != 9 for d in report.arithmetic_asked)
+
+
+def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: Path) -> None:
+    """Three legends for two tables read: the legends do not number the file's tables, so no
+    caption counts, and the share under "Table 1. Weighted percentages." is a number that does
+    not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
+                     f"Counts.\n\n{table}\n\nTable 3. Weighted n.\n", encoding="utf-8")
+    report = audit([paper], None)
+    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+
+
 def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
     tmp_path: Path,
 ) -> None:

@@ -23897,12 +23897,34 @@ def _a_negation_after_the_words_is_missed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(adjusted, "negated", lambda before, after="": real(before, ""))
 
 
-def _a_legend_after_a_table_captions_the_next(patch: pytest.MonkeyPatch) -> None:
-    """As at 37c8238: the paragraph before a table was its caption, though it was the legend
-    standing after the table before it."""
+def _a_legend_captions_the_table_next_to_it(patch: pytest.MonkeyPatch) -> None:
+    """As at 37c8238 and a9b0c25: a table took the legend next to it, the nearest before it
+    with no table between, else after it, whatever its number and whether the file's legends
+    number its tables."""
     from manuscript_guard.auditing import adjusted
 
-    patch.setattr(adjusted, "layout", lambda befores, afters: "before")
+    def numbered_captions(paragraphs, tables):
+        spans = [(min(adjusted._cells(t)), max(adjusted._cells(t))) for t in tables]
+        legends = [p for p in paragraphs if adjusted.LEGEND.match(p.text)]
+        found = []
+        for at, (first, last) in enumerate(spans):
+            low = spans[at - 1][1] if at else 0
+            high = spans[at + 1][0] if at + 1 < len(spans) else 10**9
+            before = [p for p in legends if low < p.first and p.last < first]
+            after = [p for p in legends if last < p.first and p.last < high]
+            found.append(before[-1].text if before else after[0].text if after else "")
+        return found
+
+    patch.setattr(adjusted, "numbered_captions", numbered_captions)
+
+
+def _a_comma_ends_the_negated_clause(patch: pytest.MonkeyPatch) -> None:
+    """A comma ends the clause a negation is looked for in: "P values were not, however,
+    adjusted for multiple comparisons." was a statement that they were (the scoped check of
+    round 2 of #703)."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "_NEGATION_END", re.compile(r"[;:,]"))
 
 
 def _a_capitalised_next_legend_leaks(patch: pytest.MonkeyPatch) -> None:
@@ -30733,8 +30755,12 @@ BROKEN = {
         _a_negation_after_the_words_is_missed,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
-    "a legend after a table captions the next": (
-        _a_legend_after_a_table_captions_the_next,
+    "a legend captions the table next to it whatever its number": (
+        _a_legend_captions_the_table_next_to_it,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a comma ends the clause a negation is looked for in": (
+        _a_comma_ends_the_negated_clause,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
 }

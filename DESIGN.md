@@ -10742,9 +10742,15 @@ rule says which way the two would then disagree. A table whose caption, cells or
 its shares are weighted has a share off its column's n asked about in the audit
 (`question-share-weighted`, `auditing/adjusted.py`); only that table's, where a header says
 it only that column's, and where a row's label says it only that row's. A note opens with a
-note's mark and is no caption, a legend is read whatever the case of "table", and a legend
-under a table is its own where the file's legends stand after their tables, never the next
-table's caption (rounds 1 and 2 of #703). `check` holds no n
+note's mark and is no caption, and a legend, read whatever the case of "table", captions
+the table its number names (Basile, 2026-11-18, after the scoped check of round 2 of #703,
+where a guess at where a file's legends stood gave one table the next one's legend): "Table
+N" captions the Nth table read, standing before it or after it with no other table
+between, where the file's legends number its tables 1 to the count read, in one form, each
+once; else no legend captions any. pandoc's own caption syntax, "Table: ...", is its
+table's, as pandoc gives it; where a numbered legend captions the same table, both are its
+caption, each being exact by its own rule, so that a word of weighting in either lets the
+table off. `check` holds no n
 (%) of a project's tables to a denominator (`gates/custodian.py` reads the margins only for
 the counts a total gives away), so the weighting has nothing to let off there. Both audit
 questions stand at the number, under "Questions for the author" with their place, are
@@ -16885,12 +16891,18 @@ been sorted yet.
   off none, and docx-psych-B2's 31 supplementary shares off their column's n stay findings
   though its Methods says they are weighted. Words outside the list ("%, weighted"), a note
   that opens on no mark, and a .docx's paragraph before a table that is no legend say
-  nothing. A legend between two tables is read by where the file's other legends stand
-  (`auditing.adjusted.layout`), and captions neither where they say neither. `check` holds
+  nothing. A legend captions the table its number names, before it or after it with no
+  table between, and only where the file's legends number its tables 1 to the count read,
+  in one form, each once (`auditing.adjusted.numbered_captions`). `check` holds
   no share to a denominator, so there is nothing to let off there.
   Pinned by
   `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`
   and `tests/test_adjusted_weighted.py::test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note`.
+  - A file whose legends do not number its tables (a table given as a picture, a "Table 2
+    (continued)", a "Table S1" beside a "Table 1", a legend whose table another table stands
+    between) lets off no table by its caption, so a weighted table's shares are findings
+    there, as on main. Pinned by
+    `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_none`.
   - In a .docx, a footnote's raised mark typed outside a table runs on into its word as the
     reader reads it ("aPercentages are weighted."), so a note that opens on one is not read,
     and its table's shares stay findings. Accepted.

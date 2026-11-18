@@ -6,10 +6,11 @@ decision 31: "Both"). What says so is read in `stats/adjusted.py`.
 * **A paper's adjustment** is the first statement of it in the paper, outside its reference
   list: in any file of a LaTeX paper, and in a .docx's notes. A test in any file of the paper
   is read under it. A figure given with `--figures` is no part of a paper, and reads none.
-* **A table's weighting** is said in its caption, its cells (its header and its rows'
-  labels) or its note: in Markdown, the paragraph after it; in a .docx, the paragraph after
-  it; in LaTeX, all of the float it stands in. Only that table's shares are let off. A PDF's
-  tables are read as lines of text, so none is.
+* **A table's weighting** is said in its caption, the legend that numbers it
+  (`numbered_captions`) or pandoc's; its note, the paragraph after it that opens with a
+  note's mark; a row's label, for that row; or a header cell, for its column. In LaTeX the
+  float's caption and its text outside the table. Only that table's shares are let off. A
+  PDF's tables are read as lines of text, so none is.
 
 Each question is of the kind `report.question` makes: INFO, never counted, under "Questions
 for the author", standing at its number.
@@ -115,10 +116,13 @@ class Weighting:
         return self.whole or by_row or dict(self.columns).get(column)
 
 
-#: A legend, as `text.captioned` reads one, "table" in any case: "TABLE 2.", "**Table 1:**".
+#: A legend, "table" in any case: "TABLE 2.", "**Table 1:**", "Table S3 Baseline", "Table 2
+#: (continued)"; its form ("Table", "Supplementary Table", "eTable"), the letter before its
+#: number ("S", "A"), its number, and a letter after it ("1a").
 LEGEND = re.compile(
-    r"[ \t]*[*_]*(?i:(?:Supplementary[ \t]+|e|S)?Table)[ \t]+[A-Za-z]?\d+[A-Za-z]?[*_]*"
-    "(?:[ \t]*[.:|\N{EN DASH}\N{EM DASH}-]|[ \t]+(?=[A-Z]))"
+    r"[ \t]*[*_]*(?P<form>(?i:(?:Supplementary[ \t]+|e|S)?Table))[ \t]+(?P<letter>[A-Za-z]?)"
+    r"(?P<number>\d+)(?P<tail>[A-Za-z]?)[*_]*"
+    "(?:[ \t]*[.:|(\N{EN DASH}\N{EM DASH}-]|[ \t]+(?=[A-Z]))"
 )
 #: What a table's note opens with: "Note", "Notes", "Abbreviations", or a footnote's mark,
 #: a lowercase letter alone, an asterisk, a dagger or a section sign before a space, a raised
@@ -139,26 +143,30 @@ class _Beside:
     lines: frozenset[int]
 
 
-def weighted_tables(tables: list[Table], *, text: str, kind: str, latex=None
-                    ) -> list[Weighting | None]:  # fmt: skip
+def weighted_tables(tables: list[Table], *, text: str, kind: str, latex=None,
+                    masked: str | None = None) -> list[Weighting | None]:  # fmt: skip
     """For each of `tables`, what says its shares are weighted, None where nothing does.
-    `text` is the file's text a line to each line its tables' cells name, `kind` "docx",
-    "markdown" or "latex", `latex` a LaTeX file's `Source`. A caption is a legend or
-    pandoc's, as the file's tables stand by theirs (`captions_of`); a note is the paragraph
-    after the table where it opens with a note's mark (`NOTE_MARK`) and is no caption; in
-    LaTeX, the float's text outside the table."""
+    `text` is the file's text a line to each line its tables' cells name, `masked` the same
+    masked, where its legends are looked for (a comment's are none), `kind` "docx",
+    "markdown" or "latex", `latex` a LaTeX file's `Source`. A caption is the legend that
+    numbers the table (`numbered_captions`), or pandoc's for its own table; a note is the
+    paragraph after the table where it opens with a note's mark (`NOTE_MARK`) and is no
+    caption; in LaTeX, the float's text outside the table."""
     if kind == "latex":
         around = _latex_floats(latex)
         return [_weighting(table, *around.get(table[0][0].line, ("", ""))) if _cells(table)
                 else None for table in tables]  # fmt: skip
     lines = text.split("\n")
-    read = [table for table in tables if _cells(table)]
-    befores = [_next_to(lines, table, kind, -1) for table in read]
-    afters = [_next_to(lines, table, kind, 1) for table in read]
-    captions = captions_of(befores, afters)
+    shown = (masked if masked is not None else text).split("\n")
+    read = sorted((table for table in tables if _cells(table)), key=lambda t: min(_cells(t)))
+    numbered = numbered_captions(_paragraphs(lines, shown, read, kind), read)
+    pandoc = _pandoc_captions(lines, read) if kind == "markdown" else [""] * len(read)
+    captions = [" ".join(part for part in (one, two) if part)
+                for one, two in zip(numbered, pandoc, strict=True)]  # fmt: skip
     taken = {caption for caption in captions if caption}
-    said = {id(table): _weighting(table, caption, _note(after, taken))
-            for table, caption, after in zip(read, captions, afters, strict=True)}
+    said = {id(table): _weighting(table, caption, _note(_next_to(lines, table, kind, 1), taken),
+                                  named=number)
+            for table, caption, number in zip(read, captions, numbered, strict=True)}
     return [said.get(id(table)) for table in tables]
 
 
@@ -178,51 +186,88 @@ def _a_caption(paragraph: str) -> bool:
     return bool(LEGEND.match(paragraph) or _PANDOC.match(paragraph))
 
 
-def _same(one: _Beside | None, other: _Beside | None) -> bool:
-    """Whether two paragraphs beside tables are one, after one table and before the next."""
-    return one is not None and other is not None and bool(one.lines & other.lines)
+@dataclass(frozen=True)
+class _Paragraph:
+    """A paragraph outside the tables, as one line, and its first and last lines from 1."""
+
+    text: str
+    first: int
+    last: int
 
 
-def layout(befores: list[_Beside | None], afters: list[_Beside | None]) -> str:
-    """Where a file's legends stand: "before" its tables, where a legend stands before one
-    with no table above it and none after one with no table below it; "after", the other way
-    round; "" where neither, or both, is so. A legend between two tables is either's, and
-    only the layout says whose."""
-    alone_before = any(
-        before is not None and _a_caption(before.text)
-        and not (at and _same(before, afters[at - 1]))
-        for at, before in enumerate(befores))  # fmt: skip
-    alone_after = any(
-        after is not None and _a_caption(after.text)
-        and not (at + 1 < len(befores) and _same(after, befores[at + 1]))
-        for at, after in enumerate(afters))  # fmt: skip
-    if alone_before != alone_after:
-        return "before" if alone_before else "after"
-    return ""
+def _paragraphs(lines: list[str], shown: list[str], tables: list[Table], kind: str
+                ) -> list[_Paragraph]:  # fmt: skip
+    """The paragraphs of a file outside its tables, in order: a .docx's a line each, a
+    Markdown file's its runs of lines with text. Read in `shown`, the masked lines, and said
+    in `lines`."""
+    inside = {line for table in tables for line in range(min(_cells(table)),
+                                                         max(_cells(table)) + 1)}  # fmt: skip
+    found: list[_Paragraph] = []
+    run: list[int] = []
+
+    def close() -> None:
+        if run:
+            found.append(_Paragraph(_plain(" ".join(lines[at - 1] for at in run)), run[0],
+                                    run[-1]))  # fmt: skip
+            run.clear()
+
+    for at, line in enumerate(shown, start=1):
+        text = line.replace("\x00", " ")
+        if at in inside or not text.strip(" \t|") or text.lstrip().startswith(("|", "+")):
+            close()
+            continue
+        run.append(at)
+        if kind == "docx":
+            close()
+    close()
+    return found
 
 
-def captions_of(befores: list[_Beside | None], afters: list[_Beside | None]) -> list[str]:
-    """Each table's caption, given the paragraphs before and after each: where the file's
-    legends stand before their tables, the one before; where after, the one after, which is
-    then its own and never the next table's (round 2 of #703); and where the file says
-    neither, only one no other table stands beside. "" where it has none."""
-    shape = layout(befores, afters)
+def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list[str]:
+    """Each table's caption by its number: the legend "Table N" captions the Nth table of the
+    file, before it or after it with other paragraphs between, but no other table (Basile,
+    2026-11-18). Only where the file's legends number its tables: all in one form ("Table
+    N", or all "Table SN", "Table AN" ...), numbered 1 to the number of tables read, each
+    once. Else no table has one: a table given as a picture, a "Table 2 (continued)", or a
+    "Table S1" beside a "Table 1" says the legends and the tables read do not match."""
+    legends = [(paragraph, found) for paragraph in paragraphs
+               if (found := LEGEND.match(paragraph.text)) is not None]  # fmt: skip
+    forms = {(found["form"].lower(), found["letter"].upper(), found["tail"].lower())
+             for _paragraph, found in legends}  # fmt: skip
+    numbers = sorted(int(found["number"]) for _paragraph, found in legends)
+    if len(forms) != 1 or numbers != list(range(1, len(tables) + 1)):
+        return [""] * len(tables)
+    spans = [(min(_cells(table)), max(_cells(table))) for table in tables]
+    captions = [""] * len(tables)
+    for paragraph, found in legends:
+        at = int(found["number"]) - 1
+        first, last = spans[at]
+        before = paragraph.last < first and (at == 0 or paragraph.first > spans[at - 1][1])
+        after = paragraph.first > last and (at + 1 == len(tables)
+                                            or paragraph.last < spans[at + 1][0])  # fmt: skip
+        if before or after:
+            captions[at] = paragraph.text
+    return captions
+
+
+def _pandoc_captions(lines: list[str], tables: list[Table]) -> list[str]:
+    """Each Markdown table's caption in pandoc's own syntax, "Table: ..." or ": ...": the
+    paragraph before it that no table above took, else the one after it, as pandoc 3.9 gives
+    one (`text.captioned`)."""
+    from manuscript_guard.text.captioned import _PANDOC
+
+    taken: set[int] = set()
     found = []
-    for at, (before, after) in enumerate(zip(befores, afters, strict=True)):
-        before_ok = before is not None and _a_caption(before.text)
-        after_ok = after is not None and _a_caption(after.text)
-        shared_before = at > 0 and _same(before, afters[at - 1])
-        shared_after = at + 1 < len(befores) and _same(after, befores[at + 1])
-        if shape == "before":
-            found.append(before.text if before_ok else "")
-        elif shape == "after":
-            found.append(after.text if after_ok else "")
-        elif before_ok and not shared_before:
-            found.append(before.text)
-        elif after_ok and not shared_after:
-            found.append(after.text)
-        else:
-            found.append("")
+    for table in tables:
+        caption = ""
+        for step in (-1, 1):
+            beside = _next_to(lines, table, "markdown", step)
+            if beside is not None and _PANDOC.match(beside.text) and \
+                    not beside.lines & taken:  # fmt: skip
+                taken |= beside.lines
+                caption = _PANDOC.sub("", beside.text, count=1)
+                break
+        found.append(caption)
     return found
 
 
@@ -260,13 +305,13 @@ def _note(after: _Beside | None, captions: set[str]) -> str:
     return after.text if NOTE_MARK.match(after.text) else ""
 
 
-def _weighting(table: Table, caption: str, note: str) -> Weighting | None:
+def _weighting(table: Table, caption: str, note: str, *, named: str = "") -> Weighting | None:
     """What says `table`'s shares are weighted: its caption or its note for the whole table,
     a row's label (the cell of its first column) for that row, and each header cell for its
-    columns."""
+    columns. The table is named by its legend, `named`, or else by its caption."""
     from manuscript_guard.stats.shares import _SHARE, _clean, _columns
 
-    named = _NAME.search(caption)
+    named = _NAME.search(named or caption)
     name = named.group(0) if named else "This table"
     for words in (caption, note):
         said: Said | None = weighting(_plain(words))
@@ -330,5 +375,5 @@ def asked_share(share: Share, weighted: Weighted, path: Path, described: str) ->
 
 
 __all__ = ["ASKED_ADJUSTED", "ASKED_WEIGHTED", "LEGEND", "NOTE_MARK", "Asked", "Statement",
-           "Weighted", "Weighting", "asked_p", "asked_share", "captions_of", "layout",
+           "Weighted", "Weighting", "asked_p", "asked_share", "numbered_captions",
            "statement", "weighted_tables"]  # fmt: skip

@@ -25,7 +25,28 @@ builds/<sha9>/               a venv for each commit run, named by its sha's firs
 `meta.json` names the paper's `slug`, its `format` (`docx`, `pdf` or `latex`) and its `main`
 file under `files/`, and may name a `pdf` of the same paper and a `v1`, an earlier version,
 which `compare` sets beside the main file. Keep the SHA-256 of each file there too, so a paper
-fetched again can be told from another.
+fetched again can be told from another. A slug is its folder's name, in letters, digits,
+`.`, `_` and `-`.
+
+Give the corpus folder its own git repository, if any, never a remote, and this
+`.gitignore`:
+
+```
+corpus/*/files/
+runs/
+builds/
+__pycache__/
+CLAUDE.local.md
+.claude/
+*.log
+```
+
+The papers are other people's work, whose licences seldom allow passing them on, and each is
+fetched again from its `meta.json` and checked against its SHA-256; runs and builds are made
+again from a commit. The tool refuses a corpus folder inside the manuscript-guard checkout,
+and writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, and
+`measure` and `gate` write to standard output or to the `--out` and `--json` paths given,
+which may not be inside the checkout either, since their lists quote the papers.
 
 A packet is a list of papers, each with its `slug`, the `text` a judge reads, and `reports`:
 for each of `audit`, `audit-pdf`, `check` and `compare`, the `findings` as that report's
@@ -51,26 +72,42 @@ changed afterwards; a later decision goes in the ledger.
 ```bash
 export MANUSCRIPT_GUARD_CORPUS=/path/to/corpus
 python tools/corpus.py run origin/main --name main-7bda66a5e
+python tools/corpus.py run feat/my-branch          # runs/<its sha's first nine characters>
 ```
 
 `run` installs manuscript-guard at that commit into `builds/<sha9>/`, from `git archive` of
 this checkout and not editable, and runs on each paper `audit --json`, `audit --json` of the
 PDF, `compare --json` against version 1, and `check --json` in a project made with
-`init --from` (Word) or `init --latex`. Each step has ten minutes; a step already run is not
-run again, so a run stopped halfway goes on where it stopped. `--only` takes slugs, `--jobs`
-the number of papers at a time.
+`init --from` (Word) or `init --latex`. Each step has ten minutes; a step already run for
+the same commit is not run again, so a run stopped halfway goes on where it stopped. A run's
+folder holds one commit: `run.json` and each paper's `steps.json` name it, and a run under a
+name another commit's run already has is refused, so that a gate never reads reports of a
+commit other than the one named. Without `--name`, the run is named by its commit. `--only`
+takes slugs, `--jobs` the number of papers at a time.
 
 ## The four states
 
 `measure <run>` puts each judged finding in one state:
 
-- **reported**: a finding of the same gate and code that is the same one (the same message,
-  the same context, or the same quoted word or short form), as a warning or a failure;
+- **reported**: a finding of the same gate and code that is the same one, as a warning or a
+  failure;
 - **asked**: that finding as a note or a question, or a question at the same line of the
-  same file;
-- **elsewhere**: another code's warning or failure at the same line of the same file, or for
-  G14 another code's finding about the same short form (a question about it counts as asked);
+  same file that names what the old one was about;
+- **elsewhere**: another code's warning or failure at the same line of the same file that
+  names what the old one was about, or for G14 another code's finding about the same short
+  form (a question about it counts as asked);
 - **gone**: none of those.
+
+The same one is found one to one within each paper's report: first by the same message at
+the same place, then by the same message, then by the same context at the same place, then
+by the same context, and last by the same word (its short form, its first quoted words or its
+first number of two characters or more) at the same place or in the same part of the paper,
+the Abstract, the main text or the supplement, as the message names it. A finding that lists
+forms, as G14's one question does, gives each form once, and the only finding of its code in
+the judged run's report is found again in the only one of the new report where that names
+its word. A new finding taken by one judged finding is not taken by another. What a finding
+is about is what it names, so an unrelated question or warning at the same line keeps
+nothing. The same file is the same path inside the paper's folder or its project.
 
 A finding a later build says under another code at another line, as a note, reads as gone,
 and a person reading the list has to see that it is not lost ([DESIGN.md](../DESIGN.md),
@@ -150,7 +187,7 @@ the tool stopped giving was wrong because the tool stopped giving it.
 ## The gate
 
 ```bash
-python tools/corpus.py gate main-7bda66a5e pr-704 --out gate.md
+python tools/corpus.py gate main-7bda66a5e 1a2b3c4d5 --out "$MANUSCRIPT_GUARD_CORPUS/runs/1a2b3c4d5/gate.md"
 ```
 
 `gate <base-run> <new-run>` puts every judged finding in its state at both, with the ledger

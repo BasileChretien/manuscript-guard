@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,8 @@ from pathlib import Path
 
 #: Seconds a step on one paper may take, and a git, venv or install command.
 LIMIT = 600
+#: A paper's slug, which names its folders under corpus/ and runs/<run>/.
+SLUG = re.compile(r"[A-Za-z0-9._-]+")
 
 
 class CorpusError(Exception):
@@ -76,6 +79,8 @@ def call(cmd: list[str], cwd: Path, out: Path, env: dict) -> dict:
 
 
 def resolve(repo: Path, commit: str) -> str:
+    if commit.startswith("-"):
+        raise CorpusError(f"{commit!r} is no commit: it would reach git as an option")
     try:
         return quiet(["git", "-C", str(repo), "rev-parse", "--verify", f"{commit}^{{commit}}"]
                      ).decode().strip()  # fmt: skip
@@ -129,6 +134,10 @@ def papers(root: Path) -> list[dict]:
         data = load_json(meta)
         if not isinstance(data, dict) or not {"slug", "format", "main"} <= set(data):
             raise CorpusError(f"{meta}: a paper's meta.json names its slug, format and main file")
+        slug = str(data["slug"])
+        if slug != meta.parent.name or not SLUG.fullmatch(slug) or ".." in slug:
+            raise CorpusError(f"{meta}: its slug {slug!r} is not its folder's name, in letters, "
+                              "digits, '.', '_' and '-'")  # fmt: skip
         found.append(data)
     if not found:
         raise CorpusError(f"{root / 'corpus'} holds no corpus/<slug>/meta.json")
@@ -154,14 +163,33 @@ def _latex_project(mg: list[str], files: Path, main: str, project: Path, env: di
     return {**step, "note": f"{len(bibs)} .bib file(s) in the source"}
 
 
-def run_paper(python: Path, meta: dict, root: Path, out_root: Path, env: dict) -> dict:
-    """The four reports on one paper, each step once: a step already run is kept."""
+def _claim(out_root: Path, sha: str) -> None:
+    """Refuse a run folder that holds another commit's reports: its steps would be kept, and
+    the gate would read a commit it never ran."""
+    made = load_json(out_root / "run.json")
+    if isinstance(made, dict) and made.get("sha") not in (None, sha):
+        raise CorpusError(f"{out_root} holds a run of {str(made['sha'])[:9]}, not of {sha[:9]}: "
+                          "name the run otherwise, or delete that folder")  # fmt: skip
+    for steps in out_root.glob("*/steps.json"):
+        held = load_json(steps)
+        if not isinstance(held, dict) or held.get("sha") != sha:
+            raise CorpusError(f"{steps} was written for another commit than {sha[:9]}: name the "
+                              "run otherwise, or delete its folder")  # fmt: skip
+
+
+def run_paper(python: Path, meta: dict, root: Path, out_root: Path, env: dict,
+              sha: str) -> dict:  # fmt: skip
+    """The four reports on one paper, each step once: a step already run for the same commit
+    is kept, and a folder of another commit's steps is refused."""
     mg = [str(python), "-I", "-X", "utf8", "-c", ENTRY]
     files = root / "corpus" / meta["slug"] / "files"
     out = out_root / meta["slug"]
     out.mkdir(parents=True, exist_ok=True)
     steps_file = out / "steps.json"
-    steps = load_json(steps_file) or {}
+    held = load_json(steps_file) or {"sha": sha, "steps": {}}
+    if not isinstance(held, dict) or held.get("sha") != sha:
+        raise CorpusError(f"{steps_file} was written for another commit than {sha[:9]}")
+    steps = held["steps"]
     main = files / meta["main"]
 
     def step(name: str, args: list[str], cwd: Path = out) -> None:
@@ -184,7 +212,7 @@ def run_paper(python: Path, meta: dict, root: Path, out_root: Path, env: dict) -
             steps["init"] = _latex_project(mg, files, meta["main"], project, env)
         if steps["init"]["exit"] == 0:
             step("check", ["check", "--json"], cwd=project)
-    steps_file.write_text(json.dumps(steps, indent=1), "utf-8")
+    steps_file.write_text(json.dumps({"sha": sha, "steps": steps}, indent=1), "utf-8")
     return steps
 
 
@@ -197,6 +225,7 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
                     cwd=root).decode().strip()  # fmt: skip
     out_root = root / "runs" / (name or sha[:9])
     out_root.mkdir(parents=True, exist_ok=True)
+    _claim(out_root, sha)
     chosen = [m for m in papers(root) if not only or m["slug"] in only]
     env = {**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
@@ -206,7 +235,7 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
 
     def one(meta: dict) -> tuple[str, object]:
         try:
-            steps = run_paper(python, meta, root, out_root, env)
+            steps = run_paper(python, meta, root, out_root, env, sha)
         except (OSError, subprocess.SubprocessError, CorpusError) as exc:
             return meta["slug"], f"runner error: {exc}"
         bad = {k: v["exit"] for k, v in steps.items() if v["exit"] not in (0, 1, "skipped")}

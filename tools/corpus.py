@@ -28,7 +28,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -61,6 +61,9 @@ QUOTED = re.compile(
 )
 ABSOLUTE = re.compile(r"(?:(?<![\w/])[A-Za-z]:/|(?<![\w.:/])/(?=[^\s/]+/))(?:[^\s/:'\"]+/)+")
 RUN_DIR = re.compile(r"runs/[^/\s]+/")
+NUMBER = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?|\.\d+)")
+#: The part of the paper a G14 finding names, which tells two findings of one form apart.
+REGION = re.compile(r"\bin the (abstract|main text|supplement)\b", re.IGNORECASE)
 
 
 # --- the corpus -------------------------------------------------------------------------
@@ -71,6 +74,9 @@ def corpus_root(given: str | None) -> Path:
     if not text:
         raise CorpusError(f"name the corpus with --corpus or {ENV}")
     root = Path(text).resolve()
+    if root.is_relative_to(ROOT):
+        raise CorpusError(f"{root} is inside the manuscript-guard checkout: keep the corpus, "
+                          "its papers and its runs outside it (docs/corpus.md)")  # fmt: skip
     if not (root / "report").is_dir():
         raise CorpusError(f"{root} has no report/ folder: it is not a corpus (docs/corpus.md)")
     return root
@@ -93,6 +99,8 @@ class Judged:
     finding: dict
     judged: str = ""
     rejudged_by: str = ""
+    #: The only finding of its gate and code in the judged run's report (the packet's totals).
+    alone: bool = False
 
     @property
     def code(self) -> str:
@@ -116,7 +124,7 @@ def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
     judged, skipped = [], collections.Counter()
     for path in sorted((root / "report" / "judged").glob("*.json")):
         for entry in load_json(path) or []:
-            verdict = str(entry.get("verdict"))
+            verdict = str(entry.get("verdict")).lower()
             if verdict not in VERDICTS:
                 skipped[f"verdict {verdict}"] += 1
                 continue
@@ -126,8 +134,10 @@ def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
             except (KeyError, IndexError, TypeError, ValueError):
                 skipped["no finding in the packet at its index"] += 1
                 continue
+            totals = paper["reports"][entry["report"]].get("totals") or {}
+            alone = totals.get(f"{old.get('gate')}/{old.get('code')}") == 1
             judged.append(Judged(entry["slug"], entry["report"], int(entry["index"]), verdict,
-                                 old, judged=verdict))  # fmt: skip
+                                 old, judged=verdict, alone=alone))  # fmt: skip
     if not judged:
         raise CorpusError(f"{root / 'report'} holds no judged finding (docs/corpus.md)")
     return judged, skipped
@@ -190,7 +200,11 @@ def _rejudge(decision: Decision, body: object, where: str) -> None:
     for key in body.get("findings") or []:
         if not isinstance(key, dict) or set(key) != {"slug", "report", "index"}:
             raise CorpusError(f"{where}: a finding is named by slug, report and index")
-        decision.keys.add((str(key["slug"]), str(key["report"]), int(key["index"])))
+        try:
+            decision.keys.add((str(key["slug"]), str(key["report"]), int(key["index"])))
+        except (TypeError, ValueError):
+            raise CorpusError(f"{where}: a finding's index is a number, not {key['index']!r}"
+                              ) from None  # fmt: skip
     for matcher in body.get("match") or []:
         if not isinstance(matcher, dict) or not matcher or set(matcher) - MATCHER_KEYS:
             raise CorpusError(f"{where}: a matcher holds {sorted(MATCHER_KEYS)} only")
@@ -248,7 +262,7 @@ def rejudged(judged: list[Judged], decisions: list[Decision]) -> list[Judged]:
     """The verdicts with the ledger's re-judgements applied; the last decision wins."""
     out = []
     for item in judged:
-        new = Judged(item.slug, item.report, item.index, item.judged, item.finding, item.judged)
+        new = replace(item, verdict=item.judged, rejudged_by="")
         for decision in decisions:
             if decision.verdict and decision.rejudges(item):
                 new.verdict, new.rejudged_by = decision.verdict, decision.id
@@ -285,56 +299,168 @@ def is_question(finding: dict) -> bool:
     return str(finding.get("severity")).lower() == "info" and "?" in str(finding.get("message"))
 
 
-def same_finding(old: dict, new: list[dict]) -> int | None:
-    """The index of the finding of the same gate and code that is the old one, if any."""
-    same = [i for i, f in enumerate(new)
-            if f.get("gate") == old.get("gate") and f.get("code") == old.get("code")]
-    message, context = norm(old.get("message")), norm(old.get("context"))
-    for i in same:
-        if norm(new[i].get("message")) == message:
-            return i
-    for i in same:
-        if context and norm(new[i].get("context")) == context:
-            return i
-    words = QUOTED.findall(str(old.get("message") or ""))
-    first = form_of(old)
-    for word in ([first] if first else words)[:1]:
-        pattern = re.compile(rf"(?<!\w){re.escape(word)}(?!\w)")
-        for i in same:
-            if pattern.search(str(new[i].get("message") or "")):
-                return i
-    return None
+def relative(path: object, slug: str) -> str | None:
+    """A finding's file as a path inside the paper's folder or its project, wherever the run
+    was made; None where the finding names no file."""
+    if not path:
+        return None
+    text = str(path).replace("\\", "/")
+    for marker in (f"/{slug}/project/", f"/{slug}/files/"):
+        if slug and marker in text:
+            return text.rsplit(marker, 1)[1]
+    return text.removeprefix("./")
 
 
-def same_place(old: dict, new: dict) -> bool:
+def same_place(old: dict, new: dict, slug: str = "") -> bool:
+    """The same line of the same file; a finding that names no file is at the place of one
+    that names none."""
     line = old.get("line")
     if line is None or new.get("line") != line:
         return False
-    a, b = old.get("path"), new.get("path")
-    return not (a and b) or Path(norm(a)).name == Path(norm(b)).name
+    return relative(old.get("path"), slug) == relative(new.get("path"), slug)
 
 
-def state(old: dict, new: list[dict]) -> tuple[str, list[int]]:
-    """The judged finding's state among a run's findings, and the findings that make it so."""
-    i = same_finding(old, new)
-    if i is not None:
-        return ("reported" if loud(new[i]) and not new[i].get("question") else "asked"), [i]
-    here = [i for i, f in enumerate(new) if same_place(old, f)]
-    asked = [i for i in here if is_question(new[i])]
-    if asked:
-        return "asked", asked
-    louder = [i for i in here if loud(new[i])]
-    if louder:
-        return "elsewhere", louder
-    form = form_of(old) if old.get("gate") == "G14" else None
-    if form:
-        about = [i for i, f in enumerate(new) if f.get("gate") == "G14"
+def key_of(old: dict) -> re.Pattern | None:
+    """What a finding is about, to be found in another's message: its short form, else its
+    first quoted words, else its first number of two characters or more (a single digit, a
+    degree of freedom or a count of two, stands in too many messages to tell one apart)."""
+    message = str(old.get("message") or "")
+    word = form_of(old) or next(iter(QUOTED.findall(message)), None)
+    if word:
+        return re.compile(rf"(?<!\w){re.escape(word)}(?!\w)")
+    number = next((n for n in NUMBER.findall(message) if len(n) >= 2), None)
+    return re.compile(rf"(?<![\w.]){re.escape(number)}(?![\w]|\.\d)") if number else None
+
+
+def region(message: object) -> str | None:
+    hit = REGION.search(str(message or ""))
+    return hit.group(1).lower() if hit else None
+
+
+def _same_code(old: dict, new: dict) -> bool:
+    return new.get("gate") == old.get("gate") and new.get("code") == old.get("code")
+
+
+def _by_message(old: dict, new: dict, slug: str, place: bool) -> bool:
+    return norm(new.get("message")) == norm(old.get("message")) and (
+        not place or same_place(old, new, slug))
+
+
+def _by_context(old: dict, new: dict, slug: str, place: bool) -> bool:
+    context = norm(old.get("context"))
+    return bool(context) and norm(new.get("context")) == context and (
+        not place or same_place(old, new, slug))
+
+
+def _about(old: dict, new: dict, slug: str, form: bool = False) -> bool:
+    """The same word, at the same place or in the same part of the paper. A form a finding
+    lists stands for that form in the part its message names, or in the paper where neither
+    names one."""
+    key = key_of(old)
+    if key is None or not key.search(str(new.get("message") or "")):
+        return False
+    part = region(old.get("message"))
+    return same_place(old, new, slug) or ((form or part is not None)
+                                          and part == region(new.get("message")))
+
+
+def subject_of(old: dict) -> str | None:
+    """The short form or the quoted name a finding is about, as a question's `forms` give it."""
+    return form_of(old) or next(iter(QUOTED.findall(str(old.get("message") or ""))), None)
+
+
+def _entry(finding: dict, entry: dict) -> dict:
+    """One form of a finding that lists several, with its own place and message."""
+    return {**finding, **{k: entry[k] for k in ("line", "path", "message") if k in entry}}
+
+
+def match(olds: list[dict], new: list[dict], slug: str = "",
+          alone: frozenset[int] = frozenset()) -> dict[int, tuple[int, bool]]:  # fmt: skip
+    """Each old finding's own finding among a report's new ones, one to one: for every old
+    one first the same message at the same place, then the same message, then the same
+    context at the same place, then the same context, then the same word at the same place
+    or in the same part of the paper; a finding taken by one is not taken by another. A
+    finding that lists forms gives each form once. An old finding that was the only one of
+    its code in its report (`alone`) is the only one of its code in the new report too, where
+    that names its word. Says (new index, whether by a form)."""
+    taken: set[tuple] = set()
+    found: dict[int, tuple[int, bool]] = {}
+
+    def token(i: int, old: dict) -> tuple:
+        return (i, "whole", subject_of(old)) if new[i].get("forms") else (i,)
+
+    def free(i: int, old: dict) -> bool:
+        return (i,) not in taken and token(i, old) not in taken
+
+    def take(k: int, i: int, old: dict, entry: int | None = None) -> None:
+        found[k] = (i, entry is not None)
+        taken.add(token(i, old) if entry is None else (i, "form", entry))
+
+    passes = [lambda o, f: _by_message(o, f, slug, True),
+              lambda o, f: _by_message(o, f, slug, False),
+              lambda o, f: _by_context(o, f, slug, True),
+              lambda o, f: _by_context(o, f, slug, False)]  # fmt: skip
+    for test in passes:
+        for k, old in enumerate(olds):
+            if k not in found:
+                i = next((i for i, f in enumerate(new) if _same_code(old, f) and free(i, old)
+                          and test(old, f)), None)  # fmt: skip
+                if i is not None:
+                    take(k, i, old)
+    for k, old in enumerate(olds):
+        for i, f in enumerate(new):
+            if k in found or not _same_code(old, f) or not free(i, old):
+                continue
+            entries = [e for e in f.get("forms") or [] if isinstance(e, dict)]
+            single = k in alone and sum(_same_code(old, g) for g in new) == 1 and bool(
+                (key := key_of(old)) and key.search(str(f.get("message") or "")))
+            if not entries and (single or _about(old, f, slug)):
+                take(k, i, old)
+            j = next((j for j, e in enumerate(entries) if (i, "form", j) not in taken
+                      and e.get("form") == subject_of(old)
+                      and _about(old, _entry(f, e), slug, True)), None)  # fmt: skip
+            if k not in found and j is not None:
+                take(k, i, old, j)
+    return found
+
+
+def states(olds: list[dict], new: list[dict], slug: str = "",
+           alone: frozenset[int] = frozenset()) -> list[tuple[str, list[int]]]:  # fmt: skip
+    """Each judged finding's state among a report's findings, and the findings that make it
+    so. A question or a warning at its place counts only where it names what the old one
+    was about (`key_of`)."""
+    matched = match(olds, new, slug, alone)
+    out = []
+    for k, old in enumerate(olds):
+        if k in matched:
+            i = matched[k][0]
+            quiet = new[i].get("question") or not loud(new[i])
+            out.append(("asked" if quiet else "reported", [i]))
+            continue
+        key = key_of(old)
+        here = [i for i, f in enumerate(new) if key and same_place(old, f, slug)
+                and key.search(str(f.get("message") or ""))]  # fmt: skip
+        asked = [i for i in here if is_question(new[i])]
+        louder = [i for i in here if loud(new[i])]
+        form = form_of(old) if old.get("gate") == "G14" else None
+        about = [i for i, f in enumerate(new) if form and f.get("gate") == "G14"
                  and f.get("code") != old.get("code") and form in forms_named(f)]
-        if [i for i in about if loud(new[i])]:
-            return "elsewhere", [i for i in about if loud(new[i])]
-        if about:
-            return "asked", about
-    return "gone", []
+        if asked:
+            out.append(("asked", asked))
+        elif louder:
+            out.append(("elsewhere", louder))
+        elif [i for i in about if loud(new[i])]:
+            out.append(("elsewhere", [i for i in about if loud(new[i])]))
+        elif about:
+            out.append(("asked", about))
+        else:
+            out.append(("gone", []))
+    return out
+
+
+def state(old: dict, new: list[dict], slug: str = "") -> tuple[str, list[int]]:
+    """One judged finding's state among a report's findings (`states`)."""
+    return states([old], new, slug)[0]
 
 
 @dataclass
@@ -378,10 +504,19 @@ class Run:
 
 def fates(judged: list[Judged], run: Run, decisions: list[Decision]) -> list[Fate]:
     successors = [d for d in decisions if d.successor_from]
+    groups: dict[tuple[str, str], list[int]] = collections.defaultdict(list)
+    for n, item in enumerate(judged):
+        groups[(item.slug, item.report)].append(n)
+    found_of: dict[int, tuple[str, list[int]]] = {}
+    for (slug, report), members in groups.items():
+        alone = frozenset(k for k, n in enumerate(members) if judged[n].alone)
+        said = states([judged[n].finding for n in members], run.findings(slug, report) or [],
+                      slug, alone)  # fmt: skip
+        found_of.update(zip(members, said, strict=True))
     out = []
-    for item in judged:
+    for n, item in enumerate(judged):
         new = run.findings(item.slug, item.report)
-        found, used = state(item.finding, new or [])
+        found, used = found_of[n]
         fate = Fate(item, found, missing=new is None)
         run.used[(item.slug, item.report)].update(used)
         if found == "gone" and new:
@@ -585,7 +720,18 @@ def render_gate(result: dict) -> str:
 # --- the command line -------------------------------------------------------------------
 
 
+def _outside_the_checkout(*paths: str | None) -> None:
+    """The reports quote the corpus's papers, which are not this repository's to publish: a
+    file of them inside the checkout is one `git add` from a commit, so none is written."""
+    for path in filter(None, paths):
+        if Path(path).resolve().is_relative_to(ROOT):
+            raise CorpusError(f"{path} is inside the manuscript-guard checkout, and what it "
+                              "would hold quotes the corpus's papers: write it in the corpus "
+                              "folder (its runs/ is ignored by git) or elsewhere")  # fmt: skip
+
+
 def _write(text: str, data: dict, out: str | None, as_json: str | None) -> None:
+    _outside_the_checkout(out, as_json)
     if out:
         Path(out).write_text(text, "utf-8")
     else:

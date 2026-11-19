@@ -16864,8 +16864,13 @@ been sorted yet.
   `table-changed` row at the table's line once tables were compared cell by cell. `gate`
   then counts a loss that a person reading its list sees is none; the finding is still
   true, so the ledger is no place to re-judge it. A reading notice said again in other
-  words is gone in the same way, and a lost notice blocks nothing.
-  Pinned by `tests/test_corpus_tool.py::test_a_finding_said_under_another_code_at_another_line_is_gone`.
+  words is gone in the same way, and a lost notice blocks nothing. So is a short form whose
+  part of the paper the new build reads otherwise, at another line: a G14 finding "in the
+  abstract" where the judged run took a Discussion for the Abstract, now listed in the
+  question "in the main text", is not the same finding, since two findings of one form in
+  two parts must not stand for each other.
+  Pinned by `tests/test_corpus_tool.py::test_a_finding_said_under_another_code_at_another_line_is_gone`
+  and `tests/test_corpus_tool.py::test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part`.
 
 - **A short form that needs its definition and is never given one is asked about, not
   warned of.** G14's one question on the short forms never defined lists it beside the

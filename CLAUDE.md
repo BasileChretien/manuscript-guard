@@ -33,8 +33,8 @@ claude plugin validate .     # the marketplace manifest; `plugin` validates the 
 
 A pull request that changes a rule reading text is measured on the real-paper corpus
 (`docs/corpus.md`; `MANUSCRIPT_GUARD_CORPUS` names it, outside the repository):
-`python tools/corpus.py run <its commit> --name pr-<n>`, then
-`python tools/corpus.py gate <main's run> pr-<n>`, whose output goes in the PR body. A true
+`python tools/corpus.py run <its head sha>`, then `python tools/corpus.py gate <main's run>
+<that sha's first nine characters>`, whose output goes in the PR body. A true
 finding lost blocks the pull request unless a decision of the author's in the corpus's
 ledger covers it; never write one to the ledger yourself.
 

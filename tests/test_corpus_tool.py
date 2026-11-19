@@ -98,7 +98,11 @@ NEW = {
         # asked: the same code, now one question that names the form
         finding("G14", "abbreviation-undefined", "2 short forms are used and never defined: "
                 "'XYZ' here, then ABC. Do any of them need defining?", severity="info",
-                line=20, question=True, forms=[{"form": "XYZ"}, {"form": "ABC"}]),
+                line=20, question=True, forms=[
+                    {"form": "XYZ", "line": 20, "path": "paper.docx",
+                     "message": "XYZ is used 3 times in the main text, and not defined there"},
+                    {"form": "ABC", "line": 90, "path": "paper.docx",
+                     "message": "ABC is used once in the main text, and not defined there"}]),
         # elsewhere: another code's warning at the same line of the same file
         finding("G2", "typed-number", "42 is typed and not bound", line=30),
         # elsewhere: the same short form under another G14 code, at another line
@@ -189,8 +193,9 @@ def test_a_note_of_the_same_finding_is_asked_and_a_warning_reported() -> None:
     old = finding("G7", "doi-unresolved", "10.1/abc does not resolve")
     assert tool.state(old, [{**old, "severity": "info"}])[0] == "asked"
     assert tool.state(old, [{**old, "severity": "fail"}])[0] == "reported"
-    assert tool.state(old, [{**old, "message": "other", "code": "question-doi",
-                             "severity": "info"}])[0] == "asked"  # fmt: skip
+    question = {**old, "code": "question-doi", "severity": "info"}
+    assert tool.state(old, [{**question, "message": "Does 10.1/abc resolve?"}])[0] == "asked"
+    assert tool.state(old, [{**question, "message": "Is it cited?"}])[0] == "gone"
 
 
 def test_a_folder_of_the_machine_in_a_message_does_not_tell_two_findings_apart() -> None:
@@ -201,9 +206,83 @@ def test_a_folder_of_the_machine_in_a_message_does_not_tell_two_findings_apart()
 
 def test_the_same_line_of_another_file_is_not_the_same_place() -> None:
     old = finding("G14", "spelling-variant", "'color'", line=60, path="manuscript/main.md")
-    other = finding("G12", "plan-section-empty", "empty", line=60, path="design/plan.md")
+    other = finding("G12", "plan-section-empty", "'color' here", line=60, path="design/plan.md")
     assert tool.state(old, [other])[0] == "gone"
-    assert tool.state(old, [{**other, "path": "/elsewhere/manuscript/main.md"}])[0] == "elsewhere"
+    # Two files of one name in two folders are two files.
+    assert tool.state(old, [{**other, "path": "appendix/main.md"}])[0] == "gone"
+    # The same file, wherever the run was made, is the same file.
+    there = {**other, "path": "/home/someone/runs/r1/paper-x/project/manuscript/main.md"}
+    assert tool.state(old, [there], "paper-x")[0] == "elsewhere"
+    # A finding that names no file is at the place only of another that names none.
+    assert tool.state(old, [{**other, "path": None}])[0] == "gone"
+    assert tool.state({**old, "path": None}, [{**other, "path": None}])[0] == "elsewhere"
+
+
+def test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part() -> None:
+    abstract = finding("G14", "abbreviation-undefined", "SHAP is used 2 times in the abstract "
+                       "and not defined there", line=3)  # fmt: skip
+    main_text = finding("G14", "abbreviation-undefined", "SHAP is used 7 times in the main "
+                        "text and not defined there", line=40)  # fmt: skip
+    assert tool.states([abstract, main_text], [main_text]) == [("gone", []),
+                                                                ("reported", [0])]  # fmt: skip
+    assert tool.state(abstract, [main_text])[0] == "gone"
+    # One question that lists the form twice, once for each part, answers both.
+    question = finding("G14", "abbreviation-undefined", "2 short forms are used and never "
+                       "defined: 'SHAP' (in the abstract) here, then SHAP", "info", line=1,
+                       question=True, forms=[
+                           {"form": "SHAP", "line": 3, "message": abstract["message"]},
+                           {"form": "SHAP", "line": 40, "message": main_text["message"]}])
+    assert tool.states([abstract, main_text], [question]) == [("asked", [0]), ("asked", [0])]
+    assert tool.states([abstract, main_text], [{**question, "forms": question["forms"][1:]}]
+                       ) == [("gone", []), ("asked", [0])]  # fmt: skip
+
+
+def test_the_only_finding_of_its_code_is_found_again_where_its_line_moved() -> None:
+    old = finding("G14", "notation-percent", "'%' stands after a space 2 times, as in '24.6 %'",
+                  line=91)  # fmt: skip
+    now = finding("G14", "notation-percent", "'%' stands after a space 3 times, as in '27.6 %'",
+                  line=33)  # fmt: skip
+    assert tool.states([old], [now], alone=frozenset({0})) == [("reported", [0])]
+    # Not where the judged run had others of its code, nor where the new one has two.
+    assert tool.states([old], [now])[0][0] == "gone"
+    assert tool.states([old], [now, {**now, "line": 70}], alone=frozenset({0}))[0][0] == "gone"
+
+
+def test_a_name_listed_with_others_is_found_again_by_the_name() -> None:
+    old = finding("G14", "code-name-in-prose", "'max_p' is written as a name in code is, with "
+                  "underscores: it is used 5 times, first in the prose", line=13)  # fmt: skip
+    grouped = finding("G14", "code-name-in-prose", "2 names are written the way names in code "
+                      "are: 'n_top' here, then max_p", line=17, forms=[
+                          {"form": "n_top", "line": 17, "message": "'n_top' is written ..."},
+                          {"form": "max_p", "line": 21, "message": "'max_p' is written ..."}])
+    assert tool.state(old, [grouped]) == ("reported", [0])
+    other = {**old, "message": old["message"].replace("max_p", "min_q")}
+    assert tool.states([old, other], [grouped]) == [("reported", [0]), ("gone", [])]
+
+
+def test_two_findings_of_one_message_take_one_finding_each() -> None:
+    first = finding("G8", "p-inconsistent", "t(29) = 3.11 gives a P of 0.004, the text says "
+                    "P = 0.013", line=5)  # fmt: skip
+    second = {**first, "line": 50}
+    said = tool.states([first, second], [second])
+    assert said == [("gone", []), ("reported", [0])]
+    assert tool.states([first, second], [second, first]) == [("reported", [1]),
+                                                             ("reported", [0])]  # fmt: skip
+
+
+def test_a_question_or_warning_at_the_place_keeps_only_what_it_names() -> None:
+    lost = finding("audit", "does-not-fit", "F(2, 55) = 0.62 gives a P between 0.539 and 0.544, "
+                   "and the text says P = .61", line=66)  # fmt: skip
+    question = finding("G14", "abbreviation-undefined", "3 short forms are used and never "
+                       "defined: 'ASC' here, then AQ, IQ. Do any of them need defining?",
+                       "info", line=66, question=True)  # fmt: skip
+    phrasing = finding("G6", "ai-phrasing", "'delve into' is a phrase models favour", line=66)
+    assert tool.state(lost, [question])[0] == "gone"
+    assert tool.state(lost, [phrasing])[0] == "gone"
+    asks = finding("audit", "question-p-adjusted", "The paper says its P values are adjusted. "
+                   "P = .61 is larger than the 0.539 to 0.544 that F(2, 55) = 0.62 gives on "
+                   "its own. Is it the adjusted P?", "info", line=66, question=True)
+    assert tool.state(lost, [question, phrasing, asks]) == ("asked", [2])
 
 
 def test_a_finding_said_under_another_code_at_another_line_is_gone() -> None:
@@ -325,6 +404,17 @@ def test_the_command_says_what_it_needs_in_one_line(tmp_path: Path, capsys,
     assert "not a corpus" in capsys.readouterr().err
 
 
+def test_nothing_the_tool_writes_lands_in_the_checkout(corpus: Path, capsys) -> None:
+    inside = REPO / "corpus-gate.md"
+    assert tool.main(["--corpus", str(corpus), "gate", "base", "new", "--out", str(inside)]) == 2
+    assert "inside the manuscript-guard checkout" in capsys.readouterr().err
+    assert not inside.exists()
+    assert tool.main(["--corpus", str(corpus), "measure", "new", "--json",
+                      str(REPO / "tools" / "m.json")]) == 2  # fmt: skip
+    assert tool.main(["--corpus", str(REPO / "no-corpus-here"), "measure", "new"]) == 2
+    assert "keep the corpus" in capsys.readouterr().err
+
+
 def test_the_reading_notices_are_the_ones_the_page_lists_and_the_package_writes() -> None:
     page = (REPO / "docs" / "corpus.md").read_text("utf-8")
     table = page.split("### Reading notices")[1].split("\n## ")[0]
@@ -362,8 +452,42 @@ def _archive() -> bytes:
     return buffer.getvalue()
 
 
-def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
-        corpus: Path, monkeypatch) -> None:  # fmt: skip
+SHA = "0123456789abcdef0123456789abcdef01234567"
+OTHER_SHA = "fedcba9876543210fedcba9876543210fedcba98"
+
+
+class FakeBuild:
+    """`quiet` and `call` of the runner, faked: git answers `self.sha`, a venv is a file, and
+    each step writes an empty report."""
+
+    def __init__(self, monkeypatch) -> None:
+        self.sha, self.quiet_calls, self.steps = SHA, [], []
+        monkeypatch.setattr(tool.corpus_run, "quiet", self.quiet)
+        monkeypatch.setattr(tool.corpus_run, "call", self.call)
+
+    def quiet(self, cmd, cwd=None) -> bytes:
+        self.quiet_calls.append([str(c) for c in cmd])
+        if "rev-parse" in cmd:
+            return (self.sha + "\n").encode()
+        if "archive" in cmd:
+            return _archive()
+        if "-c" in cmd:
+            return b"0.2.999\n"
+        if "venv" in cmd:
+            python = tool.corpus_run.venv_python(Path(cmd[-1]))
+            python.parent.mkdir(parents=True)
+            python.write_text("")
+        return b""
+
+    def call(self, cmd, cwd, out, env) -> dict:
+        self.steps.append((list(cmd), Path(cwd), Path(out), env))
+        if "init" in cmd and "--latex" in cmd:
+            (Path(cmd[-1]) / "manuscript").mkdir(parents=True)
+        out.write_text(json.dumps({"findings": []}))
+        return {"cmd": cmd, "exit": 0, "seconds": 0.0, "stderr": ""}
+
+
+def add_papers(corpus: Path) -> None:
     for slug, meta in {
         "doc-1": {"format": "docx", "main": "paper.docx"},
         "tex-1": {"format": "latex", "main": "latest/paper.tex", "v1": "v1/paper.tex",
@@ -375,47 +499,26 @@ def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
         (folder / "files" / "latest" / "paper.tex").write_text("\\section{A}\n")
         (folder / "files" / "latest" / "refs.bib").write_text("@article{a,title={A}}\n")
         (folder / "meta.json").write_text(json.dumps({"slug": slug, **meta}))
-    quiet_calls, steps = [], []
-    sha = "0123456789abcdef0123456789abcdef01234567"
 
-    def fake_quiet(cmd, cwd=None):
-        quiet_calls.append([str(c) for c in cmd])
-        if "rev-parse" in cmd:
-            return (sha + "\n").encode()
-        if "archive" in cmd:
-            return _archive()
-        if "-c" in cmd:
-            return b"0.2.999\n"
-        if "venv" in cmd:
-            python = tool.corpus_run.venv_python(Path(cmd[-1]))
-            python.parent.mkdir(parents=True)
-            python.write_text("")
-        return b""
 
-    def fake_call(cmd, cwd, out, env):
-        steps.append((list(cmd), Path(cwd), Path(out), env))
-        if "init" in cmd and "--latex" in cmd:
-            (Path(cmd[-1]) / "manuscript").mkdir(parents=True)
-        out.write_text(json.dumps({"findings": []}))
-        return {"cmd": cmd, "exit": 0, "seconds": 0.0, "stderr": ""}
-
-    runner = tool.corpus_run
-    monkeypatch.setattr(runner, "quiet", fake_quiet)
-    monkeypatch.setattr(runner, "call", fake_call)
+def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
+        corpus: Path, monkeypatch) -> None:  # fmt: skip
+    add_papers(corpus)
+    fake = FakeBuild(monkeypatch)
     monkeypatch.setenv("MANUSCRIPT_GUARD_DEBUG", "1")
-    record = runner.run(corpus, "main", "pr-1", REPO, jobs=2, only=None)
-    assert record == {"commit": "main", "sha": sha, "version": "0.2.999", "papers": 3}
-    assert any("archive" in c and sha in c for c in quiet_calls)
-    assert (corpus / "builds" / sha[:9] / "installed.txt").read_text("utf-8") == sha
-    assert (corpus / "builds" / f"src-{sha[:9]}" / "pyproject.toml").is_file()
+    record = tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=2, only=None)
+    assert record == {"commit": "main", "sha": SHA, "version": "0.2.999", "papers": 3}
+    assert any("archive" in c and SHA in c for c in fake.quiet_calls)
+    assert (corpus / "builds" / SHA[:9] / "installed.txt").read_text("utf-8") == SHA
+    assert (corpus / "builds" / f"src-{SHA[:9]}" / "pyproject.toml").is_file()
     papers = (corpus / "corpus").resolve()
-    for cmd, cwd, out, env in steps:
+    for cmd, cwd, out, env in fake.steps:
         assert cmd[1:5] == ["-I", "-X", "utf8", "-c"], cmd
         assert papers not in cwd.resolve().parents and cwd.resolve() != papers
         assert out.resolve().is_relative_to((corpus / "runs" / "pr-1").resolve())
         assert "MANUSCRIPT_GUARD_DEBUG" not in env
         assert env["MANUSCRIPT_GUARD_NO_REPORTS"] == "1"
-    names = {(out.parent.name, out.name) for _, _, out, _ in steps}
+    names = {(out.parent.name, out.name) for _, _, out, _ in fake.steps}
     assert names == {
         ("doc-1", "audit.json"), ("doc-1", "init.out"), ("doc-1", "check.json"),
         ("tex-1", "audit.json"), ("tex-1", "audit-pdf.json"), ("tex-1", "compare.json"),
@@ -423,9 +526,65 @@ def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
     project = corpus / "runs" / "pr-1" / "tex-1" / "project"
     assert (project / "manuscript" / "main.tex").is_file()
     assert (project / "literature" / "references.bib").is_file()
+    held = json.loads((corpus / "runs" / "pr-1" / "doc-1" / "steps.json").read_text("utf-8"))
+    assert held["sha"] == SHA and set(held["steps"]) == {"audit", "init", "check"}
     # A second run of the same build runs no step again and installs nothing.
-    steps.clear()
-    quiet_calls.clear()
-    runner.run(corpus, "main", "pr-1", REPO, jobs=1, only=["doc-1"])
-    assert steps == []
-    assert not any("archive" in c for c in quiet_calls)
+    fake.steps.clear()
+    fake.quiet_calls.clear()
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=["doc-1"])
+    assert fake.steps == []
+    assert not any("archive" in c for c in fake.quiet_calls)
+
+
+def test_a_run_folder_made_for_another_commit_is_refused(corpus: Path, monkeypatch) -> None:
+    add_papers(corpus)
+    fake = FakeBuild(monkeypatch)
+    tool.corpus_run.run(corpus, "pr", "pr-1", REPO, jobs=1, only=None)
+    fake.sha = OTHER_SHA
+    fake.steps.clear()
+    with pytest.raises(tool.CorpusError, match="holds a run of 012345678, not of fedcba987"):
+        tool.corpus_run.run(corpus, "pr", "pr-1", REPO, jobs=1, only=None)
+    assert fake.steps == []
+    # Its papers' steps are refused too, where run.json is gone.
+    (corpus / "runs" / "pr-1" / "run.json").unlink()
+    with pytest.raises(tool.CorpusError, match="written for another commit than fedcba987"):
+        tool.corpus_run.run(corpus, "pr", "pr-1", REPO, jobs=1, only=None)
+    assert fake.steps == []
+    # Under its own name, the other commit runs.
+    tool.corpus_run.run(corpus, "pr", None, REPO, jobs=1, only=["pdf-1"])
+    assert [out.parent.parent.name for _, _, out, _ in fake.steps] == [OTHER_SHA[:9]]
+
+
+@pytest.mark.parametrize("slug", ["../escape", "doc-2", "a b", ".."])
+def test_a_slug_names_its_own_folder_and_nothing_outside(corpus: Path, slug: str) -> None:
+    folder = corpus / "corpus" / "doc-1"
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text(json.dumps({"slug": slug, "format": "docx",
+                                                  "main": "paper.docx"}))  # fmt: skip
+    with pytest.raises(tool.CorpusError, match="is not its folder's name"):
+        tool.corpus_run.papers(corpus)
+
+
+def test_a_commit_that_begins_with_a_dash_is_refused(monkeypatch) -> None:
+    monkeypatch.setattr(tool.corpus_run, "quiet", lambda *a, **k: pytest.fail("ran git"))
+    with pytest.raises(tool.CorpusError, match="would reach git as an option"):
+        tool.corpus_run.resolve(REPO, "--upload-pack=x")
+
+
+def test_a_ledger_key_whose_index_is_no_number_is_refused(corpus: Path) -> None:
+    ledger = {"decisions": [{"id": "k", "date": "d", "by": "b", "what": "w", "source": "s",
+                             "rejudge": {"verdict": "false", "findings": [
+                                 {"slug": "paper-a", "report": "audit", "index": "x"}]}}]}
+    with pytest.raises(tool.CorpusError, match="index is a number"):
+        tool.measure(with_ledger(corpus, ledger), "new")
+
+
+def test_a_verdict_written_as_a_json_boolean_is_counted(corpus: Path) -> None:
+    path = corpus / "report" / "judged" / "field.json"
+    verdicts = json.loads(path.read_text("utf-8"))
+    for entry in verdicts:
+        entry["verdict"] = {"true": True, "false": False}.get(entry["verdict"], entry["verdict"])
+    path.write_text(json.dumps(verdicts))
+    result = tool.measure(corpus, "new", ledger=False)
+    assert len(result["findings"]) == 9 and result["skipped"] == {"verdict unclear": 1}
+

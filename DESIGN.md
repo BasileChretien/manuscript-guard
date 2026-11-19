@@ -16887,9 +16887,12 @@ shifted by one word, and a true finding read as lost. So every finding `check --
 - **A code with no subject yet** falls back on a digest of its context, its message where
   it has none, each path the finding names and every folder above it left out whole and
   then any other absolute path, and says `"key_from": "context"`.
-  `tests/test_finding_keys_source.py` reads the source: every finding made with a literal
-  code and no subject has its code listed in `tests/test_finding_keys.py` with why, or its
-  gate where the corpus never reads it; a code made from a name is listed where it is made.
+  `tests/test_finding_keys_source.py` reads the source: every finding, item and arithmetic
+  disagreement made with a literal code and no subject has its code listed in
+  `tests/test_finding_keys.py` with why, or its gate where the corpus never reads it, or
+  where it is made where its caller keys it or its item names another code; a code made
+  from a name is listed where it is made; and every note added to the audit's lists of what
+  it read is a `Notice`, or made one where its file's notes are said.
   `tests/test_finding_keys.py` also runs the example, a paper with something for each family
   and the generated inputs of the `check` reading.
 

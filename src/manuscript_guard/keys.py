@@ -176,6 +176,13 @@ def placed(text: str, offset: int, supplementary: bool = False) -> str:
     return digest(part_of(text, offset, supplementary), sentence_at(text, offset))
 
 
+def in_table(header: Sequence, row: str) -> str:
+    """The digest of a table's row as a finding's sentence: the row with its table's header
+    row, so that one row in two tables of other headers is two sentences (`keys`)."""
+    return digest(MAIN, " | ".join(getattr(cell, "text", str(cell)) for cell in header)
+                  + "\n" + row)  # fmt: skip
+
+
 _SPACES = re.compile(r"\s+")
 #: An absolute path in a message, which names the folder of one run on one machine: what a
 #: key from the context does not read.

@@ -2,11 +2,14 @@
 
 `tests/test_finding_keys.py` runs papers and projects, and so sees only the codes its inputs
 happen to make. This reads the source instead: each `Finding`, `Question`, `Item` or
-`question` made with no `subject`, and not handed to what keys it (`about`, `of_number`,
-`_notice`), is a code that falls back on its context. Its code is in `ON_THE_FALLBACK` with
-why, or its gate is one whose findings the corpus never reads (`WHOLE_GATES`); a code made
-from a name, not typed, is listed by where it is made (`VARIABLE_SITES`). A list that keys as
-one thing (`Asked`, `Listed`, `Undefined`) names its own key.
+`question`, and each arithmetic `Disagreement` or `Asked`, made with no `subject`, and not
+handed to `about` with one, is a code that falls back on its context. `of_number` and
+`_notice` key what they are handed, so that is held where it is made: a `Disagreement`
+here, and a note on the inputs where it is added to its list (`unnoted`). Its code is in
+`ON_THE_FALLBACK` with why, or its gate is one whose findings the corpus never reads
+(`WHOLE_GATES`); a code made from a name, not typed, is listed by where it is made
+(`VARIABLE_SITES`). A list that keys as one thing (G14's `Asked`, `Listed`, `Undefined`)
+names its own key.
 """
 
 from __future__ import annotations
@@ -21,9 +24,16 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "manuscript_guard"
 #: What makes a finding, by the module it is imported from, and where the code and the gate
 #: stand among its arguments where they are not given by name.
 MAKERS = {
-    "manuscript_guard.findings": {"Finding": (1, 0), "Question": (1, 0)},
-    "manuscript_guard.auditing.report": {"Item": (2, 1), "question": (1, None)},
-}
+    "manuscript_guard.findings": {"Finding": (1, 0, None, None), "Question": (1, 0, None, None)},
+    "manuscript_guard.auditing.report": {"Item": (2, 1, None, None),
+                                         "question": (1, None, "audit", None)},
+    "manuscript_guard.audit": {"Disagreement": (4, None, "audit", "does-not-fit")},
+    "manuscript_guard.auditing.adjusted": {"Asked": (4, None, "audit", None)},
+}  # fmt: skip
+#: The lists of the audit's notes on its inputs, each of which is a `keys.Notice`, and the
+#: modules that fill them.
+NOTES = {"passed_over", "not_audited", "headings"}
+NOTED_IN = ("audit.py", "auditing/latex.py")
 #: What makes a finding that keys itself, or keys one it is handed.
 KEYING = {"about", "of_number", "_notice"}
 SELF_KEYED = {"Asked", "Listed", "Undefined"}
@@ -85,6 +95,29 @@ VARIABLE_SITES = {
 }
 
 
+#: Where a note is added as a string and made a `Notice` afterwards, with why.
+NOTE_SITES = {
+    "auditing/latex.py:": "each note on a file the LaTeX reading passes over is made a Notice "
+    "about that file once its notes are said (`read_latex`)",
+}
+#: Where an arithmetic finding is made with no subject and keyed by its caller, or never
+#: reaches an item that takes its code, each with why.
+KEYED_BY_CALLER = {
+    "auditing/adjusted.py:asked_p": "keyed by its caller, `audit._disagreements`",
+    "auditing/adjusted.py:asked_share": "keyed by its caller, `audit._disagreements`",
+    "audit.py:_flows": "a flow's finding: its item says flow-broken or flow-note, listed",
+    "audit.py:_whole_number_means": "a mean not assessable: its item says "
+    "mean-not-assessable, listed",
+    "audit.py:_margins": "a total or an n over the header: its item says sum-off, "
+    "over-header-n or count-recoverable, listed",
+    "auditing/skew.py:non_negative_means": "a row passed over: its note is listed",
+    "auditing/spreads.py:whole_number_sd": "an SD not possible: its item says sd-not-possible, "
+    "listed",
+    "auditing/spreads.py:binary_means": "a binary mean not possible: its item says "
+    "binary-not-possible, listed",
+}
+
+
 def _module(name: str, here: Path, level: int) -> str:
     if not level:
         return name
@@ -131,9 +164,11 @@ def _constants(path: Path) -> dict[str, str]:
     return found
 
 
-def _makers(tree: ast.AST, path: Path) -> dict[str, tuple[int, int | None]]:
-    """What makes a finding in this module, by the name it is called by."""
-    made: dict[str, tuple[int, int | None]] = {}
+def _makers(tree: ast.AST, path: Path) -> dict[str, tuple]:
+    """What makes a finding in this module, by the name it is called by: where its code and
+    its gate stand among the arguments, and the gate and the code it has where none is
+    given."""
+    made: dict[str, tuple] = {}
     own = ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
     made.update(MAKERS.get(own, {}))
     for node in ast.walk(tree):
@@ -146,11 +181,48 @@ def _makers(tree: ast.AST, path: Path) -> dict[str, tuple[int, int | None]]:
 
 
 def _names_a_subject(call: ast.Call) -> bool:
-    """Whether a call that keys what it is handed gives it a subject: its second argument, or
-    `subject=`, is anything but the constant None."""
+    """Whether a call that keys what it is handed gives it a subject: `about`'s second
+    argument, or `subject=`, is anything but the constant None. `of_number` and `_notice`
+    take the subject from what they are handed, which is held where it is made."""
+    if getattr(call.func, "id", None) != "about":
+        return True
     given = {one.arg: one.value for one in call.keywords}
     subject = given.get("subject", call.args[1] if len(call.args) > 1 else None)
     return not (subject is None or (isinstance(subject, ast.Constant) and subject.value is None))
+
+
+def _a_notice(node: ast.AST) -> bool:
+    """Whether what is added to a list of notes is a `Notice`, or a list made elsewhere,
+    which is held where it is made."""
+    if isinstance(node, ast.Starred):
+        node = node.value
+    if isinstance(node, (ast.ListComp, ast.GeneratorExp)):
+        node = node.elt
+    if isinstance(node, (ast.Name, ast.Attribute)):
+        return True
+    return isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Notice"
+
+
+def unnoted() -> list[str]:
+    """Each place a note on the inputs is added to its list as a plain string, `file:line`:
+    it would fall back on its context (`auditing.report._notice`)."""
+    found = []
+    for path in (SRC / name for name in NOTED_IN):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            added: list[ast.AST] = []
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "append" and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr in NOTES):
+                added = node.args[:1]
+            elif (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Attribute)
+                    and node.target.attr in NOTES):
+                added = node.value.elts if isinstance(node.value, ast.List) else [node.value]
+            elif (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "AuditReport"):
+                added = [one.value for one in node.keywords if one.arg in NOTES]
+            for one in added:
+                if not _a_notice(one):
+                    found.append(f"{path.relative_to(SRC).as_posix()}:{node.lineno}")
+    return found
 
 
 def unkeyed() -> list[tuple[str, str, str]]:
@@ -181,12 +253,14 @@ def unkeyed() -> list[tuple[str, str, str]]:
             if (isinstance(up, ast.Call) and getattr(up.func, "id", None) in KEYING
                     and _names_a_subject(up)):
                 continue
-            at_code, at_gate = makers[node.func.id]
+            at_code, at_gate, gate_given, code_given = makers[node.func.id]
             code = given.get("code", node.args[at_code] if len(node.args) > at_code else None)
             gate_node = given.get("gate")
             if gate_node is None and at_gate is not None and len(node.args) > at_gate:
                 gate_node = node.args[at_gate]
-            gate = "audit" if node.func.id == "question" else value(gate_node)
+            gate = gate_given or value(gate_node)
+            if code is None and code_given is not None:
+                code = ast.Constant(code_given)
             where, scope = path.relative_to(SRC).as_posix(), node
             while scope in parents and not isinstance(scope, ast.FunctionDef):
                 scope = parents[scope]
@@ -201,7 +275,7 @@ def _whole(gate: str, site: str) -> bool:
 
 
 def _allowed(gate: str, code: str, site: str) -> bool:
-    if code in ON_THE_FALLBACK or _whole(gate, site):
+    if code in ON_THE_FALLBACK or _whole(gate, site) or site in KEYED_BY_CALLER:
         return True
     # A site listed covers the codes it makes from a name, and never a code typed there.
     return site in VARIABLE_SITES and code.startswith("<")
@@ -221,8 +295,18 @@ def test_every_finding_made_without_a_subject_is_listed() -> None:
 def test_no_code_a_family_keys_is_made_without_a_subject() -> None:
     """The codes the families key never fall back, wherever they are made (`KEYED`)."""
     made = sorted({(code, site) for gate, code, site in unkeyed()
-                   if code in KEYED and not _whole(gate, site)})  # fmt: skip
+                   if code in KEYED and not _whole(gate, site)
+                   and site not in KEYED_BY_CALLER})  # fmt: skip
     assert made == [], made
+
+
+def test_every_note_on_the_inputs_is_a_notice() -> None:
+    """A note added to the audit's lists of what it read is a `Notice`, which knows the file
+    or the part it is about, or is made one where its file's notes are said (`NOTE_SITES`)."""
+    found = [site for site in unnoted()
+             if not any(site.startswith(listed) for listed in NOTE_SITES)]  # fmt: skip
+    assert len(unnoted()) >= len(found)
+    assert found == [], found
 
 
 def test_every_listing_is_of_something_made_and_says_why() -> None:

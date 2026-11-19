@@ -298,16 +298,71 @@ def test_the_fallback_leaves_out_the_findings_own_path_whole_a_space_in_it_too()
 
 
 def test_a_folder_above_the_findings_path_is_left_out_only_where_it_stands_whole() -> None:
-    """A folder of the finding's path is taken out of a message only where it stands as a
-    path, not inside another (round 2 of #706: `/data` was cut out of
-    `analysis/data/raw.csv`, which then read as `analysis`)."""
+    """The finding's path, and each folder above it, is taken out of a message only where it
+    stands whole, not inside another path (round 2 of #706: the path `/data/raw.csv` was cut
+    out of `analysis/data/raw.csv`, which then read as `analysis`)."""
     path = Path("/data/raw.csv")
     inside = Finding("G1", "input-missing", "analysis/data/raw.csv is not read", path=path)
     other = Finding("G1", "input-missing", "analysis is not read", path=path)
     assert inside.key != other.key
+    assert inside.key == Finding("G1", "input-missing", "analysis/data/raw.csv is not read",
+                                 path=Path("/w/raw.csv")).key  # fmt: skip
     whole = Finding("G1", "input-missing", "'/data/raw.csv' is not read", path=path)
     assert whole.key == Finding("G1", "input-missing", "'/w/raw.csv' is not read",
                                 path=Path("/w/raw.csv")).key  # fmt: skip
+
+
+def test_the_tools_own_folder_is_left_out_of_a_key_from_the_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message that names the tool's own file, as a gate that raised does, keys alike from
+    two builds of the tool in two folders, as the corpus runs each commit from its own."""
+    said = {}
+    for build in ("/corpus/builds/aaa111", "/corpus/builds/bbb222"):
+        monkeypatch.setattr(keys, "_INSTALLED", keys.paths_of(f"{build}/src/manuscript_guard"))
+        said[build] = Finding("G2", "gate-errored", "G2 could not run: KeyError in "
+                              f"{build}/src/manuscript_guard/gates/numbers.py line 9").key
+    assert len(set(said.values())) == 1, said
+
+
+#: Tables of a paper audited with `--whole-numbers Age` and `--non-negative Weight`: the same
+#: rows in two tables of other headers, and a share written in a sentence that does not fit.
+TABLES = """# Results
+
+Of the patients, 12 of 40 (35%) were women, and the rest were men.
+
+Table 1. Characteristics of group A.
+
+| Characteristic | Group A (n = 10) |
+|---|---|
+| Age, mean (SD) | 3.47 (1.20) |
+| Weight, mean (SD) | 2.0 (3.0) |
+
+Table 2. Characteristics of cohort B.
+
+| Characteristic | Cohort B (n = 10) |
+|---|---|
+| Age, mean (SD) | 3.47 (1.20) |
+| Weight, mean (SD) | 2.0 (3.0) |
+"""
+
+
+def test_a_share_in_a_sentence_and_a_mean_in_a_table_are_keyed(tmp_path: Path) -> None:
+    """The share a sentence writes beside its counts, by the share as typed and its sentence
+    (scoped check of #706: it fell back); a GRIM mean by the mean and its n, and a skewed
+    mean by the cell, each in its row with its table's header row, so that one row in two
+    tables of other headers is two keys."""
+    found = _json("audit", str(a_paper(tmp_path, TABLES)), "--json", "--whole-numbers", "Age",
+                  "--non-negative", "Weight")["findings"]  # fmt: skip
+    arithmetic = [one for one in found if one["section"] == "Arithmetic"]
+    assert arithmetic and [one["key"] for one in arithmetic if one.get("key_from")] == []
+    fits = keyed(found, "does-not-fit")
+    assert [key for key in fits if "|12of40(35%)|" in key] != []
+    grim = [key for key in fits if "|3.47/n=10|" in key]
+    skewed = keyed(found, "mean-sd-skewed")
+    assert len(grim) == len(set(grim)) == 2, grim
+    assert len(skewed) == len(set(skewed)) == 2, skewed
+    assert all(key.split("|")[2] == "2.0(3.0)" for key in skewed)
 
 
 def test_a_note_on_the_pdfs_of_a_folder_given_names_its_subject(tmp_path: Path) -> None:

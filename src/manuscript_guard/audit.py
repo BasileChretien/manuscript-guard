@@ -36,7 +36,7 @@ from pathlib import Path
 
 from manuscript_guard.auditing.spreads import binary_means, whole_number_sd
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.keys import MAIN, Notice, digest, placed
+from manuscript_guard.keys import MAIN, Notice, digest, in_table, placed
 from manuscript_guard.safexml import COMPOUND_FILE, compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.granularity import names, possible, table_means
@@ -1833,10 +1833,12 @@ def _written_shares(report: AuditReport, sources: list[_Source],
             if not shares.off(share):
                 continue
             line = piece.line(at)
+            # Keyed by the share as typed, in its sentence (`keys`).
             found.append(Disagreement(source.path, line,
                                       f"{_under(report, source, piece, line)}"
                                       f"{shares.described(share)}",
-                                      _around(text, at, share)))  # fmt: skip
+                                      _around(text, at, share), subject=share.printed,
+                                      sentence=placed(text, at), at=at))  # fmt: skip
     return found
 
 
@@ -2012,10 +2014,10 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
                 ))  # fmt: skip
                 continue
             said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
-            # Keyed by the mean and its n, in its row (`keys`).
+            # Keyed by the mean and its n, in its row of its table (`keys`).
             found.append(Disagreement(path, mean.line, said, mean.context,
-                                      subject=f"{mean.printed}/n={mean.n}",
-                                      sentence=digest(MAIN, mean.context)))  # fmt: skip
+                                      subject=f"{mean.mean}/n={mean.n}",
+                                      sentence=in_table(table[0], mean.context)))  # fmt: skip
     return found
 
 

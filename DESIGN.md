@@ -16857,6 +16857,16 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
+- **The corpus tool finds a judged finding again only by its gate and code, by its line in
+  the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A
+  finding a later build gives under another code at another line, as a note, reads as gone:
+  in the real-paper corpus, `compare`'s `fact-gone` for a number in a table came back as a
+  `table-changed` row at the table's line once tables were compared cell by cell. `gate`
+  then counts a loss that a person reading its list sees is none; the finding is still
+  true, so the ledger is no place to re-judge it. A reading notice said again in other
+  words is gone in the same way, and a lost notice blocks nothing.
+  Pinned by `tests/test_corpus_tool.py::test_a_finding_said_under_another_code_at_another_line_is_gone`.
+
 - **A short form that needs its definition and is never given one is asked about, not
   warned of.** G14's one question on the short forms never defined lists it beside the
   names, designations and everyday forms it cannot tell it from, and a project's `check`

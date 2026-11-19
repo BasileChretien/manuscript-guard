@@ -240,6 +240,22 @@ on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the 
 each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
 would say.
 
+**Keys.** Each finding `check --json`, `audit --json` and `compare --json` print has a
+`key`, `gate|code|subject|digest`, by which the findings of two runs can be paired. The
+subject is what the finding is about, as its gate names it: a number or a statistic as
+typed, its spaces, minus and point made one form; a short form and the part it is read in,
+`HR@main`; a G6 rule and the words it matched; a reference entry's label; a fact compared,
+as it was and is; a section's title. The digest is 12 hex characters of SHA-256 of the
+sentence the finding stands in and its part (abstract, main or supplement), the sentence
+read without its spaces, its emphasis or its case: a moved line or a re-wrapped paragraph
+keeps the key, and an edited sentence moves it. A finding about a word or a form over the
+whole paper, a short form never defined, a spelling, a notation, a name from the code, has
+the digest `-`. Two findings of one sentence on one subject are numbered by where they
+stand, `t(29)=2.05#1` and `#2`. A list has the key `G14|abbreviation-undefined|-|-` or
+`G14|code-name-in-prose|-|-`, and each word under it the key its warning has in `check`. A
+finding whose code names no subject yet is keyed by its context and says `"key_from":
+"context"`. The text the commands print does not change.
+
 **The words.** G6 and G14 read a project's manuscript, so the paper is put into one made for
 it in a temporary folder and the two gates run as `check` runs them. A .docx goes through
 the conversion `init --from` makes, and each place is said as the document's heading and

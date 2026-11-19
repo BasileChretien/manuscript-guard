@@ -16845,6 +16845,53 @@ Known gaps:
   stata.com/python; the CI images `labordynamicsinstitute/continuous-integration-stata`,
   `AEADataEditor/docker-stata` and `opensafely-core/stata-docker`.
 
+## A finding's key pairs two runs
+
+The author keeps a corpus of papers whose findings were judged true or false, and a pull
+request is held to the true findings it loses. Pairing an old run's findings with a new
+run's by their messages kept leaking: a message reworded, a line moved, a context window
+shifted by one word, and a true finding read as lost. So every finding `check --json`,
+`audit --json` and `compare --json` print carries a `key`, `gate|code|subject|digest`
+(`keys.py`; Basile, 2026-11-19):
+
+- **The subject comes from the gate**, because the context is a window of characters, not
+  the sentence (`gates/vocabulary.context`). A number or a statistic as typed, its spaces,
+  minus and point made one form; a short form and the part G14 reads it in, `HR@abstract`;
+  a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
+  matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
+  fact as it was and is, `12.5→12.6`; a section's title as compare matches it.
+- **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
+  characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
+  frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
+  key, and read in a normal form: NFKC and case folded, one minus, one quotation mark of
+  each kind, no spaces, emphasis, soft hyphens or characters of no width, a line's hyphen
+  joined. A moved line and a re-wrapped paragraph keep it; an edited sentence moves it.
+- **A paper-level code has no digest**, `-`: G14's short forms not defined, used before
+  their definition or unused, one per form per scope; the spellings, the notation, the
+  names from the code, a term avoided and G6's rates. Fixing a first use moves the finding
+  to the next use, and it is the same finding.
+- **A list keys as one thing**: G14's question on the short forms never defined and the
+  audit's list of names from the code are `G14|abbreviation-undefined|-|-` and
+  `G14|code-name-in-prose|-|-`, and each word under them keeps the key its warning has in
+  `check`, so that the two commands give one key for one form.
+- **An ordinal only within a sentence.** Two findings of one sentence with one subject are
+  numbered by their offset, `t(29)=2.05#1` and `#2`. Never across the paper: a number added
+  in one paragraph would renumber every equal number after it. Duplicates left, in two
+  identical sentences of one part, are the corpus tool's affair: it pairs only keys unique in
+  both runs. `keys.shared` names two different findings that share a placed key.
+- **A code with no subject yet** falls back on a digest of its context, its message where
+  it has none, and says `"key_from": "context"`. `tests/test_finding_keys.py` lists those
+  codes with why, and fails on a code that falls back and is not listed, on the example, on
+  a paper with something for each family and on the generated inputs of the `check`
+  reading.
+
+The keys are in `--json` only: nothing an author reads changes. The differential reading
+`finding keys` holds the audit's and compare's keys, and the reading `check` compares the
+whole of `check --json`, so a pull request that moves a key says so in
+`tests/data/differential_expected.yaml`. `tests/test_properties.py` holds that a re-wrap and
+a moved line keep every key, another subject moves it, and the ordinal counts in its
+sentence only, each beside a broken rule in `BROKEN`.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -28291,6 +28338,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
   hold, "Study question.", does not end it; a sentence opening on a few words and a colon,
   "In Japan: ...", ends it early; and a Background with no label after it runs to the
   Abstract's end, its numbers looked for in the Introduction too. Accepted.
+- **A finding's key is as stable as its subject and its sentence, and some codes name no
+  subject yet.** The key `--json` gives each finding (`keys.py`, Basile, 2026-11-19) pairs
+  two runs only where both name the same subject in the same sentence. Accepted.
+  - A key moves when its sentence is edited, by a word or a stop, and when a build reads the
+    sentence otherwise, a PDF's text with other line breaks or a .docx converted with other
+    paragraphs: the finding then reads as one gone and one new, which is the safe side of
+    pairing. Pinned by
+    `tests/test_finding_keys.py::test_another_sentence_and_another_part_move_a_placed_key`.
+  - Two identical sentences in one part have one digest, and two findings in them on one
+    subject one key, which no ordinal tells apart: an ordinal counts within its sentence
+    only. Pinned by
+    `tests/test_properties.py::test_the_ordinal_of_a_key_counts_in_its_sentence_only`.
+  - A hyphen that ends a line is read as a word broken there, "signifi-" and "cant" as
+    "significant", so "well-" at a line's end and "known" read "wellknown", not
+    "well-known". Accepted.
+  - The codes `ON_THE_FALLBACK` in `tests/test_finding_keys.py` lists key on a digest of
+    their context, or of their message where they have none, marked `"key_from":
+    "context"`: a reworded message or a context shifted by a word moves them. Pinned by
+    `tests/test_finding_keys.py::test_only_the_codes_listed_fall_back_on_their_context`.
+  - G8's summary sentence is digested as G8 cut it, not by the frozen splitter, and a
+    share in a table is keyed by its row's line. A key names no file: G7 keys an entry by
+    its label alone, and two papers audited in one run give their entries the same keys.
+    Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

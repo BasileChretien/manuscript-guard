@@ -72,6 +72,8 @@ from manuscript_guard.gates.vocabulary import (
     context,
     judge_vocabulary,
 )
+from manuscript_guard.keys import NONE, Keyed
+from manuscript_guard.keys import placed as placed_in
 from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
@@ -97,6 +99,8 @@ DATA = Path(__file__).parent.parent / "data"
 ABSTRACT = "abstract"
 BODY = "main text"
 SUPPLEMENT = "supplement"
+#: Each scope as a key names its part (`keys`).
+_PART = {ABSTRACT: "abstract", BODY: "main", SUPPLEMENT: "supplement"}
 
 #: A short form is at most this long. Schwartz and Hearst use ten; study and guideline
 #: names (`READUS-PV`, `SARS-CoV-2`) run a little longer.
@@ -2391,6 +2395,8 @@ def _headless(files: list[_File]) -> Finding | None:
         path=paper[0].path,
         hint="give each section a Markdown heading, `# Abstract`, `# Methods`: a line in bold "
         "is not one",
+        subject=paper[0].path.name,
+        sentence=NONE,
     )
 
 
@@ -2430,6 +2436,9 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         return _in_a_glossary(files[mark.order], mark.offset)
 
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
+        """G14's warning on `short` at `mark`, in the scope read now: its key's subject is
+        the form and the scope, "HR@abstract" (`keys`), and its sentence the one `mark`
+        stands in, which only a definition given again keeps (`keys.PAPER_LEVEL`)."""
         file = files[mark.order]
         return Finding(
             gate=GATE,
@@ -2440,6 +2449,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             line=file.line_of(mark.offset),
             context=context(file.text, mark.offset, len(short)),
             hint=hint,
+            subject=f"{short}@{_PART[scope.name]}",
+            sentence=None if code != "abbreviation-redefined" else placed_in(
+                file.text, mark.offset, file.supplementary),
+            at=mark.offset,
         )
 
     findings: list[Finding] = []
@@ -2610,9 +2623,15 @@ class Asked(Question):
         out = {key: value for key, value in super().as_dict().items() if key != "forms"}
         out["forms"] = [{"form": form, "message": warning.message,
                          "path": None if warning.path is None else str(warning.path),
-                         "line": warning.line, "context": warning.context}
+                         "line": warning.line, "context": warning.context,
+                         "key": warning.key}
                         for form, warning in self.forms]  # fmt: skip
         return out
+
+    def keyed(self) -> Keyed:
+        """The question's key stands for the list, `G14|abbreviation-undefined|-|-`; each
+        form keeps the key its warning had."""
+        return Keyed(self.gate, self.code, NONE)
 
 
 def _one_question(
@@ -2828,5 +2847,6 @@ def _not_read(files: list[_File]) -> Report:
             line=file.line_of(start), context=context(typed, start, end - start),
             hint="put the accent over its letter, `\\'{e}` rather than `\\'{}e`, or type the "
             "accented letter as itself: the file is read as UTF-8",
+            subject=path.name, sentence=NONE,
         ))  # fmt: skip
     return Report(tuple(findings))

@@ -3273,6 +3273,45 @@ def _check() -> Reading:
     return check
 
 
+@reading("finding keys")
+def _finding_keys() -> Reading:
+    """The key of each finding `audit --json` gives a Markdown paper, and of each entry a
+    finding lists, with what a key fell back on; and the same of `compare --json` of the
+    paper against itself with each 1 typed 7 (`keys`, Basile, 2026-11-19). A pull request
+    that moves a key differs here and says why. `check --json` is compared whole by the
+    reading `check`, its keys with it."""
+    from manuscript_guard.cli import main
+
+    # A base with no keys has no such reading: its findings have none to compare.
+    from manuscript_guard.keys import FROM_CONTEXT  # noqa: F401
+
+    def said(folder: Path, *args: str) -> Any:
+        """Each finding's code, key, what it fell back on and its entries' keys; or what the
+        command printed in their place, an error, with the folder of the run unnamed."""
+        printed = StringIO()
+        with redirect_stdout(printed), redirect_stderr(StringIO()):
+            main(list(args))
+        found = json.loads(printed.getvalue()) if printed.getvalue().strip() else None
+        if not isinstance(found, dict) or "findings" not in found:
+            return _from_root(found, folder, written="<folder>")
+        return [[one["code"], one["key"], one.get("key_from"),
+                 [form.get("key") for form in one.get("forms", ())]]
+                for one in found["findings"]]  # fmt: skip
+
+    def finding_keys(text: str) -> dict[str, Any]:
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            old, new = folder / "paper.md", folder / "revised.md"
+            old.write_text(text, encoding="utf-8", newline="")
+            new.write_text(text.replace("1", "7"), encoding="utf-8", newline="")
+            return {"audit": said(folder, "audit", str(old), "--json"),
+                    "compare": said(folder, "compare", str(old), str(new), "--json")}
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return finding_keys
+
+
 def _from_root(said: Any, root: Path, *, written: str = "<project>") -> Any:
     """`said` with the folder `root` written `<project>` in every text it holds, in each
     way a path to it is spelt. Longest first: the resolved path can hold the other."""

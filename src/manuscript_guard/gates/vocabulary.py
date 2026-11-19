@@ -325,6 +325,8 @@ def judge_vocabulary(
                 hint="keep to one term for one thing, or change the entry under `language: "
                 "vocabulary:` in paper.yaml if these are two things. This is the first use; "
                 "the count is of the whole manuscript",
+                subject=key,
+                at=offset,
             )
         )
 

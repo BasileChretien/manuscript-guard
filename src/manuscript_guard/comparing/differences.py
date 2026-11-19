@@ -33,11 +33,12 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 
 from manuscript_guard import claims
-from manuscript_guard.auditing.report import Item
+from manuscript_guard.auditing.report import Item, about
 from manuscript_guard.comparing.versions import Display, Heading, Version
 from manuscript_guard.findings import INFO, WARN
 from manuscript_guard.gates.revision import as_quoted
-from manuscript_guard.reworded import Fact, facts
+from manuscript_guard.keys import NONE, placed
+from manuscript_guard.reworded import NUMBER, Fact, facts
 
 GATE = "compare"
 SECTIONS = "Sections"
@@ -108,8 +109,8 @@ def sections(old: Version, new: Version) -> list[Item]:
     found: list[Item] = []
     for at, heading in enumerate(new.sections):
         if at not in matched:
-            found.append(_item(SECTIONS, "section-new", f"{_named(heading)} is new in v2",
-                               new, heading.line))  # fmt: skip
+            found.append(about(_item(SECTIONS, "section-new", f"{_named(heading)} is new in v2",
+                                     new, heading.line), _key(heading.title), NONE))  # fmt: skip
             continue
         before = old.sections[matched[at]]
         words = _words(before.body), _words(heading.body)
@@ -119,10 +120,13 @@ def sections(old: Version, new: Version) -> list[Item]:
         code = "section-same" if same else "section-changed"
         if (matched[at], at) not in kept:
             code, said = "section-moved", f"moved, and {said}"
-        found.append(_item(SECTIONS, code, f"{_named(heading)}: {said}", new, heading.line))
+        found.append(about(_item(SECTIONS, code, f"{_named(heading)}: {said}", new,
+                                 heading.line), _key(heading.title), NONE))  # fmt: skip
     gone = sorted(set(range(len(old.sections))) - set(matched.values()))
-    found += [_item(SECTIONS, "section-gone", f"{_named(old.sections[at])} is gone from v2",
-                    old, old.sections[at].line) for at in gone]  # fmt: skip
+    # A section is keyed by its title as it is matched (`keys`).
+    found += [about(_item(SECTIONS, "section-gone", f"{_named(old.sections[at])} is gone from "
+                          "v2", old, old.sections[at].line), _key(old.sections[at].title), NONE)
+              for at in gone]  # fmt: skip
     return found
 
 
@@ -401,10 +405,13 @@ def numbers(old: Version, new: Version) -> list[Item]:
             taken_was.add(one)
             taken_now.add(two)
             fact = now.facts[two]
-            found.append(_item(NUMBERS, "fact-changed", f"{was.facts[one].shown} on "
-                               f"{was.said(was.facts[one].line)} of v1 is {fact.shown} in "
-                               "v2", new, now.line(fact.line),
-                               context=shown(now.sentence(now.of[two]))))
+            # Keyed by what it was and is, and by the sentence of v2 it stands in (`keys`).
+            found.append(about(_item(NUMBERS, "fact-changed", f"{was.facts[one].shown} on "
+                                     f"{was.said(was.facts[one].line)} of v1 is {fact.shown} "
+                                     "in v2", new, now.line(fact.line),
+                                     context=shown(now.sentence(now.of[two]))),
+                               f"{_said(was.facts[one].key)}\u2192{_said(fact.key)}",
+                               placed(now.text, fact.start), fact.start))  # fmt: skip
         # What was taken out of the pools and found no partner goes back to them.
         for k in lost:
             if k not in taken_was:
@@ -415,6 +422,13 @@ def numbers(old: Version, new: Version) -> list[Item]:
     found += _alone(was, gone_left, taken_was, (stood, stands), now, gone=True)
     found += _alone(now, new_left, taken_now, (stood, stands), was, gone=False)
     return found
+
+
+def _said(key: tuple[str, str]) -> str:
+    """A fact as its key names it: a number as typed, a citation or a binding with its
+    kind."""
+    kind, text = key
+    return text if kind == NUMBER else f"{kind}:{text}"
 
 
 def _units(was: _Read, now: _Read) -> list[tuple[set[int], set[int]]]:
@@ -522,8 +536,11 @@ def _alone(read: _Read, left: Counter, taken: set[int], counts: tuple[Counter, C
         else:
             said = (f"{first.shown} stands {_times(stands[key])} in v2 and stood "
                     f"{_times(stood[key])} in v1; on {lines} of v2")  # fmt: skip
-        found.append(_item(NUMBERS, "fact-gone" if gone else "fact-new", said, read.version,
-                           read.line(first.line), context=shown(read.sentence(read.of[mine[0]]))))
+        # One finding for all the places it stands: keyed by the fact alone (`keys`).
+        found.append(about(_item(NUMBERS, "fact-gone" if gone else "fact-new", said,
+                                 read.version, read.line(first.line),
+                                 context=shown(read.sentence(read.of[mine[0]]))), _said(key),
+                           NONE))  # fmt: skip
     return found
 
 

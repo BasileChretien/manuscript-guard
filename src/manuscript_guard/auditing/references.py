@@ -117,6 +117,8 @@ class Problem:
     message: str
     line: int | None = None
     path: Path | None = None
+    #: What its key in `--json` names (`keys`): the entry's label, or the citation as typed.
+    subject: str | None = None
 
 
 @dataclass
@@ -497,7 +499,7 @@ def _held_to_numbers(
             problems.append(Problem(
                 "citation-beyond-list",
                 f"{written} cites {'entry' if len(missing) == 1 else 'entries'} {which}, which "
-                f"the reference list does not hold: it has {held}", line, path,
+                f"the reference list does not hold: it has {held}", line, path, written,
             ))  # fmt: skip
     if markers:
         seen: set[int] = set()
@@ -506,7 +508,7 @@ def _held_to_numbers(
                 seen.add(entry.number)
                 problems.append(Problem(
                     "entry-never-cited", f"{entry.label} of the reference list is cited "
-                    "nowhere in the text", entry.line, path,
+                    "nowhere in the text", entry.line, path, entry.label,
                 ))  # fmt: skip
     return sorted(problems, key=lambda problem: problem.line or 0)
 
@@ -550,12 +552,12 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
         if key != "*" and key not in keys:
             census.problems.append(Problem(
                 "citation-not-listed", f"\\cite{{{key}}} names no \\bibitem of the list",
-                line, where,
+                line, where, key,
             ))  # fmt: skip
     if not every:
         census.problems += [
             Problem("entry-never-cited", f"{entry.label} is cited nowhere in the text",
-                    entry.line, entry.path or path)
+                    entry.line, entry.path or path, entry.label)
             for entry in entries if entry.key not in named
         ]  # fmt: skip
     return census
@@ -616,23 +618,23 @@ def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[P
                                       for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
             problems.append(Problem("not-found-as-printed", f"{entry.label}: no registry has "
                                     f"the DOI {entry.dois[0]} as printed{_may_run_on(entry)}",
-                                    entry.line, path))  # fmt: skip
+                                    entry.line, path, f"{entry.label} doi"))  # fmt: skip
         if said.get("pubmed") == ABSENT:
             problems.append(Problem("not-found-as-printed", f"{entry.label}: PubMed has no PMID "
                                     f"{entry.pmids[0]} as printed{_may_run_on(entry)}",
-                                    entry.line, path))  # fmt: skip
+                                    entry.line, path, f"{entry.label} pmid"))  # fmt: skip
         return problems
     if "crossref" in said and all(said.get(name) == ABSENT
                                   for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
         problems.append(Problem(
             "doi-unregistered", f"{entry.label}: no registry has the DOI {entry.dois[0]}: not "
             "Crossref, not DataCite, not doi.org, so nothing was checked of the work",
-            entry.line, path,
+            entry.line, path, entry.label,
         ))  # fmt: skip
     if said.get("pubmed") == ABSENT:
         problems.append(Problem(
             "pmid-unknown", f"{entry.label}: PubMed has no PMID {entry.pmids[0]}, so nothing "
-            "was checked of the work", entry.line, path,
+            "was checked of the work", entry.line, path, entry.label,
         ))  # fmt: skip
     return problems
 
@@ -738,11 +740,12 @@ def _looked_up(path: Path, entry: Entry, asking: _Asking, *, asked: str = "",
     where = entry.path or path
     found = _standing(entry.label, {}, answers, where, None)
     problems = tuple(
-        Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry), entry.line, where)
+        Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry), entry.line, where,
+                entry.label)
         for f in found
     ) + tuple(_unknown(entry, answers, where)) + tuple(
         Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
-                entry.line, where)
+                entry.line, where, f"{entry.label} {name}")
         for name, why in _unanswered(record)
     )  # fmt: skip
     known = any(isinstance(answer, dict) and answer.get("status") == "found"

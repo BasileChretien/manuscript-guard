@@ -41,6 +41,7 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard.findings import INFO, Finding
+from manuscript_guard.keys import NONE, Keyed
 
 #: The code of G14's warning for one short form used and not defined.
 CODE = "abbreviation-undefined"
@@ -90,6 +91,11 @@ class Listed(Finding):
         """How many words it lists, each once, though G14 reads the abstract apart."""
         return len({form for form, _warning in self.forms})
 
+    def keyed(self) -> Keyed:
+        """Its key stands for the list, `G14|abbreviation-undefined|-|-`; each word keeps the
+        key its warning had, the same as `check` gives it."""
+        return Keyed(self.gate, self.code, NONE)
+
     def as_dict(self) -> dict:
         out = {key: value for key, value in super().as_dict().items()
                if key not in ("forms", "passed_over", "each", "asked")}  # fmt: skip
@@ -119,7 +125,7 @@ def listed(finding: Finding) -> dict:
     out: dict = {
         "forms": [{"form": form, "message": warning.message,
                    "path": None if warning.path is None else str(warning.path),
-                   "line": warning.line, "context": warning.context}
+                   "line": warning.line, "context": warning.context, "key": warning.key}
                   for form, warning in finding.forms],
     }  # fmt: skip
     if isinstance(finding, Undefined):

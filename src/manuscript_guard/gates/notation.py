@@ -341,7 +341,9 @@ def _times(count: int) -> str:
     return "once" if count == 1 else f"{count} times"
 
 
-def _finding(code: str, use: _Use, message: str, hint: str) -> Finding:
+def _finding(code: str, use: _Use, message: str, hint: str, form: str) -> Finding:
+    """A notation finding at its first use; `form` is what its key names (`keys`): the
+    form of the family that is not the manuscript's own, never the words it was found in."""
     return Finding(
         gate=GATE,
         code=code,
@@ -351,6 +353,8 @@ def _finding(code: str, use: _Use, message: str, hint: str) -> Finding:
         line=use.passage.line_of(use.offset),
         context=context(use.passage.text, use.offset, use.length),
         hint=hint,
+        subject=form,
+        at=use.offset,
     )
 
 
@@ -513,6 +517,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 f"the P value is written {_quoted(form)} {_times(len(found))}; the manuscript "
                 f"writes {_quoted(most)} {_times(len(kept))}",
                 _hint(level),
+                form,
             )
         )
 
@@ -532,6 +537,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 f"{_times(len(kept))}, as in "
                 + _quoted(min(kept, key=lambda use: use.key).words),
                 _hint(level),
+                form,
             )
         )
     if lopsided:
@@ -544,6 +550,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 f"as in {_quoted(first.words)}",
                 "set a space on both sides or on neither, as the rest of the manuscript "
                 "does. This is the first place it stands so",
+                "lopsided",
             )
         )
 
@@ -557,6 +564,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 f"as in {_quoted(first.words)}; the manuscript joins them by {most} "
                 f"{_times(len(kept))}",
                 _hint(level),
+                form,
             )
         )
 
@@ -570,6 +578,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 f"'%' stands {stands[form]} {_times(len(found))}, as in {_quoted(first.words)}; "
                 f"the manuscript sets it {stands[most]} {_times(len(kept))}",
                 _hint(level),
+                form,
             )
         )
 
@@ -586,6 +595,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 "'37 \N{DEGREE SIGN}C'. A non-breaking space keeps the two on one line. "
                 "This is the first place one stands so; the count is of the whole "
                 "manuscript",
+                "number-unit",
             )
         )
 
@@ -602,6 +612,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 "type a space between them: '0.41 points', '10 hours', '2nd year', "
                 "'to +0.77'. This is the first place one stands so; the count is of the "
                 "whole manuscript",
+                "number-word",
             )
         )
 

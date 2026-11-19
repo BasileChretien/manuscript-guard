@@ -15,7 +15,7 @@ import json
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as _field
 from pathlib import Path
 
@@ -38,6 +38,7 @@ from manuscript_guard.gates.data_dates import data_dates, dates_in_english
 from manuscript_guard.gates.labels import labelled, sentence_stops
 from manuscript_guard.gates.typed_citations import Works, typed_citation, works_by
 from manuscript_guard.gates.typed_citations import hint as typed_hint
+from manuscript_guard.keys import MAIN, digest, in_supplement, placed, statistic
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
@@ -215,6 +216,8 @@ def check_numbers(
                         line=placeholder.line,
                         col=placeholder.col,
                         hint=_nearest_hint(placeholder.ref, namespace),
+                        subject=placeholder.ref, at=placeholder.start,
+                        sentence=placed(text, placeholder.start, in_supplement(path)),
                     )
                 )
             elif placeholder.is_value and (what := _splits(namespace[placeholder.ref])):
@@ -229,6 +232,8 @@ def check_numbers(
                         col=placeholder.col,
                         hint="a value is printed inside a sentence; write what it holds in the "
                         f"{path.suffix}, as a block of its own, and bind only the numbers in it",
+                        subject=placeholder.ref, at=placeholder.start,
+                        sentence=placed(text, placeholder.start, in_supplement(path)),
                     )
                 )
 
@@ -250,7 +255,8 @@ def check_numbers(
                 start, value = release
                 if start not in said:
                     said.add(start)
-                    report = report.with_findings(_typed_finding(value, atom, path))
+                    report = report.with_findings(
+                        replace(_typed_finding(value, atom, path), **_keyed(atom, text, path)))
                 continue
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
@@ -266,9 +272,11 @@ def check_numbers(
                     by_project[label] = by_project.get(label, 0) + 1
                 typed = typed_choice(atom.text, verdict, choices, chosen)
                 if typed is not None:
-                    report = report.with_findings(_typed_finding(typed, atom, path))
+                    report = report.with_findings(
+                        replace(_typed_finding(typed, atom, path), **_keyed(atom, text, path)))
                 elif declares and typed_threshold(atom.text, verdict, chosen):
-                    report = report.with_findings(_undeclared_threshold(atom, path))
+                    report = report.with_findings(
+                        replace(_undeclared_threshold(atom, path), **_keyed(atom, text, path)))
                 continue
             loose += 1
             if loose > PER_FILE_CAP:
@@ -293,6 +301,7 @@ def check_numbers(
                         if in_table
                         else _hint_for(atom, works, latex=path.suffix == ".tex")
                     ),
+                    **_keyed(atom, text, path),
                 )
             )
 
@@ -307,6 +316,8 @@ def check_numbers(
                     hint="the first "
                     f"{PER_FILE_CAP} are above; a file in this state usually needs its "
                     "numbers bound in bulk rather than one finding at a time",
+                    # One for the file, past the cap (`keys`).
+                    subject=f"further numbers in {path.name}", sentence="-",
                 )
             )
 
@@ -640,6 +651,9 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         hint=_how_to_declare(atom)
                         + "bind it or reword the title: the build writes this into the "
                         "document's front matter, where pandoc renders it",
+                        # The setting's value is its sentence (`keys`).
+                        subject=statistic(atom.text), at=atom.start,
+                        sentence=digest(MAIN, f"{key}: {text}"),
                     )
                 )
     return report
@@ -1372,6 +1386,13 @@ _DURATION = re.compile(
 
 #: A name that YAML reads as it is written, between the brackets of `terms: [...]`.
 _PLAIN_NAME = re.compile(r"[\w+./-]+")
+
+
+def _keyed(atom, text: str, path: Path) -> dict:
+    """What the key of a finding on a number is made of (`keys`): the number as typed, and
+    the sentence of `text` it stands in."""
+    return {"subject": statistic(atom.text), "at": atom.start,
+            "sentence": placed(text, atom.start, in_supplement(path))}
 
 
 def _how_to_declare(atom) -> str:

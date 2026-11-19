@@ -195,11 +195,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14's warnings on the short forms used and never defined, one for each form, are one
-      question to the author, a note marked `"question": true` with the forms it lists, so
-      `check`'s count of warnings, in the closing lines and in what it printed, is one fewer
-      for each form, and no exit code changes (decision 30, the entry for `abbreviations`);
-      the entry it replaces, decision 5's, is spent
+      every finding of `check --json` carries a `key`, `gate|code|subject|digest`, and a
+      finding whose code names no subject yet `"key_from": "context"`; each form G14's
+      question lists carries the key its warning has (Basile, 2026-11-19). Nothing else of
+      the report changes: no message, line, severity, count or exit code. The entry it
+      replaces, decision 30's, is spent
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

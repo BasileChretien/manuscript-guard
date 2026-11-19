@@ -20,6 +20,7 @@ report/judged/<name>.json    the verdicts
 report/ledger.yaml           the author's decisions that re-judge a finding (below)
 report/ties.yaml             each judged finding's key in a keyed run, written once by `tie`
 report/ties-ambiguous.md     the judged findings `tie` left for the author to settle
+report/ties-untied.md        the judged findings no rule ties, which the matcher pairs
 runs/<run>/<slug>/<report>.json   one run of one build: audit, audit-pdf, check, compare
 builds/<sha9>/               a venv for each commit run, named by its sha's first nine characters
 ```
@@ -193,12 +194,19 @@ python tools/corpus.py tie main-2235bfe54 keyed-<sha9>
 `tie` pairs each judged finding with a finding of the keyed run, a run of a build with keys on
 the same papers, by the matcher above, and ties it to that finding's key only where the
 pairing is one to one, of the same gate and code, by the same message or the same context at
-its place, with no other candidate so and a key the keyed run does not repeat. Each tie goes
-to `report/ties.yaml`, `{slug, report, index, key, how}`, under the name of the keyed run.
-Every other judged finding goes to `report/ties-ambiguous.md`, by why: no candidate, several,
-a candidate another judged finding took, a weaker pass (a line-less finding has no place, so
-it is one), a finding of another code, or a candidate under a repeated key; each with its
-verdict, its message and the candidates' keys and messages, for the author to decide by hand.
+its place, with no other candidate so and a key the keyed run does not repeat. Two exact rules
+tie two more kinds (Basile, 2026-11-20): a judged finding with no line ties to the keyed
+finding of its gate and code with the same message, where that message is the only one of
+its code so in the paper's report in both runs; and one the matcher paired with a form a list
+holds ties to that form's own key, where its short form and its scope (`HR@main`) are the
+same and the only ones of its code so in the judged run. In both, a key the keyed run repeats
+ties nothing. Each tie goes to `report/ties.yaml`, `{slug, report, index, key, how}`, under
+the name of the keyed run. A judged finding with several candidates, or whose candidate's key
+is repeated, goes to `report/ties-ambiguous.md` with its verdict, its message and the
+candidates' keys and messages, for the author to decide by hand; its first lines say how to
+record a decision, in `report/ties-decided.yaml`, which no command reads yet. The rest, with
+no candidate, a candidate another judged finding took, a weaker pass or a finding of another
+code, go to `report/ties-untied.md` and stay for the matcher.
 `tie` changes no verdict and no decision of the ledger. `measure` and `gate` read the ties for
 a keyed run: a tied finding is paired by its key, its count held to the one in the run the
 ties were made in (`measure`) or in the base (`gate`), and an untied one by the matcher, among

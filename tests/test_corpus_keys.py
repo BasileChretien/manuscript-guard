@@ -205,10 +205,8 @@ def test_each_kind_of_finding_that_does_not_tie_goes_to_the_author() -> None:
     assert tie_kinds([old], [{**old, "key": k1}, near]) == ["several"]
     # Taken: another judged finding has it.
     assert tie_kinds([old, {**old}], [{**old, "key": k1}]) == ["tie", "taken"]
-    # A weaker pass: the same message at another line, or where neither names a line.
+    # A weaker pass: the same message at another line.
     assert tie_kinds([old], [{**old, "line": 9, "context": "moved", "key": k1}]) == ["weaker"]
-    lineless = {**old, "line": None}
-    assert tie_kinds([lineless], [{**lineless, "key": k1}]) == ["weaker"]
     # Another code at its place, naming its words.
     other = finding("G6", "ai-phrasing", "'Studies show' is a phrase", line=5, key="G6|a|s|d")
     assert tie_kinds([old], [other]) == ["cross-code"]
@@ -237,9 +235,12 @@ def test_the_ambiguous_list_is_laid_out_for_the_author(corpus: Path) -> None:
     write_run(corpus, "tied", [{**f, "line": 77, "context": "elsewhere"} for f in TIED])
     said = tool.tie(corpus, "judged", "tied")
     assert said["tied"] == 0 and said["ambiguous"] == 4
-    page = (corpus / "report" / "ties-ambiguous.md").read_text("utf-8")
+    # Paired only by a weaker pass, they are left untied, apart from what the author settles.
+    page = (corpus / "report" / "ties-untied.md").read_text("utf-8")
     assert "**paper-a check 0** (true, G14/spelling-variant, paired by message)" in page
     assert f"`{K_SPELL}`" in page
+    asked = (corpus / "report" / "ties-ambiguous.md").read_text("utf-8")
+    assert "for the author to tie: 0" in asked and "report/ties-decided.yaml" in asked
     # The verdicts and the ledger are not touched.
     assert not (corpus / "report" / "ledger.yaml").exists()
     verdicts = json.loads((corpus / "report" / "judged" / "f.json").read_text("utf-8"))
@@ -252,3 +253,55 @@ def test_a_tie_needs_a_keyed_run_and_well_formed_ties(corpus: Path) -> None:
     (corpus / "report" / "ties.yaml").write_text("run: tied\nties: [{slug: a}]\n", "utf-8")
     with pytest.raises(tool.CorpusError, match="slug, report, index, key and how"):
         keys.load_ties(corpus)
+
+
+# --- the two exact rules (Basile, 2026-11-20) -------------------------------------------
+
+
+def test_a_finding_with_no_line_ties_by_its_one_message() -> None:
+    old = finding("G11", "no-review", "no review panel is recorded", line=None)
+    key = "G11|no-review|~0123456789ab|-"
+    [(kind, how, listed)] = keys.tie_group([old], [{**old, "key": key}], "paper-a")
+    assert (kind, how, listed[0]["key"]) == ("tie", "message, no line", key)
+    # Two of that message in the keyed run, or in the judged run: which is which is the
+    # author's to say.
+    twice = [{**old, "key": key}, {**old, "key": key + "x"}]
+    assert keys.tie_group([old], twice, "paper-a")[0][0] == "several"
+    assert keys.tie_group([old], [{**old, "key": key}], "paper-a",
+                          judged_all=[old, {**old}])[0][0] == "several"  # fmt: skip
+    # Its candidate's key repeated in the keyed run.
+    other = {**old, "message": "another message", "key": key}
+    assert keys.tie_group([old], [{**old, "key": key}, other], "paper-a")[0][0] == "repeated"
+
+
+def short_form(form: str, scope: str, line: int) -> dict:
+    said = {"main": "the main text", "abstract": "the abstract"}[scope]
+    return {"form": form, "line": line, "path": "paper.docx",
+            "key": f"G14|abbreviation-undefined|{form}@{scope}|-",
+            "message": f"{form} is used once in {said} as G14 reads it, and not defined there"}
+
+
+def test_a_short_form_paired_with_a_list_s_entry_ties_to_its_form_and_scope() -> None:
+    old = finding("G14", "abbreviation-undefined", "HR is used once in the main text and not "
+                  "defined there", line=20)  # fmt: skip
+    question = finding("G14", "abbreviation-undefined", "2 short forms are used and never "
+                       "defined: 'OR' here, then HR. Do any need defining?", "info", line=3,
+                       question=True, key="G14|abbreviation-undefined|-|-",
+                       forms=[short_form("OR", "main", 3), short_form("HR", "abstract", 2),
+                              short_form("HR", "main", 40)])  # fmt: skip
+    [(kind, how, listed)] = keys.tie_group([old], [question], "paper-a")
+    assert (kind, how, listed[0]["key"]) == ("tie", "form entry",
+                                             "G14|abbreviation-undefined|HR@main|-")  # fmt: skip
+    # The same form in two scopes, and a judged message that names neither: the author's.
+    unscoped = finding("G14", "abbreviation-undefined", "HR is used and not defined", line=2)
+    assert keys.tie_group([unscoped], [question], "paper-a")[0][0] == "several"
+    # Two judged findings of that form and scope in the judged run.
+    assert keys.tie_group([old], [question], "paper-a",
+                          judged_all=[old, {**old, "line": 30}])[0][0] == "several"  # fmt: skip
+    # A name in code has no scope to hold it to: it stays untied.
+    name = finding("G14", "code-name-in-prose", "'k_B' is written with underscores", line=8)
+    grouped = finding("G14", "code-name-in-prose", "1 name ...: 'k_B' here", "info", line=8,
+                      question=True, key="G14|code-name-in-prose|-|-",
+                      forms=[{"form": "k_B", "line": 8, "key": "G14|code-name-in-prose|k_B|-",
+                              "message": "'k_B' is written with underscores, the way ..."}])
+    assert keys.tie_group([name], [grouped], "paper-a")[0][0] != "tie"

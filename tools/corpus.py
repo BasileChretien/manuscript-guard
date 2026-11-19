@@ -648,10 +648,12 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
     for item in judged:
         groups[(item.slug, item.report)].append(item)
     ties, ambiguous = [], []
+    before = Run(run_folder(root, judged_run))
     for (slug, report), members in groups.items():
         alone = frozenset(k for k, item in enumerate(members) if item.alone)
         said = corpus_keys.tie_group([item.finding for item in members],
-                                     run.findings(slug, report) or [], slug, alone)  # fmt: skip
+                                     run.findings(slug, report) or [], slug, alone,
+                                     before.findings(slug, report))  # fmt: skip
         for item, (kind, how, candidates) in zip(members, said, strict=True):
             where = {"slug": slug, "report": report, "index": item.index}
             if kind == "tie":
@@ -665,6 +667,9 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True, width=100), "utf-8")
     (root / corpus_keys.AMBIGUOUS).write_text(
         corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run), "utf-8")
+    untied = tuple(k for k in corpus_keys.KINDS if k not in corpus_keys.TO_DECIDE)
+    (root / corpus_keys.UNTIED).write_text(
+        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, untied), "utf-8")
     kinds = collections.Counter(row["kind"] for row in ambiguous)
     return {"judged_run": judged_run, "run": keyed_run, "tied": len(ties),
             "by_pass": dict(collections.Counter(row["how"] for row in ties)),
@@ -673,9 +678,12 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
 
 
 def render_tie(result: dict) -> str:
+    to_decide = sum(result["by_kind"][k] for k in corpus_keys.TO_DECIDE)
     lines = [f"## Ties: {result['judged_run']} to {result['run']}", "",
              f"Tied: {result['tied']} ({result['fallback']} to a key from the context), by "
-             f"{result['by_pass']}. Not tied, for the author: {result['ambiguous']}.", "",
+             f"{result['by_pass']}. Not tied: {result['ambiguous']}, of them {to_decide} for "
+             "the author (report/ties-ambiguous.md) and the rest for the matcher "
+             "(report/ties-untied.md).", "",
              "| why not tied | judged findings |", "| --- | ---: |"]  # fmt: skip
     lines += [f"| {corpus_keys.KINDS[k]} | {n} |" for k, n in result["by_kind"].items()]
     return "\n".join(lines) + "\n"

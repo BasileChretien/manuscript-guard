@@ -230,6 +230,11 @@ def _a_notice(node: ast.AST, scope: ast.AST, file: str) -> bool:
                 and getattr(one.func.value, "id", None) == node.id
                 and one.func.attr in ("append", "extend", "insert")):
             added = True
+        # `said[0] = ...` puts in it what it was not bound to.
+        if isinstance(one, ast.Assign) and any(
+                isinstance(target, ast.Subscript) and getattr(target.value, "id", None) == node.id
+                for target in one.targets):  # fmt: skip
+            added = True
     return bool(bound) and not added and all(
         isinstance(one, ast.Assign) and _only_notices(one.value, file) for one in bound)
 
@@ -276,6 +281,11 @@ def unnoted(instead: dict[str, str] | None = None) -> list[tuple[str, int]]:
             scope = node
             while scope in parents and not isinstance(scope, ast.FunctionDef):
                 scope = parents[scope]
+            # What a function of `NOTE_MAKERS` gives back is Notices, at each return.
+            if (isinstance(node, ast.Return) and isinstance(scope, ast.FunctionDef)
+                    and f"{name}:{scope.name}" in NOTE_MAKERS
+                    and not _only_notices(node.value or ast.List(elts=[]), name)):
+                found.append((f"{name}:{scope.name}", node.lineno))
             for one in _put_in_notes(node):
                 if not _a_notice(one, scope, name):
                     function = scope.name if isinstance(scope, ast.FunctionDef) else "<module>"
@@ -389,8 +399,9 @@ def _with(where: str, function: str, lines: str) -> dict[str, str]:
 def test_every_way_a_plain_string_reaches_the_notes_is_caught() -> None:
     """The walk is shown copies of the source, each with one plain string put in a list of
     notes another way: an append in `read_latex` beside the helper that makes its Notices, a
-    slice assigned, `dataclasses.replace`, `AuditReport(**...)`, and a name that is bound
-    to Notices and then added to (the review of #706's follow-up)."""
+    slice assigned, `dataclasses.replace`, `AuditReport(**...)`, a name that is bound to
+    Notices and then appended to or given a plain string at an index, and a note maker that
+    returns a plain string (the reviews of #706's follow-up)."""
     cases = [
         ("auditing/latex.py", "read_latex", 'read.passed_over.append("plain")'),
         ("audit.py", "_read_pdf", 'report.not_audited[0:] = ["plain"]'),
@@ -398,6 +409,9 @@ def test_every_way_a_plain_string_reaches_the_notes_is_caught() -> None:
         ("audit.py", "_read_pdf", 'report = AuditReport(**{"passed_over": ["plain"]})'),
         ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid.append("plain")\n'
                                   "report.passed_over += said"),
+        ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid[0] = "plain"\n'
+                                  "report.passed_over += said"),
+        ("auditing/latex.py", "_passed_over", 'said = "plain"\nreturn [said]'),
     ]  # fmt: skip
     for where, function, lines in cases:
         caught = [site for site, _line in unnoted(_with(where, function, lines))]

@@ -216,21 +216,6 @@ def test_a_statistic_is_one_subject_however_it_is_spaced_and_signed() -> None:
     assert keys.statistic("2.05") != keys.statistic("2.06")
 
 
-def test_the_part_is_the_abstract_under_its_heading_and_the_supplement_by_its_file() -> None:
-    text = ("# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n\n"
-            "INTRODUCTION\n\nFive.\n")  # fmt: skip
-    assert keys.part_of(text, text.index("Two")) == keys.ABSTRACT
-    assert keys.part_of(text, text.index("Three")) == keys.MAIN
-    assert keys.part_of(text, text.index("Four")) == keys.ABSTRACT
-    assert keys.part_of(text, text.index("Five")) == keys.MAIN
-    assert keys.part_of(text, text.index("Three"), supplementary=True) == keys.SUPPLEMENT
-    tex = "\\begin{abstract}One.\\end{abstract}\\section{Methods}Two."
-    assert keys.part_of(tex, tex.index("One")) == keys.ABSTRACT
-    assert keys.part_of(tex, tex.index("Two")) == keys.MAIN
-    assert keys.in_supplement(Path("p/manuscript/supplementary/S1.md"))
-    assert not keys.in_supplement(Path("supplementary/manuscript/main.md"))
-
-
 def test_the_frozen_splitter_cuts_where_the_gates_splitter_cuts_today() -> None:
     """The copy kept for keys cuts a Markdown text where `claims.sentence_spans` does; a
     change to the gates' splitter leaves the copy, and so every key, as it is."""
@@ -401,40 +386,6 @@ def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
     assert compared and share() == compared
 
 
-def test_a_structured_abstracts_own_headings_keep_its_sentences_in_it() -> None:
-    """A line alone ends the Abstract only where it is the Introduction, the Discussion or
-    the References, or names again what stood alone in it already: a structured Abstract's
-    Background and Results go on in it. So one sentence word for word in the Abstract and in
-    the Results is two keys, neither numbered (the follow-up's review)."""
-    markdown = ("# Abstract\n\n**Results**\n\nThe rate was 4.7 in all.\n\n# Results\n\n"
-                "The rate was 4.7 in all.\n")  # fmt: skip
-    word = ("Abstract\n\nBackground\n\nWe asked.\n\nResults\n\nThe rate was 4.7 in all.\n\n"
-            "Introduction\n\nWe ask again.\n\nResults\n\nThe rate was 4.7 in all.\n")  # fmt: skip
-    for text in (markdown, word):
-        first, last = text.index("The rate"), text.rindex("The rate")
-        assert keys.part_of(text, first) == keys.ABSTRACT, text
-        assert keys.part_of(text, last) == keys.MAIN, text
-        found = keys.assign([Keyed("G2", "unclassified-number", "4.7",
-                                   keys.placed(text, at), at) for at in (first, last)])  # fmt: skip
-        assert len(set(found)) == 2 and not any("#" in one for one in found), found
-    assert keys.part_of(word, word.index("We ask again")) == keys.MAIN
-
-
-def test_a_word_alone_in_lower_case_is_no_heading() -> None:
-    """A heading's name alone on a line is one with a capital or in capitals: "results." a
-    hard-wrapped Abstract leaves alone on a line keeps the Abstract's part, so re-wrapping it
-    moves no key (the follow-up's review)."""
-    wrapped = ("# Abstract\n\nWe report the\nresults.\nThe rate was 4.7 in all of the\n"
-               "patients.\n\n# Methods\n\nWe counted.\n")  # fmt: skip
-    flowing = wrapped.replace("the\nresults.\nThe", "the results. The", 1)
-    for text in (wrapped, flowing):
-        assert keys.part_of(text, text.index("The rate")) == keys.ABSTRACT, text
-    assert keys.placed(wrapped, wrapped.index("The rate")) == keys.placed(
-        flowing, flowing.index("The rate"))  # fmt: skip
-    assert keys.part_of("Abstract\n\nOne.\n\nRESULTS\n\nTwo.\n\nINTRODUCTION\n\nThree.",
-                        40) == keys.MAIN  # fmt: skip
-
-
 def test_a_mean_under_a_header_that_spans_columns_names_each_row_of_it(tmp_path: Path) -> None:
     """The column a GRIM mean is keyed by is named by every header cell over it, each the
     one whose span covers it, down to the row that names its n: 3.47 under Treatment's men,
@@ -457,6 +408,50 @@ def test_a_mean_under_a_header_that_spans_columns_names_each_row_of_it(tmp_path:
     grim = [key.split("|")[2] for key in keyed(found, "does-not-fit") if "3.47/n=10" in key]
     assert sorted(grim) == ["3.47/n=10@control/men(n=10)", "3.47/n=10@treatment/men(n=10)",
                             "3.47/n=10@treatment/women(n=10)"], grim  # fmt: skip
+
+
+def _grim(paper: Path, label: str) -> list[str]:
+    found = _json("audit", str(paper), "--json", "--whole-numbers", label)["findings"]
+    return [key.split("|")[2] for key in keyed(found, "does-not-fit") if "/n=" in key]
+
+
+def test_a_mean_is_named_by_the_header_rows_under_its_n_too(tmp_path: Path) -> None:
+    """Below the row that names the n, a header row that holds no mean names the column as
+    well: "Treatment (n = 20)" over Baseline and Week 12 is two keys, neither numbered
+    (round 1 of #709)."""
+    from test_audit import make_docx, para, row
+
+    spanning = ("<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>Treatment "
+                "(n = 20)</w:t></w:r></w:p></w:tc>")  # fmt: skip
+    table = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+             + spanning + "</w:tr>" + row("", "Baseline", "Week 12")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)") + "</w:tbl>")  # fmt: skip
+    found = _grim(make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table),
+                  "Age")  # fmt: skip
+    assert sorted(found) == ["3.47/n=20@treatment(n=20)/baseline",
+                             "3.47/n=20@treatment(n=20)/week12"], found  # fmt: skip
+
+
+def test_a_one_line_tabular_still_names_its_column(tmp_path: Path) -> None:
+    """A LaTeX tabular typed on one line has its header and its rows on one source line:
+    the header row is still read (round 1 of #709: the column was empty)."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\\begin{document}\\section{Results}\n"
+                     "\\begin{tabular}{lc} Characteristic & Men (n = 10) \\\\ Age, mean (SD) "
+                     "& 3.47 (1.20) \\\\ \\end{tabular}\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    assert _grim(paper, "Age") == ["3.47/n=10@men(n=10)"]
+
+
+def test_a_row_of_means_above_names_no_column(tmp_path: Path) -> None:
+    """A row of means above a mean, one of which names its n, "3.1 (1.0), n = 25", is a row
+    of the table, not of its header: editing 3.1 leaves the key of 3.47 below it as it was
+    (round 1 of #709)."""
+    text = ("# Results\n\nTable 1. Scores.\n\n| Score | Group A |\n|---|---|\n"
+            "| Score A, mean (SD) | {x} (1.0), n = 25 |\n| Score B, mean (SD) | 3.47 (1.20) |\n")
+    found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{x}.md"), "Score")
+             for x in ("3.1", "3.2")]  # fmt: skip
+    assert found[0] == found[1] == ["3.47/n=25@groupa"], found
 
 
 def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:

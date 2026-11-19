@@ -2027,21 +2027,25 @@ def _not_assessable(path: Path, mean, uncertain: str) -> Disagreement:
 
 
 def _header_of(table: Table, mean) -> str:
-    """The header cells over a mean's column, each the cell whose span covers it, row by row
-    down to the one that names its n, joined: "Treatment / Men (n = 10)". "" where none is."""
-    from manuscript_guard.stats.shares import _N, _columns
+    """The header cells over a mean's column, joined: in each row above the mean's that holds
+    no mean, the first always, the cell whose span covers the column, "Treatment (n = 20) /
+    Week 12". "" where none is."""
+    from manuscript_guard.stats.granularity import _MEAN, _names_its_n
+    from manuscript_guard.stats.shares import _clean, _columns
+
+    def holds_a_mean(row) -> bool:
+        cleaned = (_clean(cell.text)[0] for cell in row[1:])
+        return any(_MEAN.fullmatch(text) or _names_its_n(text) for text in cleaned)
 
     said = []
-    for row in table:
-        if not row or row[0].line >= mean.line:
-            break
-        cell = next((cell for at, cell in _columns(row)
-                     if at <= mean.column < at + max(cell.span, 1)), None)  # fmt: skip
+    for at, row in enumerate(table[: max(mean.row, 1)]):
+        if not row or (at and holds_a_mean(row)):
+            continue
+        cell = next((cell for start, cell in _columns(row)
+                     if start <= mean.column < start + max(cell.span, 1)), None)  # fmt: skip
         text = " ".join(cell.text.split()) if cell is not None else ""
         if text and text not in said:
             said.append(text)
-        if _N.search(text):
-            break
     return " / ".join(said)
 
 

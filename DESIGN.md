@@ -28396,12 +28396,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
-  - In a Word paper's or a PDF's text, where a heading is its name alone on a line, the
-    Abstract ends at "Introduction", "Discussion" or "References", or at a name already met
-    in it; its own Background, Methods or Results do not end it. So in a paper whose
-    Abstract runs straight into its Methods and Results, with no Introduction, those
-    sections are keyed in the Abstract's part until a name repeats. Pinned by
-    `tests/test_finding_keys.py::test_a_structured_abstracts_own_headings_keep_its_sentences_in_it`.
+  - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
+    Abstract whose first block is such a line ("IMPORTANCE", "Background") is read as
+    structured: it ends at "Introduction", "Discussion" or "References", or at a name that
+    ranks no later than the last of its own parts met in it (Background, Methods, Results,
+    Conclusions). Any other Abstract ends at the first line alone. So a structured Abstract
+    whose last part ranks before the paper's next section, its Background alone run
+    straight into the paper's Methods, keeps that section in its part, and renaming one of
+    its ranked parts to a name no rank holds, RESULTS to FINDINGS, moves where it ends. The
+    corpus gate runs one paper unchanged between two commits, so neither moves a key it
+    compares. Pinned by
+    `tests/test_finding_keys_parts.py::test_a_structured_abstract_renamed_moves_where_it_ends`.
   - A key from the context leaves out the finding's own path and every folder above it, and
     the tool's own folder and those above it, where each stands whole, and then any other
     absolute path up to its first space: a message that names another folder, with a space

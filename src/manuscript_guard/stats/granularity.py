@@ -120,8 +120,10 @@ class Mean:
     #: point or is outside 0 to 1, or its label or a header names a percentage
     #: (`_not_a_proportion`).
     not_a_proportion: str | None = None
-    #: The column it stands in, from 0, as `shares._columns` counts them; -1 where none is.
+    #: The column it stands in, from 0, as `shares._columns` counts them, and its row in
+    #: the table, from 0; -1 where none is.
     column: int = -1
+    row: int = -1
 
 
 def places(mean: str) -> int:
@@ -512,7 +514,7 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
                 not_a_proportion=_not_a_proportion(
                     shaped.group("mean"), label, percent_over.get(column, False), percent_of_all
                 ),
-                column=column,
+                column=column, row=at,
             ))  # fmt: skip
     return found
 

@@ -72,10 +72,15 @@ _FRONT = re.compile(r"\A---[ \t]*\n(?:.*?\n)?(?:---|\.\.\.)[ \t]*(?:\n|\Z)", re.
 _ALONE = ("abstract", "summary", "introduction", "background", "method", "methods",
           "materials and methods", "results", "discussion", "conclusion", "conclusions",
           "references")  # fmt: skip
-#: Of those, the ones that end the Abstract where they stand in it; any other ends it only
-#: where it repeats a name met since the Abstract opened, its own Results or Methods after
-#: those of a structured Abstract.
+#: Of those, the ones that end the Abstract wherever they stand in it.
 _ENDS_AN_ABSTRACT = frozenset({"introduction", "discussion", "references"})
+#: The order a structured Abstract's own parts come in, a singular folded into its plural: a
+#: line alone that ranks no later than the last met in it is the paper's own, and ends it.
+_RANKS = {"background": 0, "methods": 1, "materials and methods": 1, "results": 2,
+          "conclusions": 3}  # fmt: skip
+_FOLDED = {"method": "methods", "conclusion": "conclusions"}
+#: A line standing alone, as a heading stands: a capital, a few words and no stop.
+_HEADING_SHAPED = re.compile(r"[ \t]*[*_]*[A-Z][^\n.!?]{0,60}?[*_:]*[ \t]*")
 #: What marks where a part of the paper begins: a Markdown heading, a LaTeX sectioning
 #: command or abstract environment, or a line that is a heading's name alone (`_ALONE`).
 _MARK = re.compile(
@@ -84,7 +89,8 @@ _MARK = re.compile(
     r"|(?P<env>\\(?:begin|end)\{abstract\})"
     r"|^[ \t]*[*_]*(?-i:(?P<alone>"
     + "|".join(sorted({form for name in _ALONE
-                       for form in (name.capitalize(), name.title(), name.upper())},
+                       for form in (name.capitalize(), name.title(), name.upper(),
+                                    name.title().replace(" And ", " and "))},
                       key=len, reverse=True))  # fmt: skip
     + r"))[*_.:]*[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
@@ -123,25 +129,35 @@ def sentence_at(text: str, offset: int) -> str:
 def _marks(text: str) -> tuple[tuple[int, bool], ...]:
     """Where each part of `text` begins, with whether it is the abstract."""
     found: list[tuple[int, bool]] = []
-    # The names that stood alone since the Abstract opened, None outside it.
-    seen: set[str] | None = None
+    # The rank of the last of a structured Abstract's own parts met in it; None outside one.
+    last: int | None = None
     for mark in _MARK.finditer(text):
         if mark["env"]:
             opens = mark["env"].lower().startswith("\\begin")
-            seen = set() if opens else None
+            last = _structured(text, mark.end()) if opens else None
             found.append((mark.start(), opens))
             continue
         title = _NUMBERED.sub("", mark["md"] or mark["tex"] or mark["alone"] or "")
         name = title.strip("*_ \t.:").casefold()
+        name = _FOLDED.get(name, name)
         opens = name.startswith(ABSTRACT) or name == "summary"
-        # A structured Abstract's own Background, Methods or Results go on in it.
-        if (mark["alone"] and not opens and seen is not None
-                and name not in _ENDS_AN_ABSTRACT and name not in seen):
-            seen.add(name)
+        rank = _RANKS.get(name)
+        # A structured Abstract's own Background, Methods or Results go on in it, each
+        # later than the last.
+        if mark["alone"] and not opens and last is not None and rank is not None and rank > last:
+            last = rank
             continue
-        seen = set() if opens else None
+        last = _structured(text, mark.end()) if opens else None
         found.append((mark.start(), opens))
     return tuple(found)
+
+
+def _structured(text: str, at: int) -> int | None:
+    """-1 where the Abstract whose heading ends at `at` is structured, its first block after
+    the heading a line standing alone ("IMPORTANCE", "Background"); None where it is not."""
+    rest = text[at:].lstrip("\n\r\t ")
+    line = rest.split("\n", 1)[0]
+    return -1 if line and _HEADING_SHAPED.fullmatch(line) else None
 
 
 def part_of(text: str, offset: int, supplementary: bool = False) -> str:

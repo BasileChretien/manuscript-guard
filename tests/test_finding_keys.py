@@ -69,9 +69,35 @@ ON_THE_FALLBACK = {
     **dict.fromkeys((
         "front-matter-abstract", "front-matter-unreadable", "two-titles", "tex-in-the-text",
         "tex-not-judged", "rule-opens-a-block", "unclear-fence", "pointers-unchecked",
-        "malformed-placeholder", "raw-block", "vocabulary-conflict", "unreadable",
-        "code-block-unread", "script-not-read",
+        "raw-block", "vocabulary-conflict", "unreadable", "code-block-unread", "script-not-read",
+        "identifier-not-sent", "output-not-read", "baseline-tables-not-read",
     ), f"what a reader could not read, or the settings disagree on: {_LATER}"),
+    **dict.fromkeys((
+        "caption-names-another", "cited-out-of-order", "display-not-cited",
+        "pointer-form-unread", "pointer-to-nothing",
+    ), f"a pointer to a table or a figure, matched by its label: {_LATER}"),
+    **dict.fromkeys((
+        "comparison-contradicted", "unit-differs-from-emitted", "interval-level-differs",
+        "interval-level-undeclared", "spread-label-differs", "data-date-not-declared",
+        "dataset-date-english",
+    ), f"what stands beside a binding, against what the analysis emitted: {_LATER}"),
+    **dict.fromkeys((
+        "parameter-unread", "prose-as-value", "unplaced-table", "unquoted-result",
+        "unused-literature", "count-below-minimum", "baseline-p-values",
+        "declared-same-but-differs", "declared-same-but-displayed-differently",
+        "family-uncorrected", "interpretation-sentences", "interval-excludes-estimate",
+        "p-against-interval", "ratio-interval-asymmetric", "related-id-repeated",
+        "same-as-unresolved",
+    ), f"of the results and the literature the analysis emitted, not of a sentence: {_LATER}"),
+    **dict.fromkeys((
+        "count-recoverable", "binary-not-possible", "binary-unfound", "sd-not-possible",
+        "mean-not-assessable", "whole-numbers-unfound", "flow-broken", "flow-note",
+    ), f"of a table's rows, a flow or a flag's label, whose context is the row: {_LATER}"),
+    **dict.fromkeys((
+        "cited-not-listed", "cited-written", "would-ask", "self-citation-author",
+        "self-citation-journal", "self-citation-not-counted", "self-citation-read",
+        "quotation-unpaired",
+    ), f"a referee's or an editor's list, said once for the run: {_LATER}"),
     **dict.fromkeys(("sum-off", "over-header-n", "entries-not-told-apart"),
                     f"of a table's row or a whole list, whose context is the row: {_LATER}"),
     **dict.fromkeys((
@@ -93,7 +119,11 @@ FAMILIES = {
     "G6": ("ai-phrasing", "ai-cadence", "model-artefact", "revision-residue",
            "vague-attribution"),
     "G2 and G8": ("unclassified-number", "hand-authored-table", "unresolved-binding",
-                  "summary-claim-stronger"),
+                  "value-splits-paragraph", "malformed-placeholder", "typed-parameter",
+                  "threshold-undeclared", "interval-reversed", "interval-not-quoted-whole",
+                  "quoted-alone", "bound-dangling", "bound-duplicated", "bound-uncheckable",
+                  "interval-inverted", "estimate-outside-interval", "reply-unbound-number",
+                  "manuscript-empty", "summary-claim-stronger", "summary-not-reported"),
     "G7": ("entry-never-cited", "citation-beyond-list", "title-not-searchable"),
     "arithmetic": ("does-not-fit", "not-found"),
     "abstract": ("abstract-not-found", "abstract-rounded", "abstract-conflict",
@@ -244,6 +274,64 @@ def test_a_finding_with_no_subject_falls_back_on_its_context_and_says_so() -> No
     assert here != Finding("G0", "no-results", "no figures in /tmp/mg-2/paper/results").key
 
 
+def test_the_fallback_leaves_out_the_findings_own_path_whole_a_space_in_it_too() -> None:
+    """A project in a folder whose name holds a space: the path the finding names is taken
+    out whole, and every folder above it, before any other absolute path is looked for
+    (round 1 of #706: "Jane Doe" kept "Doe" and the rest of the path in the digest)."""
+    slash = chr(92)
+    spaced = Path(slash.join(("C:", "Users", "Jane Doe", "paper", "results")))
+    plain = Path(slash.join(("D:", "w", "paper", "results")))
+    here, there = (Finding("G1", "no-results", f"no results fragments in {folder}",
+                           path=folder).key for folder in (spaced, plain))  # fmt: skip
+    assert here == there
+    folder = Path("/home/Jane Doe/paper")
+    said = Finding("G0", "authors-incomplete", f"{folder} has no authors.yaml",
+                   path=folder / "authors.yaml").key  # fmt: skip
+    assert said == Finding("G0", "authors-incomplete", "/srv/p has no authors.yaml",
+                           path=Path("/srv/p/authors.yaml")).key  # fmt: skip
+
+
+def test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence() -> None:
+    """The splitter frozen for keys takes a line that begins with what opens a block for a
+    new block, as decided: a re-wrap there moves the key, and a re-wrap anywhere else in the
+    same sentence does not (DESIGN.md, Known gaps)."""
+    for whole, before in (("It was significant (P > 0.05) in men.", "> 0.05)"),
+                          ("The cohort began in March 2012. It ended later.", "2012. ")):
+        cut = whole.replace(" " + before, "\n" + before, 1)
+        elsewhere = whole.replace(" ", "\n", 1)
+        assert keys.placed(cut, 3) != keys.placed(whole, 3), cut
+        assert keys.placed(elsewhere, 3) == keys.placed(whole, 3), elsewhere
+
+
+def test_identical_sentences_of_one_part_number_their_findings_together() -> None:
+    """Two identical sentences of one part have one digest: the findings on one subject in
+    both are numbered as one sentence's, by their offsets, so a finding added in the first
+    moves the key of the one in the second (DESIGN.md, Known gaps)."""
+    first, second = (Keyed("G2", "unclassified-number", "2.37", "abc", at) for at in (10, 500))
+    assert keys.assign([first, second]) == [
+        "G2|unclassified-number|2.37#1|abc", "G2|unclassified-number|2.37#2|abc"]
+    added = Keyed("G2", "unclassified-number", "2.37", "abc", 12)
+    assert keys.assign([first, added, second])[2] == "G2|unclassified-number|2.37#3|abc"
+    assert keys.assign([second]) == ["G2|unclassified-number|2.37|abc"]
+
+
+def test_a_replys_bindings_and_numbers_are_keyed_in_its_sentence() -> None:
+    """The response letter's unresolved binding and unbound number name what they are about
+    and the sentence they stand in (round 1 of #706: they fell back)."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import reply_numbers
+
+    text = "We now give {{results.gone}} in Table 2. The rate was 4.7 in all.\n"
+    found = reply_numbers(text, Path("reply.md"), "R1.1", Classifier.load(), {}).findings
+    said = {one.code: one.as_dict() for one in found}
+    assert set(said) == {"unresolved-binding", "reply-unbound-number"}
+    assert all("key_from" not in one for one in said.values())
+    assert said["unresolved-binding"]["key"].split("|")[2] == "results.gone"
+    assert said["reply-unbound-number"]["key"].split("|")[2] == "4.7"
+    assert said["unresolved-binding"]["key"].split("|")[3] != said[
+        "reply-unbound-number"]["key"].split("|")[3]
+
+
 def test_two_equal_subjects_in_one_sentence_are_numbered_by_offset_and_never_across() -> None:
     """`t(29) = 2.05` twice in one sentence are `#1` and `#2`, by offset whatever the order
     they are given in; the same in another sentence is no third."""
@@ -290,7 +378,7 @@ def test_the_audit_keys_each_family_by_its_subject(paper_audited: list[dict]) ->
     assert len(outside) == 2 and len(set(outside)) == 2  # the abstract's and the Results'
     assert keyed(found, "abstract-not-found")[0].startswith("audit|abstract-not-found|12.5%|")
     assert keyed(found, "entry-never-cited") == ["G7|entry-never-cited|entry 2|-"]
-    assert keyed(found, "not-audited") == ["audit|not-audited|paper.md reference list|-"]
+    assert keyed(found, "not-audited") == ["audit|not-audited|paper.md reference list 1|-"]
     assert not fallen_back(found) - set(ON_THE_FALLBACK)
 
 
@@ -363,6 +451,23 @@ def test_compare_keys_facts_and_sections(tmp_path: Path) -> None:
     assert keyed(found, "fact-new") == ["compare|fact-new|7|-"]
     assert "compare|section-gone|gone|-" in keyed(found, "section-gone")
     assert keyed(found, "section-changed") == ["compare|section-changed|results|-"]
+
+
+def test_compare_tells_two_sections_of_one_title_apart_by_the_one_above(tmp_path: Path) -> None:
+    text = ("# Methods\n\nWords here.\n\n## Sensitivity\n\nOne way.\n\n# Results\n\n"
+            "More words.\n\n## Sensitivity\n\nAnother way.\n")  # fmt: skip
+    found = compared(a_paper(tmp_path, text, "v1.md"),
+                     a_paper(tmp_path, text.replace("Another", "A third"), "v2.md"))
+    subjects = [key.split("|")[2] for key in keyed(found, "section-same")
+                + keyed(found, "section-changed")]  # fmt: skip
+    assert {"methods/sensitivity", "results/sensitivity"} <= set(subjects), subjects
+
+
+def test_each_use_of_a_citation_beyond_the_list_is_keyed_in_its_sentence(tmp_path: Path) -> None:
+    text = ("# Results\n\nIt rose [5]. It fell later [5].\n\n# References\n\n"
+            "1. Smith J. A paper. J Test. 2020;1:1-2.\n")  # fmt: skip
+    found = keyed(audited(a_paper(tmp_path, text)), "citation-beyond-list")
+    assert len(found) == 2 and len(set(found)) == 2, found
 
 
 # --------------------------------------------------------------------- what moves a key

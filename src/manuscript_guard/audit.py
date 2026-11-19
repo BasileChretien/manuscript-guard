@@ -994,8 +994,8 @@ def _read_sources(
         report.not_audited += [
             Notice(f"{path.name}: "
                    f"{place.stretch(start + 1, end) if place else f'lines {start + 1}-{end}'}, "
-                   "read as the reference list", f"{path.name} reference list")
-            for start, end in spans
+                   "read as the reference list", f"{path.name} reference list {at}")
+            for at, (start, end) in enumerate(spans, 1)
         ]
         if not docx:
             report.unreadable += unread_shapes(path, text)
@@ -1044,9 +1044,10 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     sources.append(replace(source, **_pdf_structure(report, pdf, spans)))
     report.not_audited += [Notice(pdf.described(), path.name), *(
         Notice(f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list",
-               f"{path.name} reference list")
-        for start, end in spans), *(Notice(f"{path.name}: {what}", f"{path.name} pdf {at}")
-                                    for at, what in enumerate(PDF_NOT_READ, 1))]
+               f"{path.name} reference list {at}")
+        for at, (start, end) in enumerate(spans, 1)), *(
+        Notice(f"{path.name}: {what}", f"{path.name} pdf {at}")
+        for at, what in enumerate(PDF_NOT_READ, 1))]
     report.references.append(census_of_printed(path, text, spans, hidden,
                                                _intervals(blanked)))  # fmt: skip
 
@@ -1208,8 +1209,9 @@ def _pdf_structure(report: AuditReport, pdf,
             "or Markdown file, to have its sections read", pdf.path.name))
     levels = pdf.placed
     if levels is None:
-        report.not_audited.append(Notice(f"{pdf.path.name}: its lines were placed in no "
-                                         f"section: {UNPLACED}", pdf.path.name))  # fmt: skip
+        report.not_audited.append(Notice(
+            f"{pdf.path.name}: its lines were placed in no section: {UNPLACED}",
+            f"{pdf.path.name} unplaced"))
         return {"heading_lines": heading_lines}
     sections = [Section(title, level, "", line) for line, title, level in levels]
     heads = frozenset(section.line - 1 for section in sections)
@@ -2132,10 +2134,12 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
             # A word in a column's header lets off that column alone, and a row's label that
             # row (rounds 1 and 2 of #703).
             said = weighted.of(share.column, share.line) if weighted is not None else None
-            # A cell is keyed by its row, the line it stands on, as its sentence.
+            # A cell is keyed by its row, the line it stands on, as its sentence, and by its
+            # table's header row, so that a row of another table is no row of this one.
             rows = lines.split("\n")
             row = rows[share.line - 1] if 0 < share.line <= len(rows) else share.context
-            keyed = {"subject": share.printed, "sentence": digest(MAIN, row)}
+            header = " | ".join(cell.text for cell in table[0]) if table else ""
+            keyed = {"subject": share.printed, "sentence": digest(MAIN, f"{header}\n{row}")}
             if said is not None:
                 asked.append(replace(asked_share(share, said, path, described_share(share)),
                                      **keyed))  # fmt: skip

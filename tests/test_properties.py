@@ -23986,8 +23986,9 @@ def _keyed_at(text: str, at: tuple[int, ...]) -> list:
 @holds(40, keyed_papers())
 def test_a_rewrapped_or_moved_paper_keeps_every_key(drawn: tuple[str, tuple[int, ...]]) -> None:
     """A finding's key stands for its subject and its sentence: re-wrapping a paragraph, a
-    line break for each space, and a paragraph added before it, which moves every line,
-    leave each key as it was (`keys`, Basile, 2026-11-19). Each paper is edited both ways."""
+    line break for one space in three and never before what opens a block (DESIGN.md, Known
+    gaps), and a paragraph added before it, which moves every line, leave each key as it was
+    (`keys`, Basile, 2026-11-19). Each paper is edited both ways."""
     from manuscript_guard import keys
 
     text, at = drawn

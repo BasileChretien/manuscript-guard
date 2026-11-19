@@ -770,19 +770,26 @@ def _where(finding: Finding, root: Path) -> str:
 def as_json(report: Report, root: Path) -> str:
     import json
 
+    from manuscript_guard.keys import keyed_json
+
     def entry(one: Finding) -> dict:
         out = one.as_dict()
         out["path"] = _where(replace(one, line=None), root) if one.path is not None else None
         return out
 
     findings = report.sorted().findings
+    # Keyed over the whole report, so that the ordinals are the run's (`keys`).
+    said = keyed_json([one.keyed() for one in findings], [entry(one) for one in findings])
     return json.dumps(
         {
             "ok": report.ok,
             "counts": report.counts,
-            "failures": [entry(one) for one in findings if one.severity == FAIL],
-            "warnings": [entry(one) for one in findings if one.severity == WARN],
-            "notes": [entry(one) for one in findings if one.severity == INFO],
+            "failures": [out for out, one in zip(said, findings, strict=True)
+                         if one.severity == FAIL],
+            "warnings": [out for out, one in zip(said, findings, strict=True)
+                         if one.severity == WARN],
+            "notes": [out for out, one in zip(said, findings, strict=True)
+                      if one.severity == INFO],
         },
         indent=2,
         ensure_ascii=True,

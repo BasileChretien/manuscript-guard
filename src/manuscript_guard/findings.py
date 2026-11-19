@@ -11,7 +11,7 @@ import json
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
-from manuscript_guard.keys import Keyed, keyed_json
+from manuscript_guard.keys import Keyed, keyed_json, paths_of
 from manuscript_guard.keys import key as key_of
 
 FAIL = "fail"
@@ -64,7 +64,7 @@ class Finding:
     def keyed(self) -> Keyed:
         """What its key is made of (`keys.Keyed`)."""
         return Keyed(self.gate, self.code, self.subject, self.sentence, self.at, self.context,
-                     self.message)  # fmt: skip
+                     self.message, paths_of(self.path))  # fmt: skip
 
     @property
     def key(self) -> str:

@@ -18179,11 +18179,28 @@ def _keyed_paper(parts: list) -> tuple[str, tuple[int, ...]]:
     return text, tuple(at)
 
 
-def rewrapped(text: str) -> str:
-    """`text` with a line break for each space of its paragraphs, as an editor may wrap it,
-    each offset kept: a heading's line is left whole."""
-    return "\n".join(line if line.startswith("#") else line.replace(" ", "\n")
-                     for line in text.split("\n"))  # fmt: skip
+#: A word that opens a block where a line begins with it (`keys._BLOCK`): a heading, a
+#: quotation, an item of a list, a table's row. A re-wrap that starts a line with one cuts
+#: the sentence there, which DESIGN.md has under Known gaps.
+_OPENS_A_BLOCK = re.compile(r"[#>|]|[-*+]\Z|\d+[.)]\Z")
+
+
+def rewrapped(text: str, every: int = 3) -> str:
+    """`text` with a line break for one space of its paragraphs in `every`, as an editor
+    wraps it, each offset kept: never before a word that would open a block where a line
+    begins with it (`_OPENS_A_BLOCK`), and never in a heading's line."""
+
+    def wrapped(line: str) -> str:
+        if line.startswith("#"):
+            return line
+        words = line.split(" ")
+        out = words[0]
+        for place, word in enumerate(words[1:], 1):
+            breaks = place % every == 0 and not _OPENS_A_BLOCK.match(word)
+            out += ("\n" if breaks else " ") + word
+        return out
+
+    return "\n".join(wrapped(line) for line in text.split("\n"))
 
 
 INPUTS: dict[str, st.SearchStrategy[Any]] = {

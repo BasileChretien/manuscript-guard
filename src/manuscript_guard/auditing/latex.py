@@ -147,8 +147,8 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             read.not_audited += [
                 Notice(f"{path.name}: lines {source.text.count(chr(10), 0, start) + 1}-"
                        f"{source.text.count(chr(10), 0, end) + 1}, read as the reference list",
-                       f"{path.name} reference list")
-                for start, end in source.reading.references
+                       f"{Path(source.path).as_posix()} reference list {at}")
+                for at, (start, end) in enumerate(source.reading.references, 1)
             ]
         read.trees.append(Tree(entry, folder, document, tuple(mine), named))
         unfollowed = {**_unfollowed(document, files, name, folder), **unfollowed}
@@ -214,8 +214,11 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
                 "\\input it from the paper's main file"
             )
-        # Each note of this file knows it is about the file (`keys.Notice`).
-        read.passed_over[before:] = [Notice(said, path.name)
+        # Each note of this file knows it is about the file (`keys.Notice`), named from the
+        # paper's folder, never by its absolute path.
+        shown = next((path.relative_to(folder).as_posix() for folder in folders
+                      if folder in path.parents), path.name)  # fmt: skip
+        read.passed_over[before:] = [Notice(said, shown)
                                      for said in read.passed_over[before:]]  # fmt: skip
     return read
 

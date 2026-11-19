@@ -100,9 +100,26 @@ def _occurrences(headings: Sequence[Heading]) -> dict[tuple[str, int], int]:
     return keyed
 
 
+def _named_under(headings: Sequence[Heading]) -> list[str]:
+    """Each section as its key names it (`keys`): its title as it is matched, after the title
+    of the section it stands under, where it stands under one, "results/sensitivity", so that
+    two sections of one title under two others are told apart."""
+    open_: list[Heading] = []
+    found = []
+    for heading in headings:
+        while open_ and open_[-1].level >= heading.level:
+            open_.pop()
+        parent = _key(open_[-1].title) if open_ and heading.level else ""
+        found.append(f"{parent}/{_key(heading.title)}" if parent else _key(heading.title))
+        if heading.level:
+            open_.append(heading)
+    return found
+
+
 def sections(old: Version, new: Version) -> list[Item]:
     """Each section of either version: the same, changed, new, gone or moved."""
     was, now = _occurrences(old.sections), _occurrences(new.sections)
+    named_was, named_now = _named_under(old.sections), _named_under(new.sections)
     pairs = sorted((at, now[key]) for key, at in was.items() if key in now)
     kept = _ordered(pairs)
     matched = {after: before for before, after in pairs}
@@ -110,7 +127,7 @@ def sections(old: Version, new: Version) -> list[Item]:
     for at, heading in enumerate(new.sections):
         if at not in matched:
             found.append(about(_item(SECTIONS, "section-new", f"{_named(heading)} is new in v2",
-                                     new, heading.line), _key(heading.title), NONE))  # fmt: skip
+                                     new, heading.line), named_now[at], NONE))  # fmt: skip
             continue
         before = old.sections[matched[at]]
         words = _words(before.body), _words(heading.body)
@@ -121,11 +138,11 @@ def sections(old: Version, new: Version) -> list[Item]:
         if (matched[at], at) not in kept:
             code, said = "section-moved", f"moved, and {said}"
         found.append(about(_item(SECTIONS, code, f"{_named(heading)}: {said}", new,
-                                 heading.line), _key(heading.title), NONE))  # fmt: skip
+                                 heading.line), named_now[at], NONE))  # fmt: skip
     gone = sorted(set(range(len(old.sections))) - set(matched.values()))
     # A section is keyed by its title as it is matched (`keys`).
     found += [about(_item(SECTIONS, "section-gone", f"{_named(old.sections[at])} is gone from "
-                          "v2", old, old.sections[at].line), _key(old.sections[at].title), NONE)
+                          "v2", old, old.sections[at].line), named_was[at], NONE)
               for at in gone]  # fmt: skip
     return found
 

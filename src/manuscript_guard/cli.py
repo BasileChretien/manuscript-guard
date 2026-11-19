@@ -2723,6 +2723,7 @@ def _package_only(args: argparse.Namespace, package) -> int:
     from manuscript_guard.auditing import NOTICE
     from manuscript_guard.auditing.package import WORDING, counts, render
     from manuscript_guard.auditing.report import PACKAGE, _shown
+    from manuscript_guard.keys import keyed_json
 
     print(NOTICE, file=sys.stderr)
     show = _shown(Path.cwd())
@@ -2730,7 +2731,8 @@ def _package_only(args: argparse.Namespace, package) -> int:
     if args.json:
         print(json.dumps({"ok": not counted, "compared": False, "counts": counts(package),
                           "package_said": WORDING,
-                          "findings": [item.as_dict() for item in package.found]},
+                          "findings": keyed_json([item.keyed() for item in package.found],
+                                                 [item.as_dict() for item in package.found])},
                          indent=2, ensure_ascii=True))  # fmt: skip
         print(WORDING, file=sys.stderr)
     else:
@@ -5367,6 +5369,7 @@ def cmd_related(args: argparse.Namespace) -> int:
     import json
 
     from manuscript_guard.gates.related import compare_related
+    from manuscript_guard.keys import keyed_json
     from manuscript_guard.literature.related import TakeError, load_related, read_snapshot, take
 
     project, _ = load_project(args.path)
@@ -5391,7 +5394,8 @@ def cmd_related(args: argparse.Namespace) -> int:
                  "compared": [vars(r) for r in rows if r.output == o.id]}
                 for o in related.outputs
             ],
-            "findings": [f.as_dict() for f in found.findings],
+            "findings": keyed_json([f.keyed() for f in found.findings],
+                                   [f.as_dict() for f in found.findings]),
         }, indent=2, ensure_ascii=False))  # fmt: skip
         return 0
     for output in related.outputs:

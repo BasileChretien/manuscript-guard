@@ -16,13 +16,15 @@ A key is `gate|code|subject|digest` (Basile, 2026-11-19):
   use, and the finding is the same one.
 
 Two findings of one sentence with the same subject are told apart by an ordinal among them,
-counted by their offset in the text, `t(29)=2.05#1` and `#2` (`assign`). There is never an
-ordinal across the paper: a number added in one paragraph would move the keys of every
-equal number after it. Two findings that share a key otherwise, in two identical sentences
-of one part, are left as they are: the tool that pairs runs pairs only keys unique in both.
+counted by their offset in the text, `t(29)=2.05#1` and `#2` (`assign`). The ordinal counts
+the findings whose key is the same, and nothing else: a number added in another sentence
+moves no key. Two identical sentences of one part have one digest, though, so the findings
+on one subject in both are numbered together, by their offsets, which in `check` are taken
+in different files. A finding added to one of them may then move the other's key.
 
 A code whose finding names no subject falls back to a digest of its context (of its message
-where it has none), any absolute path in it left out, and is marked `"key_from": "context"`.
+where it has none), each path the finding names and every folder above it taken out whole,
+then any other absolute path, and is marked `"key_from": "context"`.
 `tests/test_finding_keys.py` holds which codes may.
 """
 
@@ -224,6 +226,8 @@ class Keyed:
     at: int | None = None
     context: str | None = None
     message: str = ""
+    #: The paths a key from the context leaves out, longest first (`paths_of`).
+    paths: tuple[str, ...] = ()
 
     @property
     def from_context(self) -> bool:
@@ -231,10 +235,26 @@ class Keyed:
 
     def parts(self) -> tuple[str, str, str, str]:
         if self.subject is None:
-            said = _ABSOLUTE.sub("", self.context or self.message)
+            said = self.context or self.message
+            for path in self.paths:
+                said = said.replace(path, "")
+            said = _ABSOLUTE.sub("", said)
             return self.gate, self.code, "~" + digest(NONE, said), NONE
         sentence = NONE if self.code in PAPER_LEVEL or not self.sentence else self.sentence
         return self.gate, self.code, subject(self.subject) or NONE, sentence
+
+
+def paths_of(path: Path | str | None) -> tuple[str, ...]:
+    """`path` and each folder above it, the drive or the root aside, as the platform writes
+    them and with forward slashes, longest first: what a key from a finding's context leaves
+    out, whole, a folder whose name holds a space included. The project's folder is among
+    them wherever the finding's file is in it."""
+    if path is None:
+        return ()
+    path = Path(path)
+    found = {form for one in (path, *path.parents) if one != Path(one.anchor)
+             for form in (str(one), one.as_posix()) if form}  # fmt: skip
+    return tuple(sorted(found, key=len, reverse=True))
 
 
 def key(keyed: Keyed, ordinal: int | None = None) -> str:

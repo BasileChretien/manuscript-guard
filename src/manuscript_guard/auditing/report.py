@@ -56,7 +56,7 @@ from pathlib import Path
 
 from manuscript_guard.auditing import spreads
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
-from manuscript_guard.keys import NONE, Keyed, keyed_json, statistic
+from manuscript_guard.keys import NONE, Keyed, keyed_json, paths_of, statistic
 
 INPUTS = "Inputs"
 MEMBERSHIP = "Numbers in the outputs"
@@ -156,7 +156,7 @@ class Item:
 
     def keyed(self) -> Keyed:
         return Keyed(self.gate, self.code, self.subject, self.sentence, self.at, self.context,
-                     self.message)  # fmt: skip
+                     self.message, paths_of(self.path))  # fmt: skip
 
     def as_dict(self) -> dict:
         said = {
@@ -264,13 +264,14 @@ def items(report) -> list[Item]:
     ]  # fmt: skip
     for run in report.gates:
         if run.note:
-            found.append(Item(WRITING, "G6", "gates-not-run", run.note, INFO, False, run.paper))
+            found.append(about(Item(WRITING, "G6", "gates-not-run", run.note, INFO, False,
+                                    run.paper), Path(run.paper).name, NONE))  # fmt: skip
         for section, findings in ((WRITING, run.writing), (LANGUAGE, run.language)):
             found += [_from_finding(section, finding, run.places) for finding in findings]
     for census in report.references:
         found += [
             about(Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path,
-                       p.line), p.subject)
+                       p.line), p.subject, getattr(p, "sentence", None))
             for p in census.problems
         ]  # fmt: skip
         found += _printed_items(census)

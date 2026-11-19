@@ -16865,7 +16865,9 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
   key, and read in a normal form: NFKC and case folded, one minus, one quotation mark of
   each kind, no spaces, emphasis, soft hyphens or characters of no width, a line's hyphen
-  joined. A moved line and a re-wrapped paragraph keep it; an edited sentence moves it.
+  joined. A moved line keeps it, and so does a re-wrapped paragraph, unless the re-wrap
+  begins a line with what opens a block, `>`, `12. ` or `3) ` (Known gaps); an edited
+  sentence moves it.
 - **A paper-level code has no digest**, `-`: G14's short forms not defined, used before
   their definition or unused, one per form per scope; the spellings, the notation, the
   names from the code, a term avoided and G6's rates. Fixing a first use moves the finding
@@ -16875,15 +16877,18 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   `G14|code-name-in-prose|-|-`, and each word under them keeps the key its warning has in
   `check`, so that the two commands give one key for one form.
 - **An ordinal only within a sentence.** Two findings of one sentence with one subject are
-  numbered by their offset, `t(29)=2.05#1` and `#2`. Never across the paper: a number added
-  in one paragraph would renumber every equal number after it. Duplicates left, in two
-  identical sentences of one part, are the corpus tool's affair: it pairs only keys unique in
-  both runs. `keys.shared` names two different findings that share a placed key.
+  numbered by their offset, `t(29)=2.05#1` and `#2`. A number added in another sentence moves
+  no key. Two identical sentences of one part have one digest, though, and the findings on
+  one subject in both are numbered together, by their offsets, which `check` takes in
+  different files (Known gaps). Keys still shared are the corpus tool's affair: it pairs only
+  keys unique in both runs. `keys.shared` names two different findings that share a placed
+  key.
 - **A code with no subject yet** falls back on a digest of its context, its message where
-  it has none, and says `"key_from": "context"`. `tests/test_finding_keys.py` lists those
-  codes with why, and fails on a code that falls back and is not listed, on the example, on
-  a paper with something for each family and on the generated inputs of the `check`
-  reading.
+  it has none, each path the finding names and every folder above it left out whole and
+  then any other absolute path, and says `"key_from": "context"`. `tests/test_finding_keys.py`
+  reads the source: every finding made with a literal code and no subject has its code, or
+  its gate where the corpus never reads it, listed there with why. It also runs the example,
+  a paper with something for each family and the generated inputs of the `check` reading.
 
 The keys are in `--json` only: nothing an author reads changes. The differential reading
 `finding keys` holds the audit's and compare's keys, and the reading `check` compares the
@@ -28365,10 +28370,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paragraphs: the finding then reads as one gone and one new, which is the safe side of
     pairing. Pinned by
     `tests/test_finding_keys.py::test_another_sentence_and_another_part_move_a_placed_key`.
-  - Two identical sentences in one part have one digest, and two findings in them on one
-    subject one key, which no ordinal tells apart: an ordinal counts within its sentence
-    only. Pinned by
-    `tests/test_properties.py::test_the_ordinal_of_a_key_counts_in_its_sentence_only`.
+  - Two identical sentences in one part have one digest, and the findings in them on one
+    subject are numbered together by their offsets, which in `check` are taken in different
+    files: a finding added in one of the two may move the other's key. Pinned by
+    `tests/test_finding_keys.py::test_identical_sentences_of_one_part_number_their_findings_together`.
   - A hyphen that ends a line is read as a word broken there, "signifi-" and "cant" as
     "significant", so "well-" at a line's end and "known" read "wellknown", not
     "well-known". Accepted.
@@ -28380,6 +28385,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     share in a table is keyed by its row's line. A key names no file: G7 keys an entry by
     its label alone, and two papers audited in one run give their entries the same keys.
     Accepted.
+- **A re-wrap that begins a line with what opens a block cuts the sentence there.** The
+  splitter frozen for keys (`keys._BLOCK`, as decided on 2026-11-19) takes a line that
+  begins with `#`, `>`, `|`, `- `, `12. ` or `3) ` for a new block, as `claims` does. So
+  "significant (P > 0.05) in men." wrapped before `> 0.05)`, or a sentence wrapped before
+  `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
+  moves none. Pinned by
+  `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

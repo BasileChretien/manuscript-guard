@@ -2027,11 +2027,22 @@ def _not_assessable(path: Path, mean, uncertain: str) -> Disagreement:
 
 
 def _header_of(table: Table, mean) -> str:
-    """The header cell over a mean's column, its spaces made one; "" where there is none."""
-    from manuscript_guard.stats.shares import _columns
+    """The header cells over a mean's column, each the cell whose span covers it, row by row
+    down to the one that names its n, joined: "Treatment / Men (n = 10)". "" where none is."""
+    from manuscript_guard.stats.shares import _N, _columns
 
-    header = list(_columns(table[0])) if table else []
-    return next((" ".join(cell.text.split()) for at, cell in header if at == mean.column), "")
+    said = []
+    for row in table:
+        if not row or row[0].line >= mean.line:
+            break
+        cell = next((cell for at, cell in _columns(row)
+                     if at <= mean.column < at + max(cell.span, 1)), None)  # fmt: skip
+        text = " ".join(cell.text.split()) if cell is not None else ""
+        if text and text not in said:
+            said.append(text)
+        if _N.search(text):
+            break
+    return " / ".join(said)
 
 
 def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:

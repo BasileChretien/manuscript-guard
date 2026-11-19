@@ -66,15 +66,27 @@ _STOP = re.compile(
 )
 _BLOCK = re.compile(r"\n[ \t\x00]*(?:\n|#|>|[-*+][ \t]|\d+[.)][ \t]|\|)")
 _FRONT = re.compile(r"\A---[ \t]*\n(?:.*?\n)?(?:---|\.\.\.)[ \t]*(?:\n|\Z)", re.DOTALL)
+#: The names a line may hold alone as a heading, as a Word paper's or a PDF's text gives one:
+#: each with a capital or in capitals, so that a word "results." a hard-wrapped line holds
+#: alone is no heading.
+_ALONE = ("abstract", "summary", "introduction", "background", "method", "methods",
+          "materials and methods", "results", "discussion", "conclusion", "conclusions",
+          "references")  # fmt: skip
+#: Of those, the ones that end the Abstract where they stand in it; any other ends it only
+#: where it repeats a name met since the Abstract opened, its own Results or Methods after
+#: those of a structured Abstract.
+_ENDS_AN_ABSTRACT = frozenset({"introduction", "discussion", "references"})
 #: What marks where a part of the paper begins: a Markdown heading, a LaTeX sectioning
-#: command or abstract environment, or a line that is a heading's name alone, as a Word
-#: paper's or a PDF's text gives one.
+#: command or abstract environment, or a line that is a heading's name alone (`_ALONE`).
 _MARK = re.compile(
     r"^[ \t]*#{1,6}[ \t]+(?P<md>[^\n]*)$"
     r"|\\(?:sub)*section\*?\{(?P<tex>[^}\n]*)\}"
     r"|(?P<env>\\(?:begin|end)\{abstract\})"
-    r"|^[ \t]*[*_]*(?P<alone>abstract|summary|introduction|background|methods?|"
-    r"materials and methods|results|discussion|conclusions?|references)[*_.:]*[ \t]*$",
+    r"|^[ \t]*[*_]*(?-i:(?P<alone>"
+    + "|".join(sorted({form for name in _ALONE
+                       for form in (name.capitalize(), name.title(), name.upper())},
+                      key=len, reverse=True))  # fmt: skip
+    + r"))[*_.:]*[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
 )
 _NUMBERED = re.compile(r"^[\s*_\d.)\\]*")
@@ -110,14 +122,25 @@ def sentence_at(text: str, offset: int) -> str:
 @lru_cache(maxsize=32)
 def _marks(text: str) -> tuple[tuple[int, bool], ...]:
     """Where each part of `text` begins, with whether it is the abstract."""
-    found = []
+    found: list[tuple[int, bool]] = []
+    # The names that stood alone since the Abstract opened, None outside it.
+    seen: set[str] | None = None
     for mark in _MARK.finditer(text):
         if mark["env"]:
-            found.append((mark.start(), mark["env"].lower().startswith("\\begin")))
+            opens = mark["env"].lower().startswith("\\begin")
+            seen = set() if opens else None
+            found.append((mark.start(), opens))
             continue
         title = _NUMBERED.sub("", mark["md"] or mark["tex"] or mark["alone"] or "")
-        found.append((mark.start(), title.strip("*_ \t").casefold().startswith(ABSTRACT)
-                      or title.strip("*_ \t.:").casefold() == "summary"))  # fmt: skip
+        name = title.strip("*_ \t.:").casefold()
+        opens = name.startswith(ABSTRACT) or name == "summary"
+        # A structured Abstract's own Background, Methods or Results go on in it.
+        if (mark["alone"] and not opens and seen is not None
+                and name not in _ENDS_AN_ABSTRACT and name not in seen):
+            seen.add(name)
+            continue
+        seen = set() if opens else None
+        found.append((mark.start(), opens))
     return tuple(found)
 
 

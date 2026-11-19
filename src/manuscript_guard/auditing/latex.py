@@ -183,45 +183,42 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     for path in sorted({*found, *(p for folder in folders for p in folder.rglob("*.tex"))}):
         if path in seen or path in entries:
             continue
-        before = len(read.passed_over)
-        if path in classed:
-            read.passed_over.append(
-                f"{path.as_posix()}: a class or a package the paper loads inputs it, so it is "
-                "theirs and not the paper's text, and was not read"
-            )
-        elif (said := unreadable_said(path)) is not None:
-            # In an entry's folder it is named already, as what could not be read there.
-            if not any(folder in path.parents for folder in folders):
-                read.passed_over.append(said)
-        elif stopped_in := unfollowed.get(path):
-            # The file that inputs it may do so past where its reading stopped (round 1 of
-            # #637: the advice was to input it, which the paper did).
-            read.passed_over.append(
-                f"{path.as_posix()}: no file the audit read inputs it, so it was not read; "
-                f"{', and '.join(dict.fromkeys(stopped_in))}, and what a file inputs past "
-                "where it stopped is not followed"
-            )
-        elif blocks := inside.get(path):
-            # The paper inputs it, from a block no check reads (round 1 of #674: the advice
-            # was to input it, which the paper did).
-            read.passed_over.append(
-                f"{path.as_posix()}: it is input only from inside a block the reader skipped "
-                f"({', '.join(dict.fromkeys(blocks))}), so it was not read; input it outside "
-                "the block, or name it"
-            )
-        else:
-            read.passed_over.append(
-                f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
-                "\\input it from the paper's main file"
-            )
-        # Each note of this file knows it is about the file (`keys.Notice`), named from the
-        # paper's folder, never by its absolute path.
-        holding = [folder for folder in folders if folder in path.parents]
-        inner = max(holding, key=lambda folder: len(folder.parts), default=None)
-        shown = path.name if inner is None else path.relative_to(inner).as_posix()
-        read.passed_over[before:] = [Notice(said, shown)
-                                     for said in read.passed_over[before:]]  # fmt: skip
+        read.passed_over += _passed_over(path, folders, classed, unfollowed, inside)
     return read
+
+
+def _passed_over(path: Path, folders: dict, classed: set[Path], unfollowed: dict,
+                 inside: dict) -> list[Notice]:  # fmt: skip
+    """The note on a .tex file of a folder given that no entry reads, if any: a Notice about
+    the file (`keys`), named from the innermost folder given that holds it, never by its
+    absolute path."""
+    holding = [folder for folder in folders if folder in path.parents]
+    inner = max(holding, key=lambda folder: len(folder.parts), default=None)
+    shown = path.name if inner is None else path.relative_to(inner).as_posix()
+    if path in classed:
+        said = (f"{path.as_posix()}: a class or a package the paper loads inputs it, so it is "
+                "theirs and not the paper's text, and was not read")  # fmt: skip
+    elif (unread := unreadable_said(path)) is not None:
+        # In an entry's folder it is named already, as what could not be read there.
+        if holding:
+            return []
+        said = unread
+    elif stopped_in := unfollowed.get(path):
+        # The file that inputs it may do so past where its reading stopped (round 1 of
+        # #637: the advice was to input it, which the paper did).
+        said = (f"{path.as_posix()}: no file the audit read inputs it, so it was not read; "
+                f"{', and '.join(dict.fromkeys(stopped_in))}, and what a file inputs past "
+                "where it stopped is not followed")  # fmt: skip
+    elif blocks := inside.get(path):
+        # The paper inputs it, from a block no check reads (round 1 of #674: the advice
+        # was to input it, which the paper did).
+        said = (f"{path.as_posix()}: it is input only from inside a block the reader skipped "
+                f"({', '.join(dict.fromkeys(blocks))}), so it was not read; input it outside "
+                "the block, or name it")  # fmt: skip
+    else:
+        said = (f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
+                "\\input it from the paper's main file")  # fmt: skip
+    return [Notice(said, shown)]
 
 
 def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> dict:

@@ -217,8 +217,8 @@ def test_a_statistic_is_one_subject_however_it_is_spaced_and_signed() -> None:
 
 
 def test_the_part_is_the_abstract_under_its_heading_and_the_supplement_by_its_file() -> None:
-    text = ("# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n\nRESULTS\n\n"
-            "Five.\n")  # fmt: skip
+    text = ("# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n\n"
+            "INTRODUCTION\n\nFive.\n")  # fmt: skip
     assert keys.part_of(text, text.index("Two")) == keys.ABSTRACT
     assert keys.part_of(text, text.index("Three")) == keys.MAIN
     assert keys.part_of(text, text.index("Four")) == keys.ABSTRACT
@@ -380,14 +380,18 @@ def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
 ) -> None:
     """A share a sentence writes is digested in the text as read, not in the text with the
     compared Abstract blanked, as the other numbers are (second scoped check of #706). In a
-    Word paper the Abstract's heading is a line alone, which the blanking took away."""
+    Word paper the Abstract's heading is a line alone, which `abstract.where` takes for the
+    Abstract's and the blanking took away; under "Patients and methods", a heading no line
+    alone marks, the share's part rests on that line alone (the follow-up's review)."""
     from test_audit_claims import make_docx
 
     from manuscript_guard.auditing import abstract
 
     paper = make_docx(tmp_path / "paper.docx", [
-        ("Abstract", True), ("Of 40 patients, 12 were women.", False), ("Results", True),
-        ("Of the patients, 12 of 40 (35%) were women, and the rest were men.", False)])  # fmt: skip
+        ("Abstract", True), ("Of 40 patients, 12 were women.", False),
+        ("Patients and methods", True),
+        ("Of the patients, 12 of 40 (35%) were women, and the rest were men.", False),
+        ("Results", True), ("The rate was 4.7 in all.", False)])  # fmt: skip
 
     def share() -> list[str]:
         return [key for key in keyed(audited(paper), "does-not-fit") if "|12of40(35%)|" in key]
@@ -395,6 +399,64 @@ def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
     compared = share()
     monkeypatch.setattr(abstract, "where", lambda piece, line: "")
     assert compared and share() == compared
+
+
+def test_a_structured_abstracts_own_headings_keep_its_sentences_in_it() -> None:
+    """A line alone ends the Abstract only where it is the Introduction, the Discussion or
+    the References, or names again what stood alone in it already: a structured Abstract's
+    Background and Results go on in it. So one sentence word for word in the Abstract and in
+    the Results is two keys, neither numbered (the follow-up's review)."""
+    markdown = ("# Abstract\n\n**Results**\n\nThe rate was 4.7 in all.\n\n# Results\n\n"
+                "The rate was 4.7 in all.\n")  # fmt: skip
+    word = ("Abstract\n\nBackground\n\nWe asked.\n\nResults\n\nThe rate was 4.7 in all.\n\n"
+            "Introduction\n\nWe ask again.\n\nResults\n\nThe rate was 4.7 in all.\n")  # fmt: skip
+    for text in (markdown, word):
+        first, last = text.index("The rate"), text.rindex("The rate")
+        assert keys.part_of(text, first) == keys.ABSTRACT, text
+        assert keys.part_of(text, last) == keys.MAIN, text
+        found = keys.assign([Keyed("G2", "unclassified-number", "4.7",
+                                   keys.placed(text, at), at) for at in (first, last)])  # fmt: skip
+        assert len(set(found)) == 2 and not any("#" in one for one in found), found
+    assert keys.part_of(word, word.index("We ask again")) == keys.MAIN
+
+
+def test_a_word_alone_in_lower_case_is_no_heading() -> None:
+    """A heading's name alone on a line is one with a capital or in capitals: "results." a
+    hard-wrapped Abstract leaves alone on a line keeps the Abstract's part, so re-wrapping it
+    moves no key (the follow-up's review)."""
+    wrapped = ("# Abstract\n\nWe report the\nresults.\nThe rate was 4.7 in all of the\n"
+               "patients.\n\n# Methods\n\nWe counted.\n")  # fmt: skip
+    flowing = wrapped.replace("the\nresults.\nThe", "the results. The", 1)
+    for text in (wrapped, flowing):
+        assert keys.part_of(text, text.index("The rate")) == keys.ABSTRACT, text
+    assert keys.placed(wrapped, wrapped.index("The rate")) == keys.placed(
+        flowing, flowing.index("The rate"))  # fmt: skip
+    assert keys.part_of("Abstract\n\nOne.\n\nRESULTS\n\nTwo.\n\nINTRODUCTION\n\nThree.",
+                        40) == keys.MAIN  # fmt: skip
+
+
+def test_a_mean_under_a_header_that_spans_columns_names_each_row_of_it(tmp_path: Path) -> None:
+    """The column a GRIM mean is keyed by is named by every header cell over it, each the
+    one whose span covers it, down to the row that names its n: 3.47 under Treatment's men,
+    Treatment's women and Control's men is three keys, none numbered and none with an empty
+    column (the follow-up's review)."""
+    from test_audit import make_docx, para, row
+
+    def spanning(text: str) -> str:
+        return (f"<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>{text}</w:t>"
+                "</w:r></w:p></w:tc>")
+
+    header = ("<w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+              + spanning("Treatment") + spanning("Control") + "</w:tr>")
+    table = ("<w:tbl>" + header + row("", "Men (n = 10)", "Women (n = 10)", "Men (n = 10)",
+                                       "Women (n = 10)")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)", "3.47 (1.10)", "5.00 (1.00)")
+             + "</w:tbl>")  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table)
+    found = _json("audit", str(paper), "--json", "--whole-numbers", "Age")["findings"]
+    grim = [key.split("|")[2] for key in keyed(found, "does-not-fit") if "3.47/n=10" in key]
+    assert sorted(grim) == ["3.47/n=10@control/men(n=10)", "3.47/n=10@treatment/men(n=10)",
+                            "3.47/n=10@treatment/women(n=10)"], grim  # fmt: skip
 
 
 def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:

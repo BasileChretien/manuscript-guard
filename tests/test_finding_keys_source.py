@@ -96,9 +96,9 @@ VARIABLE_SITES = {
 
 
 #: Where a note is added as a string and made a `Notice` afterwards, with why.
-NOTE_SITES = {
-    "auditing/latex.py:read_latex": "each note on a file the LaTeX reading passes over is "
-    "made a Notice about that file once its notes are said",
+NOTE_MAKERS = {
+    "auditing/latex.py:_passed_over": "the note on a file of a folder given that no entry "
+    "reads: a Notice about that file",
 }
 #: Where an arithmetic finding is made with no subject and keyed by its caller, or never
 #: reaches an item that takes its code, each with why.
@@ -191,65 +191,95 @@ def _names_a_subject(call: ast.Call) -> bool:
     return not (subject is None or (isinstance(subject, ast.Constant) and subject.value is None))
 
 
-def _makes_notices(node: ast.AST) -> bool:
-    return any(isinstance(one, ast.Call) and getattr(one.func, "id", None) == "Notice"
-               for one in ast.walk(node))  # fmt: skip
-
-
-def _a_notice(node: ast.AST, scope: ast.AST) -> bool:
-    """Whether what is put in a list of notes is a `Notice`: one made there, a name the
-    function binds to what makes Notices, or another such list of notes."""
+def _only_notices(node: ast.AST, file: str) -> bool:
+    """Whether a value is Notices and nothing else: a `Notice(...)`, a call to a function of
+    `NOTE_MAKERS`, a list or a choice of those, or a list made of them."""
     if isinstance(node, ast.Starred):
         node = node.value
     if isinstance(node, (ast.ListComp, ast.GeneratorExp)):
-        node = node.elt
+        return _only_notices(node.elt, file)
     if isinstance(node, (ast.List, ast.Tuple)):
-        return all(_a_notice(one, scope) for one in node.elts)
+        return all(_only_notices(one, file) for one in node.elts)
+    if isinstance(node, ast.IfExp):
+        return _only_notices(node.body, file) and _only_notices(node.orelse, file)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id == "Notice" or f"{file}:{node.func.id}" in NOTE_MAKERS
+    return False
+
+
+def _a_notice(node: ast.AST, scope: ast.AST, file: str) -> bool:
+    """Whether what is put in a list of notes is Notices: made there (`_only_notices`),
+    another list of notes, or a name the function binds only to Notices, every time, and
+    never adds to."""
+    if isinstance(node, ast.Starred):
+        node = node.value
     if isinstance(node, ast.Attribute):
         return node.attr in NOTES
-    if isinstance(node, ast.Name):
-        return any(isinstance(one, ast.Assign) and _makes_notices(one.value)
-                   and any(getattr(target, "id", None) == node.id for target in one.targets)
-                   for one in ast.walk(scope))  # fmt: skip
-    return isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Notice"
+    if not isinstance(node, ast.Name):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            return all(_a_notice(one, scope, file) for one in node.elts)
+        return _only_notices(node, file)
+    bound, added = [], False
+    for one in ast.walk(scope):
+        targets = (one.targets if isinstance(one, ast.Assign)
+                   else [one.target] if isinstance(one, (ast.AugAssign, ast.AnnAssign,
+                                                         ast.NamedExpr)) else [])  # fmt: skip
+        if any(getattr(target, "id", None) == node.id for target in targets):
+            bound.append(one)
+        if (isinstance(one, ast.Call) and isinstance(one.func, ast.Attribute)
+                and getattr(one.func.value, "id", None) == node.id
+                and one.func.attr in ("append", "extend", "insert")):
+            added = True
+    return bool(bound) and not added and all(
+        isinstance(one, ast.Assign) and _only_notices(one.value, file) for one in bound)
+
+
+def _notes(target: ast.AST) -> bool:
+    """Whether `target` is one of the lists of notes, or a slice of one."""
+    if isinstance(target, ast.Subscript):
+        target = target.value
+    return isinstance(target, ast.Attribute) and target.attr in NOTES
 
 
 def _put_in_notes(node: ast.AST) -> list[ast.AST]:
     """What `node` puts in one of the lists of notes: an append, an extend, an insert, a
-    `+=`, an assignment, or `AuditReport(...)` and `replace(...)` given one by name."""
-    def notes(target: ast.AST) -> bool:
-        return isinstance(target, ast.Attribute) and target.attr in NOTES
-
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and notes(
+    `+=`, an assignment to the list or a slice of it, or `AuditReport(...)` and
+    `replace(...)` or `dataclasses.replace(...)` given one by name. A `**` given to
+    `AuditReport` is returned as it is, which no rule takes for Notices."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and _notes(
             node.func.value):
         return {"append": node.args[:1], "extend": node.args[:1],
                 "insert": node.args[1:2]}.get(node.func.attr, [])  # fmt: skip
-    if isinstance(node, ast.AugAssign) and notes(node.target):
-        return node.value.elts if isinstance(node.value, ast.List) else [node.value]
-    if isinstance(node, ast.Assign) and any(notes(target) for target in node.targets):
+    if isinstance(node, ast.AugAssign) and _notes(node.target):
         return [node.value]
-    if isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("AuditReport",
-                                                                         "replace"):
-        return [one.value for one in node.keywords if one.arg in NOTES]
+    if isinstance(node, ast.Assign) and any(_notes(target) for target in node.targets):
+        return [node.value]
+    name = getattr(node.func, "id", getattr(node.func, "attr", None)) if isinstance(
+        node, ast.Call) else None  # fmt: skip
+    if name in ("AuditReport", "replace"):
+        return [one.value for one in node.keywords
+                if one.arg in NOTES or (one.arg is None and name == "AuditReport")]
     return []
 
 
-def unnoted() -> list[tuple[str, int]]:
-    """Each place a note on the inputs is put in its list as a plain string, as
+def unnoted(instead: dict[str, str] | None = None) -> list[tuple[str, int]]:
+    """Each place a note on the inputs is put in its list as anything but Notices, as
     `file:function` and the line: it would fall back on its context
-    (`auditing.report._notice`)."""
+    (`auditing.report._notice`). `instead` is as `made` takes it."""
     found = []
-    for path in (SRC / name for name in NOTED_IN):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    for name in NOTED_IN:
+        written = (instead or {}).get(name)
+        tree = ast.parse(written if written is not None
+                         else (SRC / name).read_text(encoding="utf-8"))  # fmt: skip
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
         for node in ast.walk(tree):
             scope = node
             while scope in parents and not isinstance(scope, ast.FunctionDef):
                 scope = parents[scope]
             for one in _put_in_notes(node):
-                if not _a_notice(one, scope):
-                    name = scope.name if isinstance(scope, ast.FunctionDef) else "<module>"
-                    found.append((f"{path.relative_to(SRC).as_posix()}:{name}", node.lineno))
+                if not _a_notice(one, scope, name):
+                    function = scope.name if isinstance(scope, ast.FunctionDef) else "<module>"
+                    found.append((f"{name}:{function}", node.lineno))
     return found
 
 
@@ -336,10 +366,42 @@ def test_no_code_a_family_keys_is_made_without_a_subject() -> None:
 
 def test_every_note_on_the_inputs_is_a_notice() -> None:
     """A note added to the audit's lists of what it read is a `Notice`, which knows the file
-    or the part it is about, or is made one where its file's notes are said (`NOTE_SITES`)."""
-    found = unnoted()
-    assert sorted((site, line) for site, line in found if site not in NOTE_SITES) == []
-    assert sorted(set(NOTE_SITES) - {site for site, _line in found}) == []
+    or the part it is about, made where it is added or by a function of `NOTE_MAKERS`."""
+    assert unnoted() == []
+    for site in NOTE_MAKERS:
+        where, function = site.split(":")
+        assert f"{function}(" in (SRC / where).read_text(encoding="utf-8"), site
+
+
+def _with(where: str, function: str, lines: str) -> dict[str, str]:
+    """The text of `where` with `lines` put first in the body of `function`."""
+    text = (SRC / where).read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    node = next(one for one in ast.walk(tree)
+                if isinstance(one, ast.FunctionDef) and one.name == function)  # fmt: skip
+    body = node.body[1] if isinstance(node.body[0], ast.Expr) else node.body[0]
+    rows = text.split("\n")
+    indent = " " * body.col_offset
+    rows[body.lineno - 1:body.lineno - 1] = [indent + one for one in lines.split("\n")]
+    return {where: "\n".join(rows)}
+
+
+def test_every_way_a_plain_string_reaches_the_notes_is_caught() -> None:
+    """The walk is shown copies of the source, each with one plain string put in a list of
+    notes another way: an append in `read_latex` beside the helper that makes its Notices, a
+    slice assigned, `dataclasses.replace`, `AuditReport(**...)`, and a name that is bound
+    to Notices and then added to (the review of #706's follow-up)."""
+    cases = [
+        ("auditing/latex.py", "read_latex", 'read.passed_over.append("plain")'),
+        ("audit.py", "_read_pdf", 'report.not_audited[0:] = ["plain"]'),
+        ("audit.py", "_read_pdf", 'report = dataclasses.replace(report, headings=["plain"])'),
+        ("audit.py", "_read_pdf", 'report = AuditReport(**{"passed_over": ["plain"]})'),
+        ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid.append("plain")\n'
+                                  "report.passed_over += said"),
+    ]  # fmt: skip
+    for where, function, lines in cases:
+        caught = [site for site, _line in unnoted(_with(where, function, lines))]
+        assert caught == [f"{where}:{function}"], (lines, caught)
 
 
 def test_a_site_keyed_by_its_caller_makes_nothing_keyed_itself() -> None:

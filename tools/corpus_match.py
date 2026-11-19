@@ -23,12 +23,15 @@ RUN_DIR = re.compile(r"runs/[^/\s]+/")
 NUMBER = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?|\.\d+)")
 #: A test statistic as typed, its name, its degrees of freedom and its value: "t(29) = 2.05",
 #: "F(2, 55) = 0.62", "\N{GREEK SMALL LETTER CHI}2(1) = 3.84".
+#: A number as printed: a minus of any of three kinds, a point or a middle dot.
+VALUE = r"[-\N{MINUS SIGN}\N{EN DASH}]?\d*[.\N{MIDDLE DOT}]?\d+"
 STATISTIC = re.compile(
-    r"(?<!\w)(t|F|z|r|H|U|W|\N{GREEK SMALL LETTER CHI}\N{SUPERSCRIPT TWO}|"
-    r"\N{GREEK SMALL LETTER CHI}2|chi2|X2)\s*\(\s*([^()=]{1,30}?)\s*\)\s*=\s*(-?\d*\.?\d+)"
-)
+    r"(?<!\w)(chi-squared|t|F|z|r|H|U|W|\N{GREEK SMALL LETTER CHI}\N{SUPERSCRIPT TWO}|"
+    r"\N{GREEK SMALL LETTER CHI}2|chi2|X2)\s*(?:\(\s*([^()=]{1,30}?)\s*\))?\s*=\s*"
+    rf"({VALUE})"
+)  # the package writes "chi-squared(1) = 3.84" and "z = 2.10" (stats/reported.py, `written`)
 #: A P value as the text states it: "P = 0.20", "p < .05".
-STATED_P = re.compile(r"(?<!\w)[Pp]\s*([=<>\N{LESS-THAN OR EQUAL TO}])\s*(\d*\.?\d+)")
+STATED_P = re.compile(rf"(?<!\w)[Pp]\s*([=<>\N{{LESS-THAN OR EQUAL TO}}])\s*({VALUE})")
 #: The part of the paper a G14 finding names, which tells two findings of one form apart.
 REGION = re.compile(r"\bin the (abstract|main text|supplement)\b", re.IGNORECASE)
 
@@ -86,18 +89,26 @@ def quoted(message: object) -> list[str]:
             for hit in QUOTED.finditer(str(message or ""))]  # fmt: skip
 
 
+def _value(value: str) -> str:
+    """A number as a pattern that takes any minus and either point, and ends where it ends."""
+    body = "".join("[-\N{MINUS SIGN}\N{EN DASH}]" if c in "-\N{MINUS SIGN}\N{EN DASH}" else
+                   "[.\N{MIDDLE DOT}]" if c in ".\N{MIDDLE DOT}" else re.escape(c)
+                   for c in value)  # fmt: skip
+    return body + r"(?![\d]|[.\N{MIDDLE DOT}]\d)"
+
+
 def _statistic(message: str) -> re.Pattern | None:
     """The first test statistic with its value, its spacing free; else the stated P."""
     hit = STATISTIC.search(message)
     if hit:
         name, df, value = hit.groups()
-        dfs = r"\s*,\s*".join(re.escape(part.strip()) for part in df.split(","))
-        return re.compile(rf"(?<!\w){re.escape(name)}\s*\(\s*{dfs}\s*\)\s*=\s*"
-                          rf"{re.escape(value)}(?![\d])")  # fmt: skip
+        dfs = r"\s*,\s*".join(re.escape(part.strip()) for part in (df or "").split(","))
+        within = rf"\s*\(\s*{dfs}\s*\)" if df else ""
+        return re.compile(rf"(?<!\w){re.escape(name)}{within}\s*=\s*{_value(value)}")
     stated = STATED_P.search(message)
     if stated:
         sign, value = stated.groups()
-        return re.compile(rf"(?<!\w)[Pp]\s*{re.escape(sign)}\s*{re.escape(value)}(?![\d])")
+        return re.compile(rf"(?<!\w)[Pp]\s*{re.escape(sign)}\s*{_value(value)}")
     return None
 
 
@@ -136,18 +147,23 @@ def _by_message(old: dict, new: dict, slug: str, place: bool) -> bool:
 
 def _by_context(old: dict, new: dict, slug: str, place: bool, shared: bool = True) -> bool:
     """The same context. Where the context is `shared` (another judged finding of the code
-    has it, or another new one), the message must name what the old one was about too: two
-    findings of one sentence share a context. A grouped finding, which copies its first
-    form's context, must list the old one's form."""
+    has it, or another new one), the message must name what the old one was about too, and
+    one with nothing to name is refused: two findings of one sentence share a context. A
+    finding about another short form or name is another finding, and a grouped finding,
+    which copies its first form's context, must list the old one's form."""
     context = norm(old.get("context"))
     if not context or norm(new.get("context")) != context:
         return False
     if place and not same_place(old, new, slug):
         return False
     key = key_of(old)
-    if shared and key is not None and not key.search(str(new.get("message") or "")):
+    if shared and (key is None or not key.search(str(new.get("message") or ""))):
         return False
-    return not new.get("forms") or subject_of(old) in forms_named(new)
+    if new.get("forms"):
+        return subject_of(old) in forms_named(new)
+    # Two short forms or names of one sentence are two findings, shared or not.
+    mine, theirs = subject_of(old), subject_of(new)
+    return not (mine and theirs and mine != theirs)
 
 
 def _by_both(old: dict, new: dict, slug: str, shared: bool = True) -> bool:

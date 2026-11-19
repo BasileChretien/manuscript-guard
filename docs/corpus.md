@@ -105,13 +105,15 @@ finding before the next: the same message at the same place, the same context at
 place, the same message and context, the same message, the same context, and last the same
 word at the same place or in the same part of the paper, the Abstract, the main text or the
 supplement, as the message names it. The word is what the finding is about: its short form;
-else a test statistic with its value as typed, "t(29) = 2.05" or "F(2, 55) = 0.62", its spacing
-free, or failing that the P it states, never its degrees of freedom alone; else its first
-words in quotes; else its first number of two characters or more. Where
-another finding of the code has the same context, among the judged ones or the new ones, a
-context counts only where the new message names that word, since two findings of one sentence
-share a context; a context no other shares is the finding's own, whatever its counts now. A
-finding that lists forms must list the old one's. A finding that lists forms,
+else a test statistic with its value as typed, "t(29) = 2.05", "F(2, 55) = 0.62",
+"chi-squared(1) = 3.84" or "z = 2.10", its spacing, its minus and its point (a dot or a middle
+dot) free, or failing that the P it states, never its degrees of freedom alone; else its first
+words in quotes; else its first number of two characters or more. Where another finding of
+the code has the same context, among the judged ones or the new ones, a context counts only
+where the new message names that word, and not at all where the finding names none, since two
+findings of one sentence share a context; a context no other shares is the finding's own,
+whatever its counts now, unless the two name different short forms or names. A finding that
+lists forms must list the old one's. A finding that lists forms,
 as G14's one question does, gives each form once. Where a judged finding was the only one of
 its code in its report (`totals`) and its word tells it from the others of its code in the
 packets ("%" stands in every `notation-percent`, so it does not), it is found again in the

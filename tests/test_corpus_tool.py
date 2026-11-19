@@ -289,6 +289,51 @@ def test_a_statistic_is_found_by_its_value_as_typed_never_by_its_degrees_of_free
     assert chi.search("\N{GREEK SMALL LETTER CHI}2 (1) = 3.84") and not chi.search("(1) = 3.84")
 
 
+def test_a_statistic_is_read_in_the_forms_the_package_writes() -> None:
+    def key(message: str):
+        return matching.key_of(finding("G8", "p-inconsistent", message))
+
+    chi = key("chi-squared(1) = 3.84 gives a P of 0.050, and the text says P < 0.001")
+    assert chi.search("chi-squared(1)=3.84") and not chi.search("P < 0.001 only")
+    assert key("z = 2.10 gives a P of 0.036").search("that z = 2.10 gives")
+    assert not key("z = 2.10 gives a P of 0.036").search("z = 2.105")
+    minus = key("t(29) = \N{MINUS SIGN}2.05 gives a P of 0.049")
+    assert minus.search("t(29) = -2.05") and not minus.search("t(29) = 2.05")
+    # One "P < 0.001" in two sentences' findings: the statistic tells them apart.
+    a = finding("G8", "p-inconsistent", "chi-squared(1) = 3.84 gives a P of 0.050, and the text "
+                "says P < 0.001", line=12, context="both tests were significant")  # fmt: skip
+    b = {**a, "message": "chi-squared(2) = 9.21 gives a P of 0.010, and the text says P < 0.001"}
+    reworded = {**b, "message": "chi-squared(2) = 9.21 gives a P between 0.0099 and 0.0101, "
+                "and the text says P < 0.001"}  # fmt: skip
+    assert matching.states([a, b], [reworded]) == [("gone", []), ("reported", [0])]
+
+
+def test_a_value_ends_where_its_digits_end_and_a_middle_dot_is_a_point() -> None:
+    dot = matching.key_of(finding("x", "y", "F(2, 55) = 0\N{MIDDLE DOT}62 gives a P"))
+    assert dot.search("F(2, 55) = 0\N{MIDDLE DOT}62") and dot.search("F(2, 55) = 0.62")
+    assert not dot.search("F(2, 55) = 0")
+    whole = matching.key_of(finding("x", "y", "t(29) = 2 gives a P of 0.05"))
+    assert whole.search("t(29) = 2 gives") and not whole.search("t(29) = 2.05")
+    assert not whole.search("t(29) = 2\N{MIDDLE DOT}05")
+
+
+def test_a_context_unshared_is_not_the_finding_of_another_form() -> None:
+    sentence = "the XYZ and QRS scores were compared"
+    xyz = finding("G14", "abbreviation-undefined", "XYZ is used once in the main text and not "
+                  "defined there", line=20, context=sentence)  # fmt: skip
+    qrs = {**xyz, "message": xyz["message"].replace("XYZ", "QRS")}
+    assert matching.states([xyz], [qrs]) == [("gone", [])]
+
+
+def test_a_shared_context_with_nothing_to_name_takes_nothing() -> None:
+    generic = "the plan's question section is a heading with nothing under it"
+    a = finding("G12", "plan-section-empty", generic, line=5, context="## Plan")
+    b = {**a, "line": 6}
+    reworded = {**a, "message": "the plan's section has a heading and no text", "line": 30}
+    assert matching.key_of(a) is None
+    assert matching.states([a, b], [reworded]) == [("gone", []), ("gone", [])]
+
+
 def test_a_context_shared_keeps_only_the_finding_its_message_names() -> None:
     sentence = "the XYZ and QRS scores were compared"
     xyz = finding("G14", "abbreviation-undefined", "XYZ is used once in the main text and not "

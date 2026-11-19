@@ -306,4 +306,6 @@ def _finding(entry: _Found, severity: str) -> Finding:
         context=context(prose.text, first.offset, first.length),
         hint=f"{hint}. If the paper is right to print it, list it under `language: "
         "code_names_kept:` in paper.yaml",
+        subject=entry.name,
+        at=first.offset,
     )

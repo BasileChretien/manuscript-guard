@@ -18133,6 +18133,76 @@ def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str
     return papers, expected
 
 
+# ------------------------------------------------------------------------- finding keys
+
+#: The numbers a paper drawn for the keys plants: few, so that one stands in several
+#: sentences, and one with a point.
+KEYED_NUMBERS = ("2.37", "12", "0.5")
+#: What opens a part of such a paper: nothing, a heading, or a heading's name alone on its
+#: line, as a Word paper's text gives one.
+KEYED_HEADINGS = ("", "# Abstract\n\n", "# Results\n\n", "ABSTRACT\n\n")
+
+
+def keyed_papers() -> st.SearchStrategy[tuple[str, tuple[int, ...]]]:
+    """A paper for the keys (`keys`), with the offset of each number it plants, in order:
+    one to three paragraphs, each under one of `KEYED_HEADINGS` and on one line, of two to
+    five sentences of `FILLER` words. Every sentence holds a number of `KEYED_NUMBERS`, some
+    the same number twice, and the last sentence the first's number, so that a number stands
+    in two sentences of every paper."""
+    sentence = st.tuples(
+        st.lists(st.sampled_from(FILLER), min_size=1, max_size=7),
+        st.sampled_from(KEYED_NUMBERS),
+        st.booleans(),
+        st.lists(st.sampled_from(FILLER), min_size=1, max_size=5),
+    )
+    part = st.tuples(st.sampled_from(KEYED_HEADINGS), st.lists(sentence, min_size=2, max_size=5))
+    return st.lists(part, min_size=1, max_size=3).map(_keyed_paper)
+
+
+def _keyed_paper(parts: list) -> tuple[str, tuple[int, ...]]:
+    text, at = "", []
+    first = parts[0][1][0][1]
+    last = (len(parts) - 1, len(parts[-1][1]) - 1)
+    for one, (heading, sentences) in enumerate(parts):
+        text += heading
+        for each, (before, number, twice, after) in enumerate(sentences):
+            number = first if (one, each) == last else number
+            said = " ".join(before)
+            text += said[0].upper() + said[1:] + " "
+            at.append(len(text))
+            text += number
+            if twice:
+                text += " and "
+                at.append(len(text))
+                text += number
+            text += " " + " ".join(after) + (". " if each < len(sentences) - 1 else ".\n\n")
+    return text, tuple(at)
+
+
+#: A word that opens a block where a line begins with it (`keys._BLOCK`): a heading, a
+#: quotation, an item of a list, a table's row. A re-wrap that starts a line with one cuts
+#: the sentence there, which DESIGN.md has under Known gaps.
+_OPENS_A_BLOCK = re.compile(r"[#>|]|[-*+]\Z|\d+[.)]\Z")
+
+
+def rewrapped(text: str, every: int = 3) -> str:
+    """`text` with a line break for one space of its paragraphs in `every`, as an editor
+    wraps it, each offset kept: never before a word that would open a block where a line
+    begins with it (`_OPENS_A_BLOCK`), and never in a heading's line."""
+
+    def wrapped(line: str) -> str:
+        if line.startswith("#"):
+            return line
+        words = line.split(" ")
+        out = words[0]
+        for place, word in enumerate(words[1:], 1):
+            breaks = place % every == 0 and not _OPENS_A_BLOCK.match(word)
+            out += ("\n" if breaks else " ") + word
+        return out
+
+    return "\n".join(wrapped(line) for line in text.split("\n"))
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "pdf headings": st.one_of(
@@ -18448,6 +18518,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),
         st.sampled_from(("3.4", "13.42", "14", "0.42", "-0.5", "CI")),
     ).map(_quotation_asked),
+    "finding keys": st.one_of(
+        texts(TERMS + SPELT, CONVERTED_BLOCKS),
+        keyed_papers().map(lambda drawn: drawn[0]),
+    ),
     "check": st.fixed_dictionaries(
         {
             "text": texts(TERMS + SPELT, CONVERTED_BLOCKS),

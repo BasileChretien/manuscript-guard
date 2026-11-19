@@ -45,6 +45,10 @@ class Asked:
     context: str
     code: str
     refereed: str = ""
+    #: What its key in `--json` is made of (`keys`), as `audit.Disagreement` has it.
+    subject: str | None = None
+    sentence: str | None = None
+    at: int | None = None
 
 
 @dataclass(frozen=True)

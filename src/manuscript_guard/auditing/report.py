@@ -51,11 +51,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.auditing import spreads
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
+from manuscript_guard.keys import NONE, Keyed, keyed_json, paths_of, statistic
 
 INPUTS = "Inputs"
 MEMBERSHIP = "Numbers in the outputs"
@@ -147,15 +148,39 @@ class Item:
     #: What a referee's draft says of a question in its place (`draft`), naming no flag: ""
     #: for a question the draft leaves to the author whole.
     refereed: str = ""
+    #: What it is about, the digest of its sentence and its offset there, which make its key
+    #: in `--json` (`keys`), as a finding's do.
+    subject: str | None = field(default=None, compare=False)
+    sentence: str | None = field(default=None, compare=False)
+    at: int | None = field(default=None, compare=False)
+
+    def keyed(self) -> Keyed:
+        return Keyed(self.gate, self.code, self.subject, self.sentence, self.at, self.context,
+                     self.message, paths_of(self.path))  # fmt: skip
 
     def as_dict(self) -> dict:
-        return {
+        said = {
             "section": self.section, "gate": self.gate, "code": self.code,
             "severity": self.severity, "counted": self.counted, "question": self.question,
             "message": self.message,
             "path": None if self.path is None else str(self.path), "line": self.line,
             "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
+        return keyed_json([self.keyed()], [said])[0]
+
+
+def about(item: Item, subject: str | None, sentence: str | None = None,
+          at: int | None = None) -> Item:  # fmt: skip
+    """`item` with what its key is made of (`keys`)."""
+    return replace(item, subject=subject, sentence=sentence, at=at)
+
+
+def of_number(item: Item, found) -> Item:
+    """`item`, said of a number or a statistic `found` (`audit.Candidate`,
+    `audit.Disagreement`), keyed by it as typed and by its sentence."""
+    typed = getattr(found, "subject", None) or getattr(found, "text", None)
+    return about(item, None if typed is None else statistic(typed),
+                 getattr(found, "sentence", None), getattr(found, "at", None))
 
 
 def question(section: str, code: str, message: str, path: Path | None = None,
@@ -174,27 +199,28 @@ def items(report) -> list[Item]:
     found = [
         *(Item(INPUTS, "audit", "unreadable", said, FAIL, True) for said in report.unreadable),
         *(Item(INPUTS, "audit", "output-not-read", said, WARN, False) for said in report.skipped),
-        *(Item(INPUTS, "audit", "passed-over", said, INFO, False) for said in report.passed_over),
-        *(Item(INPUTS, "audit", "not-audited", said, INFO, False) for said in report.not_audited),
-        *(Item(INPUTS, "audit", "headings-read", said, INFO, False) for said in report.headings),
+        *(_notice("passed-over", said) for said in report.passed_over),
+        *(_notice("not-audited", said) for said in report.not_audited),
+        *(_notice("headings-read", said) for said in report.headings),
     ]
     if not report.examined:
-        found.append(Item(INPUTS, "audit", "nothing-read", "the audit read no number in what "
-                          "it was given, so nothing was checked", FAIL, True))  # fmt: skip
+        found.append(about(Item(INPUTS, "audit", "nothing-read", "the audit read no number in "
+                                "what it was given, so nothing was checked", FAIL, True),
+                           NONE, NONE))  # fmt: skip
     found += [
-        Item(MEMBERSHIP, "audit", "not-found", f"{c.text} is in no output given", FAIL, True,
-             c.source, c.line, c.context)
+        of_number(Item(MEMBERSHIP, "audit", "not-found", f"{c.text} is in no output given",
+                       FAIL, True, c.source, c.line, c.context), c)
         for c in report.unmatched
     ]  # fmt: skip
     found += [
-        Item(MEMBERSHIP, "audit", "not-found-on-a-reference-line", f"{c.text} is in no output "
-             "given, on a line read as a reference entry", WARN, False, c.source, c.line,
-             c.context)
+        of_number(Item(MEMBERSHIP, "audit", "not-found-on-a-reference-line", f"{c.text} is in "
+                       "no output given, on a line read as a reference entry", WARN, False,
+                       c.source, c.line, c.context), c)
         for c in report.reference_like
     ]  # fmt: skip
     found += [
-        Item(ARITHMETIC, "audit", d.code, d.message, WARN, False, d.source, d.line,
-             d.context)
+        of_number(Item(ARITHMETIC, "audit", d.code, d.message, WARN, False, d.source, d.line,
+                       d.context), d)
         for d in report.disagreements
     ]  # fmt: skip
     found += _arithmetic_questions(report)
@@ -238,12 +264,14 @@ def items(report) -> list[Item]:
     ]  # fmt: skip
     for run in report.gates:
         if run.note:
-            found.append(Item(WRITING, "G6", "gates-not-run", run.note, INFO, False, run.paper))
+            found.append(about(Item(WRITING, "G6", "gates-not-run", run.note, INFO, False,
+                                    run.paper), Path(run.paper).name, NONE))  # fmt: skip
         for section, findings in ((WRITING, run.writing), (LANGUAGE, run.language)):
             found += [_from_finding(section, finding, run.places) for finding in findings]
     for census in report.references:
         found += [
-            Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path, p.line)
+            about(Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path,
+                       p.line), p.subject, getattr(p, "sentence", None))
             for p in census.problems
         ]  # fmt: skip
         found += _printed_items(census)
@@ -251,15 +279,17 @@ def items(report) -> list[Item]:
         entry = looked.entry
         where = entry.path or looked.path
         if not looked.came:
-            found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
-                              f"{looked.asked}", INFO, False, where, entry.line))
+            found.append(about(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
+                                    f"{looked.asked}", INFO, False, where, entry.line),
+                               entry.label))  # fmt: skip
             continue
-        found.append(Item(REFERENCES, "G7", "looked-up", f"{entry.label}: asked "
-                          f"{looked.asked}" + (", answered from the records kept"
-                                               if looked.came == "kept" else ""),
-                          INFO, False, where, entry.line))  # fmt: skip
+        found.append(about(Item(REFERENCES, "G7", "looked-up", f"{entry.label}: asked "
+                                f"{looked.asked}" + (", answered from the records kept"
+                                                     if looked.came == "kept" else ""),
+                                INFO, False, where, entry.line), entry.label))  # fmt: skip
         found += [
-            Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
+            about(Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line),
+                  p.subject)
             for p in looked.problems
         ]  # fmt: skip
     found += _title_items(report)
@@ -270,11 +300,19 @@ def items(report) -> list[Item]:
             + list(getattr(report.package, "found", [])))  # fmt: skip
 
 
+def _notice(kind: str, said: str) -> Item:
+    """A note of the kind `kind` on what was read of the inputs, keyed by the file or the
+    part it is about, which its reader gives (`keys.Notice`)."""
+    return about(Item(INPUTS, "audit", kind, said, INFO, False), getattr(said, "subject", None),
+                 NONE)  # fmt: skip
+
+
 def _arithmetic_questions(report) -> list[Item]:
     """Each question asked of a number that may fit after all, at the number: a P larger than
     its statistic gives in a paper that says its P values are adjusted, a share off its
     column's n in a table that says it is weighted (`auditing.adjusted`, decision 31)."""
-    return [question(ARITHMETIC, d.code, d.message, d.source, d.line, d.context, d.refereed)
+    return [of_number(question(ARITHMETIC, d.code, d.message, d.source, d.line, d.context,
+                               d.refereed), d)
             for d in getattr(report, "arithmetic_asked", [])]  # fmt: skip
 
 
@@ -294,12 +332,13 @@ def _title_items(report) -> list[Item]:
         why = by_title.reason(one, looked_up)
         found = papers.setdefault(one.path, [])
         if looked_up and one.asked and not one.came:
-            found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
-                              f"{one.asked}", INFO, False, where, entry.line))  # fmt: skip
+            found.append(about(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
+                                    f"{one.asked}", INFO, False, where, entry.line),
+                               entry.label))  # fmt: skip
         elif why in by_title.REASONS:
-            found.append(Item(REFERENCES, "G7", by_title.CODES[why],
-                              f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
-                              where, entry.line))  # fmt: skip
+            found.append(about(Item(REFERENCES, "G7", by_title.CODES[why],
+                                    f"{entry.label}: {by_title.said(one, looked_up)}", INFO,
+                                    False, where, entry.line), entry.label))  # fmt: skip
     placers = report.placers
 
     def at(path: Path | None, line: int | None) -> str:
@@ -509,44 +548,50 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
     )
 
     show = _Show(None, placers)
-    answered = [Item(ABSTRACT, "audit", code, said, INFO, False)
+    # Each said once of the run, keyed by its code alone.
+    answered = [about(Item(ABSTRACT, "audit", code, said, INFO, False), NONE, NONE)
                 for code, said in getattr(read, "answered", [])]  # fmt: skip
     if not read.compared:
         asked = getattr(read, "question", "")
         if asked:
-            return [*answered, question(ABSTRACT, asked, _asked(pdf)[asked])]
-        return [*answered, Item(ABSTRACT, "audit", "abstract-not-compared", f"not compared: "
-                                f"{read.why_not}", INFO, False)]  # fmt: skip
+            return [*answered, about(question(ABSTRACT, asked, _asked(pdf)[asked]), NONE, NONE)]
+        return [*answered, about(Item(ABSTRACT, "audit", "abstract-not-compared",
+                                      f"not compared: {read.why_not}", INFO, False),
+                                 NONE, NONE)]  # fmt: skip
     def at(found_in: Path, line: int, path: Path) -> str:
         return show.at(found_in, line) if found_in == path else show.located(found_in, line)
 
     return [
         *answered,
-        *(question(ABSTRACT, ASKED_ONLY_IN, asked_only_in(c.text, said, parts), c.source,
-                   c.line, c.context, referee_only_in(c.text, said, parts))
+        *(of_number(question(ABSTRACT, ASKED_ONLY_IN, asked_only_in(c.text, said, parts),
+                             c.source, c.line, c.context, referee_only_in(c.text, said, parts)),
+                    c)
           for c, said, parts in ((c, [(titles, at(found_in, line, c.source))
                                       for found_in, titles, line in places], parts)
                                  for c, places, parts in getattr(read, "only_in", []))),
-        *(question(ABSTRACT, ASKED_BACKGROUND, ASK_BACKGROUND.format(c.text), c.source, c.line,
-                   c.context, REFEREE_BACKGROUND.format(c.text))
+        *(of_number(question(ABSTRACT, ASKED_BACKGROUND, ASK_BACKGROUND.format(c.text),
+                             c.source, c.line, c.context, REFEREE_BACKGROUND.format(c.text)), c)
           for c in getattr(read, "unsourced", [])),
-        *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
-               d.line, d.context) for d in read.conflicts),
-        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
-               f"found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line, c.context)
+        *(of_number(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True,
+                         d.source, d.line, d.context), d) for d in read.conflicts),
+        *(of_number(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract "
+                         f"is not found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line,
+                         c.context), c)
           for c in read.not_found),
-        *(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is found "
-               "only as a rounding of a number the paper reports", INFO, False, c.source,
-               c.line, c.context) for c in read.rounded),
+        *(of_number(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is "
+                         "found only as a rounding of a number the paper reports", INFO, False,
+                         c.source, c.line, c.context), c) for c in read.rounded),
     ]  # fmt: skip
 
 
 def _from_finding(section: str, finding: Finding, placer: object = None) -> Item:
     from manuscript_guard.auditing.undefined import listed
 
+    keyed = finding.keyed()
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint,
-                placer, listed(finding) or None, finding.question)  # fmt: skip
+                placer, listed(finding) or None, finding.question, subject=keyed.subject,
+                sentence=keyed.sentence, at=keyed.at)  # fmt: skip
 
 
 def words_of(run) -> list[Finding]:
@@ -640,10 +685,10 @@ def as_json(report, discrimination) -> str:
                 "two_decimals": abstract.two_decimals,
                 "verdict": abstract.verdict()},
             **({} if report.package is None else {"package_said": _package_said()}),
-            "findings": [placed(item.as_dict(), item.path, item.line,
-                                {item.path: item.placer} if item.placer is not None
-                                else report.placers)
-                         for item in listed],  # fmt: skip
+            "findings": keyed_json([item.keyed() for item in listed], [
+                placed(item.as_dict(), item.path, item.line,
+                       {item.path: item.placer} if item.placer is not None else report.placers)
+                for item in listed]),  # fmt: skip
         },
         indent=2,
         # As `check --json`: a pipe on Windows is cp1252.

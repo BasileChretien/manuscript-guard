@@ -35104,3 +35104,24 @@ def test_a_definition_only_the_title_page_gives_is_caught(project: Path) -> None
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(titled, "(ROR {{"))
     ]
+
+
+def test_two_findings_that_share_a_key_with_no_ordinal_are_caught(project: Path) -> None:
+    """A number typed twice in one sentence of the example is two findings of G2, and
+    `check --json` gives them two keys, `#1` and `#2` (`keys`, Basile, 2026-11-19). Their keys
+    made without the ordinal are one key for two different findings, which `keys.shared`
+    catches: what the corpus tool cannot pair."""
+    from manuscript_guard import keys
+
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8")
+                    + "\nThe count was 7.77 at first and 7.77 at last.\n", encoding="utf-8")
+    said = json.loads(gate_report(project).to_json())["findings"]
+    typed = [one for one in said if one["code"] == "unclassified-number"
+             and one["key"].split("|")[2].startswith("7.77")]  # fmt: skip
+    assert [one["key"].split("|")[2] for one in typed] == ["7.77#1", "7.77#2"]
+    assert keys.shared(said) == []
+    corrupted = [{**one, "key": one["key"].replace("7.77#1", "7.77").replace("7.77#2", "7.77")}
+                 for one in said]  # fmt: skip
+    (caught,) = keys.shared(corrupted)
+    assert caught.split("|")[2] == "7.77"

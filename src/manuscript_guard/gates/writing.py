@@ -57,6 +57,7 @@ from manuscript_guard.gates.recycling import (
     _ONE_CITED,
     _is_author_year,
 )
+from manuscript_guard.keys import in_supplement, placed
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
@@ -377,6 +378,17 @@ def _line_of(text: str, match: re.Match[str]) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def _keyed(rule: dict, match: re.Match[str], text: str, path: Path | None) -> dict:
+    """What a G6 finding's key is made of (`keys`): the rule's id and the words it matched,
+    in lower case with one space between them, and the sentence the words begin in, `text`
+    being the file as read (or a text outside the manuscript)."""
+    found = match.group(0)
+    at = match.start() + len(found) - len(found.lstrip())
+    words = " ".join(found.split()).casefold()
+    return {"subject": f"{rule['id']}: {words}", "at": at,
+            "sentence": placed(text, at, in_supplement(path))}
+
+
 def _context(text: str, start: int, end: int) -> str:
     left = max(0, start - 40)
     return re.sub(r"\s+", " ", text[left : end + 40]).strip()
@@ -442,6 +454,7 @@ def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
                 line=_line_of(text, match),
                 context=_context(text, match.start(), match.end()),
                 hint="remove it; this cannot appear in a submitted manuscript",
+                **_keyed(rule, match, text, path),
             )
         )
     return report
@@ -517,6 +530,7 @@ def _artefacts_elsewhere(rules: Rules, where: Elsewhere, totals: dict) -> Report
                 line=where.line,
                 context=_context(where.text, match.start(), match.end()),
                 hint="remove it; this cannot appear in a submitted manuscript",
+                **_keyed(rule, match, where.text, None),
             )
         )
     return report
@@ -544,6 +558,7 @@ def _phrases(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> R
                     line=_line_of(text, match),
                     context=_context(prose, match.start(), match.end()),
                     hint="rewrite, or keep it deliberately",
+                    **_keyed(rule, match, text, path),
                 )
             )
     return report
@@ -628,6 +643,7 @@ def _residue(
                 line=_line_of(text, match),
                 context=_context(prose, match.start(), match.end()),
                 hint=hint,
+                **_keyed(rule, match, text, path),
             )
         )
     return report
@@ -723,6 +739,7 @@ def _vague(
                     line=_line_of(text, match),
                     context=_context(prose, match.start(), match.end()),
                     hint="cite the studies, or name who argues it and cite them",
+                    **_keyed(rule, match, text, path),
                 )
             )
     return report
@@ -755,6 +772,8 @@ def _density(rules: Rules, corpus: list[tuple[Path, str, str]], words: int) -> R
                 ),
                 context=", ".join(sample) if sample else None,
                 hint=rule["why"].strip(),
+                # A rate over the whole prose: its rule alone, and no sentence (`keys`).
+                subject=rule["id"],
             )
         )
 

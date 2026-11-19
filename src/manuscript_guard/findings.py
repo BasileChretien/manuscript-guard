@@ -11,6 +11,9 @@ import json
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
+from manuscript_guard.keys import Keyed, keyed_json, paths_of
+from manuscript_guard.keys import key as key_of
+
 FAIL = "fail"
 WARN = "warn"
 INFO = "info"
@@ -36,6 +39,12 @@ class Finding:
     col: int | None = None
     context: str | None = None
     hint: str | None = None
+    #: What the finding is about, the sentence it stands in and its offset there, which make
+    #: its key in `--json` (`keys`): never compared, so that two findings alike but for
+    #: them are one, as they were.
+    subject: str | None = field(default=None, compare=False, repr=False)
+    sentence: str | None = field(default=None, compare=False, repr=False)
+    at: int | None = field(default=None, compare=False, repr=False)
 
     def located(self) -> str:
         if self.path is None:
@@ -52,10 +61,21 @@ class Finding:
         """Whether it is a question to the author (`Question`), which no other finding is."""
         return False
 
+    def keyed(self) -> Keyed:
+        """What its key is made of (`keys.Keyed`)."""
+        return Keyed(self.gate, self.code, self.subject, self.sentence, self.at, self.context,
+                     self.message, paths_of(self.path))  # fmt: skip
+
+    @property
+    def key(self) -> str:
+        """Its key, with no ordinal: `keys.assign` gives that among the findings of a run."""
+        return key_of(self.keyed())
+
     def as_dict(self) -> dict:
-        out = asdict(self)
+        out = {name: value for name, value in asdict(self).items()
+               if name not in ("subject", "sentence", "at")}  # fmt: skip
         out["path"] = None if self.path is None else str(self.path)
-        return out
+        return keyed_json([self.keyed()], [out])[0]
 
 
 @dataclass(frozen=True)
@@ -138,7 +158,8 @@ class Report:
         if stage is not None:
             said["stage"] = stage
         said["counts"] = self.counts
-        said["findings"] = [f.as_dict() for f in self.sorted().findings]
+        found = self.sorted().findings
+        said["findings"] = keyed_json([f.keyed() for f in found], [f.as_dict() for f in found])
         if assurance is not None:
             said["assurance"] = assurance
         return json.dumps(

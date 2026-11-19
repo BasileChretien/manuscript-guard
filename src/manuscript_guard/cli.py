@@ -2723,6 +2723,7 @@ def _package_only(args: argparse.Namespace, package) -> int:
     from manuscript_guard.auditing import NOTICE
     from manuscript_guard.auditing.package import WORDING, counts, render
     from manuscript_guard.auditing.report import PACKAGE, _shown
+    from manuscript_guard.keys import keyed_json
 
     print(NOTICE, file=sys.stderr)
     show = _shown(Path.cwd())
@@ -2730,7 +2731,8 @@ def _package_only(args: argparse.Namespace, package) -> int:
     if args.json:
         print(json.dumps({"ok": not counted, "compared": False, "counts": counts(package),
                           "package_said": WORDING,
-                          "findings": [item.as_dict() for item in package.found]},
+                          "findings": keyed_json([item.keyed() for item in package.found],
+                                                 [item.as_dict() for item in package.found])},
                          indent=2, ensure_ascii=True))  # fmt: skip
         print(WORDING, file=sys.stderr)
     else:
@@ -2768,6 +2770,7 @@ def _audit(args: argparse.Namespace, package) -> int:
     from manuscript_guard.auditing.latex import is_entry
     from manuscript_guard.auditing.pdf import NO_PDFTOTEXT, is_pdf
     from manuscript_guard.auditing.pdf import can_read as can_read_pdf
+    from manuscript_guard.keys import Notice
 
     if (args.dry_run or args.lookup_cache) and not args.lookup:
         return _audit_refused(args, "manuscript-guard audit: --dry-run and --lookup-cache go "
@@ -2844,10 +2847,11 @@ def _audit(args: argparse.Namespace, package) -> int:
     # beside its source, as often as it is the paper (`auditing.pdf`).
     in_folders = [p for folder in args.paper if folder.is_dir() for p in sorted(folder.rglob("*"))
                   if p.is_file() and p.suffix.lower() == ".pdf"]  # fmt: skip
-    pdfs_said = [] if not in_folders else [
+    pdfs_said = [] if not in_folders else [Notice(
         f"{len(in_folders)} PDF file{'s' if len(in_folders) != 1 else ''} in the folder given "
         "{was} not read: a PDF is audited only where it is named on its own".format(
-            was="was" if len(in_folders) == 1 else "were")]  # fmt: skip
+            was="was" if len(in_folders) == 1 else "were"),
+        "pdfs in the folder given")]  # fmt: skip
     if not papers and not figures:
         return _audit_refused(
             args, "nothing to audit: no .docx, .md, .pdf or .tex that starts a document found "
@@ -5367,6 +5371,7 @@ def cmd_related(args: argparse.Namespace) -> int:
     import json
 
     from manuscript_guard.gates.related import compare_related
+    from manuscript_guard.keys import keyed_json
     from manuscript_guard.literature.related import TakeError, load_related, read_snapshot, take
 
     project, _ = load_project(args.path)
@@ -5391,7 +5396,8 @@ def cmd_related(args: argparse.Namespace) -> int:
                  "compared": [vars(r) for r in rows if r.output == o.id]}
                 for o in related.outputs
             ],
-            "findings": [f.as_dict() for f in found.findings],
+            "findings": keyed_json([f.keyed() for f in found.findings],
+                                   [f.as_dict() for f in found.findings]),
         }, indent=2, ensure_ascii=False))  # fmt: skip
         return 0
     for output in related.outputs:

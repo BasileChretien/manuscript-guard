@@ -60,6 +60,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.keys import ABSTRACT, MAIN, digest
 from manuscript_guard.text.boxes import box_of, environment_spans
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.section_names import (
@@ -458,6 +459,7 @@ def check_reported(project: Project, results: Results) -> Report:
                 hint="report the number where the paper reports its results, a table or a "
                 "figure included, and let the summary restate it; a coarser form for the "
                 "summary is a second key emitted with same_as",
+                subject=one.key, at=one.start, sentence=_digest(one),
             )
         )
     return report.with_findings(*claimed)
@@ -607,8 +609,20 @@ def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Pat
             "and their negations, and their word for the claim, \"associated\" where they "
             "found an association; where the summary's words are the right ones, the "
             "Results should say them too",
+            # The keys the sentence binds, and the sentence (`keys`).
+            subject="+".join(sorted({one.key for one in ones})), at=ones[0].start,
+            sentence=_digest(ones[0]),
         ))  # fmt: skip
     return found
+
+
+def _digest(one: Given) -> str | None:
+    """The digest of the summary sentence `one` is bound in, as typed, in the abstract
+    where its heading names it (`keys`); None where it stands in no sentence."""
+    if not one.sentence:
+        return None
+    part = ABSTRACT if plain(one.heading).casefold().startswith(ABSTRACT) else MAIN
+    return digest(part, one.sentence)
 
 
 def holds_a_word(text: str) -> bool:

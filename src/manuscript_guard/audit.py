@@ -36,6 +36,7 @@ from pathlib import Path
 
 from manuscript_guard.auditing.spreads import binary_means, whole_number_sd
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.keys import MAIN, Notice, digest, in_table, placed
 from manuscript_guard.safexml import COMPOUND_FILE, compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.granularity import names, possible, table_means
@@ -122,6 +123,10 @@ class Candidate:
     source: Path
     line: int
     context: str
+    #: Its offset in the text read, and the digest of its sentence, which make its key in
+    #: `--json` with the number as typed (`keys`).
+    at: int | None = None
+    sentence: str | None = None
 
 
 @dataclass
@@ -135,6 +140,12 @@ class Disagreement:
     message: str
     context: str
     code: str = "does-not-fit"
+    #: What its key in `--json` is made of (`keys`): the statistic as typed, with what is
+    #: wrong of it where one statistic can be wrong in several ways, the digest of its
+    #: sentence and its offset there. None where the reader that makes it gives none.
+    subject: str | None = None
+    sentence: str | None = None
+    at: int | None = None
 
 
 @dataclass
@@ -972,7 +983,7 @@ def _read_sources(
         sources.append(replace(source, **structure))
         said = _headings_said(path, document, bool(structure["heading_lines"]))
         if said:
-            report.headings.append(said)
+            report.headings.append(Notice(said, path.name))
         if document is not None:
             from manuscript_guard.auditing.paragraphs import of_docx
 
@@ -981,10 +992,10 @@ def _read_sources(
             report.places[path] = of_docx(document, f"{document.body}{notes}")
         place = report.places.get(path)
         report.not_audited += [
-            f"{path.name}: "
-            f"{place.stretch(start + 1, end) if place else f'lines {start + 1}-{end}'}, "
-            "read as the reference list"
-            for start, end in spans
+            Notice(f"{path.name}: "
+                   f"{place.stretch(start + 1, end) if place else f'lines {start + 1}-{end}'}, "
+                   "read as the reference list", f"{path.name} reference list {at}")
+            for at, (start, end) in enumerate(spans, 1)
         ]
         if not docx:
             report.unreadable += unread_shapes(path, text)
@@ -1031,9 +1042,12 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     hidden = _masked(blanked, printed_as_typed=True)
     source = _Source(path, blanked, hidden, blanked, blanked, (), not spans, True, wrapped=True)
     sources.append(replace(source, **_pdf_structure(report, pdf, spans)))
-    report.not_audited += [pdf.described(), *(
-        f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list"
-        for start, end in spans), *(f"{path.name}: {what}" for what in PDF_NOT_READ)]
+    report.not_audited += [Notice(pdf.described(), path.name), *(
+        Notice(f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list",
+               f"{path.name} reference list {at}")
+        for at, (start, end) in enumerate(spans, 1)), *(
+        Notice(f"{path.name}: {what}", f"{path.name} pdf {at}")
+        for at, what in enumerate(PDF_NOT_READ, 1))]
     report.references.append(census_of_printed(path, text, spans, hidden,
                                                _intervals(blanked)))  # fmt: skip
 
@@ -1189,14 +1203,15 @@ def _pdf_structure(report: AuditReport, pdf,
         # Said as a .docx with no heading is (`_headings_said`): with none read, it places
         # none, and is read as one text (Basile, 2026-11-11, after 2509.01351's small
         # capitals were said nothing of).
-        report.headings.append(
+        report.headings.append(Notice(
             f"{pdf.path.name}: no line of it holds a section's name alone, the only lines a "
             f"PDF's headings are read from, {_ONE_TEXT}; audit its source, the .docx, .tex "
-            "or Markdown file, to have its sections read")
+            "or Markdown file, to have its sections read", pdf.path.name))
     levels = pdf.placed
     if levels is None:
-        report.not_audited.append(f"{pdf.path.name}: its lines were placed in no section: "
-                                  f"{UNPLACED}")  # fmt: skip
+        report.not_audited.append(Notice(
+            f"{pdf.path.name}: its lines were placed in no section: {UNPLACED}",
+            f"{pdf.path.name} unplaced"))
         return {"heading_lines": heading_lines}
     sections = [Section(title, level, "", line) for line, title, level in levels]
     heads = frozenset(section.line - 1 for section in sections)
@@ -1614,7 +1629,7 @@ def audit(
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
         binary=binary, binary_unfound=list(binary),
         non_negative=non_negative, non_negative_unfound=list(non_negative),
-        passed_over=[doc_passed_over(path) for path in passed_over or []],
+        passed_over=[Notice(doc_passed_over(path), path.name) for path in passed_over or []],
         compared=backing is not None, minimum=minimum,
         results_named=tuple(answers.results) if answers is not None else (),
     )  # fmt: skip
@@ -1818,10 +1833,12 @@ def _written_shares(report: AuditReport, sources: list[_Source],
             if not shares.off(share):
                 continue
             line = piece.line(at)
+            # Keyed by the share as typed, in its sentence (`keys`).
             found.append(Disagreement(source.path, line,
                                       f"{_under(report, source, piece, line)}"
                                       f"{shares.described(share)}",
-                                      _around(text, at, share)))  # fmt: skip
+                                      _around(text, at, share), subject=share.printed,
+                                      sentence=placed(source.hidden, at), at=at))  # fmt: skip
     return found
 
 
@@ -1951,6 +1968,8 @@ def _read_numbers(
             source=path,
             line=atom.line,
             context=around(atom),
+            at=atom.start,
+            sentence=placed(text, atom.start),
         )
         # Every number the atom carries has to be in the outputs, not just one of them:
         # an interval is accounted for when both its bounds are, and "0.72-0.99" with
@@ -1990,13 +2009,29 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
                 continue
             uncertain = f" (uncertain: {mean.uncertain})" if mean.uncertain else ""
             if verdict is None:
-                report.means_not_assessable.append(Disagreement(
-                    path, mean.line, f"{mean.printed} of n = {mean.n}{uncertain}", mean.context,
-                ))  # fmt: skip
+                report.means_not_assessable.append(_not_assessable(path, mean, uncertain))
                 continue
             said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
-            found.append(Disagreement(path, mean.line, said, mean.context))
+            # Keyed by the mean, its n and its column, in its row of its table (`keys`).
+            found.append(Disagreement(path, mean.line, said, mean.context,
+                                      subject=f"{mean.mean}/n={mean.n}@{_header_of(table, mean)}",
+                                      sentence=in_table(table[0], mean.context)))  # fmt: skip
     return found
+
+
+def _not_assessable(path: Path, mean, uncertain: str) -> Disagreement:
+    """A mean whose n is too large to tell: a note whose item names its own code,
+    `mean-not-assessable`, on the fallback (`tests/test_finding_keys_source.py`)."""
+    return Disagreement(path, mean.line, f"{mean.printed} of n = {mean.n}{uncertain}",
+                        mean.context)  # fmt: skip
+
+
+def _header_of(table: Table, mean) -> str:
+    """The header cell over a mean's column, its spaces made one; "" where there is none."""
+    from manuscript_guard.stats.shares import _columns
+
+    header = list(_columns(table[0])) if table else []
+    return next((" ".join(cell.text.split()) for at, cell in header if at == mean.column), "")
 
 
 def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
@@ -2079,24 +2114,34 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
             continue
         context = " ".join(hidden[test.start : test.end].replace("\x00", " ").split())
         line, said = lines.count("\n", 0, test.start) + 1, described(test, verdict)
+        keyed = {"subject": context, "sentence": placed(hidden, test.start), "at": test.start}
         if asking.adjusted is not None and larger(verdict):
-            asked.append(asked_p(test, verdict, asking.adjusted, path, asking.placers, said,
-                                 context, line))  # fmt: skip
+            asked.append(replace(asked_p(test, verdict, asking.adjusted, path, asking.placers,
+                                         said, context, line), **keyed))  # fmt: skip
             continue
-        found.append(Disagreement(path, line, said, context))
+        found.append(Disagreement(path, line, said, context, **keyed))
     # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
     for interval in reported_intervals(hidden):
         counted("intervals")
         context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
         line = lines.count("\n", 0, interval.start) + 1
+        sentence = placed(hidden, interval.start)
+
+        def wrong_in(way: str, interval=interval, context=context, sentence=sentence) -> dict:
+            # One estimate is wrong in up to three ways, each a finding of its own.
+            return {"subject": f"{context}/{way}", "sentence": sentence, "at": interval.start}
+
         if outside_interval(interval):
-            found.append(Disagreement(path, line, described_outside(interval), context))
+            found.append(Disagreement(path, line, described_outside(interval), context,
+                                      **wrong_in("outside")))  # fmt: skip
         share = asymmetry(interval)
         if share is not None and share > ASYMMETRY:
-            found.append(Disagreement(path, line, described_asymmetry(interval, share), context))
+            found.append(Disagreement(path, line, described_asymmetry(interval, share), context,
+                                      **wrong_in("asymmetric")))  # fmt: skip
         verdict = p_against(interval)
         if verdict is not None:
-            found.append(Disagreement(path, line, described_against(interval, verdict), context))
+            found.append(Disagreement(path, line, described_against(interval, verdict), context,
+                                      **wrong_in("p")))  # fmt: skip
     # And each n (%) in a table against its denominator (`stats/shares.py`).
     for at, table in enumerate(tables):
         weighted = asking.weighted[at] if at < len(asking.weighted) else None
@@ -2107,10 +2152,18 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
             # A word in a column's header lets off that column alone, and a row's label that
             # row (rounds 1 and 2 of #703).
             said = weighted.of(share.column, share.line) if weighted is not None else None
+            # A cell is keyed by its row, the line it stands on, as its sentence, and by its
+            # table's header row, so that a row of another table is no row of this one.
+            rows = lines.split("\n")
+            row = rows[share.line - 1] if 0 < share.line <= len(rows) else share.context
+            header = " | ".join(cell.text for cell in table[0]) if table else ""
+            keyed = {"subject": share.printed, "sentence": digest(MAIN, f"{header}\n{row}")}
             if said is not None:
-                asked.append(asked_share(share, said, path, described_share(share)))
+                asked.append(replace(asked_share(share, said, path, described_share(share)),
+                                     **keyed))  # fmt: skip
                 continue
-            found.append(Disagreement(path, share.line, described_share(share), share.context))
+            found.append(Disagreement(path, share.line, described_share(share), share.context,
+                                      **keyed))  # fmt: skip
     return sorted(found, key=lambda d: d.line), sorted(asked, key=lambda d: d.line)
 
 

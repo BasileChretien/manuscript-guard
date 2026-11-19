@@ -22,11 +22,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard.auditing.report import Item, placed
+from manuscript_guard.auditing.report import Item, about, placed
 from manuscript_guard.comparing import differences, letters
 from manuscript_guard.comparing.differences import GATE
 from manuscript_guard.comparing.versions import Version, read_version
 from manuscript_guard.findings import INFO
+from manuscript_guard.keys import NONE, keyed_json
 
 VERSIONS = "Versions"
 AUDITED = "v2 audited"
@@ -82,13 +83,17 @@ def _read(old: Version, new: Version, letter: Path | None, comments: Path | None
                 f"{len(version.tables)} table(s), {len(version.figures)} figure(s) by their "
                 "captions")  # fmt: skip
 
-    found = [Item(VERSIONS, GATE, "version-read", said(version), INFO, False, version.path)
-             for version in (old, new)]
+    # Each keyed by the version it is about, or the file (`keys`).
+    named = ((old, "v1"), (new, "v2"))
+    found = [about(Item(VERSIONS, GATE, "version-read", said(version), INFO, False,
+                        version.path), which, NONE) for version, which in named]  # fmt: skip
     found += [Item(VERSIONS, GATE, "version-not-numbered", note, INFO, False, version.path)
               for version in (old, new) for note in version.notes]  # fmt: skip
-    found += [Item(VERSIONS, GATE, "version-pdf", version.pdf.described(), INFO, False,
-                   version.path) for version in (old, new) if version.pdf is not None]
-    found += [Item(VERSIONS, GATE, "file-read", f"read as the {what}", INFO, False, path)
+    found += [about(Item(VERSIONS, GATE, "version-pdf", version.pdf.described(), INFO, False,
+                         version.path), which, NONE)
+              for version, which in named if version.pdf is not None]  # fmt: skip
+    found += [about(Item(VERSIONS, GATE, "file-read", f"read as the {what}", INFO, False,
+                         path), what, NONE)
               for what, path in (("response letter", letter), ("referee's comments", comments))
               if path]  # fmt: skip
     return found
@@ -124,7 +129,8 @@ def audited(old: Version, new: Version,
         # With what `--json` lists under a one-line note, its forms, names or entries.
         found.append((Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",
                            item.severity, False, item.path, item.line, item.context, item.hint,
-                           listed=item.listed),
+                           listed=item.listed, subject=item.subject, sentence=item.sentence,
+                           at=item.at),
                       mark))  # fmt: skip
         if item.counted and exact is not None:
             exact.append(found[-1])
@@ -212,8 +218,9 @@ def as_json(found: Comparison) -> str:
             "letter": None if found.letter is None else str(found.letter),
             "comments": None if found.comments is None else str(found.comments),
             "counts": counts(found),
-            "findings": [placed(item.as_dict(), item.path, item.line, _pdfs(found))
-                         | {"mark": mark or None} for item, mark in found.items],
+            "findings": keyed_json([item.keyed() for item, _mark in found.items], [
+                placed(item.as_dict(), item.path, item.line, _pdfs(found))
+                | {"mark": mark or None} for item, mark in found.items]),
         },
         indent=2,
         ensure_ascii=True,

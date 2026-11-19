@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from manuscript_guard.gates.identifiers import normal_doi
+from manuscript_guard.keys import placed
 
 NUMBERED = "numbered"
 #: A .docx list whose numbers Word prints: an entry's number is its place in the count.
@@ -117,6 +118,10 @@ class Problem:
     message: str
     line: int | None = None
     path: Path | None = None
+    #: What its key in `--json` names (`keys`): the entry's label, or the citation as typed,
+    #: and for a citation the digest of the sentence it is typed in.
+    subject: str | None = None
+    sentence: str | None = None
 
 
 @dataclass
@@ -281,8 +286,14 @@ def census_of_text(
         census.entries = tuple(entries)
     else:
         return census
-    census.problems = _held_to_numbers(path, entries, markers)
+    census.problems = _held_to_numbers(path, entries, markers, _sentences(hidden, intervals))
     return census
+
+
+def _sentences(hidden: str, intervals: list[tuple[int, int]]) -> list[str]:
+    """The digest of the sentence each marker of `markers_in` stands in, in its order
+    (`keys`): each use of a citation is a finding of its own sentence."""
+    return [placed(hidden, start) for start, *_rest in marker_spans(hidden, intervals)]
 
 
 def census_of_printed(
@@ -382,7 +393,8 @@ def census_of_printed(
     census.entries = tuple(told)
     if told:
         census.style = NUMBERED
-        census.problems = _held_to_numbers(path, told, markers_in(hidden, intervals))
+        census.problems = _held_to_numbers(path, told, markers_in(hidden, intervals),
+                                           _sentences(hidden, intervals))  # fmt: skip
     return census
 
 
@@ -481,14 +493,16 @@ def _numbered_by_word(
 
 
 def _held_to_numbers(
-    path: Path, entries: list[Entry], markers: list[tuple[int, str, list[int]]]
+    path: Path, entries: list[Entry], markers: list[tuple[int, str, list[int]]],
+    sentences: list[str] | tuple = (),
 ) -> list[Problem]:
     numbers = {entry.number for entry in entries}
     highest = max((number for number in numbers if number is not None), default=0)
     problems = []
     cited: set[int] = set()
     held = f"{len(numbers)} entr{'y' if len(numbers) == 1 else 'ies'}, the last {highest}"
-    for line, written, cites in markers:
+    for index, (line, written, cites) in enumerate(markers):
+        sentence = sentences[index] if index < len(sentences) else None
         cited.update(cites)
         missing = [number for number in dict.fromkeys(cites) if number not in numbers]
         if missing:
@@ -497,7 +511,8 @@ def _held_to_numbers(
             problems.append(Problem(
                 "citation-beyond-list",
                 f"{written} cites {'entry' if len(missing) == 1 else 'entries'} {which}, which "
-                f"the reference list does not hold: it has {held}", line, path,
+                f"the reference list does not hold: it has {held}", line, path, written,
+                sentence,
             ))  # fmt: skip
     if markers:
         seen: set[int] = set()
@@ -506,7 +521,7 @@ def _held_to_numbers(
                 seen.add(entry.number)
                 problems.append(Problem(
                     "entry-never-cited", f"{entry.label} of the reference list is cited "
-                    "nowhere in the text", entry.line, path,
+                    "nowhere in the text", entry.line, path, entry.label,
                 ))  # fmt: skip
     return sorted(problems, key=lambda problem: problem.line or 0)
 
@@ -523,7 +538,7 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
     """A LaTeX document's census, its files given as their paths and their `Source`s: the
     `\\bibitem`s of its `thebibliography`, held to the keys its citation commands name."""
     entries: list[Entry] = []
-    cited: list[tuple[Path, int, str]] = []
+    cited: list[tuple[Path, int, str, str]] = []
     for where, source in files:
         text, reading = source.text, source.reading
         for start, end in reading.references:
@@ -537,25 +552,26 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
                     f"\\bibitem{{{key}}}", text.count("\n", 0, item.start()) + 1, key=key,
                     dois=dois, pmids=pmids, path=where, text=_typed(body),
                 ))  # fmt: skip
-        cited += [(where, text.count("\n", 0, use.offset) + 1, use.key) for use in reading.cited]
+        cited += [(where, text.count("\n", 0, use.offset) + 1, use.key, placed(text, use.offset))
+                  for use in reading.cited]  # fmt: skip
     if not entries:
         note = ("no thebibliography was found: a list BibTeX or biber makes from a .bib is "
                 "not read, so none was counted") if cited else "no reference list was found"
         return Census(path, note=note)
     census = Census(path, tuple(entries), style=KEYED, markers=len(cited))
     keys = {entry.key for entry in entries}
-    every = any(key == "*" for _where, _line, key in cited)
-    named = {key for _where, _line, key in cited}
-    for where, line, key in cited:
+    every = any(key == "*" for _where, _line, key, _sentence in cited)
+    named = {key for _where, _line, key, _sentence in cited}
+    for where, line, key, sentence in cited:
         if key != "*" and key not in keys:
             census.problems.append(Problem(
                 "citation-not-listed", f"\\cite{{{key}}} names no \\bibitem of the list",
-                line, where,
+                line, where, key, sentence,
             ))  # fmt: skip
     if not every:
         census.problems += [
             Problem("entry-never-cited", f"{entry.label} is cited nowhere in the text",
-                    entry.line, entry.path or path)
+                    entry.line, entry.path or path, entry.label)
             for entry in entries if entry.key not in named
         ]  # fmt: skip
     return census
@@ -616,23 +632,23 @@ def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[P
                                       for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
             problems.append(Problem("not-found-as-printed", f"{entry.label}: no registry has "
                                     f"the DOI {entry.dois[0]} as printed{_may_run_on(entry)}",
-                                    entry.line, path))  # fmt: skip
+                                    entry.line, path, f"{entry.label} doi"))  # fmt: skip
         if said.get("pubmed") == ABSENT:
             problems.append(Problem("not-found-as-printed", f"{entry.label}: PubMed has no PMID "
                                     f"{entry.pmids[0]} as printed{_may_run_on(entry)}",
-                                    entry.line, path))  # fmt: skip
+                                    entry.line, path, f"{entry.label} pmid"))  # fmt: skip
         return problems
     if "crossref" in said and all(said.get(name) == ABSENT
                                   for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
         problems.append(Problem(
             "doi-unregistered", f"{entry.label}: no registry has the DOI {entry.dois[0]}: not "
             "Crossref, not DataCite, not doi.org, so nothing was checked of the work",
-            entry.line, path,
+            entry.line, path, entry.label,
         ))  # fmt: skip
     if said.get("pubmed") == ABSENT:
         problems.append(Problem(
             "pmid-unknown", f"{entry.label}: PubMed has no PMID {entry.pmids[0]}, so nothing "
-            "was checked of the work", entry.line, path,
+            "was checked of the work", entry.line, path, entry.label,
         ))  # fmt: skip
     return problems
 
@@ -738,11 +754,12 @@ def _looked_up(path: Path, entry: Entry, asking: _Asking, *, asked: str = "",
     where = entry.path or path
     found = _standing(entry.label, {}, answers, where, None)
     problems = tuple(
-        Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry), entry.line, where)
+        Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry), entry.line, where,
+                entry.label)
         for f in found
     ) + tuple(_unknown(entry, answers, where)) + tuple(
         Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
-                entry.line, where)
+                entry.line, where, f"{entry.label} {name}")
         for name, why in _unanswered(record)
     )  # fmt: skip
     known = any(isinstance(answer, dict) and answer.get("status") == "found"

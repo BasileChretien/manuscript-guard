@@ -381,6 +381,7 @@ def judge_spelling(
                     f"{respell}{more}. Once they are the fewer, each is reported where it "
                     "stands"
                 ),
+                subject=variant,
             )
         )
     else:
@@ -408,6 +409,8 @@ def judge_spelling(
                         else f". If the paper is in {theirs} English, set english_variant: "
                         f"{other_variant} in paper.yaml"
                     ),
+                    subject=key,
+                    at=offset,
                 )
             )
 
@@ -438,6 +441,9 @@ def judge_spelling(
                 hint="British spelling takes either ending and a paper takes one; Oxford "
                 f"spelling is -ize. This is the first word in -{fewer}, the ending used "
                 "less" + (", or the later one, since they are level" * (with_s == with_z)),
+                # Both endings: which is used less changes with a count, the finding not.
+                subject="-ise/-ize",
+                at=offset,
             )
         )
 

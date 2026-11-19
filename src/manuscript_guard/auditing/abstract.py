@@ -76,6 +76,8 @@ from functools import cache
 from math import ceil, floor
 from pathlib import Path
 
+from manuscript_guard.keys import ABSTRACT as ABSTRACT_PART
+from manuscript_guard.keys import digest, sentence_at
 from manuscript_guard.stats.intervals import ReportedInterval, reported_intervals
 from manuscript_guard.stats.reported import Reported, p_range, reported_tests
 from manuscript_guard.text.markdown_maths import markdown_maths
@@ -1278,7 +1280,8 @@ def against_results(pieces: list[Piece], answers: Answers | None = None,
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
-                                  atom.line, around(atom))  # fmt: skip
+                                  atom.line, around(atom), atom.start,
+                                  _keyed(abstract, atom.start, "")["sentence"])  # fmt: skip
             off, parts = _off_its_counts(atom, parts, written)
             states = [("exact" if part in printed_powers else "") if part in looked.powered
                       else _state(part, exact, rounded, words) for part in parts]  # fmt: skip
@@ -1475,9 +1478,10 @@ def _shares(read: AbstractRead, piece: Piece, abstract: str) -> dict[int, tuple[
         read.shares += 1
         found[start] = (shares.off(share), share.percent)
         if found[start][0]:
-            read.arithmetic.append(Disagreement(piece.path, piece.line(start), "in the Abstract, "
-                                                f"{shares.described(share)}",
-                                                _around(abstract, start, share)))  # fmt: skip
+            keyed = _keyed(abstract, start, share.printed)
+            said = f"in the Abstract, {shares.described(share)}"
+            read.arithmetic.append(Disagreement(piece.path, piece.line(start), said,
+                                                _around(abstract, start, share), **keyed))
     return found
 
 
@@ -1559,7 +1563,8 @@ def _conflicts(read: AbstractRead, piece: Piece, abstract: str, intervals: list,
         said = (f"the Abstract gives {given.written}, and where the paper reports, "
                 f"{_at(found_in, other.start, path)}gives {other.written}")  # fmt: skip
         read.conflicts.append(Disagreement(path, piece.line(given.start), said,
-                                           _whole_line(abstract, given.start)))
+                                           _whole_line(abstract, given.start),
+                                           **_keyed(abstract, given.start, given.written)))
         spans.append((given.start, given.end))
     for given in reported_tests(abstract):
         found = _counterpart_test(given, tests)
@@ -1569,9 +1574,17 @@ def _conflicts(read: AbstractRead, piece: Piece, abstract: str, intervals: list,
         said = (f"the Abstract gives {_test(given)}, and where the paper reports, "
                 f"{_at(found_in, other.start, path)}gives {_test(other)}")  # fmt: skip
         read.conflicts.append(Disagreement(path, piece.line(given.start), said,
-                                           _whole_line(abstract, given.start)))
+                                           _whole_line(abstract, given.start),
+                                           **_keyed(abstract, given.start, _test(given))))
         spans.append((given.start, given.end))
     return spans
+
+
+def _keyed(abstract: str, start: int, typed: str) -> dict:
+    """What the key of a finding on the Abstract's number `typed` at `start` is made of
+    (`keys`): the number, and its sentence of the Abstract."""
+    return {"subject": typed, "at": start,
+            "sentence": digest(ABSTRACT_PART, sentence_at(abstract, start))}
 
 
 def _at(found_in: Piece, start: int, path: Path) -> str:

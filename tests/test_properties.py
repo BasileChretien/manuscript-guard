@@ -302,7 +302,7 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: the other readings many times over. `import` builds a document for each and takes three
 #: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
 #: here it is only asked twice for the same one.
-PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1}
+PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1, "finding keys": 6}
 
 #: The quotation marks the LaTeX reader writes for ``` `` ``` and `''`.
 LEFT_QUOTE, RIGHT_QUOTE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
@@ -23965,6 +23965,102 @@ def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(adjusted, "weighted_tables", weighted_tables)
 
 
+# --------------------------------------------------------------------------- finding keys
+
+from generated import KEYED_NUMBERS, keyed_papers, rewrapped  # noqa: E402
+
+_KEYED_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _keyed_at(text: str, at: tuple[int, ...]) -> list:
+    """What the key of a finding on each number planted at `at` in `text` is made of, as G2
+    keys an unbound number (`gates.numbers._keyed`)."""
+    from manuscript_guard import keys
+
+    return [keys.Keyed("G2", "unclassified-number",
+                       keys.statistic(_KEYED_NUMBER.match(text, start).group()),
+                       keys.placed(text, start), start)
+            for start in at]  # fmt: skip
+
+
+@holds(40, keyed_papers())
+def test_a_rewrapped_or_moved_paper_keeps_every_key(drawn: tuple[str, tuple[int, ...]]) -> None:
+    """A finding's key stands for its subject and its sentence: re-wrapping a paragraph, a
+    line break for one space in three and never before what opens a block (DESIGN.md, Known
+    gaps), and a paragraph added before it, which moves every line, leave each key as it was
+    (`keys`, Basile, 2026-11-19). Each paper is edited both ways."""
+    from manuscript_guard import keys
+
+    text, at = drawn
+    found = keys.assign(_keyed_at(text, at))
+    assert keys.assign(_keyed_at(rewrapped(text), at)) == found, text
+    before = "Words were written here first.\n\n"
+    moved = tuple(start + len(before) for start in at)
+    assert keys.assign(_keyed_at(before + text, moved)) == found, text
+
+
+@holds(40, keyed_papers())
+def test_another_subject_in_the_same_sentence_is_another_key(
+    drawn: tuple[str, tuple[int, ...]],
+) -> None:
+    """A finding on another number of the same sentence has another key."""
+    from manuscript_guard import keys
+
+    text, at = drawn
+    for one in _keyed_at(text, at):
+        other = next(number for number in KEYED_NUMBERS if keys.statistic(number) != one.subject)
+        assert keys.key(dataclasses.replace(one, subject=keys.statistic(other))) != keys.key(one)
+
+
+@holds(40, keyed_papers())
+def test_the_ordinal_of_a_key_counts_in_its_sentence_only(
+    drawn: tuple[str, tuple[int, ...]],
+) -> None:
+    """Two findings of one sentence on one number are told apart by an ordinal, and that
+    ordinal counts nothing outside the sentence: the keys of the others are the same with
+    the findings of the first sentence and without them. Every paper drawn has a number in
+    two sentences, so an ordinal counted across the paper moves a key here."""
+    from manuscript_guard import keys
+
+    text, at = drawn
+    found = _keyed_at(text, at)
+    found_keys = keys.assign(found)
+    first = found[0].sentence
+    rest = [index for index, one in enumerate(found) if one.sentence != first]
+    assert keys.assign([found[index] for index in rest]) == [found_keys[index] for index in rest]
+
+
+def _a_key_reads_the_spaces_of_its_sentence(patch: pytest.MonkeyPatch) -> None:
+    """A sentence's digest taken with its spaces: a re-wrapped paragraph moves every key."""
+    from manuscript_guard import keys
+
+    patch.setattr(keys, "_UNSEEN", re.compile("[\x00*_\u00ad]+"))
+
+
+def _a_key_names_no_subject(patch: pytest.MonkeyPatch) -> None:
+    """A key of the code and the sentence only: two numbers of one sentence are one key."""
+    from manuscript_guard import keys
+
+    patch.setattr(keys, "subject", lambda said: "-")
+
+
+def _an_ordinal_counts_across_the_paper(patch: pytest.MonkeyPatch) -> None:
+    """Equal subjects numbered across the paper, whatever sentence they stand in."""
+    from manuscript_guard import keys
+
+    def assign(found):
+        seen: dict = {}
+        out = []
+        for one in found:
+            plain = keys.key(one)
+            alike = plain.rsplit("|", 1)[0]
+            seen[alike] = seen.get(alike, 0) + 1
+            out.append(keys.key(one, seen[alike]))
+        return out
+
+    patch.setattr(keys, "assign", assign)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -30786,6 +30882,18 @@ BROKEN = {
     "a legend reaches its table across another legend": (
         _a_legend_reaches_across_another,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "a key reads the spaces of its sentence": (
+        _a_key_reads_the_spaces_of_its_sentence,
+        test_a_rewrapped_or_moved_paper_keeps_every_key,
+    ),
+    "a key names no subject": (
+        _a_key_names_no_subject,
+        test_another_subject_in_the_same_sentence_is_another_key,
+    ),
+    "an ordinal counts across the paper": (
+        _an_ordinal_counts_across_the_paper,
+        test_the_ordinal_of_a_key_counts_in_its_sentence_only,
     ),
 }
 

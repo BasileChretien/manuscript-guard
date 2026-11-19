@@ -15,7 +15,7 @@ import json
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as _field
 from pathlib import Path
 
@@ -38,6 +38,7 @@ from manuscript_guard.gates.data_dates import data_dates, dates_in_english
 from manuscript_guard.gates.labels import labelled, sentence_stops
 from manuscript_guard.gates.typed_citations import Works, typed_citation, works_by
 from manuscript_guard.gates.typed_citations import hint as typed_hint
+from manuscript_guard.keys import MAIN, NONE, digest, in_supplement, placed, statistic
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
@@ -189,7 +190,7 @@ def check_numbers(
         placeholders, malformed = read.placeholders, read.malformed
         totals["placeholders"] += len(placeholders)
 
-        for raw, _offset, line in malformed:
+        for raw, offset, line in malformed:
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -200,6 +201,8 @@ def check_numbers(
                     hint=spell("the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
                                "{{figure.key}}, {{ref.table.key}}, {{num.table.key}} or "
                                "{{method.step}}"),
+                    subject=raw, at=offset,
+                    sentence=placed(text, offset, in_supplement(path)),
                 )
             )
 
@@ -215,6 +218,8 @@ def check_numbers(
                         line=placeholder.line,
                         col=placeholder.col,
                         hint=_nearest_hint(placeholder.ref, namespace),
+                        subject=placeholder.ref, at=placeholder.start,
+                        sentence=placed(text, placeholder.start, in_supplement(path)),
                     )
                 )
             elif placeholder.is_value and (what := _splits(namespace[placeholder.ref])):
@@ -229,6 +234,8 @@ def check_numbers(
                         col=placeholder.col,
                         hint="a value is printed inside a sentence; write what it holds in the "
                         f"{path.suffix}, as a block of its own, and bind only the numbers in it",
+                        subject=placeholder.ref, at=placeholder.start,
+                        sentence=placed(text, placeholder.start, in_supplement(path)),
                     )
                 )
 
@@ -250,7 +257,8 @@ def check_numbers(
                 start, value = release
                 if start not in said:
                     said.add(start)
-                    report = report.with_findings(_typed_finding(value, atom, path))
+                    report = report.with_findings(
+                        _typed_finding(value, atom, path, text))
                 continue
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
@@ -266,9 +274,11 @@ def check_numbers(
                     by_project[label] = by_project.get(label, 0) + 1
                 typed = typed_choice(atom.text, verdict, choices, chosen)
                 if typed is not None:
-                    report = report.with_findings(_typed_finding(typed, atom, path))
+                    report = report.with_findings(
+                        _typed_finding(typed, atom, path, text))
                 elif declares and typed_threshold(atom.text, verdict, chosen):
-                    report = report.with_findings(_undeclared_threshold(atom, path))
+                    report = report.with_findings(
+                        _undeclared_threshold(atom, path, text))
                 continue
             loose += 1
             if loose > PER_FILE_CAP:
@@ -293,6 +303,7 @@ def check_numbers(
                         if in_table
                         else _hint_for(atom, works, latex=path.suffix == ".tex")
                     ),
+                    **_keyed(atom, text, path),
                 )
             )
 
@@ -307,6 +318,8 @@ def check_numbers(
                     hint="the first "
                     f"{PER_FILE_CAP} are above; a file in this state usually needs its "
                     "numbers bound in bulk rather than one finding at a time",
+                    # One for the file, past the cap (`keys`).
+                    subject=f"further numbers in {path.name}", sentence="-",
                 )
             )
 
@@ -355,6 +368,7 @@ def check_numbers(
                 path=project.path("manuscript"),
                 hint="put the manuscript's .md files there, or point `paths.manuscript` in "
                 "paper.yaml at them; a draft in another format has to be Markdown first",
+                subject="manuscript", sentence=NONE,
             )
         )
     # A pointer to a table or a figure is let through above as a cross-reference; what it
@@ -640,6 +654,9 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         hint=_how_to_declare(atom)
                         + "bind it or reword the title: the build writes this into the "
                         "document's front matter, where pandoc renders it",
+                        # The setting's value is its sentence (`keys`).
+                        subject=statistic(atom.text), at=atom.start,
+                        sentence=digest(MAIN, f"{key}: {text}"),
                     )
                 )
     return report
@@ -717,7 +734,7 @@ def reply_numbers(
     """
     report = Report()
     placeholders, malformed = parse(text)
-    for raw, _offset, _line in malformed:
+    for raw, offset, _line in malformed:
         report = report.with_findings(
             Finding(
                 gate=GATE,
@@ -725,6 +742,7 @@ def reply_numbers(
                 message=f"{where}: {raw} is not a valid binding and will be printed literally",
                 path=path,
                 hint="the form is {{results.key}} or {{lit.key}}",
+                subject=raw, at=offset, sentence=placed(text, offset),
             )
         )
     for placeholder in placeholders:
@@ -736,6 +754,8 @@ def reply_numbers(
                     message=f"{where}: {placeholder.raw} refers to a key that does not exist",
                     path=path,
                     hint=_nearest_hint(placeholder.ref, namespace),
+                    subject=placeholder.ref, at=placeholder.start,
+                    sentence=placed(text, placeholder.start),
                 )
             )
     for atom in find_atoms(text, mask(text)):
@@ -751,6 +771,7 @@ def reply_numbers(
                 path=path,
                 context=atom.line_text.strip()[:160],
                 hint=_hint_for(atom) + " The letter fills a binding in as the paper does.",
+                subject=statistic(atom.text), at=atom.start, sentence=placed(text, atom.start),
             )
         )
     return report
@@ -881,6 +902,8 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                     line=text.count("\n", 0, high) + 1,
                     hint="write the lower bound first; both bindings resolve either way, "
                     "which is why nothing else catches this",
+                    subject=f"{estimate}@{level}", at=high,
+                    sentence=placed(text, high, in_supplement(path)),
                 )
             )
     return report
@@ -925,7 +948,7 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
     intervals = _intervals(namespace)
     whole: set[tuple[str, str]] = set()
     first: dict[tuple[str, str], tuple[Path, int]] = {}
-    for path, _text, located in files:
+    for path, text, located in files:
         by_sentence: dict[int, set[str]] = {}
         for placeholder, sentence in located:
             by_sentence.setdefault(sentence, set()).add(placeholder.ref)
@@ -949,7 +972,9 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
                        if name not in namespace and name not in by_sentence[sentence]]  # fmt: skip
             if not missing and set(belongs) & by_sentence[sentence]:
                 continue
-            report = report.with_findings(_alone(value, belongs, missing, path, line))
+            report = report.with_findings(replace(
+                _alone(value, belongs, missing, path, line), at=placeholder.start,
+                sentence=placed(text, placeholder.start, in_supplement(path))))  # fmt: skip
         for interval, ends in intervals.items():
             if any(set(ends.values()) <= refs for refs in by_sentence.values()):
                 whole.add(interval)
@@ -968,6 +993,8 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
                 hint="quote the estimate with both bounds in one sentence at least once: "
                 "{{results.<key>.point}} (95% CI {{results.<key>.ci_low}} to "
                 "{{results.<key>.ci_high}})",
+                # One for the paper: no sentence quotes it whole.
+                subject=f"{estimate}@{level}", sentence=NONE,
             )
         )
     return report
@@ -998,6 +1025,8 @@ def _alone(
         line=line,
         context=", ".join(belongs),
         hint=hint,
+        # The value quoted alone; its caller gives the sentence it is quoted in.
+        subject=f"{value.namespace}.{value.key}",
     )
 
 
@@ -1107,7 +1136,7 @@ def _within(releases: list[tuple[int, int, Value]], atom) -> tuple[int, Value] |
     return None
 
 
-def _typed_finding(value: Value, atom, path: Path) -> Finding:
+def _typed_finding(value: Value, atom, path: Path, text: str) -> Finding:
     typed = atom.text
     if value.role == "software":
         code = "typed-software-version"
@@ -1129,10 +1158,11 @@ def _typed_finding(value: Value, atom, path: Path) -> Finding:
         context=atom.line_text.strip()[:160],
         hint=f"write {value.reference}: the analysis declares the value it ran with, and a "
         "typed copy is what stays behind when the code changes",
+        **_keyed(atom, text, path),
     )
 
 
-def _undeclared_threshold(atom, path: Path) -> Finding:
+def _undeclared_threshold(atom, path: Path, text: str) -> Finding:
     """A threshold typed in the Methods of an analysis that declares its parameters, and
     equal to none of them. Either the code chose it and does not say so, or the code chose
     another value and this is the copy left behind: the typed-parameter rule finds a copy
@@ -1149,6 +1179,7 @@ def _undeclared_threshold(atom, path: Path) -> Finding:
         context=atom.line_text.strip()[:160],
         hint="if the code applies it, declare it with parameter() and bind it; if the code "
         "applies another value, the Methods and the code disagree",
+        **_keyed(atom, text, path),
     )
 
 
@@ -1268,6 +1299,8 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                     path=value.source,
                     hint="emit the estimate and its interval together with interval(), which "
                     "writes all three keys and cannot get this wrong",
+                    # Of the results, not of a sentence: keyed by the value (`keys`).
+                    subject=f"{value.namespace}.{value.key}", sentence=NONE,
                 )
             )
             continue
@@ -1283,6 +1316,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                     path=value.source,
                     hint="one of the two is the other end; an interval has one of each. A "
                     "second interval on the same estimate needs its own `level=`",
+                    subject=f"{value.namespace}.{value.key}", sentence=NONE,
                 )
             )
             continue
@@ -1311,6 +1345,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                     path=point.source,
                     hint="emit the estimate and its bounds as numbers with `digits=`; a value "
                     "already rendered as a string cannot be compared with anything",
+                    subject=f"{target}@{level}", sentence=NONE,
                 )
             )
             continue
@@ -1324,6 +1359,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                     path=low.source or point.source,
                     hint="the two are swapped at the point they are computed; naming them "
                     "low and high in the analysis does not make them so",
+                    subject=f"{target}@{level}", sentence=NONE,
                 )
             )
             continue
@@ -1347,6 +1383,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                     path=point.source,
                     hint="a reader checks this one by eye in the first sentence of the "
                     "Results; interval() refuses it, so this was written some other way",
+                    subject=f"{target}@{level}/{end}", sentence=NONE,
                 )
             )
     return report.with_counts(intervals_checked=len(intervals))
@@ -1372,6 +1409,13 @@ _DURATION = re.compile(
 
 #: A name that YAML reads as it is written, between the brackets of `terms: [...]`.
 _PLAIN_NAME = re.compile(r"[\w+./-]+")
+
+
+def _keyed(atom, text: str, path: Path) -> dict:
+    """What the key of a finding on a number is made of (`keys`): the number as typed, and
+    the sentence of `text` it stands in."""
+    return {"subject": statistic(atom.text), "at": atom.start,
+            "sentence": placed(text, atom.start, in_supplement(path))}
 
 
 def _how_to_declare(atom) -> str:

@@ -73,8 +73,14 @@ ON_THE_FALLBACK = {
         "identifier-not-sent", "output-not-read", "baseline-tables-not-read",
     ), f"what a reader could not read, or the settings disagree on: {_LATER}"),
     **dict.fromkeys((
+        "first-reads-unreadable", "held-out-read-elsewhere", "code-block-text-number",
+        "not-read-in-latex", "gate-errored", "causal-words-not-read",
+    ), f"what a gate could not read, or a gate that raised: {_LATER}"),
+    **dict.fromkeys(("authors-not-looked-for", "document-person", "comment-not-matched",
+                     "named"), f"an editor's or a referee's note on the documents: {_LATER}"),
+    **dict.fromkeys((
         "caption-names-another", "cited-out-of-order", "display-not-cited",
-        "pointer-form-unread", "pointer-to-nothing",
+        "pointer-form-unread", "pointer-to-nothing", "pointer-word-mismatch",
     ), f"a pointer to a table or a figure, matched by its label: {_LATER}"),
     **dict.fromkeys((
         "comparison-contradicted", "unit-differs-from-emitted", "interval-level-differs",
@@ -289,6 +295,32 @@ def test_the_fallback_leaves_out_the_findings_own_path_whole_a_space_in_it_too()
                    path=folder / "authors.yaml").key  # fmt: skip
     assert said == Finding("G0", "authors-incomplete", "/srv/p has no authors.yaml",
                            path=Path("/srv/p/authors.yaml")).key  # fmt: skip
+
+
+def test_a_folder_above_the_findings_path_is_left_out_only_where_it_stands_whole() -> None:
+    """A folder of the finding's path is taken out of a message only where it stands as a
+    path, not inside another (round 2 of #706: `/data` was cut out of
+    `analysis/data/raw.csv`, which then read as `analysis`)."""
+    path = Path("/data/raw.csv")
+    inside = Finding("G1", "input-missing", "analysis/data/raw.csv is not read", path=path)
+    other = Finding("G1", "input-missing", "analysis is not read", path=path)
+    assert inside.key != other.key
+    whole = Finding("G1", "input-missing", "'/data/raw.csv' is not read", path=path)
+    assert whole.key == Finding("G1", "input-missing", "'/w/raw.csv' is not read",
+                                path=Path("/w/raw.csv")).key  # fmt: skip
+
+
+def test_a_note_on_the_pdfs_of_a_folder_given_names_its_subject(tmp_path: Path) -> None:
+    """Audited as a folder, a paper beside a PDF: the note that the PDF was not read keys on
+    what it is about, as every note on the inputs does (round 2 of #706: it fell back)."""
+    folder = tmp_path / "given"
+    folder.mkdir()
+    (folder / "paper.md").write_text("# Results\n\nThe rate was 4.7 in all.\n", encoding="utf-8")
+    (folder / "figure.pdf").write_bytes(b"%PDF-1.4 not read\n")
+    found = audited(folder)
+    assert "audit|passed-over|pdfs in the folder given|-" in keyed(found, "passed-over")
+    notes = [one for one in found if one["section"] == "Inputs"]
+    assert notes and [one["key"] for one in notes if one.get("key_from")] == []
 
 
 def test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence() -> None:

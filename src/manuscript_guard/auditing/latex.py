@@ -216,8 +216,9 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             )
         # Each note of this file knows it is about the file (`keys.Notice`), named from the
         # paper's folder, never by its absolute path.
-        shown = next((path.relative_to(folder).as_posix() for folder in folders
-                      if folder in path.parents), path.name)  # fmt: skip
+        holding = [folder for folder in folders if folder in path.parents]
+        inner = max(holding, key=lambda folder: len(folder.parts), default=None)
+        shown = path.name if inner is None else path.relative_to(inner).as_posix()
         read.passed_over[before:] = [Notice(said, shown)
                                      for said in read.passed_over[before:]]  # fmt: skip
     return read

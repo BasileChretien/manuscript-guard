@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from manuscript_guard.audit import AuditReport, Disagreement
+from manuscript_guard.keys import MAIN, digest
 from manuscript_guard.stats.granularity import names
 from manuscript_guard.stats.skew import caption_of, said, table_spreads
 from manuscript_guard.text.tables import Table
@@ -47,7 +48,8 @@ def non_negative_means(
             if spread.skewed:
                 found.append(Disagreement(
                     path, spread.line, f"{spread.printed}: {said(spread.mean, spread.sd, FLOOR)}",
-                    spread.context, code=CODE,
+                    spread.context, code=CODE, subject=spread.printed,
+                    sentence=digest(MAIN, spread.context),
                 ))  # fmt: skip
         for row in passed:
             _found(report, row.label)

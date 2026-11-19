@@ -16859,7 +16859,8 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   minus and point made one form; a short form and the part G14 reads it in, `HR@abstract`;
   a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
   matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
-  fact as it was and is, `12.5→12.6`; a section's title as compare matches it.
+  fact as it was and is, `12.5→12.6`; a section as `parent/title`, its title as compare
+  matches it after the title of the section it stands under.
 - **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
   characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
@@ -16885,10 +16886,12 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   key.
 - **A code with no subject yet** falls back on a digest of its context, its message where
   it has none, each path the finding names and every folder above it left out whole and
-  then any other absolute path, and says `"key_from": "context"`. `tests/test_finding_keys.py`
-  reads the source: every finding made with a literal code and no subject has its code, or
-  its gate where the corpus never reads it, listed there with why. It also runs the example,
-  a paper with something for each family and the generated inputs of the `check` reading.
+  then any other absolute path, and says `"key_from": "context"`.
+  `tests/test_finding_keys_source.py` reads the source: every finding made with a literal
+  code and no subject has its code listed in `tests/test_finding_keys.py` with why, or its
+  gate where the corpus never reads it; a code made from a name is listed where it is made.
+  `tests/test_finding_keys.py` also runs the example, a paper with something for each family
+  and the generated inputs of the `check` reading.
 
 The keys are in `--json` only: nothing an author reads changes. The differential reading
 `finding keys` holds the audit's and compare's keys, and the reading `check` compares the
@@ -28385,6 +28388,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     share in a table is keyed by its row's line. A key names no file: G7 keys an entry by
     its label alone, and two papers audited in one run give their entries the same keys.
     Accepted.
+  - A reference list's note is keyed by its place among the file's lists, `paper.md
+    reference list 2`: a list added before it shifts the number, and two runs on one input
+    give the same. Accepted.
+  - Two sections of one title under one parent share a key, `results/sensitivity`.
+    Accepted.
+  - A key from the context leaves out the finding's own path and every folder above it, and
+    the tool's own folder and those above it, where each stands whole, and then any other
+    absolute path up to its first space: a message that names another folder, with a space
+    in its name, keeps what follows the space. Accepted.
 - **A re-wrap that begins a line with what opens a block cuts the sentence there.** The
   splitter frozen for keys (`keys._BLOCK`, as decided on 2026-11-19) takes a line that
   begins with `#`, `>`, `|`, `- `, `12. ` or `3) ` for a new block, as `claims` does. So

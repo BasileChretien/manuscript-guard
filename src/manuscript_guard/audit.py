@@ -2012,7 +2012,10 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
                 ))  # fmt: skip
                 continue
             said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
-            found.append(Disagreement(path, mean.line, said, mean.context))
+            # Keyed by the mean and its n, in its row (`keys`).
+            found.append(Disagreement(path, mean.line, said, mean.context,
+                                      subject=f"{mean.printed}/n={mean.n}",
+                                      sentence=digest(MAIN, mean.context)))  # fmt: skip
     return found
 
 

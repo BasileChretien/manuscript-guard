@@ -145,6 +145,14 @@ def _makers(tree: ast.AST, path: Path) -> dict[str, tuple[int, int | None]]:
     return made
 
 
+def _names_a_subject(call: ast.Call) -> bool:
+    """Whether a call that keys what it is handed gives it a subject: its second argument, or
+    `subject=`, is anything but the constant None."""
+    given = {one.arg: one.value for one in call.keywords}
+    subject = given.get("subject", call.args[1] if len(call.args) > 1 else None)
+    return not (subject is None or (isinstance(subject, ast.Constant) and subject.value is None))
+
+
 def unkeyed() -> list[tuple[str, str, str]]:
     """Each finding the source makes with no subject: its gate, its code and where it is
     made, `file:function`; a name in angle brackets where either is not typed."""
@@ -170,7 +178,8 @@ def unkeyed() -> list[tuple[str, str, str]]:
             if "subject" in given or None in given:
                 continue
             up = parents.get(node)
-            if isinstance(up, ast.Call) and getattr(up.func, "id", None) in KEYING:
+            if (isinstance(up, ast.Call) and getattr(up.func, "id", None) in KEYING
+                    and _names_a_subject(up)):
                 continue
             at_code, at_gate = makers[node.func.id]
             code = given.get("code", node.args[at_code] if len(node.args) > at_code else None)
@@ -192,11 +201,10 @@ def _whole(gate: str, site: str) -> bool:
 
 
 def _allowed(gate: str, code: str, site: str) -> bool:
-    if site in VARIABLE_SITES or _whole(gate, site):
+    if code in ON_THE_FALLBACK or _whole(gate, site):
         return True
-    if code.startswith("<") or gate.startswith("<"):
-        return False
-    return code in ON_THE_FALLBACK
+    # A site listed covers the codes it makes from a name, and never a code typed there.
+    return site in VARIABLE_SITES and code.startswith("<")
 
 
 def test_every_finding_made_without_a_subject_is_listed() -> None:

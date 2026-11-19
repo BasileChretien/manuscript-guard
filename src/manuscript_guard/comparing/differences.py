@@ -101,9 +101,10 @@ def _occurrences(headings: Sequence[Heading]) -> dict[tuple[str, int], int]:
 
 
 def _named_under(headings: Sequence[Heading]) -> list[str]:
-    """Each section as its key names it (`keys`): its title as it is matched, after the title
-    of the section it stands under, where it stands under one, "results/sensitivity", so that
-    two sections of one title under two others are told apart."""
+    """Each section as its key names it (`keys`), `parent/title`: its title as it is
+    matched, after the title of the section it stands under where it stands under one,
+    "results/sensitivity", so that two sections of one title under two others are told
+    apart."""
     open_: list[Heading] = []
     found = []
     for heading in headings:

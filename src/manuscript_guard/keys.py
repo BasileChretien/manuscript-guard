@@ -236,8 +236,8 @@ class Keyed:
     def parts(self) -> tuple[str, str, str, str]:
         if self.subject is None:
             said = self.context or self.message
-            for path in self.paths:
-                said = said.replace(path, "")
+            for path in (*self.paths, *_INSTALLED):
+                said = _bounded(path).sub("", said)
             said = _ABSOLUTE.sub("", said)
             return self.gate, self.code, "~" + digest(NONE, said), NONE
         sentence = NONE if self.code in PAPER_LEVEL or not self.sentence else self.sentence
@@ -255,6 +255,20 @@ def paths_of(path: Path | str | None) -> tuple[str, ...]:
     found = {form for one in (path, *path.parents) if one != Path(one.anchor)
              for form in (str(one), one.as_posix()) if form}  # fmt: skip
     return tuple(sorted(found, key=len, reverse=True))
+
+
+@lru_cache(maxsize=256)
+def _bounded(path: str) -> re.Pattern[str]:
+    """`path` where it stands whole in a message: after the start, a space, a quotation mark
+    or a bracket, and before a separator, a quotation mark, a bracket, a space, a stop of a
+    clause or the end, so that the folder `/data` is not cut out of `analysis/data/raw.csv`."""
+    return re.compile(r"(?<![^\s'\"`(\[{<])" + re.escape(path)
+                      + r"(?=[\\/\s'\"`)\]}>,;:]|\.(?:\s|\Z)|\Z)")  # fmt: skip
+
+
+#: Where the tool runs from, and each folder above it: a message that names the tool's own
+#: files names a folder that moves between two builds of it, as the corpus runs each commit.
+_INSTALLED = paths_of(Path(__file__).resolve().parent)
 
 
 def key(keyed: Keyed, ordinal: int | None = None) -> str:

@@ -64,8 +64,8 @@ ON_THE_FALLBACK = {
     ), f"of the project's records, the panel, the plan, the journal, the authors: {_LATER}"),
     **dict.fromkeys((
         "value-from-abstract", "statements-without-passage", "reference-unchecked",
-        "citation-unresolved",
-    ), f"of the literature's records: {_LATER}"),
+        "citation-unresolved", "pinning-unchecked",
+    ), f"of the literature's records and of Zotero: {_LATER}"),
     **dict.fromkeys((
         "front-matter-abstract", "front-matter-unreadable", "two-titles", "tex-in-the-text",
         "tex-not-judged", "rule-opens-a-block", "unclear-fence", "pointers-unchecked",

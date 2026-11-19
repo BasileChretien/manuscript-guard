@@ -299,10 +299,10 @@ def items(report) -> list[Item]:
             + list(getattr(report.package, "found", [])))  # fmt: skip
 
 
-def _notice(code: str, said: str) -> Item:
-    """A note on what was read of the inputs, keyed by the file or the part it is about,
-    which its reader gives (`audit.Notice`)."""
-    return about(Item(INPUTS, "audit", code, said, INFO, False), getattr(said, "subject", None),
+def _notice(kind: str, said: str) -> Item:
+    """A note of the kind `kind` on what was read of the inputs, keyed by the file or the
+    part it is about, which its reader gives (`keys.Notice`)."""
+    return about(Item(INPUTS, "audit", kind, said, INFO, False), getattr(said, "subject", None),
                  NONE)  # fmt: skip
 
 

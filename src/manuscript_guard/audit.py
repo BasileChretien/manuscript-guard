@@ -2107,21 +2107,21 @@ def _disagreements(path: Path, hidden: str, tables: list[Table], read: dict | No
         line = lines.count("\n", 0, interval.start) + 1
         sentence = placed(hidden, interval.start)
 
-        def keyed(wrong: str, interval=interval, context=context, sentence=sentence) -> dict:
+        def wrong_in(way: str, interval=interval, context=context, sentence=sentence) -> dict:
             # One estimate is wrong in up to three ways, each a finding of its own.
-            return {"subject": f"{context}/{wrong}", "sentence": sentence, "at": interval.start}
+            return {"subject": f"{context}/{way}", "sentence": sentence, "at": interval.start}
 
         if outside_interval(interval):
             found.append(Disagreement(path, line, described_outside(interval), context,
-                                      **keyed("outside")))  # fmt: skip
+                                      **wrong_in("outside")))  # fmt: skip
         share = asymmetry(interval)
         if share is not None and share > ASYMMETRY:
             found.append(Disagreement(path, line, described_asymmetry(interval, share), context,
-                                      **keyed("asymmetric")))  # fmt: skip
+                                      **wrong_in("asymmetric")))  # fmt: skip
         verdict = p_against(interval)
         if verdict is not None:
             found.append(Disagreement(path, line, described_against(interval, verdict), context,
-                                      **keyed("p")))  # fmt: skip
+                                      **wrong_in("p")))  # fmt: skip
     # And each n (%) in a table against its denominator (`stats/shares.py`).
     for at, table in enumerate(tables):
         weighted = asking.weighted[at] if at < len(asking.weighted) else None

@@ -23969,7 +23969,7 @@ def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
 
 from generated import KEYED_NUMBERS, keyed_papers, rewrapped  # noqa: E402
 
-_PLANTED = re.compile(r"\d+(?:\.\d+)?")
+_KEYED_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 def _keyed_at(text: str, at: tuple[int, ...]) -> list:
@@ -23978,7 +23978,7 @@ def _keyed_at(text: str, at: tuple[int, ...]) -> list:
     from manuscript_guard import keys
 
     return [keys.Keyed("G2", "unclassified-number",
-                       keys.statistic(_PLANTED.match(text, start).group()),
+                       keys.statistic(_KEYED_NUMBER.match(text, start).group()),
                        keys.placed(text, start), start)
             for start in at]  # fmt: skip
 

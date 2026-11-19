@@ -73,7 +73,8 @@ _MARK = re.compile(
     r"^[ \t]*#{1,6}[ \t]+(?P<md>[^\n]*)$"
     r"|\\(?:sub)*section\*?\{(?P<tex>[^}\n]*)\}"
     r"|(?P<env>\\(?:begin|end)\{abstract\})"
-    r"|^[ \t]*[*_]*(?P<alone>abstract|summary)[*_.:]*[ \t]*$",
+    r"|^[ \t]*[*_]*(?P<alone>abstract|summary|introduction|background|methods?|"
+    r"materials and methods|results|discussion|conclusions?|references)[*_.:]*[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
 )
 _NUMBERED = re.compile(r"^[\s*_\d.)\\]*")

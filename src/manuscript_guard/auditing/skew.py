@@ -53,10 +53,15 @@ def non_negative_means(
                 ))  # fmt: skip
         for row in passed:
             _found(report, row.label)
-            report.non_negative_unread.append(Disagreement(
-                path, row.line, f"{FLAG} row {row.label!r}: not read, as {row.why}", row.context,
-            ))  # fmt: skip
+            report.non_negative_unread.append(_passed_over(path, row))
     return found
+
+
+def _passed_over(path: Path, row) -> Disagreement:
+    """A row named and not read: a note whose item names its own code, on the fallback
+    (`tests/test_finding_keys_source.py`)."""
+    return Disagreement(path, row.line, f"{FLAG} row {row.label!r}: not read, as {row.why}",
+                        row.context)  # fmt: skip
 
 
 def _found(report: AuditReport, label: str) -> None:

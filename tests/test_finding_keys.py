@@ -217,10 +217,12 @@ def test_a_statistic_is_one_subject_however_it_is_spaced_and_signed() -> None:
 
 
 def test_the_part_is_the_abstract_under_its_heading_and_the_supplement_by_its_file() -> None:
-    text = "# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n"
+    text = ("# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n\nRESULTS\n\n"
+            "Five.\n")  # fmt: skip
     assert keys.part_of(text, text.index("Two")) == keys.ABSTRACT
     assert keys.part_of(text, text.index("Three")) == keys.MAIN
     assert keys.part_of(text, text.index("Four")) == keys.ABSTRACT
+    assert keys.part_of(text, text.index("Five")) == keys.MAIN
     assert keys.part_of(text, text.index("Three"), supplementary=True) == keys.SUPPLEMENT
     tex = "\\begin{abstract}One.\\end{abstract}\\section{Methods}Two."
     assert keys.part_of(tex, tex.index("One")) == keys.ABSTRACT
@@ -316,13 +318,21 @@ def test_the_tools_own_folder_is_left_out_of_a_key_from_the_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A message that names the tool's own file, as a gate that raised does, keys alike from
-    two builds of the tool in two folders, as the corpus runs each commit from its own."""
-    said = {}
-    for build in ("/corpus/builds/aaa111", "/corpus/builds/bbb222"):
-        monkeypatch.setattr(keys, "_INSTALLED", keys.paths_of(f"{build}/src/manuscript_guard"))
-        said[build] = Finding("G2", "gate-errored", "G2 could not run: KeyError in "
-                              f"{build}/src/manuscript_guard/gates/numbers.py line 9").key
-    assert len(set(said.values())) == 1, said
+    two builds of the tool in two folders, as the corpus runs each commit from its own: the
+    folders' names hold a space, which `_ABSOLUTE` alone would stop at (scoped check of #706:
+    with plain names the test passed without `_INSTALLED`)."""
+
+    def keyed(installed: bool) -> set[str]:
+        said = set()
+        for build in ("/corpus/my builds/aaa111", "/corpus/my builds/bbb222"):
+            folder = keys.paths_of(f"{build}/src/manuscript_guard") if installed else ()
+            monkeypatch.setattr(keys, "_INSTALLED", folder)
+            said.add(Finding("G2", "gate-errored", "G2 could not run: KeyError in "
+                             f"{build}/src/manuscript_guard/gates/numbers.py line 9").key)
+        return said
+
+    assert len(keyed(installed=True)) == 1
+    assert len(keyed(installed=False)) == 2
 
 
 #: Tables of a paper audited with `--whole-numbers Age` and `--non-negative Weight`: the same
@@ -358,11 +368,46 @@ def test_a_share_in_a_sentence_and_a_mean_in_a_table_are_keyed(tmp_path: Path) -
     assert arithmetic and [one["key"] for one in arithmetic if one.get("key_from")] == []
     fits = keyed(found, "does-not-fit")
     assert [key for key in fits if "|12of40(35%)|" in key] != []
-    grim = [key for key in fits if "|3.47/n=10|" in key]
+    grim = [key for key in fits if "|3.47/n=10@" in key]
     skewed = keyed(found, "mean-sd-skewed")
     assert len(grim) == len(set(grim)) == 2, grim
     assert len(skewed) == len(set(skewed)) == 2, skewed
     assert all(key.split("|")[2] == "2.0(3.0)" for key in skewed)
+
+
+def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A share a sentence writes is digested in the text as read, not in the text with the
+    compared Abstract blanked, as the other numbers are (second scoped check of #706). In a
+    Word paper the Abstract's heading is a line alone, which the blanking took away."""
+    from test_audit_claims import make_docx
+
+    from manuscript_guard.auditing import abstract
+
+    paper = make_docx(tmp_path / "paper.docx", [
+        ("Abstract", True), ("Of 40 patients, 12 were women.", False), ("Results", True),
+        ("Of the patients, 12 of 40 (35%) were women, and the rest were men.", False)])  # fmt: skip
+
+    def share() -> list[str]:
+        return [key for key in keyed(audited(paper), "does-not-fit") if "|12of40(35%)|" in key]
+
+    compared = share()
+    monkeypatch.setattr(abstract, "where", lambda piece, line: "")
+    assert compared and share() == compared
+
+
+def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:
+    """A GRIM mean is keyed by its column too: one row's 3.47 under two columns of n = 10
+    is two findings and two keys, neither numbered."""
+    text = ("# Results\n\nTable 1. Characteristics.\n\n"
+            "| Characteristic | Men (n = 10) | Women (n = 10) |\n|---|---|---|\n"
+            "| Age, mean (SD) | 3.47 (1.20) | 3.47 (0.90) |\n")  # fmt: skip
+    found = _json("audit", str(a_paper(tmp_path, text)), "--json", "--whole-numbers",
+                  "Age")["findings"]  # fmt: skip
+    grim = [key for key in keyed(found, "does-not-fit") if "3.47/n=10" in key]
+    assert len(grim) == len(set(grim)) == 2, grim
+    assert not any("#" in key.split("|")[2] for key in grim)
 
 
 def test_a_note_on_the_pdfs_of_a_folder_given_names_its_subject(tmp_path: Path) -> None:

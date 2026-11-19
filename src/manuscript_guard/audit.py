@@ -1838,7 +1838,7 @@ def _written_shares(report: AuditReport, sources: list[_Source],
                                       f"{_under(report, source, piece, line)}"
                                       f"{shares.described(share)}",
                                       _around(text, at, share), subject=share.printed,
-                                      sentence=placed(text, at), at=at))  # fmt: skip
+                                      sentence=placed(source.hidden, at), at=at))  # fmt: skip
     return found
 
 
@@ -2009,16 +2009,29 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
                 continue
             uncertain = f" (uncertain: {mean.uncertain})" if mean.uncertain else ""
             if verdict is None:
-                report.means_not_assessable.append(Disagreement(
-                    path, mean.line, f"{mean.printed} of n = {mean.n}{uncertain}", mean.context,
-                ))  # fmt: skip
+                report.means_not_assessable.append(_not_assessable(path, mean, uncertain))
                 continue
             said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
-            # Keyed by the mean and its n, in its row of its table (`keys`).
+            # Keyed by the mean, its n and its column, in its row of its table (`keys`).
             found.append(Disagreement(path, mean.line, said, mean.context,
-                                      subject=f"{mean.mean}/n={mean.n}",
+                                      subject=f"{mean.mean}/n={mean.n}@{_header_of(table, mean)}",
                                       sentence=in_table(table[0], mean.context)))  # fmt: skip
     return found
+
+
+def _not_assessable(path: Path, mean, uncertain: str) -> Disagreement:
+    """A mean whose n is too large to tell: a note whose item names its own code,
+    `mean-not-assessable`, on the fallback (`tests/test_finding_keys_source.py`)."""
+    return Disagreement(path, mean.line, f"{mean.printed} of n = {mean.n}{uncertain}",
+                        mean.context)  # fmt: skip
+
+
+def _header_of(table: Table, mean) -> str:
+    """The header cell over a mean's column, its spaces made one; "" where there is none."""
+    from manuscript_guard.stats.shares import _columns
+
+    header = list(_columns(table[0])) if table else []
+    return next((" ".join(cell.text.split()) for at, cell in header if at == mean.column), "")
 
 
 def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:

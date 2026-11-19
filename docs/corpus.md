@@ -44,13 +44,15 @@ CLAUDE.local.md
 The papers are other people's work, whose licences seldom allow passing them on, and each is
 fetched again from its `meta.json` and checked against its SHA-256; runs and builds are made
 again from a commit. The tool refuses a corpus folder inside the manuscript-guard checkout,
-and writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, and
+or inside the main working tree of the repository where the checkout is a git worktree, and
+writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, and
 `measure` and `gate` write to standard output or to the `--out` and `--json` paths given,
 which may not be inside the checkout either, since their lists quote the papers.
 
 A packet is a list of papers, each with its `slug`, the `text` a judge reads, and `reports`:
 for each of `audit`, `audit-pdf`, `check` and `compare`, the `findings` as that report's
-`--json` gave them. A verdict is `{slug, report, index, verdict}`, where `index` is the
+`--json` gave them, and `totals`, the number of findings of each `gate/code` in that report
+before any were left out of the sample. A verdict is `{slug, report, index, verdict}`, where `index` is the
 finding's place in that report's list and `verdict` is `true`, `false` or `unclear`; any other
 fields (`kind`, `why`, `useful`) are kept for people. Only true and false verdicts are counted.
 
@@ -98,16 +100,23 @@ takes slugs, `--jobs` the number of papers at a time.
   form (a question about it counts as asked);
 - **gone**: none of those.
 
-The same one is found one to one within each paper's report: first by the same message at
-the same place, then by the same message, then by the same context at the same place, then
-by the same context, and last by the same word (its short form, its first quoted words or its
-first number of two characters or more) at the same place or in the same part of the paper,
-the Abstract, the main text or the supplement, as the message names it. A finding that lists
-forms, as G14's one question does, gives each form once, and the only finding of its code in
-the judged run's report is found again in the only one of the new report where that names
-its word. A new finding taken by one judged finding is not taken by another. What a finding
-is about is what it names, so an unrelated question or warning at the same line keeps
-nothing. The same file is the same path inside the paper's folder or its project.
+The same one is found one to one within each paper's report, each step for every judged
+finding before the next: the same message at the same place, the same context at the same
+place, the same message and context, the same message, the same context, and last the same
+word at the same place or in the same part of the paper, the Abstract, the main text or the
+supplement, as the message names it. The word is what the finding is about: its short form,
+else its first words in quotes, else its first number of two characters or more. Where
+another finding of the code has the same context, among the judged ones or the new ones, a
+context counts only where the new message names that word, since two findings of one sentence
+share a context; a context no other shares is the finding's own, whatever its counts now. A
+finding that lists forms must list the old one's. A finding that lists forms,
+as G14's one question does, gives each form once. Where a judged finding was the only one of
+its code in its report (`totals`) and its word tells it from the others of its code in the
+packets ("%" stands in every `notation-percent`, so it does not), it is found again in the
+only finding of its code in the new report that names the word, wherever that stands. A new
+finding taken by one judged finding is taken by no other, and a question or warning at the
+same line keeps a finding only where it names its word, is of another code, and no judged
+finding took it. The same file is the same path inside the paper's folder or its project.
 
 A finding a later build says under another code at another line, as a note, reads as gone,
 and a person reading the list has to see that it is not lost ([DESIGN.md](../DESIGN.md),

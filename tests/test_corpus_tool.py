@@ -34,6 +34,7 @@ def _tool():
 
 
 tool = _tool()
+matching = tool.corpus_match
 
 
 def finding(gate: str, code: str, message: str, severity: str = "warn", line: int | None = 10,
@@ -191,31 +192,31 @@ def test_a_finding_is_found_in_the_run_it_was_judged_from(corpus: Path) -> None:
 
 def test_a_note_of_the_same_finding_is_asked_and_a_warning_reported() -> None:
     old = finding("G7", "doi-unresolved", "10.1/abc does not resolve")
-    assert tool.state(old, [{**old, "severity": "info"}])[0] == "asked"
-    assert tool.state(old, [{**old, "severity": "fail"}])[0] == "reported"
+    assert matching.state(old, [{**old, "severity": "info"}])[0] == "asked"
+    assert matching.state(old, [{**old, "severity": "fail"}])[0] == "reported"
     question = {**old, "code": "question-doi", "severity": "info"}
-    assert tool.state(old, [{**question, "message": "Does 10.1/abc resolve?"}])[0] == "asked"
-    assert tool.state(old, [{**question, "message": "Is it cited?"}])[0] == "gone"
+    assert matching.state(old, [{**question, "message": "Does 10.1/abc resolve?"}])[0] == "asked"
+    assert matching.state(old, [{**question, "message": "Is it cited?"}])[0] == "gone"
 
 
 def test_a_folder_of_the_machine_in_a_message_does_not_tell_two_findings_apart() -> None:
     old = finding("G7", "x", r"C:\Users\someone\scratch\runs\one\paper\project\main.md: read")
     new = finding("G7", "x", "/home/other/runs/two/paper/project/main.md: read")
-    assert tool.state(old, [new])[0] == "reported"
+    assert matching.state(old, [new])[0] == "reported"
 
 
 def test_the_same_line_of_another_file_is_not_the_same_place() -> None:
     old = finding("G14", "spelling-variant", "'color'", line=60, path="manuscript/main.md")
     other = finding("G12", "plan-section-empty", "'color' here", line=60, path="design/plan.md")
-    assert tool.state(old, [other])[0] == "gone"
+    assert matching.state(old, [other])[0] == "gone"
     # Two files of one name in two folders are two files.
-    assert tool.state(old, [{**other, "path": "appendix/main.md"}])[0] == "gone"
+    assert matching.state(old, [{**other, "path": "appendix/main.md"}])[0] == "gone"
     # The same file, wherever the run was made, is the same file.
     there = {**other, "path": "/home/someone/runs/r1/paper-x/project/manuscript/main.md"}
-    assert tool.state(old, [there], "paper-x")[0] == "elsewhere"
+    assert matching.state(old, [there], "paper-x")[0] == "elsewhere"
     # A finding that names no file is at the place only of another that names none.
-    assert tool.state(old, [{**other, "path": None}])[0] == "gone"
-    assert tool.state({**old, "path": None}, [{**other, "path": None}])[0] == "elsewhere"
+    assert matching.state(old, [{**other, "path": None}])[0] == "gone"
+    assert matching.state({**old, "path": None}, [{**other, "path": None}])[0] == "elsewhere"
 
 
 def test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part() -> None:
@@ -223,17 +224,17 @@ def test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part() -> 
                        "and not defined there", line=3)  # fmt: skip
     main_text = finding("G14", "abbreviation-undefined", "SHAP is used 7 times in the main "
                         "text and not defined there", line=40)  # fmt: skip
-    assert tool.states([abstract, main_text], [main_text]) == [("gone", []),
+    assert matching.states([abstract, main_text], [main_text]) == [("gone", []),
                                                                 ("reported", [0])]  # fmt: skip
-    assert tool.state(abstract, [main_text])[0] == "gone"
+    assert matching.state(abstract, [main_text])[0] == "gone"
     # One question that lists the form twice, once for each part, answers both.
     question = finding("G14", "abbreviation-undefined", "2 short forms are used and never "
                        "defined: 'SHAP' (in the abstract) here, then SHAP", "info", line=1,
                        question=True, forms=[
                            {"form": "SHAP", "line": 3, "message": abstract["message"]},
                            {"form": "SHAP", "line": 40, "message": main_text["message"]}])
-    assert tool.states([abstract, main_text], [question]) == [("asked", [0]), ("asked", [0])]
-    assert tool.states([abstract, main_text], [{**question, "forms": question["forms"][1:]}]
+    assert matching.states([abstract, main_text], [question]) == [("asked", [0]), ("asked", [0])]
+    assert matching.states([abstract, main_text], [{**question, "forms": question["forms"][1:]}]
                        ) == [("gone", []), ("asked", [0])]  # fmt: skip
 
 
@@ -242,10 +243,10 @@ def test_the_only_finding_of_its_code_is_found_again_where_its_line_moved() -> N
                   line=91)  # fmt: skip
     now = finding("G14", "notation-percent", "'%' stands after a space 3 times, as in '27.6 %'",
                   line=33)  # fmt: skip
-    assert tool.states([old], [now], alone=frozenset({0})) == [("reported", [0])]
+    assert matching.states([old], [now], alone=frozenset({0})) == [("reported", [0])]
     # Not where the judged run had others of its code, nor where the new one has two.
-    assert tool.states([old], [now])[0][0] == "gone"
-    assert tool.states([old], [now, {**now, "line": 70}], alone=frozenset({0}))[0][0] == "gone"
+    assert matching.states([old], [now])[0][0] == "gone"
+    assert matching.states([old], [now, {**now, "line": 70}], alone=frozenset({0}))[0][0] == "gone"
 
 
 def test_a_name_listed_with_others_is_found_again_by_the_name() -> None:
@@ -255,18 +256,108 @@ def test_a_name_listed_with_others_is_found_again_by_the_name() -> None:
                       "are: 'n_top' here, then max_p", line=17, forms=[
                           {"form": "n_top", "line": 17, "message": "'n_top' is written ..."},
                           {"form": "max_p", "line": 21, "message": "'max_p' is written ..."}])
-    assert tool.state(old, [grouped]) == ("reported", [0])
+    assert matching.state(old, [grouped]) == ("reported", [0])
     other = {**old, "message": old["message"].replace("max_p", "min_q")}
-    assert tool.states([old, other], [grouped]) == [("reported", [0]), ("gone", [])]
+    assert matching.states([old, other], [grouped]) == [("reported", [0]), ("gone", [])]
+
+
+def test_a_finding_paired_with_one_keeps_no_other_of_its_code_at_the_place() -> None:
+    a = finding("G8", "p-inconsistent", "t(29) = 3.11 gives a P of 0.004, the text says "
+                "P = 0.013", line=5)  # fmt: skip
+    b = finding("G8", "p-inconsistent", "t(29) = 2.05 gives a P of 0.049, the text says "
+                "P = 0.20", line=5)  # fmt: skip
+    assert matching.states([a, b], [a]) == [("reported", [0]), ("gone", [])]
+    # Nor does a finding of its own code that no judged one took, though it names the word,
+    # at another line: that is no other code's warning at its place.
+    moved = {**a, "line": 9}
+    assert matching.states([b], [moved])[0] == ("gone", [])
+
+
+def test_a_context_shared_keeps_only_the_finding_its_message_names() -> None:
+    sentence = "the XYZ and QRS scores were compared"
+    xyz = finding("G14", "abbreviation-undefined", "XYZ is used once in the main text and not "
+                  "defined there", line=20, context=sentence)  # fmt: skip
+    qrs = finding("G14", "abbreviation-undefined", "QRS is used once in the main text and not "
+                  "defined there", line=20, context=sentence)  # fmt: skip
+    grouped = finding("G14", "abbreviation-undefined", "1 short form is used and never "
+                      "defined: 'XYZ' here. Does it need defining?", "info", line=20,
+                      context=sentence, question=True, forms=[{"form": "XYZ"}])
+    assert matching.states([xyz, qrs], [grouped]) == [("asked", [0]), ("gone", [])]
+    before = finding("G14", "abbreviation-used-before-defined", "XYZ is used here, and defined "
+                     "later at Methods", line=20, context=sentence)  # fmt: skip
+    other = {**before, "message": "QRS is used here, and defined later at Methods"}
+    reworded = {**other, "message": "QRS is used here, and defined later at Results, "
+                "paragraph 2", "line": 22}  # fmt: skip
+    assert matching.states([before, other], [reworded]) == [("gone", []), ("reported", [0])]
+    # A context no other finding of the code shares is the finding's own, whatever its
+    # numbers now: a rate whose count of words moved with an edit is the same rate.
+    rate = finding("G6", "ai-cadence", "negative-parallelism: 9 in 8539 words (1.1 per 1000)",
+                   line=None, context="not just in enrollment but")  # fmt: skip
+    vocabulary = {**rate, "message": "ai-vocabulary: 34 in 8539 words", "context": "enhance"}
+    now = [{**vocabulary, "message": "ai-vocabulary: 34 in 8526 words"},
+           {**rate, "message": "negative-parallelism: 9 in 8526 words (1.1 per 1000)"}]
+    assert matching.states([vocabulary, rate], now) == [("reported", [0]), ("reported", [1])]
+
+
+def test_the_context_at_its_place_comes_before_a_message_alone() -> None:
+    generic = "the plan's question section is a heading with nothing under it"
+    a = finding("G12", "plan-section-empty", generic, line=5, context="Question")
+    b = finding("G12", "plan-section-empty", generic, line=6, context="Outcome")
+    new = [{**b, "line": 70}, {**a, "line": 80}]
+    assert matching.states([a, b], new) == [("reported", [1]), ("reported", [0])]
+
+
+def test_an_apostrophe_in_a_word_opens_no_quote() -> None:
+    old = finding("audit", "does-not-fit", "the paper's text says P = .61 and F(2, 55) = 0.62")
+    assert matching.quoted(old["message"]) == []
+    key = matching.key_of(old)
+    assert key is not None and key.search("P = .61 is larger") and not key.search("P = .612")
+    assert matching.quoted("'color' and \"colour\" and `x_y`") == ["color", "colour", "x_y"]
+
+
+def test_the_only_finding_of_its_code_is_alone_where_its_word_tells_it_apart(
+        tmp_path: Path) -> None:  # fmt: skip
+    root = tmp_path / "corpus-root"
+    (root / "report" / "packets").mkdir(parents=True)
+    (root / "report" / "judged").mkdir()
+    percent = finding("G14", "notation-percent", "'%' stands after a space 2 times")
+    doi = finding("G7", "doi-unresolved", "10.1/abc does not resolve")
+    papers = [
+        {"slug": "p1", "reports": {"audit": {
+            "totals": {"G14/notation-percent": 1, "G7/doi-unresolved": 1},
+            "findings": [percent, doi]}}},
+        {"slug": "p2", "reports": {"audit": {
+            "totals": {"G14/notation-percent": 1, "G7/doi-unresolved": 2},
+            "findings": [finding("G14", "notation-percent", "'%' stands against its number"),
+                         finding("G7", "doi-unresolved", "10.2/xyz does not resolve")]}}},
+    ]  # fmt: skip
+    (root / "report" / "packets" / "f.json").write_text(json.dumps(papers))
+    verdicts = [{"slug": s, "report": "audit", "index": i, "verdict": "true"}
+                for s in ("p1", "p2") for i in (0, 1)]  # fmt: skip
+    (root / "report" / "judged" / "f.json").write_text(json.dumps(verdicts))
+    judged, _ = tool.load_judged(root)
+    alone = {(j.slug, j.finding["code"]): j.alone for j in judged}
+    assert alone == {("p1", "notation-percent"): False,  # '%' stands in every one of its code
+                     ("p1", "doi-unresolved"): True,
+                     ("p2", "notation-percent"): False,
+                     ("p2", "doi-unresolved"): False}  # two of its code in its report
+
+
+def test_a_finding_with_no_file_is_not_at_the_place_of_one_with_a_file() -> None:
+    old = finding("G7", "doi-unresolved", "10.1/abc does not resolve", line=4, path=None)
+    question = finding("G7", "question-doi", "Does 10.1/abc resolve?", "info", line=4,
+                       path="manuscript/main.md", question=True)  # fmt: skip
+    assert matching.state(old, [question])[0] == "gone"
+    assert matching.state(old, [{**question, "path": None}])[0] == "asked"
 
 
 def test_two_findings_of_one_message_take_one_finding_each() -> None:
     first = finding("G8", "p-inconsistent", "t(29) = 3.11 gives a P of 0.004, the text says "
                     "P = 0.013", line=5)  # fmt: skip
     second = {**first, "line": 50}
-    said = tool.states([first, second], [second])
+    said = matching.states([first, second], [second])
     assert said == [("gone", []), ("reported", [0])]
-    assert tool.states([first, second], [second, first]) == [("reported", [1]),
+    assert matching.states([first, second], [second, first]) == [("reported", [1]),
                                                              ("reported", [0])]  # fmt: skip
 
 
@@ -277,12 +368,12 @@ def test_a_question_or_warning_at_the_place_keeps_only_what_it_names() -> None:
                        "defined: 'ASC' here, then AQ, IQ. Do any of them need defining?",
                        "info", line=66, question=True)  # fmt: skip
     phrasing = finding("G6", "ai-phrasing", "'delve into' is a phrase models favour", line=66)
-    assert tool.state(lost, [question])[0] == "gone"
-    assert tool.state(lost, [phrasing])[0] == "gone"
+    assert matching.state(lost, [question])[0] == "gone"
+    assert matching.state(lost, [phrasing])[0] == "gone"
     asks = finding("audit", "question-p-adjusted", "The paper says its P values are adjusted. "
                    "P = .61 is larger than the 0.539 to 0.544 that F(2, 55) = 0.62 gives on "
                    "its own. Is it the adjusted P?", "info", line=66, question=True)
-    assert tool.state(lost, [question, phrasing, asks]) == ("asked", [2])
+    assert matching.state(lost, [question, phrasing, asks]) == ("asked", [2])
 
 
 def test_a_finding_said_under_another_code_at_another_line_is_gone() -> None:
@@ -290,7 +381,7 @@ def test_a_finding_said_under_another_code_at_another_line_is_gone() -> None:
                   line=19, path="v2.tex")  # fmt: skip
     now = finding("compare", "table-changed", "Table 6: the row '0.089 B & 0.48 M' is gone",
                   "info", line=40, path="v2.tex")  # fmt: skip
-    assert tool.state(old, [now])[0] == "gone"
+    assert matching.state(old, [now])[0] == "gone"
 
 
 def test_the_reading_notices_are_counted_apart(corpus: Path) -> None:
@@ -402,6 +493,22 @@ def test_the_command_says_what_it_needs_in_one_line(tmp_path: Path, capsys,
     assert tool.ENV in capsys.readouterr().err
     assert tool.main(["--corpus", str(tmp_path), "measure", "x"]) == 2
     assert "not a corpus" in capsys.readouterr().err
+
+
+def test_a_worktree_guards_the_main_working_tree_too(tmp_path: Path) -> None:
+    main = tmp_path / "checkout"
+    gitdir = main / ".git" / "worktrees" / "wt"
+    gitdir.mkdir(parents=True)
+    (gitdir / "commondir").write_text("../..\n")
+    worktree = main / ".claude" / "worktrees" / "wt"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {gitdir}\n")
+    assert tool.checkouts(worktree) == {worktree.resolve(), main.resolve()}
+    assert tool.in_a_checkout(main / "gate.md", root=worktree)
+    assert tool.in_a_checkout(worktree / "x" / "gate.md", root=worktree)
+    assert not tool.in_a_checkout(tmp_path / "corpus" / "gate.md", root=worktree)
+    # A checkout that is no worktree guards itself.
+    assert tool.checkouts(tmp_path / "plain") == {(tmp_path / "plain").resolve()}
 
 
 def test_nothing_the_tool_writes_lands_in_the_checkout(corpus: Path, capsys) -> None:

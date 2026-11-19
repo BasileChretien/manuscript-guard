@@ -16868,9 +16868,13 @@ been sorted yet.
   part of the paper the new build reads otherwise, at another line: a G14 finding "in the
   abstract" where the judged run took a Discussion for the Abstract, now listed in the
   question "in the main text", is not the same finding, since two findings of one form in
-  two parts must not stand for each other.
-  Pinned by `tests/test_corpus_tool.py::test_a_finding_said_under_another_code_at_another_line_is_gone`
-  and `tests/test_corpus_tool.py::test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part`.
+  two parts must not stand for each other. A finding that names no file is at the place only
+  of another that names none, so where one build gives the file and the other does not, a
+  question or warning at that line keeps nothing and the finding reads as gone: a false
+  alarm, the safe side for a gate, which a person reading the list sees.
+  Pinned by `tests/test_corpus_tool.py::test_a_finding_said_under_another_code_at_another_line_is_gone`,
+  `tests/test_corpus_tool.py::test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part`
+  and `tests/test_corpus_tool.py::test_a_finding_with_no_file_is_not_at_the_place_of_one_with_a_file`.
 
 - **A short form that needs its definition and is never given one is asked about, not
   warned of.** G14's one question on the short forms never defined lists it beside the

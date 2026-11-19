@@ -1,6 +1,6 @@
 """Install manuscript-guard at a commit and run its reports on every paper of a corpus.
 
-The half of `tools/corpus.py` that runs things; that file says what the rest does, and
+The part of `tools/corpus.py` that runs things; that file says what the rest does, and
 docs/corpus.md how a corpus is laid out. The papers are downloaded files: every command here
 has a time limit, none runs with its working folder inside `corpus/`, and the build reads
 the papers under `python -I`, which imports nothing from a working folder or `PYTHONPATH`.

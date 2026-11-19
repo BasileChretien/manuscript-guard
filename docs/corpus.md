@@ -104,8 +104,10 @@ The same one is found one to one within each paper's report, each step for every
 finding before the next: the same message at the same place, the same context at the same
 place, the same message and context, the same message, the same context, and last the same
 word at the same place or in the same part of the paper, the Abstract, the main text or the
-supplement, as the message names it. The word is what the finding is about: its short form,
-else its first words in quotes, else its first number of two characters or more. Where
+supplement, as the message names it. The word is what the finding is about: its short form;
+else a test statistic with its value as typed, "t(29) = 2.05" or "F(2, 55) = 0.62", its spacing
+free, or failing that the P it states, never its degrees of freedom alone; else its first
+words in quotes; else its first number of two characters or more. Where
 another finding of the code has the same context, among the judged ones or the new ones, a
 context counts only where the new message names that word, since two findings of one sentence
 share a context; a context no other shares is the finding's own, whatever its counts now. A

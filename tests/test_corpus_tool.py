@@ -273,6 +273,22 @@ def test_a_finding_paired_with_one_keeps_no_other_of_its_code_at_the_place() -> 
     assert matching.states([b], [moved])[0] == ("gone", [])
 
 
+def test_a_statistic_is_found_by_its_value_as_typed_never_by_its_degrees_of_freedom() -> None:
+    a = finding("G8", "p-inconsistent", "t(29) = 3.11 gives a P of 0.004, the text says "
+                "P = 0.013", line=5)  # fmt: skip
+    b = finding("G8", "p-inconsistent", "t(29) = 2.05 gives a P of 0.049, the text says "
+                "P = 0.20", line=5)  # fmt: skip
+    reworded = {**a, "message": "t(29)=3.11 gives P between 0.0041 and 0.0042, and the text "
+                "says P = 0.013"}  # fmt: skip
+    assert matching.states([b, a], [reworded]) == [("gone", []), ("reported", [0])]
+    assert matching.states([a, b], [reworded]) == [("reported", [0]), ("gone", [])]
+    key = matching.key_of(finding("audit", "does-not-fit", "F(2, 55) = 0.62 gives a P"))
+    assert key.search("that F(2,55)=0.62 gives on its own") and not key.search("F(2, 55) = 0.621")
+    assert matching.key_of(finding("x", "y", "the text says P = 0.20")).search("P=0.20 is")
+    chi = matching.key_of(finding("x", "y", "\N{GREEK SMALL LETTER CHI}2(1) = 3.84 gives P"))
+    assert chi.search("\N{GREEK SMALL LETTER CHI}2 (1) = 3.84") and not chi.search("(1) = 3.84")
+
+
 def test_a_context_shared_keeps_only_the_finding_its_message_names() -> None:
     sentence = "the XYZ and QRS scores were compared"
     xyz = finding("G14", "abbreviation-undefined", "XYZ is used once in the main text and not "
@@ -308,7 +324,7 @@ def test_the_context_at_its_place_comes_before_a_message_alone() -> None:
 
 
 def test_an_apostrophe_in_a_word_opens_no_quote() -> None:
-    old = finding("audit", "does-not-fit", "the paper's text says P = .61 and F(2, 55) = 0.62")
+    old = finding("audit", "does-not-fit", "the paper's text says P = .61 for the second test")
     assert matching.quoted(old["message"]) == []
     key = matching.key_of(old)
     assert key is not None and key.search("P = .61 is larger") and not key.search("P = .612")

@@ -21,6 +21,14 @@ QUOTED = re.compile(
 ABSOLUTE = re.compile(r"(?:(?<![\w/])[A-Za-z]:/|(?<![\w.:/])/(?=[^\s/]+/))(?:[^\s/:'\"]+/)+")
 RUN_DIR = re.compile(r"runs/[^/\s]+/")
 NUMBER = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?|\.\d+)")
+#: A test statistic as typed, its name, its degrees of freedom and its value: "t(29) = 2.05",
+#: "F(2, 55) = 0.62", "\N{GREEK SMALL LETTER CHI}2(1) = 3.84".
+STATISTIC = re.compile(
+    r"(?<!\w)(t|F|z|r|H|U|W|\N{GREEK SMALL LETTER CHI}\N{SUPERSCRIPT TWO}|"
+    r"\N{GREEK SMALL LETTER CHI}2|chi2|X2)\s*\(\s*([^()=]{1,30}?)\s*\)\s*=\s*(-?\d*\.?\d+)"
+)
+#: A P value as the text states it: "P = 0.20", "p < .05".
+STATED_P = re.compile(r"(?<!\w)[Pp]\s*([=<>\N{LESS-THAN OR EQUAL TO}])\s*(\d*\.?\d+)")
 #: The part of the paper a G14 finding names, which tells two findings of one form apart.
 REGION = re.compile(r"\bin the (abstract|main text|supplement)\b", re.IGNORECASE)
 
@@ -78,12 +86,34 @@ def quoted(message: object) -> list[str]:
             for hit in QUOTED.finditer(str(message or ""))]  # fmt: skip
 
 
+def _statistic(message: str) -> re.Pattern | None:
+    """The first test statistic with its value, its spacing free; else the stated P."""
+    hit = STATISTIC.search(message)
+    if hit:
+        name, df, value = hit.groups()
+        dfs = r"\s*,\s*".join(re.escape(part.strip()) for part in df.split(","))
+        return re.compile(rf"(?<!\w){re.escape(name)}\s*\(\s*{dfs}\s*\)\s*=\s*"
+                          rf"{re.escape(value)}(?![\d])")  # fmt: skip
+    stated = STATED_P.search(message)
+    if stated:
+        sign, value = stated.groups()
+        return re.compile(rf"(?<!\w)[Pp]\s*{re.escape(sign)}\s*{re.escape(value)}(?![\d])")
+    return None
+
+
 def key_of(old: dict) -> re.Pattern | None:
-    """What a finding is about, to be found in another's message: its short form, else its
-    first quoted words, else its first number of two characters or more (a single digit, a
-    degree of freedom or a count of two, stands in too many messages to tell one apart)."""
+    """What a finding is about, to be found in another's message: its short form; else a
+    test statistic with its value as typed, "t(29) = 2.05", or failing that the P it states,
+    never its degrees of freedom alone; else its first quoted words; else its first number
+    of two characters or more (a single digit stands in too many messages)."""
     message = str(old.get("message") or "")
-    word = form_of(old) or next(iter(quoted(message)), None)
+    form = form_of(old)
+    if form:
+        return re.compile(rf"(?<!\w){re.escape(form)}(?!\w)")
+    statistic = _statistic(message)
+    if statistic is not None:
+        return statistic
+    word = next(iter(quoted(message)), None)
     if word:
         return re.compile(rf"(?<!\w){re.escape(word)}(?!\w)")
     number = next((n for n in NUMBER.findall(message) if len(n) >= 2), None)

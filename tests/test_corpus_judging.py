@@ -405,6 +405,17 @@ def test_a_finding_a_batch_holds_is_not_packed_again(corpus: Path, capsys) -> No
     assert len(packed(corpus, "b3")) == 4
 
 
+def test_a_key_a_batch_holds_once_leaves_out_one_finding_under_it(corpus: Path) -> None:
+    agreed(corpus)  # b1 holds 'delve into' once, waiting for the author
+    check = R1[("paper-a", "check")]
+    write_run(corpus, "r1", {("paper-a", "check"): [*check, {**check[4], "line": 80}]})
+    result = pack(corpus, "b2")
+    assert packed(corpus, "b2") == [("paper-a", "check", check[4]["message"])]
+    papers = json.loads((corpus / "report" / "packets" / "b2.json").read_text("utf-8"))
+    assert papers[0]["reports"]["check"]["findings"][0]["line"] == 80  # the second, in order
+    assert result["packed_already"] == 2
+
+
 def test_agree_refuses_a_packet_that_is_no_batch_s(corpus: Path) -> None:
     with pytest.raises(tool.CorpusError, match="field.json is not a batch's packet"):
         judging.agree(corpus, "field")
@@ -516,6 +527,19 @@ def test_the_gate_counts_the_new_loud_findings_with_no_verdict(corpus: Path) -> 
         tool.gate(corpus, "r0", "r1"))
 
 
+def test_the_gate_says_why_it_cannot_count_before_it_measures(corpus: Path) -> None:
+    # A base with no keys, and ties of a run that is gone: measuring the new run would fail.
+    unkeyed = {where: [{k: v for k, v in f.items() if k != "key"} for f in found]
+               for where, found in R0.items()}  # fmt: skip
+    write_run(corpus, "r0", unkeyed, scheme=None)
+    (corpus / "runs" / "r0" / "run.json").unlink()
+    (corpus / "report" / "ties.yaml").write_text(json.dumps(
+        {"run": "no-such-run", "scheme": 2, "ties": []}), "utf-8")  # fmt: skip
+    result = tool.gate(corpus, "r0", "r1")
+    assert result["fresh"] == {"count": None, "note": "r0 carries no keys"}
+    assert "not counted, as r0 carries no keys" in tool.render_gate(result)
+
+
 def test_the_gate_counts_what_the_command_it_prints_packs(corpus: Path) -> None:
     # A first verdict tied to a key that stands twice in the run of the ties, once quietly
     # in the base and once in the new run: the gate holds its count to the base, and kept
@@ -551,6 +575,37 @@ def test_a_terminal_is_written_text_in_its_own_encoding(monkeypatch) -> None:
     tool._write("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n", {}, None, None)
     stream.flush()
     assert raw.getvalue().decode("utf-16-le") == "keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n"
+
+
+def test_a_terminal_that_cannot_write_a_character_gets_a_stand_in(monkeypatch) -> None:
+    class Terminal(io.BytesIO):
+        def isatty(self) -> bool:
+            return True
+
+    raw = Terminal()
+    stream = io.TextIOWrapper(raw, encoding="latin-1", newline="")
+    monkeypatch.setattr(sys, "stdout", stream)
+    tool._write("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n", {}, None, None)
+    stream.flush()
+    assert raw.getvalue().decode("latin-1") == "keys changed scheme (1 ? 2)\n"
+
+
+def test_a_stream_with_a_buffer_and_no_isatty_gets_the_bytes(monkeypatch) -> None:
+    class Stream:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+
+        def write(self, text: str) -> None:
+            raise AssertionError("written as text")
+
+        def flush(self) -> None:
+            pass
+
+    stream = Stream()
+    monkeypatch.setattr(sys, "stdout", stream)
+    tool._write("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n", {}, None, None)
+    assert stream.buffer.getvalue().decode("utf-8") == (
+        "keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n")
 
 
 def test_agree_from_the_command_line(corpus: Path, capsys) -> None:

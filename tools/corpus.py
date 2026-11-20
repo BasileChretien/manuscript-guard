@@ -687,7 +687,11 @@ def _measured(root: Path, name: str) -> tuple[Run, list[dict]]:
 def fresh(root: Path, new_name: str, base: Run) -> dict:
     """The gate's count of the new run's loud findings with no verdict, new against the
     base: the new run measured as `unjudged` measures it, and `unjudged --base`'s selection,
-    so that the count is what the command it prints packs."""
+    so that the count is what the command it prints packs; where the keys of the two cannot
+    be set side by side, why, and the new run is not measured."""
+    problem = corpus_judging.base_problem(Run(run_folder(root, new_name)), base)
+    if problem:
+        return {"count": None, "note": problem}
     return corpus_judging.fresh(root, *_measured(root, new_name), base)
 
 
@@ -705,12 +709,13 @@ def _write(text: str, data: dict, out: str | None, as_json: str | None) -> None:
     _outside_the_checkout(out, as_json)
     if out:
         Path(out).write_text(text, "utf-8")
-    elif hasattr(sys.stdout, "buffer") and not sys.stdout.isatty():  # UTF-8, as a file is
-        sys.stdout.flush()
+    elif not getattr(sys.stdout, "isatty", lambda: False)() and hasattr(sys.stdout, "buffer"):
+        sys.stdout.flush()  # UTF-8, as a file is
         sys.stdout.buffer.write(text.encode("utf-8"))
         sys.stdout.buffer.flush()
-    else:
-        sys.stdout.write(text)
+    else:  # a terminal: its own encoding, a character it cannot show replaced
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        sys.stdout.write(text.encode(enc, "replace").decode(enc))
     if as_json:
         Path(as_json).write_text(json.dumps(data, indent=1, ensure_ascii=False), "utf-8")
 

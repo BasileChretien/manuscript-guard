@@ -260,14 +260,15 @@ def picked(run, keep) -> list[tuple[str, str, list[dict], list[int]]]:
     return out
 
 
-def held_keys(root: Path, scheme: int) -> set[tuple[str, str, str]]:
-    """The keys the batch packets of a scheme hold, by paper and report: findings packed
-    already, whose verdicts may wait for the author."""
+def held_keys(root: Path, scheme: int) -> collections.Counter:
+    """How many times the batch packets of a scheme hold each key, by paper and report:
+    findings packed already, whose verdicts may wait for the author."""
     _first, batches = read_packets(root)
-    return {(slug, report, f["key"]) for papers in batches.values()
-            for slug, paper in papers.items() if paper.get("scheme") == scheme
-            for report, part in paper.get("reports", {}).items()
-            for f in part.get("findings", []) if isinstance(f.get("key"), str)}  # fmt: skip
+    return collections.Counter(
+        (slug, report, f["key"]) for papers in batches.values()
+        for slug, paper in papers.items() if paper.get("scheme") == scheme
+        for report, part in paper.get("reports", {}).items()
+        for f in part.get("findings", []) if isinstance(f.get("key"), str))  # fmt: skip
 
 
 def select(root: Path, run, rows: list[dict], base=None, share: float = SETTLED,
@@ -286,11 +287,15 @@ def select(root: Path, run, rows: list[dict], base=None, share: float = SETTLED,
         if (f.get("key") in loud_keys(base, slug, report) if base is not None
                 else code_of(f) in settled):  # fmt: skip
             return False
-        again["held"] += (slug, report, f.get("key")) in held
-        return (slug, report, f.get("key")) not in held
+        # As many under a key as the batches hold, in order: the rest are new.
+        where = (slug, report, f.get("key"))
+        if again[where] < held[where]:
+            again[where] += 1
+            return False
+        return True
 
     found = picked(run, keep)
-    return {"found": found, "settled": settled, "packed_already": again["held"]}
+    return {"found": found, "settled": settled, "packed_already": sum(again.values())}
 
 
 def fresh(root: Path, run, rows: list[dict], base) -> dict:

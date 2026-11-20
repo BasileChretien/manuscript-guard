@@ -16897,9 +16897,9 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   and the generated inputs of the `check` reading.
 
 `keys.SCHEME` numbers the scheme the keys are made by, 1 for a commit without it: a pull
-request that changes a key on purpose raises it, and where a base's and a new run's differ
-the corpus tool pairs their findings by message, not by key, until the corpus is tied again
-(Basile, 2026-11-20).
+request that changes a key on purpose raises it, and `tools/corpus.py` reads it from each
+run's commit (from #708): where a base's and a new run's differ it pairs their findings by
+message, not by key, until the corpus is tied again (Basile, 2026-11-20).
 
 The keys are in `--json` only: nothing an author reads changes. The differential reading
 `finding keys` holds the audit's and compare's keys, and the reading `check` compares the

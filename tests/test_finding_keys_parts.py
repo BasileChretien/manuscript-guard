@@ -94,6 +94,19 @@ def test_an_abstract_is_structured_only_where_it_opens_on_a_part_it_names() -> N
     assert _parts(inline, "heart disease", "It worked") == [keys.ABSTRACT, keys.MAIN]
 
 
+def test_a_compound_opener_makes_an_abstract_structured() -> None:
+    """A structured Abstract may open on a compound, "Background and Purpose" as Stroke
+    prints it: it stays the Abstract through its own Methods and Results (the scoped check of
+    #709)."""
+    stroke = ("Abstract\nBackground and Purpose\nStroke matters.\nMethods\nWe did it.\n"
+              "Results\nIt worked.\nConclusions\nIt holds.\nIntroduction\nMore.\n")  # fmt: skip
+    assert _parts(stroke, "Stroke", "We did", "It worked", "It holds", "More.") == [
+        keys.ABSTRACT, keys.ABSTRACT, keys.ABSTRACT, keys.ABSTRACT, keys.MAIN]
+    for opener in ("Background and Aims", "Aims and Objectives", "Purpose of Review"):
+        text = stroke.replace("Background and Purpose", opener)
+        assert _parts(text, "We did", "It worked") == [keys.ABSTRACT, keys.ABSTRACT], opener
+
+
 def test_a_structured_abstract_renamed_moves_where_it_ends() -> None:
     """The limit of DESIGN.md's Known gaps, held as it is: with RESULTS renamed FINDINGS,
     which no rank names, the paper's own Methods and Results rank later than every part the

@@ -2019,8 +2019,11 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
     return found
 
 
-#: What a cell of data opens on: a figure, or a sign before one.
-_DATUM = re.compile("\\s*[-+\u2212\u00b1]?\\s*\\d")
+#: What a cell of data opens on, its emphasis aside: a figure, after a currency sign, a
+#: bracket, a sign or a comparison; or what a cell holds where a datum is not reported, a
+#: dash alone, "NR", "NA".
+_DATUM = re.compile("\\s*[$(\\[]*\\s*[-+\u2212\u2013\u2014\u00b1<>\u2264\u2265]?\\s*\\d"
+                    "|\\s*(?:[-\u2013\u2014]|NR|NA|n/a)\\s*\\Z")
 
 
 def _not_assessable(path: Path, mean, uncertain: str) -> Disagreement:
@@ -2035,16 +2038,17 @@ def _header_of(table: Table, mean) -> str:
     the cell whose span covers the column, "Treatment (n = 20) / Week 12". The header ends at
     the first row with a cell, after its first, that opens on a figure or a sign, a row of
     data: "45 [30-60]", "12 (60.0%)", "3.1 (1.0), n = 25". "" where none is."""
-    from manuscript_guard.stats.shares import _columns
+    from manuscript_guard.stats.shares import _clean, _columns
 
     def of_data(row) -> bool:
-        return any(_DATUM.match(cell.text) for cell in row[1:])
+        return any(_DATUM.match(_clean(cell.text)[0].lstrip("*_ ")) for cell in row[1:])
 
     said = []
     for at, row in enumerate(table[: max(mean.row, 1)]):
         if not row:
             continue
-        if at and of_data(row):
+        # A row with no label of its own is a header's, as `stats/margins.py` reads it.
+        if at and row[0].text.strip() and of_data(row):
             break
         cell = next((cell for start, cell in _columns(row)
                      if start <= mean.column < start + max(cell.span, 1)), None)  # fmt: skip

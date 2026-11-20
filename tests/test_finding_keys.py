@@ -473,6 +473,38 @@ def test_a_row_of_data_above_ends_the_header(tmp_path: Path) -> None:
     assert found[0] == found[1] == ["3.47/n=20@treatment(n=20)"], found
 
 
+def test_a_row_of_data_ends_the_header_however_its_datum_is_written(tmp_path: Path) -> None:
+    """A row of data ends the header whatever its first datum opens on, its emphasis aside:
+    an en dash for its minus, a bracket, a comparison, or nothing reported, "NR" or a dash
+    alone. Editing it leaves the key of 3.47 below as it was (the scoped check of #709)."""
+    rows = [("| Change, mean (SD) | {x} (1.2) |", "\u20130.5", "\u20130.6"),
+            ("| Age, median [IQR] | **{x}** [30-60] |", "45", "46"),
+            ("| P value | <{x} |", "0.001", "0.002"),
+            ("| Dose | {x} |", "NR", "\u2013")]  # fmt: skip
+    for at, (row, one, other) in enumerate(rows):
+        text = ("# Results\n\nTable 1. Scores.\n\n| Characteristic | Treatment (n = 20) |\n"
+                f"|---|---|\n{row}\n| Score, mean (SD) | 3.47 (1.20) |\n")  # fmt: skip
+        found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{at}-{x}.md"), "Score")
+                 for x in (one, other)]  # fmt: skip
+        assert found[0] == found[1] == ["3.47/n=20@treatment(n=20)"], (row, found)
+
+
+def test_a_header_row_with_no_label_names_the_column(tmp_path: Path) -> None:
+    """A row whose first cell is empty is a header's however its cells open: the doses
+    under "Drug (n = 20)" name the two columns of 3.47, two keys and no ordinal (the scoped
+    check of #709: "10 mg" read as data ended the header)."""
+    from test_audit import make_docx, para, row
+
+    spanning = ("<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>Drug (n = 20)"
+                "</w:t></w:r></w:p></w:tc>")  # fmt: skip
+    table = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+             + spanning + "</w:tr>" + row("", "10 mg", "20 mg")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)") + "</w:tbl>")  # fmt: skip
+    found = _grim(make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table),
+                  "Age")  # fmt: skip
+    assert sorted(found) == ["3.47/n=20@drug(n=20)/10mg", "3.47/n=20@drug(n=20)/20mg"], found
+
+
 def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:
     """A GRIM mean is keyed by its column too: one row's 3.47 under two columns of n = 10
     is two findings and two keys, neither numbered."""

@@ -40,9 +40,9 @@ from pathlib import Path
 
 #: The number of the scheme the keys are made by (Basile, 2026-11-20). A commit without it
 #: makes scheme 1. A pull request that changes a key on purpose raises it: a subject, the
-#: digest, the part, the splitter or the normal form. The corpus tool (`tools/corpus.py`)
-#: reads it from each run's commit, and where the base's and the new run's differ it pairs
-#: their findings by message, not by key, until the corpus is tied again.
+#: digest, the part, the splitter or the normal form. The corpus tool, `tools/corpus.py`,
+#: reads it from each run's commit (from #708), and where the base's and the new run's
+#: differ it pairs their findings by message, not by key, until the corpus is tied again.
 SCHEME = 2
 
 #: The parts of a paper a digest is taken in.
@@ -168,13 +168,17 @@ def _structured(text: str, at: int) -> int | None:
     It is structured where its first line after the heading is shaped as a heading (a
     capital, no stop, `_HEADING_SHAPED`) and is, emphasis, stops and colons aside and a
     singular read as its plural, one of its ranked parts (`_RANKS`) or what a structured
-    Abstract opens on (`_OPENS_A_STRUCTURED`): "IMPORTANCE", "Background". A hard-wrapped
-    sentence's first line, or "Background: Drugs matter for many patients with", is none."""
+    Abstract opens on (`_OPENS_A_STRUCTURED`): "IMPORTANCE", "Background", or a compound
+    whose words before its " and " or " of " are, "Background and Purpose", "Purpose of
+    Review". A hard-wrapped sentence's first line, or "Background: Drugs matter for many
+    patients with", is none."""
     rest = text[at:].lstrip("\n\r\t ")
     line = rest.split("\n", 1)[0]
     said = line.strip("*_ \t.:").casefold()
-    name = _FOLDED.get(said, said)
-    named = name in _RANKS or name in _OPENS_A_STRUCTURED
+    # A compound, "Background and Purpose", "Purpose of Review", by its words before.
+    names = {said, re.split(r" (?:and|of) ", said, maxsplit=1)[0]}
+    named = any(_FOLDED.get(one, one) in _RANKS or _FOLDED.get(one, one) in _OPENS_A_STRUCTURED
+                for one in names)  # fmt: skip
     return -1 if line and named and _HEADING_SHAPED.fullmatch(line) else None
 
 

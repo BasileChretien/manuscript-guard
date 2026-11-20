@@ -99,13 +99,15 @@ the same paper's audit gave, and those of the codes every new project gives
 instead, of every code, those whose key is not loud in the base run's same paper and report:
 what a pull request's run adds. Both runs must key by one scheme.
 
-A batch's packet is laid out as the first ones, and each paper names its `run` and the run's
-key `scheme` too. Each finding is as the run gave it, its `key` with it, and a G3 finding
+A batch's packet is laid out as the first ones, and each paper names its `batch`, which marks
+the packet as a batch's, and its `run` and the run's key `scheme` too. Each finding is as the run gave it, its `key` with it, and a G3 finding
 lists the `figure_files` of the run's project (under `figures/` and `manuscript/`) that its
 message names, or all of them where it names none, so that a judge can look at the image. The
 `text` is the run's own `main.md` of a Word paper, the LaTeX source, or the text pdftotext
 made of a PDF beside a run's reports; nothing is run on the paper. `unjudged` prints the count
-by code, and never overwrites a packet.
+by code. It never overwrites a packet, and refuses a batch name that a verdict file already
+has (`report/judged/<name>.json` or `<name>-author.json`), since that file would then be read
+against the batch's packet.
 
 Two judges then judge the batch apart, blind to each other and to the build, with the same
 brief and the same packet. Each writes a list of verdicts in the format above, indexed into

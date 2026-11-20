@@ -52,8 +52,9 @@ FIGURE_FOLDERS = ("figures", "manuscript")
 
 
 def is_batch(papers: object) -> bool:
-    """Whether a packet is a batch `unjudged` wrote: its papers name the run they came from."""
-    return isinstance(papers, list) and any(isinstance(p, dict) and "run" in p for p in papers)
+    """Whether a packet is a batch `unjudged` wrote: its papers carry the batch's name, which
+    no packet of the harness's does (a `run` field some might)."""
+    return isinstance(papers, list) and any(isinstance(p, dict) and "batch" in p for p in papers)
 
 
 def read_packets(root: Path) -> tuple[dict, dict]:
@@ -307,7 +308,7 @@ def figure_files(project: Path, finding: dict) -> list[str]:
     return [str(p) for p in by_path or by_name or files]
 
 
-def _paper(root: Path, run, slug: str, first: dict) -> dict:
+def _paper(root: Path, run, slug: str, first: dict, name: str) -> dict:
     meta = load_json(root / "corpus" / slug / "meta.json")
     meta = {**{k: first.get(k) for k in ("title", "format", "window")},
             **(meta if isinstance(meta, dict) else {})}  # fmt: skip
@@ -315,7 +316,7 @@ def _paper(root: Path, run, slug: str, first: dict) -> dict:
     return {"slug": slug, "title": meta.get("title"), "format": meta.get("format"),
             "window": meta.get("window"), "text": judge_text(root, run, slug, meta),
             "original": str(root / "corpus" / slug / "files" / main) if main else None,
-            "run": run.name, "scheme": run.scheme, "reports": {}}  # fmt: skip
+            "batch": name, "run": run.name, "scheme": run.scheme, "reports": {}}  # fmt: skip
 
 
 def pack(root: Path, run, rows: list[dict], name: str, base=None,
@@ -323,13 +324,18 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
     """Write `report/packets/<name>.json`: every loud finding of `run` no judged finding
     accounts for (`rows`, the measure of the judged set in it, has filled `run.used`), of a
     code not settled; with `base`, of every code, those whose key is not loud in the base's
-    same paper and report. Refused where the packet is there already."""
+    same paper and report. Refused where the packet is there already, or a verdict file of
+    its name, which `packet_of` would read against it."""
     if not SLUG.fullmatch(name) or ".." in name or name.endswith(AUTHOR):
         raise CorpusError(f"{name!r} cannot name a batch: letters, digits, '.', '_' and '-', "
                           f"not ending in {AUTHOR}")  # fmt: skip
     path = root / PACKETS / f"{name}.json"
     if path.exists():
         raise CorpusError(f"{path} is there already: name the batch otherwise")
+    for verdicts in (JUDGED / f"{name}.json", JUDGED / f"{name}{AUTHOR}.json"):
+        if (root / verdicts).exists():
+            raise CorpusError(f"{verdicts.as_posix()} is there already, and would be read "
+                              "against the batch's packet: name the batch otherwise")
     settled = {} if base is not None else settled_codes(rows, share, least)
     if base is not None:
         problem = base_problem(run, base)
@@ -342,7 +348,7 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
     papers: dict[str, dict] = {}
     for slug, report, every, chosen in found:
         if slug not in papers:
-            papers[slug] = _paper(root, run, slug, first.get(slug, {}))
+            papers[slug] = _paper(root, run, slug, first.get(slug, {}), name)
         paper = papers[slug]
         project = run.folder / slug / "project"
         paper["reports"][report] = {

@@ -211,6 +211,37 @@ def test_a_packet_there_already_is_never_overwritten(corpus: Path) -> None:
         pack(corpus, "x-author")
 
 
+def test_a_batch_is_never_named_as_a_verdict_file_is(corpus: Path) -> None:
+    # The first verdicts, under a name a batch could take: they would read its packet.
+    judged = corpus / "report" / "judged"
+    (judged / "field.json").rename(judged / "b1.json")
+    before = tool.measure(corpus, "r1")
+    with pytest.raises(tool.CorpusError, match="report/judged/b1.json is there already"):
+        pack(corpus, "b1")
+    assert not (corpus / "report" / "packets" / "b1.json").exists()
+    assert tool.measure(corpus, "r1") == before
+    # Measured first: the loader itself refuses an author's file with no batch packet.
+    run = tool.Run(tool.run_folder(corpus, "r1"))
+    rows = tool.measure(corpus, "r1", run=run)["findings"]
+    (judged / "b2-author.json").write_text("[]", "utf-8")
+    with pytest.raises(tool.CorpusError, match="report/judged/b2-author.json is there already"):
+        judging.pack(corpus, run, rows, "b2")
+    assert not (corpus / "report" / "packets" / "b2.json").exists()
+
+
+def test_a_first_packet_whose_papers_name_a_run_is_still_a_first_one(corpus: Path) -> None:
+    before = tool.measure(corpus, "r1")
+    path = corpus / "report" / "packets" / "field.json"
+    papers = json.loads(path.read_text("utf-8"))
+    path.write_text(json.dumps([{**p, "run": "main-2235bfe54"} for p in papers]), "utf-8")
+    after = tool.measure(corpus, "r1")
+    assert after == before and not any(r["batch"] for r in after["findings"])
+    # What marks a batch is its name on each of its papers.
+    pack(corpus)
+    batch = json.loads((corpus / "report" / "packets" / "b1.json").read_text("utf-8"))
+    assert {p["batch"] for p in batch} == {"b1"}
+
+
 # --- agree ------------------------------------------------------------------------------
 
 #: The two judges on b1, in packet order: paper-a audit 0-1, check 0-2, paper-b audit 0.

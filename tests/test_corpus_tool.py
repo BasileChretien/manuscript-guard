@@ -465,7 +465,7 @@ def test_a_rejudge_by_matcher_changes_the_verdict_and_a_successor_asks(corpus: P
     assert result["decisions"] == [
         {"id": "marker", "matched": 1, "changed": 1, "successor": 0},
         {"id": "abstract-questions", "matched": 0, "changed": 0, "successor": 1}]
-    assert "2 decisions, 1 findings re-judged, 1 asked by a successor" in tool.render_measure(
+    assert "2 decisions, 1 findings re-judged, 1 kept by a successor" in tool.render_measure(
         result)
 
 
@@ -675,7 +675,8 @@ def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
     fake = FakeBuild(monkeypatch)
     monkeypatch.setenv("MANUSCRIPT_GUARD_DEBUG", "1")
     record = tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=2, only=None)
-    assert record == {"commit": "main", "sha": SHA, "version": "0.2.999", "papers": 3}
+    assert record == {"commit": "main", "sha": SHA, "version": "0.2.999", "papers": 3,
+                      "scheme": 1, "repo": str(REPO)}  # the fake keys.py names no SCHEME
     assert any("archive" in c and SHA in c for c in fake.quiet_calls)
     assert (corpus / "builds" / SHA[:9] / "installed.txt").read_text("utf-8") == SHA
     assert (corpus / "builds" / f"src-{SHA[:9]}" / "pyproject.toml").is_file()

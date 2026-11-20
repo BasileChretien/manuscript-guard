@@ -192,8 +192,15 @@ def _entry(finding: dict, entry: dict) -> dict:
     return {**finding, **{k: entry[k] for k in ("line", "path", "message") if k in entry}}
 
 
+#: The passes of `match`, by name, in order; `tools/corpus_keys.py` ties a judged finding to
+#: a key only by the first two.
+PASSES = ("message+place", "context+place", "message+context", "message", "context")
+STRONG = PASSES[:2]
+
+
 def match(olds: list[dict], new: list[dict], slug: str = "",
-          alone: frozenset[int] = frozenset()) -> dict[int, tuple[int, bool]]:  # fmt: skip
+          alone: frozenset[int] = frozenset(), how: dict | None = None,
+          strong: dict | None = None) -> dict[int, tuple[int, bool]]:  # fmt: skip
     """Each old finding's own finding among a report's new ones, one to one: for every old
     one first the same message at the same place, then the same context at the same place,
     then the same message and context, then the same message, then the same context (each
@@ -201,7 +208,9 @@ def match(olds: list[dict], new: list[dict], slug: str = "",
     the same part of the paper; a finding taken by one is not taken by another. A
     finding that lists forms gives each form once. An old finding that was the only one of
     its code in its report (`alone`) is the only one of its code in the new report too, where
-    that names its word. Says (new index, whether by a form)."""
+    that names its word. Says (new index, whether by a form); `how` is given each pairing's
+    pass, `form:<entry>` for a form of a finding that lists them, and `strong` each old
+    finding's candidates by the first two passes, taken or not."""
     taken: set[tuple] = set()
     found: dict[int, tuple[int, bool]] = {}
 
@@ -227,13 +236,19 @@ def match(olds: list[dict], new: list[dict], slug: str = "",
               lambda o, f: _by_both(o, f, slug, shared(o)),
               lambda o, f: _by_message(o, f, slug, False),
               lambda o, f: _by_context(o, f, slug, False, shared(o))]  # fmt: skip
-    for test in passes:
+    told = how if how is not None else {}
+    if strong is not None:
+        for k, old in enumerate(olds):
+            strong[k] = [i for i, f in enumerate(new) if _same_code(old, f)
+                         and (passes[0](old, f) or passes[1](old, f))]  # fmt: skip
+    for name, test in zip(PASSES, passes, strict=True):
         for k, old in enumerate(olds):
             if k not in found:
                 i = next((i for i, f in enumerate(new) if _same_code(old, f) and free(i, old)
                           and test(old, f)), None)  # fmt: skip
                 if i is not None:
                     take(k, i, old)
+                    told[k] = name
     for k, old in enumerate(olds):
         for i, f in enumerate(new):
             if k in found or not _same_code(old, f) or not free(i, old):
@@ -243,11 +258,13 @@ def match(olds: list[dict], new: list[dict], slug: str = "",
                 (key := key_of(old)) and key.search(str(f.get("message") or "")))
             if not entries and (single or _about(old, f, slug)):
                 take(k, i, old)
+                told[k] = "word"
             j = next((j for j, e in enumerate(entries) if (i, "form", j) not in taken
                       and e.get("form") == subject_of(old)
                       and _about(old, _entry(f, e), slug, True)), None)  # fmt: skip
             if k not in found and j is not None:
                 take(k, i, old, j)
+                told[k] = f"form:{j}"
     return found
 
 

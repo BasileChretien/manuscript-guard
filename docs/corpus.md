@@ -18,6 +18,10 @@ corpus/<slug>/files/         the paper as downloaded
 report/packets/<name>.json   the findings that were judged, with the text they were judged by
 report/judged/<name>.json    the verdicts
 report/ledger.yaml           the author's decisions that re-judge a finding (below)
+report/ties.yaml             each judged finding's key in a keyed run, written once by `tie`
+report/ties-ambiguous.md     the judged findings `tie` left for the author to settle
+report/ties-decided.yaml     the author's ties of those, read over ties.yaml
+report/ties-untied.md        the judged findings no rule ties, which the matcher pairs
 runs/<run>/<slug>/<report>.json   one run of one build: audit, audit-pdf, check, compare
 builds/<sha9>/               a venv for each commit run, named by its sha's first nine characters
 ```
@@ -160,6 +164,93 @@ apart. These are the codes:
 | `unreadable` | lines not read as LaTeX, or a file not read |
 | `version-not-numbered` | a version whose tables or figures could not be numbered |
 
+## Pairing by key
+
+Every finding `check --json`, `audit --json` and `compare --json` give carries a `key`,
+`gate|code|subject|digest` ([DESIGN.md](../DESIGN.md), "A finding's key pairs two runs"). Where
+both runs carry keys, a judged finding is paired by its key alone (Basile, 2026-11-19), and
+its message, its line and its context play no part:
+
+- **reported**: its key stands in the new run at a warning or a failure;
+- **asked**: its key stands as a note or a question, or a question lists a form under it;
+- **elsewhere**: another code's warning or failure has its subject and its digest, or a
+  `successor` of the ledger applies;
+- **gone**: none of those.
+
+Only a key unique in both runs pairs as it is. Where a key stands more than once in either
+run, it keeps its judged findings only where its count did not fall from the base to the new
+run; where it fell, every judged finding under it is gone, since which one went cannot be
+told, unless none is left and it stands elsewhere. `measure` and `gate` list the judged findings under a repeated key, and those paired by a
+key made from the context (`"key_from": "context"`, a code that names no subject yet), apart.
+Where either run has no keys, as every run before #706 has none, a judged finding is paired by
+the matcher above, as before.
+
+Two limits come with the rules as decided. A paper-level key has the digest `-`, so a lost
+finding of such a code reads elsewhere from another paper-level code about its subject, a
+lost `abbreviation-undefined|HR@main|-` from an `abbreviation-unused|HR@main|-`, though the two
+say opposite things. And the count rule holds a key's count to the base, and the base's to the
+run of the ties: where that run is neither the base nor the new run, a key that stands twice
+there and once in both of them reads gone at the base and kept in the new run, and is listed
+as back though nothing came back; and where a held count hides one finding of a key going and
+another coming, it reads kept.
+
+Keys have a scheme: the package's `keys.py` names it, `SCHEME = 2` from #709 on, the first
+change to the keys made on purpose, and a commit whose `keys.py` names none keys by scheme 1.
+`run` records each run's scheme in its `run.json`, read from the commit's text with git and
+never by importing a build; a run made before that has it read from the commit it recorded.
+Ties made in a run of one scheme pair runs of that scheme only: `gate` pairs by key only where
+the base, the new run and the ties share one scheme, and otherwise pairs the whole gate by the
+matcher and says "keys changed scheme (1 → 2): paired by message; tie again after this
+merges"; `measure` does the same for a run of another scheme. After a pull request that
+raises the scheme merges, run the corpus at main and tie again against that run.
+
+The judged findings come from a run with no keys, so they are tied to keys, once for each scheme:
+
+```bash
+python tools/corpus.py run origin/main --name keyed-<sha9>
+python tools/corpus.py tie main-2235bfe54 keyed-<sha9>
+```
+
+`tie` pairs each judged finding with a finding of the keyed run, a run of a build with keys on
+the same papers, by the matcher above, and ties it to that finding's key only where the
+pairing is one to one, of the same gate and code, by the same message or the same context at
+its place, with no other candidate so and a key the keyed run does not repeat. Exact rules
+tie more (Basile, 2026-11-20), and never where a key the keyed run repeats would be tied
+alone:
+
+- **A finding with no line** ties to the keyed finding of its gate and code with the same
+  message in the same file, where that message is the only one of its code so in the
+  paper's report in both runs.
+- **A short form** whose candidate is a list naming it, whatever the pass that found it,
+  ties to the list's entry for it in the same scope (`HR@main`), where that entry is the
+  only one so and the form and scope are the only ones of its code so in the judged run;
+  never where the form stands in two scopes and the judged message names neither.
+- **A key family**: a judged finding whose candidates all share one key once the subject's
+  ordinal is taken off (`xxxx#1` to `xxxx#4`), or all carry one repeated key, ties to that
+  family, `family: true`. The count rule then reads the family's count: where it falls from
+  the base, every judged finding tied to it is gone. Never where the candidates differ by
+  more than the ordinal.
+- **Twins of one verdict**: judged findings of one report alike in gate, code, message and
+  place, of one verdict, with as many distinct candidate keys as there are of them, tie one
+  to one, the candidates in order of their place (of their keys where one has no column) and
+  the judged findings in order of index. Their verdict is one, so the order changes no
+  measure. Never where their verdicts or their numbers differ.
+
+Each tie goes to `report/ties.yaml`, `{slug, report, index, key, how}` and `family` for a
+family, under the name of the keyed run. A judged finding no rule settles, with several
+candidates or a repeated key, goes to `report/ties-ambiguous.md` with its verdict, its message
+and the candidates' keys and messages, for the author to decide by hand. A decision goes in
+`report/ties-decided.yaml`, a list of `{slug, report, index, key, by, date}`, the key null
+where no keyed finding is the judged one (it then reads gone in a keyed run) and `family:
+true` for a key family; `measure` and `gate` read it over the ties, and refuse a decision
+whose judged finding is not one of the judged set or whose key is not in the run of the ties.
+The rest, with no candidate, a candidate another judged finding took, a weaker pass or a
+finding of another code, go to `report/ties-untied.md` and stay for the matcher.
+`tie` changes no verdict and no decision of the ledger. `measure` and `gate` read the ties for
+a keyed run: a tied finding is paired by its key, its count held to the one in the run the
+ties were made in (`measure`) or in the base (`gate`), and an untied one by the matcher, among
+the findings no key took.
+
 ## The ledger
 
 `report/ledger.yaml` holds the author's decisions that change what a finding should be:
@@ -193,7 +284,8 @@ Each decision has an `id`, a `date`, who made it (`by`), one line on `what` it d
 the findings it names a new verdict, by key or by a matcher of `gate`, `code`, `slug`,
 `report` and a regular expression on the `message`; the verdict file is left as it was. A
 `successor` says that a finding about the whole paper was replaced: where the finding is gone
-and the same paper's same report has one of the codes in `to`, it counts as asked. A
+and the same paper's same report has one of the codes in `to`, it counts as asked by the
+matcher, and as elsewhere by key. A
 decision is the author's, with its source; the ledger is never written to say that a finding
 the tool stopped giving was wrong because the tool stopped giving it.
 
@@ -206,7 +298,8 @@ python tools/corpus.py gate main-7bda66a5e 1a2b3c4d5 --out "$MANUSCRIPT_GUARD_CO
 `gate <base-run> <new-run>` puts every judged finding in its state at both, with the ledger
 applied, and exits with 1 when a finding judged true, about the paper, is kept at the base
 (reported, asked or elsewhere) and gone in the new run. A finding the ledger re-judges false
-is not true any more, and one a successor covers is asked, so neither blocks. It lists
+is not true any more, and one a successor covers is kept (asked by the matcher, elsewhere by
+key), so neither blocks. It lists
 without failing the true findings that came back, those reported before and asked now, the
 reading notices that changed, the false findings that became loud, and, by code, the
 warnings and failures that no judged finding accounts for at either run. The Markdown folds

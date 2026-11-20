@@ -8,6 +8,7 @@ the papers under `python -I`, which imports nothing from a working folder or `PY
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
@@ -36,6 +37,80 @@ def load_json(path: Path) -> object | None:
         return json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
         return None
+
+
+#: This checkout: the repository the tool is in, which `run` builds from by default and
+#: nothing of the corpus is written into.
+ROOT = Path(__file__).resolve().parent.parent
+#: Where a commit's keys are made: a commit without this file keys by scheme 1.
+KEYS_PY = "src/manuscript_guard/keys.py"
+#: What a module-level walk for stores to `SCHEME` does not enter.
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+
+def checkouts(root: Path = ROOT) -> set[Path]:
+    """This checkout and, where it is a git worktree, the repository's main working tree,
+    read from the worktree's `.git` file and its `commondir`, as git lays them out."""
+    found = {root.resolve()}
+    dotgit = root / ".git"
+    try:
+        text = dotgit.read_text("utf-8").strip() if dotgit.is_file() else ""
+    except OSError:
+        return found
+    if text.startswith("gitdir:"):
+        gitdir = (root / text.removeprefix("gitdir:").strip()).resolve()
+        common = gitdir
+        if (gitdir / "commondir").is_file():
+            common = (gitdir / (gitdir / "commondir").read_text("utf-8").strip()).resolve()
+        found.add(common.parent)
+    return found
+
+
+def in_a_checkout(path: Path, root: Path = ROOT) -> bool:
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(checkout) for checkout in checkouts(root))
+
+
+def scheme_of(repo: Path, sha: str, read=None) -> int:
+    """The scheme of the keys a commit gives, read from its `src/manuscript_guard/keys.py`
+    as git holds it, parsed and never imported: the last plain module-level assignment of
+    an int to `SCHEME` (PR #709 on). 1 where the commit has no such file, as `ls-tree`
+    lists it, so that no message of git in any language is read, or where the file assigns
+    no `SCHEME`. Refused where git fails, the commit is unknown, the file does not parse,
+    or `SCHEME` is stored to any other way."""
+    read = read or quiet
+    git = ["git", "-C", str(repo)]
+    read([*git, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"])
+    if not read([*git, "ls-tree", "--name-only", sha, KEYS_PY]).strip():
+        return 1
+    try:
+        tree = ast.parse(read([*git, "show", f"{sha}:{KEYS_PY}"]))
+    except (SyntaxError, ValueError) as exc:
+        raise CorpusError(f"the keys.py of {sha[:9]} does not parse: {exc}") from None
+    scheme = 1
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] \
+            if isinstance(node, ast.AnnAssign) else []  # fmt: skip
+        plain = bool(targets) and all(isinstance(n, ast.Name) for n in targets)
+        if not (plain and any(n.id == "SCHEME" for n in targets)):
+            if _stores_scheme(node):
+                raise CorpusError(f"the keys.py of {sha[:9]} stores to SCHEME other than by "
+                                  "a plain assignment at module level")  # fmt: skip
+            continue
+        if not (isinstance(node.value, ast.Constant) and type(node.value.value) is int):
+            raise CorpusError(f"the keys.py of {sha[:9]} assigns SCHEME no int")
+        scheme = node.value.value
+    return scheme
+
+
+def _stores_scheme(node: ast.AST) -> bool:
+    """Whether a statement stores to the module's `SCHEME`, a function's or a class's body
+    aside: inside a try, an if or a with, by `+=`, by unpacking, by a loop or `:=`."""
+    if isinstance(node, _SCOPES):
+        return False
+    if isinstance(node, ast.Name) and node.id == "SCHEME" and isinstance(node.ctx, ast.Store):
+        return True
+    return any(_stores_scheme(child) for child in ast.iter_child_nodes(node))
 
 
 def quiet(cmd: list[str], cwd: Path | None = None) -> bytes:
@@ -230,7 +305,8 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
     env = {**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
     env.pop("MANUSCRIPT_GUARD_DEBUG", None)
-    record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen)}
+    record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen),
+              "scheme": scheme_of(repo, sha), "repo": str(repo)}
     (out_root / "run.json").write_text(json.dumps(record, indent=1), "utf-8")
 
     def one(meta: dict) -> tuple[str, object]:

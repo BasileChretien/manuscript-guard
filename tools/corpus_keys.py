@@ -518,3 +518,15 @@ def render_tie(result: dict) -> str:
              "| why not tied | judged findings |", "| --- | ---: |"]  # fmt: skip
     lines += [f"| {KINDS[k]} | {n} |" for k, n in result["by_kind"].items()]
     return "\n".join(lines) + "\n"
+
+
+def scheme_note(tied: int, schemes: list[int]) -> str:
+    """What the gate or the measure says where the keys' schemes differ, naming each."""
+    if len(set(schemes)) == 1:
+        return (f"the ties are of key scheme {tied} and the run{'s' * (len(schemes) > 1)} of "
+                f"scheme {schemes[0]}: paired by message; tie again against a run of scheme "
+                f"{schemes[0]}")  # fmt: skip
+    base, new = schemes
+    ties = "" if tied == base else f" (the ties are of scheme {tied})"
+    return (f"keys changed scheme ({base} \N{RIGHTWARDS ARROW} {new}){ties}: paired by "
+            "message; tie again after this merges")  # fmt: skip

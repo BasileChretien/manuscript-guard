@@ -461,18 +461,6 @@ def _key_line(keys: dict) -> str:
             f"whose count fell); by #705's matcher: {keys['by_matcher']}.")
 
 
-def _scheme_note(tied: int, schemes: list[int]) -> str:
-    """What the gate or the measure says where the keys' schemes differ, naming each."""
-    if len(set(schemes)) == 1:
-        return (f"the ties are of key scheme {tied} and the run{'s' * (len(schemes) > 1)} of "
-                f"scheme {schemes[0]}: paired by message; tie again against a run of scheme "
-                f"{schemes[0]}")  # fmt: skip
-    base, new = schemes
-    ties = "" if tied == base else f" (the ties are of scheme {tied})"
-    return (f"keys changed scheme ({base} \N{RIGHTWARDS ARROW} {new}){ties}: paired by "
-            "message; tie again after this merges")  # fmt: skip
-
-
 def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     """The ties, the author's decided ones over them, and the run they were made in, where
     every run carries keys of the ties' scheme; None, for #705's matcher, where one carries
@@ -485,7 +473,7 @@ def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
         return None
     tied_scheme, schemes = ties["scheme"], [run.scheme for run in runs]
     if len({tied_scheme, *schemes}) > 1:
-        return _scheme_note(tied_scheme, schemes)
+        return corpus_keys.scheme_note(tied_scheme, schemes)
     tied = Run(run_folder(root, ties["run"]))
     return {**ties["ties"], **decided(root, tied)}, tied
 

@@ -28397,10 +28397,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
   - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
-    Abstract whose first block is such a line ("IMPORTANCE", "Background") is read as
-    structured: it ends at "Introduction", "Discussion" or "References", or at a name that
+    Abstract is read as structured where its first line after the heading is shaped as a
+    heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its
+    ranked parts or Importance, Objective(s), Aim(s), Purpose, Context or Rationale. A
+    structured one ends at "Introduction", "Discussion" or "References", or at a name that
     ranks no later than the last of its own parts met in it (Background, Methods, Results,
-    Conclusions). Any other Abstract ends at the first line alone. So a structured Abstract
+    Conclusions, a singular as its plural). Any other Abstract ends at the first line
+    alone. So a structured Abstract
     whose last part ranks before the paper's next section, its Background alone run
     straight into the paper's Methods, keeps that section in its part, and renaming one of
     its ranked parts to a name no rank holds, RESULTS to FINDINGS, moves where it ends. The

@@ -74,6 +74,26 @@ def test_a_structured_abstract_ends_where_its_own_order_starts_again() -> None:
         keys.ABSTRACT, keys.ABSTRACT, keys.MAIN]
 
 
+def test_an_abstract_is_structured_only_where_it_opens_on_a_part_it_names() -> None:
+    """An Abstract is structured only where its first line is shaped as a heading and names
+    one of its ranked parts or what a structured Abstract opens on: a hard-wrapped
+    sentence's first line, as a PDF's text gives it, is no heading, nor is BMC's inline
+    "Background: ..." (round 2 of #709: the PDF's Background, Methods and Results were kept
+    in the Abstract)."""
+    wrapped = ("Abstract\nWe studied the effect of the new drug on\nblood pressure in 120 "
+               "adults. It fell.\nBackground\nDrugs matter.\nMethods\nWe did it.\nResults\n"
+               "It worked.\n")  # fmt: skip
+    assert _parts(wrapped, "We studied", "Drugs matter", "It worked") == [
+        keys.ABSTRACT, keys.MAIN, keys.MAIN]
+    nature = ("Abstract\nThe drug lowers pressure. Here we show how.\nResults\nIt worked.\n"
+              "Discussion\nIt matters.\nMethods\nWe did it.\n")  # fmt: skip
+    assert _parts(nature, "Here we show", "It worked", "We did it") == [
+        keys.ABSTRACT, keys.MAIN, keys.MAIN]
+    inline = ("Abstract\nBackground: Drugs matter for many patients with\nheart disease. We "
+              "asked why.\nResults\nIt worked.\nConclusions\nIt holds.\n")  # fmt: skip
+    assert _parts(inline, "heart disease", "It worked") == [keys.ABSTRACT, keys.MAIN]
+
+
 def test_a_structured_abstract_renamed_moves_where_it_ends() -> None:
     """The limit of DESIGN.md's Known gaps, held as it is: with RESULTS renamed FINDINGS,
     which no rank names, the paper's own Methods and Results rank later than every part the

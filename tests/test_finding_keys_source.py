@@ -230,10 +230,11 @@ def _a_notice(node: ast.AST, scope: ast.AST, file: str) -> bool:
                 and getattr(one.func.value, "id", None) == node.id
                 and one.func.attr in ("append", "extend", "insert")):
             added = True
-        # `said[0] = ...` puts in it what it was not bound to.
-        if isinstance(one, ast.Assign) and any(
-                isinstance(target, ast.Subscript) and getattr(target.value, "id", None) == node.id
-                for target in one.targets):  # fmt: skip
+        # `said[0] = ...` and `said[0] += ...` put in it what it was not bound to.
+        at_index = (one.targets if isinstance(one, ast.Assign)
+                    else [one.target] if isinstance(one, ast.AugAssign) else [])  # fmt: skip
+        if any(isinstance(target, ast.Subscript) and getattr(target.value, "id", None) == node.id
+               for target in at_index):  # fmt: skip
             added = True
     return bool(bound) and not added and all(
         isinstance(one, ast.Assign) and _only_notices(one.value, file) for one in bound)
@@ -410,6 +411,8 @@ def test_every_way_a_plain_string_reaches_the_notes_is_caught() -> None:
         ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid.append("plain")\n'
                                   "report.passed_over += said"),
         ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid[0] = "plain"\n'
+                                  "report.passed_over += said"),
+        ("audit.py", "_read_pdf", 'said = [Notice("a", "b")]\nsaid[0] += "plain"\n'
                                   "report.passed_over += said"),
         ("auditing/latex.py", "_passed_over", 'said = "plain"\nreturn [said]'),
     ]  # fmt: skip

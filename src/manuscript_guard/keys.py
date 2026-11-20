@@ -81,6 +81,9 @@ _RANKS = {"background": 0, "methods": 1, "materials and methods": 1, "results": 
 _FOLDED = {"method": "methods", "conclusion": "conclusions"}
 #: A line standing alone, as a heading stands: a capital, a few words and no stop.
 _HEADING_SHAPED = re.compile(r"[ \t]*[*_]*[A-Z][^\n.!?]{0,60}?[*_:]*[ \t]*")
+#: What a structured Abstract opens on besides its ranked parts (`_RANKS`).
+_OPENS_A_STRUCTURED = frozenset({"importance", "objective", "objectives", "aim", "aims",
+                                 "purpose", "context", "rationale"})  # fmt: skip
 #: What marks where a part of the paper begins: a Markdown heading, a LaTeX sectioning
 #: command or abstract environment, or a line that is a heading's name alone (`_ALONE`).
 _MARK = re.compile(
@@ -144,7 +147,8 @@ def _marks(text: str) -> tuple[tuple[int, bool], ...]:
         rank = _RANKS.get(name)
         # A structured Abstract's own Background, Methods or Results go on in it, each
         # later than the last.
-        if mark["alone"] and not opens and last is not None and rank is not None and rank > last:
+        if (mark["alone"] and not opens and last is not None
+                and name not in _ENDS_AN_ABSTRACT and rank is not None and rank > last):
             last = rank
             continue
         last = _structured(text, mark.end()) if opens else None
@@ -153,11 +157,18 @@ def _marks(text: str) -> tuple[tuple[int, bool], ...]:
 
 
 def _structured(text: str, at: int) -> int | None:
-    """-1 where the Abstract whose heading ends at `at` is structured, its first block after
-    the heading a line standing alone ("IMPORTANCE", "Background"); None where it is not."""
+    """-1 where the Abstract whose heading ends at `at` is structured; None where it is not.
+    It is structured where its first line after the heading is shaped as a heading (a
+    capital, no stop, `_HEADING_SHAPED`) and is, emphasis, stops and colons aside and a
+    singular read as its plural, one of its ranked parts (`_RANKS`) or what a structured
+    Abstract opens on (`_OPENS_A_STRUCTURED`): "IMPORTANCE", "Background". A hard-wrapped
+    sentence's first line, or "Background: Drugs matter for many patients with", is none."""
     rest = text[at:].lstrip("\n\r\t ")
     line = rest.split("\n", 1)[0]
-    return -1 if line and _HEADING_SHAPED.fullmatch(line) else None
+    said = line.strip("*_ \t.:").casefold()
+    name = _FOLDED.get(said, said)
+    named = name in _RANKS or name in _OPENS_A_STRUCTURED
+    return -1 if line and named and _HEADING_SHAPED.fullmatch(line) else None
 
 
 def part_of(text: str, offset: int, supplementary: bool = False) -> str:

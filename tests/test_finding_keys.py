@@ -454,6 +454,18 @@ def test_a_row_of_means_above_names_no_column(tmp_path: Path) -> None:
     assert found[0] == found[1] == ["3.47/n=25@groupa"], found
 
 
+def test_a_row_of_data_above_ends_the_header(tmp_path: Path) -> None:
+    """A mean's column is named by the header rows alone: the first row of data, here a
+    median [IQR] and a count n (%), ends them, so editing a datum above leaves the key of
+    3.47 as it was (round 2 of #709: "45 [30-60]" joined it)."""
+    text = ("# Results\n\nTable 1. Scores.\n\n| Characteristic | Treatment (n = 20) |\n"
+            "|---|---|\n| Age, median [IQR] | {x} [30-60] |\n| Female, n (%) | 12 (60.0%) |\n"
+            "| Score, mean (SD) | 3.47 (1.20) |\n")  # fmt: skip
+    found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{x}.md"), "Score")
+             for x in ("45", "46")]  # fmt: skip
+    assert found[0] == found[1] == ["3.47/n=20@treatment(n=20)"], found
+
+
 def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:
     """A GRIM mean is keyed by its column too: one row's 3.47 under two columns of n = 10
     is two findings and two keys, neither numbered."""

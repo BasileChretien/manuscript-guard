@@ -24,6 +24,15 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: finding keys
+    why: >-
+      the keys are as they were, and the order of the findings is not: in `audit` and
+      `compare` a name from the code (`code-name-in-prose`) and a bare placeholder of G6
+      ("xxxx", "[url]") are notes, and a PDF's reference list whose entries are not told
+      apart (`entries-not-told-apart`) a warning, by how often each was right on the
+      real-paper corpus (`auditing.measured`, the author's decisions of 2026-11-20); G6's
+      and G14's findings are sorted by severity, so a name from the code now follows a
+      warning it came before. `check` is unchanged
   - reading: numbers asked
     why: >-
       a new reading of the audit's Arithmetic, its items by code, line, severity, whether

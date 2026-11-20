@@ -85,6 +85,26 @@ def test_a_template_s_instruction_still_fails_an_audit(tmp_path: Path, capsys) -
     assert any("Click or tap" in f["message"] for f in template)
 
 
+#: A slot in brackets that tells the writer what to put, of each rule of the kind the corpus
+#: never judged, and instructions left for the writer in brackets, which the bracket's rule
+#: finds before `placeholder-filler` does: "[fill in later]", "[add your affiliation here]".
+INSTRUCTIONS = (
+    "# Results\n\n"
+    "The mean was [fill in later] for 212 pupils.\n\n"
+    "The cohort is [describe the cohort], and 41 pupils left.\n\n"
+    "The interval is [TO BE COMPLETED] in the second wave.\n\n"
+    "# Authors\n\n"
+    "Written by [your name], [add your affiliation here].\n"
+)
+
+
+def test_a_slot_that_tells_the_writer_what_to_put_still_fails(tmp_path: Path, capsys) -> None:
+    found = _of(audited(_paper(tmp_path, INSTRUCTIONS), capsys), "model-artefact")
+    said = sorted((_rule(f), f["severity"]) for f in found)
+    assert said == sorted([("placeholder", "fail")] * 3 + [
+        ("placeholder-capitals", "fail"), ("placeholder-your", "fail")])  # fmt: skip
+
+
 def test_a_latex_paper_is_audited_the_same_way(tmp_path: Path, capsys) -> None:
     source = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
               "The score pupil\\_sleep\\_total was XXXX for 212 pupils.\n\n"
@@ -149,17 +169,21 @@ def _artefact_rules() -> list[dict]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["artefacts"]
 
 
-def test_the_bare_placeholders_are_the_rules_that_say_so() -> None:
-    """Each rule G6 says finds "Unfilled placeholder text", and only those: a new one is
-    either listed or said to be of another kind, and an instruction left for the writer,
-    `placeholder-filler`, or a template's, keeps failing."""
+def test_the_bare_placeholders_are_the_rules_judged() -> None:
+    """The two rules of the kind whose findings the corpus judged, each still a rule of
+    "Unfilled placeholder text"; a slot that tells the writer what to put, an instruction left
+    for the writer, `placeholder-filler`, and a template's keep failing."""
     bare = {rule["id"] for rule in _artefact_rules() if rule["why"] == "Unfilled placeholder text"}
-    assert bare == table.BARE_PLACEHOLDERS
-    assert {"placeholder-filler", TEMPLATE}.isdisjoint(table.BARE_PLACEHOLDERS)
+    lowered = table.BARE_PLACEHOLDERS
+    assert lowered == {BARE, "placeholder-slot"} and lowered <= bare
+    kept = {"placeholder", "placeholder-your", "placeholder-capitals", "placeholder-filler"}
+    assert (kept | {TEMPLATE}).isdisjoint(table.BARE_PLACEHOLDERS)
 
 
 @pytest.mark.parametrize(("subject", "severity"), [
     ("placeholder-word: xxxx", INFO), ("placeholder-slot: [url]", INFO),
+    ("placeholder: [fill in later]", FAIL), ("placeholder-your: [your name]", FAIL),
+    ("placeholder-capitals: [TO BE COMPLETED]", FAIL),
     ("placeholder-filler: fill in later", FAIL), (f"{TEMPLATE}: keyword 1; keyword 2", FAIL),
     ("chatgpt-markers: oaicite", FAIL), (None, FAIL),
 ])  # fmt: skip

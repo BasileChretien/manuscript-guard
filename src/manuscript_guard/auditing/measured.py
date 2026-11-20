@@ -41,24 +41,24 @@ class Measured:
     rules: frozenset[str] = frozenset()
 
 
-#: G6's rules that find a bare placeholder, a slot or a word that marks a gap ("xxxx", "XXX",
-#: "[url]", "[insert the date]", "TBD"): each `why: Unfilled placeholder text`. Not
-#: `placeholder-filler`, which finds an instruction left for the writer as well ("delete
-#: this section", "fill in later"), nor `placeholder-template`, a journal template's
-#: instruction to its authors, which has no innocent reading and fails wherever it is read
-#: (Basile, 2026-10-21); nor a model's markup or its voice.
-BARE_PLACEHOLDERS = frozenset({
-    "placeholder", "placeholder-your", "placeholder-slot", "placeholder-capitals",
-    "placeholder-word",
-})  # fmt: skip
+#: G6's rules that find a bare placeholder, and whose findings were judged: a thing named in
+#: brackets, "[url]", "[citation needed]" (`placeholder-slot`), and a word that marks a gap,
+#: "xxxx", "XXX", "TBD" (`placeholder-word`). Not the rules of a slot that tells the writer
+#: what to put, "[insert the date]", "[describe the cohort]", "[your name]", "[TO BE
+#: COMPLETED]", none of whose findings was judged loud; the first of them also finds an
+#: instruction in brackets before `placeholder-filler` can, "[fill in later]". Nor
+#: `placeholder-filler`, an instruction left for the writer, nor `placeholder-template`, a
+#: journal template's instruction to its authors, which has no innocent reading and fails
+#: wherever it is read (Basile, 2026-10-21); nor a model's markup or its voice.
+BARE_PLACEHOLDERS = frozenset({"placeholder-slot", "placeholder-word"})
 
 MEASURED: dict[str, Measured] = {
     # G14's names from the code: 18 true of 50 judged, the false ones from 8 papers. A
     # project's names come from its own analysis, so `check` warns as before.
     "code-name-in-prose": Measured(INFO, true=18, judged=50, papers=8),
-    # G6's bare placeholders: 1 true of 13 judged among G6's model artefacts, the false ones
-    # from 5 papers, nearly all of them bare placeholders. `check` fails them from drafting.
-    "model-artefact": Measured(INFO, true=1, judged=13, papers=5, rules=BARE_PLACEHOLDERS),
+    # G6's bare placeholders: 1 true of 12 judged, the false ones from 4 papers (of the
+    # code's 13, the thirteenth a template's instruction). `check` fails them from drafting.
+    "model-artefact": Measured(INFO, true=1, judged=12, papers=4, rules=BARE_PLACEHOLDERS),
     # A PDF's reference list whose entries could not be told apart: 13 true of 13 judged.
     "entries-not-told-apart": Measured(WARN, true=13, judged=13, papers=None),
 }

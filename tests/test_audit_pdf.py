@@ -822,7 +822,8 @@ def test_an_author_year_pdf_is_looked_up_one_identifier_at_a_time(tmp_path: Path
     paper = write(tmp_path / "paper.pdf", lines)
     _code, report, _err = audited(capsys, str(paper), "--lookup", "--dry-run")
     assert len(found(report, "would-ask")) == 3
-    assert found(report, "entries-not-told-apart")
+    # A warning, by how often it was right on real papers (`auditing.measured`).
+    assert [f["severity"] for f in found(report, "entries-not-told-apart")] == ["warn"]
     assert not found(report, "entry-never-cited") and not found(report, "citation-not-listed")
 
 

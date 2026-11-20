@@ -331,6 +331,12 @@ not read at all, in the audit or in `check`, which still gives one warning for e
 (decision 13, 2026-11-13: 369 such warnings on 52 preprints, 82% of those judged false).
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
+Two of their findings are notes in an audit, and in `compare`, where `check` warns on them
+or fails them: the names from the code, and a bare placeholder ("xxxx", "[url]", "TBD").
+On real papers each was right less than half the time; a journal template's instruction
+left in the text, "Click or tap here to enter text." among them, still fails
+([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
+right").
 
 **The references.** The list cut from the text is counted: its entries, and the DOIs and
 PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed

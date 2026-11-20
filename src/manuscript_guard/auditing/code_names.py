@@ -9,8 +9,9 @@ tissue's label, is told from a name in code only by a guess. So the audit says t
 finding for the paper (the author's decision 13, 2026-11-13), as it says the short forms left
 undefined (#640, `auditing.undefined`): the names in the order G14 gives them, at the first use
 of the first, with `--known` as the remedy. Each name keeps the warning G14 gave it, its place,
-its count and its quote, which `--json` gives under the finding and `--details` lists. `check`
-is unchanged: its warnings are G14's, one for each name.
+its count and its quote, which `--json` gives under the finding and `--details` lists. The
+finding is a note in the audit, by how often such names were right on real papers
+(`auditing.measured`). `check` is unchanged: its warnings are G14's, one for each name.
 """
 
 from __future__ import annotations

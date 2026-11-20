@@ -9606,6 +9606,42 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## In an audit, a code's severity follows how often it was right
+
+`check` reads a project whose names, results and dictionary are its own, and its severities
+are the gates' and the stage's. `audit` and `compare` read papers written without the tool,
+where a code can be wrong more often than right. Their findings are judged on the corpus of
+real papers (`docs/corpus.md`), and from the judged findings a code's severity in the reports
+where it was measured is set by one rule (the author's decisions of 2026-11-20).
+
+- A code becomes INFO there when at least 10 of its warnings and failures are judged, under
+  half of them are true, and the false ones come from at least 3 papers. False alarms in one
+  or two papers, or fewer than 10 judged, leave the severity alone: those go to a fix of the
+  rule.
+- A code lowered goes back up once a fix measures 0.75 or more.
+- A code at INFO with at least 10 judged and 0.9 or more true becomes a warning, except a
+  code that says what the project lacks (`no-results`, `no-review`, `no-journal-chosen`).
+
+The table is `auditing/measured.py`, applied where the two reports take G6's and G14's
+findings (`auditing.gates.run_gates`, which both run) and where the audit says what it read
+of a PDF's reference list; `check` never reads it. Measured on main at d056f71:
+
+| Code | Judged | True | False ones from | In `audit` and `compare` | In `check` |
+|---|---|---|---|---|---|
+| `code-name-in-prose` (G14) | 50 | 18 | 8 papers | INFO | warns, fails at submission |
+| `model-artefact` (G6), a bare placeholder | 13 | 1 | 5 papers | INFO | fails from drafting |
+| `entries-not-told-apart` (G7) | 13 | 13 | none | warning | not given |
+
+A bare placeholder is a finding of a rule of `data/ai_writing.yaml` whose `why` is "Unfilled
+placeholder text": `placeholder`, `placeholder-your`, `placeholder-slot`,
+`placeholder-capitals` and `placeholder-word`. A journal template's instruction to its
+authors (`placeholder-template`, Word's "Click or tap here to enter text." among them), an
+instruction left for the writer (`placeholder-filler`) and a model's markup or voice still
+fail in both reports, since such words have no innocent reading (Basile, 2026-10-21).
+`identifier-malformed` (13 true of 14) and `reference-field-missing` (41 of 41) were measured
+in `check`, where they wait for internal review; the audit gives neither, so neither is in
+the table.
+
 ## `next` says what to do now
 
 `check` lists what is wrong, and a project at `drafting` can have forty findings, a journal

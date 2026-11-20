@@ -358,13 +358,15 @@ def _non_negative_items(report) -> list[Item]:
 def _printed_items(census) -> list[Item]:
     """What is said of a PDF's reference list: entries not told apart, and each identifier
     not looked up since it may go on on the next line (`references.census_of_printed`)."""
+    from manuscript_guard.auditing.measured import measured
     from manuscript_guard.auditing.references import UNTOLD
 
     found = []
     if census.style == UNTOLD:
-        found.append(Item(REFERENCES, "G7", "entries-not-told-apart",
-                          UNTOLD_SAID.format(why=census.untold), INFO, False,
-                          census.path))  # fmt: skip
+        # A warning, by how often it was right on real papers (`auditing.measured`).
+        found.append(measured(Item(REFERENCES, "G7", "entries-not-told-apart",
+                                   UNTOLD_SAID.format(why=census.untold), INFO, False,
+                                   census.path)))  # fmt: skip
     found += [Item(REFERENCES, "G7", "identifier-not-sent", f"{said}: {NOT_SENT}", INFO,
                    False, census.path, line) for line, said in census.unsent]  # fmt: skip
     return found

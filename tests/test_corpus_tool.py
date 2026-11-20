@@ -676,7 +676,7 @@ def test_run_installs_the_commit_and_runs_each_report_outside_the_papers(
     monkeypatch.setenv("MANUSCRIPT_GUARD_DEBUG", "1")
     record = tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=2, only=None)
     assert record == {"commit": "main", "sha": SHA, "version": "0.2.999", "papers": 3,
-                      "scheme": 1}  # the fake git shows no keys.py: scheme 1
+                      "scheme": 1, "repo": str(REPO)}  # the fake keys.py names no SCHEME
     assert any("archive" in c and SHA in c for c in fake.quiet_calls)
     assert (corpus / "builds" / SHA[:9] / "installed.txt").read_text("utf-8") == SHA
     assert (corpus / "builds" / f"src-{SHA[:9]}" / "pyproject.toml").is_file()

@@ -180,7 +180,7 @@ its message, its line and its context play no part:
 Only a key unique in both runs pairs as it is. Where a key stands more than once in either
 run, it keeps its judged findings only where its count did not fall from the base to the new
 run; where it fell, every judged finding under it is gone, since which one went cannot be
-told. `measure` and `gate` list the judged findings under a repeated key, and those paired by a
+told, unless none is left and it stands elsewhere. `measure` and `gate` list the judged findings under a repeated key, and those paired by a
 key made from the context (`"key_from": "context"`, a code that names no subject yet), apart.
 Where either run has no keys, as every run before #706 has none, a judged finding is paired by
 the matcher above, as before.

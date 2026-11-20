@@ -335,8 +335,8 @@ class Run:
             made = made if isinstance(made, dict) else {}
             scheme = made.get("scheme")
             if not isinstance(scheme, int):
-                sha = made.get("sha")
-                scheme = corpus_run.scheme_of(ROOT, sha) if isinstance(sha, str) else 1
+                sha, repo = made.get("sha"), Path(made.get("repo") or ROOT)
+                scheme = corpus_run.scheme_of(repo, sha) if isinstance(sha, str) else 1
             self._scheme = scheme
         return self._scheme
 
@@ -461,6 +461,18 @@ def _key_line(keys: dict) -> str:
             f"whose count fell); by #705's matcher: {keys['by_matcher']}.")
 
 
+def _scheme_note(tied: int, schemes: list[int]) -> str:
+    """What the gate or the measure says where the keys' schemes differ, naming each."""
+    if len(set(schemes)) == 1:
+        return (f"the ties are of key scheme {tied} and the run{'s' * (len(schemes) > 1)} of "
+                f"scheme {schemes[0]}: paired by message; tie again against a run of scheme "
+                f"{schemes[0]}")  # fmt: skip
+    base, new = schemes
+    ties = "" if tied == base else f" (the ties are of scheme {tied})"
+    return (f"keys changed scheme ({base} \N{RIGHTWARDS ARROW} {new}){ties}: paired by "
+            "message; tie again after this merges")  # fmt: skip
+
+
 def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     """The ties, the author's decided ones over them, and the run they were made in, where
     every run carries keys of the ties' scheme; None, for #705's matcher, where one carries
@@ -471,10 +483,9 @@ def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     ties = corpus_keys.load_ties(root)
     if ties is None:
         return None
-    schemes = [ties["scheme"], *(run.scheme for run in runs)]
-    if len(set(schemes)) > 1:
-        return (f"keys changed scheme ({min(schemes)} \N{RIGHTWARDS ARROW} {max(schemes)}): "
-                "paired by message; tie again after this merges")  # fmt: skip
+    tied_scheme, schemes = ties["scheme"], [run.scheme for run in runs]
+    if len({tied_scheme, *schemes}) > 1:
+        return _scheme_note(tied_scheme, schemes)
     tied = Run(run_folder(root, ties["run"]))
     return {**ties["ties"], **decided(root, tied)}, tied
 

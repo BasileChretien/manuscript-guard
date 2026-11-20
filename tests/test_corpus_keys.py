@@ -466,17 +466,50 @@ def test_the_scheme_of_a_commit_is_read_from_its_text() -> None:
     assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"SCHEME = 2  # #709\n")) == 2
     assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"NONE = '-'\n")) == 1
 
-    def missing(cmd):
-        raise tool.CorpusError("no such path")
+    def failing(said: str):
+        def read(cmd):
+            raise tool.CorpusError(f"git -C repo show failed: {said}")
+        return read
 
-    assert tool.corpus_run.scheme_of(REPO, "abc", missing) == 1
+    # Only a commit with no keys.py reads 1; any other failure of git is refused.
+    for said in ("fatal: path 'src/manuscript_guard/keys.py' does not exist in 'abc'",
+                 "fatal: path 'src/manuscript_guard/keys.py' exists on disk, but not in 'abc'"):
+        assert tool.corpus_run.scheme_of(REPO, "abc", failing(said)) == 1
+    for said in ("fatal: invalid object name 'abc'.", "git: timed out after 600 seconds"):
+        with pytest.raises(tool.CorpusError, match="failed"):
+            tool.corpus_run.scheme_of(REPO, "abc", failing(said))
+
+
+@pytest.mark.parametrize(("text", "scheme"), [
+    (b"SCHEME: int = 2\n", 2),
+    (b"SCHEME = (2)\n", 2),
+    (b"SCHEME = 2\nSCHEME = 3\n", 3),
+    (b'"""The keys.\n\nSCHEME = 1\n"""\nSCHEME = 2\n', 2),
+    (b'"""The keys.\nSCHEME = 4\n"""\n', 1),
+    (b"def f():\n    SCHEME = 9\n", 1),
+])  # fmt: skip
+def test_the_scheme_is_the_last_module_level_assignment(text: bytes, scheme: int) -> None:
+    assert tool.corpus_run.scheme_of(REPO, "abc", lambda cmd: text) == scheme
+
+
+@pytest.mark.parametrize("text", [b"SCHEME = '2'\n", b"SCHEME = 2.0\n", b"SCHEME = (\n"])
+def test_a_scheme_that_is_no_int_or_does_not_parse_is_refused(text: bytes) -> None:
+    with pytest.raises(tool.CorpusError, match="SCHEME no int|does not parse"):
+        tool.corpus_run.scheme_of(REPO, "abc", lambda cmd: text)
 
 
 def test_a_run_s_scheme_comes_from_its_record_or_its_commit(corpus: Path, monkeypatch) -> None:
     folder = corpus / "runs" / "tied"
-    (folder / "run.json").write_text(json.dumps({"sha": "abc"}), "utf-8")
-    monkeypatch.setattr(tool.corpus_run, "scheme_of", lambda repo, sha, read=None: 2)
+    asked = []
+
+    def scheme_of(repo, sha, read=None):
+        asked.append(repo)
+        return 2
+
+    (folder / "run.json").write_text(json.dumps({"sha": "abc", "repo": "made/here"}), "utf-8")
+    monkeypatch.setattr(tool.corpus_run, "scheme_of", scheme_of)
     assert tool.Run(folder).scheme == 2
+    assert asked == [Path("made/here")]  # the repository the run was made from
     (folder / "run.json").write_text(json.dumps({"sha": "abc", "scheme": 3}), "utf-8")
     assert tool.Run(folder).scheme == 3
     assert tool.Run(corpus / "runs" / "judged").scheme == 1
@@ -530,3 +563,34 @@ def test_a_judged_finding_decided_twice_is_refused(corpus: Path) -> None:
         yaml.safe_dump([{**entry, "key": 7}]), "utf-8")
     with pytest.raises(tool.CorpusError, match="a string or null"):
         keys.load_decided(corpus)
+
+
+def test_the_note_names_each_scheme_where_only_the_ties_differ(corpus: Path) -> None:
+    write_run(corpus, "new", TIED)
+    for tied, runs in ((1, 2), (2, 1)):
+        scheme(corpus, "tied", tied)
+        tool.tie(corpus, "judged", "tied")
+        write_run(corpus, "base", TIED)
+        scheme(corpus, "base", runs)
+        scheme(corpus, "new", runs)
+        result = tool.gate(corpus, "base", "new")
+        assert result["keys"]["by_key"] == 0
+        assert result["scheme_note"] == (
+            f"the ties are of key scheme {tied} and the runs of scheme {runs}: paired by "
+            f"message; tie again against a run of scheme {runs}")
+    # Base and new apart, the ties on neither's side: each is named.
+    scheme(corpus, "base", 1)
+    scheme(corpus, "new", 3)
+    assert tool.gate(corpus, "base", "new")["scheme_note"] == (
+        "keys changed scheme (1 \N{RIGHTWARDS ARROW} 3) (the ties are of scheme 2): paired by "
+        "message; tie again after this merges")
+
+
+def test_the_ties_error_names_every_key_allowed_and_the_count_rule_its_exception(
+        corpus: Path) -> None:  # fmt: skip
+    (corpus / "report" / "ties.yaml").write_text("run: tied\nties: []\nwho: x\n", "utf-8")
+    with pytest.raises(tool.CorpusError, match="`judged_run` and `scheme`"):
+        keys.load_ties(corpus)
+    exception = "unless none is left and it stands elsewhere"
+    assert exception in (REPO / "docs" / "corpus.md").read_text("utf-8")
+    assert exception in " ".join(keys.key_state.__doc__.split())

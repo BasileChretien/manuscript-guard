@@ -157,7 +157,8 @@ def key_state(key: str, new: Keys, base_count: int, successor_codes: tuple = ())
     or a failure, asked where it stands as a note or a question or a form a question lists,
     elsewhere where another code has its subject and digest at a warning or a failure or a
     successor of its code stands in the report, gone otherwise. Under a key that is repeated
-    in either run, a count that fell from the base reads gone (Basile, 2026-11-19)."""
+    in either run, a count that fell from the base reads gone, unless none is left and it
+    stands elsewhere (Basile, 2026-11-19)."""
     count = new.count(key)
     repeated = base_count > 1 or count > 1
     if repeated and 0 < count < base_count:
@@ -190,7 +191,8 @@ def load_ties(root: Path) -> dict | None:
     if not isinstance(document, dict) or not isinstance(document.get("ties"), list) \
             or not isinstance(document.get("run"), str) \
             or set(document) - {"judged_run", "run", "scheme", "ties"}:  # fmt: skip
-        raise CorpusError(f"{path}: the ties are a list under `ties`, the run they name `run`")
+        raise CorpusError(f"{path}: the ties are a list under `ties`, the run they name `run`, "
+                          "and nothing but `judged_run` and `scheme` beside them")
     out = {}
     for entry in document["ties"]:
         if not isinstance(entry, dict) or not {"slug", "report", "index", "key", "how"} \

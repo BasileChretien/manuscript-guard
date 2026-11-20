@@ -8,6 +8,7 @@ the papers under `python -I`, which imports nothing from a working folder or `PY
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
@@ -41,9 +42,8 @@ def load_json(path: Path) -> object | None:
 #: This checkout: the repository the tool is in, which `run` builds from by default and
 #: nothing of the corpus is written into.
 ROOT = Path(__file__).resolve().parent.parent
-#: How the package's `keys.py` names the scheme of its keys (PR #709 on); a commit whose
-#: `keys.py` names none, or has none, keys by scheme 1.
-SCHEME = re.compile(r"^SCHEME\s*=\s*(\d+)\s*(?:#.*)?$", re.MULTILINE)
+#: What git says where a commit has no `keys.py`: it keys by scheme 1.
+NO_SUCH_PATH = ("does not exist in", "exists on disk, but not in")
 
 
 def checkouts(root: Path = ROOT) -> set[Path]:
@@ -71,15 +71,31 @@ def in_a_checkout(path: Path, root: Path = ROOT) -> bool:
 
 def scheme_of(repo: Path, sha: str, read=None) -> int:
     """The scheme of the keys a commit gives, read from its `src/manuscript_guard/keys.py`
-    as git holds it, by its text alone: nothing of a build is imported. 1 where the file
-    names no `SCHEME`, or has none."""
+    as git holds it, parsed and never imported: the last module-level assignment to
+    `SCHEME` (PR #709 on), an int. 1 where the commit has no such file or it assigns no
+    `SCHEME`; refused where git fails otherwise, the file does not parse, or `SCHEME` is
+    assigned anything but an int."""
     read = read or quiet
     try:
         text = read(["git", "-C", str(repo), "show", f"{sha}:src/manuscript_guard/keys.py"])
-    except CorpusError:
-        return 1
-    hit = SCHEME.search(text.decode("utf-8", "replace") if isinstance(text, bytes) else text)
-    return int(hit.group(1)) if hit else 1
+    except CorpusError as exc:
+        if any(said in str(exc) for said in NO_SUCH_PATH):
+            return 1
+        raise
+    try:
+        tree = ast.parse(text.decode("utf-8", "replace") if isinstance(text, bytes) else text)
+    except SyntaxError as exc:
+        raise CorpusError(f"the keys.py of {sha[:9]} does not parse: {exc}") from None
+    scheme = 1
+    for node in tree.body:
+        target, value = (node.targets, node.value) if isinstance(node, ast.Assign) else (
+            [node.target], node.value) if isinstance(node, ast.AnnAssign) else ([], None)
+        if not any(isinstance(n, ast.Name) and n.id == "SCHEME" for n in target):
+            continue
+        if not (isinstance(value, ast.Constant) and type(value.value) is int):
+            raise CorpusError(f"the keys.py of {sha[:9]} assigns SCHEME no int")
+        scheme = value.value
+    return scheme
 
 
 def quiet(cmd: list[str], cwd: Path | None = None) -> bytes:
@@ -275,7 +291,7 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
     env.pop("MANUSCRIPT_GUARD_DEBUG", None)
     record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen),
-              "scheme": scheme_of(repo, sha)}
+              "scheme": scheme_of(repo, sha), "repo": str(repo)}
     (out_root / "run.json").write_text(json.dumps(record, indent=1), "utf-8")
 
     def one(meta: dict) -> tuple[str, object]:

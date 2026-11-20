@@ -466,18 +466,30 @@ def test_the_scheme_of_a_commit_is_read_from_its_text() -> None:
     assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"SCHEME = 2  # #709\n")) == 2
     assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"NONE = '-'\n")) == 1
 
-    def failing(said: str):
+    # A commit with no keys.py, as ls-tree lists none: 1, whatever language git speaks.
+    def git(listed: bytes):
         def read(cmd):
-            raise tool.CorpusError(f"git -C repo show failed: {said}")
+            if "ls-tree" in cmd:
+                return listed
+            if "show" in cmd:
+                raise tool.CorpusError("git show failed: fatal: le chemin "
+                                       "'src/manuscript_guard/keys.py' n'existe pas dans 'abc'")
+            return b"abc\n"
         return read
 
-    # Only a commit with no keys.py reads 1; any other failure of git is refused.
-    for said in ("fatal: path 'src/manuscript_guard/keys.py' does not exist in 'abc'",
-                 "fatal: path 'src/manuscript_guard/keys.py' exists on disk, but not in 'abc'"):
-        assert tool.corpus_run.scheme_of(REPO, "abc", failing(said)) == 1
-    for said in ("fatal: invalid object name 'abc'.", "git: timed out after 600 seconds"):
-        with pytest.raises(tool.CorpusError, match="failed"):
-            tool.corpus_run.scheme_of(REPO, "abc", failing(said))
+    assert tool.corpus_run.scheme_of(REPO, "abc", git(b"")) == 1
+
+    # An unknown commit, or any other failure of git, is refused.
+    def unknown(cmd):
+        raise tool.CorpusError("git rev-parse failed: fatal: Needed a single revision")
+
+    with pytest.raises(tool.CorpusError, match="Needed a single revision"):
+        tool.corpus_run.scheme_of(REPO, "abc", unknown)
+    with pytest.raises(tool.CorpusError, match="n'existe pas"):
+        tool.corpus_run.scheme_of(REPO, "abc", git(b"src/manuscript_guard/keys.py\n"))
+    asked = []
+    tool.corpus_run.scheme_of(REPO, "abc", lambda cmd: asked.append(cmd[3]) or b"SCHEME = 2")
+    assert asked == ["rev-parse", "ls-tree", "show"]
 
 
 @pytest.mark.parametrize(("text", "scheme"), [
@@ -487,29 +499,33 @@ def test_the_scheme_of_a_commit_is_read_from_its_text() -> None:
     (b'"""The keys.\n\nSCHEME = 1\n"""\nSCHEME = 2\n', 2),
     (b'"""The keys.\nSCHEME = 4\n"""\n', 1),
     (b"def f():\n    SCHEME = 9\n", 1),
+    (b"class K:\n    SCHEME = 9\nSCHEME = 2\n", 2),
+    (b"\xef\xbb\xbfSCHEME = 2\n", 2),  # a UTF-8 byte order mark
 ])  # fmt: skip
 def test_the_scheme_is_the_last_module_level_assignment(text: bytes, scheme: int) -> None:
     assert tool.corpus_run.scheme_of(REPO, "abc", lambda cmd: text) == scheme
 
 
-@pytest.mark.parametrize("text", [b"SCHEME = '2'\n", b"SCHEME = 2.0\n", b"SCHEME = (\n"])
+@pytest.mark.parametrize("text", [
+    b"SCHEME = '2'\n", b"SCHEME = 2.0\n", b"SCHEME = (\n",
+    b"try:\n    SCHEME = 2\nexcept ImportError:\n    pass\n",
+    b"if True:\n    SCHEME = 2\n", b"with open('x') as f:\n    SCHEME = 2\n",
+    b"SCHEME = 2\nSCHEME += 1\n", b"SCHEME, OTHER = 2, 3\n", b"for SCHEME in (2,):\n    pass\n",
+])  # fmt: skip
 def test_a_scheme_that_is_no_int_or_does_not_parse_is_refused(text: bytes) -> None:
-    with pytest.raises(tool.CorpusError, match="SCHEME no int|does not parse"):
+    with pytest.raises(tool.CorpusError, match="SCHEME no int|does not parse|stores to SCHEME"):
         tool.corpus_run.scheme_of(REPO, "abc", lambda cmd: text)
 
 
-def test_a_run_s_scheme_comes_from_its_record_or_its_commit(corpus: Path, monkeypatch) -> None:
+def test_a_run_s_scheme_is_the_one_it_recorded_or_1(corpus: Path, monkeypatch) -> None:
     folder = corpus / "runs" / "tied"
-    asked = []
 
-    def scheme_of(repo, sha, read=None):
-        asked.append(repo)
-        return 2
+    def never(*args, **kwargs):
+        raise AssertionError("git was asked")
 
-    (folder / "run.json").write_text(json.dumps({"sha": "abc", "repo": "made/here"}), "utf-8")
-    monkeypatch.setattr(tool.corpus_run, "scheme_of", scheme_of)
-    assert tool.Run(folder).scheme == 2
-    assert asked == [Path("made/here")]  # the repository the run was made from
+    monkeypatch.setattr(tool.corpus_run, "scheme_of", never)
+    (folder / "run.json").write_text(json.dumps({"sha": "no-such-commit"}), "utf-8")
+    assert tool.Run(folder).scheme == 1
     (folder / "run.json").write_text(json.dumps({"sha": "abc", "scheme": 3}), "utf-8")
     assert tool.Run(folder).scheme == 3
     assert tool.Run(corpus / "runs" / "judged").scheme == 1

@@ -328,17 +328,12 @@ class Run:
 
     @property
     def scheme(self) -> int:
-        """The scheme of the run's keys: as `run` recorded it, else read from the commit it
-        recorded (`corpus_run.scheme_of`), else 1, the scheme of every key before #709."""
-        if not hasattr(self, "_scheme"):
-            made = load_json(self.folder / "run.json")
-            made = made if isinstance(made, dict) else {}
-            scheme = made.get("scheme")
-            if not isinstance(scheme, int):
-                sha, repo = made.get("sha"), Path(made.get("repo") or ROOT)
-                scheme = corpus_run.scheme_of(repo, sha) if isinstance(sha, str) else 1
-            self._scheme = scheme
-        return self._scheme
+        """The scheme of the run's keys, as `run` recorded it (`corpus_run.scheme_of`); 1,
+        the scheme of every key before #709, where it recorded none, as no run did before
+        the scheme was read, and git is not asked."""
+        made = load_json(self.folder / "run.json")
+        scheme = made.get("scheme") if isinstance(made, dict) else None
+        return scheme if isinstance(scheme, int) else 1
 
     def keys(self, slug: str, report: str) -> corpus_keys.Keys:
         return corpus_keys.Keys(self.findings(slug, report) or [])

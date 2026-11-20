@@ -42,8 +42,10 @@ def load_json(path: Path) -> object | None:
 #: This checkout: the repository the tool is in, which `run` builds from by default and
 #: nothing of the corpus is written into.
 ROOT = Path(__file__).resolve().parent.parent
-#: What git says where a commit has no `keys.py`: it keys by scheme 1.
-NO_SUCH_PATH = ("does not exist in", "exists on disk, but not in")
+#: Where a commit's keys are made: a commit without this file keys by scheme 1.
+KEYS_PY = "src/manuscript_guard/keys.py"
+#: What a module-level walk for stores to `SCHEME` does not enter.
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 
 def checkouts(root: Path = ROOT) -> set[Path]:
@@ -71,31 +73,44 @@ def in_a_checkout(path: Path, root: Path = ROOT) -> bool:
 
 def scheme_of(repo: Path, sha: str, read=None) -> int:
     """The scheme of the keys a commit gives, read from its `src/manuscript_guard/keys.py`
-    as git holds it, parsed and never imported: the last module-level assignment to
-    `SCHEME` (PR #709 on), an int. 1 where the commit has no such file or it assigns no
-    `SCHEME`; refused where git fails otherwise, the file does not parse, or `SCHEME` is
-    assigned anything but an int."""
+    as git holds it, parsed and never imported: the last plain module-level assignment of
+    an int to `SCHEME` (PR #709 on). 1 where the commit has no such file, as `ls-tree`
+    lists it, so that no message of git in any language is read, or where the file assigns
+    no `SCHEME`. Refused where git fails, the commit is unknown, the file does not parse,
+    or `SCHEME` is stored to any other way."""
     read = read or quiet
+    git = ["git", "-C", str(repo)]
+    read([*git, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"])
+    if not read([*git, "ls-tree", "--name-only", sha, KEYS_PY]).strip():
+        return 1
     try:
-        text = read(["git", "-C", str(repo), "show", f"{sha}:src/manuscript_guard/keys.py"])
-    except CorpusError as exc:
-        if any(said in str(exc) for said in NO_SUCH_PATH):
-            return 1
-        raise
-    try:
-        tree = ast.parse(text.decode("utf-8", "replace") if isinstance(text, bytes) else text)
-    except SyntaxError as exc:
+        tree = ast.parse(read([*git, "show", f"{sha}:{KEYS_PY}"]))
+    except (SyntaxError, ValueError) as exc:
         raise CorpusError(f"the keys.py of {sha[:9]} does not parse: {exc}") from None
     scheme = 1
     for node in tree.body:
-        target, value = (node.targets, node.value) if isinstance(node, ast.Assign) else (
-            [node.target], node.value) if isinstance(node, ast.AnnAssign) else ([], None)
-        if not any(isinstance(n, ast.Name) and n.id == "SCHEME" for n in target):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] \
+            if isinstance(node, ast.AnnAssign) else []  # fmt: skip
+        plain = bool(targets) and all(isinstance(n, ast.Name) for n in targets)
+        if not (plain and any(n.id == "SCHEME" for n in targets)):
+            if _stores_scheme(node):
+                raise CorpusError(f"the keys.py of {sha[:9]} stores to SCHEME other than by "
+                                  "a plain assignment at module level")  # fmt: skip
             continue
-        if not (isinstance(value, ast.Constant) and type(value.value) is int):
+        if not (isinstance(node.value, ast.Constant) and type(node.value.value) is int):
             raise CorpusError(f"the keys.py of {sha[:9]} assigns SCHEME no int")
-        scheme = value.value
+        scheme = node.value.value
     return scheme
+
+
+def _stores_scheme(node: ast.AST) -> bool:
+    """Whether a statement stores to the module's `SCHEME`, a function's or a class's body
+    aside: inside a try, an if or a with, by `+=`, by unpacking, by a loop or `:=`."""
+    if isinstance(node, _SCOPES):
+        return False
+    if isinstance(node, ast.Name) and node.id == "SCHEME" and isinstance(node.ctx, ast.Store):
+        return True
+    return any(_stores_scheme(child) for child in ast.iter_child_nodes(node))
 
 
 def quiet(cmd: list[str], cwd: Path | None = None) -> bytes:

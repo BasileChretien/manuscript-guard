@@ -210,9 +210,11 @@ def test_each_kind_of_finding_that_does_not_tie_goes_to_the_author() -> None:
     # Another code at its place, naming its words.
     other = finding("G6", "ai-phrasing", "'Studies show' is a phrase", line=5, key="G6|a|s|d")
     assert tie_kinds([old], [other]) == ["cross-code"]
-    # Its candidate's key stands twice in the keyed run.
-    assert tie_kinds([old], [{**old, "key": k1}, {**old, "line": 60, "context": "x",
-                                                  "key": k1}]) == ["repeated"]  # fmt: skip
+    # Its candidate's key stands twice in the keyed run: it ties to that key as a family,
+    # whose count the count rule then reads (rule 1).
+    repeated = [{**old, "key": k1}, {**old, "line": 60, "context": "x", "key": k1}]
+    [(kind, how, listed)] = keys.tie_group([old], repeated, "paper-a")
+    assert (kind, how, listed[0]["key"]) == ("tie", "key family", k1)
 
 
 def test_a_form_a_list_holds_ties_to_the_form_s_key_never_the_list_s() -> None:
@@ -225,9 +227,8 @@ def test_a_form_a_list_holds_ties_to_the_form_s_key_never_the_list_s() -> None:
                        forms=[{"form": "HR", "key": K_HR, "message": old["message"]},
                               {"form": "OR", "key": "G14|abbreviation-undefined|OR@main|-"}])
     [(kind, how, listed)] = keys.tie_group([old], [question], "paper-a")
-    assert (kind, how, listed[0]["key"]) == ("tie", "context+place", K_HR)
-    twice = {**question, "forms": [question["forms"][0], {**question["forms"][0],
-                                                         "key": K_HR + "#2"}]}  # fmt: skip
+    assert (kind, how, listed[0]["key"]) == ("tie", "short form, any pass", K_HR)
+    twice = {**question, "forms": [question["forms"][0], question["forms"][0]]}
     assert keys.tie_group([old], [twice], "paper-a")[0][0] == "several"
 
 
@@ -267,11 +268,18 @@ def test_a_finding_with_no_line_ties_by_its_one_message() -> None:
     # author's to say.
     twice = [{**old, "key": key}, {**old, "key": key + "x"}]
     assert keys.tie_group([old], twice, "paper-a")[0][0] == "several"
+    # Where the keyed run has one, the judged twins tie to it as a family (rule 1).
     assert keys.tie_group([old], [{**old, "key": key}], "paper-a",
-                          judged_all=[old, {**old}])[0][0] == "several"  # fmt: skip
-    # Its candidate's key repeated in the keyed run.
+                          judged_all=[old, {**old}])[0][:2] == ("tie", "key family")  # fmt: skip
+    # Two versions' line-less findings of one message are told apart by their files.
+    v1, v2 = {**old, "path": "v1/paper.tex"}, {**old, "path": "latest/paper.tex"}
+    said = keys.tie_group([v1, v2], [{**v1, "key": "c|v|v1|-"}, {**v2, "key": "c|v|v2|-"}],
+                          "paper-a", judged_all=[v1, v2])  # fmt: skip
+    assert [listed[0]["key"] for _k, _h, listed in said] == ["c|v|v1|-", "c|v|v2|-"]
+    # Its candidate's key repeated in the keyed run: a family too.
     other = {**old, "message": "another message", "key": key}
-    assert keys.tie_group([old], [{**old, "key": key}, other], "paper-a")[0][0] == "repeated"
+    assert keys.tie_group([old], [{**old, "key": key}, other], "paper-a")[0][:2] == (
+        "tie", "key family")
 
 
 def short_form(form: str, scope: str, line: int) -> dict:
@@ -305,3 +313,107 @@ def test_a_short_form_paired_with_a_list_s_entry_ties_to_its_form_and_scope() ->
                       forms=[{"form": "k_B", "line": 8, "key": "G14|code-name-in-prose|k_B|-",
                               "message": "'k_B' is written with underscores, the way ..."}])
     assert keys.tie_group([name], [grouped], "paper-a")[0][0] != "tie"
+
+
+# --- the three exact rules of 2026-11-20, second round ----------------------------------
+
+XXXX = "G6|model-artefact|placeholder-word: xxxx#{}|51b279a01b51"
+
+
+def test_candidates_of_one_key_family_tie_to_the_family() -> None:
+    old = finding("G6", "model-artefact", "'xxxx' — Unfilled placeholder text", line=5)
+    new = [{**old, "key": XXXX.format(n)} for n in (1, 2, 3, 4)]
+    said = keys.tie_group([old, {**old}, {**old}, {**old}], new, "paper-a",
+                          verdicts=["false"] * 4)  # fmt: skip
+    family = "G6|model-artefact|placeholder-word: xxxx|51b279a01b51"
+    assert [(kind, how, listed[0]["key"]) for kind, how, listed in said] == [
+        ("tie", "key family", family)] * 4
+    # Candidates that differ by more than the ordinal are no family.
+    other = [{**old, "key": XXXX.format(1)}, {**old, "key": XXXX.format(2).replace("51b2", "aaaa")}]
+    assert keys.tie_group([old], other, "paper-a")[0][0] == "several"
+
+
+def test_the_count_rule_reads_a_family_s_count(corpus: Path) -> None:
+    old = finding("G6", "model-artefact", "'xxxx' — Unfilled placeholder text", line=5)
+    family = "G6|model-artefact|placeholder-word: xxxx|51b279a01b51"
+    four = [{**old, "key": XXXX.format(n)} for n in (1, 2, 3, 4)]
+    (corpus / "report" / "packets" / "f.json").write_text(json.dumps([{
+        "slug": "paper-a", "reports": {"check": {"findings": [old, old]}}}]))
+    (corpus / "report" / "judged" / "f.json").write_text(json.dumps([
+        {"slug": "paper-a", "report": "check", "index": i, "verdict": "true"} for i in (0, 1)]))
+    write_run(corpus, "tied", four)
+    write_run(corpus, "judged", [old, old])
+    said = tool.tie(corpus, "judged", "tied")
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    assert said["by_pass"] == {"key family": 2}
+    assert [(t["key"], t["family"]) for t in document["ties"]] == [(family, True)] * 2
+    # One of the four gone: both judged findings under the family are lost; all four kept,
+    # or more, none is.
+    write_run(corpus, "new", four[:3])
+    result = tool.gate(corpus, "tied", "new")
+    assert len(result["lost"]) == 2 and all(r["fell"] for r in result["lost"])
+    write_run(corpus, "new", [*four, {**old, "key": XXXX.format(5)}])
+    assert tool.gate(corpus, "tied", "new")["ok"]
+
+
+def test_twins_of_one_verdict_tie_one_to_one_in_order() -> None:
+    old = finding("G6", "ai-phrasing", "An -ing tail asserting significance", line=7)
+    new = [{**old, "key": "G6|ai-phrasing|tail: reflecting the|e13", "col": 90},
+           {**old, "key": "G6|ai-phrasing|tail: reflecting a|f84", "col": 12}]
+    said = keys.tie_group([old, {**old}], new, "paper-a", verdicts=["true", "true"])
+    assert [(kind, how, listed[0]["key"]) for kind, how, listed in said] == [
+        ("tie", "twins", "G6|ai-phrasing|tail: reflecting a|f84"),
+        ("tie", "twins", "G6|ai-phrasing|tail: reflecting the|e13")]
+    # With no column, by key; their verdicts differ, or their numbers do: refused.
+    lineless = [{**c, "col": None} for c in new]
+    assert keys.tie_group([old, {**old}], lineless, "paper-a",
+                          verdicts=["true", "true"])[0][2][0]["key"].endswith("a|f84")
+    assert [kind for kind, _h, _l in keys.tie_group(
+        [old, {**old}], new, "paper-a", verdicts=["true", "false"])] == ["several"] * 2
+    third = {**old, "key": "G6|ai-phrasing|tail: reflecting it|0c1", "col": 50}
+    assert [kind for kind, _h, _l in keys.tie_group(
+        [old, {**old}], [*new, third], "paper-a", verdicts=["true", "true"])] == ["several"] * 2
+
+
+def test_a_short_form_ties_to_its_entry_in_its_scope_whatever_the_pass() -> None:
+    sentence = "AYUSH guidelines were followed"
+    old = finding("G14", "abbreviation-undefined", "AYUSH is used 31 times in the abstract "
+                  "and not defined there", line=4, context=sentence)  # fmt: skip
+    question = finding("G14", "abbreviation-undefined", "88 short forms are used and never "
+                       "defined: 'AYUSH' here, then COVID. Do any need defining?", "info",
+                       line=4, context=sentence, question=True,
+                       key="G14|abbreviation-undefined|-|-",
+                       forms=[short_form("AYUSH", "abstract", 4),
+                              short_form("AYUSH", "main", 60)])  # fmt: skip
+    [(kind, how, listed)] = keys.tie_group([old], [question], "paper-a")
+    assert (kind, how, listed[0]["key"]) == ("tie", "short form, any pass",
+                                             "G14|abbreviation-undefined|AYUSH@abstract|-")
+    # In two scopes, and the judged message names neither: the author's.
+    unscoped = {**old, "message": "AYUSH is used and not defined"}
+    assert keys.tie_group([unscoped], [question], "paper-a")[0][0] == "several"
+
+
+def test_the_author_s_decisions_are_read_as_ties_and_checked(corpus: Path) -> None:
+    write_run(corpus, "tied", [{**f, "line": 77, "context": "elsewhere"} for f in TIED])
+    tool.tie(corpus, "judged", "tied")
+    write_run(corpus, "keyed", [{**f, "message": "said otherwise", "line": 99} for f in TIED])
+    assert tool.measure(corpus, "keyed", ledger=False)["keys"]["by_key"] == 0
+    decided = corpus / "report" / "ties-decided.yaml"
+    decided.write_text(yaml.safe_dump([
+        {"slug": "paper-a", "report": "check", "index": 0, "key": K_SPELL, "by": "the author",
+         "date": "2026-11-20"},
+        {"slug": "paper-a", "report": "check", "index": 1, "key": None, "by": "the author",
+         "date": "2026-11-20"}]), "utf-8")  # fmt: skip
+    result = tool.measure(corpus, "keyed", ledger=False)
+    rows = {r["index"]: r for r in result["findings"]}
+    assert (rows[0]["by_key"], rows[0]["state"]) == (True, "reported")
+    assert (rows[1]["by_key"], rows[1]["state"]) == (True, "gone")
+    for bad, says in (({"index": 9}, "is no judged finding"),
+                      ({"key": "G9|nothing|x|-"}, "is not in tied's paper-a check"),
+                      ({"by": None, "date": None, "who": "x"}, "a decision is")):
+        entry = {"slug": "paper-a", "report": "check", "index": 0, "key": K_SPELL,
+                 "by": "the author", "date": "2026-11-20", **bad}
+        entry = {k: v for k, v in entry.items() if v is not None}
+        decided.write_text(yaml.safe_dump([entry]), "utf-8")
+        with pytest.raises(tool.CorpusError, match=says):
+            tool.measure(corpus, "keyed", ledger=False)

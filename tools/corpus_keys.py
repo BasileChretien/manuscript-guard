@@ -6,24 +6,37 @@ Basile's rules (2026-11-19): where both runs carry keys, a judged finding is pai
 key alone; only a key unique in both runs pairs, and where a repeated key's count falls from
 the base to the new run, every judged finding under it is gone; the judged set, from a run
 before the keys, is tied to keys once (`tie`), and what does not tie one to one by the
-strongest passes, or by the two exact rules of 2026-11-20 (`_lineless`, `_form_entry`),
-goes to the author where it has several candidates or a repeated key, and is left for the
-matcher otherwise.
+strongest passes, or by the exact rules of 2026-11-20 (`_lineless`, `_form_entry`,
+`_families`, `_twins`), goes to the author where it has several candidates or a repeated
+key, and is left for the matcher otherwise.
 """
 
 from __future__ import annotations
 
 import collections
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from corpus_match import STRONG, form_of, loud, match, norm, region, states, subject_of
+from corpus_match import (
+    STRONG,
+    form_of,
+    loud,
+    match,
+    norm,
+    region,
+    relative,
+    states,
+    subject_of,
+)
 from corpus_run import CorpusError
 
 #: What a key's subject is where it stands for a list, and its digest where it stands for no
 #: sentence (`manuscript_guard.keys.NONE`).
 NONE = "-"
+#: The ordinal `keys.assign` gives two findings of one subject in one sentence.
+ORDINAL = re.compile(r"#\d+$")
 TIES = Path("report") / "ties.yaml"
 AMBIGUOUS = Path("report") / "ties-ambiguous.md"
 UNTIED = Path("report") / "ties-untied.md"
@@ -51,6 +64,13 @@ def parts(key: str) -> tuple[str, str, str, str]:
     return gate, code, subject, digest
 
 
+def family_of(key: str) -> str:
+    """A key with the ordinal of its subject taken off, `xxxx#2` read `xxxx`: the group of
+    findings of one subject in one sentence that only their order tells apart."""
+    gate, code, subject, digest = parts(key)
+    return "|".join((gate, code, ORDINAL.sub("", subject), digest))
+
+
 def from_context(key: str) -> bool:
     """Whether a key falls back on a digest of its context (`"key_from": "context"`)."""
     return parts(key)[2].startswith("~")
@@ -67,16 +87,22 @@ class Keys:
     findings: list[dict]
     at: dict[str, list[int]] = field(default_factory=lambda: collections.defaultdict(list))
     forms: dict[str, list[int]] = field(default_factory=lambda: collections.defaultdict(list))
+    #: Each key family's findings, a form under a list counted with its list's index.
+    family: dict[str, list[int]] = field(default_factory=lambda: collections.defaultdict(list))
 
     def __post_init__(self) -> None:
         for i, f in enumerate(self.findings):
             if isinstance(f.get("key"), str):
                 self.at[f["key"]].append(i)
+                self.family[family_of(f["key"])].append(i)
             for entry in f.get("forms") or []:
                 if isinstance(entry, dict) and isinstance(entry.get("key"), str):
                     self.forms[entry["key"]].append(i)
+                    self.family[family_of(entry["key"])].append(i)
 
-    def count(self, key: str) -> int:
+    def count(self, key: str, family: bool = False) -> int:
+        if family:
+            return len(self.family.get(key, ()))
         return len(self.at.get(key, ())) + len(self.forms.get(key, ()))
 
 
@@ -88,6 +114,17 @@ class ByKey:
     repeated: bool = False
     #: Its count fell from the base to the new run.
     fell: bool = False
+
+
+def family_state(key: str, new: Keys, base_count: int) -> ByKey:
+    """A judged finding tied to a key family: kept while the family's count does not fall
+    from the base, reported where one of it stands at a warning or a failure; gone, with
+    every judged finding tied to the family, where its count fell (Basile, 2026-11-20)."""
+    here = new.family.get(key, [])
+    if len(here) < base_count or not here:
+        return ByKey("gone", [], repeated=True, fell=len(here) < base_count)
+    quiet = all(new.findings[i].get("question") or not loud(new.findings[i]) for i in here)
+    return ByKey("asked" if quiet else "reported", list(dict.fromkeys(here)), repeated=True)
 
 
 def key_state(key: str, new: Keys, base_count: int, successor_codes: tuple = ()) -> ByKey:
@@ -138,14 +175,51 @@ def load_ties(root: Path) -> dict | None:
         raise CorpusError(f"{path}: the ties are a list under `ties`, the run they name `run`")
     out = {}
     for entry in document["ties"]:
-        if not isinstance(entry, dict) or set(entry) != {"slug", "report", "index", "key", "how"}:
-            raise CorpusError(f"{path}: a tie is slug, report, index, key and how")
-        try:
-            out[(str(entry["slug"]), str(entry["report"]), int(entry["index"]))] = str(entry["key"])
-        except (TypeError, ValueError):
-            raise CorpusError(f"{path}: a tie's index is a number, not {entry['index']!r}"
-                              ) from None  # fmt: skip
+        if not isinstance(entry, dict) or not {"slug", "report", "index", "key", "how"} \
+                <= set(entry) <= {"slug", "report", "index", "key", "how", "family"}:  # fmt: skip
+            raise CorpusError(f"{path}: a tie is slug, report, index, key and how, and family")
+        out[_where(entry, path)] = Tie(str(entry["key"]), bool(entry.get("family")))
     return {"run": document["run"], "ties": out}
+
+
+@dataclass(frozen=True)
+class Tie:
+    """A judged finding's key, or its key family's (`family`); no key where the author
+    decided no finding of the keyed run is it."""
+
+    key: str | None
+    family: bool = False
+
+
+def _where(entry: dict, path: Path) -> tuple[str, str, int]:
+    try:
+        return str(entry["slug"]), str(entry["report"]), int(entry["index"])
+    except (TypeError, ValueError):
+        raise CorpusError(f"{path}: a tie's index is a number, not {entry['index']!r}") from None
+
+
+def load_decided(root: Path) -> dict[tuple[str, str, int], Tie]:
+    """`report/ties-decided.yaml`: the author's ties, each `{slug, report, index, key, by,
+    date}`, the key null where no keyed finding is the judged one, `family: true` for a key
+    family. Read beside the ties, over them; checked against the judged set and the run of
+    the ties by `corpus.ties_against`."""
+    path = root / DECIDED
+    if not path.is_file():
+        return {}
+    try:
+        document = yaml.safe_load(path.read_text("utf-8")) or []
+    except yaml.YAMLError as exc:
+        raise CorpusError(f"{path} is not YAML: {exc}") from None
+    if not isinstance(document, list):
+        raise CorpusError(f"{path}: the decisions are a list")
+    out = {}
+    for entry in document:
+        needed = {"slug", "report", "index", "key", "by", "date"}
+        if not isinstance(entry, dict) or not needed <= set(entry) <= needed | {"family"}:
+            raise CorpusError(f"{path}: a decision is slug, report, index, key, by and date")
+        key = entry["key"]
+        out[_where(entry, path)] = Tie(None if key is None else str(key), bool(entry.get("family")))
+    return out
 
 
 def _listed_key(finding: dict, entry: int | None) -> str:
@@ -162,7 +236,8 @@ def _candidates(new: list[dict], indices: list[int], forms: dict[int, int]) -> l
         entry = (f.get("forms") or [])[forms[i]] if i in forms else None
         said = entry if isinstance(entry, dict) else f
         out.append({"key": str(said.get("key")), "code": f"{f.get('gate')}/{f.get('code')}",
-                    "message": norm(said.get("message"))[:200]})  # fmt: skip
+                    "message": norm(said.get("message"))[:200], "line": said.get("line"),
+                    "col": said.get("col")})  # fmt: skip
     return out
 
 
@@ -173,18 +248,24 @@ def _code(f: dict) -> tuple:
     return f.get("gate"), f.get("code")
 
 
-def _lineless(old: dict, new: list[dict], judged_all: list[dict], counts: Keys) -> Said | None:
+def _lineless(old: dict, new: list[dict], judged_all: list[dict], counts: Keys,
+              slug: str) -> Said | None:  # fmt: skip
     """Rule 1 (Basile, 2026-11-20): a judged finding with no line ties to the keyed finding
-    of its gate and code whose message is the same, where that message is the only one of
-    its code so in the judged run's report and in the keyed run's, and its key is not
-    repeated. None where no keyed finding of its code has its message."""
-    said = norm(old.get("message"))
-    same = [i for i, f in enumerate(new)
-            if _code(f) == _code(old) and norm(f.get("message")) == said]  # fmt: skip
+    of its gate and code whose message is the same, in the same file where it names one (a
+    line-less finding's place is its file), where that message is the only one of its code
+    so in the judged run's report and in the keyed run's, and its key is not repeated. None
+    where no keyed finding of its code has its message."""
+    said, path = norm(old.get("message")), relative(old.get("path"), slug)
+
+    def alike(f: dict) -> bool:
+        return _code(f) == _code(old) and norm(f.get("message")) == said and (
+            path is None or relative(f.get("path"), slug) == path)
+
+    same = [i for i, f in enumerate(new) if alike(f)]
     if not same:
         return None
     listed = _candidates(new, same, {})
-    twins = sum(_code(f) == _code(old) and norm(f.get("message")) == said for f in judged_all)
+    twins = sum(alike(f) for f in judged_all)
     if len(same) > 1 or twins > 1:
         return "several", "message, no line", listed
     if counts.count(str(new[same[0]].get("key"))) > 1:
@@ -193,36 +274,79 @@ def _lineless(old: dict, new: list[dict], judged_all: list[dict], counts: Keys) 
 
 
 def _form_entry(old: dict, new: list[dict], judged_all: list[dict], counts: Keys,
-                i: int, j: int) -> Said | None:  # fmt: skip
-    """Rule 2 (Basile, 2026-11-20): a judged finding the matcher paired with a form a list
-    holds ties to that form's own key, where its short form and its scope (`HR@main`) are
-    the same and the only ones of its code so in the judged run's report, and the key is
-    not repeated in the keyed run. None where the form's key has no scope to hold it to."""
-    entry = new[i]["forms"][j]
-    key = str(entry.get("key"))
-    subject = parts(key)[2]
+                i: int, by_form_pass: bool) -> Said | None:  # fmt: skip
+    """Rules 2 (form pass) and 3 (any pass) of Basile's of 2026-11-20: a judged short form
+    whose candidate is a list naming that form ties to the list's entry for it in the same
+    scope (`HR@main`), where that entry is the only one so, the form and scope are the only
+    ones of its code so in the judged run's report, and the key is not repeated in the keyed
+    run. None where the list's entries for the form carry no scope to hold it to."""
     form, scope = form_of(old), SCOPES.get(region(old.get("message")) or "")
-    if "@" not in subject or not form:
+    entries = [(j, e) for j, e in enumerate(new[i].get("forms") or [])
+               if isinstance(e, dict) and e.get("form") == form]  # fmt: skip
+    if not form or not entries or not all("@" in parts(str(e.get("key")))[2] for _, e in entries):
         return None
-    listed = _candidates(new, [i], {i: j})
+    how = "form entry" if by_form_pass else "short form, any pass"
+    listed = _candidates(new, [i], {i: entries[0][0]})
     scopes = {parts(str(e.get("key")))[2] for f in new if _code(f) == _code(old)
               for e in f.get("forms") or [] if isinstance(e, dict) and e.get("form") == form}
     if scope is None:
-        return ("several" if len(scopes) > 1 else "weaker"), "form entry", listed
-    if subject != f"{form}@{scope}":
-        return "weaker", "form entry", listed
+        return ("several" if len(scopes) > 1 else "weaker"), how, listed
+    mine = [j for j, e in entries if parts(str(e.get("key")))[2] == f"{form}@{scope}"]
+    if len(mine) != 1:
+        return ("several" if mine else "weaker"), how, listed
+    listed = _candidates(new, [i], {i: mine[0]})
     twins = sum(_code(f) == _code(old) and form_of(f) == form
                 and region(f.get("message")) == region(old.get("message")) for f in judged_all)
     if twins > 1:
-        return "several", "form entry", listed
-    if counts.count(key) > 1:
-        return "repeated", "form entry", listed
-    return "tie", "form entry", listed
+        return "several", how, listed
+    if counts.count(listed[0]["key"]) > 1:
+        return "repeated", how, listed
+    return "tie", how, listed
+
+
+def _families(out: list[Said]) -> list[Said]:
+    """Rule 1 (Basile, 2026-11-20): a judged finding with several candidates, or one whose
+    candidate's key is repeated, ties to the key family where every candidate is of one
+    family, its keys alike but for the subject's ordinal; never where they differ by more."""
+    tied = []
+    for kind, how, listed in out:
+        families = {family_of(c["key"]) for c in listed}
+        if kind in TO_DECIDE and listed and len(families) == 1 and "form" not in how:
+            tied.append(("tie", "key family", [{**listed[0], "key": families.pop()}]))
+        else:
+            tied.append((kind, how, listed))
+    return tied
+
+
+def _twins(out: list[Said], olds: list[dict], verdicts: list[str], slug: str) -> list[Said]:
+    """Rule 2 (Basile, 2026-11-20): judged findings of one report alike in gate, code,
+    message and place, of one verdict, with several candidates, as many distinct keys among
+    them as there are twins, tie one to one, the candidates in order of their place (or of
+    their keys where one has no column), the twins in order of index. Their verdict is one,
+    so the order changes no measure. Never where their verdicts differ, nor the numbers."""
+    groups: dict[tuple, list[int]] = collections.defaultdict(list)
+    for k, (kind, _how, _listed) in enumerate(out):
+        if kind == "several":
+            old = olds[k]
+            groups[(_code(old), norm(old.get("message")), old.get("line"),
+                    relative(old.get("path"), slug))].append(k)  # fmt: skip
+    out = list(out)
+    for members in groups.values():
+        candidates = list({c["key"]: c for k in members for c in out[k][2]}.values())
+        if len(members) < 2 or len(candidates) != len(members) \
+                or len({verdicts[k] for k in members}) != 1:  # fmt: skip
+            continue
+        placed = all(c.get("col") is not None for c in candidates)
+        candidates.sort(key=lambda c: (c.get("line") or 0, c.get("col") or 0, c["key"])
+                        if placed else (c["key"],))  # fmt: skip
+        for k, candidate in zip(sorted(members), candidates, strict=True):
+            out[k] = ("tie", "twins", [candidate])
+    return out
 
 
 def tie_group(olds: list[dict], new: list[dict], slug: str,
-              alone: frozenset[int] = frozenset(),
-              judged_all: list[dict] | None = None) -> list[Said]:  # fmt: skip
+              alone: frozenset[int] = frozenset(), judged_all: list[dict] | None = None,
+              verdicts: list[str] | None = None) -> list[Said]:  # fmt: skip
     """For each judged finding of one report, `("tie", how, [its finding])` where #705's
     matcher pairs it one to one, with its gate and code, by the same message or context at
     its place, its candidate the only one so and its key unique in the keyed run; else the
@@ -236,10 +360,10 @@ def tie_group(olds: list[dict], new: list[dict], slug: str,
     for k in range(len(olds)):
         by_rule = None
         if olds[k].get("line") is None:
-            by_rule = _lineless(olds[k], new, judged_all or olds, counts)
-        if by_rule is None and how.get(k, "").startswith("form:"):
+            by_rule = _lineless(olds[k], new, judged_all or olds, counts, slug)
+        if by_rule is None and k in found and new[found[k][0]].get("forms"):
             by_rule = _form_entry(olds[k], new, judged_all or olds, counts, found[k][0],
-                                  int(how[k].split(":")[1]))  # fmt: skip
+                                  how[k].startswith("form:"))  # fmt: skip
         if by_rule is not None:
             out.append(by_rule)
             continue
@@ -279,7 +403,7 @@ def tie_group(olds: list[dict], new: list[dict], slug: str,
                 listed = _candidates(new, [i for i, f in enumerate(new)
                                            if (f.get("gate"), f.get("code")) == code][:3], {})
             out.append((kind, how.get(k, ""), listed))
-    return out
+    return _twins(_families(out), olds, verdicts or ["true"] * len(olds), slug)
 
 
 def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
@@ -315,3 +439,28 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
                       for c in row["candidates"]] or ["  - no finding of its code"]
         lines.append("")
     return "\n".join(lines)
+
+
+def check_decided(found: dict, judged: set, tied: str, keys_of) -> dict:
+    """The author's decisions, each refused unless its judged finding is one of the judged
+    set and its key is in the run of the ties (a family's where it says `family`), or null."""
+    for (slug, report, index), tie in found.items():
+        if (slug, report, index) not in judged:
+            raise CorpusError(f"{DECIDED.as_posix()}: {slug} {report} {index} is no judged "
+                              "finding")  # fmt: skip
+        if tie.key is not None and not keys_of(slug, report).count(tie.key, tie.family):
+            raise CorpusError(f"{DECIDED.as_posix()}: {tie.key} is not in {tied}'s {slug} "
+                              f"{report}")  # fmt: skip
+    return found
+
+
+def render_tie(result: dict) -> str:
+    to_decide = sum(result["by_kind"][k] for k in TO_DECIDE)
+    lines = [f"## Ties: {result['judged_run']} to {result['run']}", "",
+             f"Tied: {result['tied']} ({result['fallback']} to a key from the context), by "
+             f"{result['by_pass']}. Not tied: {result['ambiguous']}, of them {to_decide} for "
+             f"the author ({AMBIGUOUS.as_posix()}) and the rest for the matcher "
+             f"({UNTIED.as_posix()}).", "",
+             "| why not tied | judged findings |", "| --- | ---: |"]  # fmt: skip
+    lines += [f"| {KINDS[k]} | {n} |" for k, n in result["by_kind"].items()]
+    return "\n".join(lines) + "\n"

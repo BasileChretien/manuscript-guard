@@ -337,14 +337,26 @@ class Run:
                     yield paper.name, report, found
 
 
-def _by_key(item: Judged, key: str, run: Run, base: Run,
+def _by_key(item: Judged, tie: corpus_keys.Tie, run: Run, base: Run,
             successors: list[Decision]) -> tuple[Fate, list[int]]:  # fmt: skip
-    """A judged finding's fate by its key in `run`, its count held to the one in `base`."""
-    codes = tuple(c for d in successors if d.successor_from == item.code for c in d.successor_to)
-    said = corpus_keys.key_state(key, run.keys(item.slug, item.report),
-                                 base.keys(item.slug, item.report).count(key), codes)
-    fate = Fate(item, said.state, missing=run.findings(item.slug, item.report) is None,
-                by_key=True, fallback=corpus_keys.from_context(key), repeated=said.repeated,
+    """A judged finding's fate by its key in `run`, its count held to the one in `base`; by
+    its key family's count where it is tied to a family; gone where the author decided no
+    keyed finding is it."""
+    missing = run.findings(item.slug, item.report) is None
+    if tie.key is None:
+        return Fate(item, "gone", missing=missing, by_key=True), []
+    key, new = tie.key, run.keys(item.slug, item.report)
+    if tie.family:
+        said = corpus_keys.family_state(key, new, base.keys(item.slug, item.report).count(
+            key, family=True))  # fmt: skip
+        codes: tuple = ()
+    else:
+        codes = tuple(c for d in successors if d.successor_from == item.code
+                      for c in d.successor_to)  # fmt: skip
+        said = corpus_keys.key_state(key, new, base.keys(item.slug, item.report).count(key),
+                                     codes)  # fmt: skip
+    fate = Fate(item, said.state, missing=missing, by_key=True,
+                fallback=corpus_keys.from_context(key), repeated=said.repeated,
                 fell=said.fell)  # fmt: skip
     if said.state == "elsewhere" and codes and said.used and all(
             f"{run.findings(item.slug, item.report)[i].get('gate')}/"
@@ -441,12 +453,21 @@ def _key_line(keys: dict) -> str:
 
 
 def keyed_against(root: Path, run: Run) -> tuple[dict, Run] | None:
-    """The ties and the run they were made in, where `run` carries keys and the corpus has
-    ties (`tie`); None, for #705's matcher, otherwise."""
+    """The ties, the author's decided ones over them, and the run they were made in, where
+    `run` carries keys and the corpus has ties (`tie`); None, for #705's matcher, otherwise."""
     ties = corpus_keys.load_ties(root)
     if ties is None or not run.keyed:
         return None
-    return ties["ties"], Run(run_folder(root, ties["run"]))
+    tied = Run(run_folder(root, ties["run"]))
+    return {**ties["ties"], **decided(root, tied)}, tied
+
+
+def decided(root: Path, tied: Run) -> dict:
+    """`report/ties-decided.yaml`, each decision checked against the judged set and the run
+    of the ties (`corpus_keys.check_decided`)."""
+    judged = {item.key for item in load_judged(root)[0]}
+    return corpus_keys.check_decided(corpus_keys.load_decided(root), judged, tied.name,
+                                     lambda slug, report: tied.keys(slug, report))  # fmt: skip
 
 
 def _table(rows: list[dict]) -> dict:
@@ -653,11 +674,13 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
         alone = frozenset(k for k, item in enumerate(members) if item.alone)
         said = corpus_keys.tie_group([item.finding for item in members],
                                      run.findings(slug, report) or [], slug, alone,
-                                     before.findings(slug, report))  # fmt: skip
+                                     before.findings(slug, report),
+                                     [item.verdict for item in members])  # fmt: skip
         for item, (kind, how, candidates) in zip(members, said, strict=True):
             where = {"slug": slug, "report": report, "index": item.index}
             if kind == "tie":
-                ties.append({**where, "key": candidates[0]["key"], "how": how})
+                family = {"family": True} if how == "key family" else {}
+                ties.append({**where, "key": candidates[0]["key"], "how": how, **family})
             else:
                 ambiguous.append({**where, "kind": kind, "how": how, "verdict": item.verdict,
                                   "code": item.code, "candidates": candidates[:5],
@@ -675,18 +698,6 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
             "by_pass": dict(collections.Counter(row["how"] for row in ties)),
             "ambiguous": len(ambiguous), "by_kind": {k: kinds[k] for k in corpus_keys.KINDS},
             "fallback": sum(corpus_keys.from_context(row["key"]) for row in ties)}  # fmt: skip
-
-
-def render_tie(result: dict) -> str:
-    to_decide = sum(result["by_kind"][k] for k in corpus_keys.TO_DECIDE)
-    lines = [f"## Ties: {result['judged_run']} to {result['run']}", "",
-             f"Tied: {result['tied']} ({result['fallback']} to a key from the context), by "
-             f"{result['by_pass']}. Not tied: {result['ambiguous']}, of them {to_decide} for "
-             "the author (report/ties-ambiguous.md) and the rest for the matcher "
-             "(report/ties-untied.md).", "",
-             "| why not tied | judged findings |", "| --- | ---: |"]  # fmt: skip
-    lines += [f"| {corpus_keys.KINDS[k]} | {n} |" for k, n in result["by_kind"].items()]
-    return "\n".join(lines) + "\n"
 
 
 # --- the command line -------------------------------------------------------------------
@@ -770,7 +781,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "tie":
             _outside_the_checkout(args.out, args.json)
             result = tie(root, args.judged_run, args.keyed_run)
-            _write(render_tie(result), result, args.out, args.json)
+            _write(corpus_keys.render_tie(result), result, args.out, args.json)
             return 0
         result = gate(root, args.base, args.new)
         _write(render_gate(result), result, args.out, args.json)

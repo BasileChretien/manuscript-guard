@@ -203,8 +203,11 @@ def test_each_kind_of_finding_that_does_not_tie_goes_to_the_author() -> None:
     # Several: two at its place with its context, naming its words.
     near = {**old, "message": "'Studies show' and no citation", "key": k2}
     assert tie_kinds([old], [{**old, "key": k1}, near]) == ["several"]
-    # Taken: another judged finding has it.
-    assert tie_kinds([old, {**old}], [{**old, "key": k1}]) == ["tie", "taken"]
+    # Taken: another judged finding, not its twin, has it.
+    other_one = {**old, "message": "'Studies show' with a citation far off"}
+    assert tie_kinds([old, other_one], [{**old, "key": k1}]) == ["tie", "taken"]
+    # Twins of the judged run at one place, one candidate: no pass may say which is which.
+    assert tie_kinds([old, {**old}], [{**old, "key": k1}]) == ["several", "several"]
     # A weaker pass: the same message at another line.
     assert tie_kinds([old], [{**old, "line": 9, "context": "moved", "key": k1}]) == ["weaker"]
     # Another code at its place, naming its words.
@@ -268,9 +271,13 @@ def test_a_finding_with_no_line_ties_by_its_one_message() -> None:
     # author's to say.
     twice = [{**old, "key": key}, {**old, "key": key + "x"}]
     assert keys.tie_group([old], twice, "paper-a")[0][0] == "several"
-    # Where the keyed run has one, the judged twins tie to it as a family (rule 1).
+    # Where the keyed run has one and the judged run two, one is lost already: which cannot
+    # be told, so neither ties, whatever their verdicts (no family of one for two).
     assert keys.tie_group([old], [{**old, "key": key}], "paper-a",
-                          judged_all=[old, {**old}])[0][:2] == ("tie", "key family")  # fmt: skip
+                          judged_all=[old, {**old}])[0][0] == "several"  # fmt: skip
+    assert [kind for kind, _h, _l in keys.tie_group(
+        [old, {**old}], [{**old, "key": key}], "paper-a",
+        verdicts=["true", "false"])] == ["several", "several"]
     # Two versions' line-less findings of one message are told apart by their files.
     v1, v2 = {**old, "path": "v1/paper.tex"}, {**old, "path": "latest/paper.tex"}
     said = keys.tie_group([v1, v2], [{**v1, "key": "c|v|v1|-"}, {**v2, "key": "c|v|v2|-"}],
@@ -417,3 +424,109 @@ def test_the_author_s_decisions_are_read_as_ties_and_checked(corpus: Path) -> No
         decided.write_text(yaml.safe_dump([entry]), "utf-8")
         with pytest.raises(tool.CorpusError, match=says):
             tool.measure(corpus, "keyed", ledger=False)
+
+
+# --- round 1 of #708 ------------------------------------------------------------------
+
+
+def test_a_family_gone_where_a_successor_stands_reads_elsewhere(corpus: Path) -> None:
+    family = "G6|model-artefact|placeholder-word: xxxx|51b279a01b51"
+    question = finding("audit", "question-no-abstract", "Where is the Abstract?", "info",
+                       key="audit|question-no-abstract|-|-")  # fmt: skip
+    said = keys.family_state(family, keys.Keys([question]), 2, ("audit/question-no-abstract",))
+    assert said.state == "elsewhere"
+    assert keys.family_state(family, keys.Keys([question]), 2).state == "gone"
+    # And so does a repeated key gone whole.
+    k2 = "G7|citation-unresolved|~ceca1c0200bd|-"
+    assert keys.key_state(k2, keys.Keys([question]), 2, ("audit/question-no-abstract",)
+                          ).state == "elsewhere"  # fmt: skip
+    # Through the gate: tied to a family, gone at new, the ledger's successor stands.
+    old = finding("G6", "model-artefact", "'xxxx' — Unfilled placeholder text", line=5)
+    (corpus / "report" / "packets" / "f.json").write_text(json.dumps([{
+        "slug": "paper-a", "reports": {"check": {"findings": [old]}}}]))
+    (corpus / "report" / "judged" / "f.json").write_text(json.dumps([
+        {"slug": "paper-a", "report": "check", "index": 0, "verdict": "true"}]))
+    write_run(corpus, "judged", [old])
+    write_run(corpus, "tied", [{**old, "key": XXXX.format(n)} for n in (1, 2)])
+    tool.tie(corpus, "judged", "tied")
+    write_run(corpus, "new", [question])
+    ledger = {"decisions": [{"id": "s", "date": "2026-11-20", "by": "the author", "what": "w",
+                             "source": "#1", "successor": {
+                                 "from": "G6/model-artefact",
+                                 "to": ["audit/question-no-abstract"], "scope": "paper"}}]}
+    (corpus / "report" / "ledger.yaml").write_text(yaml.safe_dump(ledger), "utf-8")
+    result = tool.gate(corpus, "tied", "new")
+    assert result["ok"] and result["keys"]["by_key"] == 1
+
+
+def test_the_scheme_of_a_commit_is_read_from_its_text() -> None:
+    def reader(text):
+        return lambda cmd: text
+
+    assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"SCHEME = 2  # #709\n")) == 2
+    assert tool.corpus_run.scheme_of(REPO, "abc", reader(b"NONE = '-'\n")) == 1
+
+    def missing(cmd):
+        raise tool.CorpusError("no such path")
+
+    assert tool.corpus_run.scheme_of(REPO, "abc", missing) == 1
+
+
+def test_a_run_s_scheme_comes_from_its_record_or_its_commit(corpus: Path, monkeypatch) -> None:
+    folder = corpus / "runs" / "tied"
+    (folder / "run.json").write_text(json.dumps({"sha": "abc"}), "utf-8")
+    monkeypatch.setattr(tool.corpus_run, "scheme_of", lambda repo, sha, read=None: 2)
+    assert tool.Run(folder).scheme == 2
+    (folder / "run.json").write_text(json.dumps({"sha": "abc", "scheme": 3}), "utf-8")
+    assert tool.Run(folder).scheme == 3
+    assert tool.Run(corpus / "runs" / "judged").scheme == 1
+
+
+def scheme(root: Path, run: str, number: int) -> None:
+    (root / "runs" / run / "run.json").write_text(json.dumps({"scheme": number}), "utf-8")
+
+
+def test_a_change_of_scheme_gates_by_message_and_one_scheme_by_key(corpus: Path) -> None:
+    tool.tie(corpus, "judged", "tied")
+    assert yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))["scheme"] == 1
+    # Every key moved by a scheme-raising change, and nothing else.
+    write_run(corpus, "new", [{**f, "key": f["key"] + "-moved"} for f in TIED])
+    scheme(corpus, "tied", 1)
+    scheme(corpus, "new", 2)
+    result = tool.gate(corpus, "tied", "new")
+    assert result["ok"] and result["keys"]["by_key"] == 0
+    assert result["scheme_note"] == ("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2): paired "
+                                     "by message; tie again after this merges")  # fmt: skip
+    assert result["scheme_note"] in tool.render_gate(result)
+    # On one scheme, the keys decide: moved, they are lost.
+    scheme(corpus, "new", 1)
+    result = tool.gate(corpus, "tied", "new")
+    assert not result["ok"] and result["keys"]["by_key"] == 4 and not result["scheme_note"]
+    # measure likewise keeps to the matcher for a run of another scheme.
+    scheme(corpus, "new", 2)
+    measured = tool.measure(corpus, "new", ledger=False)
+    assert measured["keys"]["by_key"] == 0 and measured["scheme_note"]
+
+
+def test_a_key_that_is_no_string_is_refused(corpus: Path) -> None:
+    old = finding("G6", "vague-attribution", "'Studies show' with no citation", line=5)
+    assert [kind for kind, _h, _l in keys.tie_group([old], [{**old}], "paper-a")] == ["none"]
+    (corpus / "report" / "ties.yaml").write_text(yaml.safe_dump({"run": "tied", "ties": [
+        {"slug": "paper-a", "report": "check", "index": 0, "key": None, "how": "x"}]}), "utf-8")
+    with pytest.raises(tool.CorpusError, match="a tie's key is a string"):
+        keys.load_ties(corpus)
+    # A run with no keys never reads the ties, malformed or not.
+    write_run(corpus, "plain", [f for f, _ in JUDGED])
+    assert tool.measure(corpus, "plain", ledger=False)["keys"]["by_key"] == 0
+
+
+def test_a_judged_finding_decided_twice_is_refused(corpus: Path) -> None:
+    entry = {"slug": "paper-a", "report": "check", "index": 0, "key": K_SPELL,
+             "by": "the author", "date": "2026-11-20"}
+    (corpus / "report" / "ties-decided.yaml").write_text(yaml.safe_dump([entry, entry]), "utf-8")
+    with pytest.raises(tool.CorpusError, match="decided twice"):
+        keys.load_decided(corpus)
+    (corpus / "report" / "ties-decided.yaml").write_text(
+        yaml.safe_dump([{**entry, "key": 7}]), "utf-8")
+    with pytest.raises(tool.CorpusError, match="a string or null"):
+        keys.load_decided(corpus)

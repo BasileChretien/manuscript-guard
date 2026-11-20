@@ -38,6 +38,50 @@ def load_json(path: Path) -> object | None:
         return None
 
 
+#: This checkout: the repository the tool is in, which `run` builds from by default and
+#: nothing of the corpus is written into.
+ROOT = Path(__file__).resolve().parent.parent
+#: How the package's `keys.py` names the scheme of its keys (PR #709 on); a commit whose
+#: `keys.py` names none, or has none, keys by scheme 1.
+SCHEME = re.compile(r"^SCHEME\s*=\s*(\d+)\s*(?:#.*)?$", re.MULTILINE)
+
+
+def checkouts(root: Path = ROOT) -> set[Path]:
+    """This checkout and, where it is a git worktree, the repository's main working tree,
+    read from the worktree's `.git` file and its `commondir`, as git lays them out."""
+    found = {root.resolve()}
+    dotgit = root / ".git"
+    try:
+        text = dotgit.read_text("utf-8").strip() if dotgit.is_file() else ""
+    except OSError:
+        return found
+    if text.startswith("gitdir:"):
+        gitdir = (root / text.removeprefix("gitdir:").strip()).resolve()
+        common = gitdir
+        if (gitdir / "commondir").is_file():
+            common = (gitdir / (gitdir / "commondir").read_text("utf-8").strip()).resolve()
+        found.add(common.parent)
+    return found
+
+
+def in_a_checkout(path: Path, root: Path = ROOT) -> bool:
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(checkout) for checkout in checkouts(root))
+
+
+def scheme_of(repo: Path, sha: str, read=None) -> int:
+    """The scheme of the keys a commit gives, read from its `src/manuscript_guard/keys.py`
+    as git holds it, by its text alone: nothing of a build is imported. 1 where the file
+    names no `SCHEME`, or has none."""
+    read = read or quiet
+    try:
+        text = read(["git", "-C", str(repo), "show", f"{sha}:src/manuscript_guard/keys.py"])
+    except CorpusError:
+        return 1
+    hit = SCHEME.search(text.decode("utf-8", "replace") if isinstance(text, bytes) else text)
+    return int(hit.group(1)) if hit else 1
+
+
 def quiet(cmd: list[str], cwd: Path | None = None) -> bytes:
     """Run a command that is not a step on a paper, with the time limit, and say its error."""
     try:
@@ -230,7 +274,8 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
     env = {**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
     env.pop("MANUSCRIPT_GUARD_DEBUG", None)
-    record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen)}
+    record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen),
+              "scheme": scheme_of(repo, sha)}
     (out_root / "run.json").write_text(json.dumps(record, indent=1), "utf-8")
 
     def one(meta: dict) -> tuple[str, object]:

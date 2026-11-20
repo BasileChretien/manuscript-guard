@@ -185,7 +185,26 @@ key made from the context (`"key_from": "context"`, a code that names no subject
 Where either run has no keys, as every run before #706 has none, a judged finding is paired by
 the matcher above, as before.
 
-The judged findings come from a run with no keys, so they are tied to keys once:
+Two limits come with the rules as decided. A paper-level key has the digest `-`, so a lost
+finding of such a code reads elsewhere from another paper-level code about its subject, a
+lost `abbreviation-undefined|HR@main|-` from an `abbreviation-unused|HR@main|-`, though the two
+say opposite things. And the count rule holds a key's count to the base, and the base's to the
+run of the ties: where that run is neither the base nor the new run, a key that stands twice
+there and once in both of them reads gone at the base and kept in the new run, and is listed
+as back though nothing came back; and where a held count hides one finding of a key going and
+another coming, it reads kept.
+
+Keys have a scheme: the package's `keys.py` names it, `SCHEME = 2` from #709 on, the first
+change to the keys made on purpose, and a commit whose `keys.py` names none keys by scheme 1.
+`run` records each run's scheme in its `run.json`, read from the commit's text with git and
+never by importing a build; a run made before that has it read from the commit it recorded.
+Ties made in a run of one scheme pair runs of that scheme only: `gate` pairs by key only where
+the base, the new run and the ties share one scheme, and otherwise pairs the whole gate by the
+matcher and says "keys changed scheme (1 → 2): paired by message; tie again after this
+merges"; `measure` does the same for a run of another scheme. After a pull request that
+raises the scheme merges, run the corpus at main and tie again against that run.
+
+The judged findings come from a run with no keys, so they are tied to keys, once for each scheme:
 
 ```bash
 python tools/corpus.py run origin/main --name keyed-<sha9>
@@ -265,7 +284,8 @@ Each decision has an `id`, a `date`, who made it (`by`), one line on `what` it d
 the findings it names a new verdict, by key or by a matcher of `gate`, `code`, `slug`,
 `report` and a regular expression on the `message`; the verdict file is left as it was. A
 `successor` says that a finding about the whole paper was replaced: where the finding is gone
-and the same paper's same report has one of the codes in `to`, it counts as asked. A
+and the same paper's same report has one of the codes in `to`, it counts as asked by the
+matcher, and as elsewhere by key. A
 decision is the author's, with its source; the ledger is never written to say that a finding
 the tool stopped giving was wrong because the tool stopped giving it.
 
@@ -278,7 +298,8 @@ python tools/corpus.py gate main-7bda66a5e 1a2b3c4d5 --out "$MANUSCRIPT_GUARD_CO
 `gate <base-run> <new-run>` puts every judged finding in its state at both, with the ledger
 applied, and exits with 1 when a finding judged true, about the paper, is kept at the base
 (reported, asked or elsewhere) and gone in the new run. A finding the ledger re-judges false
-is not true any more, and one a successor covers is asked, so neither blocks. It lists
+is not true any more, and one a successor covers is kept (asked by the matcher, elsewhere by
+key), so neither blocks. It lists
 without failing the true findings that came back, those reported before and asked now, the
 reading notices that changed, the false findings that became loud, and, by code, the
 warnings and failures that no judged finding accounts for at either run. The Markdown folds

@@ -46,7 +46,7 @@ from corpus_match import (  # noqa: E402
     norm,
     states,
 )
-from corpus_run import CorpusError, load_json  # noqa: E402
+from corpus_run import CorpusError, checkouts, in_a_checkout, load_json  # noqa: E402,F401
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV = "MANUSCRIPT_GUARD_CORPUS"
@@ -326,6 +326,20 @@ class Run:
             self._keyed = any(corpus_keys.keyed(found) for _s, _r, found in self.all_reports())
         return self._keyed
 
+    @property
+    def scheme(self) -> int:
+        """The scheme of the run's keys: as `run` recorded it, else read from the commit it
+        recorded (`corpus_run.scheme_of`), else 1, the scheme of every key before #709."""
+        if not hasattr(self, "_scheme"):
+            made = load_json(self.folder / "run.json")
+            made = made if isinstance(made, dict) else {}
+            scheme = made.get("scheme")
+            if not isinstance(scheme, int):
+                sha = made.get("sha")
+                scheme = corpus_run.scheme_of(ROOT, sha) if isinstance(sha, str) else 1
+            self._scheme = scheme
+        return self._scheme
+
     def keys(self, slug: str, report: str) -> corpus_keys.Keys:
         return corpus_keys.Keys(self.findings(slug, report) or [])
 
@@ -346,15 +360,10 @@ def _by_key(item: Judged, tie: corpus_keys.Tie, run: Run, base: Run,
     if tie.key is None:
         return Fate(item, "gone", missing=missing, by_key=True), []
     key, new = tie.key, run.keys(item.slug, item.report)
-    if tie.family:
-        said = corpus_keys.family_state(key, new, base.keys(item.slug, item.report).count(
-            key, family=True))  # fmt: skip
-        codes: tuple = ()
-    else:
-        codes = tuple(c for d in successors if d.successor_from == item.code
-                      for c in d.successor_to)  # fmt: skip
-        said = corpus_keys.key_state(key, new, base.keys(item.slug, item.report).count(key),
-                                     codes)  # fmt: skip
+    codes = tuple(c for d in successors if d.successor_from == item.code for c in d.successor_to)
+    held = base.keys(item.slug, item.report).count(key, family=tie.family)
+    state = corpus_keys.family_state if tie.family else corpus_keys.key_state
+    said = state(key, new, held, codes)
     fate = Fate(item, said.state, missing=missing, by_key=True,
                 fallback=corpus_keys.from_context(key), repeated=said.repeated,
                 fell=said.fell)  # fmt: skip
@@ -452,12 +461,20 @@ def _key_line(keys: dict) -> str:
             f"whose count fell); by #705's matcher: {keys['by_matcher']}.")
 
 
-def keyed_against(root: Path, run: Run) -> tuple[dict, Run] | None:
+def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     """The ties, the author's decided ones over them, and the run they were made in, where
-    `run` carries keys and the corpus has ties (`tie`); None, for #705's matcher, otherwise."""
-    ties = corpus_keys.load_ties(root)
-    if ties is None or not run.keyed:
+    every run carries keys of the ties' scheme; None, for #705's matcher, where one carries
+    none or the corpus has no ties; and what to say, for the matcher too, where one keys by
+    another scheme."""
+    if not all(run.keyed for run in runs):
         return None
+    ties = corpus_keys.load_ties(root)
+    if ties is None:
+        return None
+    schemes = [ties["scheme"], *(run.scheme for run in runs)]
+    if len(set(schemes)) > 1:
+        return (f"keys changed scheme ({min(schemes)} \N{RIGHTWARDS ARROW} {max(schemes)}): "
+                "paired by message; tie again after this merges")  # fmt: skip
     tied = Run(run_folder(root, ties["run"]))
     return {**ties["ties"], **decided(root, tied)}, tied
 
@@ -486,8 +503,9 @@ def measure(root: Path, run_name: str, ledger: bool = True) -> dict:
     path = root / "report" / "ledger.yaml"
     decisions = load_ledger(path) if ledger else []
     run = Run(run_folder(root, run_name))
-    rows = [_row(f) for f in fates(rejudged(judged, decisions), run, decisions,
-                                   keyed_against(root, run))]  # fmt: skip
+    against = keyed_against(root, run)
+    keyed = against if isinstance(against, tuple) else None
+    rows = [_row(f) for f in fates(rejudged(judged, decisions), run, decisions, keyed)]
     codes = {}
     for code in sorted({r["code"] for r in rows}):
         table = _table([r for r in rows if r["code"] == code])
@@ -505,6 +523,7 @@ def measure(root: Path, run_name: str, ledger: bool = True) -> dict:
         "notices": _table(notices),
         "precision_loud": _precision(_table(papers), ("reported", "elsewhere")),
         "codes": codes, "findings": rows, "keys": _key_counts(rows),
+        "scheme_note": against if isinstance(against, str) else None,
     }  # fmt: skip
 
 
@@ -529,7 +548,8 @@ def render_measure(result: dict) -> str:
     lines = [f"# Judged findings in {result['run']}", "",
              f"{len(rows)} judged findings. Left out: {result['skipped'] or 'none'}. Ledger: "
              + (f"{len(result['decisions'])} decisions, {rejudged_n} findings re-judged, "
-                f"{asked_n} asked by a successor." if result["ledger"] else "not applied."),
+                f"{asked_n} kept by a successor (asked by message, elsewhere by key)."
+                if result["ledger"] else "not applied."),
              "", *_counts("verdict", result["totals"]), "",
              "About the paper (reading notices apart):", "", *_counts("verdict", result["paper"]),
              "", "Reading notices:", "", *_counts("verdict", result["notices"]), "",
@@ -557,6 +577,8 @@ def render_measure(result: dict) -> str:
     still = [r for r in rows if r["verdict"] == "false" and r["state"] in ("reported", "elsewhere")]
     lines += ["", f"## False findings still loud ({len(still)})", ""]
     lines += [_line(r) + f" ({r['state']})" for r in sorted(still, key=by_code)]
+    if result.get("scheme_note"):
+        lines += ["", f"**Note**: {result['scheme_note']}."]
     if result["keys"]["by_key"]:
         lines += ["", "## Pairing by key", "", _key_line(result["keys"])]
         for title, test in (("Under a key repeated in either run", "repeated"),
@@ -583,7 +605,8 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     base, new = Run(run_folder(root, base_name)), Run(run_folder(root, new_name))
     # By key where both runs carry keys, the base's counts held to the run of the ties and
     # the new run's to the base's; by #705's matcher, both of them, otherwise.
-    ties = keyed_against(root, base) if new.keyed else None
+    against = keyed_against(root, base, new)
+    ties = against if isinstance(against, tuple) else None
     pairs = list(zip(fates(items, base, decisions, ties),
                      fates(items, new, decisions, ties and (ties[0], base)), strict=True))
 
@@ -609,6 +632,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
         "unjudged": {code: {"base": base_loud[code], "new": new_loud[code]}
                      for code in sorted(set(base_loud) | set(new_loud))},
         "keys": _key_counts([_row(n) for _, n in pairs]),
+        "scheme_note": against if isinstance(against, str) else None,
         "repeated": rows(lambda b, n: n.repeated or b.repeated),
         "fallback": rows(lambda b, n: n.fallback),
     }  # fmt: skip
@@ -629,6 +653,8 @@ def render_gate(result: dict) -> str:
                          + " | ".join(str(result["totals"][side][v][s]) for s in STATES) + " |")
     if result["keys"]["by_key"]:
         lines += ["", _key_line(result["keys"])]
+    if result.get("scheme_note"):
+        lines += ["", f"**Note**: {result['scheme_note']}."]
     sections = (("True findings lost (these block)", "lost"),
                 ("True findings about the paper back", "recovered"),
                 ("True findings reported before, asked now", "quieter"),
@@ -685,7 +711,7 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
                 ambiguous.append({**where, "kind": kind, "how": how, "verdict": item.verdict,
                                   "code": item.code, "candidates": candidates[:5],
                                   "message": norm(item.finding.get("message"))[:200]})
-    document = {"judged_run": judged_run, "run": keyed_run, "ties": ties}
+    document = {"judged_run": judged_run, "run": keyed_run, "scheme": run.scheme, "ties": ties}
     (root / corpus_keys.TIES).write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True, width=100), "utf-8")
     (root / corpus_keys.AMBIGUOUS).write_text(
@@ -701,29 +727,6 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
 
 
 # --- the command line -------------------------------------------------------------------
-
-
-def checkouts(root: Path = ROOT) -> set[Path]:
-    """This checkout and, where it is a git worktree, the repository's main working tree,
-    read from the worktree's `.git` file and its `commondir`, as git lays them out."""
-    found = {root.resolve()}
-    dotgit = root / ".git"
-    try:
-        text = dotgit.read_text("utf-8").strip() if dotgit.is_file() else ""
-    except OSError:
-        return found
-    if text.startswith("gitdir:"):
-        gitdir = (root / text.removeprefix("gitdir:").strip()).resolve()
-        common = gitdir
-        if (gitdir / "commondir").is_file():
-            common = (gitdir / (gitdir / "commondir").read_text("utf-8").strip()).resolve()
-        found.add(common.parent)
-    return found
-
-
-def in_a_checkout(path: Path, root: Path = ROOT) -> bool:
-    resolved = path.resolve()
-    return any(resolved.is_relative_to(checkout) for checkout in checkouts(root))
 
 
 def _outside_the_checkout(*paths: str | None) -> None:

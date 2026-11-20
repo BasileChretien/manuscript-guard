@@ -38,6 +38,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+#: The number of the scheme the keys are made by (Basile, 2026-11-20). A commit without it
+#: makes scheme 1. A pull request that changes a key on purpose raises it: a subject, the
+#: digest, the part, the splitter or the normal form. The corpus tool (`tools/corpus.py`)
+#: reads it from each run's commit, and where the base's and the new run's differ it pairs
+#: their findings by message, not by key, until the corpus is tied again.
+SCHEME = 2
+
 #: The parts of a paper a digest is taken in.
 ABSTRACT, MAIN, SUPPLEMENT = "abstract", "main", "supplement"
 #: The digest of a paper-level finding, and the subject of a finding that stands for a list.

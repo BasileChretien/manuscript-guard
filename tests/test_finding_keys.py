@@ -197,6 +197,13 @@ def fallen_back(found: list[dict]) -> set[str]:
 # ---------------------------------------------------------------- the parts of a key
 
 
+def test_the_key_scheme_is_numbered_and_raised_past_the_first() -> None:
+    """The corpus tool reads the scheme from each run's commit; #709 changed the part of
+    Word and PDF papers on purpose, and raised it from 1 (Basile, 2026-11-20)."""
+    assert isinstance(keys.SCHEME, int) and not isinstance(keys.SCHEME, bool)
+    assert keys.SCHEME >= 2
+
+
 def test_a_sentence_is_read_the_same_wrapped_or_not_and_however_it_is_typed() -> None:
     """The digest's normal form: one minus, one quotation mark of each kind, no spaces, no
     emphasis, no soft hyphen, a line's hyphen joined, in any case."""

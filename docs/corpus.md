@@ -17,6 +17,12 @@ corpus/<slug>/meta.json      where the paper came from, and which files are whic
 corpus/<slug>/files/         the paper as downloaded
 report/packets/<name>.json   the findings that were judged, with the text they were judged by
 report/judged/<name>.json    the verdicts
+report/packets/<batch>.json  a batch of findings with no verdict, written by `unjudged` (below)
+report/judges/<batch>/a.json, b.json   the two judges' verdicts on a batch
+report/judged/<batch>.json   the verdicts the two judges agreed on, written by `agree`
+report/judged/<batch>-disagreements.md   the rest, numbered, for the author
+report/judged/<batch>-sample.md   20 agreements drawn at random, for the author to look at once
+report/judged/<batch>-author.json   the author's answers on the disagreements
 report/ledger.yaml           the author's decisions that re-judge a finding (below)
 report/ties.yaml             each judged finding's key in a keyed run, written once by `tie`
 report/ties-ambiguous.md     the judged findings `tie` left for the author to settle
@@ -49,7 +55,8 @@ The papers are other people's work, whose licences seldom allow passing them on,
 fetched again from its `meta.json` and checked against its SHA-256; runs and builds are made
 again from a commit. The tool refuses a corpus folder inside the manuscript-guard checkout,
 or inside the main working tree of the repository where the checkout is a git worktree, and
-writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, and
+writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, `unjudged` and
+`agree` under its `report/`, and
 `measure` and `gate` write to standard output or to the `--out` and `--json` paths given,
 which may not be inside the checkout either, since their lists quote the papers.
 
@@ -72,6 +79,65 @@ packets to judges with what each gate claims, from [What is checked](gates.md) a
 false when it does not or when its premise fails under the field's own conventions. Judges
 who do not know which build gave a finding judge it more fairly. The verdicts are never
 changed afterwards; a later decision goes in the ledger.
+
+The first packets hold a sample of each code's findings. The findings no verdict accounts for
+are judged since by two judges, in batches (Basile, 2026-11-21):
+
+```bash
+python tools/corpus.py unjudged 2947d2bac --name stock-2947d2bac
+python tools/corpus.py agree stock-2947d2bac
+```
+
+`unjudged <run> --name <batch>` pairs the judged set with the run as `measure` does, with the
+ledger and the ties, and writes `report/packets/<batch>.json`: every warning and failure of
+the run that no judged finding accounts for, of a code not settled. A code is settled where
+10 or more of its judged findings are loud in the run, reported or elsewhere, and 0.9 of them
+or more are true; `--min-judged` and `--settled` change the two numbers. As the harness that
+wrote the first packets did, it leaves out the check findings whose gate, code and message
+the same paper's audit gave, and those of the codes every new project gives
+(`EXPECTED_IN_NEW_PROJECT` in `tools/corpus_judging.py`). With `--base <run>` it takes
+instead, of every code, those whose key is not loud in the base run's same paper and report:
+what a pull request's run adds. Both runs must key by one scheme.
+
+A batch's packet is laid out as the first ones, and each paper names its `run` and the run's
+key `scheme` too. Each finding is as the run gave it, its `key` with it, and a G3 finding
+lists the `figure_files` of the run's project (under `figures/` and `manuscript/`) that its
+message names, or all of them where it names none, so that a judge can look at the image. The
+`text` is the run's own `main.md` of a Word paper, the LaTeX source, or the text pdftotext
+made of a PDF beside a run's reports; nothing is run on the paper. `unjudged` prints the count
+by code, and never overwrites a packet.
+
+Two judges then judge the batch apart, blind to each other and to the build, with the same
+brief and the same packet. Each writes a list of verdicts in the format above, indexed into
+the batch's packet, as `report/judges/<batch>/a.json` or `b.json`. `agree <batch>` refuses a
+finding of the packet that either judge left out or judged twice, and writes, overwriting
+none of them:
+
+- `report/judged/<batch>.json`: the findings both judged true, or both false, with each
+  judge's `kind`, `why` and `useful` (`why_a`, `why_b`, ...) and `"judges": 2`. These count
+  as judged.
+- `report/judged/<batch>-disagreements.md`: every finding the two judged differently or
+  either judged unclear, numbered so that the author can answer by number, each with its
+  paper and report, its code, its message and sentence, and both verdicts with their reasons.
+  His answers go in `report/judged/<batch>-author.json`, a list of verdicts, each with `by`,
+  `date` and `source`.
+- `report/judged/<batch>-sample.md`: 20 agreements, or all of them where there are fewer,
+  drawn with `random.Random(<batch>)`, so the same each time. After the first batch the
+  author looks at them once.
+
+A batch's verdicts are read against its own packet, `<batch>.json` and `<batch>-author.json`
+against `report/packets/<batch>.json`, since the same slug, report and index stand in the
+first packets for another finding; the first verdicts are read by slug as before. A batch's
+verdict is paired by the key its finding carries, with no tie, where the run measured keys by
+the packet's scheme, its count held to the batch's run (at the gate's new run, to the base,
+where that keys so too); otherwise by the matcher. The first verdicts are paired before a
+batch's, so that no batch changes their fates. A ledger's matcher re-judges a batch's verdict
+as it does a first one; a ledger's `findings`, by slug, report and index, name first verdicts
+only.
+
+The stock of the codes not settled is judged once. After that, each pull request's gate says
+how many loud findings of its run have a key not loud in the base run and no verdict, and the
+`unjudged ... --base ...` command that packs them for two judges.
 
 ## Running a build
 
@@ -302,8 +368,11 @@ is not true any more, and one a successor covers is kept (asked by the matcher, 
 key), so neither blocks. It lists
 without failing the true findings that came back, those reported before and asked now, the
 reading notices that changed, the false findings that became loud, and, by code, the
-warnings and failures that no judged finding accounts for at either run. The Markdown folds
-the long lists, so it can go in a pull request's description.
+warnings and failures that no judged finding accounts for at either run. Below them it
+counts the loud findings of the new run with no verdict whose key is not loud in the base,
+and gives the `unjudged` command that packs them for two judges (Judging, above). The
+Markdown folds the long lists, so it can go in a pull request's description, and is written
+in UTF-8 whatever the console's encoding.
 
 A pull request that changes a rule reading text runs `run` on its commit and `gate` against
 main's run. A true finding lost blocks it, unless the author's decision in the ledger covers

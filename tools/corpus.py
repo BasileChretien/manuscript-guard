@@ -8,6 +8,8 @@ the repository, and found through `MANUSCRIPT_GUARD_CORPUS` or `--corpus`.
     python tools/corpus.py measure <run> [--out F.md] [--json F.json] [--no-ledger]
     python tools/corpus.py gate <base-run> <new-run> [--out F.md] [--json F.json]
     python tools/corpus.py tie <judged-run> <keyed-run>   # once: report/ties.yaml
+    python tools/corpus.py unjudged <run> --name BATCH [--base RUN]   # a packet for two judges
+    python tools/corpus.py agree <batch>   # the two judges' verdicts side by side
 
 The layout of a corpus, and how its findings are judged, are in docs/corpus.md. Every judged
 finding is in one of four states in a run: reported (its gate and code, as a warning or a
@@ -20,7 +22,8 @@ The corpus holds downloaded files. `run` is in `tools/corpus_run.py`: every comm
 has a time limit, none runs with its working folder inside `corpus/`, and the build reads the
 papers under `python -I`. The matching of the four states is in `tools/corpus_match.py`,
 and the pairing by the key every finding carries from #706 on, with `tie`, in
-`tools/corpus_keys.py`.
+`tools/corpus_keys.py`; the packing of the findings with no verdict for two judges, and
+the reading of their verdicts, in `tools/corpus_judging.py`.
 """
 
 from __future__ import annotations
@@ -37,11 +40,12 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import corpus_keys  # noqa: E402 - beside this file, in tools/, which is no package
+import corpus_judging  # noqa: E402 - beside this file, in tools/, which is no package
+import corpus_keys  # noqa: E402
 import corpus_match  # noqa: E402,F401 - the matching, which the tests reach through this
 import corpus_run  # noqa: E402
+from corpus_judging import NOTICES, Judged, load_judged  # noqa: E402
 from corpus_match import (  # noqa: E402
-    key_of,
     loud,
     norm,
     states,
@@ -53,17 +57,6 @@ ENV = "MANUSCRIPT_GUARD_CORPUS"
 REPORTS = ("audit", "audit-pdf", "check", "compare")
 STATES = ("reported", "asked", "elsewhere", "gone")
 VERDICTS = ("true", "false")
-#: Findings about the tool's own reading rather than about the paper: a part it did not read,
-#: or how it read one. docs/corpus.md lists each with what it says; a test holds the two equal
-#: and each code one the package writes.
-NOTICES = frozenset({
-    "abbreviations-passed-over", "abstract-not-compared", "causal-words-not-read",
-    "displays-not-compared", "document-unreadable", "headings-read", "lookup-missing",
-    "no-headings", "not-audited", "nothing-read",
-    "passed-over", "reference-unchecked", "script-not-read", "statements-without-passage",
-    "table-not-read", "tables-read-as-prose", "tex-refused", "tex-words-not-read",
-    "unreadable", "version-not-numbered",
-})  # fmt: skip
 # --- the corpus -------------------------------------------------------------------------
 
 
@@ -86,73 +79,6 @@ def findings_of(report: object) -> list[dict]:
     if "findings" in report:
         return [f for f in report["findings"] if isinstance(f, dict)]
     return [f for g in report.get("gates", []) for f in g.get("findings", [])]
-
-
-@dataclass
-class Judged:
-    slug: str
-    report: str
-    index: int
-    verdict: str
-    finding: dict
-    judged: str = ""
-    rejudged_by: str = ""
-    #: The only finding of its gate and code in the judged run's report (the packet's
-    #: `totals`), and about something that tells it from others of its code (`telling`).
-    alone: bool = False
-
-    @property
-    def code(self) -> str:
-        return f"{self.finding.get('gate')}/{self.finding.get('code')}"
-
-    @property
-    def notice(self) -> bool:
-        return self.finding.get("code") in NOTICES
-
-    @property
-    def key(self) -> tuple[str, str, int]:
-        return (self.slug, self.report, self.index)
-
-
-def telling(old: dict, messages: list[str]) -> bool:
-    """Whether what a finding is about (`key_of`) tells it from others of its code: some
-    finding of its code in the packets does not name it. "%" names every `notation-percent`."""
-    key = key_of(old)
-    return key is not None and not all(key.search(m) for m in messages)
-
-
-def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
-    """Each verdict with the finding it judged, and a count of those left out, by reason."""
-    packets: dict[str, dict] = {}
-    for path in sorted((root / "report" / "packets").glob("*.json")):
-        for paper in load_json(path) or []:
-            packets[paper["slug"]] = paper
-    messages: dict[str, list[str]] = collections.defaultdict(list)
-    for paper in packets.values():
-        for report in paper.get("reports", {}).values():
-            for f in report.get("findings", []):
-                messages[f"{f.get('gate')}/{f.get('code')}"].append(str(f.get("message") or ""))
-    judged, skipped = [], collections.Counter()
-    for path in sorted((root / "report" / "judged").glob("*.json")):
-        for entry in load_json(path) or []:
-            verdict = str(entry.get("verdict")).lower()
-            if verdict not in VERDICTS:
-                skipped[f"verdict {verdict}"] += 1
-                continue
-            try:
-                paper = packets[entry["slug"]]
-                old = paper["reports"][entry["report"]]["findings"][int(entry["index"])]
-            except (KeyError, IndexError, TypeError, ValueError):
-                skipped["no finding in the packet at its index"] += 1
-                continue
-            totals = paper["reports"][entry["report"]].get("totals") or {}
-            code = f"{old.get('gate')}/{old.get('code')}"
-            alone = totals.get(code) == 1 and telling(old, messages[code])
-            judged.append(Judged(entry["slug"], entry["report"], int(entry["index"]), verdict,
-                                 old, judged=verdict, alone=alone))  # fmt: skip
-    if not judged:
-        raise CorpusError(f"{root / 'report'} holds no judged finding (docs/corpus.md)")
-    return judged, skipped
 
 
 # --- the ledger -------------------------------------------------------------------------
@@ -371,12 +297,28 @@ def _by_key(item: Judged, tie: corpus_keys.Tie, run: Run, base: Run,
 
 
 def fates(judged: list[Judged], run: Run, decisions: list[Decision],
-          keyed: tuple[dict, Run] | None = None) -> list[Fate]:  # fmt: skip
+          keyed: tuple[dict, Run] | None = None, held: Run | None = None) -> list[Fate]:
     """Each judged finding's fate in `run`. With `keyed`, the ties and the run its counts are
     held to, a tied finding is paired by its key alone and the rest by #705's matcher, among
-    the findings no key took; without, all by the matcher, as #705 had it."""
+    the findings no key took; without, all by the matcher, as #705 had it. A batch's verdict
+    is paired by its finding's key where `run` keys by its packet's scheme, its count held to
+    `held` where that keys so too and to the batch's run otherwise, and by the matcher where
+    not; the first verdicts are paired first, so that no batch changes their fates."""
     successors = [d for d in decisions if d.successor_from]
     ties, base = keyed if keyed is not None and run.keyed else ({}, run)
+    scheme = run.scheme if run.keyed else None
+    held_scheme = held.scheme if held is not None and held.keyed else None
+    sources: dict[Path, Run] = {}
+
+    def tie_of(item: Judged) -> tuple[corpus_keys.Tie | None, Run]:
+        if not item.batch:
+            return ties.get(item.key), base
+        key = item.finding.get("key")
+        counts = held if held_scheme == item.scheme else (
+            sources.setdefault(item.source, Run(item.source)) if item.source else run)
+        return (corpus_keys.Tie(key) if scheme == item.scheme and isinstance(key, str)
+                else None), counts  # fmt: skip
+
     groups: dict[tuple[str, str], list[int]] = collections.defaultdict(list)
     for n, item in enumerate(judged):
         groups[(item.slug, item.report)].append(n)
@@ -385,19 +327,23 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
     for (slug, report), members in groups.items():
         new = run.findings(slug, report) or []
         taken: set[int] = set()
-        for n in members:
-            if judged[n].key in ties:
-                by_key[n], used = _by_key(judged[n], ties[judged[n].key], run, base, successors)
-                # A finding that lists forms stays for the matcher: its other forms are other
-                # judged findings'.
-                taken.update(i for i in used if not new[i].get("forms"))
-                run.used[(slug, report)].update(used)
-        rest = [n for n in members if n not in by_key]
-        left = [i for i in range(len(new)) if i not in taken]
-        alone = frozenset(k for k, n in enumerate(rest) if judged[n].alone)
-        said = states([judged[n].finding for n in rest], [new[i] for i in left], slug, alone)
-        found_of.update({n: (state, [left[i] for i in used])
-                         for n, (state, used) in zip(rest, said, strict=True)})  # fmt: skip
+        for part in ([n for n in members if not judged[n].batch],
+                     [n for n in members if judged[n].batch]):  # fmt: skip
+            for n in part:
+                tie, counts = tie_of(judged[n])
+                if tie is not None:
+                    by_key[n], used = _by_key(judged[n], tie, run, counts, successors)
+                    # A finding that lists forms stays for the matcher: its other forms are
+                    # other judged findings'.
+                    taken.update(i for i in used if not new[i].get("forms"))
+                    run.used[(slug, report)].update(used)
+            rest = [n for n in part if n not in by_key]
+            left = [i for i in range(len(new)) if i not in taken]
+            alone = frozenset(k for k, n in enumerate(rest) if judged[n].alone)
+            said = states([judged[n].finding for n in rest], [new[i] for i in left], slug, alone)
+            for n, (state, used) in zip(rest, said, strict=True):
+                found_of[n] = (state, [left[i] for i in used])
+                taken.update(found_of[n][1])
     out = []
     for n, item in enumerate(judged):
         if n in by_key:
@@ -440,7 +386,7 @@ def _row(fate: Fate) -> dict:
             "verdict": item.verdict, "judged": item.judged, "rejudged_by": item.rejudged_by,
             "notice": item.notice, "state": fate.state, "successor_by": fate.successor_by,
             "report_missing": fate.missing, "by_key": fate.by_key, "fallback": fate.fallback,
-            "repeated": fate.repeated, "fell": fate.fell,
+            "repeated": fate.repeated, "fell": fate.fell, "batch": item.batch,
             "message": norm(item.finding.get("message"))[:160]}  # fmt: skip
 
 
@@ -492,11 +438,11 @@ def _precision(table: dict, states: tuple[str, ...]) -> float | None:
     return round(true / total, 3) if total else None
 
 
-def measure(root: Path, run_name: str, ledger: bool = True) -> dict:
+def measure(root: Path, run_name: str, ledger: bool = True, run: Run | None = None) -> dict:
     judged, skipped = load_judged(root)
     path = root / "report" / "ledger.yaml"
     decisions = load_ledger(path) if ledger else []
-    run = Run(run_folder(root, run_name))
+    run = run or Run(run_folder(root, run_name))
     against = keyed_against(root, run)
     keyed = against if isinstance(against, tuple) else None
     rows = [_row(f) for f in fates(rejudged(judged, decisions), run, decisions, keyed)]
@@ -602,7 +548,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     against = keyed_against(root, base, new)
     ties = against if isinstance(against, tuple) else None
     pairs = list(zip(fates(items, base, decisions, ties),
-                     fates(items, new, decisions, ties and (ties[0], base)), strict=True))
+                     fates(items, new, decisions, ties and (ties[0], base), base), strict=True))
 
     def rows(test) -> list[dict]:
         return [{**_row(n), "base": b.state} for b, n in pairs if test(b, n)]
@@ -628,7 +574,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
         "keys": _key_counts([_row(n) for _, n in pairs]),
         "scheme_note": against if isinstance(against, str) else None,
         "repeated": rows(lambda b, n: n.repeated or b.repeated),
-        "fallback": rows(lambda b, n: n.fallback),
+        "fallback": rows(lambda b, n: n.fallback), "fresh": corpus_judging.fresh(new, base),
     }  # fmt: skip
 
 
@@ -669,7 +615,7 @@ def render_gate(result: dict) -> str:
               f"{sum(n['new'] for n in result['unjudged'].values())}. By code, where it changed:",
               "", "| code | base | new |", "| --- | ---: | ---: |"]
     lines += [f"| {c} | {n['base']} | {n['new']} |" for c, n in changed.items()] or ["| none | | |"]
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines + corpus_judging.render_fresh(result["fresh"])) + "\n"
 
 
 # --- tie -------------------------------------------------------------------------------
@@ -680,7 +626,7 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
     #705's matcher pairs it one to one by the same message or context at its place
     (`corpus_keys.tie_group`). Writes `report/ties.yaml` and, for the author to settle by
     hand, `report/ties-ambiguous.md`. The verdicts and the ledger are not touched."""
-    judged, _skipped = load_judged(root)
+    judged = [item for item in load_judged(root)[0] if not item.batch]  # a batch's are keyed
     run_folder(root, judged_run)
     run = Run(run_folder(root, keyed_run))
     if not run.keyed:
@@ -723,6 +669,17 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
 # --- the command line -------------------------------------------------------------------
 
 
+def judging(root: Path, args: argparse.Namespace) -> str:
+    """`unjudged`, the run measured as `measure` measures it, or `agree`, in Markdown."""
+    if args.command == "agree":
+        return corpus_judging.render_agree(corpus_judging.agree(root, args.batch))
+    run = Run(run_folder(root, args.run))
+    base = Run(run_folder(root, args.base)) if args.base else None
+    rows = measure(root, args.run, run=run)["findings"]
+    return corpus_judging.render_pack(corpus_judging.pack(
+        root, run, rows, args.name, base, args.settled, args.min_judged))
+
+
 def _outside_the_checkout(*paths: str | None) -> None:
     """The reports quote the corpus's papers, which are not this repository's to publish: a
     file of them inside the checkout is one `git add` from a commit, so none is written."""
@@ -737,6 +694,10 @@ def _write(text: str, data: dict, out: str | None, as_json: str | None) -> None:
     _outside_the_checkout(out, as_json)
     if out:
         Path(out).write_text(text, "utf-8")
+    elif hasattr(sys.stdout, "buffer"):  # UTF-8, whatever the console's or a file's encoding
+        sys.stdout.flush()
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.buffer.flush()
     else:
         sys.stdout.write(text)
     if as_json:
@@ -762,6 +723,13 @@ def main(argv: list[str] | None = None) -> int:
     p_tie = sub.add_parser("tie", help="tie the judged findings to keys, once (report/ties.yaml)")
     p_tie.add_argument("judged_run")
     p_tie.add_argument("keyed_run")
+    p_un = sub.add_parser("unjudged", help="pack the loud findings with no verdict for judges")
+    p_un.add_argument("run")
+    p_un.add_argument("--name", required=True, help="the batch: report/packets/<name>.json")
+    p_un.add_argument("--base", help="only those whose key is not loud in this run, every code")
+    p_un.add_argument("--settled", type=float, default=corpus_judging.SETTLED)
+    p_un.add_argument("--min-judged", type=int, default=corpus_judging.MIN_JUDGED)
+    sub.add_parser("agree", help="set two judges' verdicts side by side").add_argument("batch")
     for p in (p_measure, p_gate, p_tie):
         p.add_argument("--out", help="write the Markdown here, not to standard output")
         p.add_argument("--json", help="write the same as JSON here")
@@ -779,6 +747,9 @@ def main(argv: list[str] | None = None) -> int:
             _outside_the_checkout(args.out, args.json)
             result = tie(root, args.judged_run, args.keyed_run)
             _write(corpus_keys.render_tie(result), result, args.out, args.json)
+            return 0
+        if args.command in ("unjudged", "agree"):
+            _write(judging(root, args), {}, None, None)
             return 0
         result = gate(root, args.base, args.new)
         _write(render_gate(result), result, args.out, args.json)

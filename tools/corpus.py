@@ -574,7 +574,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
         "keys": _key_counts([_row(n) for _, n in pairs]),
         "scheme_note": against if isinstance(against, str) else None,
         "repeated": rows(lambda b, n: n.repeated or b.repeated),
-        "fallback": rows(lambda b, n: n.fallback), "fresh": corpus_judging.fresh(new, base),
+        "fallback": rows(lambda b, n: n.fallback), "fresh": fresh(root, new_name, base),
     }  # fmt: skip
 
 
@@ -673,11 +673,22 @@ def judging(root: Path, args: argparse.Namespace) -> str:
     """`unjudged`, the run measured as `measure` measures it, or `agree`, in Markdown."""
     if args.command == "agree":
         return corpus_judging.render_agree(corpus_judging.agree(root, args.batch))
-    run = Run(run_folder(root, args.run))
     base = Run(run_folder(root, args.base)) if args.base else None
-    rows = measure(root, args.run, run=run)["findings"]
     return corpus_judging.render_pack(corpus_judging.pack(
-        root, run, rows, args.name, base, args.settled, args.min_judged))
+        root, *_measured(root, args.run), args.name, base, args.settled, args.min_judged))
+
+
+def _measured(root: Path, name: str) -> tuple[Run, list[dict]]:
+    """A run, with the judged set paired in it as `measure` pairs it, and the rows."""
+    run = Run(run_folder(root, name))
+    return run, measure(root, name, run=run)["findings"]
+
+
+def fresh(root: Path, new_name: str, base: Run) -> dict:
+    """The gate's count of the new run's loud findings with no verdict, new against the
+    base: the new run measured as `unjudged` measures it, and `unjudged --base`'s selection,
+    so that the count is what the command it prints packs."""
+    return corpus_judging.fresh(root, *_measured(root, new_name), base)
 
 
 def _outside_the_checkout(*paths: str | None) -> None:
@@ -694,7 +705,7 @@ def _write(text: str, data: dict, out: str | None, as_json: str | None) -> None:
     _outside_the_checkout(out, as_json)
     if out:
         Path(out).write_text(text, "utf-8")
-    elif hasattr(sys.stdout, "buffer"):  # UTF-8, whatever the console's or a file's encoding
+    elif hasattr(sys.stdout, "buffer") and not sys.stdout.isatty():  # UTF-8, as a file is
         sys.stdout.flush()
         sys.stdout.buffer.write(text.encode("utf-8"))
         sys.stdout.buffer.flush()

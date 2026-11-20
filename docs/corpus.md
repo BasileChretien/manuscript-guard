@@ -97,11 +97,15 @@ wrote the first packets did, it leaves out the check findings whose gate, code a
 the same paper's audit gave, and those of the codes every new project gives
 (`EXPECTED_IN_NEW_PROJECT` in `tools/corpus_judging.py`). With `--base <run>` it takes
 instead, of every code, those whose key is not loud in the base run's same paper and report:
-what a pull request's run adds. Both runs must key by one scheme.
+what a pull request's run adds. Both runs must key by one scheme. `--base` too leaves out
+the harness's check findings, the audit's repeats and the codes every new project gives.
+Either way it leaves out a finding whose key a batch packet of the run's scheme holds in the
+same paper and report, and says how many: its verdicts may be waiting for the author, and
+packed again it would be counted twice.
 
 A batch's packet is laid out as the first ones, and each paper names its `batch`, which marks
-the packet as a batch's, and its `run` and the run's key `scheme` too. Each finding is as the run gave it, its `key` with it, and a G3 finding
-lists the `figure_files` of the run's project (under `figures/` and `manuscript/`) that its
+the packet as a batch's, and its `run`, the run's `folder` and its key `scheme` too. Each
+finding is as the run gave it, its `key` with it, and a G3 finding lists the `figure_files` of the run's project (under `figures/` and `manuscript/`) that its
 message names, or all of them where it names none, so that a judge can look at the image. The
 `text` is the run's own `main.md` of a Word paper, the LaTeX source, or the text pdftotext
 made of a PDF beside a run's reports; nothing is run on the paper. `unjudged` prints the count
@@ -132,7 +136,8 @@ against `report/packets/<batch>.json`, since the same slug, report and index sta
 first packets for another finding; the first verdicts are read by slug as before. A batch's
 verdict is paired by the key its finding carries, with no tie, where the run measured keys by
 the packet's scheme, its count held to the batch's run (at the gate's new run, to the base,
-where that keys so too); otherwise by the matcher. The first verdicts are paired before a
+where that keys so too); otherwise by the matcher. The batch's run is found at its `folder`,
+else at `runs/<run>`; where neither is there, the count is held to the run measured. The first verdicts are paired before a
 batch's, so that no batch changes their fates. A ledger's matcher re-judges a batch's verdict
 as it does a first one; a ledger's `findings`, by slug, report and index, name first verdicts
 only.
@@ -372,9 +377,12 @@ without failing the true findings that came back, those reported before and aske
 reading notices that changed, the false findings that became loud, and, by code, the
 warnings and failures that no judged finding accounts for at either run. Below them it
 counts the loud findings of the new run with no verdict whose key is not loud in the base,
-and gives the `unjudged` command that packs them for two judges (Judging, above). The
-Markdown folds the long lists, so it can go in a pull request's description, and is written
-in UTF-8 whatever the console's encoding.
+less the harness's check findings and those a batch holds already, and gives the
+`unjudged ... --base ...` command that packs them for two judges (Judging, above). The count
+is that command's selection, the new run measured as `unjudged` measures it, so it is the
+number the command packs. The Markdown folds the long lists, so it can go in a pull request's
+description. Written to a file or a pipe it is UTF-8 whatever the console's encoding; a
+terminal gets it as text.
 
 A pull request that changes a rule reading text runs `run` on its commit and `gate` against
 main's run. A true finding lost blocks it, unless the author's decision in the ledger covers

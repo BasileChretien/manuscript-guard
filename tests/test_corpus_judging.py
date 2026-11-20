@@ -162,8 +162,11 @@ def test_the_thresholds_of_a_settled_code_are_flags(corpus: Path, capsys) -> Non
     assert ("paper-a", "audit", R1[("paper-a", "audit")][12]["message"]) not in packed(
         corpus, "loose")  # fmt: skip
     # Eleven needed: no code is settled, and the settled code's own new findings are packed.
+    # (Each packet set aside first, since a finding a batch holds is not packed again.)
+    (corpus / "report" / "packets" / "loose.json").unlink()
     assert pack(corpus, "strict", least=11)["settled"] == {}
     assert len(packed(corpus, "strict")) == 8
+    (corpus / "report" / "packets" / "strict.json").unlink()
     assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "cli",
                       "--min-judged", "1", "--settled", "0.5"]) == 0  # fmt: skip
     out = capsys.readouterr().out
@@ -332,7 +335,8 @@ def test_the_sample_is_twenty_agreements_drawn_the_same_each_time(tmp_path: Path
         found = [finding("G6", "x", f"message {n}", f"s{n}", line=n) for n in range(25)]
         (root / "report" / "packets").mkdir(parents=True)
         (root / "report" / "packets" / "big.json").write_text(json.dumps([{
-            "slug": "p", "run": "r", "scheme": 2, "reports": {"audit": {"findings": found}}}]))
+            "slug": "p", "batch": "big", "run": "r", "scheme": 2,
+            "reports": {"audit": {"findings": found}}}]))
         where = [("p", "audit", n) for n in range(25)]
         # The last both find unclear: no agreement, and the author's to answer.
         judge(root, "big", "a", ["true"] * 24 + ["unclear"], where)
@@ -377,9 +381,33 @@ def test_a_batch_verdict_is_paired_by_its_key_and_counts(corpus: Path) -> None:
     assert [(r["by_key"], r["state"]) for r in batch] == [(True, "reported")] * 4
     assert sum(tool.unjudged(run).values()) == before - 4
     assert result["codes"]["G3/figure-colours-confused"]["true"]["reported"] == 2
-    # Packed again, only the findings the judges did not agree on are left.
-    pack(corpus, "b2")
-    assert packed(corpus, "b2") == messages(R1, ("paper-a", "check", 4), ("paper-b", "audit", 0))
+    # Packed again, nothing: those the judges agreed on are paired, and the two they did not
+    # wait for the author in b1, so are not packed a second time.
+    again = pack(corpus, "b2")
+    assert (again["written"], again["packed_already"]) == (False, 2)
+    assert not (corpus / "report" / "packets" / "b2.json").exists()
+
+
+def test_a_finding_a_batch_holds_is_not_packed_again(corpus: Path, capsys) -> None:
+    agreed(corpus)  # b1: two findings wait for the author
+    result = pack(corpus, "b2", least=11)  # no code settled: something is left to pack
+    assert packed(corpus, "b2") == messages(R1, ("paper-a", "audit", 11),
+                                            ("paper-a", "audit", 15))  # fmt: skip
+    assert result["packed_already"] == 2
+    print(judging.render_pack(result))
+    assert "2 left out as a batch holds them already" in capsys.readouterr().out
+    # A batch of another scheme holds other keys: its findings are packed.
+    (corpus / "report" / "packets" / "b2.json").unlink()
+    path = corpus / "report" / "packets" / "b1.json"
+    path.write_text(json.dumps([{**p, "scheme": 1} for p in json.loads(
+        path.read_text("utf-8"))]), "utf-8")  # fmt: skip
+    assert pack(corpus, "b3", least=11)["packed_already"] == 0
+    assert len(packed(corpus, "b3")) == 4
+
+
+def test_agree_refuses_a_packet_that_is_no_batch_s(corpus: Path) -> None:
+    with pytest.raises(tool.CorpusError, match="field.json is not a batch's packet"):
+        judging.agree(corpus, "field")
 
 
 def test_the_author_s_answers_are_read_against_their_batch(corpus: Path) -> None:
@@ -439,6 +467,23 @@ def test_a_batch_verdict_s_count_is_held_to_its_own_run(corpus: Path) -> None:
     assert fig1("r1") == [("gone", True)] * 2
 
 
+def test_a_batch_s_run_is_found_by_its_folder_wherever_it_is(corpus: Path) -> None:
+    check = R1[("paper-a", "check")]
+    elsewhere = corpus.parent / "other-runs"
+    folder = write_run(elsewhere, "rx", {**R1, ("paper-a", "check"): [*check, check[2]]})
+    folder = folder.rename(elsewhere / "rx-run")  # its folder is not runs/<its name>
+    pack(corpus, "bx", of=str(folder))
+    papers = json.loads((corpus / "report" / "packets" / "bx.json").read_text("utf-8"))
+    assert {(p["run"], p["folder"]) for p in papers} == {("rx-run", str(folder))}
+    where = places(corpus, "bx")
+    judge(corpus, "bx", "a", ["true"] * len(where))
+    judge(corpus, "bx", "b", ["true"] * len(where))
+    judging.agree(corpus, "bx")
+    rows = [(r["state"], r["fell"]) for r in tool.measure(corpus, "r1")["findings"]
+            if r["batch"] == "bx" and r["message"].startswith("fig1.png")]
+    assert rows == [("gone", True)] * 2  # held to its own run's two, not to r1's one
+
+
 def test_the_first_verdicts_are_paired_before_a_batch_s_by_the_matcher(corpus: Path) -> None:
     # A batch judged a twin of a first verdict's finding, from a run that gave it twice.
     audit = R1[("paper-a", "audit")]
@@ -471,11 +516,41 @@ def test_the_gate_counts_the_new_loud_findings_with_no_verdict(corpus: Path) -> 
         tool.gate(corpus, "r0", "r1"))
 
 
+def test_the_gate_counts_what_the_command_it_prints_packs(corpus: Path) -> None:
+    # A first verdict tied to a key that stands twice in the run of the ties, once quietly
+    # in the base and once in the new run: the gate holds its count to the base, and kept
+    # it; `measure`, and so `unjudged`, to the run of the ties, and lost it.
+    color = R1[("paper-a", "audit")][10]
+    write_run(corpus, "rt", {("paper-a", "audit"): [color, {**color, "line": 61}]})
+    write_run(corpus, "r0", {**R0, ("paper-a", "audit"): [
+        *R0[("paper-a", "audit")], {**color, "severity": "info"}]})
+    (corpus / "report" / "ties.yaml").write_text(json.dumps({"run": "rt", "scheme": 2, "ties": [
+        {"slug": "paper-a", "report": "audit", "index": 10, "key": color["key"],
+         "how": "message+place"}]}), "utf-8")  # fmt: skip
+    counted = tool.gate(corpus, "r0", "r1")["fresh"]
+    result = pack(corpus, "r1-added", base="r0")
+    assert counted["count"] == result["findings"] == 6
+    assert counted["by_code"] == result["by_code"]
+
+
 def test_the_markdown_is_written_in_utf8_whatever_the_stream_s_encoding(monkeypatch) -> None:
     raw = io.BytesIO()
     monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
     tool._write("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n", {}, None, None)
     assert raw.getvalue().decode("utf-8") == "keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n"
+
+
+def test_a_terminal_is_written_text_in_its_own_encoding(monkeypatch) -> None:
+    class Terminal(io.BytesIO):
+        def isatty(self) -> bool:
+            return True
+
+    raw = Terminal()
+    stream = io.TextIOWrapper(raw, encoding="utf-16-le", newline="")  # the terminal's
+    monkeypatch.setattr(sys, "stdout", stream)
+    tool._write("keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n", {}, None, None)
+    stream.flush()
+    assert raw.getvalue().decode("utf-16-le") == "keys changed scheme (1 \N{RIGHTWARDS ARROW} 2)\n"
 
 
 def test_agree_from_the_command_line(corpus: Path, capsys) -> None:

@@ -192,9 +192,12 @@ def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
             item = Judged(entry["slug"], entry["report"], int(entry["index"]), verdict, old,
                           judged=verdict, alone=alone)  # fmt: skip
             if batch:
-                folder = root / "runs" / str(paper.get("run"))
+                # The run's folder as `unjudged` found it, else runs/<its name>, else none:
+                # its counts are then held to the run measured.
+                folders = [Path(str(paper["folder"]))] if paper.get("folder") else []
+                folders.append(root / "runs" / str(paper.get("run")))
                 item = replace(item, batch=batch, scheme=int(paper.get("scheme") or 1),
-                               source=folder if folder.is_dir() else None)  # fmt: skip
+                               source=next((f for f in folders if f.is_dir()), None))
                 if item.key in seen:
                     raise CorpusError(f"{path}: {' '.join(map(str, item.key))} is judged twice")
                 seen.add(item.key)
@@ -257,13 +260,46 @@ def picked(run, keep) -> list[tuple[str, str, list[dict], list[int]]]:
     return out
 
 
-def fresh(run, base) -> dict:
-    """The loud findings of `run` with no verdict whose key is not loud in `base`'s same
-    paper and report, by code, and the command that packs them; for the gate."""
+def held_keys(root: Path, scheme: int) -> set[tuple[str, str, str]]:
+    """The keys the batch packets of a scheme hold, by paper and report: findings packed
+    already, whose verdicts may wait for the author."""
+    _first, batches = read_packets(root)
+    return {(slug, report, f["key"]) for papers in batches.values()
+            for slug, paper in papers.items() if paper.get("scheme") == scheme
+            for report, part in paper.get("reports", {}).items()
+            for f in part.get("findings", []) if isinstance(f.get("key"), str)}  # fmt: skip
+
+
+def select(root: Path, run, rows: list[dict], base=None, share: float = SETTLED,
+           least: int = MIN_JUDGED) -> dict:  # fmt: skip
+    """What `unjudged` packs, written nowhere: the loud findings of `run` no judged finding
+    accounts for (`rows`, the measure of the judged set in it, has filled `run.used`), of a
+    code not settled, or with `base` of every code those whose key is not loud in the base's
+    same paper and report; less, either way, those the harness left out and those a batch
+    packet of the run's scheme holds already, which are counted."""
+    settled = {} if base is not None else settled_codes(rows, share, least)
+    if base is not None and base_problem(run, base):
+        raise CorpusError(f"--base sets keys side by side, and {base_problem(run, base)}")
+    held, again = held_keys(root, run.scheme), collections.Counter()
+
+    def keep(slug: str, report: str, f: dict) -> bool:
+        if (f.get("key") in loud_keys(base, slug, report) if base is not None
+                else code_of(f) in settled):  # fmt: skip
+            return False
+        again["held"] += (slug, report, f.get("key")) in held
+        return (slug, report, f.get("key")) not in held
+
+    found = picked(run, keep)
+    return {"found": found, "settled": settled, "packed_already": again["held"]}
+
+
+def fresh(root: Path, run, rows: list[dict], base) -> dict:
+    """For the gate: the count by code of what `unjudged <run> --base <base>` packs, by the
+    same selection (`select`), and that command."""
     problem = base_problem(run, base)
     if problem:
         return {"count": None, "note": problem}
-    found = picked(run, lambda s, r, f: f.get("key") not in loud_keys(base, s, r))
+    found = select(root, run, rows, base)["found"]
     codes = collections.Counter(code_of(f[i]) for _s, _r, f, chosen in found for i in chosen)
     return {"count": sum(codes.values()), "by_code": dict(codes.most_common()),
             "command": f"python tools/corpus.py unjudged {run.name} --name {run.name}-added "
@@ -316,16 +352,14 @@ def _paper(root: Path, run, slug: str, first: dict, name: str) -> dict:
     return {"slug": slug, "title": meta.get("title"), "format": meta.get("format"),
             "window": meta.get("window"), "text": judge_text(root, run, slug, meta),
             "original": str(root / "corpus" / slug / "files" / main) if main else None,
-            "batch": name, "run": run.name, "scheme": run.scheme, "reports": {}}  # fmt: skip
+            "batch": name, "run": run.name, "folder": str(run.folder), "scheme": run.scheme,
+            "reports": {}}  # fmt: skip
 
 
 def pack(root: Path, run, rows: list[dict], name: str, base=None,
          share: float = SETTLED, least: int = MIN_JUDGED) -> dict:  # fmt: skip
-    """Write `report/packets/<name>.json`: every loud finding of `run` no judged finding
-    accounts for (`rows`, the measure of the judged set in it, has filled `run.used`), of a
-    code not settled; with `base`, of every code, those whose key is not loud in the base's
-    same paper and report. Refused where the packet is there already, or a verdict file of
-    its name, which `packet_of` would read against it."""
+    """Write `report/packets/<name>.json`, what `select` takes. Refused where the packet is
+    there already, or a verdict file of its name, which `packet_of` would read against it."""
     if not SLUG.fullmatch(name) or ".." in name or name.endswith(AUTHOR):
         raise CorpusError(f"{name!r} cannot name a batch: letters, digits, '.', '_' and '-', "
                           f"not ending in {AUTHOR}")  # fmt: skip
@@ -336,14 +370,8 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
         if (root / verdicts).exists():
             raise CorpusError(f"{verdicts.as_posix()} is there already, and would be read "
                               "against the batch's packet: name the batch otherwise")
-    settled = {} if base is not None else settled_codes(rows, share, least)
-    if base is not None:
-        problem = base_problem(run, base)
-        if problem:
-            raise CorpusError(f"--base sets keys side by side, and {problem}")
-        found = picked(run, lambda s, r, f: f.get("key") not in loud_keys(base, s, r))
-    else:
-        found = picked(run, lambda s, r, f: code_of(f) not in settled)
+    selection = select(root, run, rows, base, share, least)
+    found, settled = selection["found"], selection["settled"]
     first, _batches = read_packets(root)
     papers: dict[str, dict] = {}
     for slug, report, every, chosen in found:
@@ -363,7 +391,8 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
     return {"name": name, "run": run.name, "scheme": run.scheme, "path": str(path),
             "written": bool(papers), "papers": len(papers), "findings": sum(codes.values()),
             "base": base.name if base is not None else None, "by_code": dict(codes.most_common()),
-            "settled": settled, "no_text": sorted(s for s, p in papers.items() if not p["text"])}
+            "settled": settled, "no_text": sorted(s for s, p in papers.items() if not p["text"]),
+            "packed_already": selection["packed_already"]}
 
 
 def render_pack(result: dict) -> str:
@@ -374,6 +403,8 @@ def render_pack(result: dict) -> str:
             if result["written"] else f"Nothing to pack: no loud finding of {result['run']} "
             f"with no verdict, {which}. No packet written.")  # fmt: skip
     lines = [f"## Batch {result['name']}", "", said, ""]
+    if result["packed_already"]:
+        lines += [f"{result['packed_already']} left out as a batch holds them already.", ""]
     if result["no_text"]:
         lines += [f"No text for a judge found for: {', '.join(result['no_text'])}.", ""]
     lines += ["| code | findings |", "| --- | ---: |"]
@@ -430,6 +461,9 @@ def agree(root: Path, batch: str) -> dict:
     packet = load_json(root / PACKETS / f"{batch}.json")
     if not isinstance(packet, list):
         raise CorpusError(f"no packet {PACKETS.as_posix()}/{batch}.json to read the verdicts by")
+    if not is_batch(packet):
+        raise CorpusError(f"{PACKETS.as_posix()}/{batch}.json is not a batch's packet: `agree` "
+                          "reads two judges' verdicts on a batch `unjudged` wrote")  # fmt: skip
     wanted = {(p["slug"], report, i): f for p in packet
               for report, part in p.get("reports", {}).items()
               for i, f in enumerate(part.get("findings", []))}  # fmt: skip

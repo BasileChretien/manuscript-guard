@@ -62,7 +62,7 @@ def test_the_names_from_the_code_are_one_finding_at_the_first_use(tmp_path: Path
         "3 names are written the way names in code are, as G14 reads the paper: "
         "'community_action_importance' here, then community_action_norms, trust_in_science"
     ), found["message"]
-    assert "--known" in found["hint"] and found["severity"] == "warn"
+    assert "--known" in found["hint"] and found["severity"] == "info"
     assert [form["form"] for form in found["forms"]] == list(LISTED)
     assert [form["line"] for form in found["forms"]] == [3, 3, 7]
     assert found["forms"][0]["message"].startswith(

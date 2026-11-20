@@ -38,6 +38,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+#: The number of the scheme the keys are made by (Basile, 2026-11-20). A commit without it
+#: makes scheme 1. A pull request that changes a key on purpose raises it: a subject, the
+#: digest, the part, the splitter or the normal form. The corpus tool, `tools/corpus.py`,
+#: reads it from each run's commit (from #708), and where the base's and the new run's
+#: differ it pairs their findings by message, not by key, until the corpus is tied again.
+SCHEME = 2
+
 #: The parts of a paper a digest is taken in.
 ABSTRACT, MAIN, SUPPLEMENT = "abstract", "main", "supplement"
 #: The digest of a paper-level finding, and the subject of a finding that stands for a list.
@@ -66,15 +73,36 @@ _STOP = re.compile(
 )
 _BLOCK = re.compile(r"\n[ \t\x00]*(?:\n|#|>|[-*+][ \t]|\d+[.)][ \t]|\|)")
 _FRONT = re.compile(r"\A---[ \t]*\n(?:.*?\n)?(?:---|\.\.\.)[ \t]*(?:\n|\Z)", re.DOTALL)
+#: The names a line may hold alone as a heading, as a Word paper's or a PDF's text gives one:
+#: each with a capital or in capitals, so that a word "results." a hard-wrapped line holds
+#: alone is no heading.
+_ALONE = ("abstract", "summary", "introduction", "background", "method", "methods",
+          "materials and methods", "results", "discussion", "conclusion", "conclusions",
+          "references")  # fmt: skip
+#: Of those, the ones that end the Abstract wherever they stand in it.
+_ENDS_AN_ABSTRACT = frozenset({"introduction", "discussion", "references"})
+#: The order a structured Abstract's own parts come in, a singular folded into its plural: a
+#: line alone that ranks no later than the last met in it is the paper's own, and ends it.
+_RANKS = {"background": 0, "methods": 1, "materials and methods": 1, "results": 2,
+          "conclusions": 3}  # fmt: skip
+_FOLDED = {"method": "methods", "conclusion": "conclusions"}
+#: A line standing alone, as a heading stands: a capital, a few words and no stop.
+_HEADING_SHAPED = re.compile(r"[ \t]*[*_]*[A-Z][^\n.!?]{0,60}?[*_:]*[ \t]*")
+#: What a structured Abstract opens on besides its ranked parts (`_RANKS`).
+_OPENS_A_STRUCTURED = frozenset({"importance", "objective", "objectives", "aim", "aims",
+                                 "purpose", "context", "rationale"})  # fmt: skip
 #: What marks where a part of the paper begins: a Markdown heading, a LaTeX sectioning
-#: command or abstract environment, or a line that is a heading's name alone, as a Word
-#: paper's or a PDF's text gives one.
+#: command or abstract environment, or a line that is a heading's name alone (`_ALONE`).
 _MARK = re.compile(
     r"^[ \t]*#{1,6}[ \t]+(?P<md>[^\n]*)$"
     r"|\\(?:sub)*section\*?\{(?P<tex>[^}\n]*)\}"
     r"|(?P<env>\\(?:begin|end)\{abstract\})"
-    r"|^[ \t]*[*_]*(?P<alone>abstract|summary|introduction|background|methods?|"
-    r"materials and methods|results|discussion|conclusions?|references)[*_.:]*[ \t]*$",
+    r"|^[ \t]*[*_]*(?-i:(?P<alone>"
+    + "|".join(sorted({form for name in _ALONE
+                       for form in (name.capitalize(), name.title(), name.upper(),
+                                    name.title().replace(" And ", " and "))},
+                      key=len, reverse=True))  # fmt: skip
+    + r"))[*_.:]*[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
 )
 _NUMBERED = re.compile(r"^[\s*_\d.)\\]*")
@@ -110,15 +138,48 @@ def sentence_at(text: str, offset: int) -> str:
 @lru_cache(maxsize=32)
 def _marks(text: str) -> tuple[tuple[int, bool], ...]:
     """Where each part of `text` begins, with whether it is the abstract."""
-    found = []
+    found: list[tuple[int, bool]] = []
+    # The rank of the last of a structured Abstract's own parts met in it; None outside one.
+    last: int | None = None
     for mark in _MARK.finditer(text):
         if mark["env"]:
-            found.append((mark.start(), mark["env"].lower().startswith("\\begin")))
+            opens = mark["env"].lower().startswith("\\begin")
+            last = _structured(text, mark.end()) if opens else None
+            found.append((mark.start(), opens))
             continue
         title = _NUMBERED.sub("", mark["md"] or mark["tex"] or mark["alone"] or "")
-        found.append((mark.start(), title.strip("*_ \t").casefold().startswith(ABSTRACT)
-                      or title.strip("*_ \t.:").casefold() == "summary"))  # fmt: skip
+        name = title.strip("*_ \t.:").casefold()
+        name = _FOLDED.get(name, name)
+        opens = name.startswith(ABSTRACT) or name == "summary"
+        rank = _RANKS.get(name)
+        # A structured Abstract's own Background, Methods or Results go on in it, each
+        # later than the last.
+        if (mark["alone"] and not opens and last is not None
+                and name not in _ENDS_AN_ABSTRACT and rank is not None and rank > last):
+            last = rank
+            continue
+        last = _structured(text, mark.end()) if opens else None
+        found.append((mark.start(), opens))
     return tuple(found)
+
+
+def _structured(text: str, at: int) -> int | None:
+    """-1 where the Abstract whose heading ends at `at` is structured; None where it is not.
+    It is structured where its first line after the heading is shaped as a heading (a
+    capital, no stop, `_HEADING_SHAPED`) and is, emphasis, stops and colons aside and a
+    singular read as its plural, one of its ranked parts (`_RANKS`) or what a structured
+    Abstract opens on (`_OPENS_A_STRUCTURED`): "IMPORTANCE", "Background", or a compound
+    whose words before its " and " or " of " are, "Background and Purpose", "Purpose of
+    Review". A hard-wrapped sentence's first line, or "Background: Drugs matter for many
+    patients with", is none."""
+    rest = text[at:].lstrip("\n\r\t ")
+    line = rest.split("\n", 1)[0]
+    said = line.strip("*_ \t.:").casefold()
+    # A compound, "Background and Purpose", "Purpose of Review", by its words before.
+    names = {said, re.split(r" (?:and|of) ", said, maxsplit=1)[0]}
+    named = any(_FOLDED.get(one, one) in _RANKS or _FOLDED.get(one, one) in _OPENS_A_STRUCTURED
+                for one in names)  # fmt: skip
+    return -1 if line and named and _HEADING_SHAPED.fullmatch(line) else None
 
 
 def part_of(text: str, offset: int, supplementary: bool = False) -> str:

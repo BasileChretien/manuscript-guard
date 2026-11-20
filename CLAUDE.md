@@ -37,6 +37,7 @@ A pull request that changes a rule reading text is measured on the real-paper co
 <that sha's first nine characters>`, whose output goes in the PR body. A true
 finding lost blocks the pull request unless a decision of the author's in the corpus's
 ledger covers it; never write one to the ledger yourself.
+A pull request that changes a key on purpose raises `SCHEME` in `src/manuscript_guard/keys.py`.
 
 CI pins a pandoc version as `MANUSCRIPT_GUARD_REQUIRE_PANDOC` in `.github/workflows/ci.yml`,
 installs it, and with that variable set `tests/conftest.py` refuses to start unless that

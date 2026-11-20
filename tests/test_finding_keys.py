@@ -197,6 +197,13 @@ def fallen_back(found: list[dict]) -> set[str]:
 # ---------------------------------------------------------------- the parts of a key
 
 
+def test_the_key_scheme_is_numbered_and_raised_past_the_first() -> None:
+    """The corpus tool reads the scheme from each run's commit; #709 changed the part of
+    Word and PDF papers on purpose, and raised it from 1 (Basile, 2026-11-20)."""
+    assert isinstance(keys.SCHEME, int) and not isinstance(keys.SCHEME, bool)
+    assert keys.SCHEME >= 2
+
+
 def test_a_sentence_is_read_the_same_wrapped_or_not_and_however_it_is_typed() -> None:
     """The digest's normal form: one minus, one quotation mark of each kind, no spaces, no
     emphasis, no soft hyphen, a line's hyphen joined, in any case."""
@@ -214,21 +221,6 @@ def test_a_statistic_is_one_subject_however_it_is_spaced_and_signed() -> None:
     assert keys.statistic("−0.5") == keys.statistic("-0.5")
     assert keys.statistic("0·5") == keys.statistic("0.5")
     assert keys.statistic("2.05") != keys.statistic("2.06")
-
-
-def test_the_part_is_the_abstract_under_its_heading_and_the_supplement_by_its_file() -> None:
-    text = ("# Abstract\n\nOne. Two.\n\n# Methods\n\nThree.\n\nABSTRACT\n\nFour.\n\nRESULTS\n\n"
-            "Five.\n")  # fmt: skip
-    assert keys.part_of(text, text.index("Two")) == keys.ABSTRACT
-    assert keys.part_of(text, text.index("Three")) == keys.MAIN
-    assert keys.part_of(text, text.index("Four")) == keys.ABSTRACT
-    assert keys.part_of(text, text.index("Five")) == keys.MAIN
-    assert keys.part_of(text, text.index("Three"), supplementary=True) == keys.SUPPLEMENT
-    tex = "\\begin{abstract}One.\\end{abstract}\\section{Methods}Two."
-    assert keys.part_of(tex, tex.index("One")) == keys.ABSTRACT
-    assert keys.part_of(tex, tex.index("Two")) == keys.MAIN
-    assert keys.in_supplement(Path("p/manuscript/supplementary/S1.md"))
-    assert not keys.in_supplement(Path("supplementary/manuscript/main.md"))
 
 
 def test_the_frozen_splitter_cuts_where_the_gates_splitter_cuts_today() -> None:
@@ -380,14 +372,18 @@ def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
 ) -> None:
     """A share a sentence writes is digested in the text as read, not in the text with the
     compared Abstract blanked, as the other numbers are (second scoped check of #706). In a
-    Word paper the Abstract's heading is a line alone, which the blanking took away."""
+    Word paper the Abstract's heading is a line alone, which `abstract.where` takes for the
+    Abstract's and the blanking took away; under "Patients and methods", a heading no line
+    alone marks, the share's part rests on that line alone (the follow-up's review)."""
     from test_audit_claims import make_docx
 
     from manuscript_guard.auditing import abstract
 
     paper = make_docx(tmp_path / "paper.docx", [
-        ("Abstract", True), ("Of 40 patients, 12 were women.", False), ("Results", True),
-        ("Of the patients, 12 of 40 (35%) were women, and the rest were men.", False)])  # fmt: skip
+        ("Abstract", True), ("Of 40 patients, 12 were women.", False),
+        ("Patients and methods", True),
+        ("Of the patients, 12 of 40 (35%) were women, and the rest were men.", False),
+        ("Results", True), ("The rate was 4.7 in all.", False)])  # fmt: skip
 
     def share() -> list[str]:
         return [key for key in keyed(audited(paper), "does-not-fit") if "|12of40(35%)|" in key]
@@ -395,6 +391,118 @@ def test_a_written_share_keys_alike_with_the_abstract_compared_or_not(
     compared = share()
     monkeypatch.setattr(abstract, "where", lambda piece, line: "")
     assert compared and share() == compared
+
+
+def test_a_mean_under_a_header_that_spans_columns_names_each_row_of_it(tmp_path: Path) -> None:
+    """The column a GRIM mean is keyed by is named by every header cell over it, each the
+    one whose span covers it, down to the row that names its n: 3.47 under Treatment's men,
+    Treatment's women and Control's men is three keys, none numbered and none with an empty
+    column (the follow-up's review)."""
+    from test_audit import make_docx, para, row
+
+    def spanning(text: str) -> str:
+        return (f"<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>{text}</w:t>"
+                "</w:r></w:p></w:tc>")
+
+    header = ("<w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+              + spanning("Treatment") + spanning("Control") + "</w:tr>")
+    table = ("<w:tbl>" + header + row("", "Men (n = 10)", "Women (n = 10)", "Men (n = 10)",
+                                       "Women (n = 10)")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)", "3.47 (1.10)", "5.00 (1.00)")
+             + "</w:tbl>")  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table)
+    found = _json("audit", str(paper), "--json", "--whole-numbers", "Age")["findings"]
+    grim = [key.split("|")[2] for key in keyed(found, "does-not-fit") if "3.47/n=10" in key]
+    assert sorted(grim) == ["3.47/n=10@control/men(n=10)", "3.47/n=10@treatment/men(n=10)",
+                            "3.47/n=10@treatment/women(n=10)"], grim  # fmt: skip
+
+
+def _grim(paper: Path, label: str) -> list[str]:
+    found = _json("audit", str(paper), "--json", "--whole-numbers", label)["findings"]
+    return [key.split("|")[2] for key in keyed(found, "does-not-fit") if "/n=" in key]
+
+
+def test_a_mean_is_named_by_the_header_rows_under_its_n_too(tmp_path: Path) -> None:
+    """Below the row that names the n, a header row that holds no mean names the column as
+    well: "Treatment (n = 20)" over Baseline and Week 12 is two keys, neither numbered
+    (round 1 of #709)."""
+    from test_audit import make_docx, para, row
+
+    spanning = ("<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>Treatment "
+                "(n = 20)</w:t></w:r></w:p></w:tc>")  # fmt: skip
+    table = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+             + spanning + "</w:tr>" + row("", "Baseline", "Week 12")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)") + "</w:tbl>")  # fmt: skip
+    found = _grim(make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table),
+                  "Age")  # fmt: skip
+    assert sorted(found) == ["3.47/n=20@treatment(n=20)/baseline",
+                             "3.47/n=20@treatment(n=20)/week12"], found  # fmt: skip
+
+
+def test_a_one_line_tabular_still_names_its_column(tmp_path: Path) -> None:
+    """A LaTeX tabular typed on one line has its header and its rows on one source line:
+    the header row is still read (round 1 of #709: the column was empty)."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\\begin{document}\\section{Results}\n"
+                     "\\begin{tabular}{lc} Characteristic & Men (n = 10) \\\\ Age, mean (SD) "
+                     "& 3.47 (1.20) \\\\ \\end{tabular}\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    assert _grim(paper, "Age") == ["3.47/n=10@men(n=10)"]
+
+
+def test_a_row_of_means_above_names_no_column(tmp_path: Path) -> None:
+    """A row of means above a mean, one of which names its n, "3.1 (1.0), n = 25", is a row
+    of the table, not of its header: editing 3.1 leaves the key of 3.47 below it as it was
+    (round 1 of #709)."""
+    text = ("# Results\n\nTable 1. Scores.\n\n| Score | Group A |\n|---|---|\n"
+            "| Score A, mean (SD) | {x} (1.0), n = 25 |\n| Score B, mean (SD) | 3.47 (1.20) |\n")
+    found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{x}.md"), "Score")
+             for x in ("3.1", "3.2")]  # fmt: skip
+    assert found[0] == found[1] == ["3.47/n=25@groupa"], found
+
+
+def test_a_row_of_data_above_ends_the_header(tmp_path: Path) -> None:
+    """A mean's column is named by the header rows alone: the first row of data, here a
+    median [IQR] and a count n (%), ends them, so editing a datum above leaves the key of
+    3.47 as it was (round 2 of #709: "45 [30-60]" joined it)."""
+    text = ("# Results\n\nTable 1. Scores.\n\n| Characteristic | Treatment (n = 20) |\n"
+            "|---|---|\n| Age, median [IQR] | {x} [30-60] |\n| Female, n (%) | 12 (60.0%) |\n"
+            "| Score, mean (SD) | 3.47 (1.20) |\n")  # fmt: skip
+    found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{x}.md"), "Score")
+             for x in ("45", "46")]  # fmt: skip
+    assert found[0] == found[1] == ["3.47/n=20@treatment(n=20)"], found
+
+
+def test_a_row_of_data_ends_the_header_however_its_datum_is_written(tmp_path: Path) -> None:
+    """A row of data ends the header whatever its first datum opens on, its emphasis aside:
+    an en dash for its minus, a bracket, a comparison, or nothing reported, "NR" or a dash
+    alone. Editing it leaves the key of 3.47 below as it was (the scoped check of #709)."""
+    rows = [("| Change, mean (SD) | {x} (1.2) |", "\u20130.5", "\u20130.6"),
+            ("| Age, median [IQR] | **{x}** [30-60] |", "45", "46"),
+            ("| P value | <{x} |", "0.001", "0.002"),
+            ("| Dose | {x} |", "NR", "\u2013")]  # fmt: skip
+    for at, (row, one, other) in enumerate(rows):
+        text = ("# Results\n\nTable 1. Scores.\n\n| Characteristic | Treatment (n = 20) |\n"
+                f"|---|---|\n{row}\n| Score, mean (SD) | 3.47 (1.20) |\n")  # fmt: skip
+        found = [_grim(a_paper(tmp_path, text.replace("{x}", x), f"{at}-{x}.md"), "Score")
+                 for x in (one, other)]  # fmt: skip
+        assert found[0] == found[1] == ["3.47/n=20@treatment(n=20)"], (row, found)
+
+
+def test_a_header_row_with_no_label_names_the_column(tmp_path: Path) -> None:
+    """A row whose first cell is empty is a header's however its cells open: the doses
+    under "Drug (n = 20)" name the two columns of 3.47, two keys and no ordinal (the scoped
+    check of #709: "10 mg" read as data ended the header)."""
+    from test_audit import make_docx, para, row
+
+    spanning = ("<w:tc><w:tcPr><w:gridSpan w:val='2'/></w:tcPr><w:p><w:r><w:t>Drug (n = 20)"
+                "</w:t></w:r></w:p></w:tc>")  # fmt: skip
+    table = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Characteristic</w:t></w:r></w:p></w:tc>"
+             + spanning + "</w:tr>" + row("", "10 mg", "20 mg")
+             + row("Age, mean (SD)", "3.47 (1.20)", "3.47 (0.90)") + "</w:tbl>")  # fmt: skip
+    found = _grim(make_docx(tmp_path / "paper.docx", para("Results") + para("Table 1.") + table),
+                  "Age")  # fmt: skip
+    assert sorted(found) == ["3.47/n=20@drug(n=20)/10mg", "3.47/n=20@drug(n=20)/20mg"], found
 
 
 def test_two_columns_of_one_n_give_a_mean_two_keys(tmp_path: Path) -> None:

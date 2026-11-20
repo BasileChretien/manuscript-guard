@@ -16896,6 +16896,11 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   `tests/test_finding_keys.py` also runs the example, a paper with something for each family
   and the generated inputs of the `check` reading.
 
+`keys.SCHEME` numbers the scheme the keys are made by, 1 for a commit without it: a pull
+request that changes a key on purpose raises it, and `tools/corpus.py` reads it from each
+run's commit (from #708): where a base's and a new run's differ it pairs their findings by
+message, not by key, until the corpus is tied again (Basile, 2026-11-20).
+
 The keys are in `--json` only: nothing an author reads changes. The differential reading
 `finding keys` holds the audit's and compare's keys, and the reading `check` compares the
 whole of `check --json`, so a pull request that moves a key says so in
@@ -28396,6 +28401,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
+  - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
+    Abstract is read as structured where its first line after the heading is shaped as a
+    heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its
+    ranked parts or Importance, Objective(s), Aim(s), Purpose, Context or Rationale. A
+    structured one ends at "Introduction", "Discussion" or "References", or at a name that
+    ranks no later than the last of its own parts met in it (Background, Methods, Results,
+    Conclusions, a singular as its plural). Any other Abstract ends at the first line
+    alone. So a structured Abstract
+    whose last part ranks before the paper's next section, its Background alone run
+    straight into the paper's Methods, keeps that section in its part, and renaming one of
+    its ranked parts to a name no rank holds, RESULTS to FINDINGS, moves where it ends. The
+    corpus gate runs one paper unchanged between two commits, so neither moves a key it
+    compares. Pinned by
+    `tests/test_finding_keys_parts.py::test_a_structured_abstract_renamed_moves_where_it_ends`.
   - A key from the context leaves out the finding's own path and every folder above it, and
     the tool's own folder and those above it, where each stands whole, and then any other
     absolute path up to its first space: a message that names another folder, with a space

@@ -93,6 +93,7 @@ INSTRUCTIONS = (
     "The mean was [fill in later] for 212 pupils.\n\n"
     "The cohort is [describe the cohort], and 41 pupils left.\n\n"
     "The interval is [TO BE COMPLETED] in the second wave.\n\n"
+    "The data are at INSERT_SOURCE_URL, and TODO: check the totals.\n\n"
     "# Authors\n\n"
     "Written by [your name], [add your affiliation here].\n"
 )
@@ -101,7 +102,7 @@ INSTRUCTIONS = (
 def test_a_slot_that_tells_the_writer_what_to_put_still_fails(tmp_path: Path, capsys) -> None:
     found = _of(audited(_paper(tmp_path, INSTRUCTIONS), capsys), "model-artefact")
     said = sorted((_rule(f), f["severity"]) for f in found)
-    assert said == sorted([("placeholder", "fail")] * 3 + [
+    assert said == sorted([("placeholder", "fail")] * 3 + [(BARE, "fail")] * 2 + [
         ("placeholder-capitals", "fail"), ("placeholder-your", "fail")])  # fmt: skip
 
 
@@ -182,6 +183,9 @@ def test_the_bare_placeholders_are_the_rules_judged() -> None:
 
 @pytest.mark.parametrize(("subject", "severity"), [
     ("placeholder-word: xxxx", INFO), ("placeholder-slot: [url]", INFO),
+    ("placeholder-word: tbd", INFO), ("placeholder-word: 2025-xx", INFO),
+    ("placeholder-word: todo", FAIL), ("placeholder-word: fixme", FAIL),
+    ("placeholder-word: insert_source_url", FAIL), ("placeholder-word: paste_table_2", FAIL),
     ("placeholder: [fill in later]", FAIL), ("placeholder-your: [your name]", FAIL),
     ("placeholder-capitals: [TO BE COMPLETED]", FAIL),
     ("placeholder-filler: fill in later", FAIL), (f"{TEMPLATE}: keyword 1; keyword 2", FAIL),

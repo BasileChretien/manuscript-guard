@@ -66,11 +66,19 @@ MEASURED: dict[str, Measured] = {
 Found = TypeVar("Found")
 
 
+#: The words `placeholder-word` finds that tell the writer what to do rather than mark a gap,
+#: "TODO", "FIXME", "INSERT_SOURCE_URL", "PASTE_TABLE_2": they fail, as an instruction does.
+TO_DO = ("todo", "fixme", "insert_", "paste_")
+
+
 def _rule(found: object) -> str | None:
     """The G6 rule a finding is of, which its subject opens with (`gates.writing._keyed`):
-    "placeholder-word: xxxx"."""
+    "placeholder-word: xxxx"; none where its words tell the writer what to do (`TO_DO`)."""
     subject = getattr(found, "subject", None)
-    return subject.partition(":")[0] if subject else None
+    if not subject:
+        return None
+    rule, _, words = subject.partition(":")
+    return None if words.strip().startswith(TO_DO) else rule
 
 
 def measured(found: Found) -> Found:

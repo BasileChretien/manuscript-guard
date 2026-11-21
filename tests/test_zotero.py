@@ -254,6 +254,20 @@ def test_an_export_given_as_a_list_is_read(monkeypatch) -> None:
     assert lookup(("a",)).pinned == {"a"}
 
 
+def test_sync_bib_writes_zoteros_export_of_the_cited_keys(project: Path, monkeypatch) -> None:
+    """`sync-bib` writes references.bib as Better BibTeX exports the keys the text cites."""
+    from manuscript_guard.gates.citations import sync_bib
+    from manuscript_guard.text.reader import citation_uses
+
+    loaded = load_project(project)[0]
+    keys = sorted({use.citekey for use in citation_uses(loaded, whole=True)})
+    calls = []
+    monkeypatch.setattr(client, "rpc", lambda *call, **_: calls.append(call) or "@misc{k}\n")
+    path, count = sync_bib(loaded)
+    assert path.read_text(encoding="utf-8") == "@misc{k}\n"
+    assert calls == [("item.export", [keys, "biblatex"])] and count == len(keys) > 0
+
+
 def test_the_whole_library_fallback_takes_a_better_bibtex_8_key_as_pinned(monkeypatch) -> None:
     """Round 1 of #540: the fallback for a Better BibTeX without the fast calls reads the
     version too."""

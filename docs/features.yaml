@@ -476,7 +476,7 @@ features:
     commands: [sync-bib, sync-sources]
     tests:
       - tests/test_zotero.py::test_lookup_asks_about_the_cited_keys_only
-      - tests/test_zotero.py::test_an_export_given_as_a_list_is_read
+      - tests/test_zotero.py::test_sync_bib_writes_zoteros_export_of_the_cited_keys
       - tests/test_latex_cite.py::test_sync_bib_refuses_a_manuscript_its_reader_refuses
       - tests/test_sync_sources.py
       - tests/test_fetch_sources.py
@@ -828,8 +828,8 @@ features:
     stage: submit
     title: Posts and summaries
     says: >-
-      Prepares posts, a press release and lay summaries from the paper's own sentences, for
-      a person or the skill to finish, and checks that none makes a number or claim the
+      Writes posts from the paper's own sentences, leaves a press release and lay summaries
+      as slots for a person or the skill, and checks that none makes a number or claim the
       paper does not.
     status: works
     commands: [communicate]

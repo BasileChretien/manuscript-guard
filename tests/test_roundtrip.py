@@ -3000,31 +3000,53 @@ def test_raw_content_followed_out_of_a_note_leaves_paragraphs_pandoc_prints_unma
 
 
 @needs_pandoc
-def test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed() -> None:
+def test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed(
+    tmp_path: Path,
+) -> None:
     """A known gap (DESIGN.md, Known gaps, "A link or footnote definition carries no
     identifier.", "Only a note left alone, or a label made a term, is read by itself."): a
     note left alone takes a `:::` in, which ends it inside a fenced div, and a comment opened
     after that line is not followed. `::: box` over `[^cap]: Capped`, `:::` and a `<!--` has
     the paragraphs after it, up to the one holding the `-->`, marked inside the comment,
-    which pandoc does not print."""
+    which pandoc does not print. Such a paragraph is never compared (`_never_compared`)."""
     note = "::: box\n\n[^cap]: Capped\n:::\n<!-- check"
-    _tagged, read = _read_tagged(f"Doses were capped.[^cap]\n\n{note}" + _AFTER_A_NOTE.format(
-        close="-->"))  # fmt: skip
+    text = f"Doses were capped.[^cap]\n\n{note}" + _AFTER_A_NOTE.format(close="-->")
+    _tagged, read = _read_tagged(text)
     (comment,) = [block for block in read if '"RawBlock"' in block]
     assert "The first result paragraph." in comment and comment.count("mg-p-") == 2, comment
+    _never_compared(tmp_path, text, "The first result paragraph.")
+
+
+def _never_compared(tmp_path: Path, text: str, words: str) -> None:
+    """The paragraph opening `words` has an identifier in the source, `identified`'s, and
+    none in Word, where pandoc reads it inside raw content: the import never compares it.
+    A known gap (DESIGN.md, Known gaps, "`import` refuses a write the next build would not
+    find again, by `tag`'s reading.", "A paragraph that never reached the document is not
+    checked.")."""
+    from manuscript_guard.merge import plan_import
+    from manuscript_guard.roundtrip import identified
+
+    path = tmp_path / "main.md"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, w, start) for name, w, start in identified(text, "main.md")}
+    (hidden,) = [name for name, (_p, w, _s) in known.items() if w.startswith(words)]
+    shown = [Block((name,), w) for name, (_p, w, _s) in known.items() if name != hidden]
+    plan = plan_import(known, shown, shown)
+    assert hidden not in plan.reached and plan.empty, plan
 
 
 @needs_pandoc
 @pytest.mark.parametrize("note", ["left alone", "running on", "over a code block"])
 def test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next(
-    note: str,
+    tmp_path: Path, note: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A link or footnote definition carries no
     identifier.", "Only a note left alone, or a label made a term, is read by itself."), its
     last sentence: a fence wrapped onto a note's second line, which pandoc reads as text of
     the note, is paired with the next fence below, left alone or not. What lies between
     goes unmarked though pandoc prints it; or, with the next fence opening a real code
-    block, a paragraph of that block is marked, and the marker lands inside the code."""
+    block, a paragraph of that block is marked, the marker lands inside the code, and the
+    paragraph is never compared (`_never_compared`)."""
     lines = {
         "left alone": "[^cap]: Capped\n```\n\nThe middle.\n\n```\ncode\n```",
         "running on": (
@@ -3032,10 +3054,12 @@ def test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next(
         ),
         "over a code block": "[^cap]: Capped\n```\n\n```\nfirst\n\nmiddle part\n\nlast\n```",
     }[note]
-    _tagged, read = _read_tagged(f"Doses were capped.[^cap]\n\n{lines}\n\nThe last.\n")
+    text = f"Doses were capped.[^cap]\n\n{lines}\n\nThe last.\n"
+    _tagged, read = _read_tagged(text)
     if note == "over a code block":
         (code,) = [block for block in read if '"CodeBlock"' in block]
         assert "mg-p-" in code and "middle part" in code, code
+        _never_compared(tmp_path, text, "middle part")
     else:
         (middle,) = [block for block in read if '"middle."' in block]
         assert '"t": "Para"' in middle and "mg-p-" not in middle, middle
@@ -4017,10 +4041,11 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
 
 
 def test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source() -> None:
-    """DESIGN.md, Closed since, "A paragraph inside an HTML comment was said to carry an
-    identifier in the source": the source's own list of identified paragraphs, which import
-    compares and writes by, names none inside a comment, so there is nothing of it for a
-    write to miss."""
+    """A known gap (DESIGN.md, Known gaps, "`import` refuses a write the next build would not
+    find again, by `tag`'s reading.", "A paragraph that never reached the document is not
+    checked."), its plain side: the source's own list of identified paragraphs, which import
+    compares and writes by, names none inside a plain comment. Only where `tag`'s reading
+    and pandoc's differ does such a paragraph carry an identifier (`_never_compared`)."""
     from manuscript_guard.roundtrip import identified
 
     text = "Alpha.\n\n<!--\n\nInside the comment.\n\n-->\n\nOmega.\n"
@@ -7988,33 +8013,33 @@ def test_a_move_past_a_heading_is_reported_even_when_the_order_is_unchanged(
 
 #: What stands between two sections in the next tests, as sent: a block without an
 #: identifier of each kind, or a paragraph held in place, or the end of a file.
-_BETWEEN = {
+_BOUNDING = {
     "heading": Block((), "Middle", role="heading", style="heading 1"),
     "table": Block(kind="table", key="the table"),
     "figure": Block(kind="figure", key="the figure"),
     "list item": Block((), "an item of a list", role="list", style="compact+item"),
     "quotation": Block((), "A quotation from the guideline.", role="quote", style="block text"),
     "anything else": Block((), "Lima, a line block.", style="line block"),
-    "a held paragraph": Block(("h",), ""),
+    "a held paragraph": Block(("h",), chr(0xA0)),
     "another file": None,
 }
 
 
-@pytest.mark.parametrize("between", list(_BETWEEN))
+@pytest.mark.parametrize("between", list(_BOUNDING))
 def test_a_move_past_what_bounds_a_section_is_reported_and_left_where_it_was(
     tmp_path: Path, between: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A move is applied only within its section."),
     its first sentence: Charlie dragged up past Bravo and past a heading, a table, a figure,
     a list item, a quotation, another block without an identifier, a paragraph held in
-    place (a comment), or into another file, is reported as moved out of its section and
-    left where it was."""
+    place (a spacer written `&nbsp;`), or into another file, is reported as moved out of its
+    section and left where it was."""
     from manuscript_guard.merge import apply_plan, plan_import
 
     words = {"a": "Alpha opens it.", "b": "Bravo follows.", "c": "Charlie sits here.",
              "d": "Delta closes it."}  # fmt: skip
     first, second = tmp_path / "main.md", tmp_path / "second.md"
-    block = _BETWEEN[between]
+    block = _BOUNDING[between]
     if between == "another file":
         first.write_text(f"{words['a']}\n\n{words['b']}\n", encoding="utf-8")
         second.write_text(f"{words['c']}\n\n{words['d']}\n", encoding="utf-8")
@@ -8022,7 +8047,7 @@ def test_a_move_past_what_bounds_a_section_is_reported_and_left_where_it_was(
         middle = []
     else:
         shown = {"heading": "# Middle", "table": "{{table.t}}", "figure": "{{figure.f}}",
-                 "a held paragraph": "<!-- a note -->"}.get(between, block.text)  # fmt: skip
+                 "a held paragraph": "&nbsp;"}.get(between, block.text)  # fmt: skip
         first.write_text(
             f"{words['a']}\n\n{words['b']}\n\n{shown}\n\n{words['c']}\n\n{words['d']}\n",
             encoding="utf-8",
@@ -8030,7 +8055,7 @@ def test_a_move_past_what_bounds_a_section_is_reported_and_left_where_it_was(
         place = dict.fromkeys(words, first)
         middle = [block]
         if between == "a held paragraph":
-            words["h"], place["h"] = "<!-- a note -->", first
+            words["h"], place["h"] = "&nbsp;", first
     known = {
         n: (place[n], w, place[n].read_text(encoding="utf-8").index(w)) for n, w in words.items()
     }
@@ -8501,7 +8526,8 @@ def test_a_paragraph_held_by_its_source_is_left_untagged_or_neither_reworded_nor
     """A known gap (DESIGN.md, Known gaps, "A paragraph is held in place by its source, not
     by what the co-author meant."), what is held. A comment, a `\\newpage`, a paragraph
     holding a comment that closes past it or display maths, and one with a fence, `</div>`
-    or a definition directly under it carry no identifier. A spacer written `&nbsp;` or
+    or a definition directly under it carry no identifier, and an edit to one is listed
+    with the paragraphs without one. A spacer written `&nbsp;` or
     `\\ `, a paragraph over an unmatched `\\end{table}`, a line opening `: ` below its
     second line or a `:::` indented four spaces, and one with a `<!--` that never closes are
     tagged and held: a rewording is refused, and a swap with the paragraph after it is
@@ -8513,6 +8539,15 @@ def test_a_paragraph_held_by_its_source_is_left_untagged_or_neither_reworded_nor
     if held in _HELD_UNTAGGED:
         tagged = tag(f"{alpha}\n\n{_HELD_UNTAGGED[held]}\n\n{omega}\n", "main.md")
         assert tagged.count("[]{#mg-p-") == 2, tagged
+        if held == "a fence under it":
+            # An edit to it is listed with the paragraphs without an identifier.
+            path, known = source_of(tmp_path, {"a": alpha, "o": omega})
+            prose = Block((), "Text over a fence.")
+            sent = [Block(("a",), alpha), prose, Block(("o",), omega)]
+            edited = Block((), "Text over a fence, edited in Word.")
+            plan = plan_import(known, sent, [sent[0], edited, sent[2]])
+            assert edited.text in plan.unidentified and prose.text in plan.vanished, plan
+            assert not plan.merged and not plan.refused
         return
     source, shown, reworded, why = _HELD_TAGGED[held]
     tagged = tag(f"{alpha}\n\n{source}\n\n{omega}\n", "main.md")
@@ -8879,7 +8914,7 @@ def test_a_duplicated_heading_is_paired_only_where_that_is_unambiguous(tmp_path:
     assert plan.strayed == (("text", "Three"),) and not plan.unidentified, plan
     plan = plan_import(known, sent, [one, a, b, _heading("Second"), c, two, d, three, e])
     assert plan.misplaced == ("c",) and plan.unidentified == ("Second",), plan
-    assert not plan.vanished
+    assert not plan.vanished and not plan.strayed
 
 
 @pytest.mark.parametrize("method", [98, 14], ids=["unsupported", "corrupt-lzma"])
@@ -11705,6 +11740,10 @@ def test_a_sentence_moved_with_track_changes_arrives_as_typed_text(
     returned = rewrite(document, tmp_path / "sentence.docx", move)
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "NOT merged" in out, out
+    refusal = out.split("NOT merged into", 1)[1].split("\n\n", 1)[0]
+    assert "The database contained" in refusal, out
     after = source.read_text(encoding="utf-8")
     assert "The database contained {{results.cohort.n_reports}} reports" in after
     assert f"declared in `paper.yaml`. {sentence}" in after, after
@@ -12763,8 +12802,8 @@ def test_a_paragraph_moved_beside_a_reworded_one_refuses_the_rewording(tmp_path:
     """A known gap (DESIGN.md, Known gaps, "A move is applied only when Word recorded it.",
     "A paragraph moved beside a reworded one refuses the rewording"): a paragraph moved
     with Track Changes on, landing directly under one reworded in the same round, refuses
-    that rewording as split, as new text there would. Moved elsewhere, or not moved, the
-    rewording merges."""
+    that rewording as split, as new text there would. Moved elsewhere - to the top of the
+    section, which changes the order, or to its end - or not moved, the rewording merges."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import plan_import
 
@@ -12781,7 +12820,11 @@ def test_a_paragraph_moved_beside_a_reworded_one_refuses_the_rewording(tmp_path:
     plan = plan_import(known, sent, [sent[0], reworded, delta, sent[2]])
     assert [refusal.name for refusal in plan.refused] == ["b"] and not plan.merged, plan
     assert "it came back with a new paragraph beside it" in plan.refused[0].why[0]
-    for returned in ([sent[0], reworded, sent[2], delta], [sent[0], reworded, *sent[2:]]):
+    for returned in (
+        [delta, sent[0], reworded, sent[2]],
+        [sent[0], reworded, sent[2], delta],
+        [sent[0], reworded, *sent[2:]],
+    ):
         plan = plan_import(known, sent, returned)
         assert plan.merged == {"b": reworded.text} and not plan.refused, plan
 
@@ -12984,17 +13027,20 @@ def test_a_deletion_beside_a_small_rewording_is_not_a_join(tmp_path: Path) -> No
     assert plan.merged == {"b": edited}
 
 
-def test_a_join_that_rewrote_most_of_the_second_paragraph_merges_as_a_rewording(
-    tmp_path: Path,
+@pytest.mark.parametrize("kept", [0, 2, 3, 10])
+def test_a_join_that_rewrote_the_second_paragraph_past_the_ratio_merges_as_a_rewording(
+    tmp_path: Path, kept: int
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A join that lost its bookmark is recognised by
     resemblance, which is a judgement."): joined across the boundary, the second paragraph's
-    bookmark lost, and most of that paragraph rewritten, the block reads more like the first
-    paragraph alone than like the two together. The first is merged with the combined text,
-    and the second is reported deleted and left in place. Its words kept, the same join is
-    a join, and nothing is merged."""
+    bookmark lost, and the second paragraph rewritten keeping its first `kept` words of ten.
+    `_absorbed` compares the ratio of the returned words against the first paragraph alone
+    and against the two together. With two kept, the first is the higher: the first is
+    merged with the combined text, and the second is reported deleted and left in place.
+    With three kept, together is the higher (by 18/33 to 12/23 in the review's count), and
+    the block is a join, as with all ten: nothing is merged."""
     from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import apply_plan, plan_import
+    from manuscript_guard.merge import _absorbed, apply_plan, plan_import
 
     paragraphs = {
         "a": "Alpha comes first here.",
@@ -13003,18 +13049,22 @@ def test_a_join_that_rewrote_most_of_the_second_paragraph_merges_as_a_rewording(
     }
     path, known = source_of(tmp_path, paragraphs)
     sent = [Block((name,), text) for name, text in paragraphs.items()]
-    rewritten = (
-        paragraphs["b"] + " Anyone whose hepatic history was known stayed out of each model."
-    )
-    plan = plan_import(known, sent, [sent[0], Block(("b",), rewritten)])
-    assert plan.merged == {"b": rewritten} and plan.gone == ("c",), plan
-    assert not plan.joined and not plan.refused
-    apply_plan(known, plan)
-    assert blocks(path.read_text(encoding="utf-8")) == ["Alpha comes first here.", rewritten,
-                                                         paragraphs["c"]]  # fmt: skip
-    kept = paragraphs["b"] + " " + paragraphs["c"]
-    plan = plan_import(known, sent, [sent[0], Block(("b",), kept)])
-    assert plan.joined == (("b", "c"),) and not plan.merged, plan
+    second = paragraphs["c"].split()
+    new = ["Anyone", "whose", "hepatic", "history", "was", "known", "stayed", "out", "of",
+           "each", "model."]  # fmt: skip
+    returned = f"{paragraphs['b']} {' '.join(second[:kept] + new[kept:])}"
+    plan = plan_import(known, sent, [sent[0], Block(("b",), returned)])
+    joined = _absorbed(returned, paragraphs["c"], paragraphs["b"])
+    assert joined is (kept >= 3), (kept, returned)
+    if kept >= 3:
+        assert plan.joined == (("b", "c"),) and not plan.merged and not plan.gone, plan
+    else:
+        assert plan.merged == {"b": returned} and plan.gone == ("c",), plan
+        assert not plan.joined and not plan.refused
+        apply_plan(known, plan)
+        assert blocks(path.read_text(encoding="utf-8")) == [
+            "Alpha comes first here.", returned, paragraphs["c"]
+        ]
 
 
 def test_a_no_break_space_typed_in_word_is_an_edit(tmp_path: Path) -> None:

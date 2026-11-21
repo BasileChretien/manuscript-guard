@@ -23392,9 +23392,10 @@ Open, recorded as each change landed:
   it is then weighed with the text under the paragraph, which can refuse a rewording and
   cannot merge one. And a block of the paragraph's own kind (a line block, the text beside
   an equation) cut from elsewhere, pasted onto the line the paragraph's text was deleted
-  from and edited there, is read as the paragraph reworded, as any text typed or pasted
-  there is and as on `main`: its text is written to the paragraph's slot, and its old
-  place is reported as a block that vanished, for the author to delete.
+  from and edited there, is read as the paragraph reworded, as any text typed there is and
+  as on `main`: its text is written to the paragraph's slot, and its old place is reported
+  as a block that vanished, for the author to delete. Pasted as it was, it reads exactly as
+  that block, and the paragraph is reported deleted.
   Pinned by `tests/test_corruption.py::test_where_a_bookmark_sits_is_read_only_for_one_identifier_the_record_holds`,
   `tests/test_corruption.py::test_with_the_record_a_table_edited_in_place_counts_as_gone`
   and `tests/test_corruption.py::test_a_block_of_the_paragraphs_kind_pasted_onto_its_emptied_line_is_its_rewording`.
@@ -23454,17 +23455,15 @@ Open, recorded as each change landed:
   records what each paragraph printed, and for a document with that record the question
   is exact; the narrowed refusal stays for one built before it or imported away from it.
   Accepted.
-- **A copy of a re-run value, or a partial copy of under five words, merges.** A value
-  paragraph copied rather than cut in Word, or a stretch of under five words copied from a
-  paragraph ("Of 4000 reports screened"), in a document whose analysis was re-run since:
-  the copy stays where it was, so nothing vanished, and `_swallowed` looks for a copy of
+- **A copy of a re-run value, or a copy of part of a paragraph, merges.** A value
+  paragraph copied rather than cut in Word, or a stretch of words copied from a paragraph
+  ("Of 4000 reports screened", or seven words, "Of 4000 reports screened, twelve were
+  duplicates"), in a document whose analysis was re-run since: the copy stays where it
+  was, so nothing vanished, and `_swallowed` looks only for the whole of a paragraph of
   five words or more. "...dates. 4000" merges, as on `main`, and `check` reports the typed
   number as unbound.
-  Pinned by `tests/test_corruption.py::test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number`.
-  - *A partial copy of five words or more merges too.* `_swallowed` looks for the whole of
-    a paragraph, so seven words copied from one ("Of 4000 reports screened, twelve were
-    duplicates") merge as four do, and `check` reports the typed number as unbound.
-    Pinned by `tests/test_corruption.py::test_a_partial_copy_of_five_words_or_more_merges_too`.
+  Pinned by `tests/test_corruption.py::test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number`
+  and `tests/test_corruption.py::test_a_partial_copy_of_five_words_or_more_merges_too`.
 - **A sentence cut from a paragraph the `.md` changed since, and pasted into another,
   merges.** The paragraph it went into gained it; the paragraph it left is not compared, so
   what it lost is not seen. The sentence is in the source twice, as on `main`, and with no
@@ -23633,8 +23632,8 @@ Open, recorded as each change landed:
   sits is read against those blocks as the document was sent. An edited or deleted one is
   not among them, so a paragraph that crossed only that block is not seen to leave its
   section: with the order unchanged the move is not reported as a move, and with it changed
-  the paragraph goes to the edge of its own section, or, past an edited one, which is new
-  text there, is held where it was. Since lists and quotations lost their
+  the paragraph goes to the edge of its own section; past an edited one, which is new text
+  there, the paragraph is held where it was. Since lists and quotations lost their
   identifiers this is no rare case, so any block without an identifier that came back
   reworded, deleted or in a different order is now listed, import no longer says the
   document matches, and it exits 1 - but the move itself is still not named. A table or
@@ -23723,9 +23722,9 @@ Open, recorded as each change landed:
   nothing, and is listed only as new text without an identifier; a heading dragged elsewhere
   while a copy of it was pasted is paired with nothing either, so that drag, and a move past
   it, is not named, though the new copy is listed. A heading renamed while a new heading
-  with its old text is pasted elsewhere reads as that heading dragged there, and is reported
-  as moved: text cannot tell a drag from a rename and a paste, and a false report is the
-  safer of the two mistakes.
+  with its old text is pasted elsewhere reads as that heading dragged there, and the
+  paragraph it now stands below is reported as moved: text cannot tell a drag from a rename
+  and a paste, and a false report is the safer of the two mistakes.
   Pinned by `tests/test_roundtrip.py::test_a_duplicated_heading_is_paired_only_where_that_is_unambiguous`.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
@@ -23918,6 +23917,15 @@ Open, recorded as each change landed:
     did it cannot be told. The rewordings in that file are refused, and if that is not it,
     the moves are held after.
     Pinned by `tests/test_roundtrip.py::test_a_write_that_would_cost_another_paragraph_its_identifier_is_held`.
+  - *A paragraph that never reached the document is not checked.* One inside an HTML
+    comment or a code block where `tag`'s reading and pandoc's differ - after a `:::` that
+    closes a div inside a note left alone and a `<!--`, or past a code fence wrapped onto a
+    note's second line and paired with the next fence below - has an identifier in the
+    source and none in Word: import never compares it, and nothing writes it. A paragraph
+    inside a plain comment has none in the source either.
+    Pinned by `tests/test_roundtrip.py::test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed`,
+    `tests/test_roundtrip.py::test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next`
+    and `tests/test_roundtrip.py::test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source`.
 - **A paragraph under a heading or a link's definition carries the identifier.** Pandoc
   needs no blank line after a heading, nor after a link's definition, so `# Methods` with
   its paragraph on the next line is a heading and a paragraph. Every block starting with
@@ -24036,10 +24044,14 @@ Open, recorded as each change landed:
   a paragraph changed and the one after it vanished, the import asks which the returned text
   resembles more: the paragraph as it was, or the paragraph followed by its neighbour. A tie
   counts as a join. Two counting rules came before this one and each was beaten in review by
-  an ordinary edit. A join that also rewrote most of the second paragraph still reads as a
-  rewording of the first and a deletion of the second: the first is merged with the combined
-  text, and the second is reported deleted and left in place for the author to remove.
-  Pinned by `tests/test_roundtrip.py::test_a_join_that_rewrote_most_of_the_second_paragraph_merges_as_a_rewording`.
+  an ordinary edit. The two are compared by `difflib`'s ratio of the words, in order, of
+  the returned text against the first paragraph's alone and against the two together
+  (`_absorbed`). A join that also rewrote the second paragraph until the first ratio is the
+  higher - after a first of six words, a second of ten with two of its words kept, where
+  three kept read as a join - still reads as a rewording of the first and a deletion of the
+  second: the first is merged with the combined text, and the second is reported deleted
+  and left in place for the author to remove.
+  Pinned by `tests/test_roundtrip.py::test_a_join_that_rewrote_the_second_paragraph_past_the_ratio_merges_as_a_rewording`.
 - **A paragraph that is not applied travels with the one before it.** Deleted in Word,
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in
@@ -29270,16 +29282,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
-
-- **A paragraph inside an HTML comment was said to carry an identifier in the source
-  (2026-11-21).** A point under "`import` refuses a write the next build would not find
-  again, by `tag`'s reading" said such a paragraph had an identifier in the source and none
-  in Word, and was not checked. It had none in the source either: `identified`, which lists
-  the paragraphs import compares and writes, names none inside a comment, and already did at
-  the commit that wrote the point (a24189b52, #69), so no commit closed it. Found fixed while
-  pinning. Held by
-  `tests/test_roundtrip.py::test_nothing_inside_a_code_block_or_a_comment_is_marked`
-  and `tests/test_roundtrip.py::test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source`.
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

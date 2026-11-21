@@ -30016,6 +30016,8 @@ def test_without_the_record_a_known_paragraph_counts_as_gone_where_its_text_is_n
     plan = plan_import(known, sent, [grown, sent[2], block], built=("a", "p", "r", "b"))
     if holds == "other text":
         assert "a" in [refusal.name for refusal in plan.refused] and "a" not in plan.merged, plan
+        refusal = next(refusal for refusal in plan.refused if refusal.name == "a")
+        assert "it came back holding another paragraph" in refusal.why[0], refusal
     else:
         assert plan.merged == {"a": grown.text}, plan
 

@@ -1385,10 +1385,12 @@ def test_a_long_form_matched_by_letters_may_start_late(project: Path) -> None:
       "'95% confidence interval'"),
      # The other side: the same long form as the text's.
      ("# Abbreviations\n\nCI = confidence interval", [], ""),
-     # A legend's long form is compared too, and not as written: its "95%" is let be.
+     # A legend's long form is compared too; one with a number before it defines nothing,
+     # since `_spelt_after` refuses anything before the long form but an article.
      ("Table 1. Odds by year. CI = credible interval.", [("redefined", "CI")],
       "'credible interval'"),
-     ("Table 1. Odds by year. CI = 95% confidence interval.", [], "")],
+     ("Table 1. Odds by year. CI = 95% confidence interval.", [], ""),
+     ("Table 1. Odds by year. CI = 95% credible interval.", [], "")],
 )  # fmt: skip
 def test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written(
     project: Path, after: str, said: list[tuple[str, str]], long: str
@@ -1396,8 +1398,8 @@ def test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written(
     """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
     abbreviation by its capitals."): "CI = 95% confidence interval" in a glossary beside
     "confidence interval (CI)" in the text is reported as two meanings; a legend's long
-    form is compared too, so its "CI = credible interval" is reported, but its "CI = 95%
-    confidence interval" is not."""
+    form is compared too, so its "CI = credible interval" is reported, and its "CI = 95%
+    confidence interval" or "CI = 95% credible interval" defines nothing."""
     report = written(project, "# Methods\n\nThe confidence interval (CI) was computed. The CI "
                      f"was wide.\n\n{after}\n")  # fmt: skip
     assert sorted((f.code.removeprefix("abbreviation-"), f.message.split()[0])

@@ -9473,18 +9473,19 @@ def test_placeholders_are_read_by_the_shapes_their_rules_name(project: Path) -> 
 
 
 def _png_saying(words: str) -> bytes:
-    """A picture of one white pixel, as a PNG, that carries `words` as its text."""
-    import struct
-    import zlib
+    """A PNG that draws `words` in its pixels and carries them in a tEXt chunk too, so a
+    reader of either finds them."""
+    import io
 
-    def chunk(kind: bytes, data: bytes) -> bytes:
-        return (struct.pack(">I", len(data)) + kind + data
-                + struct.pack(">I", zlib.crc32(kind + data)))  # fmt: skip
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
 
-    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-            + chunk(b"tEXt", b"Comment\x00" + words.encode("latin-1"))
-            + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff")) + chunk(b"IEND", b""))  # fmt: skip
+    figure = Figure(figsize=(2, 1))
+    FigureCanvasAgg(figure)
+    figure.text(0.1, 0.4, words, fontsize=14)
+    drawn = io.BytesIO()
+    figure.savefig(drawn, format="png", metadata={"Comment": words})
+    return drawn.getvalue()
 
 
 def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(

@@ -24180,7 +24180,7 @@ Open, recorded as each change landed:
   - A glossary's long form is compared with the text's as written: "CI = 95% confidence
     interval" beside "confidence interval (CI)" is reported as two meanings. A legend's is
     compared too, "CI = credible interval" there is reported, but its "CI = 95% confidence
-    interval" is not.
+    interval" defines nothing, a number before the long form being refused.
     Pinned by `tests/test_language.py::test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written`.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.
   - `no-headings` is said of a Markdown manuscript only; a LaTeX one has its sections.

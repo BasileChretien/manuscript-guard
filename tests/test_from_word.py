@@ -9,6 +9,7 @@ own Word documents with pandoc, from Markdown, and hold what `init --from` makes
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -646,8 +647,9 @@ def _para(word: str) -> dict:
 _RULE = {"t": "HorizontalRule"}
 #: Where a rule stands, as Word's blocks put one: between paragraphs, a heading after the
 #: second; after a plain paragraph and before one; after another rule; after raw HTML; in a
-#: list's item; in a quotation; in a table's cell; beside code blocks of hyphens, which keep
-#: theirs (round 4 of #732). Written as raw Markdown, a rule stood on
+#: list's item; in a quotation; in a table's cell; beside code blocks of hyphens, at the top
+#: level, in a quotation and in a list's item, which keep theirs (rounds 4 and 5 of #732).
+#: Written as raw Markdown, a rule stood on
 #: the line under a plain paragraph, under another rule and over a plain paragraph, and read
 #: back as a heading or a table (rounds 1 to 3 of #732).
 _RULES_STAND = {
@@ -666,7 +668,13 @@ _RULES_STAND = {
         {"t": "CodeBlock", "c": [_ATTR, "-" * 1200]}, _RULE,
         {"t": "CodeBlock", "c": [["", ["r"], []], "x" + chr(10) + "-" * 1200]},
         {"t": "RawBlock", "c": ["markdown", "-" * 1200]}],
+    "beside code of hyphens in a quotation and a list": [
+        {"t": "BlockQuote", "c": [{"t": "CodeBlock", "c": [_ATTR, "-" * 1200]}, _RULE]},
+        {"t": "BulletList", "c": [[*_plain("x"), {"t": "CodeBlock", "c": [_ATTR, "-" * 1200]},
+                                   _RULE]]}],
 }  # fmt: skip
+#: A line of hyphens alone, after any indentation or quotation marks.
+_HYPHENS_ALONE = re.compile(r"[ \t>]*(-{3,})")
 
 
 @needs_pandoc
@@ -694,6 +702,13 @@ def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) ->
     if "Table" not in json.dumps(blocks):
         assert written == from_word._short_rules(pandoc_s)
         assert "-" * from_word.COLUMNS in pandoc_s and "-" * from_word.COLUMNS not in written
+        runs = [len(alone[1]) for line in written.splitlines()
+                if (alone := _HYPHENS_ALONE.fullmatch(line))]  # fmt: skip
+        code = json.dumps(blocks).count("-" * 1200)
+        assert sorted(runs) == sorted([from_word.RULE_WIDTH] * json.dumps(blocks).count(
+            "HorizontalRule") + [1200] * code), runs  # fmt: skip
+        if not code:
+            assert max(map(len, written.splitlines())) < 1000
 
 
 @needs_pandoc

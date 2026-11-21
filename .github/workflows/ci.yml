@@ -540,10 +540,24 @@ jobs:
     # it and held to the command line: each case's report the same in Node, in Chrome and in
     # Firefox, no audit sending a request, and every request the page's policy forbids
     # refused. The page is what a reader runs without installing anything, and what it
-    # promises, that the paper is not uploaded, is only as good as this job.
+    # promises, that the paper is not uploaded, is only as good as this job. Then the checker
+    # page a co-author is sent, in Chrome and in Firefox.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/audit-page
+      # The page a co-author is sent (docs/co-authors.md), built from the example the step
+      # above ran, in each browser: its storage, its download, its dialog, its clipboard and
+      # its keys (web/test/checker.mjs). A step of this job and not of the composite action,
+      # which the Pages workflow also runs: the checker page is no part of the site.
+      - name: The checker page keeps, saves and copies the answers, and takes its keys
+        shell: bash
+        run: |
+          page="$RUNNER_TEMP/checker/check-ada-example.html"
+          manuscript-guard checker build "$RUNNER_TEMP/example" --for "Ada Example" -o "$page"
+          failed=0
+          node web/test/checker.mjs "$page" chrome || failed=1
+          node web/test/checker.mjs "$page" firefox || failed=1
+          exit "$failed"

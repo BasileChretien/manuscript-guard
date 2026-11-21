@@ -52,6 +52,25 @@ def test_a_label_that_starts_as_a_total_does_is_none(label: str) -> None:
     assert not is_total(label)
 
 
+@pytest.mark.parametrize(("label", "read"), [("Total", True), ("Totals", True), ("All", True),
+                                             ("Overall", True), ("Gesamt", False),
+                                             ("Totale", False), ("All patients", False),
+                                             ("Subtotal", False)])  # fmt: skip
+def test_only_four_english_words_make_a_total_and_the_line_of_another_is_not_read(
+    label: str, read: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on the words that make a total): Total, Totals,
+    All and Overall alone in their cell total the rows above them, and a wrong one is said;
+    "Gesamt", "Totale", "All patients" and "Subtotal" total nothing, and their line is not
+    read."""
+    text = ("\n| | Cases | Controls |\n|---|---|---|\n| Sex | | |\n| Men | 60 | 50 |\n"
+            f"| Women | 40 | 47 |\n| {label} | 99 | 97 |\n")  # fmt: skip
+    assert is_total(label) is read
+    said = [f"the '{label}' row, column 'Cases', prints 99, and the 2 rows above it add up to 100"]
+    assert off(text) == (said if read else [])
+
+
 @pytest.mark.parametrize(("text", "low", "high", "held"), [
     ("1,200", 1200, 1200, False), ("<5", 0, 4, True), ("\N{LESS-THAN OR EQUAL TO}4", 0, 4, True),
     ("< 5 (<1.2)", 0, 4, True), ("<10", 0, 9, True), ("12 (30.0%)", 12, 12, False),
@@ -198,6 +217,26 @@ def test_a_count_held_back_beside_its_total_is_given_away() -> None:
                            "of it")  # fmt: skip
 
 
+def test_a_total_that_is_no_sum_is_said_to_be_off_and_gives_a_count_away_it_does_not() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on a total taken for a sum): a "Total" of
+    patients with any of several events that overlap is said to be off when it is right, and
+    a count held back beside it is said to be the value the sum would leave."""
+    overlapping = """
+| | Cases | Controls |
+|---|---|---|
+| Events | | |
+| Bleeding | 30 | 20 |
+| Stroke | 25 | 15 |
+| Total | 40 | 30 |
+"""
+    assert off(overlapping) == [
+        "the 'Total' row, column 'Cases', prints 40, and the 2 rows above it add up to 55",
+        "the 'Total' row, column 'Controls', prints 30, and the 2 rows above it add up to 35"]
+    held = overlapping.replace("| 30 | 20 |", "| 38 | 20 |").replace("| 25 | 15 |", "| <5 | 15 |")
+    assert given_away(held) == [(5, 2, True)]
+
+
 def test_two_held_back_in_a_line_with_room_between_them_are_not_given_away() -> None:
     text = ROWS.replace("| 60 | 50 |", "| <5 | 50 |").replace("| 40 | 47 |", "| <5 | 47 |")
     assert given_away(text.replace("| 100 | 100 |", "| 5 | 97 |")) == []
@@ -229,6 +268,22 @@ def test_only_the_header_n_giving_it_away_is_not_explicit() -> None:
     assert given_away(printed) == [(5, 3, True)]
 
 
+def test_categories_with_no_label_of_their_own_make_no_line_under_the_header_n() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on a characteristic with no label): under a
+    label, the regions are a line under the header n, which gives the count held back away;
+    a table that is the one characteristic, with no such label, has no header line."""
+    labelled = """
+| | Cases (n = 100) | Controls (n = 100) |
+|---|---|---|
+| Region | | |
+| North | 97 | 40 |
+| South | <5 | 60 |
+"""
+    assert given_away(labelled) == [(5, 3, False)]
+    assert given_away(labelled.replace("| Region | | |\n", "")) == []
+
+
 # ------------------------------------------------------------------ round 1 of #469
 
 
@@ -245,6 +300,57 @@ def test_a_second_header_row_of_years_is_no_row_of_counts() -> None:
              row(3, "A", "4", "5", "6", "15"), row(4, "B", "5", "6", "7", "18"),
              row(5, "Total", "9", "11", "13", "33"))  # fmt: skip
     assert sums_off(drawn) == []
+
+
+def test_a_total_header_spanning_several_columns_totals_none_of_them() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on a spanning total header): "Total" over an
+    "n | %" pair totals neither, so a wrong total under it is not said, where a "Total" over
+    one column is."""
+    from manuscript_guard.text.tables import TableCell
+
+    def row(at: int, *cells: str | tuple[str, int]) -> tuple:
+        return tuple(TableCell(c, at) if isinstance(c, str) else TableCell(c[0], at, c[1])
+                     for c in cells)  # fmt: skip
+
+    spanned = (row(1, "", ("Cases", 2), ("Controls", 2), ("Total", 2)),
+               row(2, "", "n", "%", "n", "%", "n", "%"),
+               row(3, "Men", "60", "50.0", "50", "50.0", "111", "50.0"))  # fmt: skip
+    assert sums_off(spanned) == []
+    single = (row(1, "", "Cases", "Controls", "Total"), row(2, "Men", "60", "50", "111"))
+    assert [wrong for _line, wrong in sums_off(single)] == [
+        "the 'Total' column, row 'Men', prints 111, and the 2 cells before it add up to 110"]
+
+
+def test_a_header_row_repeated_down_the_table_is_not_read_for_its_names() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on a repeated header): the second panel's
+    columns keep the first header's names and n, so its regions are held to n = 100; where
+    the repeated row prints an n, categories over n are held to that one, and a count held
+    back is still worked out from the first. A first row of counts with no label is the
+    header, and its counts are in no line. The 2026-11-09 triage planned a fix (F10), which
+    will change this test."""
+    first = """
+| | Cases (n = 100) | Controls (n = 100) |
+|---|---|---|
+| Sex | | |
+| Men | 60 (60.0) | 50 (50.0) |
+| Women | 40 (40.0) | 50 (50.0) |
+"""
+    second = ("| Region | | |\n| North | 180 (60.0) | 150 (50.0) |\n"
+              "| South | 120 (40.0) | 150 (50.0) |\n")  # fmt: skip
+    for repeated, n in (("| | Cases | Controls |\n", 100),
+                        ("| | Cases (n = 200) | Controls (n = 200) |\n", 200)):
+        found = over_n(table(first + repeated + second))
+        assert [(one.line, one.message) for one in found] == [
+            (8, f"the categories of 'Region' in column '{column} (n = 100)' add up to 300, more "
+                f"than its n = {n}, and their shares to 100") for column in ("Cases", "Controls")]
+        held = second.replace("| 180 (60.0) |", "| 97 |").replace("| 120 (40.0) |", "| <5 |")
+        assert given_away(first + repeated + held) == [(9, 3, False)]
+    counted = ("\n| | 40 | 60 |\n|---|---|---|\n| Men | 30 | 50 |\n| Women | 10 | 9 |\n"
+               "| Total | 40 | 60 |\n")  # fmt: skip
+    assert off(counted) == ["the 'Total' row, column '60', prints 60, and the 2 rows above it "
+                            "add up to 59"]  # fmt: skip
 
 
 def test_an_n_percent_is_a_count_though_its_shares_fall_short_of_100() -> None:
@@ -289,6 +395,21 @@ def test_a_mean_and_its_sd_beside_a_total_column_is_no_count() -> None:
 | Men | 60 | 50 | 110 |
 """
     assert off(text) == []
+
+
+def test_a_bare_measure_under_a_total_column_is_read_as_counts_unless_named() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on whole-number measures): a median of 24
+    months printed bare under a Total column is read as counts, and said to be off; with
+    the statistic in its label, it is not read."""
+    text = """
+| | Cases | Controls | Total |
+|---|---|---|---|
+| Follow-up, months | 24 | 30 | 26 |
+"""
+    assert off(text) == ["the 'Total' column, row 'Follow-up, months', prints 26, and the 2 "
+                         "cells before it add up to 54"]  # fmt: skip
+    assert off(text.replace("Follow-up, months", "Follow-up, median months")) == []
 
 
 @pytest.mark.parametrize("marker", ["n (%)", "N = 120 | N = 200 | N = 320",
@@ -344,6 +465,36 @@ def test_an_n_percent_with_no_known_n_is_no_count() -> None:
 | Age, years | 54 (12) | 56 (11) | 55 (12) |
 """
     assert off(text) == []
+
+
+def test_an_n_percent_with_no_n_printed_hides_what_a_total_would_give_away() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table's totals are read in English, as
+    partitions, a line at a time", its point on an n (%) with no known n): with no n in the
+    header and no total row below, the n (%) cells are no counts, and the women held back
+    are not worked out, where the header's n or a total row gives them away as 4."""
+    text = """
+| | Cases | Controls |
+|---|---|---|
+| Sex | | |
+| Men | 60 (60.0) | 50 (50.0) |
+| Women | <5 | 47 (47.0) |
+| Other | 36 (36.0) | 3 (3.0) |
+"""
+    assert given_away(text) == []
+    header = text.replace("| Cases | Controls |", "| Cases (n = 100) | Controls (n = 100) |")
+    assert given_away(header) == [(5, 4, False)]
+    assert given_away(text + "| Total | 100 | 100 |\n") == [(5, 4, True)]
+    # Nor is a total they do not add up to said, until the header prints an n.
+    totalled = """
+| | Cases | Controls | Total |
+|---|---|---|---|
+| Men | 60 (60.0) | 50 (50.0) | 111 (55.5) |
+"""
+    assert off(totalled) == []
+    printed = totalled.replace("| Cases | Controls | Total |",
+                               "| Cases (n = 100) | Controls (n = 100) | Total (n = 200) |")
+    assert off(printed) == ["the 'Total (n = 200)' column, row 'Men', prints 111 (55.5), and "
+                            "the 2 cells before it add up to 110"]  # fmt: skip
 
 
 def test_categories_whose_shares_add_up_to_100_are_shares_of_their_sum() -> None:

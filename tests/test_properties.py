@@ -23959,7 +23959,7 @@ def _nationally_representative_is_no_weighting(patch: pytest.MonkeyPatch) -> Non
     of a table its legend says it of were found."""
     from manuscript_guard.stats import adjusted
 
-    words = r"|(?i:(?<!non-)(?<!non )\bnationally[- ]representative\b)"
+    words = r"|(?i:(?<!\bnon[- \xa0\u2010\u2011])\bnationally[- ]representative\b)"
     assert words in adjusted.WEIGHTED.pattern
     patch.setattr(adjusted, "WEIGHTED", re.compile(adjusted.WEIGHTED.pattern.replace(words, "")))
 
@@ -23969,7 +23969,7 @@ def _non_nationally_representative_is_weighted(patch: pytest.MonkeyPatch) -> Non
     representative", so its table's shares were let off (round 1 of the review of #718)."""
     from manuscript_guard.stats import adjusted
 
-    guard = "(?<!non-)(?<!non )"
+    guard = r"(?<!\bnon[- \xa0\u2010\u2011])"
     assert guard in adjusted.WEIGHTED.pattern
     patch.setattr(adjusted, "WEIGHTED", re.compile(adjusted.WEIGHTED.pattern.replace(guard, "")))
 

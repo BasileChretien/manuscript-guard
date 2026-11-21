@@ -17037,10 +17037,11 @@ been sorted yet.
     (continued)", a "Table S1" beside a "Table 1", "Table S1a" beside "Table S1b") has a
     table captioned only by the legend directly above it, with no paragraph between (Basile,
     2026-11-21, "Adjacent fallback"): a weighted legend below a table, or over a subtitle,
-    lets off nothing there, and a table whose legend is typed in its own first row has
-    none. Where the legends do number the tables, a legend that cannot reach the table its
-    number names, another table or another legend between them, captions nothing, though it
-    stands right above a table, and the file's other legends caption their tables still.
+    lets off nothing there, unless it stands directly above the next table (the point
+    below), and a table whose legend is typed in its own first row has none. Where the
+    legends do number the tables, a legend that cannot reach the table its number names,
+    another table or another legend between them, captions nothing, though it stands right
+    above a table, and the file's other legends caption their tables still.
     Pinned by
     `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_the_table_under_them`
     and `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing`.

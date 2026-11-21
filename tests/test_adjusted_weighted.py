@@ -136,6 +136,9 @@ def test_the_search_goes_on_past_a_negated_or_cited_match() -> None:
     # Basile, 2026-11-21, "Caption wording": "nationally representative" reads as weighted.
     "Table S1a. Nationally representative shares, Region A.", "Exposed, nationally "
     "representative", "Proportions are nationally-representative.",
+    # A word ending in "non" is no negation (round 2 of the review of #718).
+    "Table S1a. Lebanon nationally representative survey, shares.", "Shannon nationally "
+    "representative panel.",
 ])  # fmt: skip
 def test_each_weighting_said_is_read(said: str) -> None:
     assert weighting(said) is not None, said
@@ -150,6 +153,9 @@ def test_each_weighting_said_is_read(said: str) -> None:
     "representative.", "Unweighted nationally representative sample.",
     "Non-nationally representative shares.", "Shares, non-nationally representative.",
     "Non nationally representative sample.",
+    "Non\N{NON-BREAKING HYPHEN}nationally representative shares.",
+    "Non\N{HYPHEN}nationally representative shares.",
+    "Non\N{NO-BREAK SPACE}nationally representative shares.",
 ])  # fmt: skip
 def test_an_estimate_weighted_and_unweighted_shares_are_no_weighting(said: str) -> None:
     assert weighting(said) is None, said

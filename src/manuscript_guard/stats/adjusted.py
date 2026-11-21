@@ -70,8 +70,9 @@ WEIGHTED = re.compile(
     r"|(?i:\bsurvey[- ]weighted\b|\binverse[- ]probability(?:[- ]of[- ]treatment)?[- ]weight\w*)"
     r"|\bIPT?W\b"
     # Basile, 2026-11-21, "Caption wording": a survey's shares made to stand for its nation;
-    # "non-nationally representative" says they do not (round 1 of the review of #718).
-    r"|(?i:(?<!non-)(?<!non )\bnationally[- ]representative\b)"
+    # "non-nationally representative" says they do not, "Lebanon nationally representative"
+    # does (rounds 1 and 2 of the review of #718).
+    r"|(?i:(?<!\bnon[- \xa0\u2010\u2011])\bnationally[- ]representative\b)"
 )
 #: What before words of weighting in their clause says the numbers are not weighted:
 #: "Before IPTW", "prior to weighting", "crude".

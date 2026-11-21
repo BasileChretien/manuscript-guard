@@ -9,6 +9,7 @@ own Word documents with pandoc, from Markdown, and hold what `init --from` makes
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -913,6 +914,98 @@ def test_an_abstract_in_another_style_stays_in_the_comment(
     code, found = findings(capsys, str(root), "--stage", "drafting")
     assert [f["message"] for f in found if f["code"] == "unclassified-number"] == (
         ["'120' is not bound to any source"] if made else [])
+
+
+def _restyled(docx: Path, name: str, change) -> Path:
+    """A copy of `docx` beside it named `name`, each part's bytes `change(part, data)`, and
+    without the parts for which it gives None."""
+    import zipfile
+
+    out = docx.with_name(name)
+    with zipfile.ZipFile(docx) as source, zipfile.ZipFile(out, "w") as made:
+        for info in source.infolist():
+            data = change(info.filename, source.read(info.filename))
+            if data is not None:
+                made.writestr(info, data)
+    return out
+
+
+#: pandoc's writer defines an Abstract style in every .docx it makes, as Word does not.
+_ABSTRACT_STYLE = rb'<w:style [^>]*w:styleId="Abstract"[^>]*>.*?</w:style>'
+
+
+def _styles(change):
+    """`change` applied to the styles part alone."""
+    return lambda part, data: change(data) if part == "word/styles.xml" else data
+
+
+#: The styles part of a Word paper, each way it can say what a paragraph in the Abstract
+#: style is in, with whether a style is named Abstract by it.
+STYLE_PARTS = {
+    "as pandoc writes it": (_styles(lambda d: d), True),
+    "with no styles part": (lambda part, data: None if part == "word/styles.xml" else data,
+                            False),
+    "with the style renamed": (_styles(lambda d: d.replace(
+        b'<w:name w:val="Abstract"', b'<w:name w:val="Summary"')), False),
+    "with the style's name left out": (_styles(lambda d: re.sub(
+        rb'(w:styleId="Abstract"[^>]*>)\s*<w:name w:val="Abstract"\s*/>', rb"\1", d)), True),
+    "with the name in lower case": (_styles(lambda d: d.replace(
+        b'<w:name w:val="Abstract"', b'<w:name w:val="abstract"')), True),
+    "with another id": (lambda part, data: data.replace(b'w:styleId="Abstract"', b'w:styleId="Zz9"')
+                        if part == "word/styles.xml" else data.replace(
+                            b'w:val="Abstract"', b'w:val="Zz9"')
+                        if part == "word/document.xml" else data, True),
+    "with the style undefined": (_styles(lambda d: re.sub(_ABSTRACT_STYLE, b"", d, flags=re.S)),
+                                 False),
+}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("variant", list(STYLE_PARTS))
+def test_a_style_is_named_abstract_wherever_pandoc_reads_a_paragraph_in_it(
+        tmp_path: Path, variant: str) -> None:  # fmt: skip
+    """Where no style is named Abstract, the reading with styles is not made
+    (`from_word._names_the_abstract_style`): which holds only where pandoc's reading with
+    styles then puts no paragraph in the Abstract style. Held here for each way the styles
+    part can say it, against the pandoc that runs: one that read the styles otherwise fails
+    it."""
+    change, named = STYLE_PARTS[variant]
+    paper = _restyled(word(tmp_path / "word", ABSTRACT_LATER), "variant.docx", change)
+    tree = json.loads(subprocess.run(
+        ["pandoc", str(paper), "-f", "docx+styles", "-t", "json"], capture_output=True,
+        check=True, timeout=120).stdout)  # fmt: skip
+    styled = [from_word._custom_style(block) for block in tree["blocks"]]
+    assert (from_word.ABSTRACT_STYLE in styled) <= from_word._names_the_abstract_style(paper)
+    assert from_word._names_the_abstract_style(paper) is named
+
+
+@needs_pandoc
+def test_a_paper_with_no_abstract_style_is_read_once(tmp_path: Path, monkeypatch) -> None:
+    """A Word paper with a title page and no style named Abstract, as Word papers have
+    none, was read by pandoc twice, the second time with its styles to find paragraphs in the
+    Abstract style there, which it has none of: a quarter of the time the 50 Word papers of
+    the robustness sweep of 2026-11-21 took to convert, 25 s of a book's 80. It is read once,
+    and converted as it was."""
+    markdown = "".join(line for line in ABSTRACT_LATER.splitlines(keepends=True)
+                       if not line.startswith(":::"))  # fmt: skip
+    written = word(tmp_path / "word", markdown)
+    paper = _restyled(written, "plain.docx", STYLE_PARTS["with the style undefined"][0])
+    read = from_word._pandoc
+    readings: list[str] = []
+
+    def counted(arguments: list[str], given: str | None, path: Path) -> str:
+        if given is None:
+            readings.append(arguments[arguments.index("-f") + 1])
+        return read(arguments, given, path)
+
+    monkeypatch.setattr(from_word, "_pandoc", counted)
+    once = from_word.convert(paper)
+    assert readings == ["docx"]
+    comment = once.text[: once.text.index("-->")]
+    assert "Department of Things" in comment and "We followed 120 patients." in comment
+    monkeypatch.setattr(from_word, "_names_the_abstract_style", lambda path: True)
+    assert from_word.convert(paper) == once
+    assert readings == ["docx", "docx", "docx+styles"]
 
 
 #: A Word paper with no heading style, its section titles typed in bold, one of them also

@@ -30,9 +30,9 @@ title goes to `paper.yaml`, each author's name to `authors.yaml` as the paper gi
 the abstract becomes the manuscript's `# Abstract`. pandoc reads the Abstract style so only
 straight after the Title, Author and Date paragraphs; a paragraph in it elsewhere in the
 title page joins that section too, found by reading the document again with its styles
-(`docx+styles`), and only where that reading is the ordinary one block for block. A Title
-paragraph holding a note, a mark,
-a link or a picture, which its plain text loses, is in the comment as well; the marks of
+(`docx+styles`) where it has a style of that name, and only where that reading is the
+ordinary one block for block. A Title paragraph holding a note, a mark, a link or a
+picture, which its plain text loses, is in the comment as well; the marks of
 notes raised at its end are left out of the title, and kept there with it. Nothing else is
 read from how a line looks: a name in capitals is a line of the title page like any other.
 
@@ -191,7 +191,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
         blocks, shaped = abstract_headings(blocks, styled)
         headings += len(shaped)
     aside, body, title_page = _title_page(blocks, typed, unstyled)
-    if aside:
+    if aside and _names_the_abstract_style(path):
         # Read with styles, a document with no heading runs on past where its typed title
         # ended the title page here: the two are compared up to there.
         run = _styled_run(path)
@@ -463,6 +463,35 @@ def _labelled(label: str, blocks: list) -> list:
 
 #: The paragraph style pandoc reads as the abstract, where it stands after the title.
 ABSTRACT_STYLE = "Abstract"
+#: The namespace of the elements of a .docx's parts.
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _names_the_abstract_style(path: Path) -> bool:
+    """Whether the paper has a style named Abstract, in any case: by its name, or by its id
+    where it has none. pandoc (3.9.0.2) reads a paper's styles from `word/styles.xml` alone,
+    names each by its name or else its id, and gives a paragraph in a style that part does
+    not define no style; so where none is named so, the reading with styles
+    (`_styled_run`) finds no paragraph in the Abstract style, and is not made. Most Word
+    papers have none: 49 of the 50 of the robustness sweep of 2026-11-21, of which 29 pandoc
+    read a second time for nothing, a quarter of the time it took to convert the 50. True
+    where the part cannot be read, so that pandoc's reading decides."""
+    from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+
+    try:
+        with open_archive(path) as archive:
+            if "word/styles.xml" not in archive.namelist():
+                return False
+            styles = read_part(archive, "word/styles.xml", what=f"{path.name}:word/styles.xml")
+    except UnsafeDocument:
+        return True
+    for style in styles.iter(_W + "style"):
+        name = style.find(_W + "name")
+        said = name.get(_W + "val") if name is not None else None
+        named = said if said is not None else style.get(_W + "styleId", "")
+        if named.casefold() == ABSTRACT_STYLE.casefold():
+            return True
+    return False
 
 
 def _styled_run(path: Path) -> list[tuple[dict, str | None]]:

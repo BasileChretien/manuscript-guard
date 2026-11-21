@@ -2855,12 +2855,13 @@ def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_cat
                  "Electron temperature relations"]) == 1  # fmt: skip
 
 
-def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_warning(
+def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_note(
     tmp_path: Path, capsys
 ) -> None:
     """Decision 27, part B (Basile, 2026-11-16): a number the Introduction alone gives is
     asked about (docx-med-B1 of the real-paper corpus), but one of the Abstract's Results the
-    paper gives nowhere, typed wrong, is still `abstract-not-found`, a warning, and never a
+    paper gives nowhere, typed wrong, is still `abstract-not-found`, a note by how often it
+    was right on real papers (`auditing.measured`, 2026-11-21), and never a
     question; so is one only a reference entry or a statement gives."""
     from manuscript_guard.cli import main
 
@@ -2879,7 +2880,7 @@ def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_warning(
         number = typed.split()[0]
         assert [(one["code"], one["severity"], one["question"]) for one in found
                 if one["message"].startswith(number)] == [
-            ("abstract-not-found", "warn", False)], (typed, found)  # fmt: skip
+            ("abstract-not-found", "info", False)], (typed, found)  # fmt: skip
 
 
 def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(
@@ -3185,9 +3186,11 @@ def test_a_share_is_found_under_a_sentence_that_opens_on_table_n_and_a_bracket(
 
 
 def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: Path) -> None:
-    """Three legends for two tables read: the legends do not number the file's tables, so no
-    caption counts, and the share under "Table 1. Weighted percentages." is a number that does
-    not fit."""
+    """Three legends for two tables read: the legends do not number the file's tables, so a
+    table takes only the legend directly above it (Basile, 2026-11-21, "Adjacent fallback").
+    The share under "Table 1. Weighted percentages." is asked about; the second table's,
+    under "Table 2. Counts." with "Table 3. Weighted n." below it, is still a number that
+    does not fit."""
     from manuscript_guard.audit import audit
 
     table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
@@ -3195,7 +3198,8 @@ def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: P
     paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
                      f"Counts.\n\n{table}\n\nTable 3. Weighted n.\n", encoding="utf-8")
     report = audit([paper], None)
-    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+    assert [d.line for d in report.arithmetic_asked] == [7]
+    assert [d.line for d in report.disagreements] == [13]
 
 
 def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
@@ -3229,6 +3233,27 @@ def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
     report = audit([paper], None)
     assert [d.line for d in report.arithmetic_asked] == [7]
     assert [d.line for d in report.disagreements] == [13]
+
+
+def test_a_share_off_under_a_legend_not_right_above_its_table_is_still_found(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-11-21, "Adjacent fallback": in a file whose legends do not number its
+    tables, a legend right above a table captions it, and no other legend does. A
+    nationally representative legend with a paragraph between it and its table, one below
+    the last table, and one whose words are negated let off nothing: each share off its
+    column's n is still a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable S1a. Nationally representative shares.\n\nValues are "
+                     f"n (%).\n\n{table}\n\nTable S1b. Shares, not nationally representative.\n"
+                     f"\n{table}\n\nThe last table follows.\n\n{table}\n\nTable S2a. Nationally "
+                     "representative shares.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == []
+    assert [d.line for d in report.disagreements] == [9, 15, 21]
 
 
 def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:
@@ -13624,6 +13649,175 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     warned = [f for f in report.findings if f.code == "tex-not-input"]
     assert [f.path.name for f in warned] == ["notes.tex"]
     assert "tex-not-input" not in codes(report)
+
+
+@pytest.mark.parametrize("stop", ["latin1", "csname"])
+def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
+    project: Path, stop: str
+) -> None:
+    """A file input past where the reader stopped in the file that inputs it, there through
+    another, is named once in that refusal's finding, and not warned of as named by no
+    `\\input`, which it is. One nothing inputs, and one whose path a command builds, which
+    the reader cannot read exactly, are each warned of as before (Basile, 2026-11-21, "Fold
+    the warnings": a paper refused at its preamble's `[latin1]` had 17 files warned of as
+    named by no `\\input`, 15 of them judged false)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "parts").mkdir()
+    stops = {"latin1": "\\usepackage[latin1]{inputenc}\n", "csname": "\\csname x\\endcsname\n"}
+    entry.write_text(
+        "\\documentclass{article}\n" + stops[stop] + "\\newcommand{\\where}{parts}\n"
+        "\\begin{document}\nCaf\N{LATIN SMALL LETTER E WITH ACUTE}.\n\\input{intro}\n"
+        "\\input{parts/results}\n\\input{\\where/built}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "intro.tex").write_text("Of 4100.\n", encoding="utf-8")
+    (folder / "parts" / "results.tex").write_text("\\input{parts/nested}\n", encoding="utf-8")
+    for name in ("parts/nested", "parts/built", "notes"):
+        (folder / f"{name}.tex").write_text("Words.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    warned = sorted(f.path.name for f in report.findings if f.code == "tex-not-input")
+    assert warned == ["built.tex", "notes.tex"], report.render(project)
+    (refused,) = [f for f in report.failures
+                  if f.code == "tex-refused" and f.path.name == "main.tex"]  # fmt: skip
+    assert refused.line == 2, refused.message
+    assert "the 3 files its inputs past it reach" in refused.message, refused.message
+    for name in ("intro.tex", "parts/results.tex", "parts/nested.tex"):
+        assert f"manuscript/{name}" in refused.message, refused.message
+    assert "built.tex" not in refused.message and "notes.tex" not in refused.message
+
+
+def _build_said(project: Path) -> tuple[list[str], dict[str, str]]:
+    """The files BUILD warns of as named by no `\\input`, by their path in `manuscript/`, and
+    the message of each refusal, by its file's."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    folder = project / "manuscript"
+    warned = sorted(f.path.relative_to(folder).as_posix() for f in report.findings
+                    if f.code == "tex-not-input")  # fmt: skip
+    refused = {f.path.relative_to(folder).as_posix(): f.message for f in report.failures
+               if f.gate == "BUILD" and f.code == "tex-refused"}  # fmt: skip
+    return warned, refused
+
+
+def test_a_file_a_subimported_file_inputs_past_its_stop_is_looked_for_where_it_was_imported(
+    project: Path,
+) -> None:
+    """Round 1 of #716: an `\\input{methods}` past where the reader stopped in a file that
+    `\\subimport{chapters/}{intro}` reads was looked for beside the entry, so
+    chapters/methods.tex was warned of as named by no `\\input`. It is looked for in the
+    folder intro was imported from, as the tree looks for it, and named once, in the
+    one-file wording."""
+    entry = _as_latex(project)
+    chapters = entry.parent / "chapters"
+    chapters.mkdir()
+    entry.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n\\csname x\\endcsname\n\\input{methods}\n",
+                                        encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert refused["chapters/intro.tex"].endswith(
+        "; the file its inputs past it reach, manuscript/chapters/methods.tex, is read as "
+        "body under no heading"), refused
+
+
+def test_a_file_input_through_a_second_document_past_a_stop_is_named_by_the_stop(
+    project: Path,
+) -> None:
+    """Round 1 of #716: BUILD looked for an input past a stop among the files the document
+    reads, where `audit` looks among every `.tex` file of the folder, so a file input past
+    a stop through a document of its own was warned of as named by no `\\input`, and named
+    as not followed by `audit`. Both look among every `.tex` file now; the second document
+    keeps its own failure."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nWords.\n"
+                     "\\csname x\\endcsname\n\\input{other}\n\\end{document}\n", encoding="utf-8")
+    (folder / "other.tex").write_text("\\documentclass{article}\n\\begin{document}\n"
+                                      "\\input{inner}\n\\end{document}\n", encoding="utf-8")
+    (folder / "inner.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert "the file its inputs past it reach, manuscript/inner.tex," in refused["main.tex"]
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    assert [f.path.name for f in report.failures if f.code == "tex-second-document"] == [
+        "other.tex"]
+
+
+@pytest.mark.parametrize("block", ["\\makeatletter\n\\input{{{0}}}\n\\makeatother",
+                                   "\\if0\\blind\n\\input{{{0}}}\n\\fi"],
+                         ids=["makeatletter", "conditional"])  # fmt: skip
+def test_a_file_input_only_inside_a_skipped_block_is_named_by_the_block(
+    project: Path, block: str
+) -> None:
+    """Round 1 of #716: a file the paper inputs only inside a block the reader skipped, which
+    is a `tex-refused` of its own, was warned of as named by no `\\input`. The block's
+    finding names it, once a file or with how many; a file the block inputs without
+    braces is warned of as before, as `audit` gives it the advice for a file nothing
+    inputs."""
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     + block.format("names") + "\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    (folder / "names.tex").write_text("Ada Example.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert refused["main.tex"].endswith("; the file an input inside it names, "
+                                        "manuscript/names.tex, is read as body under no "
+                                        "heading"), refused  # fmt: skip
+    two = block.format("names}\n\\input{more").replace("\\fi", "\\input bare\n\\fi").replace(
+        "\\makeatother", "\\input bare\n\\makeatother")
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n" + two
+                     + "\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    for name in ("more", "bare"):
+        (folder / f"{name}.tex").write_text("Words.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == ["bare.tex"], (warned, refused)
+    assert ("the 2 files inputs inside it name, manuscript/more.tex, manuscript/names.tex, "
+            "are read") in refused["main.tex"], refused
+    # Round 2 of #716: in a file `\subimport` reads, the block's input is looked for in the
+    # folder it was imported from, as the tree looks for it.
+    (folder / "chapters").mkdir()
+    entry.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (folder / "chapters" / "intro.tex").write_text("Words.\n" + block.format("methods") + "\n",
+                                                   encoding="utf-8")  # fmt: skip
+    (folder / "chapters" / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert "chapters/methods.tex" not in warned, (warned, refused)
+    assert refused["chapters/intro.tex"].endswith(
+        "; the file an input inside it names, manuscript/chapters/methods.tex, is read as body "
+        "under no heading"), refused
+
+
+def test_a_stop_in_the_author_s_package_names_no_file_and_moves_no_warning(
+    project: Path,
+) -> None:
+    """Round 1 of #716: past a stop in the author's package, an `\\input` the package makes
+    is the class's, as before it, and not read; one inside a command's definition is printed
+    where the paper uses it, and warned of as named by no `\\input` the reader follows, as
+    before it. Neither is named in the package's refusal. This pins what held before the
+    change, since a class's file is never loose; it is no fix (round 2 of #716)."""
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\usepackage{mine}\n\\begin{document}\n"
+                     "\\abstracttext\n\\end{document}\n", encoding="utf-8")
+    (folder / "mine.sty").write_text(
+        "\\csname x\\endcsname\n\\input{theirs}\n"
+        "\\newcommand{\\abstracttext}{\\input{abstract}}\n", encoding="utf-8")
+    for name in ("theirs", "abstract"):
+        (folder / f"{name}.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == ["abstract.tex"], (warned, refused)
+    assert "mine.sty" in refused and "reach" not in refused["mine.sty"], refused
 
 
 def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build(
@@ -32503,6 +32697,96 @@ def test_a_number_typed_against_its_word_is_caught(project: Path) -> None:
             "a number and a word run together 2 times: '2points', '10hours'",
         )
     ]
+
+
+def test_a_number_typed_against_its_word_beside_a_lowered_index_is_caught(
+    project: Path,
+) -> None:
+    """A Word table's note converted to Markdown writes a symbol's index lowered,
+    "u~0school~", which is no space left out; "12patients" and "p=0.05and" in the same
+    paragraph are, each caught."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " The variance u~0school~ and k^12rep^ were small.")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == []
+    edited = text.replace(old, old + " The variance u~0school~ held in 12patients, p=0.05and "
+                          "more.")  # fmt: skip
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, message) for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        ("notation-space-missing",
+         "a number and a word run together 2 times: '12patients', '0.05and'"),
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("notes", [
+    " It was seen[^n1];12patients[^n2] later.\n\n[^n1]: One note.\n\n[^n2]: Another note.\n",
+    " It was seen^[Ibid.];12patients^[See the protocol for details.] later.",
+], ids=["anchors", "inline notes"])  # fmt: skip
+def test_a_number_typed_against_its_word_between_two_notes_is_caught(
+    project: Path, notes: str
+) -> None:
+    """Two notes with no blank between them raise nothing: a footnote's anchor is blanked
+    before notation reads the text, and an inline note's caret stands before a bracket, so
+    neither opens a raised piece, and "12patients" between them is caught (rounds 1 and 2 of
+    the review of #719)."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    main_md(project).write_text(text.replace(old, old + notes), encoding="utf-8")
+    assert [(code, message) for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        ("notation-space-missing", "a number and a word run together once: '12patients'"),
+    ]  # fmt: skip
+
+
+def test_a_number_typed_against_its_word_beside_a_latex_name_is_caught(project: Path) -> None:
+    """A LaTeX data table names its series with underscores, `RATE\\_12mth`: a name from
+    code, no space left out. "12patients" after the table is caught."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    table = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+             "\\begin{tabular}{ll}\nRATE\\_12mth & 0,532 \\\\\nGILT\\_5yrs\\_yld & 0,366 \\\\\n"
+             "\\end{tabular}\n\n")  # fmt: skip
+    (folder / "main.tex").write_text(table + "It held.\n\\end{document}\n", encoding="utf-8")
+    assert notation_findings(project) == []
+    (folder / "main.tex").write_text(table + "It held in 12patients.\n\\end{document}\n",
+                                     encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_typed_against_its_word_in_a_pdf_is_caught(tmp_path: Path, capsys) -> None:
+    """In a PDF's text pdftotext sets an index on the line, "tn+1", which is no word typed
+    against a signed number there (Basile, 2026-11-21); "12patients" in the same PDF is a
+    space left out, caught. The same words in Markdown are both read."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    def spaces(paper: Path) -> list[str]:
+        main(["audit", str(paper), "--json"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return [f["message"] for f in found if f["code"] == "notation-space-missing"]
+
+    lines = ["Methods", "Each count in tn was read against tn+1 later.", "Results",
+             "The counts held."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert spaces(paper) == []
+    lines[3] = "The counts held in 12patients."
+    paper.write_bytes(typeset(lines, columns=1))
+    assert spaces(paper) == ["a number and a word run together once: '12patients'"]
+    typed = tmp_path / "paper.md"
+    typed.write_text("# Methods\n\n" + lines[1] + "\n\n# Results\n\n" + lines[3] + "\n",
+                     encoding="utf-8")  # fmt: skip
+    assert spaces(typed) == ["a number and a word run together 2 times: 'tn+1', '12patients'"]
 
 
 def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(

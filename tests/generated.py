@@ -8259,16 +8259,30 @@ NOTATED = (
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
     # A space left out around a number, and lookalikes (`RUN_ON`, `NOT_RUN_ON`).
     "0.41points", "to+0.77", "2ndyear", "p53mutant", "30min",
+    # A number inside a piece raised or lowered and inside a name joined by underscores, and
+    # a tilde escaped, which lowers nothing.
+    "u~0school~", "k^12rep^", "12mth\\_rate", "\\~12cells\\~",
+    # An exponent and an index as pdftotext sets them on the line.
+    "40 cm\N{MINUS SIGN}3", "tn+1",
 )  # fmt: skip
 
 #: A space left out around a number, each counted once by `notation-space-missing`; and what
 #: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
 #: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
-#: scientific notation, a letter and a sign.
+#: scientific notation, a letter and a sign, a number inside a piece raised or lowered as
+#: pandoc writes one and inside a name joined by underscores. A tilde escaped lowers
+#: nothing, nor do a strikeout's two; two footnotes' anchors raise nothing (drawn with no
+#: definitions: the mask blanks an anchor whether or not one defines it), nor do two inline
+#: notes, which pandoc reads as notes (round 2 of #719).
 RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
-          "5mins", "rose to+0.5.", "to+{{results.high}}")  # fmt: skip
+          "5mins", "rose to+0.5.", "to+{{results.high}}", "tn+1", "\\~12cells\\~",
+          "~~3cells~~", "seen[^1];4cells[^2]", "seen^[Ibid.];6cells^[See it.]")  # fmt: skip
 NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
-              "5mg", "x+1")  # fmt: skip
+              "5mg", "x+1", "u~0school~", "k^12rep^", "12mth\\_rate",
+              "12mth\\_\\_rate")  # fmt: skip
+#: Of `RUN_ON`, the words typed against a signed number, which text read from a PDF does not
+#: count: pdftotext sets an exponent or an index on the line (Basile, 2026-11-21).
+SIGNED_RUN_ON = ("to+0.77", "rose to+0.5.", "to+{{results.high}}", "tn+1")
 
 
 @st.composite
@@ -17863,7 +17877,8 @@ SURNAMES_CITED = {
 }  # fmt: skip
 #: The words that say a table's shares are weighted, and where in the table each stands.
 WEIGHTINGS = ("weighted %", "weighted percentages", "survey-weighted", "IPW", "weighted n",
-              "inverse probability weighted", "Weighted statistics")  # fmt: skip
+              "inverse probability weighted", "Weighted statistics",
+              "nationally representative")  # fmt: skip
 WEIGHTED_PLACES = ("caption", "header", "label", "note")
 #: The headers of a crude column beside a weighted one: none says its shares are weighted.
 CRUDE_HEADERS = ("Before IPTW", "Unweighted n (%)", "Crude", "Prior to weighting")
@@ -18069,11 +18084,12 @@ def _a_paper(draw: st.DrawFn, statement: str | None, tables: str
     return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 
 
-#: How a file's legends fail to caption its tables, each a file of `_unnumbered`: a legend
-#: for a table given as a picture, a table that runs on under its legend again, a legend of
-#: another form (Basile, 2026-11-18); and legends that number the tables read but reach none,
-#: the first a picture's, standing before the second's legend, the last table with none
-#: (round 3 of #703).
+#: How a file's legends fail to number its tables, each a file of `_unnumbered`: a legend
+#: for a table given as a picture, below the last table, a table that runs on under its
+#: legend again, a legend of another form (Basile, 2026-11-18), where each table takes the
+#: legend directly above it (Basile, 2026-11-21, "Adjacent fallback"); and legends that
+#: number the tables read but reach none, the first a picture's, standing before the
+#: second's legend, the last table with none (round 3 of #703), where none is taken.
 UNNUMBERED = {
     "picture": ("Table 1.", "Table 2.", "Table 3. Weighted n."),
     "continued": ("Table 1.", "Table 2.", "Table 2 (continued)."),
@@ -18083,9 +18099,11 @@ UNNUMBERED = {
 
 
 def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
-    """A file whose legends caption none of its tables (`UNNUMBERED`): its first legend says
-    its table's shares are weighted, and its second and any third say nothing. No caption
-    counts, so each share off its n is found."""
+    """A file whose legends do not caption its tables by number (`UNNUMBERED`): its first
+    legend says its table's shares are weighted, and its second and any third say nothing,
+    but a picture's. Where the legends do not number the tables, the first table's share
+    off its n, right under its legend, is asked about, and the others are found; where they
+    number them but reach none, each is found."""
     first, second, third = UNNUMBERED[how]
     lines = ["# Results", ""]
     found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
@@ -18099,15 +18117,85 @@ def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
         # the second's before its table, which the last table, with no legend, follows.
         lines += [legends.pop(0), ""]
         legends.append("")
-    for legend in legends:
+    for at, legend in enumerate(legends):
         n, k, fits, off = _shares(draw)
         lines += ([legend, ""] if legend else []) + [
             f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
             f"| Male sex, n (%) | {k} ({off:.1f}%) |", f"| Smokers, n (%) | {k} ({fits:.1f}%) |",
             ""]  # fmt: skip
-        found[SHARES_UNFIT].append([len(lines) - 2, f"{k} ({off:.1f}%)"])
+        asked = at == 0 and how != "unreached"
+        found[SHARES_ASKED if asked else SHARES_UNFIT].append([len(lines) - 2,
+                                                              f"{k} ({off:.1f}%)"])  # fmt: skip
     if third is not None and how == "picture":
         lines += [third, ""]
+    lines += ["# Discussion", "", "No more.", ""]
+    return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
+
+
+#: A supplement's tables whose legends do not number them, each kind once (Basile,
+#: 2026-11-21, "Caption wording" and "Adjacent fallback"): a nationally representative
+#: legend directly above its table, which lets it off; one that says nothing of weights; one
+#: whose words a word before them in their clause negates; a nationally representative one
+#: with a paragraph between it and its table; one below its table, a paragraph after it; one
+#: that says "non-nationally representative"; and a nationally representative one over a
+#: table that another follows with no paragraph between, which lets off the first alone
+#: (round 1 of the review of #718).
+SUPPLEMENT_KINDS = ("representative", "plain", "negated", "between", "below", "non",
+                    "back to back")
+NON_REPRESENTATIVE = ("Non-nationally representative shares, {place}.", "Shares for {place}, "
+                      "non-nationally representative.", "Non nationally representative "
+                      "proportions, {place}.")
+REPRESENTATIVE = ("Nationally representative shares for {place}.", "Shares, nationally "
+                  "representative, {place}.", "Nationally-representative proportions, {place}.")
+NOT_REPRESENTATIVE = ("Shares, not nationally representative, {place}.", "Crude proportions "
+                      "for {place}, before weighting to be nationally representative.",
+                      "Unweighted nationally representative sample, {place}.")
+SUPPLEMENT_PLACES = ("Region A", "the north", "the coast", "Site 4")
+
+
+def _supplement_table(draw: st.DrawFn) -> tuple[list[str], int, str]:
+    """A table of `_supplement`, a blank line after it: its lines, the line from 1 of its
+    share off its n within them, and that share as printed."""
+    n, k, fits, off = _shares(draw)
+    table = [f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
+             f"| Male sex, n (%) | {k} ({off:.1f}%) |",
+             f"| Smokers, n (%) | {k} ({fits:.1f}%) |", ""]  # fmt: skip
+    return table, 3, f"{k} ({off:.1f}%)"
+
+
+def _supplement(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
+    """A supplement of a table of each of `SUPPLEMENT_KINDS`, in an order drawn, their
+    legends "Table S1a", "Table S1b", "Table S2a" ..., which do not number the tables, plain
+    or in bold italics. Only a nationally representative legend directly above its table
+    lets its share off its n be asked about, the first of two back to back too; every other
+    share is found."""
+    lines = ["# Supplementary material", ""]
+    found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
+                              UNFIT: [], G8_ASKED: [], G8_WARNED: []}  # fmt: skip
+    for at, kind in enumerate(draw(st.permutations(SUPPLEMENT_KINDS))):
+        place = draw(st.sampled_from(SUPPLEMENT_PLACES))
+        words = {"plain": "Proportions by group for {place}.",
+                 "negated": draw(st.sampled_from(NOT_REPRESENTATIVE)),
+                 "non": draw(st.sampled_from(NON_REPRESENTATIVE))}.get(
+            kind, draw(st.sampled_from(REPRESENTATIVE))).format(place=place)
+        legend = f"Table S{at // 2 + 1}{'ab'[at % 2]}. {words}"
+        if draw(st.booleans()):
+            legend = f"***{legend}***"
+        table, row, share = _supplement_table(draw)
+        if kind == "below":
+            start = len(lines) + 2
+            lines += ["The shares follow.", "", *table, legend, "", "The next part follows.", ""]
+        else:
+            lines += [legend, "", *(["Values are n (%).", ""] if kind == "between" else [])]
+            start = len(lines)
+            lines += table
+        asked = kind in ("representative", "back to back")
+        found[SHARES_ASKED if asked else SHARES_UNFIT].append([start + row, share])
+        if kind == "back to back":
+            # The next table, right under the first with no paragraph between, says nothing.
+            table, row, share = _supplement_table(draw)
+            found[SHARES_UNFIT].append([len(lines) + row, share])
+            lines += table
     lines += ["# Discussion", "", "No more.", ""]
     return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 
@@ -18118,7 +18206,8 @@ def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str
     that kind, and two that state none, one with its tables' legends before them, a legend
     right after the table before its own, and one with them after (`_a_paper`); each with a
     covariate adjustment, a negated statement and a cited surname of each kind. And a file
-    for each way of `UNNUMBERED` its legends fail to number its tables. And where the audit
+    for each way of `UNNUMBERED` its legends fail to number its tables, and a supplement of
+    each of `SUPPLEMENT_KINDS` (`_supplement`). And where the audit
     asks of each paper's numbers, by code, where it says they do not fit, each share by its
     cell, and where G8 asks and warns (decision 31, and rounds 1 and 2 of #703)."""
     papers, expected = {}, {}
@@ -18130,6 +18219,7 @@ def adjusted_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, dict[str
             draw, None, layout)
     for how in UNNUMBERED:
         papers[f"unnumbered, {how}"], expected[f"unnumbered, {how}"] = _unnumbered(draw, how)
+    papers["supplement"], expected["supplement"] = _supplement(draw)
     return papers, expected
 
 
@@ -18364,6 +18454,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "notation of a PDF's text": texts(NOTATED),
     "notation edits": st.one_of(
         texts(NOTATED), notation_edited().flatmap(lambda drawn: st.sampled_from(drawn)).map(
             lambda pair: pair[0])),

@@ -212,6 +212,21 @@ def narrowing_openers(openers: int) -> str:
     return "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
 
 
+def test_the_title_page_is_read_in_linear_time_past_a_long_run_of_hyphens(assert_linear) -> None:
+    """G14 reads the paragraphs at a paper's head for a title page's lines, an e-mail
+    address among them. The address was looked for from every character of a run of the
+    characters a name holds, each to the end of the run: quadratic in its length. A rule in
+    a Word paper, converted, is such a run, and one of 100,000 hyphens took 109 s
+    (metaarxiv epgjd, in the robustness sweep of 2026-11-21)."""
+    from manuscript_guard.text.title_page import opening
+
+    def a_rule(count: int) -> str:
+        return "A title of the paper\n\n" + "-" * count + "\n\nThe text goes on.\n"
+
+    assert_linear(a_rule, lambda text: opening(text, []), 1000,
+                  "the title page past a long run of hyphens")  # fmt: skip
+
+
 def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear) -> None:
     """The shortcut that fixed the test above rejected only openers *wider* than one already
     known to have no closer. Openers each narrower than the last still read to the end of

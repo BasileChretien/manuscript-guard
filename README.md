@@ -327,7 +327,8 @@ here:
 | review | G10, G11 |
 | language and writing | G6, G14 |
 
-G7 is in two groups, and G0, which holds that the manuscript can be read at all, is in none.
+G7 is in two groups, and G0 is in none: it holds that the manuscript can be read at all, and
+also labels a file of the project that cannot be used as it stands (`schema-violation`).
 [What is checked](docs/gates.md) has what each gate holds, and what `check` says in words of
 what no gate decides. A finding fails from the stage at which it starts to matter, and
 until then it is printed and counted without failing the run ([stages](docs/stages.md)).
@@ -527,6 +528,7 @@ everywhere.
 | [Journal profiles](docs/journal-profiles.md) | the journal's rules quoted from its page: the boxes beside the abstract, a graphical abstract, what may be shared |
 | [What to do next](docs/next.md) | `next`: the order it decides in, and its JSON for an agent |
 | [Principles](docs/principles.md) | what the check guarantees, and why it is built this way |
+| [Features](docs/features.md) | everything it is meant to do, on one picture of a paper's stages, each feature with what does it and the tests that prove it |
 | [What is checked](docs/gates.md) | each gate and what it holds, and what `check` says when it ends |
 | [Commands](docs/commands.md) | every command, in the groups of `manuscript-guard --help`, with what it does |
 | [Agent tools](docs/agent-tools.md) | Claude Code, Codex and the others: installing, updating, what each enforces |

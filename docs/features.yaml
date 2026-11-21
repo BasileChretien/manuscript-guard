@@ -1,0 +1,883 @@
+# What manuscript-guard is meant to do: one entry for each thing it promises its user.
+#
+# This file is the source. `python tools/feature_map.py` draws docs/features.md and the
+# pictures docs/img/features-light.svg and features-dark.svg from it, and
+# tests/test_features.py holds it to the package: every command, gate, skill and hook is in
+# an entry, every name an entry gives exists, every entry that works names the tests that
+# prove it, and the page and the pictures are the ones the script draws.
+#
+# An entry:
+#   id        a short name that does not change
+#   stage     one of the stages below
+#   title     a few words, shown in the picture
+#   says      one sentence a reader who does not program understands
+#   status    works, partial (works, with a part missing that `limits` names) or planned
+#   commands  the subcommands of `manuscript-guard` that do it
+#   gates     the gates of `check` that hold it
+#   skills    the skills under plugin/skills that help an agent do it
+#   hooks     the hooks under plugin/hooks that act on it
+#   tests     tests/<file>.py, or tests/<file>.py::<test>, that prove it
+#   docs      the page that explains it, from the repository's root
+#   limits    what it does not do yet, for a partial or planned entry
+
+stages:
+  - id: start
+    title: Start
+    says: Set up a paper project, and find out what to do next.
+  - id: plan
+    title: Plan
+    says: Decide the study before its data are analysed.
+  - id: analyse
+    title: Analyse
+    says: Run the analysis so that each result is kept with what made it.
+  - id: write
+    title: Write
+    says: Write the paper with every number tied to its source.
+  - id: cite
+    title: Cite
+    says: Cite the literature, and keep each citation true to its source.
+  - id: check
+    title: Check
+    says: Hold the paper to the journal, the guideline and its own records.
+  - id: review
+    title: Review
+    says: Have the paper read by co-authors, a panel and the people who sign.
+  - id: submit
+    title: Submit
+    says: Send the paper, answer the reviewers, and publish what it rests on.
+  - id: others
+    title: Other people's papers
+    says: Read a paper written some other way, as its author, an editor or a referee.
+
+features:
+  # ------------------------------------------------------------------------------ start
+  - id: new-project
+    stage: start
+    title: Start a project
+    says: >-
+      Writes a new paper project in Markdown or LaTeX, or brings in a paper already
+      written in Word.
+    status: works
+    commands: [init]
+    skills: [project-setup]
+    tests: [tests/test_scaffold.py, tests/test_from_word.py]
+    docs: docs/getting-started.md
+
+  - id: what-next
+    stage: start
+    title: Say what to do now
+    says: >-
+      Runs every check once and says what to do next, with the command to run and the
+      skill that helps.
+    status: works
+    commands: [next]
+    skills: [guide]
+    tests: [tests/test_guide.py]
+    docs: docs/next.md
+
+  - id: settings
+    stage: start
+    title: Change a setting
+    says: >-
+      Changes one setting of paper.yaml, such as the stage or the journal, and keeps every
+      other line as it was.
+    status: works
+    commands: [set]
+    tests: [tests/test_set.py]
+    docs: docs/commands.md#setup--guide
+
+  - id: stages
+    stage: start
+    title: Stages of a paper
+    says: >-
+      Says what each stage of a paper means, and from which stage each finding stops the
+      paper.
+    status: works
+    commands: [stages]
+    tests: [tests/test_policy.py]
+    docs: docs/stages.md
+
+  - id: agent-skills
+    stage: start
+    title: Skills for agent tools
+    says: >-
+      Gives Claude Code, Codex and other agent tools a skill for each step, and copies the
+      skills where a tool reads them.
+    status: works
+    commands: [install-skills]
+    tests: [tests/test_plugin.py, tests/test_skillcopy.py]
+    docs: docs/agent-tools.md
+
+  - id: agent-hooks
+    stage: start
+    title: Hooks that catch slips
+    says: >-
+      In an agent tool, refuses edits to files the tool writes, classifies each number as
+      it is typed, and says where the paper stands when a session starts and a turn ends.
+    status: works
+    hooks: [guard-write, after-edit, session-start, stop]
+    tests: [tests/test_hooks.py]
+    docs: docs/agent-tools.md
+
+  - id: github-action
+    stage: start
+    title: Checks on GitHub
+    says: >-
+      A GitHub workflow runs the checks and the build on each push and pull request of the
+      paper's repository.
+    status: works
+    tests: [tests/test_github_action.py]
+    docs: docs/github-actions.md
+
+  - id: report-issue
+    stage: start
+    title: Report a problem
+    says: >-
+      Writes a report of a failure, or of a check that got something wrong, for you to
+      read and post; it sends nothing.
+    status: works
+    commands: [report-issue]
+    tests: [tests/test_report_issue.py, tests/test_report_about.py]
+    docs: docs/failures.md
+
+  # ------------------------------------------------------------------------------- plan
+  - id: analysis-plan
+    stage: plan
+    title: Analysis plan
+    says: >-
+      The plan is written before the analysis, and a change to it after the first results
+      is a deviation the paper has to declare.
+    status: works
+    gates: [G12]
+    skills: [analysis-plan]
+    tests:
+      - tests/test_corruption.py::test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning
+      - tests/test_corruption.py::test_the_kept_plan_is_never_written_again
+      - tests/test_study_types.py
+    docs: docs/stages.md
+
+  - id: data-sources
+    stage: plan
+    title: Choose the dataset
+    says: >-
+      Records the datasets considered, how each is reached and on what terms, and the one
+      the author chose.
+    status: works
+    gates: [G12]
+    skills: [data-sources]
+    tests: [tests/test_data_sources.py]
+
+  - id: data-dictionary
+    stage: plan
+    title: Data dictionary
+    says: >-
+      Defines each variable the study collects, held to the plan, and writes the list out
+      for REDCap or a paper form.
+    status: works
+    commands: [dictionary]
+    gates: [G12]
+    skills: [data-dictionary]
+    tests: [tests/test_dictionary.py, tests/test_dictionary_export.py, tests/test_collection.py]
+
+  - id: methods-review
+    stage: plan
+    title: Methods of similar studies
+    says: >-
+      Judges the methods of studies of the same question against published standards, and
+      records what the plan takes from them.
+    status: works
+    gates: [G7, G12]
+    skills: [methods-review]
+    tests: [tests/test_methods_review.py]
+
+  - id: registration
+    stage: plan
+    title: Registration
+    says: >-
+      Looks the study up in its registry, and holds the outcomes the paper reports to the
+      ones it registered.
+    status: works
+    commands: [lookup]
+    gates: [G12]
+    tests: [tests/test_registration_lookup.py]
+
+  - id: controls
+    stage: plan
+    title: Controls and held-out data
+    says: >-
+      Holds the controls and the held-out data the plan declares to what the analysis did
+      with them, and when.
+    status: works
+    gates: [G1, G12]
+    tests: [tests/test_declarations.py, tests/test_emit_controls.py]
+
+  - id: design-review
+    stage: plan
+    title: Review of the design
+    says: >-
+      Has the plan read before the analysis starts, by people or by models, and asks for
+      each major finding to be answered.
+    status: works
+    gates: [G12]
+    skills: [review-panel]
+    tests: [tests/test_review_design_run.py]
+    docs: docs/review-panel.md
+
+  # ---------------------------------------------------------------------------- analyse
+  - id: emit-results
+    stage: analyse
+    title: Results from Python or R
+    says: >-
+      The analysis publishes each result through a small library for Python or R, which
+      keeps the script and the inputs it came from.
+    status: works
+    skills: [results-binding]
+    tests: [tests/test_emit.py, tests/test_r_emitter.py]
+
+  - id: harvest
+    stage: analyse
+    title: Results a script writes
+    says: >-
+      Takes in a table or a value that a script writes on its own, as CSV, TSV or JSON, as
+      results like the others.
+    status: works
+    commands: [harvest]
+    tests: [tests/test_harvest.py]
+    docs: docs/harvest.md
+
+  - id: results-current
+    stage: analyse
+    title: Results still current
+    says: >-
+      Fails when a result was edited by hand, or when its script or an input changed after
+      it was written.
+    status: works
+    gates: [G1]
+    tests:
+      - tests/test_corruption.py::test_hand_edited_results_file_is_caught
+      - tests/test_corruption.py::test_modified_analysis_script_is_caught
+      - tests/test_corruption.py::test_changed_input_data_is_caught
+      - tests/test_input_digests.py
+
+  - id: verify
+    stage: analyse
+    title: Run it all again
+    says: >-
+      Runs the analysis again and checks that it gives the recorded results, value by
+      value.
+    status: works
+    commands: [verify]
+    tests: [tests/test_verify.py]
+
+  - id: vault
+    stage: analyse
+    title: Data kept from the agent
+    says: >-
+      Keeps the data in a folder the operating system keeps from the agent, with a
+      synthetic copy to write the code against.
+    status: works
+    commands: [vault]
+    tests: [tests/test_vault.py, tests/test_vault_run.py, tests/test_vault_synthesize.py]
+    docs: docs/vault.md
+
+  - id: small-counts
+    stage: analyse
+    title: Small counts held back
+    says: >-
+      Prints no count below the data custodian's minimum, and no total beside a held-back
+      count that gives it away.
+    status: works
+    gates: [G2]
+    tests:
+      - tests/test_corruption.py::test_a_small_count_held_back_or_written_with_a_point_is_caught
+      - tests/test_margins.py
+
+  - id: models
+    stage: analyse
+    title: Models that fit their data
+    says: >-
+      Holds each model to its variables: a kind of model the outcome calls for, the
+      references and levels declared, and a fit that converged.
+    status: works
+    commands: [models]
+    gates: [G15]
+    tests: [tests/test_models.py]
+
+  - id: data-quality
+    stage: analyse
+    title: Data held to the dictionary
+    says: >-
+      Counts each entry and rule of the data dictionary on the data, and asks the Methods
+      to report what the data held.
+    status: works
+    gates: [G16]
+    tests: [tests/test_quality.py, tests/test_r_quality.py]
+
+  - id: warehouse-adapters
+    stage: analyse
+    title: Health data warehouses
+    says: >-
+      Reads the outputs of OMOP, CDISC, SAS and Stata analyses through adapters that a
+      third party can write for its own provider.
+    status: planned
+    docs: DESIGN.md#health-data-warehouses-formats-in-the-middle-adapters-at-the-edges
+    limits: Designed on 2026-11-05; nothing is built yet.
+
+  # ------------------------------------------------------------------------------ write
+  - id: bindings
+    stage: write
+    title: Numbers tied to results
+    says: >-
+      Every number in the text is tied to a result, to a quoted source or to a convention
+      of writing; a number tied to nothing fails.
+    status: works
+    commands: [bind, explain]
+    gates: [G2]
+    skills: [results-binding]
+    tests: [tests/test_binding.py, tests/test_rules.py]
+
+  - id: render
+    stage: write
+    title: Numbers filled in
+    says: >-
+      Puts each result's number where the text names it, in Markdown, or through a values
+      file in LaTeX.
+    status: works
+    commands: [render, values]
+    tests: [tests/test_build.py, tests/test_latex_values.py]
+
+  - id: word-build
+    stage: write
+    title: Word documents
+    says: >-
+      Builds the manuscript and its supplement as Word documents, with live Zotero
+      citations, and on request every number coloured by what backs it.
+    status: works
+    commands: [build]
+    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py]
+
+  - id: readable
+    stage: write
+    title: A manuscript it can read
+    says: >-
+      Each source file is UTF-8, and the manuscript is written in one format, Markdown or
+      LaTeX.
+    status: works
+    gates: [G0]
+    tests:
+      - tests/test_corruption.py::test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass
+      - tests/test_reader.py
+
+  - id: latex
+    stage: write
+    title: LaTeX manuscripts
+    says: >-
+      Writes and checks the manuscript in LaTeX, compiled to a PDF, or writes LaTeX out of a
+      Markdown manuscript for a journal that asks for it.
+    status: partial
+    gates: [G0]
+    tests: [tests/test_latex_build.py, tests/test_latex_twin.py, tests/test_latex_from_markdown.py]
+    docs: docs/latex.md
+    limits: A gate not yet taught LaTeX says it read nothing, a note that fails at submission.
+
+  - id: tables-figures
+    stage: write
+    title: Tables and figures by key
+    says: >-
+      Places tables and figures by key, numbers them in the build, and checks that each
+      "Table 2" in the text names one that is there.
+    status: works
+    gates: [G2]
+    tests:
+      - tests/test_corruption.py::test_a_pointer_to_what_the_document_does_not_carry_is_said
+      - tests/test_latex_pointers.py
+
+  - id: figures-traced
+    stage: write
+    title: Figures from the results
+    says: >-
+      The numbers a figure draws, in its file and in the script that drew it, come from the
+      results.
+    status: works
+    gates: [G3]
+    tests: [tests/test_figures.py, tests/test_placed_figures.py]
+
+  - id: figure-access
+    stage: write
+    title: Figures every reader can read
+    says: >-
+      Each figure has alternative text and colours that stay apart for readers with a
+      colour-vision deficiency and in grey; the palettes shipped say how many of theirs do.
+    status: works
+    commands: [palettes]
+    gates: [G3]
+    skills: [figure-design]
+    tests: [tests/test_colour.py, tests/test_palettes.py, tests/test_figure_svg.py]
+
+  - id: prose
+    stage: write
+    title: Prose that reads as written
+    says: >-
+      Flags text a model left behind, unfilled placeholders, a template's instructions,
+      stock AI phrasing and appeals to authority with no citation.
+    status: works
+    gates: [G6]
+    skills: [manuscript-writing]
+    tests: [tests/test_writing.py]
+
+  - id: language
+    stage: write
+    title: One English, one notation
+    says: >-
+      Abbreviations defined once before use, one spelling, the terms the author chose, P
+      values and intervals written one way, and no names from the code in a sentence.
+    status: works
+    gates: [G14]
+    skills: [manuscript-writing]
+    tests:
+      - tests/test_language.py
+      - tests/test_spelling.py
+      - tests/test_vocabulary.py
+      - tests/test_notation.py
+      - tests/test_code_names.py
+
+  - id: methods-code
+    stage: write
+    title: Methods that match the code
+    says: >-
+      The Methods are read against the analysis code step by step, and have to be read
+      again when the code changes.
+    status: works
+    commands: [methods]
+    gates: [G9]
+    skills: [methods-writer]
+    tests: [tests/test_methods.py, tests/test_steps.py]
+
+  # ------------------------------------------------------------------------------- cite
+  - id: citations
+    stage: cite
+    title: Citations that resolve
+    says: >-
+      Each citation leads to a reference with well-formed identifiers and the fields it
+      needs, and no work is cited under two keys.
+    status: works
+    gates: [G7]
+    tests:
+      - tests/test_corruption.py::test_a_malformed_identifier_fails_from_internal_review
+      - tests/test_zotero.py
+
+  - id: zotero
+    stage: cite
+    title: From the Zotero library
+    says: >-
+      Writes the bibliography from Zotero, and keeps a copy of each cited work's PDF or
+      page in the project.
+    status: works
+    commands: [sync-bib, sync-sources]
+    tests:
+      - tests/test_zotero.py::test_lookup_asks_about_the_cited_keys_only
+      - tests/test_zotero.py::test_sync_bib_writes_zoteros_export_of_the_cited_keys
+      - tests/test_latex_cite.py::test_sync_bib_refuses_a_manuscript_its_reader_refuses
+      - tests/test_sync_sources.py
+      - tests/test_fetch_sources.py
+
+  - id: lookups
+    stage: cite
+    title: Registries asked
+    says: >-
+      Looks up each cited DOI and PMID once, searches PubMed, Crossref and OpenAlex by title
+      for a reference with neither, and flags a retraction, a later version or authors who
+      do not match.
+    status: works
+    commands: [lookup]
+    gates: [G7]
+    tests: [tests/test_lookup.py]
+
+  - id: quoted-numbers
+    stage: cite
+    title: Numbers from other papers
+    says: >-
+      A number taken from a paper is kept with its sentence, quoted word for word, and the
+      quote has to be in the stored copy of that paper.
+    status: works
+    gates: [G7]
+    skills: [literature-verify]
+    tests: [tests/test_literature.py, tests/test_placement.py]
+
+  - id: passages
+    stage: cite
+    title: Passages that support
+    says: >-
+      Records the passage of a cited work that supports a sentence, and warns where the
+      sentence claims more than the passage.
+    status: works
+    commands: [passages]
+    gates: [G7]
+    skills: [literature-verify]
+    tests: [tests/test_passages.py]
+
+  - id: search
+    stage: cite
+    title: Works a claim could cite
+    says: >-
+      Proposes works a claim could cite, from PubMed, Europe PMC and OpenAlex; the author
+      chooses, and nothing is written.
+    status: works
+    commands: [search]
+    tests: [tests/test_search.py]
+
+  - id: currency
+    stage: cite
+    title: Still the work to cite
+    says: >-
+      For each claim in scope, searches for newer evidence, has it read twice, and lets
+      fixed rules or a person decide whether the citation stays.
+    status: works
+    commands: [references]
+    gates: [G7]
+    skills: [literature-currency]
+    tests: [tests/test_currency.py, tests/test_currency_searches.py, tests/test_currency_comments.py]
+
+  - id: novelty
+    stage: cite
+    title: Claims to be first
+    says: >-
+      A claim that this is the first study, or that no study has looked, needs a recorded
+      search for the earlier study.
+    status: works
+    gates: [G7]
+    skills: [literature-currency]
+    tests: [tests/test_novelty.py]
+
+  - id: rrids
+    stage: cite
+    title: Research resources
+    says: >-
+      Looks up each research resource identifier (RRID), and names a cell line that
+      Cellosaurus marks as problematic.
+    status: works
+    commands: [lookup]
+    gates: [G7]
+    tests: [tests/test_rrid_lookup.py]
+
+  - id: recycling
+    stage: cite
+    title: Text from earlier papers
+    says: >-
+      Names a passage repeated from an earlier paper of the same authors, with the part of
+      the paper it falls in.
+    status: works
+    gates: [G7]
+    skills: [manuscript-writing]
+    tests: [tests/test_recycling.py]
+
+  - id: related-outputs
+    stage: cite
+    title: Earlier outputs of the data
+    says: >-
+      Compares the paper with an earlier abstract, preprint or article on the same data,
+      value by value, and asks for the overlap to be disclosed.
+    status: works
+    commands: [related]
+    gates: [G8]
+    skills: [related-outputs]
+    tests: [tests/test_related.py]
+
+  - id: currency-unattended
+    stage: cite
+    title: Currency run unattended
+    says: >-
+      Runs the searches, the two readings and the rules for up to 30 claims without an
+      author, as a weekly job.
+    status: planned
+    docs: DESIGN.md#a-cited-work-is-held-to-newer-evidence-by-fixed-rules
+    limits: PR 6 of the reference-currency design; not started.
+
+  # ------------------------------------------------------------------------------ check
+  - id: check
+    stage: check
+    title: Run every check
+    says: >-
+      Runs every gate, offline and with no model, and says what fails, what warns, and what
+      it checked.
+    status: works
+    commands: [check]
+    tests: [tests/test_assurance.py, tests/test_corruption.py, tests/test_robustness.py]
+    docs: docs/gates.md
+
+  - id: journal-rules
+    stage: check
+    title: The journal's rules
+    says: >-
+      Keeps the target journal's instructions for authors, each rule quoted from its page,
+      and holds the word counts, sections and figures to them.
+    status: works
+    commands: [journal, style]
+    gates: [G4]
+    skills: [journal-profile]
+    tests: [tests/test_compliance.py, tests/test_journal_boxes.py, tests/test_style.py]
+    docs: docs/journal-profiles.md
+
+  - id: declarations
+    stage: check
+    title: Declarations
+    says: >-
+      The funding, competing interests, ethics, contributions and AI-use statements say what
+      the authors' records say.
+    status: works
+    gates: [G4]
+    tests: [tests/test_disclosures.py, tests/test_ai_use.py]
+
+  - id: reporting-checklist
+    stage: check
+    title: Reporting checklist
+    says: >-
+      Fetches the guideline's own checklist (STROBE, CONSORT, PRISMA and others), and holds
+      each item to the sentence that answers it.
+    status: works
+    commands: [checklist, fetch, transcribe]
+    gates: [G5]
+    skills: [reporting-checklist]
+    tests: [tests/test_transcribe.py, tests/test_compliance.py]
+    docs: docs/guidelines.md
+
+  - id: claims-kept
+    stage: check
+    title: Claims kept to the results
+    says: >-
+      The abstract and the conclusions claim no more than the Results they sum up, and an
+      estimate whose interval includes no effect is not stated as one.
+    status: works
+    gates: [G8]
+    tests: [tests/test_claims.py, tests/test_intervals.py]
+
+  - id: arithmetic
+    stage: check
+    title: Arithmetic that holds
+    says: >-
+      Sums, ratios, flows of participants and P values agree with the numbers they come
+      from, and one quantity is not reported under two names.
+    status: works
+    gates: [G8]
+    tests: [tests/test_relations.py, tests/test_stats.py]
+
+  - id: reworded
+    stage: check
+    title: Edits that keep the numbers
+    says: >-
+      Checks that an edit changed only the wording, not a number or a citation, and warns
+      where it made a sentence claim more.
+    status: works
+    commands: [reworded]
+    tests: [tests/test_reworded.py]
+
+  - id: impact
+    stage: check
+    title: What a change reaches
+    says: >-
+      Lists the results, sentences, figures, Methods paragraphs and readings that depend on
+      a file that changed.
+    status: works
+    commands: [impact]
+    tests:
+      - tests/test_corruption.py::test_impact_lists_what_an_analysis_script_makes_stale
+      - tests/test_corruption.py::test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings
+      - tests/test_checking.py::test_impact_tells_a_main_text_methods_file_from_the_supplements
+
+  # ----------------------------------------------------------------------------- review
+  - id: review-panel
+    stage: review
+    title: Review panel
+    says: >-
+      Has the manuscript read by people or by models of several providers, keeps each
+      reading sealed, and asks for each major finding to be answered.
+    status: works
+    commands: [review]
+    gates: [G11]
+    skills: [review-panel]
+    tests: [tests/test_review.py, tests/test_review_run.py, tests/test_review_plan.py]
+    docs: docs/review-panel.md
+
+  - id: figure-review
+    stage: review
+    title: Figures looked at
+    says: >-
+      Each figure has a current review by someone who looked at it, recorded beside the
+      figure.
+    status: works
+    gates: [G10]
+    skills: [figure-review]
+    tests: [tests/test_figures.py, tests/test_record.py]
+
+  - id: word-roundtrip
+    stage: review
+    title: Co-authors in Word
+    says: >-
+      Brings a co-author's Word edits back into the source without losing a number, and
+      files each Word comment as a point to answer.
+    status: works
+    commands: [import]
+    gates: [G11]
+    skills: [word-roundtrip]
+    tests: [tests/test_roundtrip.py, tests/test_filed_comments.py]
+    docs: docs/co-authors.md
+
+  - id: co-author-checks
+    stage: review
+    title: Questions for co-authors
+    says: >-
+      Sends each co-author one page of things only a person can confirm, such as whether a
+      sentence says what its source says, and records the answers.
+    status: works
+    commands: [checker]
+    skills: [co-author-checking]
+    tests: [tests/test_checking.py]
+    docs: docs/co-authors.md
+
+  - id: approvals
+    stage: review
+    title: Approvals and sign-offs
+    says: >-
+      Records an author's approval and a named person's sign-off, with who gave it and when;
+      an agent can give neither.
+    status: works
+    commands: [approve, sign]
+    tests:
+      - tests/test_corruption.py::test_an_approval_is_bound_to_the_manuscript_the_author_read
+      - tests/test_corruption.py::test_a_warning_the_statistician_signed_is_said_with_their_name
+      - tests/test_hooks.py
+    docs: docs/teams.md
+
+  - id: screen
+    stage: review
+    title: Text hidden in a file
+    says: >-
+      Before an agent reads a file from someone else, quotes the text it hides from its
+      reader and the words in it that tell a model what to do.
+    status: works
+    commands: [screen]
+    tests: [tests/test_screen.py, tests/test_hidden.py]
+
+  # ----------------------------------------------------------------------------- submit
+  - id: submission-pack
+    stage: submit
+    title: Submission pack
+    says: >-
+      Puts together what the journal asks for, with a list of its rules no gate checks,
+      only once the paper passes the check at submission standards.
+    status: works
+    commands: [submit]
+    hooks: [guard-submission]
+    skills: [submission-pack]
+    tests: [tests/test_submission.py, tests/test_latex_submit.py]
+
+  - id: reviewer-response
+    stage: submit
+    title: Answer the reviewers
+    says: >-
+      Writes the point-by-point response to the journal's reviewers, and checks that each
+      revision it claims was made.
+    status: works
+    commands: [respond]
+    gates: [G13]
+    skills: [reviewer-response]
+    tests: [tests/test_revision.py, tests/test_seed_revision.py]
+
+  - id: marked-up
+    stage: submit
+    title: Marked-up copy
+    says: >-
+      Writes the revision with every change since the version the journal received shown
+      as a tracked change.
+    status: works
+    commands: [build]
+    tests: [tests/test_marked_up.py]
+
+  - id: package
+    stage: submit
+    title: Reproducibility package
+    says: >-
+      Writes the scripts, the results and how to run them again, for Zenodo, OSF or a
+      journal's repository, and never the data a custodian keeps.
+    status: works
+    commands: [package]
+    tests: [tests/test_package.py, tests/test_ro_crate.py]
+    docs: docs/deposit.md
+
+  - id: deposit
+    stage: submit
+    title: Deposit
+    says: >-
+      Prepares a bundle for Zenodo, OSF, arXiv, medRxiv or a website; a person publishes it.
+    status: works
+    commands: [deposit]
+    tests: [tests/test_deposit.py, tests/test_deposit_remote.py]
+    docs: docs/deposit.md
+
+  - id: proof
+    stage: submit
+    title: The publisher's proof
+    says: >-
+      Compares the publisher's proof with the document sent, table cell by table cell, and
+      lists each number, name or reference that changed.
+    status: works
+    commands: [proof]
+    tests: [tests/test_proof.py]
+
+  - id: communicate
+    stage: submit
+    title: Posts and summaries
+    says: >-
+      Writes posts from the paper's own sentences, leaves a press release and lay summaries
+      as slots for a person or the skill, and checks that none makes a number or claim the
+      paper does not.
+    status: works
+    commands: [communicate]
+    skills: [research-communication]
+    tests: [tests/test_communicate.py, tests/test_communicate_publish.py]
+    docs: docs/communicate.md
+
+  # ----------------------------------------------------------------------------- others
+  - id: audit
+    stage: others
+    title: Audit a paper
+    says: >-
+      Checks a paper in Word, Markdown, LaTeX or PDF: its numbers against each other and the
+      outputs given, its Abstract against its Results, its words and its references.
+    status: works
+    commands: [audit]
+    skills: [paper-audit]
+    tests: [tests/test_audit.py, tests/test_audit_sections.py, tests/test_audit_pdf.py]
+    docs: docs/audit.md
+
+  - id: audit-page
+    stage: others
+    title: Audit in a web browser
+    says: >-
+      Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
+      uploaded anywhere.
+    status: works
+    tests: [tests/test_web.py]
+    docs: docs/audit-page.md
+
+  - id: compare
+    stage: others
+    title: Compare two versions
+    says: >-
+      Sets a revised manuscript beside the version before it: the sections, tables,
+      numbers, citations and claims that changed.
+    status: works
+    commands: [compare]
+    tests: [tests/test_compare.py]
+    docs: docs/refereeing.md
+
+  - id: referee-report
+    stage: others
+    title: Start a referee's report
+    says: >-
+      Writes what the audit found, with each place, as the start of a report, as Word
+      comments, as tracked changes or as a PDF.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_commented.py, tests/test_audit_tracked.py, tests/test_report_pdf.py]
+    docs: docs/refereeing.md

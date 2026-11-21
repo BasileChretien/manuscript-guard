@@ -8,10 +8,11 @@ yourself. If you have kept an analysis in code before, the README's
 
 ## What you need
 
-To check a paper you have already written, nothing has to be installed. The
-[audit page](audit-page.md) runs `manuscript-guard audit` on a .docx in a web browser, and
-the paper is read there, not uploaded. At a terminal, [uv](https://docs.astral.sh/uv/) runs
-the same audit in one line, and fetches a Python if there is none:
+To check a paper you have already written, you need not install manuscript-guard. The
+[audit page](audit-page.md) runs `manuscript-guard audit` on a .docx in a web browser, with
+nothing installed, and the paper is read there, not uploaded. At a terminal,
+[uv](https://docs.astral.sh/uv/), once installed, runs the same audit in one line, and fetches
+a Python if there is none:
 
 ```bash
 uvx manuscript-guard audit paper.docx

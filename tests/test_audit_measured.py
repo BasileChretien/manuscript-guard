@@ -4,17 +4,21 @@
 The author's decisions of 2026-11-20: G14's names from the code and G6's bare placeholders
 are notes in the two reports that read papers written without the tool, a journal template's
 instruction left in the text still fails there, and a PDF's reference list whose entries
-could not be told apart is a warning. Every paper here is made up.
+could not be told apart is a warning. By the same rule, once the two judges had read the
+findings no verdict covered (2026-11-21): a number of the Abstract found nowhere, and a
+sentence that may now say the opposite, are notes. Every paper here is made up.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 import yaml
 
+from manuscript_guard import reworded
 from manuscript_guard.auditing import measured as table
 from manuscript_guard.auditing.references import UNTOLD, Census
 from manuscript_guard.auditing.report import _printed_items
@@ -116,6 +120,38 @@ def test_a_latex_paper_is_audited_the_same_way(tmp_path: Path, capsys) -> None:
     assert names["severity"] == "info" and said == {BARE: "info", TEMPLATE: "fail"}
 
 
+#: An Abstract with a number the paper reports nowhere, 57, and one it reports, 212.
+ABSTRACT = (
+    "# Abstract\n\n"
+    "We followed 212 pupils for a year, and 57 left the study.\n\n"
+    "# Methods\n\n"
+    "The pupils were followed for a year.\n\n"
+    "# Results\n\n"
+    "Of the 212 pupils, 41 left the study.\n"
+)
+
+
+def test_a_number_of_the_abstract_found_nowhere_is_a_note(tmp_path: Path, capsys) -> None:
+    report = audited(_paper(tmp_path, ABSTRACT), capsys)
+    (found,) = _of(report, "abstract-not-found")
+    assert found["message"].startswith("57 in the Abstract") and found["severity"] == "info"
+
+
+def test_a_journal_s_abstract_missing_still_warns_in_an_audit(tmp_path: Path, capsys) -> None:
+    """G4's code of the same name, a journal's limited Abstract under no heading, is another
+    finding than a number found nowhere, and keeps its warning."""
+    profile = tmp_path / "journal.yaml"
+    profile.write_text("schema: manuscript-guard/journal/1\nname: The Journal of Examples\n"
+                       "source_url: https://example.org/authors\nretrieved_on: "
+                       f"{date.today().isoformat()}\nlimits:\n  abstract_words: 250\n",
+                       encoding="utf-8")  # fmt: skip
+    paper = _paper(tmp_path, ABSTRACT.replace("# Abstract\n\n", ""))
+    main(["audit", str(paper), "--journal", str(profile), "--json"])
+    report = json.loads(capsys.readouterr().out)
+    said = [(f["gate"], f["severity"]) for f in _of(report, "abstract-not-found")]
+    assert said == [("G4", "warn")]
+
+
 def test_the_text_report_marks_only_the_template_as_failing(tmp_path: Path, capsys) -> None:
     """The report's line for each place says "FAIL:" of a failure only (`auditing.summary`)."""
     assert main(["audit", str(_paper(tmp_path))]) == 0
@@ -138,6 +174,39 @@ def test_compare_gives_v2_the_audit_s_severities(tmp_path: Path, capsys) -> None
     said = sorted((_rule(f), f["severity"]) for f in _of(report, "model-artefact"))
     assert names["severity"] == "info"
     assert said == sorted([(BARE, "info"), (TEMPLATE, "fail"), (TEMPLATE, "fail")])
+
+
+#: Two sentences of v1, one made to say the opposite in v2 and one made to claim more.
+CLAIMED = ("# Discussion\n\nThe two rates are directly comparable across the cohorts.\n\n"
+           "The exposure may be associated with a higher rate of injury.\n")  # fmt: skip
+CLAIMED_AGAIN = ("# Discussion\n\nThe two rates are not directly comparable across the "
+                 "cohorts.\n\nThe exposure increased the rate of injury.\n")  # fmt: skip
+
+
+def test_compare_says_a_claim_reversed_as_a_note(tmp_path: Path, capsys) -> None:
+    """A sentence that may now say the opposite is a note, and one that claims more is still
+    a warning."""
+    old, new = _paper(tmp_path, CLAIMED, "v1.md"), _paper(tmp_path, CLAIMED_AGAIN, "v2.md")
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    said = sorted((f["code"], f["severity"]) for f in report["findings"]
+                  if f["code"].startswith("claim-"))  # fmt: skip
+    assert said == [("claim-negation", "info"), ("claim-stronger", "warn")]
+
+
+def test_compare_audits_v2_s_abstract_numbers_as_notes(tmp_path: Path, capsys) -> None:
+    """The audit of v2 that `compare` gives says a number found nowhere as the audit does."""
+    old = _paper(tmp_path, ABSTRACT.replace(", and 57 left the study", ""), "v1.md")
+    new = _paper(tmp_path, ABSTRACT, "v2.md")
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert [f["severity"] for f in _of(report, "abstract-not-found")] == ["info"]
+
+
+def test_reworded_keeps_its_warning_on_a_claim_reversed() -> None:
+    """`reworded` reads an edit of a project's own text, and never reads the table."""
+    said = {(f.code, f.severity) for f in reworded.compare(CLAIMED, CLAIMED_AGAIN).findings}
+    assert ("claim-negation", WARN) in said
 
 
 # ---------------------------------------------------------------------------- check
@@ -199,6 +268,18 @@ def test_only_a_bare_placeholder_is_lowered(subject: str | None, severity: str) 
 def test_a_code_the_table_does_not_name_is_left_alone() -> None:
     found = Finding("G14", "spelling-mixed", "said", WARN)
     assert table.measured(found) is found
+
+
+@pytest.mark.parametrize(("gate", "code", "severity"), [
+    ("audit", "abstract-not-found", INFO), ("G4", "abstract-not-found", WARN),
+    ("compare", "claim-negation", INFO), ("REWORDED", "claim-negation", WARN),
+    ("compare", "claim-stronger", WARN),
+])  # fmt: skip
+def test_an_entry_holds_for_the_gate_it_was_judged_under(gate: str, code: str,
+                                                         severity: str) -> None:
+    """G4's `abstract-not-found`, a journal's Abstract missing, is another finding than the
+    audit's number found nowhere, and `reworded`'s reversed claim than `compare`'s."""
+    assert table.measured(Finding(gate, code, "said", WARN)).severity == severity
 
 
 def test_each_entry_keeps_to_the_rule() -> None:

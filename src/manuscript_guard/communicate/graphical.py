@@ -86,7 +86,7 @@ def report_of(context: Context) -> Report:
         found += _dimensions(path, rules)
         from manuscript_guard.gates.figure_colours import colour_findings
 
-        coloured = colour_findings(path, "graphical abstract", greyscale=grey)
+        coloured = colour_findings(path, "graphical abstract", greyscale=grey, root=project.root)
         found += [replace(one, gate=GATE) for one in coloured or ()]
         if path.suffix.lower() == ".svg":
             found += svg_text(context, path, rules)

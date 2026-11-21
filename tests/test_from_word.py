@@ -276,6 +276,62 @@ def test_a_title_s_footnote_mark_is_left_out_of_paper_yaml_and_kept_in_the_comme
     assert "taken for the mark of a note" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(("raised", "title", "marks"), [
+    ("2", "per m", "2"), ("*", "per m", "*"), ("†", "per m", "†"), ("‡", "per m", "‡"),
+    ("§", "per m", "§"), ("¶", "per m", "¶"), ("‖", "per m", "‖"), ("#", "per m", "#"),
+    ("+", "per m+", ""), ("a", "per ma", ""),
+])  # fmt: skip
+def test_digits_or_a_note_s_sign_at_a_title_s_end_are_a_mark(
+        raised: str, title: str, marks: str) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A power at the end of a Word title is taken for a
+    note's mark"): a superscript of digits, `*`, `†`, `‡`, `§`, `¶`, `‖` or `#` at the title's
+    end is left out of it, a power among them; one of any other sign stays."""
+    unmarked, said = _without_marks(_title("per", " ", "m", f"^{raised}^"))
+    assert (_plain_title(unmarked), said) == (title, marks)
+
+
+@needs_pandoc
+def test_a_power_at_a_word_title_s_end_is_left_out(
+        tmp_path: Path, capsys) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A power at the end of a Word title is taken for a
+    note's mark"): "per m^2^" is "per m" in paper.yaml, `init` names the 2 it left out, and the
+    Title paragraph is in the comment as it was."""
+    powered = PAPER.replace('title: "Outcomes after a fall"', 'title: "Falls per m^2^"')
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", powered))]) == 0
+    said = capsys.readouterr().out
+    assert yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8"))["title"] == (
+        "Falls per m")
+    assert "the superscript '2' at its end was taken for the mark of a note" in said
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "Title: Falls per m^2^" in text[text.index("<!--") : text.index("-->")]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("typed", "title", "kept"), [
+    ("Outcomes after a fall**^1^**", "Outcomes after a fall1", "Outcomes after a fall**^1^**"),
+    ("Outcomes after a fall*^1^*", "Outcomes after a fall1", "Outcomes after a fall*^1^*"),
+    ("Outcomes after a fall^1^[]{#bm}", "Outcomes after a fall1",
+     "Outcomes after a fall^1^[]{#bm .anchor}"),
+    ("Outcomes after a fall^1^", "Outcomes after a fall", "Outcomes after a fall^1^"),
+], ids=["in bold", "in italic", "before a bookmark", "alone"])  # fmt: skip
+def test_a_word_title_s_mark_inside_a_wrapper_stays_in_the_title(
+        tmp_path: Path, capsys, typed: str, title: str, kept: str) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A Word title's mark inside a wrapper stays in the
+    title"): a mark pandoc reads inside bold, or followed by an empty bookmark, is printed as
+    part of the title, "a fall1", and taken for no mark; the Title paragraph is in the comment.
+    The mark alone is left out."""
+    marked = PAPER.replace('title: "Outcomes after a fall"', f'title: "{typed}"')
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", marked))]) == 0
+    said = capsys.readouterr().out
+    assert yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8"))["title"] == title
+    assert f"title: {title!r}, from its Title paragraph" in said
+    assert ("taken for the mark of a note" in said) is (title == "Outcomes after a fall")
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"Title: {kept}\n" in text[text.index("<!--") : text.index("-->")]
+
+
 @needs_pandoc
 def test_a_title_init_does_not_take_is_refused_with_how_to_give_one(tmp_path: Path, capsys) -> None:
     backslash = chr(92)
@@ -298,6 +354,39 @@ def test_a_long_run_before_the_first_heading_stays_in_the_text(tmp_path: Path, c
     assert "so they were left in the text" in capsys.readouterr().out
     text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
     assert "<!--" not in text and "were 17." in text
+
+
+@needs_pandoc
+@pytest.mark.parametrize("over", [0, 1], ids=["600 words", "601 words"])
+def test_init_sets_aside_a_title_page_by_a_count_of_words(
+        tmp_path: Path, capsys, over: int) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "What `init --from` sets aside is chosen by a count
+    of words"): a short title page and an introduction with no heading over it, 600 words in
+    all, are set aside together, and no gate reads the introduction's 17; at 601 words they
+    stay in the text, where the 12 of the affiliation is read. `init` says which, and how many
+    words."""
+    page = "Falls in older patients\n\nAnne Example, Ward 12, Somewhere University\n\n"
+    tail = "were 17 in the ward."
+    words = TITLE_PAGE_WORDS + over
+    filler = " ".join(["Falls"] * (words - len(page.split()) - len(tail.split())))
+    paper = word(tmp_path / "word", f"{page}{filler} {tail}\n\n# Methods\n\nWe counted.\n")
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    said = capsys.readouterr().out
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    code, found = findings(capsys, str(root), "--stage", "drafting")
+    read = sorted(f["message"] for f in found if f["code"] == "unclassified-number")
+    if over:
+        assert (f"title page: the {words} words before the first heading are more than a title "
+                f"page holds ({TITLE_PAGE_WORDS}), so they were left in the text") in said
+        assert "<!--" not in text
+        assert read == ["'12' is not bound to any source", "'17' is not bound to any source"]
+    else:
+        assert (f"title page: the {words} words before the first heading were set aside in a "
+                "comment at the top of main.md") in said
+        comment = text[text.index("<!--") : text.index("-->")]
+        assert "Ward 12" in comment and "were 17 in the ward." in comment
+        assert read == []
 
 
 @needs_pandoc
@@ -555,6 +644,128 @@ def test_a_cell_joins_its_breaks_but_not_a_note() -> None:
     assert _one_line([{"t": "OrderedList", "c": []}]) == "a numbered list"
 
 
+def _pipe_cells(line: str) -> list[str]:
+    """The cells of a row of a pipe table, as plain text."""
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _audited(capsys, path: Path) -> list[tuple[str, int | None, str]]:
+    """What `audit --json` finds in `path`: each finding's code, line and message."""
+    capsys.readouterr()
+    main(["audit", str(path), "--json"])
+    return [(f["code"], f["line"], f["message"])
+            for f in json.loads(capsys.readouterr().out)["findings"]]  # fmt: skip
+
+
+#: One table whose two categories stand one paragraph to a line in a single row, and the
+#: same table with a row to each.
+STACKED = """\
+# Results
+
++--------+-----+-----------------+
+| Sex    | n   | Cases (n = 120) |
++========+=====+=================+
+| Male   | 36  | 36 (40.0%)      |
+|        |     |                 |
+| Female | 24  | 24 (20.0%)      |
++--------+-----+-----------------+
+
++--------+-----+-----------------+
+| Sex    | n   | Cases (n = 120) |
++========+=====+=================+
+| Male   | 36  | 36 (40.0%)      |
++--------+-----+-----------------+
+| Female | 24  | 24 (20.0%)      |
++--------+-----+-----------------+
+"""
+
+
+@needs_pandoc
+def test_a_word_table_s_rows_stacked_in_one_cell_become_one_row(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Word table's rows stacked in one cell become one
+    row"): "Male" over "Female" and "36" over "24" in one row are one row of the pipe table,
+    "Male Female" and "36 24", and the audit pairs no count with its share there, where the
+    same table with a row to each has its 36 (40.0%) of 120 found off."""
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", STACKED))]) == 0
+    md = root / "manuscript" / "main.md"
+    lines = md.read_text(encoding="utf-8").split("\n")
+    rows = [(at, _pipe_cells(line)) for at, line in enumerate(lines, 1)
+            if line.startswith("| ") and not line.startswith("| Sex")]  # fmt: skip
+    assert [cells for _at, cells in rows] == [
+        ["Male Female", "36 24", "36 (40.0%) 24 (20.0%)"],
+        ["Male", "36", "36 (40.0%)"], ["Female", "24", "24 (20.0%)"]]  # fmt: skip
+    found = [one for one in _audited(capsys, md) if one[0] == "does-not-fit"]
+    assert found == [("does-not-fit", rows[1][0],
+                      "n (%) 36 (40.0%): 36 of 120 is 30.00%, not 40.0; 40.0% is 36 of 90")]
+
+
+#: A header whose "Cases (n = 120)" spans two columns, both of whose cells are off from 120.
+MERGED_HEADER = """\
+# Results
+
++----------------+-----------------------------+
+| Characteristic | Cases (n = 120)             |
++================+==============+==============+
+| Male           | 36 (40.0%)   | 60 (40.0%)   |
++----------------+--------------+--------------+
+"""
+
+
+@needs_pandoc
+def test_a_merged_header_s_n_is_read_for_its_first_column_alone(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged cell's text stands in its first column
+    only"): "Cases (n = 120)" over two columns heads the first of them in the pipe table, the
+    second's header empty, and the audit holds to 120 the first column's 36 (40.0%) alone: the
+    second's 60 (40.0%), as far off, is not read."""
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", MERGED_HEADER))]) == 0
+    md = root / "manuscript" / "main.md"
+    lines = md.read_text(encoding="utf-8").split("\n")
+    header = next(line for line in lines if line.startswith("| Characteristic"))
+    assert _pipe_cells(header) == ["Characteristic", "Cases (n = 120)", ""]
+    row = next(at for at, line in enumerate(lines, 1) if line.startswith("| Male"))
+    assert _pipe_cells(lines[row - 1]) == ["Male", "36 (40.0%)", "60 (40.0%)"]
+    assert [one for one in _audited(capsys, md) if one[0] == "does-not-fit"] == [
+        ("does-not-fit", row, "n (%) 36 (40.0%): 36 of 120 is 30.00%, not 40.0; 40.0% is 36 of 90")]
+
+
+#: A table with a numbered list in a cell, which `init --from` leaves as a grid table.
+LISTED = """\
+# Results
+
++---------+-------------+
+| Step    | What        |
++=========+=============+
+| One     | 1. first    |
+|         | 2. second   |
++---------+-------------+
+| Two     | 33          |
++---------+-------------+
+"""
+
+
+@needs_pandoc
+def test_a_numbered_list_in_a_grid_table_keeps_its_numbers(
+        tmp_path: Path, capsys) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A table `init --from` leaves as a grid table keeps
+    pandoc's numbering"): the list in a cell is written with its numbers, "1.", "2.", and
+    `check` reports each as a number typed in a table, as it reports the 33 of the next row."""
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", LISTED))]) == 0
+    assert "a numbered list in a cell; written as a grid table" in capsys.readouterr().out
+    lines = (root / "manuscript" / "main.md").read_text(encoding="utf-8").split("\n")
+    at = {word_: next(n for n, line in enumerate(lines, 1) if word_ in line)
+          for word_ in ("first", "second", "33")}  # fmt: skip
+    assert [lines[at[name] - 1].split("|")[2].split() for name in ("first", "second")] == [
+        ["1.", "first"], ["2.", "second"]]
+    code, found = findings(capsys, str(root), "--stage", "drafting")
+    assert sorted((f["line"], f["message"]) for f in found if f["code"] == "hand-authored-table"
+                  ) == [(at["first"], "'1' in a hand-written table row"),
+                        (at["second"], "'2' in a hand-written table row"),
+                        (at["33"], "'33' in a hand-written table row")]  # fmt: skip
+
+
 @pytest.mark.parametrize(
     "said",
     ["Anne Example, Bob Sample", "Anne Example and Bob Sample", "Anne Example1", "A. One; B. Two"],
@@ -650,6 +861,58 @@ def test_an_abstract_styled_paragraph_under_a_heading_stays_where_it_is(tmp_path
     converted = from_word.convert(paper)
     assert converted.text.count("# Abstract") == 1
     assert converted.text.index("An aside 7.") > converted.text.index("# Introduction")
+
+
+@needs_pandoc
+def test_an_abstract_style_stays_set_aside_where_readings_differ(
+        tmp_path: Path, monkeypatch) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "`init --from` finds an abstract on the title page
+    by its style alone"): where the reading with styles is not the ordinary one block for
+    block, the paragraphs in the Abstract style stay in the comment with the title page, and
+    what `init` prints says nothing of them. Where the two agree, they are the Abstract."""
+    paper = word(tmp_path / "word", ABSTRACT_LATER)
+    agreed = from_word.convert(paper)
+    assert agreed.abstract and "# Abstract\n\nWe followed 120 patients." in (
+        agreed.text.replace("\r\n", "\n"))
+    read = from_word._styled_run
+    monkeypatch.setattr(from_word, "_styled_run",
+                        lambda path: [*read(path), ({"t": "Para", "c": []}, None)])
+    differed = from_word.convert(paper)
+    assert not differed.abstract and "# Abstract" not in differed.text
+    comment = differed.text[: differed.text.index("-->")]
+    assert "We followed 120 patients." in comment and "Of them, 41 fell again." in comment
+    assert "abstract" not in from_word.what_was_done(paper, differed).lower()
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("abstract", "made"), [
+    ('::: {custom-style="Summary"}\nWe followed 120 patients.\n:::', False),
+    ("**Abstract**\n\nWe followed 120 patients.", True),
+    ("Abstract\n\nWe followed 120 patients.", True),
+    ("Abstract: We followed 120 patients.", True),
+], ids=["in another style", "under a line in bold", "under a plain line", "on a run-in label"])
+def test_an_abstract_in_another_style_stays_in_the_comment(
+        tmp_path: Path, capsys, abstract: str, made: bool) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "`init --from` finds an abstract on the title page
+    by its style alone"): an abstract in a style other than Abstract stays in the comment, and
+    no gate reads its 120; under a line "Abstract" alone, in bold or not, or opening on a
+    run-in "Abstract:", in a paper with a heading style, that line is made its heading, and
+    `check` reads the 120."""
+    markdown = (f"Falls in older patients\n\nDepartment of Things, Somewhere University\n\n"
+                f"{abstract}\n\n# Introduction\n\nFalls are common.\n")
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", markdown))]) == 0
+    said = capsys.readouterr().out
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    comment = text[text.index("<!--") : text.index("-->")]
+    assert "Department of Things" in comment
+    assert ("We followed 120 patients." in comment) is not made
+    assert ("# Abstract\n\nWe followed 120 patients.\n\n# Introduction" in text) is made
+    assert ("were made headings, as the audit reads them: Abstract" in said) is made
+    assert "abstract: from its Abstract paragraphs" not in said
+    code, found = findings(capsys, str(root), "--stage", "drafting")
+    assert [f["message"] for f in found if f["code"] == "unclassified-number"] == (
+        ["'120' is not bound to any source"] if made else [])
 
 
 #: A Word paper with no heading style, its section titles typed in bold, one of them also

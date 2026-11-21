@@ -620,6 +620,24 @@ def test_colours_that_one_reader_cannot_tell_apart_are_warned(ready: Path) -> No
     assert "figure-colours-confused" in codes(ready, "graphical-abstract", WARN)
 
 
+def test_the_graphical_abstracts_confused_colours_are_keyed_by_its_path_from_the_root(
+    ready: Path,
+) -> None:
+    """The colour check on the graphical abstract keys its finding as G3 keys a figure's: the
+    file from the project's root and the way of seeing (round 1 of #720)."""
+    concept = _drawn(ready)
+    added = ('<rect x="1" y="1" width="5" height="5" fill="#d62728" />'
+             '<rect x="9" y="1" width="5" height="5" fill="#2ca02c" /></svg>')  # fmt: skip
+    concept.write_text(concept.read_text(encoding="utf-8").replace("</svg>", added),
+                       encoding="utf-8")  # fmt: skip
+    project, _ = load_project(ready)
+    said = [one.key for one in checking.check(project, only="graphical-abstract").findings
+            if one.code == "figure-colours-confused"]  # fmt: skip
+    shown = "communication/graphical-abstract/concept-1.svg@"
+    assert f"COMM|figure-colours-confused|{shown}deuteranopia|-" in said, said
+    assert all(key.split("|")[2].startswith(shown) for key in said), said
+
+
 def test_the_json_lists_failures_apart_from_warnings(
     ready: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -200,9 +200,10 @@ _WORD_THEN_NUMBER = re.compile(
 )
 _HEXADECIMAL = re.compile(r"0x[0-9a-f]+")
 #: A piece raised or lowered as pandoc writes one, `~…~` or `^…^`: no blank in it but one
-#: escaped, neither mark escaped, and not a strikeout's two tildes. A Word table's note
-#: writes a symbol's index in one, "u~0school~", which is no prose; and the LaTeX reader
-#: writes a subscript count so, `CO~2~` (`text/latex/words.py`).
+#: escaped, neither mark escaped, and not a strikeout's two tildes. A footnote's anchor,
+#: `[^1]`, is blanked before this reads the text, so its caret opens nothing (round 1 of
+#: #719). A Word table's note writes a symbol's index in one, "u~0school~", which is no
+#: prose; and the LaTeX reader writes a subscript count so, `CO~2~` (`text/latex/words.py`).
 _RAISED_OR_LOWERED = re.compile(
     r"(?<![~\\])~(?!~)(?:\\.|[^~\s\\])+~(?!~)"
     r"|(?<![\^\\])\^(?!\^)(?:\\.|[^\^\s\\])+\^(?!\^)"

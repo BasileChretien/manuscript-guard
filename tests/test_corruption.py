@@ -32499,6 +32499,16 @@ def test_a_number_typed_against_its_word_beside_a_lowered_index_is_caught(
         ("notation-space-missing",
          "a number and a word run together 2 times: '12patients', '0.05and'"),
     ]  # fmt: skip
+    # Two footnotes' anchors with no blank between them raise nothing: an anchor is not
+    # read as prose, so its caret opens no piece and "12patients" between them is caught
+    # (round 1 of #719).
+    edited = text.replace(old, old + " It was seen[^n1];12patients[^n2] later.\n\n"
+                          "[^n1]: One note.\n\n[^n2]: Another note.\n")  # fmt: skip
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, message) for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        ("notation-space-missing", "a number and a word run together once: '12patients'"),
+    ]  # fmt: skip
 
 
 def test_a_number_typed_against_its_word_beside_a_latex_name_is_caught(project: Path) -> None:

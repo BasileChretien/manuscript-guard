@@ -421,6 +421,15 @@ def test_a_number_against_its_word_beside_such_marks_is_a_space_left_out(written
     assert report.counts["notation_spaces_missing"] == 1, written
 
 
+def test_a_tilde_for_approximately_lowers_what_stands_before_the_next() -> None:
+    """A tilde for "approximately" pairs with the next one where no blank stands between
+    them, "(~3days,~5days)", and pandoc prints that stretch lowered too: "3days" is not
+    read, "5days" after the second is (round 1 of #719; DESIGN.md, Known gaps)."""
+    report = read("# Results\n\nIt lasted (~3days,~5days) in all.\n")
+    (finding,) = report.findings
+    assert finding.message == "a number and a word run together once: '5days'"
+
+
 @pytest.mark.parametrize(
     "written",
     ["12mth\\_rate", "12mth\\_\\_rate", "RATE\\_12mth", "GILT\\_10yrs\\_yld"],

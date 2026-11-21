@@ -8271,10 +8271,10 @@ NOTATED = (
 #: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
 #: scientific notation, a letter and a sign, a number inside a piece raised or lowered as
 #: pandoc writes one and inside a name joined by underscores. A tilde escaped lowers
-#: nothing, and nor do a strikeout's two.
+#: nothing, nor do a strikeout's two, and two footnotes' anchors raise nothing.
 RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
           "5mins", "rose to+0.5.", "to+{{results.high}}", "tn+1", "\\~12cells\\~",
-          "~~3cells~~")  # fmt: skip
+          "~~3cells~~", "seen[^1];4cells[^2]")  # fmt: skip
 NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
               "5mg", "x+1", "u~0school~", "k^12rep^", "12mth\\_rate",
               "12mth\\_\\_rate")  # fmt: skip

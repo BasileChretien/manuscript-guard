@@ -24382,7 +24382,8 @@ Open, recorded as each change landed:
     reported, so a real "to+0.77" in a PDF passes: pdftotext prints an exponent or an index
     on the line, "cm−3", "tn+1", and the two cannot be told apart there (Basile,
     2026-11-21). A number typed against its word, "12patients", is reported in a PDF as
-    anywhere. Markdown, Word and LaTeX are read as before.
+    anywhere. In Markdown, Word and LaTeX a word typed against a signed number is read as
+    before.
     Pinned by `tests/test_notation.py::test_a_word_against_a_signed_number_is_not_read_in_a_pdf_s_text`
     and `tests/test_corruption.py::test_a_number_typed_against_its_word_in_a_pdf_is_caught`.
   - A number inside a piece raised or lowered, `~…~` or `^…^` with no blank in it but an
@@ -24391,6 +24392,10 @@ Open, recorded as each change landed:
     hyphen to such a name, `RATE\_6-12mth`, stands outside the name and is read.
     Pinned by `tests/test_notation.py::test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out`
     and `tests/test_notation.py::test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out`.
+  - A tilde for "approximately" pairs with the next tilde where no blank stands between
+    them, "(~3days,~5days)", and the stretch between is taken for a subscript, as pandoc
+    prints it: "3days" passes and "5days" is reported (round 1 of #719).
+    Pinned by `tests/test_notation.py::test_a_tilde_for_approximately_lowers_what_stands_before_the_next`.
   - A space where the SI has none, "30 °" for an angle, is not reported.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.

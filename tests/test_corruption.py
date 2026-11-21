@@ -23001,12 +23001,10 @@ def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: st
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
 def test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it() -> None:
-    """A known gap (DESIGN.md, Known gaps, "Two headings the build refuses that print as the
-    gates read them"): with an unlabelled `(@)` item before `(@good)`, pandoc numbers it 2 in
+    """A known gap (DESIGN.md, Known gaps, "A heading the build refuses that prints as the
+    gates read it"): with an unlabelled `(@)` item before `(@good)`, pandoc numbers it 2 in
     the document and 1 in the titles set out on their own, and the heading citing it is
-    refused; with the unlabelled item after it, both number it 1. A setext title whose
-    placeholder's value starts with `#` is read as a heading on the built line by the gates
-    too, and is not refused."""
+    refused; with the unlabelled item after it, both number it 1."""
     import shutil
 
     from manuscript_guard.build.reading import misreading
@@ -23024,8 +23022,24 @@ def test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it
         "'As in example (@good)' (level 2) at main.md:8"
     )
     assert refused("(@good) An example.\n(@) Second.") is None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_setext_title_whose_value_starts_with_a_hash_is_built() -> None:
+    """Closed (DESIGN.md, Closed since, "A setext title whose value starts with `#` was
+    refused, though it printed as the gates read it"): the gates read the built line,
+    `#1 ranked drugs` over `===`, as the heading pandoc prints, and nothing is refused."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+    from manuscript_guard.text.sections import headings
+
+    header = "---\ntitle: A study\n---\n"
     written = "# Introduction\n\nText.\n\n{{results.rank}} ranked drugs\n==============\n\nMore.\n"
     built = written.replace("{{results.rank}}", "#1")
+    assert headings(built) == ["Introduction", "#1 ranked drugs"]
     found = misreading(
         header + built, header, [("main.md", written)], shutil.which("pandoc"), Path(),
         built=[built],

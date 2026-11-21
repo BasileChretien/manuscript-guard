@@ -653,6 +653,19 @@ DASH_TABLES = {
         ["Outcomes"],
     ),
     "a methods row between spaced dashes": ("- - - - -\n# Methods\n- - - - -\n", ["Methods"], []),
+    # A simple table under a `Table:` caption: its header over the dashes is a heading to
+    # the gates and a table to pandoc. The other side, the same lines with no caption, are
+    # a heading to both.
+    "a captioned table's header over its dashes": (
+        "Table: Counts.\n\n# Name  Value\n------  -----\na       1\n",
+        ["Name  Value"],
+        [],
+    ),
+    "an uncaptioned table's header over its dashes": (
+        "# Name  Value\n------  -----\na       1\n",
+        ["Name  Value"],
+        ["Name Value"],
+    ),
 }
 
 

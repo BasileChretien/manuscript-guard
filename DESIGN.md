@@ -21384,12 +21384,11 @@ Open, recorded as each change landed:
   Methods. It takes an analysis emitting markup as a value; a value with a line break or a
   comment's mark is not a number, and mapping each heading through the substitutions,
   which would close this, is not done. Accepted.
-- **Two headings the build refuses that print as the gates read them.** An unlabelled
+- **A heading the build refuses that prints as the gates read it.** An unlabelled
   `(@)` example list item before `(@good)`: pandoc numbers `(@good)` 2 in the document and
-  1 in the titles set out on their own, so `## As in example (@good)` is refused. And a
-  setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
-  drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
-  are refused, not passed.
+  1 in the titles set out on their own, so `## As in example (@good)` is refused, not
+  passed.
+  Pinned by `tests/test_corruption.py::test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it`.
 - **Some lines of dashes after a TeX command are refused that open nothing.** The refusal
   takes any command for one pandoc starts a block behind, where pandoc does so only for a
   block-level command, `\newpage` or `\vspace{1em}`: behind `\foo[x]{1em}`, which it reads
@@ -26230,7 +26229,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `docx-unreadable` from the live-field check says the journal's review is blind.
     Pinned by `tests/test_cli.py::test_a_docx_unreadable_from_the_live_field_check_says_the_review_is_blind`.
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
-    when `manuscript.docx` is stale.
+    for each stale document the build writes over: one when `manuscript.docx` is stale,
+    two when `supplementary.docx` is stale with it.
     Pinned by `tests/test_cli.py::test_an_unchecked_build_counts_one_failing_check_fewer_when_the_document_is_stale`.
 
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
@@ -28619,6 +28619,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A setext title whose value starts with `#` was refused, though it printed as the gates
+  read it (2026-11-21).** It stood under "Two headings the build refuses that print as the
+  gates read them", now "A heading the build refuses that prints as the gates read it". A
+  `===` title opening with a placeholder whose value starts with `#`, `#1 ranked drugs`,
+  was a heading as written and none to the gates on the built line, while pandoc printed
+  it, and the build refused the document. The heading walk of #38 (13b7ea371) reads the
+  built line as a heading too, and the document builds; found while pinning the entry.
+  Held by `tests/test_corruption.py::test_a_setext_title_whose_value_starts_with_a_hash_is_built`.
 
 - **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
   A sentence that says more or less than the tool does is believed by the author who reads

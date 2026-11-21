@@ -122,8 +122,9 @@ def check_figure_colours(project: Project) -> Report:
 
 def _shown(path: Path, root: Path | None) -> str:
     """A figure's file as its key names it: its path from the project's root with forward
-    slashes, as written through any link, so that the key holds across machines and folders.
-    One outside the project by its name alone, as `placed_figures._named` names it and as the
+    slashes, as written through any link, so that the key holds across machines and folders,
+    or, where it is written outside and a link brings it back inside, its resolved path from
+    the root. One outside the project as written and as resolved by its name alone, as the
     key did before: a path that climbs from the root to it would change with where the
     checkout sits where the manuscript names it by an absolute path, and would carry the
     author's folders (round 2 of #720), and by the time a figure reaches here its path is

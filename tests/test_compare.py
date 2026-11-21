@@ -707,6 +707,27 @@ def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
     ]
 
 
+def test_sentences_whose_words_change_places_pair_a_number_with_the_wrong_one() -> None:
+    """A known gap (DESIGN.md, Known gaps, "`compare` sets two versions side by side"): in a
+    changed stretch a number is paired by the words its sentence shares, so where the men's
+    long sentence becomes the women's, the men's 40 is paired with the women's 31; with the
+    words kept to their sentences, each is paired with its own."""
+    old = version("# Results\n\nThe men treated with the new drug at home numbered 40. Women "
+                  "were 30.\n")  # fmt: skip
+    swapped = version("# Results\n\nMen were 41. The women treated with the new drug at home "
+                      "numbered 31. Both rose.\n")  # fmt: skip
+    assert codes(differences.numbers(old, swapped)) == [
+        ("fact-changed", "'40' on line 3 of v1 is '31' in v2"),
+        ("fact-changed", "'30' on line 3 of v1 is '41' in v2"),
+    ]
+    kept = version("# Results\n\nThe men treated with the new drug at home numbered 41. Women "
+                   "were 31. Both rose.\n")  # fmt: skip
+    assert codes(differences.numbers(old, kept)) == [
+        ("fact-changed", "'40' on line 3 of v1 is '41' in v2"),
+        ("fact-changed", "'30' on line 3 of v1 is '31' in v2"),
+    ]
+
+
 def test_a_quotation_matches_only_whole_words_and_numbers() -> None:
     """In curly marks, which a number may close; straight marks, one after a number, are not
     read at all."""
@@ -718,6 +739,27 @@ def test_a_quotation_matches_only_whole_words_and_numbers() -> None:
         letters.NEW_AS_QUOTED, letters.NEW_AS_QUOTED]
     assert [outcome for _q, outcome in letters.held(letter, old, old)] == [
         letters.NEITHER, letters.NEITHER]
+
+
+@pytest.mark.parametrize("quoted", [
+    "Of 415 patients 37 developed drug-induced liver injury",
+    "Of 415 patients; 37 developed drug-induced liver injury",
+    "Of 415 patients, 37 developed drug\N{EN DASH}induced liver injury",
+    "Of 415 patients, 37 developed drug induced liver injury",
+    "Of 415 patients, 37 developed ... liver injury within a year",
+    "Of 415 patients, 37 developed \N{HORIZONTAL ELLIPSIS} liver injury within a year",
+])  # fmt: skip
+def test_a_quotation_retyped_reads_as_in_neither_version(quoted: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`compare` sets two versions side by side"): a
+    quotation is looked for word for word, so one the letter retypes with other punctuation,
+    a dash for a hyphen, or words left out with an ellipsis, reads as in neither version;
+    typed as v2 has it, it is new in v2."""
+    old = "# Results\n\nOf 412 patients, 37 developed drug-induced liver injury within a year.\n"
+    new = old.replace("412", "415")
+    held = [outcome for _q, outcome in letters.held(f'We now write "{quoted}".\n', old, new)]
+    assert held == [letters.NEITHER]
+    exact = 'We now write "Of 415 patients, 37 developed drug-induced liver injury".\n'
+    assert [outcome for _q, outcome in letters.held(exact, old, new)] == [letters.NEW_AS_QUOTED]
 
 
 @pytest.mark.parametrize(

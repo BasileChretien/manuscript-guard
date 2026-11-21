@@ -399,10 +399,17 @@ def test_an_input_kept_by_git_lfs_is_misjudged_at_its_edges(project: Path, monke
     changed = [f.message for f in gate_report(project).findings if f.code == "input-changed"]
     assert changed == ["input data/big.csv is a Git LFS pointer to other content than these "
                        "results were written from"]  # fmt: skip
-    # The other side: the reports' own pointer, which names what was read, is no change.
-    record = _reports_record(project)
-    pointer = _lfs(record["raw_sha256"], record["bytes"])
-    assert ("input-by-pointer", "info") in _not_fetched(project, pointer)
+    # The other side: the reports' own pointer, which names what was read, is no change. The
+    # fragment is read by its name: results/ now holds 02_more.json too.
+    example = project / "results" / "01_disproportionality.json"
+    record = next(i for i in json.loads(example.read_text(encoding="utf-8"))["provenance"][
+        "inputs"] if i["path"] == "data/reports.csv")  # fmt: skip
+    (project / "data" / "reports.csv").write_bytes(
+        _lfs(record["raw_sha256"], record["bytes"]).encode("utf-8")
+    )
+    said = [(f.code, f.severity) for f in gate_report(project).findings
+            if "data/reports.csv" in f.message]  # fmt: skip
+    assert said == [("input-by-pointer", "info")]
     with pytest.raises(ValueError, match="invalid literal for int"):
         _not_fetched(project, _lfs(record["raw_sha256"], "\N{SUPERSCRIPT TWO}"))  # type: ignore[arg-type]
 
@@ -24997,23 +25004,32 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     assert "unclassified-number" in codes(gate_report(project))
 
 
-@pytest.mark.parametrize("block", ["", "\n---\nnote: |\n  Methods zebra quokka\n---\n"],
-                         ids=["no block", "a block under Results"])  # fmt: skip
-def test_a_yaml_block_later_in_a_file_is_counted_as_prose(project: Path, block: str) -> None:
+@pytest.mark.parametrize(
+    ("block", "words"),
+    [("", 0), ("\n---\nnote: |\n  Methods\n---\n", 2),
+     ("\n---\nnote: |\n  Methods zebra quokka\n---\n", 4)],
+    ids=["no block", "a block over an indented Methods", "a block of several words"],
+)  # fmt: skip
+def test_a_yaml_block_later_in_a_file_is_counted_as_prose(
+    project: Path, block: str, words: int
+) -> None:
     """A known gap (DESIGN.md, Known gaps, "A YAML block later in a file is read as prose"):
-    pandoc prints none of the block, and the gates count its words, four more than the text
-    without it. Its closing `---` heads nothing: the `p < 0.001` after it, under Results,
-    is unbound either way."""
+    pandoc prints none of the block, and the gates count its words. Its closing `---` heads
+    nothing: over an indented `Methods` alone, no Methods heading is read, and the
+    `p < 0.001` after the block, under Results, is unbound either way."""
     from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.sections import headings
 
-    words = _run_gates(project)[0].counts["main_text_words"]
+    before = _run_gates(project)[0].counts["main_text_words"]
     claim = "\nThe excess was significant (p < 0.001).\n"
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
     path.write_text(text.replace("\n# Discussion", f"\n{block}{claim}\n# Discussion", 1),
                     encoding="utf-8")  # fmt: skip
     report = _run_gates(project)[0]
-    assert report.counts["main_text_words"] - words == (6 if not block else 10)
+    # The claim's own words are six.
+    assert report.counts["main_text_words"] - before == 6 + words
+    assert headings(path.read_text(encoding="utf-8")).count("Methods") == 1
     assert [f.message for f in report.failures if f.gate == "G2"] == [
         "'0.001' is not bound to any source"
     ]
@@ -34035,7 +34051,8 @@ _COPIES = ("typed-parameter", "threshold-undeclared", "typed-software-version")
         (None, "Another rule asked for caliper0.2 and power80%.", []),
         (None, "Another rule asked for a caliper of 0.2 and a power of 80%.",
          [("threshold-undeclared", "'0.2'"), ("threshold-undeclared", "'80%'")]),
-        (None, "It ran in Python 3.13.", []),
+        # The declared version's first two parts, "3.13" of "3.13.16".
+        (None, "It ran in Python {short}.", []),
         (None, "It ran in Python {python}.", [("typed-software-version", "'{python}'")]),
     ],
     ids=["a confidence level", "a threshold equal to a parameter", "a word",
@@ -34052,8 +34069,9 @@ def test_only_an_equal_typed_copy_of_a_figure_is_read_for_a_parameter(
     if declared is not None:
         _declare_a_parameter_of(project, declared)
     python = load_namespace(load_project(project)[0])[0]["results.software.python"].display
+    short = python.rsplit(".", 1)[0]
     _replace_once(main_md(project), _CRITERION,
-                  f"{_CRITERION} {sentence.format(python=python)}")  # fmt: skip
+                  f"{_CRITERION} {sentence.format(python=python, short=short)}")  # fmt: skip
     found = [(f.code, f.message.split()[0]) for f in gate_report(project).findings
              if f.code in _COPIES]  # fmt: skip
     assert found == [(code, typed.format(python=python)) for code, typed in said]

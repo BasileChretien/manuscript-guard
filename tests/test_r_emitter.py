@@ -163,6 +163,69 @@ def test_a_lockfile_that_links_elsewhere_is_recorded_by_r_where_it_points(tmp_pa
     assert _environments(root) == (["locks/renv.lock"], ["renv.lock"])
 
 
+@pytest.mark.parametrize("name", ["renv.lock", "requirements.txt"])
+def test_both_emitters_digest_an_empty_lockfile_alike(tmp_path: Path, name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): an empty lockfile is recorded by R
+    with the digest Python gives it, the SHA-256 of no bytes."""
+    import hashlib
+
+    from manuscript_guard.emit import lockfile_digest
+
+    root = _built_r_project(tmp_path, {name: ""})
+    fragment = next((root / "results").glob("*.json"))
+    recorded = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["environment"]
+    assert recorded == [{"path": name, "sha256": lockfile_digest(root / name)}]
+    assert recorded[0]["sha256"] == hashlib.sha256(b"").hexdigest()
+
+
+PLAN_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("n", 1L)
+em$write()
+"""
+
+
+@pytest.mark.parametrize(
+    ("written", "kept"),
+    [
+        (b"", True),
+        (b"\xc0\xaf", False),  # an overlong form of "/"
+        (b"\xe0\x80\xaf", False),  # another, in three bytes
+        (b"\xed\xa0\x80", False),  # the surrogate U+D800
+        (b"\xf4\x90\x80\x80", False),  # past U+10FFFF
+    ],
+    ids=["utf-8", "overlong in two bytes", "overlong in three bytes", "surrogate",
+         "out of range"],
+)
+def test_r_s_validutf8_and_python_s_decoder_refuse_the_same_plans(
+    tmp_path: Path, written: bytes, kept: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): a plan holding an overlong form, a
+    surrogate or a code point past U+10FFFF is not UTF-8 to R's `validUTF8` nor to Python's
+    decoder, and neither emitter keeps a frozen copy of it; plain UTF-8 both keep."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    (root / "design" / "plan.md").write_bytes(b"# Analysis plan\n\nAlpha " + written + b".\n")
+    frozen = root / "design" / "plan.frozen.yaml"
+    script = root / "analysis" / "plan.R"
+    script.write_text(PLAN_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    by_r = frozen.exists()
+    frozen.unlink(missing_ok=True)
+    em = Emitter(script, root=root)
+    em.value("n", 1)
+    em.write()
+    assert (by_r, frozen.exists()) == (kept, kept)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="a file system that ignores case")
 @pytest.mark.parametrize(("name", "by_r"), [("Requirements.txt", []),
                                             ("requirements.txt", ["requirements.txt"])])

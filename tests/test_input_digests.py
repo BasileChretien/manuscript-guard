@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from manuscript_guard.emit import (
     input_digest_matches,
     sha256_of,
     source_digest,
+    write_digest,
 )
 from manuscript_guard.gates import check_freshness
 
@@ -222,6 +224,25 @@ def test_a_txt_input_checked_out_with_crlf_reads_as_changed(
     `.csv` of the same bytes passes. The 2026-11-09 triage planned a fix (F07), which will
     change this test."""
     assert _g1_after(tmp_path, name, b"a\nb\n", b"a\r\nb\r\n") == said
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="a file system that tells case apart")
+@pytest.mark.parametrize(("spelt", "said"), [("DATA/X.csv", {"input-missing"}),
+                                             ("data/x.csv", set())])
+def test_a_path_recorded_in_another_case_names_no_file_on_linux(
+    tmp_path: Path, spelt: str, said: set[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): Windows records a path in the case
+    it was written in, so results written there from `DATA/X.csv`, cloned on Linux where the
+    file is `data/x.csv`, name no file: `input-missing`. Spelt as on the disk, nothing."""
+    _g1_after(tmp_path, "x.csv", b"a\n1\n", b"a\n1\n")
+    fragment = tmp_path / "results" / "run.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["provenance"]["inputs"][0]["path"] = spelt
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    project, _, results, _literature = _loaded(tmp_path)
+    assert codes(check_freshness(project, results)) == said
 
 
 def test_utf16_is_not_normalised(tmp_path: Path) -> None:

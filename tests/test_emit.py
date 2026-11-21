@@ -1495,7 +1495,7 @@ def test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml(
     paper.write_text(paper.read_text(encoding="utf-8") + "terms:\n  - E2a\n", encoding="utf-8")
     em = emitter(scratch)
     em.table("arms", ["Arm", "n"], [["E2a", 3]])
-    write(em)  # the other side: with authors.yaml sound, the term is the project's
+    write(em)  # the other side: with authors.yaml absent, the term is the project's
     (scratch / "authors.yaml").write_text("authors: [unclosed\n", encoding="utf-8")
     em = emitter(scratch)
     em.table("arms", ["Arm", "n"], [["E2a", 3]])

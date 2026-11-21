@@ -19152,8 +19152,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **Hooks.** An `attested.yaml` that cannot be read gives no prompt, and an Edit whose
   `old_string` uses curly quotes may pass unasked (not confirmed live).
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
-  seen); an empty lockfile's digest has not been compared between R and Python, nor R's
-  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
+  seen); an empty lockfile is digested alike by R and Python, and R's `validUTF8` refuses a
+  plan's overlong, surrogate and out-of-range forms as Python's decoder does. R reads
   a relative input from its working directory where a file of that name is there, and
   Python always from the project root, so an analysis run from another folder that holds
   one may read and record another file in R; and on Windows `~` is R's home (Documents) and
@@ -19168,10 +19168,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
   Pinned by `tests/test_r_emitter.py::test_r_lists_lockfiles_in_their_case_on_windows`,
+  `tests/test_r_emitter.py::test_both_emitters_digest_an_empty_lockfile_alike`,
+  `tests/test_r_emitter.py::test_r_s_validutf8_and_python_s_decoder_refuse_the_same_plans`,
   `tests/test_r_emitter.py::test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write`,
   `tests/test_emit.py::test_a_path_through_a_link_is_collapsed_as_text`,
   `tests/test_emit.py::test_python_expands_a_tilde_and_a_name_where_r_reads_its_own_home`,
-  `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`
+  `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
+  `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`

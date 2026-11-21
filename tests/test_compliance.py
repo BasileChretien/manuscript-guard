@@ -733,6 +733,11 @@ def test_a_limit_is_stated_as_digits_or_a_small_number_word(
 _JAPANESE = ("本誌の規定：抄録は300語以内"
              "とする。")  # fmt: skip
 _JAPANESE_QUOTE = "抄録は300語以内"
+#: And in Chinese: a quote run on from the words before it, and one a colon and a stop set
+#: apart.
+_CHINESE = "本刊规定摘要不超过300字。"
+_CHINESE_APART = "本刊规定：摘要不超过300字。"
+_CHINESE_QUOTE = "摘要不超过300字"
 
 
 @pytest.mark.parametrize(
@@ -740,6 +745,8 @@ _JAPANESE_QUOTE = "抄録は300語以内"
     [
         (_JAPANESE, _JAPANESE_QUOTE, False),
         (f"See: {_JAPANESE_QUOTE} here.", _JAPANESE_QUOTE, True),
+        (_CHINESE, _CHINESE_QUOTE, False),
+        (_CHINESE_APART, _CHINESE_QUOTE, True),
         ("should not exceed 300 words2.", "should not exceed 300 words", False),
         ("should not exceed 300 words 2.", "should not exceed 300 words", True),
         ("no more than four&nbsp;figures", "no more than four figures", False),
@@ -751,10 +758,11 @@ _JAPANESE_QUOTE = "抄録は300語以内"
 def test_a_quote_in_a_script_without_spaces_or_across_markup_is_not_on_the_page(
     page: str, quote: str, on_page: bool
 ) -> None:
-    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): a quote inside a
-    sentence of Chinese or Japanese, or before a footnote digit glued to it, is refused, and
-    an HTML entity, a soft hyphen or a word broken across lines is not folded; the other
-    side of each, the words set apart by spaces or a plain line break, is on the page. The
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): a quote run on from
+    the words of a sentence of Chinese or Japanese, or before a footnote digit glued to it,
+    is refused, and an HTML entity, a soft hyphen or a word broken across lines is not
+    folded; the other side of each, the words set apart by spaces, by marks of punctuation
+    or by a plain line break, is on the page. The
     2026-11-09 triage planned a fix (F12), which will change this test."""
     from manuscript_guard.gates.journal_quotes import _on_page
 

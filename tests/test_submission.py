@@ -395,7 +395,19 @@ def test_abstract_screening_is_the_abstract_and_an_e_mail_autolink_is_refused(
         if written:
             assert why is None and "Write to https://example.org/data." in plain, plain
         else:
-            assert plain is None and why.startswith("abstract.txt is not written"), why
+            assert plain is None and why == (
+                "abstract.txt is not written: the abstract holds what the build formats and "
+                "plain text cannot (a citation, a footnote, maths, code, an image, a table, a "
+                "figure, a link with words of its own, or a block other than a paragraph or a "
+                "heading); copy it from the document"), why
+            # The link is refused for its words, which are not its `mailto:` address.
+            from manuscript_guard.build.submission import _plain
+
+            link = {"t": "Link", "c": [["", [], []], [{"t": "Str", "c": "a@b.example"}],
+                                       ["mailto:a@b.example", ""]]}  # fmt: skip
+            assert not _plain(link)
+            link["c"][2][0] = "a@b.example"
+            assert _plain(link)
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

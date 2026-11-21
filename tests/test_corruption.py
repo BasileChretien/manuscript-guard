@@ -8423,6 +8423,10 @@ def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: 
 
 _MISSING = [("data-identifier-missing", "fail")]
 _ARCHIVED = "https://web.archive.org/web/20200101000000/https://example.org/data"
+#: The data policy with a forbidden phrasing and its `unless` written in small letters and
+#: with no `(?i)`, so that only the gate makes them blind to case.
+_CASED = {**_DATA_POLICY, "forbidden": [
+    {"pattern": r"\bon request\b", "unless": r"\bprivacy\b", "why": "say why"}]}
 
 
 @pytest.mark.parametrize(
@@ -8446,6 +8450,10 @@ _ARCHIVED = "https://web.archive.org/web/20200101000000/https://example.org/data
         ("Data are available ON REQUEST. GSE123456.", None,
          [("data-statement-forbidden", "fail")]),
         ("Data are available on request. GSE123456. We respect patient privacy.", None, []),
+        # The gate's own case-blindness: patterns written without `(?i)`.
+        ("Data are available ON REQUEST. GSE123456.", _CASED,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. PRIVACY rules apply.", _CASED, []),
         # A link with a path after the repository's name, a branch's too, is a fixed
         # version; a bare one is warned of with its archive named beside it.
         ("The code is at https://github.com/someone/study/tree/main, GSE123456.", None, []),
@@ -23703,7 +23711,17 @@ def test_a_name_written_otherwise_than_authors_yaml_writes_it_is_not_found_blind
     ))  # fmt: skip
     core = (f"<cp:coreProperties {_CORE_NS}><dc:creator>aexample</dc:creator>"
             "<cp:lastModifiedBy>bsample</cp:lastModifiedBy></cp:coreProperties>")  # fmt: skip
-    raster = b"\x89PNG\r\n\x1a\nAda Mary Example"
+    # A raster figure that shows the name, in the document and placed by the manuscript.
+    import io
+
+    from matplotlib.figure import Figure
+
+    drawn = Figure(figsize=(4, 1))
+    drawn.text(0.05, 0.4, "Ada Mary Example", fontsize=24)
+    buffer = io.BytesIO()
+    drawn.savefig(buffer, format="png")
+    raster = buffer.getvalue()
+    (project / "figures" / "forest.png").write_bytes(raster)
     (project / "figures" / "forest.svg").unlink()
     document = _word(tmp_path / "a.docx", unfound, docProps__core_xml=core)
     with zipfile.ZipFile(document, "a") as archive:

@@ -19056,14 +19056,15 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `transcribe` does not catch a source that cannot be read for its permissions or is a
   folder. Accepted.
 - **A journal's quoted rules.** "twenty-four" states 4, "3 500" states 3, "123 456" states
-  456, and a quote in Chinese or Japanese, or before a footnote digit glued to it, is
-  refused. An HTML entity, a soft hyphen or a word broken across lines in the stored page
-  is not folded. A page that is not UTF-8, or a folder, is called not stored. An empty
-  `abstract_headings` needs its quote where an empty `required_sections` does not, and a
-  negative limit is not held to its quote. A profile is not checked against its schema
-  before its target is read, and `journal --reread` says an unreadable profile names no
-  journal and diffs a missing page as empty. `references: "x"` raises in `style`, which the
-  schema already fails. A style named `x.yaml` would share a path with another's record.
+  456, and a quote in Chinese or Japanese run on from the words beside it, or before a
+  footnote digit glued to it, is refused. An HTML entity, a soft hyphen or a word broken
+  across lines in the stored page is not folded. A page that is not UTF-8, or a folder, is
+  called not stored. An empty `abstract_headings` needs its quote where an empty
+  `required_sections` does not, and a negative limit is not held to its quote. A profile is
+  not checked against its schema before its target is read, and `journal --reread` says an
+  unreadable profile names no journal and diffs a missing page as empty. `references: "x"`
+  raises in `style`, which the schema already fails. A style named `x.yaml` would share a
+  path with another's record.
   Pinned by `tests/test_compliance.py::test_a_quote_states_a_number_its_longer_number_holds`,
   `tests/test_compliance.py::test_a_quote_in_a_script_without_spaces_or_across_markup_is_not_on_the_page`,
   `tests/test_compliance.py::test_a_page_not_utf8_or_a_folder_is_called_not_stored`,
@@ -26806,13 +26807,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The scaffold reads a part of a structured abstract as ended by any label: a known
     part's name, words in emphasis, or up to five words before a colon that open with a
     capital and no article or pronoun; a registration, the funding and the like only as a
-    label, with its stop or colon. "Main point: ..." in the Results ends them, and so does a
-    finding opening "Example-drug: ..." where the abstract has no part of its own: its words
-    after the colon are its quote (finding 11 of round 2). A label written with no stop or
-    colon, and JAMA's "**Conclusions and Relevance**" set apart in bold, are not read, and
-    the part before runs on (finding 12 of round 2).
+    label, with its stop or colon. "Main point: ..." in the Results ends them, and a sentence
+    opening "Example-drug: ..." where the abstract has no part of its own opens one, none of
+    the results, so the findings are read from the Results section instead (finding 11 of
+    round 2). A label written with no stop or colon, and JAMA's "**Conclusions and
+    Relevance**" set apart in bold, are not read, and the part before runs on (finding 12 of
+    round 2).
     Pinned by `tests/test_communicate.py::test_a_part_of_the_abstract_is_ended_by_any_label_and_by_nothing_else`,
-    `tests/test_communicate.py::test_a_finding_opening_with_a_name_and_a_colon_is_quoted_after_the_colon`
+    `tests/test_communicate.py::test_a_name_and_a_colon_in_an_abstract_of_no_parts_sends_its_findings_to_the_results`
     and `tests/test_communicate.py::test_a_funding_or_registration_ends_a_part_only_as_a_label`.
   - The brief's limitations are taken only from a section headed "Limitations" or
     "Strengths and limitations", numbered or not, at any level, and only its first

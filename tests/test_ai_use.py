@@ -412,7 +412,17 @@ def test_a_phrase_match_over_a_list_leaves_the_list_out_and_a_heading_match_take
     _say(project, f"## Use of AI\n\n{listed}")
     assert _found(project, "drafting") == [
         (UNNAMED, WARN, "the AI-use statement does not name gpt-5.1 (openai)")]
+    # The other side, on the heading's pattern alone: the phrase's entry taken out first.
+    path = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["required_statements"] = [one for one in document["required_statements"]
+                                        if one.get("kind") != "ai_use"]  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
     _require(project)
+    assert [one["pattern"] for one in yaml.safe_load(path.read_text(encoding="utf-8"))[
+        "required_statements"] if one.get("kind") == "ai_use"] == [
+        r"(?im)^#+\s*use of (generative )?ai"]
     assert _found(project, "drafting") == []
 
 

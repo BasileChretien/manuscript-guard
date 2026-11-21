@@ -305,13 +305,15 @@ def test_a_latex_box_s_heading_over_an_input_that_holds_its_list_has_no_items(
     (2026-10-28), what G4 does not read"): a LaTeX box is read in its own file, so its
     heading over an `\\input` that holds its list is a box of no items."""
     _asks(project, boxes=[HIGHLIGHTS])
+    listed = "\\begin{itemize}\n\\item One.\n\\item Two.\n\\item Three.\n\\end{itemize}\n"
     _latex(project, "\\section*{Highlights}\n\\input{highlights}\n")
-    (project / "manuscript" / "highlights.tex").write_text(
-        "\\begin{itemize}\n\\item One.\n\\item Two.\n\\item Three.\n\\end{itemize}\n",
-        encoding="utf-8",
-    )
+    (project / "manuscript" / "highlights.tex").write_text(listed, encoding="utf-8")
     assert [(code, message) for code, _severity, message in _found(project, SUBMISSION)] == [
         ("box-items", "the box highlights has 0 item(s); the journal asks for 3 to 5")]
+    # The other side: the same list in the box's own file is read, its three items in full.
+    (project / "manuscript" / "highlights.tex").unlink()
+    _latex(project, "\\section*{Highlights}\n" + listed)
+    assert _found(project, SUBMISSION) == []
 
 
 def test_a_box_set_apart_in_a_file_of_its_own_is_built_into_the_manuscript_all_the_same(

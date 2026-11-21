@@ -797,10 +797,28 @@ def test_a_part_of_the_abstract_is_ended_by_any_label_and_by_nothing_else(
         assert document["conclusion"][0]["text"].startswith("Reporting of hepatic injury")
 
 
-def test_a_finding_opening_with_a_name_and_a_colon_is_quoted_after_the_colon() -> None:
+def test_a_name_and_a_colon_in_an_abstract_of_no_parts_sends_its_findings_to_the_results(
+    project: Path,
+) -> None:
     """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
-    brief and the graphical abstract"): "Example-drug: ..." opens a part of its own, and its
-    words after the colon are what is read; a registration opens one only as a label."""
+    brief and the graphical abstract"): in an abstract with no part of its own, a sentence
+    opening "Example-drug: ..." opens one, none of the results, so no sentence of the
+    abstract is a finding and the findings are read from the Results section; without it,
+    from the abstract. A registration opens a part only as a label."""
+    paper = project / "manuscript" / "main.md"
+    text_ = paper.read_text(encoding="utf-8")
+    abstract = text_[text_.index("# Abstract"):text_.index("# Introduction")]
+    unparted = abstract
+    for label in ("**Background.** ", "**Methods.** ", "**Results.** ", "**Conclusions.** "):
+        unparted = unparted.replace(label, "")
+    named = unparted.replace("The reporting odds ratio", "Example-drug: the reporting odds ratio")
+    document = _scaffolded(project, abstract, named)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "The database contained {", "Hepatic injury was repor", "Reporting of hepatic inj",
+        "The signal criterion def", "Adjusted for age group a"]
+    document = _scaffolded(project, named, unparted)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "Disproportionality analy", "Of {{results.cohort.n_re", "The reporting odds ratio"]
     said = "Example-drug: the reporting odds ratio was high."
     at, part = brief_module.opening(said)
     assert (said[at:], part) == ("the reporting odds ratio was high.", "other")

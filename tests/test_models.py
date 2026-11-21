@@ -549,6 +549,7 @@ def test_a_word_missing_from_the_list_or_a_possessive_leaves_the_fitted_kind_rea
     card = changed(engine={**CARD["engine"], "link": link})
     report, _ = judged(project_with(tmp_path, card, text=METHODS + f"\n{sentence}\n"))
     assert [f.code for f in report.findings] == found, report.render(tmp_path)
+    assert [f.code for f in report.failures] == found, "it fails"
 
 
 # ------------------------------------------------------------------- what is made from the card

@@ -21777,10 +21777,10 @@ Open, recorded as each change landed:
 - **A label is read only beside its binding, and only what is written.** A level or a
   spread's label written in another sentence, or before another binding of the sentence,
   is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A
-  ± with no word beside it is no label. An interval quoted only in a table is not read, and
-  a spread emitted without `spread` is held to nothing. The words read for a dispersion are
-  SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard error": another
-  abbreviation of either is not read.
+  ± with no word beside it is no label. An interval quoted only in a table the analysis
+  emits is not read, and a spread emitted without `spread` is held to nothing. The words
+  read for a dispersion are SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard
+  error": another abbreviation of either is not read.
   Pinned by `tests/test_corruption.py::test_a_label_is_read_only_beside_its_binding_and_only_as_written`.
 - **A reply is checked for what it holds, not for what it claims in prose.** A reply that
   says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
@@ -21806,12 +21806,12 @@ Open, recorded as each change landed:
   one family in two fragments keeps the last read.
   Pinned by `tests/test_corruption.py::test_a_statistic_is_held_to_what_it_declares_and_only_by_sentence`
   and `tests/test_corruption.py::test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept`.
-  - A typed Markdown table and the paragraph after it are read as one sentence by G2's
-    quoted-alone check, since a table has no stop to end it:
-    `P was {{results.whole.or.p}}.` in the paragraph after a typed table whose row binds
-    the estimate passes as if its estimate stood beside it, where the same P with no table
-    before it is quoted alone.
-    Pinned by `tests/test_corruption.py::test_a_typed_table_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone`.
+  - A block with no stop at its end and the paragraph after it are read as one sentence by
+    G2's quoted-alone check: a typed table, a heading, a list item or a display's line.
+    `P was {{results.whole.or.p}}.` in the paragraph after one that binds the estimate
+    passes as if its estimate stood beside it, where the same P with no such block before
+    it is quoted alone.
+    Pinned by `tests/test_corruption.py::test_a_block_with_no_stop_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone`.
 - **A data statement is read by patterns, and only where the profile records a policy.** An
   identifier is a DOI, an accession number of the archives listed in
   `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),

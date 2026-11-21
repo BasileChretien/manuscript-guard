@@ -4542,9 +4542,20 @@ def test_a_summary_is_held_to_results_sentences_only(project: Path) -> None:
     hedged = f"Use may be associated with the outcome ({_HR})."
     moved = ["'may' is gone; 'associated' (association) is now 'increased' (effect)"]
     assert _held(project, caused, f"r.\n\n## Results of the pilot\n\n{hedged}") == moved
+    # An emitted table whose caption and cell hedge beside the key's display, 3.84, and the
+    # figure, which prints "no association" beside it.
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["claimed"] = {
+        "columns": ["Finding", "Ratio"],
+        "rows": [["Use may be associated with the outcome", "3.84"]],
+        "caption": "Use may be associated with the outcome (3.84).",
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
     main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Methods\n\n{hedged}\n\n## Results "
                                 f"of the pilot\n\n{hedged}\n\n# Results\n\nr.\n\n"
-                                "{{table.two_by_two}}\n\n{{figure.forest}}\n",
+                                "{{table.claimed}}\n\n{{figure.forest}}\n",
                                 encoding="utf-8")  # fmt: skip
     assert _overclaimed(project) == []
     main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Introduction\n\ni.\n\n"
@@ -9243,8 +9254,10 @@ _LOW_HIGH = "{{results.ror.ci_low}} to {{results.ror.ci_high}}"
         (f"The 90% intervals are below. The ratio ran from {_LOW_HIGH}.", []),
         (f"The 90% CI around {{{{results.ror.point}}}} ran from {_LOW_HIGH}.", []),
         (f"The ratio ran (90% CI {_LOW_HIGH}).", ["interval-level-differs"]),
-        # An interval quoted only in a table.
-        ("| Ratio | 90% CI |\n|---|---|\n| {{results.ror.point}} | " + _LOW_HIGH + " |", []),
+        # An interval quoted only in a table the analysis emits, headed "90% CI" over the
+        # 95% bounds, is not read; in a table typed by hand the header labels the bounds.
+        ("{{table.ratios}}", []),
+        ("| 90% CI |\n|---|\n| " + _LOW_HIGH + " |", ["interval-level-differs"]),
         # A plus-minus sign with no word beside it is no label.
         ("Age was {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} years.", []),
         ("Age was {{results.age.mean}} (SD {{results.age.se}}) years.",
@@ -9259,8 +9272,11 @@ _LOW_HIGH = "{{results.ror.ci_low}} to {{results.ror.ci_high}}"
           for label in ("SE", "SEM", "s.e.", "standard error")],
         *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.", [])
           for label in ("SD", "s.d.", "standard deviation")],
+        # Abbreviations of the other kind, no stop and a space before the binding.
         *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.se}}}}) years.", [])
-          for label in ("St. Dev.", "StDev", "std", "S.E.", "std. err.")],
+          for label in ("StDev", "std", "SDev", "Std.Dev")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.", [])
+          for label in ("StErr", "s.e.m")],
     ],
 )  # fmt: skip
 def test_a_label_is_read_only_beside_its_binding_and_only_as_written(
@@ -9268,12 +9284,15 @@ def test_a_label_is_read_only_beside_its_binding_and_only_as_written(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A label is read only beside its binding, and
     only what is written."): a level or a spread's label is read in the binding's own
-    sentence, after any other binding, and only in the words the entry lists."""
+    sentence, after any other binding, in a table typed by hand but not in one the analysis
+    emits, and only in the words the entry lists."""
     document = {
         "schema": "manuscript-guard/results/1",
         "provenance": {"generated_by": "analysis/01_disproportionality.py",
                        "generated_at": "2026-10-18T00:00:00+00:00"},
         "values": _SPREADS,
+        "tables": {"ratios": {"columns": ["Ratio", "90% CI"],
+                              "rows": [["3.84", "2.89 to 5.12"]]}},
     }  # fmt: skip
     fragment = project / "results" / "02_labels.json"
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
@@ -9506,15 +9525,19 @@ def test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept(
     ("above", "said"),
     [("| Ratio | 95% CI |\n|---|---|\n| {{results.whole.or.point}} | "
       "{{results.whole.or.ci_low}} to {{results.whole.or.ci_high}} |\n\n", []),
+     ("## Odds ratio {{results.whole.or.point}}\n\n", []),
+     ("- The odds ratio, {{results.whole.or.point}}\n\n", []),
+     ("![The odds ratio, {{results.whole.or.point}}](figures/forest.png)\n\n", []),
      ("", ["quoted-alone"])],
 )  # fmt: skip
-def test_a_typed_table_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone(
+def test_a_block_with_no_stop_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone(
     project: Path, above: str, said: list[str]
 ) -> None:
-    """A known gap (DESIGN.md, Known gaps, "A typed Markdown table and the paragraph after
-    it are read as one sentence"): a table has no stop to end it, so a P written in the
-    paragraph after a typed table that holds its estimate passes as if the estimate stood
-    beside it; the same P with no table before it is quoted alone."""
+    """A known gap (DESIGN.md, Known gaps, "A block with no stop at its end and the
+    paragraph after it are read as one sentence"): a typed table, a heading, a list item or
+    a display's line that holds the estimate and ends in no stop runs into the paragraph
+    after it, so a P written there passes as if the estimate stood beside it; the same P
+    with no such block before it is quoted alone."""
     _with_whole(project, above + "P was {{results.whole.or.p}}.",
                 {"secondary": {"method": "holm"}})  # fmt: skip
     assert [code for code, _ in _whole_said(project) if code == "quoted-alone"] == said

@@ -18140,13 +18140,13 @@ been sorted yet.
   the field's DOI is always taken first, each DOI read as the gates read one: without the
   dressing `normal_doi` takes off (`doi:`, a resolver's address, a stop after it), in one
   case.
-- **Some tests of the literature are narrower than the rule they hold.** The words beside a
-  quoted value are drawn with each value once, between spaces, and never inside a word with
-  a digit: a value quoted twice, or within "CYP3A14", are held by corruption cases only, or
-  not at all (round 1 of #278); a quote in a script written without spaces is drawn in
-  Han, Kana, Thai, Lao, Khmer and Myanmar letters, and never with a value glued to it. A
-  narrative citation's name written as hex on the command line is tested with Latin names
-  only (round 3 of #296).
+- **A ledger value is taken out of its quote once.** G7 counts the words beside a quoted
+  value with its first match alone taken out (`literature.sources.words_beside`). A number
+  quoted again is no word, so it counts as it should; a value with letters quoted again,
+  "IgG4" or "1 in 4", has its letters counted as words beside it, and so has one first
+  matched inside a longer word ("anti-IgG4" before "IgG4"). Such a quote is a word or two
+  further from `quote-too-short`. Pinned by
+  `tests/test_corruption.py::test_a_ledger_value_is_taken_out_of_its_quote_once`.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -18936,7 +18936,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   no entry matches, the hint says to "cite it with its key from references.bib, ..., adding
   the work there first if it is not yet in it", whose "it" is the citation, then the work,
   then the file. The hint is G2's alone: `bind` and the annotated copy still give the
-  generic one.
+  generic one. Pinned by
+  `tests/test_corruption.py::test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key`,
+  `tests/test_corruption.py::test_the_hint_for_a_typed_year_reads_the_author_year_forms_and_no_more`,
+  `tests/test_corruption.py::test_a_latex_tie_before_a_typed_year_is_not_read_as_a_space`,
+  `tests/test_properties.py::test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author`,
+  `tests/test_properties.py::test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it`,
+  `tests/test_binding.py::test_bind_gives_a_typed_citation_s_year_the_generic_hint` and
+  `tests/test_annotate.py::test_the_annotated_copy_gives_a_typed_citation_s_year_the_generic_hint`.
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,
@@ -28480,8 +28487,8 @@ Closed since, and why each mattered (an open gap goes above this line):
   `sys._xoptions` now, as the test of the error handler did.
 
 - **Tests that could not fail, or left a branch or a shape of Word undrawn (2026-11-21).**
-  Points under three open entries above, each a test that held less than its rule, so that
-  a rule broken there would have passed:
+  Points under two open entries above, and a third entry whole, each a test that held less
+  than its rule, so that a rule broken there would have passed:
   - Under "The year of a citation typed as text is read in the author-year forms only": the
     rows of `tests/test_corruption.py` whose hint names no key did not check that the hint
     G2 gave before follows it, as the rows that name a key did; and `names_in_tex` drew no
@@ -28494,11 +28501,22 @@ Closed since, and why each mattered (an open gap goes above this line):
     tested a recorded suggestion whose `written` digest is null, which `offered_of`
     refuses, nor a reply to a comment that carries a note, matched by that digest and not
     the finding's. A test of each, in `tests/test_suggestions.py`.
-  - Under "Some tests of the literature are narrower than the rule they hold": a Zotero
-    field in a returned document was drawn in one shape, its runs bare and its result in
-    one run. `tests/test_roundtrip.py` draws it with Zotero's run properties, its result
-    over several runs, both, a `formattedCitation` in its code, and as a `w:fldSimple`;
-    each is named as a citation inserted in Word and its paragraph refused.
+  - The entry "Some tests of the literature are narrower than the rule they hold", whole.
+    A Zotero field in a returned document was drawn in one shape, its runs bare and its
+    result in one run. `tests/test_roundtrip.py` draws it with Zotero's run properties, its
+    result over several runs, both, a `formattedCitation` in its code, and as a
+    `w:fldSimple`; each is named as a citation inserted in Word and its paragraph refused.
+    The words beside a quoted value were drawn with each value once, between spaces, never
+    inside a word and never glued to a script written without spaces: the properties draw a
+    number twice and inside a word that holds it ("CYP3A14"), and each value glued to Han,
+    Kana, Thai, Lao, Khmer or Myanmar letters on both sides, which it parts as a space does;
+    a rule that takes the word holding the value out with it, or joins the letters on its
+    two sides, fails them (two `BROKEN` cases). What they showed of a value with letters is
+    the open entry "A ledger value is taken out of its quote once". And the names printed
+    before narrative citations, handed to pandoc in hexadecimal on the command line (round
+    3 of #296), were tested with Latin names only: a name in Japanese, in Greek and
+    Cyrillic, with accents, and with a letter beyond the Basic Multilingual Plane is read
+    as printed.
 
 - **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
   section of another name was not found (2026-11-11).** Of the twelve numbers the audit

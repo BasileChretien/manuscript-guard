@@ -106,6 +106,134 @@ def test_a_page_not_compressed_is_read_and_one_under_another_filter_is_not() -> 
     assert figure is not None and figure.texts == []
 
 
+def _pages(*kids: bytes) -> bytes:
+    """A PDF whose page tree holds a page for each content of `kids`, in that order, each
+    with its own font, F1 to Fn: Helvetica, then Times-Roman, then Courier."""
+    named = (b"Helvetica", b"Times-Roman", b"Courier")
+    count = len(kids)
+    refs = b" ".join(b"%d 0 R" % (3 + i) for i in range(count))
+    pages = [b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F%d %d 0 R >> >>"
+             b" /Contents %d 0 R >>" % (i + 1, 3 + count + 2 * i, 4 + count + 2 * i)
+             for i in range(count)]  # fmt: skip
+    rest = []
+    for i, content in enumerate(kids):
+        rest += [b"<< /Type /Font /Subtype /Type1 /BaseFont /%s >>" % named[i], _stream(content)]
+    return _raw(b"<< /Type /Catalog /Pages 2 0 R >>",
+                b"<< /Type /Pages /Kids [%s] /Count %d /MediaBox [0 0 216 144] >>"
+                % (refs, count), *pages, *rest)  # fmt: skip
+
+
+def test_only_the_first_page_of_a_pdf_figure_is_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): the
+    second page's font, its 4 pt text and its hairline are not read."""
+    first = b"BT /F1 10 Tf (a) Tj ET"
+    second = b"BT /F2 4 Tf (b) Tj ET 0.1 w 0 0 m 1 1 l S"
+    figure = parse_pdf(_pages(first, second))
+    assert figure is not None
+    assert (figure.texts, figure.lines) == ([("a", 10.0)], [])
+    assert [font.name for font in figure.fonts] == ["Helvetica"]
+    alone = parse_pdf(_pages(second))
+    assert alone is not None and (alone.texts, alone.lines) == ([("b", 4.0)], [0.1])
+
+
+def test_the_first_page_read_is_the_lowest_numbered_page_object() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): with
+    its page tree listing object 4 before object 3, the PDF's first page is object 4, and
+    object 3 is the one read: its 10 pt text and its font, and nothing of object 4, neither
+    its text nor its line nor its font. Object 4 is written first in the file as well, so
+    the page read is neither the tree's first nor the file's, but the lowest-numbered."""
+    import re
+
+    document = _pages(b"BT /F1 10 Tf (a) Tj ET", b"BT /F2 4 Tf (b) Tj ET 0.1 w 0 0 m 1 1 l S")
+    turned = document.replace(b"/Kids [3 0 R 4 0 R]", b"/Kids [4 0 R 3 0 R]")
+    head, *objects = re.split(rb"(?=^\d+ 0 obj$)", turned, flags=re.MULTILINE)
+    objects[2], objects[3] = objects[3], objects[2]
+    turned = head + b"".join(objects)
+    assert b"/Kids [4 0 R 3 0 R]" in turned
+    assert turned.index(b"\n4 0 obj\n") < turned.index(b"\n3 0 obj\n")
+    figure = parse_pdf(turned)
+    assert figure is not None and (figure.texts, figure.lines) == ([("a", 10.0)], [])
+    assert [font.name for font in figure.fonts] == ["Helvetica"]
+
+
+def test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): the
+    same page, written by pypdf as it is and encrypted, is read as it is and shows nothing
+    once encrypted; its font, a name in a dictionary, is still listed. Its content is
+    compressed before it is encrypted, as a plotting library writes it, so the encrypted
+    stream is no Flate stream, and the document is the same bytes on every run."""
+    import io
+
+    pypdf = pytest.importorskip("pypdf")
+    from pypdf.generic import ContentStream, DictionaryObject, NameObject
+
+    def written(encrypted: bool) -> bytes:
+        writer = pypdf.PdfWriter()
+        page = writer.add_blank_page(216, 144)
+        font = DictionaryObject({NameObject("/Type"): NameObject("/Font"),
+                                 NameObject("/Subtype"): NameObject("/Type1"),
+                                 NameObject("/BaseFont"): NameObject("/Helvetica")})  # fmt: skip
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+        )
+        content = ContentStream(None, None)
+        content.set_data(b"BT /F1 10 Tf (a) Tj ET 0.5 w 0 0 m 1 1 l S")
+        page.replace_contents(content)
+        page.compress_content_streams()
+        if encrypted:
+            writer.encrypt("", "owner", algorithm="RC4-128")
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+
+    assert written(True) == written(True)
+    plain, encrypted = parse_pdf(written(False)), parse_pdf(written(True))
+    assert plain is not None and (plain.texts, plain.lines) == ([("a", 10.0)], [0.5])
+    assert encrypted is not None and (encrypted.texts, encrypted.lines) == ([], [])
+    assert [font.name for font in encrypted.fonts] == ["Helvetica"]
+
+
+@pytest.mark.parametrize("shown", [b"(a) Tj", b"50 Tz 3 Ts (a) Tj"], ids=["plain", "rise, scaling"])
+def test_a_type_3_font_s_matrix_and_the_lines_of_its_glyphs_are_not_read(shown: bytes) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): a
+    Type 3 font of a hundred units to the em, set at 10, draws its text ten times as large,
+    and is read at 10; and the stroke its glyph draws is no line. A horizontal scaling and a
+    rise (`50 Tz 3 Ts`) change nothing of what is read: the text is still read at 10."""
+    font = (b"<< /Type /Font /Subtype /Type3 /FontMatrix [0.01 0 0 0.01 0 0] /FontBBox"
+            b" [0 0 100 100] /CharProcs << /a 6 0 R >> /Encoding << /Type /Encoding"
+            b" /Differences [97 /a] >> /FirstChar 97 /LastChar 97 /Widths [100] >>")  # fmt: skip
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", PAGES, PAGE % (b"5 0 R", b""), font,
+        _stream(b"BT /F1 10 Tf " + shown + b" ET"), _stream(b"100 0 d0 0.2 w 0 0 m 100 100 l S"),
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None
+    assert (figure.texts, figure.lines) == ([("a", 10.0)], [])
+    assert [(f.subtype, f.embedded) for f in figure.fonts] == [("Type3", True)]
+
+
+def test_a_font_the_resources_name_is_listed_whether_any_text_uses_it_or_not() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): the
+    page shows text in Helvetica alone, and Times-Roman, which its resources name, and
+    Courier, which a form it never draws names, are listed with it; a font no resources name
+    is not."""
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", PAGES,
+        b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R >>"
+        b" /XObject << /X 6 0 R >> >> /Contents 7 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << /Font << /F3 8 0 R"
+        b" >> >> /Length 0 >>\nstream\n\nendstream",
+        _stream(b"BT /F1 10 Tf (a) Tj ET"),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>",
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None and figure.texts == [("a", 10.0)]
+    assert [font.name for font in figure.fonts] == ["Helvetica", "Times-Roman", "Courier"]
+
+
 def test_a_page_s_width_is_its_media_box_s_or_its_parents() -> None:
     figure = parse_pdf(pdf_document(b"", width=468))
     assert figure is not None and figure.width_pt == 468

@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import runpy
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 
@@ -158,6 +159,101 @@ def test_a_function_is_followed_through_the_functions_it_calls(tmp_path: Path) -
     assert steps["ci"]["follows"] == ["half", "third"]
 
 
+UNFOLLOWED = '''\
+import math
+from pathlib import Path
+
+from helper import third
+
+from manuscript_guard.emit import Emitter
+
+K = 2
+
+
+def half(x):
+    return x / 2
+
+
+def quarter(x):
+    return x / 4
+
+
+class Scale:
+    def by(self, x):
+        return x * 2
+
+
+twice = lambda x: x * 2  # noqa: E731
+
+
+def main():
+    def inner(x):
+        return x / 2
+
+    with em.step("inner"):
+        em.value("inner", inner(1.0), digits=2)
+
+
+em = Emitter(__file__, root=Path(__file__).parent.parent)
+values = [1.0, 2.0]
+root = math.sqrt(4)
+with em.step("ci"):
+    se = root / K + twice(1) + sum(map(half, values)) + third(3) + Scale().by(1) + quarter(1)
+main()
+em.value("se", se, digits=3)
+em.write()
+'''
+
+
+@pytest.mark.parametrize(
+    ("relative", "was", "now", "follows"),
+    [
+        ("analysis/a.py", "K = 2", "K = 3", False),
+        ("analysis/a.py", "root = math.sqrt(4)", "root = math.sqrt(9)", False),
+        ("analysis/a.py", "lambda x: x * 2", "lambda x: x * 3", False),
+        ("analysis/a.py", "    return x / 2\n\n\ndef quarter", "    return x / 3\n\n\ndef quarter",
+         False),
+        ("analysis/a.py", "        return x * 2", "        return x * 3", False),
+        ("analysis/helper.py", "x / 3", "x / 5", False),
+        ("analysis/a.py", "        return x / 2\n\n    with", "        return x / 3\n\n    with",
+         False),
+        ("analysis/a.py", "return x / 4", "return x / 5", True),
+    ],
+    ids=["a constant", "a variable computed before the block", "a lambda",
+         "a helper handed on by its name", "a method of an object", "an imported function",
+         "a function defined inside main()", "a function called by its name"],
+)  # fmt: skip
+def test_a_step_follows_its_script_s_functions_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest,
+    relative: str, was: str, now: str, follows: bool,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A step follows only the analysis's own
+    functions, in its own script"): a change to a constant, to a variable computed before
+    the block, to a lambda, to a helper handed on by its name, to a method, to an imported
+    function or to a function defined inside `main()` leaves the step's digest as it was,
+    and `methods-drift` alone says the file changed. A function of the script called by its
+    name is followed, and its change is the step's."""
+    methods = ("# Methods\n\nThe error was halved. {{method.ci}} Inside. {{method.inner}}\n\n"
+               "# Results\n\nIt was {{results.se}}.\n")  # fmt: skip
+    (tmp_path / "analysis").mkdir()
+    (tmp_path / "analysis" / "helper.py").write_text("def third(x):\n    return x / 3\n", "utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path / "analysis"))
+    # Each run imports this folder's helper afresh, and none is left behind for another test.
+    monkeypatch.delitem(sys.modules, "helper", raising=False)
+    request.addfinalizer(lambda: sys.modules.pop("helper", None))
+    before = run(make(tmp_path, UNFOLLOWED, methods), UNFOLLOWED)
+    assert before["ci"]["follows"] == ["quarter"]
+    reconcile(load_project(tmp_path)[0])
+    edit(tmp_path, relative, was, now)
+    sys.modules.pop("helper", None)
+    after = run(tmp_path, (tmp_path / "analysis" / "a.py").read_text(encoding="utf-8"))
+    changed = {name for name in before if after[name]["digest"] != before[name]["digest"]}
+    assert changed == ({"ci"} if follows else set())
+    report = judged(tmp_path)
+    assert "methods-drift" in codes(report), report.render(tmp_path)
+    assert ("method-step-changed" in codes(report)) is follows
+
+
 def test_a_step_in_a_branch_the_run_did_not_take_is_not_recorded(tmp_path: Path) -> None:
     script = SCRIPT.replace('with em.step("ci"):', 'if a > b:\n  with em.step("ci"):')
     script = script.replace('em.value("se", se, digits=3)\n', "")
@@ -260,6 +356,35 @@ def test_a_claim_ends_at_a_blank_line_and_a_heading_and_not_at_a_comment(tmp_pat
     assert claims == ["The first line and the second."], "the comment is not claimed"
 
 
+@needs_pandoc
+def test_a_hash_line_is_a_heading_to_g9_and_text_to_pandoc(project: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G9 takes any line that opens with `#` and a
+    space for a heading"): "# of reports was counted" with no blank line above it is text of
+    the paragraph to pandoc, and a heading to G9, which claims only the line after it.
+    `check` passes it, as it passes the example without it; the build asks pandoc, and
+    refuses."""
+    paragraph = "The first line\n# of reports was counted\nand the second. {{method.signal}}\n"
+    found, _bare = claims_in(paragraph)
+    assert [(steps, paragraph[start:end].strip()) for steps, start, end, _at in found] == [
+        (("signal",), "and the second.")
+    ]
+    assert _blocks_read(substitute(paragraph, {})) == ["Para"]
+    assert main(["check", str(project)]) == 0
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    # At the end of the Methods, so that no number is read under the heading G9 sees.
+    edit(project, "manuscript/main.md", "\n# Results\n", f"\n{paragraph}\n# Results\n")
+    reconcile(load_project(project)[0])
+    claims = [claim.text for claim in anchored(load_project(project)[0])[0]]
+    assert "and the second." in claims and not [c for c in claims if "first line" in c]
+    capsys.readouterr()
+    assert main(["check", str(project)]) == 0, capsys.readouterr().out
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    said = capsys.readouterr().err
+    assert "pandoc reads as text" in said, said
+    assert "the level-1 heading 'of reports was counted'" in said, said
+
+
 def test_an_anchor_that_opens_its_paragraph_claims_nothing_and_fails(tmp_path: Path) -> None:
     root = make(tmp_path, methods=METHODS.replace(
         "Its standard error is half the usual one. {{method.ci}}",
@@ -291,6 +416,23 @@ def test_an_anchor_naming_a_step_that_never_ran_fails(tmp_path: Path) -> None:
         "step 'ci' ran, and no text in the manuscript points at it"
     ]
     assert warned[0].line == 18
+
+
+def test_an_anchor_on_a_heading_s_line_is_not_judged(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An anchor on a heading's line is not judged"):
+    `## Statistical analysis {{method.typo}}` is in no paragraph, so it makes no claim,
+    `methods --explain` does not list it, it gives no `method-step-unknown` though no step
+    of that name ran, and it prints nothing. In a paragraph, the same anchor fails."""
+    heading = "## Statistical analysis {{method.typo}}\n"
+    assert claims_in(f"# Methods\n\n{heading}\nText.\n")[0] == []
+    assert substitute(heading, {}) == "## Statistical analysis \n"
+    root = make(tmp_path, methods=METHODS.replace("# Methods\n\n", f"# Methods\n\n{heading}\n"))
+    assert "method-step-unknown" not in codes(judged(root)), judged(root).render(tmp_path)
+    assert not [line for line in explain_methods(load_project(root)[0]) if "typo" in line]
+    in_text = make(tmp_path / "b", methods=METHODS.replace(
+        "# Methods\n\n", "# Methods\n\nStatistical analysis. {{method.typo}}\n\n"))  # fmt: skip
+    assert "method-step-unknown" in {f.code for f in judged(in_text).failures}
+    assert [line for line in explain_methods(load_project(in_text)[0]) if "typo" in line]
 
 
 def test_an_anchor_is_no_value_binding(tmp_path: Path) -> None:
@@ -548,6 +690,69 @@ def test_an_anchors_own_line_inside_a_paragraph_is_warned_at_every_stage(
     assert not [f for f in judged(make(tmp_path / "b")).findings if f.code == "method-anchor-line"]
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("written", "warned", "read", "claimed"),
+    [
+        ("One.\n{{method.a}}\nTwo.\n", [2], ["Para", "Para"], "One."),
+        ("Design\n------\n{{method.a}}\nTwo.\n", [3], ["Header", "Para"], "Design\n------"),
+        ("One.\n\n<!-- n -->\n{{method.a}}\nTwo.\n", [4], ["Para", "RawBlock", "Para"],
+         "<!-- n -->"),
+        ("```\nOne.\n{{method.a}}\nTwo.\n```\n", [3], ["CodeBlock"], "```\nOne."),
+        ("One.\n{{method.a}}\n{{method.b\n}}\n\nTwo.\n", [2], ["Para", "Para"], "One."),
+        ("One.\n{{method.a}}\n{{method.\nb}}\n\nTwo.\n", [2], ["Para", "Para", "Para"],
+         "One."),
+        # The comment alone between the two, which prints nothing.
+        ("One.\n{{method.a}}\n{{method.b}} <!-- checked -->\n\nTwo.\n", [2],
+         ["Para", "Para", "Para"], "One."),
+    ],
+    ids=["a paragraph split", "under a setext underline", "under a comment",
+         "in a fenced code block", "braces over two lines", "a break inside the name",
+         "a comment after the run"],
+)  # fmt: skip
+def test_the_anchor_line_warning_reads_lines_and_not_blocks(
+    written: str, warned: list[int], read: list[str], claimed: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An anchor's own line inside a paragraph ends it
+    in the document"): "One.", an anchor's line and "Two." are one paragraph to G9, which
+    claims "One.", and two in the document. The warning reads lines, so it is said too where
+    pandoc reads a heading or a raw block above the line, inside a fenced code block, where
+    the braces run over two lines and where a comment follows the run, though nothing that
+    prints splits there. A break inside the name makes no anchor: it prints as text."""
+    from manuscript_guard.roundtrip import anchors_apart
+
+    assert anchor_lines(written) == warned
+    assert _blocks_read(substitute(written, {})) == read
+    found, _bare = claims_in(written)
+    assert written[found[0][1] : found[0][2]].strip() == claimed
+    if "{{method.\n" in written:
+        assert "{{method.\nb}}" in substitute(written, {})
+        assert parse("{{method.\nb}}") == ([], [])
+    if read == ["Para", "Para"] and "{{method.b" not in written:
+        assert anchors_apart(written.rstrip("\n")) is None, "a Word edit to it is refused"
+
+
+@needs_pandoc
+def test_two_anchors_at_a_line_s_end_break_the_line() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Two anchors at the end of a line inside a
+    paragraph break the line"): they print as two spaces, which pandoc reads as a line break
+    inside the paragraph; at the end of a paragraph the spaces print nothing."""
+    import subprocess
+
+    def native(markdown: str) -> str:
+        return subprocess.run([PANDOC, "-f", "markdown", "-t", "native"], input=markdown,
+                              capture_output=True, check=True, timeout=120,
+                              encoding="utf-8").stdout  # fmt: skip
+
+    inside = substitute("One. {{method.a}} {{method.b}}\nTwo.\n", {})
+    assert inside == "One.  \nTwo.\n"
+    assert "LineBreak" in native(inside)
+    ending = substitute("One. {{method.a}} {{method.b}}\n\nTwo.\n", {})
+    assert "LineBreak" not in native(ending)
+    assert _blocks_read(ending) == ["Para", "Para"]
+    assert "LineBreak" not in native(substitute("One. {{method.a}}\nTwo.\n", {}))
+
+
 # ------------------------------------------------------------------------ the gate, locked
 
 
@@ -605,6 +810,23 @@ def test_a_text_that_changed_says_what_it_was(tmp_path: Path) -> None:
     found = [f for f in report.failures if f.code == "method-claim-changed"]
     assert len(found) == 1, report.render(tmp_path)
     assert found[0].context == "was: The ratio was computed from two counts."
+
+
+def test_a_pair_whose_text_and_code_changed_is_unread(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A pair whose text and code both changed is one
+    never read"): a text is a changed one only while the step's code is as the lock has it.
+    With both changed, the finding is `method-pair-unread`, which does not say what the text
+    was."""
+    root = make(tmp_path)
+    reconcile(load_project(root)[0])
+    edit(root, "manuscript/main.md", "computed from two counts", "computed from three counts")
+    assert [f.code for f in judged(root).failures] == ["method-claim-changed"]
+    run(root, SCRIPT.replace("ror = a / b", "ror = b / a"))
+    report = judged(root)
+    found = [f for f in report.failures if f.code.startswith("method-")]
+    assert [(f.code, f.line) for f in found] == [("method-pair-unread", 3)], report.render(root)
+    assert "was:" not in (found[0].context or "")
+    assert "two counts" not in found[0].message + (found[0].hint or "")
 
 
 def test_a_text_re_wrapped_is_the_same_text(tmp_path: Path) -> None:

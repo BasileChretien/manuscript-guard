@@ -269,6 +269,35 @@ def test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled(
     assert not [o for o in manifest["overrides"] if o.get("finding") == "r2-de-01"]
 
 
+def test_an_unreadable_record_drops_the_overrides_of_the_readings_beside_it(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a reviewer's
+    plain record that cannot be read is listed as "a record", and the overrides of the
+    named readings the panel lists beside it go with it. The 2026-11-09 triage planned a
+    fix (F15), which will change this test."""
+    from manuscript_guard.gates.review import overrides
+    from manuscript_guard.record import write_review
+
+    written = write_review(load_project(project)[0], "biostatistician", verdict="pass",
+                           reading="Dr Tanaka")  # fmt: skip
+    edit_yaml(written.path, lambda d: d["findings"].append(
+        {"id": "t1", "severity": "minor", "finding": "Say synthetic.", "overridden": "It does."}
+    ))  # fmt: skip
+    # The other side: beside a record that reads, the named reading's override is listed.
+    listed = [o for o in overrides(load_project(project)[0]) if o["round"] == 1]
+    assert ("biostatistician [Dr Tanaka]", "t1") in [(o.get("reviewer"), o.get("finding"))
+                                                     for o in listed]  # fmt: skip
+    record = project / "review" / "round-1" / "biostatistician.yaml"
+    record.write_text(
+        record.read_text(encoding="utf-8") + "resolution: Fixed: it now says reporting\n",
+        encoding="utf-8",
+    )
+    listed = [o for o in overrides(load_project(project)[0]) if o["round"] == 1
+              and o.get("reviewer", "").startswith("biostatistician")]  # fmt: skip
+    assert listed == [{"round": 1, "reviewer": "biostatistician", "unreadable": "a record"}]
+
+
 def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:
     import subprocess
 
@@ -367,6 +396,47 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
         encoding="utf-8",
     )
     assert abstract_text(load_project(project)[0]) == (None, None)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_abstract_screening_is_the_abstract_and_an_e_mail_autolink_is_refused(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The submission pack"): a heading "Abstract
+    screening" is taken for the Abstract's, where "Abstracted data" is not; and an e-mail
+    autolink, whose words are not its `mailto:` address, leaves the abstract out as a link
+    with words of its own, where a web address's autolink is written."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    for title, found in (("Abstract screening", True), ("Abstracted data", False)):
+        main.write_text(text.replace("# Abstract\n", f"# {title}\n", 1), encoding="utf-8")
+        plain, why = abstract_text(load_project(project)[0])
+        assert (plain is not None and plain.startswith("Background. Drug-induced")) is found
+        assert why is None
+    for link, written in (("<ada.example@invalid.example>", False),
+                          ("<https://example.org/data>", True)):  # fmt: skip
+        main.write_text(text.replace("cannot establish risk.",
+                                     f"cannot establish risk. Write to {link}.", 1),
+                        encoding="utf-8")  # fmt: skip
+        plain, why = abstract_text(load_project(project)[0])
+        if written:
+            assert why is None and "Write to https://example.org/data." in plain, plain
+        else:
+            assert plain is None and why == (
+                "abstract.txt is not written: the abstract holds what the build formats and "
+                "plain text cannot (a citation, a footnote, maths, code, an image, a table, a "
+                "figure, a link with words of its own, or a block other than a paragraph or a "
+                "heading); copy it from the document"), why
+            # The link is refused for its words, which are not its `mailto:` address.
+            from manuscript_guard.build.submission import _plain
+
+            link = {"t": "Link", "c": [["", [], []], [{"t": "Str", "c": "a@b.example"}],
+                                       ["mailto:a@b.example", ""]]}  # fmt: skip
+            assert not _plain(link)
+            link["c"][2][0] = "a@b.example"
+            assert _plain(link)
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

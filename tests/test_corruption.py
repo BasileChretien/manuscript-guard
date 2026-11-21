@@ -2855,12 +2855,13 @@ def test_a_question_to_the_author_never_fails_and_its_answer_makes_the_audit_cat
                  "Electron temperature relations"]) == 1  # fmt: skip
 
 
-def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_warning(
+def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_note(
     tmp_path: Path, capsys
 ) -> None:
     """Decision 27, part B (Basile, 2026-11-16): a number the Introduction alone gives is
     asked about (docx-med-B1 of the real-paper corpus), but one of the Abstract's Results the
-    paper gives nowhere, typed wrong, is still `abstract-not-found`, a warning, and never a
+    paper gives nowhere, typed wrong, is still `abstract-not-found`, a note by how often it
+    was right on real papers (`auditing.measured`, 2026-11-21), and never a
     question; so is one only a reference entry or a statement gives."""
     from manuscript_guard.cli import main
 
@@ -2879,7 +2880,7 @@ def test_an_abstract_number_found_nowhere_is_still_not_found_and_a_warning(
         number = typed.split()[0]
         assert [(one["code"], one["severity"], one["question"]) for one in found
                 if one["message"].startswith(number)] == [
-            ("abstract-not-found", "warn", False)], (typed, found)  # fmt: skip
+            ("abstract-not-found", "info", False)], (typed, found)  # fmt: skip
 
 
 def test_a_heading_named_as_the_results_is_the_results_to_no_other_reader(

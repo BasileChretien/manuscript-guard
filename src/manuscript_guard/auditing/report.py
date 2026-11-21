@@ -578,10 +578,9 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
         *(of_number(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True,
                          d.source, d.line, d.context), d) for d in read.conflicts),
         # A note, by how often it was right on real papers (`auditing.measured`).
-        *(of_number(measured(Item(ABSTRACT, "audit", "abstract-not-found",
-                                  f"{c.text} in the Abstract is not found in "
-                                  f"{ABSTRACT_SEARCHED}", WARN, False, c.source, c.line,
-                                  c.context)), c)
+        *(measured(of_number(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the "
+                                  f"Abstract is not found in {ABSTRACT_SEARCHED}", WARN, False,
+                                  c.source, c.line, c.context), c))
           for c in read.not_found),
         *(of_number(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is "
                          "found only as a rounding of a number the paper reports", INFO, False,

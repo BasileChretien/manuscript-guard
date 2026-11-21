@@ -208,6 +208,46 @@ def test_a_language_with_no_runner_is_skipped_out_loud(project: Path, monkeypatc
     assert "not verified" in module.render(result, project)
 
 
+def test_verify_raises_after_its_report_where_it_cannot_record_the_run(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): an error writing
+    `build/verify.json`, here a folder of that name, is a traceback after `verify` printed
+    its report."""
+    from manuscript_guard.cli import main
+
+    (project / "build").mkdir(exist_ok=True)
+    (project / "build" / "verify.json").mkdir()
+    with pytest.raises(OSError):
+        main(["verify", str(project)])
+    assert "values reproduced by re-running the analysis." in capsys.readouterr().out
+
+
+def test_a_fragment_whose_values_are_a_list_raises_after_the_report(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): a results fragment whose
+    `values` is a list, which its schema check fails already, raises after `verify`'s report
+    where it was not re-run, here for want of a runner for its script."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_namespace
+
+    (project / "analysis" / "03_other.jl").write_text("# julia\n", encoding="utf-8")
+    (project / "results" / "03_other.json").write_text(json.dumps({
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/03_other.jl",
+                       "generated_at": "2026-01-01T00:00:00+00:00", "inputs": []},
+        "values": [1, 2],
+    }), encoding="utf-8")  # fmt: skip
+    assert "schema-violation" in {f.code for f in load_namespace(load_project(project)[0])[3]
+                                  .failures}  # fmt: skip
+    with pytest.raises(AttributeError, match="'list' object has no attribute 'items'"):
+        main(["verify", str(project)])
+    printed = capsys.readouterr().out
+    assert "[SKIP] 03_other.json: no runner for .jl on this machine" in printed
+    assert "1 fragment(s) not verified." in printed
+
+
 def test_only_naming_no_fragment_is_an_error(project: Path) -> None:
     """A typo, or a fragment renamed in a CI script, made verify permanently green."""
     loaded, _ = load_project(project)
@@ -290,6 +330,78 @@ def test_editing_the_analysis_is_caught_by_digest_not_by_mtime(project: Path) ->
     write_digest(fragment)
 
     assert "script-newer" in freshness_codes(project)
+
+
+def _ci_from_helpers(project: Path, *, declared: bool) -> None:
+    """The example with its normal quantile read from two helper modules, one under
+    `analysis/` and one in `lib/`, the second declared an input or not, and run again."""
+    import subprocess
+    import sys
+
+    script = project / "analysis" / "01_disproportionality.py"
+    (project / "analysis" / "ci_helper.py").write_text("Z = 1.96\n", encoding="utf-8")
+    (project / "lib").mkdir()
+    (project / "lib" / "ci_lib.py").write_text("Z = 1.96\n", encoding="utf-8")
+    text = script.read_text(encoding="utf-8").replace(
+        "        z = round(NormalDist().inv_cdf(1 - alpha / 2), 2)\n",
+        "        import sys\n        sys.path.insert(0, str(ROOT / 'lib'))\n"
+        "        import ci_helper\n        import ci_lib\n"
+        "        assert ci_helper.Z == ci_lib.Z\n        z = ci_lib.Z\n",
+    )
+    if declared:
+        text = text.replace('em = Emitter(__file__, ci_level="95%")',
+                            'em = Emitter(__file__, ci_level="95%", inputs=["lib/ci_lib.py"])')
+    script.write_text(text, encoding="utf-8")
+    out = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                         cwd=project)  # fmt: skip
+    assert out.returncode == 0, out.stderr
+
+
+def _g1_of(project: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(project)
+    assert report.ok or "input-changed" in {f.code for f in report.failures}
+    return sorted((f.code, f.severity, f.message) for f in report.findings
+                  if f.gate == "G1" and f.severity != "info")  # fmt: skip
+
+
+@pytest.mark.parametrize("declared", [False, True], ids=["imported only", "declared an input"])
+def test_a_helper_the_script_imports_is_not_followed(project: Path, declared: bool) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G1 fails only on the script that wrote a results
+    file and on the inputs it declared"): the 1.96 of the interval moved into a helper and
+    changed to 2.58 with nothing run again. `check` passes, warning `analysis-newer` for the
+    helper under `analysis/` and saying nothing of the one in `lib/`, and the results hold
+    the old values; declared an input, the helper's change fails `input-changed`. `verify`
+    sees the change either way."""
+    import os
+    import time
+
+    from manuscript_guard.contracts import load_namespace
+
+    _ci_from_helpers(project, declared=declared)
+    assert _g1_of(project) == []
+    before = load_namespace(load_project(project)[0])[0]["results.ror.ci_low"].display
+    later = time.time() + 10
+    for helper in (project / "analysis" / "ci_helper.py", project / "lib" / "ci_lib.py"):
+        helper.write_text("Z = 2.58\n", encoding="utf-8")  # verify's run agrees with itself
+        os.utime(helper, (later, later))
+    newer = ("analysis-newer", "warn", "analysis/ci_helper.py changed after the newest "
+             "results fragment")  # fmt: skip
+    changed = ("input-changed", "fail", "input lib/ci_lib.py changed since these results "
+               "were written")  # fmt: skip
+    assert _g1_of(project) == ([newer, changed] if declared else [newer])
+    assert load_namespace(load_project(project)[0])[0]["results.ror.ci_low"].display == before
+    assert "rerun-differs" in {f.code for f in to_report(run(project)).failures}
+    if not declared:
+        # `build` passes the check and writes the old interval.
+        from manuscript_guard.cli import main
+
+        if shutil.which("pandoc") is None:
+            pytest.skip("pandoc is not installed, so the build is not run")
+        assert main(["build", str(project), "--offline"]) == 0
+        built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+        assert f"(95% CI {before} to" in built
 
 
 def test_an_older_fragment_without_the_digest_still_uses_mtime(project: Path) -> None:

@@ -183,6 +183,41 @@ def test_a_bound_is_no_rounding_even_within_half_a_unit() -> None:
     assert report.findings == ()
 
 
+@pytest.mark.parametrize(
+    ("control", "display", "treated"),
+    [
+        # A bound over a value it would round to: only the bound keeps it out.
+        (0.0008, "<0.001", 1.2208),
+        # A rate printed per 1,000 of a value held per person.
+        (0.0035, "3.5", 1.2235),
+        (0.0012, "1.2 \N{MULTIPLICATION SIGN} 10\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT THREE}",
+         1.2212),
+    ],
+    ids=["a bound whatever its value", "per 1,000", "a power of ten"],
+)
+def test_a_display_that_is_no_rounding_is_left_out_of_the_printed_arithmetic(
+    control: float, display: str, treated: float
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The printed arithmetic reads the first number of
+    each display"): a display that is not a rounding of its own value is left out, and the
+    relation is held to the values alone, so a wrong value still fails. Read, each display's
+    first number would make the printed difference warn."""
+    values = {"risk.control": _value("risk.control", control, display),
+              "risk.treated": _value("risk.treated", treated, "1.22"),
+              "risk.difference": _value("risk.difference", 1.22, "1.220")}  # fmt: skip
+    difference = {"kind": "difference", "key": "risk.difference",
+                  "of": ["risk.treated", "risk.control"]}  # fmt: skip
+    assert _check(difference, values=values).findings == ()
+    values["risk.difference"] = _value("risk.difference", 1.5, "1.220")
+    assert _codes(_check(difference, values=values)) == [("relation-broken", FAIL)]
+    # The other side: a display that rounds its value is read by its first number, here
+    # 1.1 of "1.1 (0.9 to 1.3)", and 2.4 less 1.1 is not the printed 1.2.
+    values = {"risk.control": _value("risk.control", 1.14, "1.1 (0.9 to 1.3)")}
+    report = _check(difference, values=values)
+    assert _codes(report) == [("relation-rounding", WARN)]
+    assert "is 1.3" in report.findings[0].message
+
+
 def test_the_last_digits_of_decimal_arithmetic_are_no_rounding() -> None:
     """Round 1 of #293: 100 over 3, times 3, is 99.99...9 to 28 digits, and a whole 100
     printed as itself was warned of."""

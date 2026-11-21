@@ -1406,6 +1406,97 @@ def _every_heading_and_reference_redefined_is_read_as_before(
     patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: True)
 
 
+def _the_author_kit_s_heading_is_refused_where_used(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_through_ifstar", lambda self, name, head, body: ())
+
+
+def _every_heading_defined_through_ifstar_is_read_as_before(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(latex_mask._Reader, "_through_ifstar", lambda self, name, head, body:
+                  ("ifstar",) if "\\@ifstar" in body else ())  # fmt: skip
+
+
+def _a_kit_helper_may_print_words_before_the_title(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_HANDED_ON", re.compile(
+        r"\s*\\(?P<to>[A-Za-z@]+)\s*(?P<star>\*)?\s*\{\s*(?:\\texorpdfstring\s*\{[^{}]*\}\s*"
+        r"\{\s*\}\s*)?#1\s*\}\s*"))  # fmt: skip
+
+
+def _a_provided_kit_helper_is_defined(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_ALWAYS_DEFINE",
+                  latex_mask._ALWAYS_DEFINE | {"providecommand"})  # fmt: skip
+
+
+def _a_kit_helper_defined_again_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_takes_back",
+                  lambda self, name: self.bodies_at.pop(name, None))  # fmt: skip
+
+
+def _only_the_plain_helper_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    takes_back = latex_mask._Reader._takes_back
+
+    def broken(self, name: str) -> None:
+        # Round 1 of #757: a rule that took the heading back only for its plain helper.
+        if any(name == helpers[0] or name == helpers[2] for helpers in self.through.values()):
+            self.bodies_at.pop(name, None)
+            return
+        takes_back(self, name)
+
+    patch.setattr(latex_mask._Reader, "_takes_back", broken)
+
+
+def _a_provided_command_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: False)
+
+
+def _an_edef_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._DEFINE_AGAIN | {"edef"})
+
+
+def _a_newcommand_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._ALWAYS_DEFINE)
+
+
+def _a_provided_startsection_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #757: a rule that kept the reading for a provided helper and not for the
+    # `\@startsection` command the helpers hand on to.
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: (
+        self.command in latex_mask.PROVIDERS and (name in latex_mask.COMMANDS or (
+            name in self.bodies_at and name not in [h[2] for h in self.through.values()]))))
+
+
+def _an_at_in_a_kit_comment_counts(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, name: str):
+        if name not in self.bodies_at:
+            return None
+        start, at, letter = self.bodies_at[name]
+        end = self._group_end(at)
+        if end < 0 or not latex_mask._as_written(self.text[start:end], letter):
+            return None
+        return self.text[start:at], self.text[at + 1 : end - 1]
+
+    patch.setattr(latex_mask._Reader, "_defined", broken)
+
+
+def _a_kit_body_where_at_is_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_as_written", lambda definition, letter: True)
+
+
+def _a_short_title_after_the_kit_s_heading_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_SHORT_TITLE", re.compile(r"(?!)"))
+
+
+def _the_kit_s_heading_is_not_told_the_tree(patch: pytest.MonkeyPatch) -> None:
+    restyled = latex_mask._Reader._restyled
+
+    def broken(self, at: int) -> None:
+        restyled(self, at)
+        self.defined_no_short.clear()
+
+    patch.setattr(latex_mask._Reader, "_restyled", broken)
+
+
 def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_before", lambda reading, at: reading)
 
@@ -13121,13 +13212,17 @@ from generated import names_in_tex  # noqa: E402
 
 @holds(30, names_in_tex())
 def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
-    drawn: tuple[str, list[tuple[str, str]]],
+    drawn: tuple[str, list[tuple[str, str | None]]],
 ) -> None:
     """Round 1 of #510: `{\\AA}ngstr{\\"o}m` was read as "aangstrom", and the hint for
     "(Ångström, 2018)" said references.bib held no work by Ångström and to add one. Each
     family name a `.bib` writes in TeX is found for the citation typed with its letter, or
     with the letters a reader without it types; and a name holding TeX the hint does not
-    read is never said to be missing: the hint names its entry."""
+    read is never said to be missing: the hint names its entry. A citation no work is, by a
+    name of theirs from another year or by another name from one of their years, names no
+    entry and is the only one told to add the work (Known gaps F04: no citation was drawn
+    that matched no entry, and the check that the hint never says a work is missing could
+    not fail)."""
     bib, cited = drawn
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "references.bib"
@@ -13137,7 +13232,12 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
         assert read is not None, written
         said = typed_module.hint(read, works, latex=False, otherwise="")
-        assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+        if key is None:
+            assert "[@work" not in said, (written, said, bib)
+            assert "adding the work there first if it is not yet in it" in said, said
+        else:
+            assert f"[@{key}]" in said, (written, said, bib)
+            assert "adding the work there" not in said, (written, said)
 
 
 from generated import typed_reference_papers  # noqa: E402
@@ -13213,6 +13313,23 @@ def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
 
 def _a_name_in_tex_not_read_is_missing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_unread", lambda family: False)
+
+
+def _a_work_of_another_year_is_named(patch: pytest.MonkeyPatch) -> None:
+    def keys_for(typed, works):
+        name = typed_module._fold(typed.name)
+        return sorted(key for (family, _year), keys in works.keys.items() if family == name
+                      for key in keys)  # fmt: skip
+
+    patch.setattr(typed_module, "keys_for", keys_for)
+
+
+def _a_work_of_another_name_is_named(patch: pytest.MonkeyPatch) -> None:
+    def keys_for(typed, works):
+        return sorted(key for (_family, year), keys in works.keys.items()
+                      if year == typed.year for key in keys)  # fmt: skip
+
+    patch.setattr(typed_module, "keys_for", keys_for)
 
 
 def _et_al_is_a_name(patch: pytest.MonkeyPatch) -> None:
@@ -15391,20 +15508,27 @@ _LEDGER_VALUES = ("2.6", "14", "1 in 4", "IgG4")
 _NO_WORDS = ("95%", "2.1-3.2", "(", ")", "3.84", "-", "\N{EN DASH}", "12/40", "100 000")
 _DIGIT_WORDS = ("COVID-19", "CYP3A4", "HbA1c", "person-years.")
 _QUOTE_GAPS = (" ", "  ", "\n", ", ", "; ", " (", ") ", "\N{NO-BREAK SPACE}")
+#: A word with a digit that holds a numeric value of `_LEDGER_VALUES`, before it or after it.
+#: A value with letters is not drawn so (see Known gaps, "A ledger value is taken out of
+#: its quote once").
+_HOLDING = {"2.6": "2.6-fold", "14": "CYP3A14"}
 
 
 @st.composite
 def _quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
     """A quote for each kind of value, of filler words, words with a digit and pieces with
     no letter, in an order drawn each time, with the value among them, and how many words
-    stand beside it."""
+    stand beside it. A numeric value stands twice in its quote, and inside a word with a
+    digit that holds it, "CYP3A14" for 14 (Known gaps F04: each value was drawn once, and
+    never inside a word)."""
     quotes = []
     for value in _LEDGER_VALUES:
         words = draw(st.lists(st.sampled_from(FILLER), max_size=6))
-        pieces = draw(st.permutations([*words, *_DIGIT_WORDS, *_NO_WORDS, value]))
+        more = [value, _HOLDING[value]] if value in _HOLDING else []
+        pieces = draw(st.permutations([*words, *_DIGIT_WORDS, *_NO_WORDS, value, *more]))
         gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
         quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
-        quotes.append((quote, value, len(words) + len(_DIGIT_WORDS)))
+        quotes.append((quote, value, len(words) + len(_DIGIT_WORDS) + len(more) // 2))
     return quotes
 
 
@@ -15414,7 +15538,8 @@ def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
 ) -> None:
     """A word is a run between spaces that holds a letter, a digit in it or not; the value is
     taken out first, so "1 in 4" counts no "in"; and a percentage, an interval, a bracket or
-    a number alone is no word."""
+    a number alone is no word. A number quoted again is no word either, and a word that
+    holds it, "CYP3A14", is one word wherever it stands."""
     for quote, value, count in quotes:
         assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
 
@@ -15445,7 +15570,10 @@ def _unspaced_pieces(draw: st.DrawFn, letters: str, size: int) -> tuple[str, int
 def _unspaced_quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
     """A quote for each kind of value, with a piece of Japanese or Chinese, a piece of Thai,
     each of a few letters at least, a Latin word glued to the first, and filler words, in an
-    order drawn each time, and how many words stand beside the value."""
+    order drawn each time, and how many words stand beside the value. Then the same quote
+    for each value again, with the value glued to letters of these scripts on both sides
+    (Known gaps F04: no value was drawn glued): taken out, it parts them as a space does, so
+    that "纳入120例" counts as "纳入 120 例" does."""
     quotes = []
     (han, two), (thai, four) = _UNSPACED_LETTERS
     for value in _LEDGER_VALUES:
@@ -15460,7 +15588,15 @@ def _unspaced_quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
         quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
         # The Japanese or Chinese piece stands between spaces, so it is a word at the least.
         cjk_count = max(cjk_count, 1)
-        quotes.append((quote, value, len(words) + cjk_count + thai_count + glued_count + 1))
+        count = len(words) + cjk_count + thai_count + glued_count + 1
+        quotes.append((quote, value, count))
+        # Each side of a glued value is a run between spaces once it is out: a word at least,
+        # where it holds a letter and not only a vowel sign of Thai or Khmer.
+        sides = [draw(_unspaced_pieces(*draw(st.sampled_from(_UNSPACED_LETTERS))).filter(
+            lambda p: any(ch.isalpha() for ch in p[0]))) for _ in "lr"]  # fmt: skip
+        (left, left_count), (right, right_count) = sides
+        quote = quote.replace(value, left + value + right, 1)
+        quotes.append((quote, value, count + max(left_count, 1) + max(right_count, 1)))
     return quotes
 
 
@@ -20797,6 +20933,29 @@ def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
 
 
+def _taken_out(pattern: str, between: str) -> Callable[[str, str], list[str]]:
+    """`words_beside` with the value found by `pattern` around it and replaced by `between`."""
+    sources = literature_sources
+
+    def words(quote: str, display: str) -> list[str]:
+        text, value = sources.normalise(quote), sources.normalise(display)
+        found = re.search(pattern.format(re.escape(value)), text, re.IGNORECASE)
+        if value and found:
+            text = text[: found.start()] + between + text[found.end() :]
+        return [word for piece in text.split() for word in sources._words_of(piece)]
+
+    return words
+
+
+def _the_word_holding_the_value_is_taken_out(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "words_beside", _taken_out(r"\S*{}\S*", " "))
+
+
+def _a_glued_value_joins_its_neighbours(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "words_beside",
+                  _taken_out(r"(?<![0-9.,]){}(?![0-9])", ""))  # fmt: skip
+
+
 def _unspaced_letters_are_counted_between_spaces(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(literature_sources, "UNSPACED", ())
 
@@ -25831,6 +25990,14 @@ BROKEN = {
         _a_name_in_tex_not_read_is_missing,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
     ),
+    "a typed citation's hint names a work by that name from another year": (
+        _a_work_of_another_year_is_named,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a typed citation's hint names a work from that year by another name": (
+        _a_work_of_another_name_is_named,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
@@ -26169,6 +26336,62 @@ BROKEN = {
     ),
     "in LaTeX, every heading or reference defined again is read as before": (
         _every_heading_and_reference_redefined_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, the author kit's heading is refused where used": (
+        _the_author_kit_s_heading_is_refused_where_used,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every heading defined through \\@ifstar is read as before": (
+        _every_heading_defined_through_ifstar_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit may print words before the title": (
+        _a_kit_helper_may_print_words_before_the_title,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit by \\providecommand is defined": (
+        _a_provided_kit_helper_is_defined,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit defined again is not seen": (
+        _a_kit_helper_defined_again_is_not_seen,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, only the plain helper takes the author kit's heading back": (
+        _only_the_plain_helper_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\providecommand of a command defined takes the author kit's heading back": (
+        _a_provided_command_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an \\edef heading is read as the author kit's": (
+        _an_edef_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\newcommand heading is read as the author kit's": (
+        _a_newcommand_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a provided \\@startsection command takes the author kit's heading back": (
+        _a_provided_startsection_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an @ in a comment of the author kit's definition counts": (
+        _an_at_in_a_kit_comment_counts,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a kit body defined where @ is no letter is read": (
+        _a_kit_body_where_at_is_no_letter_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a short title after the author kit's heading is read": (
+        _a_short_title_after_the_kit_s_heading_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, the author kit's heading is not told the tree": (
+        _the_kit_s_heading_is_not_told_the_tree,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, what the reader found past a refusal is kept": (
@@ -29302,6 +29525,14 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a word holding the value is taken out with it": (
+        _the_word_holding_the_value_is_taken_out,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a value glued to its neighbours joins them when taken out": (
+        _a_glued_value_joins_its_neighbours,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
     ),
     "a script without spaces is counted between spaces": (
         _unspaced_letters_are_counted_between_spaces,

@@ -138,10 +138,14 @@ cross-references, which print a level, a kind of citation or a name of their own
 where either is an input, an import, `\texttt` or `\mg`. A command the reader reads that your
 preamble, a file it inputs or your own `.sty` defines again, `\renewcommand\section` or
 `\def\eqref#1{...}`, is read there, and refused where the document uses it, since what it
-prints is your definition; defined again in the body, it is refused where it stands. Two
+prints is your definition; defined again in the body, it is refused where it stands. Three
 forms are read as before: a heading restyled with LaTeX's own `\@startsection` of its name,
-as arxiv.sty does, and a cross-reference defined as another of its argument among plain
-words, as ICLR's `\def\eqref#1{equation~\ref{#1}}`. A
+as arxiv.sty does; a heading defined as the CVPR and ICCV author kit defines it,
+`\def\section{\@ifstar\iccvssect\iccvsect}` with each helper defined above it and handing
+its argument on to that `\@startsection`, where a use with a short title in brackets,
+`\section[Intro]{Introduction}`, is refused, since the kit's helper prints the bracket as
+the heading; and a cross-reference defined as another of its argument among plain words, as
+ICLR's `\def\eqref#1{equation~\ref{#1}}`. A
 preamble's `\expandafter` that only redefines a command,
 `\expandafter\def\expandafter\normalsize\expandafter{...}`, is passed over.
 A journal class's front matter in the body, Elsevier's `frontmatter` with its title,

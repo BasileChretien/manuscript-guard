@@ -7,7 +7,8 @@ own: an old draft, a cover letter or a template written in LaTeX is one too, so 
 paper's file to audit it alone. The other files are read where an entry inputs them. A file
 no entry inputs is not read, and is named under "Passed over", and so is a file a class or a
 package inputs, which is the class's text and not the paper's. A file two entries input is
-read once, where the first does.
+read once, where the first does. A Markdown or text file in an entry's folder, or in one under
+it, is no paper either: it is named under "Passed over" too, unless it is named (`set_aside`).
 
 Each file is read as G2 reads one (`gates.numbers._latex_read`): its numbers where they print,
 at the `.tex` line they stand on, by the classifier's rules for a file whose headings and
@@ -20,6 +21,7 @@ or is passed over, and so is one nothing inputs (round 1 of #463).
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +42,14 @@ from manuscript_guard.text.tables import Table
 
 #: A `\\documentclass` outside a comment, which makes a file found in a folder an entry.
 _DOCUMENT_CLASS = re.compile(r"^(?:[^%\n]|\\%)*?\\documentclass(?![A-Za-z@])", re.MULTILINE)
+
+#: The suffixes of a paper in Markdown or plain text, which a folder found to hold a LaTeX
+#: paper does not read as papers (`set_aside`).
+TEXT_SUFFIXES = frozenset({".md", ".markdown", ".txt"})
+
+#: What a pandoc template prints the document's body with, `$body$` or `${body}`, outside a
+#: comment, as `_DOCUMENT_CLASS` is read (round 1 of #753: one in a comment was a template).
+_PANDOC_BODY = re.compile(r"^(?:[^%\n]|\\%)*?(?:\$body\$|\$\{body\})", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -100,6 +110,74 @@ def unreadable_said(path: Path) -> str | None:
         said = str(exc).removeprefix(f"{path.name}: ")  # the error names the file itself
         return f"{path.as_posix()} could not be read, so it was not audited: {said}"
     return None
+
+
+def set_aside(papers: list[Path], found: dict[Path, Path],
+              named: list[Path]) -> dict[Path, tuple[str, str]]:  # fmt: skip
+    """Each Markdown or text file of a folder given that stands in the folder of a LaTeX
+    paper among `papers`, or in one under it, which is not read as a paper, with what the
+    note that names it under "Passed over" says and the file it is about, its subject: the
+    caller makes the `Notice` where it adds it (`tests/test_finding_keys_source.py`). An
+    arXiv bundle keeps its data and its readme as text beside the source, and the robustness
+    sweep of 2026-11-21 found a 908 KB data transcript audited as a paper, 141,923 numbers
+    classified in most of a 120 s budget (Basile, 2026-11-22). `found` gives each file found
+    in a folder the innermost folder given that holds it, and one also in `named`, given on
+    its own, is read. A LaTeX paper is a `.tex`
+    with `\\documentclass` (`_sets_aside`), and sets aside only what a folder given that holds
+    it holds: `audit main.tex supplement/` reads the supplement's Markdown (round 1 of #753)."""
+    homes: dict[str, Path] = {}
+    for paper in papers:
+        if paper.suffix.lower() == ".tex" and _sets_aside(paper):
+            homes.setdefault(_absolute(paper.parent), paper)
+    kept = {_absolute(path) for path in named}
+    aside: dict[Path, tuple[str, str]] = {}
+    for path, given in found.items():
+        if path.suffix.lower() not in TEXT_SUFFIXES or _absolute(path) in kept:
+            continue
+        home = _home(path, given, homes)
+        if home is not None:
+            aside[path] = (f"{path.as_posix()}: it is in the folder of the LaTeX paper "
+                           f"{_shown(home, given)}, so it was not read as a paper; name it to "
+                           "audit it", _shown(path, given))  # fmt: skip
+    return aside
+
+
+def _sets_aside(path: Path) -> bool:
+    """Whether a `.tex` is a LaTeX paper whose folder sets text files aside: one with
+    `\\documentclass` outside a comment, and not a pandoc template, which prints the Markdown
+    paper beside it where `$body$` stands (Basile, 2026-11-22)."""
+    from manuscript_guard.audit import UnreadableText, read_text
+
+    try:
+        text = read_text(path)
+    except (OSError, UnreadableText):
+        return False
+    return bool(_DOCUMENT_CLASS.search(text)) and not _PANDOC_BODY.search(text)
+
+
+def _home(path: Path, given: Path, homes: dict[str, Path]) -> Path | None:
+    """The LaTeX paper of `homes` whose folder is the innermost to hold `path`, looked for
+    from its own folder out to the folder given, `given`, and no higher."""
+    top = _absolute(given)
+    for folder in map(_absolute, path.parents):
+        if folder in homes:
+            return homes[folder]
+        if folder == top:
+            return None
+    return None
+
+
+def _absolute(path: Path) -> str:
+    """`path` made absolute and normalised, links not followed, to compare two spellings."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _shown(path: Path, given: Path) -> str:
+    """`path` named from the folder given that holds it, never by its absolute path."""
+    try:
+        return path.relative_to(given).as_posix()
+    except ValueError:
+        return path.name
 
 
 def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:

@@ -246,3 +246,18 @@ def test_the_command_refuses_an_unknown_selector(project: Path, capsys) -> None:
     _two_typed(project)
     assert main(["bind", str(project), "--apply", "--only", "main.md:99999"]) == 2
     assert "nothing to bind" in capsys.readouterr().err
+
+
+def test_bind_gives_a_typed_citation_s_year_the_generic_hint(project: Path) -> None:
+    """Known gaps, "The year of a citation typed as text is read in the author-year forms
+    only": the hint that names the key is G2's alone. `bind` lists the year of "(Fictional,
+    2021)" with the hint it gave before, though `references.bib` holds the work, where
+    `check` names its key (`tests/test_corruption.py`)."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text + "\n\nThe counts were as reported (Fictional, 2021).\n",
+                    encoding="utf-8")  # fmt: skip
+    items = [item for item in unbound(*loaded(project)) if item.text == "2021"]
+    assert len(items) == 1, items
+    assert items[0].hint.startswith("bind it with {{results.<key>}}"), items[0].hint
+    assert "typed as text" not in items[0].hint and "[@" not in items[0].hint

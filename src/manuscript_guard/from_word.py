@@ -30,9 +30,9 @@ title goes to `paper.yaml`, each author's name to `authors.yaml` as the paper gi
 the abstract becomes the manuscript's `# Abstract`. pandoc reads the Abstract style so only
 straight after the Title, Author and Date paragraphs; a paragraph in it elsewhere in the
 title page joins that section too, found by reading the document again with its styles
-(`docx+styles`), and only where that reading is the ordinary one block for block. A Title
-paragraph holding a note, a mark,
-a link or a picture, which its plain text loses, is in the comment as well; the marks of
+(`docx+styles`) where it has a style of that name, and only where that reading is the
+ordinary one block for block. A Title paragraph holding a note, a mark, a link or a
+picture, which its plain text loses, is in the comment as well; the marks of
 notes raised at its end are left out of the title, and kept there with it. Nothing else is
 read from how a line looks: a name in capitals is a line of the title page like any other.
 
@@ -79,7 +79,16 @@ MEDIA = "manuscript/media"
 #: table and any other as a grid table. With pandoc's default line of 72 columns, a table of
 #: more than nine columns is too wide for a grid and was written as raw HTML: the widths are
 #: left to the cells, and the line made long enough for any table.
-WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", "--columns=100000"]
+COLUMNS = 100_000
+WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", f"--columns={COLUMNS}"]
+#: How long a rule is written: pandoc's own, its default line of 72 columns. At the writer's
+#: line a rule was `COLUMNS` hyphens (`_short_rules`).
+RULE_WIDTH = 72
+#: A rule as pandoc writes it at that line, on a line of its own after any indentation or
+#: quotation marks: exactly `COLUMNS` hyphens. A paragraph's own are escaped (`\-\-`) and a
+#: table's border holds `+` or `|`; a code block's line is written as it is, so a rule is
+#: cut only where no text of the paper holds a run as long (`_write`).
+_LONG_RULE = re.compile(rf"^([ \t>]*)-{{{COLUMNS}}}(?=\r?$)", re.MULTILINE)
 #: The longest pandoc is given to read or write one paper.
 PANDOC_SECONDS = 300
 
@@ -191,7 +200,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
         blocks, shaped = abstract_headings(blocks, styled)
         headings += len(shaped)
     aside, body, title_page = _title_page(blocks, typed, unstyled)
-    if aside:
+    if aside and _names_the_abstract_style(path):
         # Read with styles, a document with no heading runs on past where its typed title
         # ended the title page here: the two are compared up to there.
         run = _styled_run(path)
@@ -239,11 +248,42 @@ def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
 
 
 def _write(tree: dict, blocks: list, path: Path) -> str:
-    """The blocks as pandoc writes them in Markdown, a paragraph to a line."""
+    """The blocks as pandoc writes them in Markdown, a paragraph to a line, padded to no
+    line of the writer's (`_unpadded`, `_short_rules`)."""
     if not blocks:
         return ""
-    document = {"pandoc-api-version": tree["pandoc-api-version"], "meta": {}, "blocks": blocks}
-    return _pandoc(["-f", "json", *WRITER], json.dumps(document), path)
+    given = json.dumps({"pandoc-api-version": tree["pandoc-api-version"], "meta": {},
+                        "blocks": _unpadded(blocks)})  # fmt: skip
+    written = _pandoc(["-f", "json", *WRITER], given, path)
+    return written if "-" * COLUMNS in given else _short_rules(written)
+
+
+def _unpadded(node: object) -> object:
+    """A copy of `node` with every table's widths left to its cells, at any depth, as
+    `_tables` leaves the text's. A table kept its Word columns' widths in the title page set
+    aside, in a cell and in a table left as it came, and pandoc spread them over the
+    writer's whole line of 100,000 columns (`WRITER`): 22,000 characters of text came to
+    5.2 MB of Markdown, every rule of G6 and G14 read it, and the audit timed out (zenodo
+    10010235, in the robustness sweep of 2026-11-21)."""
+    if isinstance(node, list):
+        return [_unpadded(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    copied = {key: _unpadded(value) for key, value in node.items()}
+    if copied.get("t") == "Table":
+        copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
+    return copied
+
+
+def _short_rules(markdown: str) -> str:
+    """`markdown` with each rule `RULE_WIDTH` hyphens long, where pandoc wrote it as long as
+    the writer's line, 100,000 hyphens (`_LONG_RULE`). The rule is pandoc's own, so it stands
+    apart from the blocks about it as pandoc puts it, and reads back as it did: written as
+    raw Markdown instead, it stood on the line under a plain paragraph, under another rule
+    and over a plain paragraph, and read back as a heading or a table (rounds 1 to 3 of
+    #732). A rule in a table's cell is no line of its own and keeps the line's length, and so
+    does every rule of a paper whose text holds a run as long (DESIGN.md, Known gaps)."""
+    return _LONG_RULE.sub(lambda found: found[1] + "-" * RULE_WIDTH, markdown)
 
 
 def _comment(markdown: str) -> str:
@@ -463,6 +503,47 @@ def _labelled(label: str, blocks: list) -> list:
 
 #: The paragraph style pandoc reads as the abstract, where it stands after the title.
 ABSTRACT_STYLE = "Abstract"
+
+
+def _local(name: str) -> str:
+    """An element's or an attribute's name without its namespace."""
+    return name.rpartition("}")[2]
+
+
+def _attribute(element, name: str) -> str | None:
+    """The value of the attribute of `element` called `name`, in any namespace, or None."""
+    return next((value for key, value in element.attrib.items() if _local(key) == name), None)
+
+
+def _names_the_abstract_style(path: Path) -> bool:
+    """Whether the paper has a style named Abstract, in any case: by its name, or by its id
+    where it has none. pandoc (3.9.0.2) reads a paper's styles from `word/styles.xml` alone,
+    names each by its name or else its id, and gives a paragraph in a style that part does
+    not define no style; so where none is named so, the reading with styles
+    (`_styled_run`) finds no paragraph in the Abstract style, and is not made. Most Word
+    papers have none: 49 of the 50 of the robustness sweep of 2026-11-21, of which 29 pandoc
+    read a second time for nothing, a quarter of the time it took to convert the 50. The
+    elements are found by their names in any namespace: pandoc goes by the `w:` prefix, which
+    a Strict Open XML document binds to another (round 1 of #752). True where the part cannot
+    be read, so that pandoc's reading decides."""
+    from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+
+    try:
+        with open_archive(path) as archive:
+            if "word/styles.xml" not in archive.namelist():
+                return False
+            styles = read_part(archive, "word/styles.xml", what=f"{path.name}:word/styles.xml")
+    except UnsafeDocument:
+        return True
+    for style in styles.iter():
+        if _local(style.tag) != "style":
+            continue
+        names = [child for child in style if _local(child.tag) == "name"]
+        said = _attribute(names[0], "val") if names else None
+        named = said if said is not None else _attribute(style, "styleId") or ""
+        if named.casefold() == ABSTRACT_STYLE.casefold():
+            return True
+    return False
 
 
 def _styled_run(path: Path) -> list[tuple[dict, str | None]]:

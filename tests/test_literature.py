@@ -235,6 +235,18 @@ def test_a_genuinely_different_quote_is_not_forgiven() -> None:
     assert not contains("The prevalence was 12.4%.", "The prevalence was 12.5%.")
 
 
+def test_a_letter_one_reader_spells_out_and_another_does_not_is_compared_as_it_comes() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF is read as its reader gives it, less a short
+    table of foldings"): only the table's characters are folded, so a quote typed with "oe"
+    is not found in a source read as "œ", and the quote copied from it is."""
+    stored = "Patients with c\N{LATIN SMALL LIGATURE OE}liac disease were excluded."
+    assert not contains(stored, "Patients with coeliac disease were excluded.")
+    assert contains(stored, stored)
+    # A ligature of the table is folded, the same quote's "fi" found in a source read as "ﬁ".
+    assert contains("the \N{LATIN SMALL LIGATURE FI}nal c\N{LATIN SMALL LIGATURE OE}liac "
+                    "figure", "the final c\N{LATIN SMALL LIGATURE OE}liac figure")
+
+
 QUOTE = "the reporting odds ratio for hepatic events was 13.42 (95% CI 9.10 to 19.80)"
 
 
@@ -254,6 +266,35 @@ def test_a_value_hiding_inside_a_longer_number_is_not_stated_by_the_quote(displa
 @pytest.mark.parametrize("display", ["13.42", "9.10", "19.80", "95%"])
 def test_a_value_the_quote_really_states_still_passes(display: str) -> None:
     assert states_value(QUOTE, display)
+
+
+@pytest.mark.parametrize(
+    ("elided", "stated"),
+    [("was \N{HORIZONTAL ELLIPSIS}14 per 100 000 person-years.", False),
+     ("was \N{HORIZONTAL ELLIPSIS} 14 per 100 000 person-years.", True)],
+    ids=["glued", "spaced"],
+)  # fmt: skip
+def test_an_ellipsis_set_against_a_value_hides_it(
+    project: Path, elided: str, stated: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An ellipsis set against a value hides it"): the
+    ellipsis is folded to three full stops, and a value with a full stop before it is not
+    read, so `…14 per 100 000` does not state 14 and fails `value-not-in-quote`; with a
+    space after the ellipsis it does. The 2026-11-09 triage planned a fix (F02), which will
+    change this test."""
+    quote = f"The crude incidence of drug-induced hepatic injury {elided}"
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{quote}\n", encoding="utf-8")
+
+    def mutate(document):
+        document["entries"][0]["quote"] = quote
+
+    edit_yaml(project / LEDGER, mutate)
+    assert states_value(quote, "14") is stated
+    failed = [(f.code, f.message) for f in chain_report(project).failures]
+    assert failed == ([] if stated else [(
+        "value-not-in-quote", "background.reported_incidence: '14' does not appear in the "
+        "quote that is offered as evidence for it")])  # fmt: skip
 
 
 def test_html_sources_are_read_as_text(tmp_path: Path) -> None:

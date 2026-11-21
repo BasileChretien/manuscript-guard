@@ -2212,6 +2212,34 @@ def test_the_toolkit_reads_the_citations_pandoc_reads(name: str) -> None:
     assert sorted(ours) == sorted(pandoc)
 
 
+@pytest.mark.parametrize(
+    ("text", "ours", "theirs"),
+    [
+        ("x_@smith\n", [], ["smith"]),
+        ("`x`@smith\n", [], ["smith"]),
+        ("x" + "." * 14 + "@jones\n", [], []),
+        ("x" + "." * 15 + "@jones\n", ["jones"], ["jones"]),
+        ("x" + "." * 16 + "@jones\n", ["jones"], []),
+        ("x" + "." * 31 + "@jones\n", ["jones"], []),
+    ],
+    ids=["underscore", "backquote", "fourteen-dots", "fifteen-dots", "sixteen-dots",
+         "thirty-one-dots"],
+)  # fmt: skip
+def test_a_narrative_key_after_an_underscore_or_a_backquote_is_not_read(
+    text: str, ours: list[str], theirs: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A narrative key after an underscore or a
+    backquote is not read"): pandoc cites `@key` in `x_@key` and in `` `x`@key `` and the
+    toolkit reads neither; and a run of more than fourteen dots is read as ellipses whatever
+    its length, where pandoc reads a key after it only when the dots are whole ellipses."""
+    from manuscript_guard.zotero.citations import find_citations
+
+    pandoc: list[str] = []
+    _cited(pandoc_ast(text), pandoc)
+    assert [use.citekey for use in find_citations(text, Path("main.md"))] == ours
+    assert pandoc == theirs
+
+
 # ------------------------------------------------------- a tag made of a `<` and a `>`
 
 #: What may stand between `<LLOQ` and `>ULOQ` in a paragraph, alone or two together: words,

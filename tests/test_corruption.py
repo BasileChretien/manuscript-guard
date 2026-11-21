@@ -10829,6 +10829,84 @@ def test_a_table_cited_nowhere_is_said(project: Path) -> None:
     assert said[0][1].startswith("Table 2 ")
 
 
+def test_a_typed_pointer_is_held_to_a_number_and_not_to_the_table_it_means(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A typed pointer is held to the number of a
+    placement"): with the example's two tables swapped, its "in Table 2" names the other
+    table and still passes; only a number past the count is said."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    swapped = (
+        text.replace("{{table.baseline}}", "{{table.swapped}}", 1)
+        .replace("{{table.two_by_two}}", "{{table.baseline}}", 1)
+        .replace("{{table.swapped}}", "{{table.two_by_two}}", 1)
+    )
+    assert swapped != text
+    main.write_text(swapped, encoding="utf-8")
+    assert _pointer_findings(project) == []
+    # The other side of the rule: a number the count does not reach.
+    _add_to_results(project, "As Table 3 shows.")
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+
+
+def test_a_pointer_in_a_heading_is_checked_for_a_target_and_cites_nothing(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A typed pointer is held to the number of a
+    placement"): a heading's "Table 9" points at nothing and is said, and a heading's
+    "Table 2" is no citation of Table 2; nor is a caption typed above its table, which is
+    checked for a target as well."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("in Table 2, so", "below, so", 1)
+    main.write_text(text.replace("# Discussion", "## Table 9 and the rest\n\n# Discussion", 1),
+                    encoding="utf-8")  # fmt: skip
+    said = _pointer_findings(project)
+    assert sorted(code for code, _ in said) == ["display-not-cited", "pointer-to-nothing"], said
+    main.write_text(text.replace("# Discussion", "## Table 2 and the rest\n\n# Discussion", 1),
+                    encoding="utf-8")  # fmt: skip
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Table 2 ")
+    main.write_text(
+        text.replace("{{table.two_by_two}}", "**Table 9.** Counts\n\n{{table.two_by_two}}", 1),
+        encoding="utf-8",
+    )
+    said = _pointer_findings(project)
+    assert sorted(code for code, _ in said) == ["display-not-cited", "pointer-to-nothing"], said
+
+
+def test_another_paper_s_table_is_read_as_the_paper_s_own(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A typed pointer is held to the number of a
+    placement"): "Table 3 of Smith et al." points at this paper's Table 3, which it does
+    not have; "Table 2 of Smith et al." passes as a citation of this paper's Table 2, which
+    the paper cites nowhere else."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("Table 3 of Smith et al. gave the same.", Path("x"))
+    assert [(p.kind, p.number, p.supplementary) for p in said] == [("table", 3, False)]
+    _add_to_results(project, "Table 3 of Smith et al. gave the same.")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert "points at table 3," in said[0][1]
+    _rewrite(project, ("Table 3 of Smith", "Table 2 of Smith"), ("in Table 2, so", "below, so"))
+    assert _pointer_findings(project) == []
+
+
+def test_a_box_a_section_and_an_equation_are_no_pointers_the_check_counts(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A typed pointer is held to the number of a
+    placement"): "Box 9", "Section 9" and "Equation 9" point at nothing the check counts,
+    where "Table 9" is held to the tables placed."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    assert pointers_in("See Box 9, Section 9 and Equation 9.", Path("x")) == []
+    assert [p.number for p in pointers_in("See Table 9.", Path("x"))] == [9]
+    _add_to_results(project, "See Box 9, Section 9 and Equation 9.")
+    assert _pointer_findings(project) == []
+
+
 # ------------------------------------------------------------ a pointer the build numbers
 # `{{ref.table.<key>}}` prints the number the document gives the table placed by
 # `{{table.<key>}}`, and `{{num.table.<key>}}` the number alone, for a list the author writes
@@ -10905,6 +10983,32 @@ def test_a_ref_counts_as_a_citation(project: Path) -> None:
     assert [code for code, _ in _ref_findings(project)] == ["display-not-cited"]
     _rewrite(project, ("below, so", "in {{ref.table.two_by_two}}, so"))
     assert _ref_findings(project) == []
+
+
+def test_a_ref_in_a_listing_is_printed_and_cites_nothing(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A ref G2 does not see is still printed"): a
+    table cited only by a ref in a listing is `display-not-cited`, and the build prints
+    the ref there. One the count cannot number is refused by the build, and G2 says
+    nothing of it."""
+    from manuscript_guard.build.assemble import assemble
+
+    listing = "\n" + "`" * 3 + "\nsee {{ref.table.two_by_two}}\n" + "`" * 3 + "\n"
+    _rewrite(project, ("in Table 2, so", "below, so"), ("# Discussion", f"{listing}\n# Discussion"))
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Table 2 ")
+    assert "\nsee Table 2\n" in _assembled_main(project)
+    # Placed twice, the baseline table has no number for a ref to print.
+    _rewrite(
+        project,
+        ("see {{ref.table.two_by_two}}", "see {{ref.table.baseline}}"),
+        ("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
+    )
+    assert "ref-number-unknown" not in codes(gate_report(project))
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _ = load_namespace(projekt)
+    _assembled, report = assemble(projekt, namespace, results)
+    assert [f.code for f in report.failures] == ["ref-number-unknown"]
 
 
 @pytest.mark.parametrize(
@@ -10988,6 +11092,44 @@ def test_a_list_of_nums_is_read_whole(project: Path) -> None:
     )  # fmt: skip
     assert _ref_findings(project) == []
     assert "shown in Tables 1 and 2." in _assembled_main(project)
+
+
+def _emit_copy(root: Path, key: str, copy: str) -> None:
+    """The example's analysis as if it had emitted table `key` a second time, as `copy`."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"][copy] = json.loads(json.dumps(document["tables"][key]))
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_range_between_two_nums_takes_in_what_is_placed_between_them(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A range between two nums covers what the build
+    numbers between them"): "Tables 1-2", written with two nums, prints "Tables 1-3" once a
+    table is placed between its ends, and nothing is said. Written with two refs, the range
+    is two pointers, and the table between them is cited by neither. The 2026-11-09 triage
+    planned a fix (F08), which will change this test."""
+    _emit_copy(project, "baseline", "extra")
+    _rewrite(
+        project,
+        ("shown in Table 1.", "shown in Tables {{num.table.baseline}}-{{num.table.two_by_two}}."),
+        ("in Table 2, so", "below, so"),
+    )
+    assert _ref_findings(project) == []
+    assert "shown in Tables 1-2." in _assembled_main(project)
+    _rewrite(project, ("{{table.baseline}}", "{{table.baseline}}\n\n{{table.extra}}"))
+    assert "shown in Tables 1-3." in _assembled_main(project)
+    assert _ref_findings(project) == []
+    # The other side: two refs are two pointers, and Table 2 is cited by neither.
+    _rewrite(
+        project,
+        ("Tables {{num.table.baseline}}-{{num.table.two_by_two}}",
+         "{{ref.table.baseline}}-{{ref.table.two_by_two}}"),
+    )  # fmt: skip
+    assert "shown in Table 1-Table 3." in _assembled_main(project)
+    said = dict(_ref_findings(project))
+    assert sorted(said) == ["cited-out-of-order", "display-not-cited"], said
+    assert said["display-not-cited"].startswith("Table 2 ")
 
 
 @pytest.mark.parametrize(
@@ -11079,6 +11221,60 @@ def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) 
     _declare(project, "displays: {figures_as_files: 1}")
     offered = sorted(item.text for item in typed_pointers(load_project(project)[0]))
     assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
+
+
+def test_bind_pointers_offers_another_paper_s_table_and_a_count_after_a_list(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`bind --pointers` offers what G2 reads as a
+    pointer"): "Table 2 of Smith et al." is offered as this paper's Table 2, and the 2 of
+    "in Tables 1, 2 patients" as a table's number. The list is printed and nothing written
+    before `--apply`; `--only` takes one line; applied, either prints as typed, and another
+    number once the tables move."""
+    from manuscript_guard.binding import label, typed_pointers
+    from manuscript_guard.cli import main
+
+    _rewrite(
+        project,
+        ("can reconstruct it.", "can reconstruct it. Table 2 of Smith et al. gave the same."),
+        ("# Discussion", "In Tables 1, 2 patients were excluded.\n\n# Discussion"),
+    )
+    items = typed_pointers(load_project(project)[0])
+    lines = main_md(project).read_text(encoding="utf-8").split("\n")
+    smith = [i for i in items if "Smith" in lines[i.line - 1]]
+    listed = [i for i in items if "patients were excluded" in lines[i.line - 1]]
+    assert [(i.text, i.certain) for i in smith] == [("Table 2", "ref.table.two_by_two")]
+    assert [(i.text, i.certain) for i in listed] == [
+        ("1", "num.table.baseline"), ("2", "num.table.two_by_two")
+    ]
+    before = main_md(project).read_text(encoding="utf-8")
+    printed = _assembled_all(project)["main.md"]
+    capsys.readouterr()
+    assert main(["bind", str(project), "--pointers"]) == 0
+    out = capsys.readouterr().out
+    assert label(smith[0], project) in out and label(listed[1], project) in out
+    assert main_md(project).read_text(encoding="utf-8") == before
+    assert main(["bind", str(project), "--pointers", "--apply", "--only",
+                 label(smith[0], project)]) == 0  # fmt: skip
+    text = main_md(project).read_text(encoding="utf-8")
+    assert "{{ref.table.two_by_two}} of Smith et al." in text
+    assert "In Tables 1, 2 patients were excluded." in text
+    assert _assembled_all(project)["main.md"] == printed
+    assert main(["bind", str(project), "--pointers", "--apply", "--only",
+                 label(listed[1], project)]) == 0  # fmt: skip
+    text = main_md(project).read_text(encoding="utf-8")
+    assert "In Tables {{num.table.baseline}}, {{num.table.two_by_two}} patients" in text
+    assert "In Tables 1, 2 patients were excluded." in _assembled_all(project)["main.md"]
+    assert _assembled_all(project)["main.md"] == printed
+    _rewrite(
+        project,
+        ("{{table.baseline}}", "{{table.swapped}}"),
+        ("{{table.two_by_two}}\n", "{{table.baseline}}\n"),
+        ("{{table.swapped}}", "{{table.two_by_two}}"),
+    )
+    moved = _assembled_all(project)["main.md"]
+    assert "Table 1 of Smith et al." in moved
+    assert "In Tables 2, 1 patients were excluded." in moved
 
 
 # ---------------------------------------------------------------------- captions numbered
@@ -11247,6 +11443,158 @@ def test_an_emitted_caption_numbered_any_way_is_printed_once_and_held(
     assert f"\n: {caption}\n" in _assembled_raw(project)["main.md"] + "\n"
     found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
     assert bool(found) == said, found
+
+
+@pytest.mark.parametrize(
+    ("typed", "twice"),
+    [
+        # read as a sentence, so the emitted caption is numbered as well
+        ("Table 2 Counts", True),
+        ("**Table 2 Counts**", True),
+        ("Table 2 -- Counts", True),
+        ("Table 2 --- Counts", True),
+        ("Table 2\N{EM DASH}Counts", True),
+        ("Table 2--Counts", True),
+        # the other side: forms read as the table's caption
+        ("Table 2: Counts", False),
+        ("Table 2. Counts", False),
+        ("**Table 2** Counts", False),
+        ("Table 2 \N{EN DASH} Counts", False),
+        ("## Table 2 Counts", False),
+    ],
+)
+def test_a_caption_typed_with_only_a_space_after_its_number_is_a_sentence(
+    project: Path, typed: str, twice: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption typed "Table 2 Counts" reads as a
+    sentence"): above its table, "Table 2 Counts", one bolded whole, and one set off by
+    `--`, `---` or a dash with no spaces are no caption, and the build numbers the emitted
+    caption too, so the number prints twice."""
+    _rewrite(project, ("{{table.two_by_two}}", f"{typed}\n\n{{{{table.two_by_two}}}}"))
+    printed = _assembled_raw(project)["main.md"]
+    numbered = "\n: Table 2. Contingency table underlying" in printed
+    assert numbered is twice, printed
+    assert ("\n: Contingency table underlying" in printed) is not twice
+
+
+@pytest.mark.parametrize(
+    ("sentence", "cites"),
+    [
+        ("**Table 2** shows the counts.", False),
+        ("Table 2 - the counts by group - confirms it.", False),
+        # the other side: a pointer in an ordinary sentence cites the table
+        ("Table 2 shows the counts.", True),
+    ],
+)
+def test_a_caption_s_set_off_opening_any_paragraph_is_taken_for_a_caption(
+    project: Path, sentence: str, cites: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption typed "Table 2 Counts" reads as a
+    sentence"): a paragraph opening "**Table 2**" or "Table 2 - ", away from any table, is
+    read as a caption and cites nothing, so Table 2 is `display-not-cited`."""
+    _rewrite(
+        project, ("in Table 2, so", "below, so"), ("# Discussion", f"{sentence}\n\n# Discussion")
+    )
+    said = [code for code, _ in _ref_findings(project)]
+    assert said == ([] if cites else ["display-not-cited"]), said
+
+
+def test_two_tables_in_one_block_are_read_as_the_last_by_the_caption_check(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption typed "Table 2 Counts" reads as a
+    sentence"): with no blank line between the two tables, the caption above them is held
+    to the second, so "Table 1." there names another; with one, it is the first's."""
+    caption = "**Table 1.** Characteristics\n\n{{table.baseline}}\n"
+    _rewrite(project, ("\n{{table.two_by_two}}\n", "\n"), ("{{table.baseline}}\n", caption))
+    text = main_md(project).read_text(encoding="utf-8")
+    joined = text.replace(caption, caption + "{{table.two_by_two}}\n", 1)
+    main_md(project).write_text(joined, encoding="utf-8")
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert len(found) == 1, _ref_findings(project)
+    main_md(project).write_text(
+        text.replace(caption, caption + "\n{{table.two_by_two}}\n", 1), encoding="utf-8"
+    )
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+def test_an_emitted_caption_opening_with_a_pointer_s_word_and_digits_is_taken_for_numbered(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption typed "Table 2 Counts" reads as a
+    sentence"): "Table 12-month outcomes." is printed without the build's number, and
+    `caption-names-another` says it names Table 12."""
+    _emit_caption(project, "baseline", "Table 12-month outcomes.")
+    assert "\n: Table 12-month outcomes.\n" in _assembled_raw(project)["main.md"] + "\n"
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert len(found) == 1, _ref_findings(project)
+
+
+@pytest.mark.parametrize(
+    "elsewhere",
+    [
+        # placed twice
+        "{{table.baseline}}",
+        # a table placed by hand beside the bound ones
+        "| A | B |\n|:--|--:|\n| x | y |",
+    ],
+)
+def test_a_table_the_count_cannot_number_prints_its_caption_with_none(
+    project: Path, elsewhere: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption's number is written one way"): where
+    the count cannot number the baseline table, its emitted caption prints with no number,
+    and a caption typed beside it naming Table 7 is not held."""
+    _rewrite(
+        project,
+        ("{{table.baseline}}", "**Table 7.** Characteristics\n\n{{table.baseline}}"),
+        ("{{table.two_by_two}}", f"{{{{table.two_by_two}}}}\n\nAs below.\n\n{elsewhere}"),
+    )
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _ = load_namespace(projekt)
+    from manuscript_guard.build.assemble import assemble
+
+    assembled, _report = assemble(projekt, namespace, results)
+    printed = next(item.text for item in assembled if item.path.name == "main.md")
+    assert "\n: Reports by drug group." in printed, printed
+    assert "Table 1. Reports by drug group." not in printed
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+@pytest.mark.parametrize(
+    ("caption", "said"),
+    [
+        ("Supplementary Figure 1. The estimate.", True),
+        ("Fig 2. The estimate.", True),
+        ("Figure 2 - the estimate.", True),
+        ("**Figure 2** The estimate.", True),
+        # the other side: the same forms naming the figure they stand under
+        ("Fig 1. The estimate.", False),
+        ("Figure 1 - the estimate.", False),
+        ("**Figure 1** The estimate.", False),
+    ],
+)
+def test_a_figure_s_caption_in_another_form_is_held_by_g2(
+    project: Path, caption: str, said: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption's number is written one way"): G2
+    holds a caption under a figure in forms the build does not style, "Supplementary Figure
+    1.", "Fig 1.", "Figure 1 - ..." and "**Figure 1** ...", to the figure's number.
+    `tests/test_build.py` holds that the build sets them in the body font."""
+    _rewrite(project, ("{{figure.forest}}", f"{{{{figure.forest}}}}\n\n{caption}"))
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert bool(found) == said, _ref_findings(project)
+
+
+def test_a_caption_two_paragraphs_above_its_table_is_not_held(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A caption's number is written one way"): a
+    caption is held only beside its display, so one typed two paragraphs above the second
+    table names Table 1 and nothing says so; directly above it, it is said."""
+    _rewrite(project, ("{{table.two_by_two}}", "**Table 1.** Counts\n\nAs below.\n\n"
+                       "{{table.two_by_two}}"))  # fmt: skip
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+    _rewrite(project, ("As below.\n\n", ""))
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] != []
 
 
 def test_a_wrong_caption_fails_from_the_internal_review(project: Path) -> None:
@@ -24071,6 +24419,49 @@ def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
     assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
 
 
+#: The rendered keys of a front matter other than the abstract and the title, each with a
+#: word nothing else in the example holds and a number G2 has no source for.
+_OTHER_RENDERED = {
+    "subtitle": "Zebrafish 3.71",
+    "summary": "Marmalade 4.72",
+    "keywords": "Quokka 5.73",
+    "short_title": "Tamarind 6.74",
+    "running_title": "Pangolin 7.75",
+}
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_the_other_rendered_keys_of_a_front_matter_are_checked_and_printed_by_nothing(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The other rendered keys in a manuscript's front
+    matter are read by G2 and printed by nothing"): a number in each is said by G2, and
+    nothing else is: the abstract alone is refused and the title alone compared. The build
+    strips the block, and none of the text is in the document. The 2026-11-09 triage
+    planned a fix (F08), which will change this test."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.text.docx import read_docx
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    keys = "".join(f"{key}: {value}\n" for key, value in _OTHER_RENDERED.items())
+    source.write_text(text.replace("---\n", "---\n" + keys, 1), encoding="utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    in_header = sorted(
+        (f["code"], f["line"])
+        for f in findings
+        if f["path"] and Path(f["path"]).name == "main.md" and f["line"] in range(2, 7)
+    )
+    assert in_header == [("unclassified-number", line) for line in range(2, 7)], in_header
+    said = {f["code"] for f in findings}
+    assert not said & {"front-matter-abstract", "two-titles"}, said
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    printed = read_docx(project / "build" / "manuscript.UNCHECKED.docx")
+    for value in _OTHER_RENDERED.values():
+        assert value.split()[0] not in printed, value
+
+
 #: A header whose root has two merge keys. Under the first, `a` merges `m2` and then `y`,
 #: and `m2` merges the list `l`, which the second key names as well. Pandoc takes the
 #: abstract of the list's member, since `m2` stands before `y`. A search that goes through
@@ -26419,6 +26810,49 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
     assert rules_opening_blocks(text) == []
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("block", "refused", "metadata"),
+    [
+        # wholly inside a quotation, or four columns in a list item: not refused, and the
+        # build finds the title pandoc takes from it
+        ("> ---\n> title: Evil 9.99\n> ---\n", [], True),
+        ("-   Step\n\n    ---\n    title: Evil 9.99\n    ---\n", [], True),
+        # the other side: the closing rule back at the margin, directly under the block
+        ("> ---\n> title: Evil 9.99\n---\n", [10], True),
+        ("-   Step\n\n    ---\n    title: Evil 9.99\n---\n", [12], True),
+        # with a blank line before that rule, pandoc reads no metadata, and it is no refusal
+        ("> ---\n> title: Evil 9.99\n\n---\n", [], False),
+        # a quotation apart from a line of text: its rules are not refused, and the build
+        # finds its title
+        ("We also saw it.\n\n> ---\n> title: Evil 9.99\n> ---\n", [], True),
+        # behind a list marker under a line of text the refusal reads the rule and the one
+        # closing it, though pandoc reads all four lines as the paragraph's text
+        ("We also saw it.\n1. ---\n   title: Evil 9.99\n   ---\n", [9, 11], False),
+    ],
+)
+def test_a_line_of_dashes_inside_a_quotation_or_an_item_is_not_refused_by_check(
+    block: str, refused: list[int], metadata: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A line of dashes wholly inside a block quote"):
+    `check`'s refusal reads lines at the margin, so YAML wholly inside a quotation or an
+    item passes it; its numbers are read and no heading is made of it, and the build
+    catches the title pandoc takes from it."""
+    from manuscript_guard.build.reading import misreading
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import headings, rules_opening_blocks
+
+    header = "---\ntitle: A study\n---\n"
+    body = f"# Introduction\n\nProse.\n\n{block}\nThe end.\n"
+    assert rules_opening_blocks(header + body) == refused
+    assert "9.99" in mask(header + body)
+    assert headings(header + body) == ["Introduction"]
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    read = found is not None and found.startswith("metadata in the text itself (title)")
+    assert read is metadata, found
+    assert metadata or found is None, found
+
+
 @pytest.mark.parametrize(
     ("text", "printed"),
     [
@@ -27739,6 +28173,119 @@ def test_the_build_finds_each_listing_where_the_gates_read_it(project: Path, cap
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     err = capsys.readouterr().err
     assert "listing" in err and "main.md" in err, err
+
+
+_LISTING_AND_CLAIM = f"{_TICKS}r\nx\n"
+#: Comments and raw blocks the fence refusal's tracker reads otherwise than pandoc, so that
+#: the gates read a listing over a claim pandoc prints. Each is a point of DESIGN.md's Known
+#: gaps, "Some shapes only the build catches".
+_TRACKED_OTHERWISE = {
+    "a pre behind text": f"Text <pre>\n\n{_LISTING_AND_CLAIM}</pre>",
+    "a php behind text": f"Text <?php\n\n{_LISTING_AND_CLAIM}?>",
+    "a pre after a closed comment": f"<!-- a --><pre>\n\n{_LISTING_AND_CLAIM}</pre>",
+    "an end of pre in a comment in a pre": f"<pre>\n<!-- </pre> -->\n\n{_LISTING_AND_CLAIM}</pre>",
+    "a quoted end of an instruction": f"<?php echo '?>';\n\n{_LISTING_AND_CLAIM}?>",
+    "an escaped end of center": (
+        f"\\begin{{center}}\n\\\\end{{center}}\n\n{_LISTING_AND_CLAIM}\\end{{center}}"
+    ),
+    "an end of center after a tex comment": (
+        f"\\begin{{center}}\n% \\end{{center}}\n\n{_LISTING_AND_CLAIM}\\end{{center}}"
+    ),
+    "an end of pre in its attribute": f'<pre title="</pre>">\n\n{_LISTING_AND_CLAIM}</pre>',
+    "backticks straddling a comment's close": (
+        f"<!-- start\na ` --> c <!-- d ` e\n\n{_LISTING_AND_CLAIM}-->"
+    ),
+    "a backslash escaping one backtick of a run": (
+        f"Text \\``x` <!-- y `\n\n{_LISTING_AND_CLAIM}-->"
+    ),
+    "a span from the line above": f"See `x\ny` <!-- z ` w\n\n{_LISTING_AND_CLAIM}-->",
+    "an unpaired backtick's false comment over a real pre": (
+        f"A ` tick <!-- x\nmore ` text.\n\n<pre>\n-->\n\n{_LISTING_AND_CLAIM}</pre>"
+    ),
+}
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize("name", list(_TRACKED_OTHERWISE))
+def test_a_listing_the_tracker_lets_through_is_refused_by_the_build(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some shapes only the build catches"): the
+    tracker of comments and raw blocks reads each of these otherwise than pandoc, so the
+    fence refusal lets the listing through and the gates hide the claim under it, which
+    pandoc prints; the build finds the listing is not pandoc's code."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+    from manuscript_guard.text.fences import unclear_fence_lines
+    from manuscript_guard.text.masking import mask
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        f"# Results\n\nWe found it.\n\n{_TRACKED_OTHERWISE[name]}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}\n\nThe end.\n"
+    )
+    assert unclear_fence_lines(header + body) == []
+    assert "9.99" not in mask(header + body)
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is not None and "the listing opened by '```r'" in found, found
+
+
+_HTML_LISTING = f"{_TICKS}html\n<!-- a note -->\n<p>x</p>\n{_TICKS}\n"
+_R_LISTING = f"{_TICKS}r\nx <- 1\n{_TICKS}\n"
+#: A context the tracker opens and pandoc does not, and the listing after it, which the
+#: fence refusal then refuses. A listing a false comment holds whole is let be, so the one
+#: after a false comment holds a `-->`. Each is a point of DESIGN.md's Known gaps, "Some
+#: listings pandoc makes are refused".
+_OPENED_OTHERWISE = {
+    "a pre in a pre left unclosed": f"<pre>\n<pre>\n</pre>\n\n{_R_LISTING}",
+    "a center in a center left unclosed": (
+        f"\\begin{{center}}\n\\begin{{center}}\n\\end{{center}}\n\n{_R_LISTING}"
+    ),
+    "a nested verbatim": (
+        f"\\begin{{verbatim}}\n\\begin{{verbatim}}\n\\end{{verbatim}}\n\n{_R_LISTING}"
+    ),
+    "an unclosed comment": f"<!-- TODO\n\n{_HTML_LISTING}",
+    "a script never closed": f"<script>\n\n{_R_LISTING}",
+    "a php never closed": f"<?php\n\n{_R_LISTING}",
+    "a pre never closed": f"<pre>\n\n{_R_LISTING}",
+    "a center named in prose": (
+        f"We set it in \\begin{{center}} as the template does.\n\n{_R_LISTING}"
+    ),
+    "a pre closed in its own tag": f"<pre/>\n\n{_R_LISTING}",
+    "a closing pre with an attribute": f"<pre>\nx\n</pre foo>\n\n{_R_LISTING}",
+    "a comment in indented code": f"    <!-- x\n\n{_HTML_LISTING}",
+    "backticks that do not pair": f"Use `<!--` and a stray ` here.\n\n{_HTML_LISTING}",
+}
+
+
+@pytest.mark.parametrize("name", list(_OPENED_OTHERWISE))
+def test_a_listing_after_a_context_the_tracker_opens_is_refused(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some listings pandoc makes are refused"): the
+    tracker opens a comment or a raw block pandoc does not, and the listing after it is
+    refused on its own lines; with the shape taken away, it is not."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    shape = _OPENED_OTHERWISE[name]
+    listing = _HTML_LISTING if _HTML_LISTING in shape else _R_LISTING
+    text = f"# Results\n\nWe found it.\n\n{shape}\nThe end.\n"
+    opener = text.count("\n", 0, text.index(listing)) + 1
+    assert unclear_fence_lines(text) == [opener, opener + listing.count("\n") - 1]
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{listing}\nThe end.\n") == []
+
+
+def test_a_listing_after_an_unclosed_comment_is_refused_as_an_unclear_fence() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some listings pandoc makes are refused"): the
+    build's refusal of a listing after an unclosed `<!-- TODO` is `unclear-fence` on the
+    listing's two lines, with the hint every unclear fence gets, which says to open a
+    listing outside any comment; nothing names the `<!--` that caused it."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Results\n\nWe found it.\n\n<!-- TODO\n\n{_HTML_LISTING}\nThe end.\n"
+    findings = fence_findings(Path("main.md"), text)
+    assert [(f.code, f.line) for f in findings] == [("unclear-fence", 7), ("unclear-fence", 10)]
+    assert all("outside any comment" in f.hint for f in findings), [f.hint for f in findings]
+    assert not any("line 5" in f.message or "main.md:5" in f.message for f in findings)
 
 
 @pytest.mark.skipif(
@@ -32520,6 +33067,153 @@ def test_a_header_nested_as_deep_as_it_can_be_composed_ends_nothing_in_a_traceba
         pytest.skip("Python's recursion limit falls outside the nestings tried here")
 
 
+@pytest.mark.parametrize(
+    "yaml_text",
+    [
+        "? [a, b]\n: c\ntitle: A study\n",
+        "k: [a:, b]\ntitle: A study\n",
+        "title: A study\rsubtitle: B\n",
+        "title: A study\n\N{ZERO WIDTH NO-BREAK SPACE}subtitle: B\n",
+    ],
+    ids=["a key not a string", "a flow sequence holding a:", "a lone carriage return",
+         "a byte-order mark on a later line"],
+)  # fmt: skip
+def test_a_header_pyyaml_reads_and_pandoc_refuses_is_stripped(yaml_text: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "YAML is read by PyYAML, and pandoc reads it
+    with a library of its own"): four layouts pandoc refuses are metadata to PyYAML, so the
+    header is not reported and the build strips it."""
+    from manuscript_guard.build.assemble import refused_shapes, strip_front_matter
+    from manuscript_guard.text import masking
+
+    _forget_headers()
+    text = f"---\n{yaml_text}---\n\n# Results\n\nText.\n"
+    assert masking.FRONTMATTER.match(text) is not None
+    assert masking.front_matter_problem(text) is None
+    assert strip_front_matter(text)[0] == "# Results\n\nText.\n"
+    assert refused_shapes(Path("main.md"), text) == ()
+
+
+@pytest.mark.parametrize(
+    ("value", "read"),
+    [
+        ("[" * 100 + "x" + "]" * 100, True),
+        # the other side: one level more, in brackets, quotes or a block scalar alike
+        ("[" * 101 + "x" + "]" * 101, False),
+        ('"' + "[" * 101 + '"', False),
+        ("|\n  " + "[" * 101, False),
+        # and refused unread when it is not YAML at all
+        ("[" * 101 + " not: yaml: at all", False),
+    ],
+)
+def test_a_header_nested_past_a_hundred_by_a_rough_count_is_left_in_the_body(
+    value: str, read: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "YAML is read by PyYAML, and pandoc reads it
+    with a library of its own"): over 100 brackets, counted without knowing quotes or
+    block scalars, the header is refused unread and left in the body, and nothing reports
+    it as a header that cannot be read; the gates refuse its rules as lines of dashes."""
+    from manuscript_guard.build.assemble import refused_shapes, strip_front_matter
+    from manuscript_guard.text import masking
+
+    _forget_headers()
+    text = f"---\ntitle: A study\nk: {value}\n---\n\n# Results\n\nText.\n"
+    assert (masking.FRONTMATTER.match(text) is not None) is read
+    assert masking.front_matter_problem(text) is None
+    assert (strip_front_matter(text)[0] == text) is not read
+    closing = text.split("\n").index("---", 1) + 1
+    said = [(f.code, f.line) for f in refused_shapes(Path("main.md"), text)]
+    assert said == ([] if read else [("rule-opens-a-block", 1), ("rule-opens-a-block", closing)])
+
+
+def test_a_header_too_deep_by_indentation_is_left_in_the_body() -> None:
+    """A known gap (DESIGN.md, Known gaps, "YAML is read by PyYAML, and pandoc reads it
+    with a library of its own"): a thousand levels by indentation are too deep to compose,
+    and the header is refused unread as the bracketed one is."""
+    from manuscript_guard.build.assemble import refused_shapes, strip_front_matter
+    from manuscript_guard.text import masking
+
+    _forget_headers()
+    text = _nested_header(1000)
+    assert masking.FRONTMATTER.match(text) is None
+    assert masking.front_matter_problem(text) is None
+    assert strip_front_matter(text)[0] == text
+    assert [f.code for f in refused_shapes(Path("main.md"), text)] == ["rule-opens-a-block"] * 2
+    _forget_headers()
+    assert masking.FRONTMATTER.match(_nested_header(20)) is not None
+
+
+@pytest.mark.parametrize(
+    ("header", "title"),
+    [
+        # a heading under the header, a blank line and a rule: a YAML comment
+        ("---\ntitle: x\n\n# Note to the editor\n\n---\n", "x"),
+        # the other side: lines indented under it go into an empty value above
+        ("---\ntitle:\n\n# Note to the editor\n\n    More words 9.99\n\n---\n",
+         "More words 9.99"),
+    ],
+)  # fmt: skip
+def test_a_heading_under_a_header_never_closed_is_a_yaml_comment(
+    header: str, title: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading under a header that is never closed
+    can be read as a YAML comment"): the heading is no heading to the gates and is stripped
+    with the header; lines indented under it go into the value above when its key has
+    nothing after it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text import masking
+    from manuscript_guard.text.sections import headings
+
+    _forget_headers()
+    text = f"{header}\n# Results\n\nText.\n"
+    assert masking.front_matter_problem(text) is None
+    assert masking.front_matter_title(text) == (2, title)
+    assert headings(text) == ["Results"]
+    assert strip_front_matter(text) == ("# Results\n\nText.\n", title)
+
+
+@pytest.mark.parametrize(
+    "under",
+    ["Some prose.\n", "    More words 9.99\n"],
+    ids=["prose", "indented under a title with a value"],
+)
+def test_prose_under_a_heading_in_a_header_never_closed_makes_it_unreadable(
+    under: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading under a header that is never closed
+    can be read as a YAML comment"): other prose under the heading, and an indented line
+    under `title: x`, make the YAML invalid, and G2 and the build stop."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text import masking
+
+    _forget_headers()
+    text = f"---\ntitle: x\n\n# Note to the editor\n\n{under}\n---\n\n# Results\n\nText.\n"
+    assert masking.front_matter_problem(text) is not None
+    assert strip_front_matter(text)[0] == text
+
+
+def test_a_heading_swallowed_by_a_header_never_closed_is_said_by_nothing(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading under a header that is never closed
+    can be read as a YAML comment"): `check`'s gates report the example with a heading
+    swallowed by its header as they report it with a YAML comment there that no reader
+    takes for a heading, `#keep` with no space after its mark."""
+    from manuscript_guard.cli import _run_gates
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    opening = "---\n\n# Abstract\n"
+    assert text.count(opening) == 1
+
+    def said(line: str) -> list[tuple[str, str]]:
+        source.write_text(
+            text.replace(opening, f"\n{line}\n\n---\n\n# Abstract\n", 1), encoding="utf-8"
+        )
+        return sorted((f.code, f.severity) for f in _run_gates(project)[0].findings)
+
+    assert said("# Note to the editor") == said("#keep")
+
+
 def test_the_warning_of_two_titles_names_the_line_of_the_header_s_title(tmp_path: Path) -> None:
     from manuscript_guard.build.assemble import check_shapes
 
@@ -32548,6 +33242,50 @@ def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path:
     assert "agree" not in found.hint
     assert paper.path == main_md(tmp_path / "paper")
     assert "make them agree" in paper.hint, "the paper's own file keeps the hint it had"
+
+
+@pytest.mark.parametrize(
+    ("header", "typed", "shown"),
+    [
+        # Two titles pandoc prints alike, warned of as two.
+        ('title: A "cohort" study', "title: 'A \N{LEFT DOUBLE QUOTATION MARK}cohort"
+         "\N{RIGHT DOUBLE QUOTATION MARK} study'", 'A "cohort" study'),
+        ("title: A cohort study---adults", 'title: "A cohort study\N{EM DASH}adults"',
+         "A cohort study---adults"),
+        ("title: A cohort study\N{NO-BREAK SPACE}", _AS_INIT_TYPES_IT,
+         "A cohort study\N{NO-BREAK SPACE}"),
+        ("title: A cohort study", 'title: "A cohort\N{LINE SEPARATOR}study"', "A cohort study"),
+        # A next-line character is a line break to YAML, which folds it to a space.
+        ("title: A cohort study", 'title: "A cohort' + chr(0x85) + 'study"', None),
+        # A mapping, warned of whatever it holds and shown as its key's line.
+        ("title: {main: A cohort study}", _AS_INIT_TYPES_IT, "title: {main: A cohort study}"),
+        # Two that pandoc holds apart, and the comparison does not.
+        ("title: |\n  A cohort\n\n  study", _AS_INIT_TYPES_IT, None),
+        ("title: |\n  A cohort  \n  study", _AS_INIT_TYPES_IT, None),
+        ("title: yes", 'title: "yes"', None),
+        ("title: 1.0", 'title: "1.0"', None),
+        # Read as no title at all.
+        ('title: "\N{NO-BREAK SPACE}"', _AS_INIT_TYPES_IT, None),
+        ('title: ""', _AS_INIT_TYPES_IT, None),
+    ],
+)  # fmt: skip
+def test_the_two_titles_are_compared_as_typed(
+    header: str, typed: str, shown: str | None, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The two titles are compared as typed, not as
+    pandoc prints them"): marked up, quoted or dashed otherwise, a no-break space pasted
+    after the title, or a line separator in paper.yaml's, which the build folds and the
+    comparison does not, are two titles; a blank line or a hard break in a block, and a
+    `yes` or a `1.0`, are one; an empty title, and a title of a no-break space, are none."""
+    from manuscript_guard.build.assemble import check_shapes
+    from manuscript_guard.contracts.project import one_line
+
+    project = _with_header(tmp_path / "paper", header, typed)
+    found = two_titles(check_shapes(project))
+    assert [f.context for f in found] == ([] if shown is None else [shown])
+    if "\N{LINE SEPARATOR}" in typed:
+        assert project.paper["title"] == "A cohort\N{LINE SEPARATOR}study"
+        assert one_line(project.paper["title"]) == "A cohort study"
 
 
 # --------------------------------------------------------------------------------------

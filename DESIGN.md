@@ -17606,10 +17606,11 @@ been sorted yet.
   holds "seed".
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
-  "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that
+  "Figure 4:", "Figure S1.", "Fig. 1." or "eFigure 1."; the stop or colon has to come right
+  after the number, so that
   prose resuming under a figure ("Figure 1 shows ...", "Figure 2.5-fold higher ...") is left
   as prose. A no-break space between the word and the number is read as a space. The cost: a
-  caption written "Fig. 1.", "Figure one." or with a chapter-style number ("Figure 1.1."), a
+  caption written "Fig 1.", "Figure one." or with a chapter-style number ("Figure 1.1."), a
   caption separated from its figure by a comment, and a caption under an image that shares its
   paragraph with other text are all left at body size. A figure that carries pandoc's own caption
   (`![caption](path)`) keeps `Image Caption`, which the reference document does not size
@@ -17617,6 +17618,15 @@ been sorted yet.
   `Block Text` and so loses the quotation's indent. The style is added to the author's own
   `reference.docx` from pandoc's user data directory when there is one, and skipped when that
   file already defines `FigureCaption`; table captions are untouched.
+  Pinned by `tests/test_build.py::test_the_caption_style_reads_one_convention_and_nothing_else`,
+  `tests/test_build.py::test_pandoc_s_own_caption_and_a_quoted_one_are_styled_as_the_known_gap_says`,
+  `tests/test_build.py::test_a_caption_opening_fig_or_efigure_is_styled_as_one`,
+  `tests/test_build.py::test_the_caption_after_a_figure_is_styled_smaller`,
+  `tests/test_build.py::test_prose_directly_after_a_figure_is_not_set_as_its_caption`,
+  `tests/test_build.py::test_a_fold_change_under_a_figure_is_not_a_caption`,
+  `tests/test_build.py::test_a_caption_whose_space_is_a_no_break_space_is_still_a_caption`,
+  `tests/test_build.py::test_the_authors_own_reference_document_still_styles_the_build`
+  and `tests/test_build.py::test_an_authors_own_caption_style_is_not_overridden`.
 - **A build killed outright leaves its generated reference document in `build/.cache`.** Each
   build names its own `reference-XXXX.docx` there and removes it for as long as the process
   lives, whatever fails — an unreadable reference, a missing bibliography, pandoc itself. A
@@ -18100,6 +18110,9 @@ been sorted yet.
   but the text itself is dropped without a word. Only the abstract is refused
   (`front-matter-abstract`), and only the title is compared with `paper.yaml`
   (`two-titles`).
+  Pinned by `tests/test_corruption.py::test_the_other_rendered_keys_of_a_front_matter_are_checked_and_printed_by_nothing`,
+  `tests/test_corruption.py::test_an_abstract_in_the_front_matter_is_refused`
+  and `tests/test_corruption.py::test_a_title_changed_in_paper_yaml_alone_is_a_warning_of_check`.
 - **The two titles are compared as typed, not as pandoc prints them.** The title in a
   manuscript's header is read as YAML reads it and set beside `paper.yaml`'s with the
   spaces, tabs and line breaks of each folded (`two-titles`). Pandoc then reads a title as
@@ -18107,7 +18120,7 @@ been sorted yet.
   study` beside `A _cohort_ study`, a straight quotation mark beside a curly one, three
   hyphens beside a dash. So are two that differ by a no-break space, one pasted after the
   header's title for instance, where the warning shows a title that looks the same as
-  `paper.yaml`'s; and a line separator or a next-line character in `paper.yaml`'s title,
+  `paper.yaml`'s; and a line separator in `paper.yaml`'s title,
   which the build folds for the document and the comparison does not. The other way, the
   comparison says nothing where pandoc would hold the two apart: a blank line or a hard
   break inside a block title, which the folding takes for a space, and a plain `yes` or
@@ -18119,6 +18132,13 @@ been sorted yet.
   made from the paper's. Its hint says that, and does not say to make the two agree. It is
   a warning, the document prints `paper.yaml`'s title in each of these, and deleting the
   title from the header ends it.
+  Pinned by `tests/test_corruption.py::test_the_two_titles_are_compared_as_typed`,
+  `tests/test_corruption.py::test_the_header_s_title_is_read_as_yaml_reads_it`,
+  `tests/test_corruption.py::test_pandoc_takes_from_each_header_the_title_the_table_says`,
+  `tests/test_corruption.py::test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s`,
+  `tests/test_corruption.py::test_a_title_changed_in_paper_yaml_alone_is_a_warning_of_check`,
+  `tests/test_corruption.py::test_build_says_the_two_titles_differ_and_builds`
+  and `tests/test_corruption.py::test_one_title_is_not_a_finding_of_check`.
 - **A front matter is composed at 15 to 20 seconds a megabyte.** PyYAML's pure-Python
   composer is linear but slow. The block is composed once, cached for the rest of the
   process: to decide that it is front matter, and for the abstract and the title in it.
@@ -19439,6 +19459,7 @@ Open, recorded as each change landed:
 - **The supplementary files are joined into one document.** Every Markdown source under
   `manuscript/supplementary/` is built into one `supplementary.docx`, apart from the paper.
   A journal that asks for each additional file on its own gets them as one.
+  Pinned by `tests/test_cli.py::test_the_supplementary_files_are_joined_into_one_document`.
 - **A verified quote does not mean the value was read correctly.** The chain proves the
   sentence is in the source and the number is in the sentence. Whether that number means
   what the manuscript says it means is a judgement, and belongs to the review panels.
@@ -19552,6 +19573,13 @@ Open, recorded as each change landed:
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
   nothing the check counts.
+  Pinned by `tests/test_corruption.py::test_a_typed_pointer_is_held_to_a_number_and_not_to_the_table_it_means`,
+  `tests/test_corruption.py::test_a_kind_placed_some_other_way_is_not_checked_and_says_so`,
+  `tests/test_corruption.py::test_a_figure_sent_as_a_file_is_declared_and_counted`,
+  `tests/test_corruption.py::test_a_pointer_in_a_heading_is_checked_for_a_target_and_cites_nothing`,
+  `tests/test_corruption.py::test_a_caption_typed_above_a_table_is_no_citation_of_it`,
+  `tests/test_corruption.py::test_another_paper_s_table_is_read_as_the_paper_s_own`
+  and `tests/test_corruption.py::test_a_box_a_section_and_an_equation_are_no_pointers_the_check_counts`.
 - **A ref numbers only what is placed by binding, and only one kind of one document at a
   time.** Where the main text also places a table by hand, or `paper.yaml` sends one of its
   figures as a file, a ref to that kind of that document is refused (`ref-number-unknown`)
@@ -19569,6 +19597,7 @@ Open, recorded as each change landed:
   patients were excluded" offers the 2. Either prints as typed when it is applied, and
   prints another number once the tables move. The list is printed before `--apply`, and
   `--only FILE:LINE` takes the ones meant (round 1 of #378).
+  Pinned by `tests/test_corruption.py::test_bind_pointers_offers_another_paper_s_table_and_a_count_after_a_list`.
 - **A ref counts no word.** The word count masks every binding, so "Table 2" typed counts two
   words and `{{ref.table.a}}` none, as a value bound counts none where it typed counted one.
   A paper binding its pointers near the limit is counted a few words short (round 1 of
@@ -19579,6 +19608,7 @@ Open, recorded as each change landed:
   to 5 once two tables are placed between them, and nothing says the range grew. Each end is
   right; what the dash takes in is not held to anything. A range written with two refs reads
   as two pointers and is held like them.
+  Pinned by `tests/test_corruption.py::test_a_range_between_two_nums_takes_in_what_is_placed_between_them`.
 - **A ref in a reply to the reviewers is not held.** A reply's value binding that names
   nothing is `unresolved-binding`; a ref there that the count cannot number (its figures
   sent as files) passes, and `response-to-reviewers.md` prints it as written. Where an
@@ -19601,6 +19631,11 @@ Open, recorded as each change landed:
   read as the last of them by the caption check, and an emitted caption that opens with a
   pointer's word and digits that are no number of it ("Table 12-month outcomes") is taken
   for numbered: printed without the build's number, and `caption-names-another` says so.
+  Pinned by `tests/test_corruption.py::test_a_caption_typed_with_only_a_space_after_its_number_is_a_sentence`,
+  `tests/test_corruption.py::test_a_table_captioned_where_it_stands_gets_no_second_number`,
+  `tests/test_corruption.py::test_a_caption_s_set_off_opening_any_paragraph_is_taken_for_a_caption`,
+  `tests/test_corruption.py::test_two_tables_in_one_block_are_read_as_the_last_by_the_caption_check`
+  and `tests/test_corruption.py::test_an_emitted_caption_opening_with_a_pointer_s_word_and_digits_is_taken_for_numbered`.
 - **A caption's number is written one way.** The build prints "Table 2. " before an emitted
   caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
   bold). Where the count cannot number a table (placed twice, or its kind also placed by
@@ -19611,10 +19646,16 @@ Open, recorded as each change landed:
   figure that opens with one of those three and its number. A caption is held only where
   it stands next to its display: one typed two paragraphs above its table names whatever it
   names.
+  Pinned by `tests/test_corruption.py::test_the_build_numbers_an_emitted_table_caption`,
+  `tests/test_corruption.py::test_a_table_the_count_cannot_number_prints_its_caption_with_none`,
+  `tests/test_corruption.py::test_a_figure_s_caption_in_another_form_is_held_by_g2`,
+  `tests/test_build.py::test_the_caption_style_reads_one_convention_and_nothing_else`
+  and `tests/test_corruption.py::test_a_caption_two_paragraphs_above_its_table_is_not_held`.
 - **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
   its fenced listings, comments and front matter. A ref inside a listing is printed by the
   build, which refuses one it cannot number, and is no citation to G2: a table cited only in
   a listing is `display-not-cited`.
+  Pinned by `tests/test_corruption.py::test_a_ref_in_a_listing_is_printed_and_cites_nothing`.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
@@ -21533,8 +21574,13 @@ Open, recorded as each change landed:
   reads the header to the first `---` or `...` line, so `---`, `title: x`, a blank line,
   `# Introduction`, a blank line and a rule make a valid mapping with a comment in it. The
   heading goes into the metadata for pandoc and the build alike, and nothing says so. Lines
-  indented four spaces under it, a code block to Markdown, go into the value above as well.
-  Any other prose under the heading makes the YAML invalid, and G2 and the build stop.
+  indented four spaces under it, a code block to Markdown, go into the value above as well
+  when its key has nothing after it, `title:` alone; under `title: x` they make the YAML
+  invalid. Any other prose under the heading makes the YAML invalid, and G2 and the build
+  stop.
+  Pinned by `tests/test_corruption.py::test_a_heading_under_a_header_never_closed_is_a_yaml_comment`,
+  `tests/test_corruption.py::test_a_heading_swallowed_by_a_header_never_closed_is_said_by_nothing`
+  and `tests/test_corruption.py::test_prose_under_a_heading_in_a_header_never_closed_makes_it_unreadable`.
 - **YAML is read by PyYAML, and pandoc reads it with a library of its own.** PyYAML is made
   to read as pandoc does: between a `---` and a `...` of its own, every document read, an
   anchor carried into later documents, defined again if need be, and usable only once its
@@ -21546,7 +21592,11 @@ Open, recorded as each change landed:
   text is lost. Nesting over 100 levels is refused unread by a rough count that does not
   know quotes or block scalars, and nesting too deep to compose, about 500 levels by
   indentation, is refused the same way. Either is left in the
-  body, where pandoc hides it, and is not reported even when it is not YAML.
+  body, where pandoc hides it, and is not reported as a header that cannot be read even
+  when it is not YAML; its two rules are refused as lines of dashes (`rule-opens-a-block`).
+  Pinned by `tests/test_corruption.py::test_a_header_pyyaml_reads_and_pandoc_refuses_is_stripped`,
+  `tests/test_corruption.py::test_a_header_nested_past_a_hundred_by_a_rough_count_is_left_in_the_body`
+  and `tests/test_corruption.py::test_a_header_too_deep_by_indentation_is_left_in_the_body`.
 - **The comment scanner knows code spans, fences and the front matter, and no other
   Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
   does, but it ends a code span only at a blank line or a front-matter value's edge, where
@@ -21637,9 +21687,12 @@ Open, recorded as each change landed:
   value's end. But each of these can still hide a number pandoc prints, all on contrived
   input: Accepted.
   - a fence opened in one YAML value and closed in another;
+    Pinned by `tests/test_comments.py::test_a_mark_carried_from_one_front_matter_value_to_another_hides_a_number`.
   - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
     a quoted title, which a `# -->` YAML comment after it closes;
+    Pinned by `tests/test_comments.py::test_a_mark_carried_from_one_front_matter_value_to_another_hides_a_number`.
   - a code block in an abstract indented four spaces, which is not found.
+    Pinned by `tests/test_comments.py::test_a_code_block_indented_in_an_abstract_is_not_found`.
   The build strips the manuscript's front matter, so these matter to `audit`, which reads
   papers another tool built, more than to G2. Reading each YAML value on its own, from
   where PyYAML places it, and un-indenting a block scalar before looking for code in it,
@@ -21659,6 +21712,7 @@ Open, recorded as each change landed:
   item, is refused like any line of dashes with a line above it; pandoc does take the title
   from `> ---`, `> title: Evil` and `---`. With a blank line before the rule, pandoc closes
   the quotation first and reads no metadata.
+  Pinned by `tests/test_corruption.py::test_a_line_of_dashes_inside_a_quotation_or_an_item_is_not_refused_by_check`.
 - **Some shapes only the build catches.** A comment the heading scan misreads, a `<!--` that
   pandoc prints in indented code (#39 taught it inline code, `\<!--`, `<!-->` and
   `<!--->`), hides every rule up to the next `-->` from the refusal. So does a comment left open at
@@ -21679,14 +21733,21 @@ Open, recorded as each change landed:
   gates read that pandoc prints as raw text or prose, the build refusing every one:
   Accepted.
   - a `<pre>` or `<?php` behind text on its line, whose closer comes later;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - a `<pre>` straight after a comment closed on the same line;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - a `</pre>` inside a comment inside a `<pre>`;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - a `?>` in quotes in a processing instruction;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - an escaped `\\end{center}`, or one after a TeX comment's `%` on its line;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - a `</pre>` inside an attribute of the `<pre>` it seems to close, `<pre title="</pre>">`;
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
   - code spans the tracker pairs otherwise than pandoc: backticks straddling a comment's
     close, a backslash escaping one backtick of a run, a span from the line above closing
     early, and an unpaired backtick opening a false comment that takes in a real `<pre>`.
+    Pinned by `tests/test_corruption.py::test_a_listing_the_tracker_lets_through_is_refused_by_the_build`.
 - **Some listings pandoc makes are refused.** The same tracker opens a context pandoc does
   not, and every later listing in the file is refused, the finding on the listing's own
   lines; save one a false comment holds whole, which `check` lets be and the build finds in
@@ -21694,12 +21755,17 @@ Open, recorded as each change landed:
   - a `<pre>` or `\begin{center}` opened inside one of its name and left unclosed, which
     pandoc takes for a lone tag, pairing the inner one with the closer, and a nested
     `\begin{verbatim}`;
+    Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`.
   - a mark with no closer: an unclosed `<!-- TODO`, or a `<script>`, `<?php` or `<pre>`
     never closed, which pandoc reads as text;
+    Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`
+    and `tests/test_corruption.py::test_a_listing_after_an_unclosed_comment_is_refused_as_an_unclear_fence`.
   - `\begin{center}` named in a line of prose, `<pre/>`, `</pre foo>`, and a `<!--` in
     indented code;
+    Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`.
   - a line whose backticks do not pair, `` `<!--` `` beside a stray `` ` ``, where a
     comment's mark is read.
+    Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`.
 
   The hint names an open comment or raw block as a cause, and nothing is read wrongly.
 - **A listing commented out with `-->` on its closing line is refused.** In ```` ``` --> ````

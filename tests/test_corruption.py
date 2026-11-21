@@ -30643,6 +30643,27 @@ def test_another_meaning_before_a_typed_citation_is_still_caught(project: Path) 
     assert "'relative odds ratio' here" in message, message
 
 
+def test_a_colon_before_a_bracket_s_definition_defines_nothing_to_hide_a_slip(
+    project: Path,
+) -> None:
+    """A revision introduces a new estimate by its family, "the PRRs: proportional reporting
+    ratio adjusted (PRRA)", and uses PRR alone afterwards, never defining it. The bracket's
+    definition wins over the colon pair the same words could make (Basile, 2026-11-21,
+    "Bracket wins"): PRR is not defined by it, and is asked about where it is first used,
+    where it was defined before and hid the slip."""
+    mended = with_ror_defined(project)
+    slipped = mended.replace(
+        "A signal was defined",
+        "The latest of the PRRs: proportional reporting ratio adjusted (PRRA) was computed, "
+        "and the PRRA and the PRR rose. A signal was defined",
+    )
+    assert slipped != mended
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(slipped, "The latest of the PRRs"))
+    ]
+
+
 def test_a_designation_or_a_joined_name_beside_a_slip_hides_none(project: Path) -> None:
     """A catalogue's designation, "[ZK92]30", and a series' name whose parts underscores
     join, "ROR_ALL", are no short forms; a use of ROR before its definition in the same

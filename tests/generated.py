@@ -1011,11 +1011,21 @@ DESIGNATION_SENTENCES = (
 #: form one of their parts is: no use of it.
 JOINED_SHORT = ("quarterly market price", "QMP")
 JOINED_NAMES = ("QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "UK_QMP\\_ALL")
+#: A colon pair or an equals sign's whose long form a bracket after it defines a short form
+#: from, alone or in a list, round or square: the bracket's definition wins (Basile,
+#: 2026-11-21, "Bracket wins"), so the pair's short form is defined by nothing. `{s}` is the
+#: pair's short form, `{l}` the long form and `{b}` the bracket.
+BRACKET_WINS = ("timed chair stand series", "TCS")
+BRACKET_PAIRS = ("The latest of the {s}s: {l} {b} was run.", "Here {s} = {l} {b} held.",
+                 "Of the {s}: {l} {b} came first.")  # fmt: skip
+BRACKET_DEFINING = (("({s}-S)", ("{s}-S",)), ("[{s}-S]", ("{s}-S",)),
+                    ("({s}-S, {s}-R)", ("{s}-S", "{s}-R")))  # fmt: skip
 
 
 #: One piece of each kind `apart_forms` draws, as the readings' inputs hold them
 #: (`ABBREVIATION_BLOCKS`): another meaning given in two notes, a citation after a long form
-#: in its bracket, designations typed and escaped, and names underscores join.
+#: in its bracket, designations typed and escaped, names underscores join, and a colon pair
+#: before a bracket's definition.
 APART_PIECES = (
     "The brisk walking test (BWT) was run. The BWT held.\n\n*Note.* BWT = brisk walking "
     "time.\n\n*Note.* BWT = brisk walking time.",
@@ -1024,15 +1034,18 @@ APART_PIECES = (
     "The protostar [KX92]30 drives a faint outflow, and \\[KX92\\]21 too.",
     "| Series | Loading |\n|---|---|\n| QMP_RATE | 0.1 |\n| IOS\\_QMP | 0.2 |\n\nThe quarterly "
     "market price (QMP) rose. The QMP fell.",
+    "The latest of the TCSs: timed chair stand series (TCS-S) was run. The TCS-S held.",
 )
 
 
 @st.composite
 def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
     """A Methods section with one piece of each kind of `REPEATED_SHORT`, `CITED_SHORT`,
-    `DESIGNATED` and `JOINED_SHORT`, in an order drawn, among words; and what G14 owes it:
+    `DESIGNATED`, `JOINED_SHORT` and `BRACKET_WINS`, in an order drawn, among words; and
+    what G14 owes it:
     for each other meaning of the repeated short form, its code, the short form and the long
-    form that finding quotes as given here. Nothing else."""
+    form that finding quotes as given here, and the pair's short form before the winning
+    bracket as used and never defined. Nothing else."""
     long, short = REPEATED_SHORT
     meanings = draw(st.lists(st.sampled_from(REPEATED_MEANINGS), min_size=1, max_size=3,
                              unique=True))  # fmt: skip
@@ -1056,9 +1069,16 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
     rows = "\n".join(f"| {name} | 0.{at + 1} |" for at, name in enumerate(names))
     joining = (f"| Series | Loading |\n|---|---|\n{rows}\n\nThe {joined_long} ({joined}) rose. "
                f"The {joined} fell.")  # fmt: skip
-    pieces = draw(st.permutations([repeated, citing, designated, joining]))
+    wins_long, wins = BRACKET_WINS
+    bracket, defined = draw(st.sampled_from(BRACKET_DEFINING))
+    winning = draw(st.sampled_from(BRACKET_PAIRS)).format(
+        s=wins, l=wins_long, b=bracket.format(s=wins))
+    winning += "".join(f" The {each.format(s=wins)} held." for each in defined)
+    pieces = draw(st.permutations([repeated, citing, designated, joining, winning]))
     text, _starts = _paragraphs(draw, pieces)
-    return "# Methods\n\n" + text, [("abbreviation-redefined", short, each) for each in told]
+    # The pair's short form is defined by nothing, so it is used and never defined.
+    return "# Methods\n\n" + text, [*(("abbreviation-redefined", short, each) for each in told),
+                                    ("abbreviation-undefined", wins, "")]  # fmt: skip
 
 
 @st.composite

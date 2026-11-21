@@ -2181,7 +2181,9 @@ def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
     note that gives the long form again gives no other meaning; a catalogue's designation,
     "[KX92]30", typed or escaped, defines nothing and is no use; and a name whose parts
     underscores join, bare or escaped, is no use of a short form that one of its parts is,
-    in a table above the definition."""
+    in a table above the definition; and where a bracket defines a short form after its long
+    form, alone or in a list, round or square, a colon pair or an equals sign's the same
+    words could make defines nothing (Basile, 2026-11-21, "Bracket wins")."""
     text, expected = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
@@ -2205,6 +2207,10 @@ def _a_designation_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
 
 def _a_name_underscores_join_is_short_forms(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_JOINED_BY_UNDERSCORES", re.compile(r"(?!)"))
+
+
+def _a_colon_pair_defines_beside_a_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bracket_wins", lambda prose, end, after_long: False)
 
 
 def _g14_warned(files: list, known, root: Path, stage: str | None = None):
@@ -2751,7 +2757,7 @@ def _a_bracket_s_list_defines_whatever_its_words(patch: pytest.MonkeyPatch) -> N
 
 
 def _a_sign_after_a_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_paired", lambda prose, typed=None: [])
+    patch.setattr(language_gate, "_paired", lambda prose, typed=None, after_long=frozenset(): [])
 
 
 def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -> None:
@@ -2793,10 +2799,12 @@ def _a_wrapped_note_defines_from_its_first_line(patch: pytest.MonkeyPatch) -> No
 def _a_section_s_name_before_a_colon_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
     real = language_gate._paired
 
-    def unlabelled(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+    def unlabelled(
+        prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+    ) -> list[tuple[int, str, str]]:
         with pytest.MonkeyPatch.context() as inner:
             inner.setattr(language_gate, "section_name_alone", lambda text: None)
-            return real(prose, typed)
+            return real(prose, typed, after_long)
 
     patch.setattr(language_gate, "_paired", unlabelled)
 
@@ -2865,7 +2873,9 @@ def _a_slash_pairs_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_slash_pairs_the_whole_long_form_with_each_part(patch: pytest.MonkeyPatch) -> None:
-    def paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+    def paired(
+        prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+    ) -> list[tuple[int, str, str]]:
         found = []
         for pair in language_gate._PAIRED.finditer(prose):
             at = pair.start("shorts")
@@ -27030,6 +27040,10 @@ BROKEN = {
     ),
     "a name underscores join is read as short forms": (
         _a_name_underscores_join_is_short_forms,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a colon pair defines beside the bracket that defines from its words": (
+        _a_colon_pair_defines_beside_a_bracket,
         test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
     ),
     "a time of day is read as words": (

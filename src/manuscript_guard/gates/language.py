@@ -1466,26 +1466,37 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
     (`_cited_as`), read in `typed`."""
     found: list[tuple[int, str, str]] = []
     listed: list[tuple[int, str, str]] = []
+    # Where a bracket opens that defines its short forms after their long form, "(CAP-PD)"
+    # or "(CAP, CAP-T)", which a colon pair the same words could make gives way to.
+    after_long: set[int] = set()
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = (_short_inside(prose, bracket) or _long_inside(prose, bracket)
-                      or _short_closing(bracket))  # fmt: skip
+        inside = _short_inside(prose, bracket)
+        definition = inside or _long_inside(prose, bracket) or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
-        listed += _listed_inside(prose, bracket)
+        items = _listed_inside(prose, bracket)
+        listed += items
+        if inside is not None or items:
+            after_long.add(bracket.start())
     for bracket in _SQUARE.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = _short_inside(prose, bracket) or _short_closing(bracket)
+        inside = _short_inside(prose, bracket)
+        definition = inside or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
-        listed += _listed_inside(prose, bracket)
+        items = _listed_inside(prose, bracket)
+        listed += items
+        if inside is not None or items:
+            after_long.add(bracket.start())
     # A short form a bracket already defines where it stands is not defined there again.
     bracketed = {at for at, _short, _long in found}
     found += [each for each in _dashed(prose, typed) if each[0] not in bracketed]
     taken = {at for at, _short, _long in found}
-    for each in (*listed, *_paired(prose, typed), *_named_as(prose), *_cited_as(prose, typed)):
+    paired = _paired(prose, typed, frozenset(after_long))
+    for each in (*listed, *paired, *_named_as(prose), *_cited_as(prose, typed)):
         if each[0] not in taken:
             taken.add(each[0])
             found.append(each)
@@ -1512,15 +1523,24 @@ def _listed_inside(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, s
     return found
 
 
-def _paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+def _paired(
+    prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+) -> list[tuple[int, str, str]]:
     """The definitions "X = long form" and "X: long form" (`_PAIRED`), one for each pair of
     a list: the long form after the sign is matched as one in brackets after its short form
     is (`_spelt_after`). Short forms a slash joins, "EA/NEA = effect/non-effect allele",
     are each paired with the part of the long form's one word a slash joins in as many
     parts, the rest of its words shared: "effect allele" and "non-effect allele". Where no
-    word, or more than one, has as many parts, none of them is read."""
+    word, or more than one, has as many parts, none of them is read.
+
+    A pair whose long form runs up to a bracket of `after_long`, one that defines its short
+    forms after their long form, is none: the bracket's definition wins, so "the latest of
+    the CAPs: Content Acquisition Podcasts Plus (CAP-P)" defines CAP-P and not CAP (Basile,
+    2026-11-21, "Bracket wins"; `_bracket_wins`)."""
     found = []
     for pair in _PAIRED.finditer(prose):
+        if _bracket_wins(prose, pair.end("long"), after_long):
+            continue
         shorts = pair.group("shorts").split("/")
         # A section's name before a colon is a label, a structured abstract's "RESULT:", and
         # never a short form (round 1 of #698).
@@ -1549,6 +1569,16 @@ def _paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
             if long is not None:
                 found.append((pair.start("shorts") + start, _stem(short, long), long))
     return found
+
+
+def _bracket_wins(prose: str, end: int, after_long: frozenset[int]) -> bool:
+    """Whether the long form of a colon pair or an equals sign's, ending at `end`, runs up to
+    a bracket that defines its short forms after their long form, spaces between them
+    allowed: the same words are then the bracket's long form."""
+    opened = end
+    while opened < len(prose) and prose[opened] in " \t\N{NO-BREAK SPACE}":
+        opened += 1
+    return opened in after_long
 
 
 def _named_as(prose: str) -> list[tuple[int, str, str]]:

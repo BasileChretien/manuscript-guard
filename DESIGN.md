@@ -24169,10 +24169,10 @@ Open, recorded as each change landed:
     Accepted.
   - A section's name before a colon is a label (`SECTION_NAMES`),
     but a label not on that list, "AIM:", is read as any short form is. A colon that
-    introduces words beginning with the short form's letters defines it all the same:
-    "iterations of CAPs: Content Acquisition Podcasts Professional Development (CAP-PD)"
-    defines CAP a second time, and a label in capitals before a sentence that holds its
-    letters in order defines the label.
+    introduces words beginning with the short form's letters defines it all the same,
+    unless a bracket after those words defines its own short form from them (see "Closed
+    since"), and a label in capitals before a sentence that holds its letters in order
+    defines the label.
     Pinned by `tests/test_definition_shapes.py::test_each_shape_defines_nothing_where_its_words_do_not_match`
     and `tests/test_definition_shapes.py::test_a_colon_that_introduces_words_with_the_letters_defines`.
   - A bracket's short form and its word before a semicolon define where an author-year
@@ -28510,6 +28510,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A colon before a long form that a bracket after it defines made a second definition
+  (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an
+  education preprint of the real-paper corpus wrote its own, defined CAP a second time, as
+  "Content Acquisition Podcasts Plus", beside CAP-P, and so reported CAP as defined as two
+  things. The author's rule (Basile, 2026-11-21, "Bracket wins"): where a bracket defines a
+  short form right after its long form, alone or in a list, "(CAP-P)" or "(CAP, CAP-T)",
+  that definition wins over a colon pair or an equals sign's the same words could make
+  (`_bracket_wins`). A bracket after the words that defines nothing, "(see the appendix)",
+  leaves the pair as it was. Held by
+  `tests/test_definition_shapes.py::test_a_bracket_after_a_colon_pair_s_long_form_wins`.
 
 - **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
   section of another name was not found (2026-11-11).** Of the twelve numbers the audit

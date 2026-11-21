@@ -56,7 +56,10 @@ expected:
       so the note that gives the long form again gives no other meaning; a catalogue's
       designation, "[KX92]30" typed or escaped, is neither a definition nor a use; and a name
       whose parts underscores join, "QMP_RATE", is no use of a short form, so nothing is used
-      before its definition. The entry it replaces, decision 30's, is spent
+      before its definition; and where a bracket defines a short form after its long form, a
+      colon pair the same words could make defines nothing (Basile, 2026-11-21, "Bracket
+      wins"), so "TCSs: timed chair stand series (TCS-S)" leaves TCS used and undefined. The
+      entry it replaces, decision 30's, is spent
   - reading: audit abbreviations
     why: >-
       the audit's one finding of the short forms used and not defined is a question to the

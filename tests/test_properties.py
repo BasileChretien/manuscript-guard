@@ -1433,6 +1433,31 @@ def _a_kit_helper_defined_again_is_not_seen(patch: pytest.MonkeyPatch) -> None:
                   lambda self, name: self.bodies_at.pop(name, None))  # fmt: skip
 
 
+def _only_the_plain_helper_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    takes_back = latex_mask._Reader._takes_back
+
+    def broken(self, name: str) -> None:
+        # Round 1 of #757: a rule that took the heading back only for its plain helper.
+        if any(name == helpers[0] or name == helpers[2] for helpers in self.through.values()):
+            self.bodies_at.pop(name, None)
+            return
+        takes_back(self, name)
+
+    patch.setattr(latex_mask._Reader, "_takes_back", broken)
+
+
+def _a_provided_command_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: False)
+
+
+def _an_edef_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_ALWAYS_DEFINE", latex_mask._ALWAYS_DEFINE | {"edef"})
+
+
+def _a_kit_body_where_at_is_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_as_written", lambda definition, letter: True)
+
+
 def _a_short_title_after_the_kit_s_heading_is_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SHORT_TITLE", re.compile(r"(?!)"))
 
@@ -26129,6 +26154,22 @@ BROKEN = {
     ),
     "in LaTeX, a helper of the author kit defined again is not seen": (
         _a_kit_helper_defined_again_is_not_seen,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, only the plain helper takes the author kit's heading back": (
+        _only_the_plain_helper_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\providecommand of a command defined takes the author kit's heading back": (
+        _a_provided_command_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an \\edef heading is read as the author kit's": (
+        _an_edef_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a kit body defined where @ is no letter is read": (
+        _a_kit_body_where_at_is_no_letter_is_read,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, a short title after the author kit's heading is read": (

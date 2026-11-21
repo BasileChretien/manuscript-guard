@@ -546,6 +546,13 @@ def _ifstar_branches(name: str, head: str, body: str) -> tuple[str, str] | None:
     return (branches["starred"] or branches["starred_"], branches["plain"] or branches["plain_"])
 
 
+def _as_written(definition: str, letter: bool) -> bool:
+    """Whether a definition reads to TeX as its text is written: it holds no `@`, or `@` was
+    a letter where it stands (round 1 of #757: `\\@startsection` before `\\makeatletter` is
+    `\\@` and the letters "startsection")."""
+    return letter or "@" not in definition
+
+
 def _hands_on(name: str, head: str, body: str, star: bool) -> str:
     """The command a helper of the kit's heading hands its argument to, or "": defined with
     one parameter and no other, its whole body that command given `#1`, starred where `star`
@@ -860,15 +867,17 @@ class _Reader:
         self.defined_delimited: list[str] = []
         #: What the other files of the tree define so, which nothing here takes back.
         self.told_delimited = frozenset(delimited)
-        #: A known command the preamble defines again, and where its name stands, until its
-        #: body opens and is read for the forms read as before (`_read_as_before`).
-        self.restyling: tuple[str, int] | None = None
+        #: A known command the preamble defines again, where its name stands and the command
+        #: defining it, until its body opens and is read for the forms read as before
+        #: (`_read_as_before`).
+        self.restyling: tuple[str, int, str] | None = None
         #: Where the name of the command being defined stands, and the command defining it.
         self.defining_at, self.definer = -1, ""
         #: Each command this file defined outside any definition's body by a definer that
-        #: always defines (`_ALWAYS_DEFINE`): where its name stands and where its body opens,
-        #: read for the author kit's form where a heading is defined through it.
-        self.bodies_at: dict[str, tuple[int, int]] = {}
+        #: always defines (`_ALWAYS_DEFINE`): where its name stands, where its body opens, and
+        #: whether `@` was a letter there, read for the author kit's form where a heading is
+        #: defined through it.
+        self.bodies_at: dict[str, tuple[int, int, bool]] = {}
         #: The headings read as before through the kit's form, with the commands each goes
         #: through; a definition of one of these takes the heading back (`_takes_back`).
         self.through: dict[str, tuple[str, ...]] = {}
@@ -1101,7 +1110,8 @@ class _Reader:
         parameter = spec == "d" and self.defining in PARAMETERS
         if spec == "d":
             if self.defining and self.definer in _ALWAYS_DEFINE and not self.definitions:
-                self.bodies_at[self.defining] = (self.defining_at, at)
+                letter = self.letters is _LETTERS_AT
+                self.bodies_at[self.defining] = (self.defining_at, at, letter)
             self.defining = ""
             self._restyled(at)
         if role == BLANK or spec in "bc":
@@ -1479,7 +1489,7 @@ class _Reader:
         one is refused where it prints, in every file of the tree."""
         if self.restyling is None:
             return
-        (name, start), self.restyling = self.restyling, None
+        (name, start, definer), self.restyling = self.restyling, None
         end = self._group_end(at)
         if end < 0 or name in self.told_delimited:
             return
@@ -1488,7 +1498,10 @@ class _Reader:
         if name in LEVELS and self.letters is not _LETTERS_AT:
             return
         head, body = self.text[start:at], self.text[at + 1 : end - 1]
-        through = () if name not in LEVELS else self._through_ifstar(name, head, body)
+        # The kit's heading by a definer that always defines, and whose body is the heading's
+        # where it is used, not `\edef`'s (round 1 of #757).
+        kit = name in LEVELS and definer in _ALWAYS_DEFINE
+        through = self._through_ifstar(name, head, body) if kit else ()
         if not through and not _read_as_before(name, head, body):
             return
         self.delimited.discard(name)
@@ -1501,12 +1514,22 @@ class _Reader:
 
     def _defined(self, name: str) -> tuple[str, str] | None:
         """What this file's last definition of `name` holds from the name to its body's
-        brace, and in that brace, where the definition always defines (`bodies_at`)."""
+        brace, and in that brace, where the definition always defines (`bodies_at`) and reads
+        as it is written: one that holds `@` where `@` was no letter holds to TeX `\\@` and
+        letters, not the command written (`_as_written`)."""
         if name not in self.bodies_at:
             return None
-        start, at = self.bodies_at[name]
+        start, at, letter = self.bodies_at[name]
         end = self._group_end(at)
-        return None if end < 0 else (self.text[start:at], self.text[at + 1 : end - 1])
+        if end < 0 or not _as_written(self.text[start:end], letter):
+            return None
+        return self.text[start:at], self.text[at + 1 : end - 1]
+
+    def _provides_nothing(self, name: str) -> bool:
+        """Whether the definition of `name` read now defines nothing, and so takes nothing
+        back: `\\providecommand` of a command defined, the reader's own or one this file
+        defined (round 1 of #757)."""
+        return self.command in PROVIDERS and (name in COMMANDS or name in self.bodies_at)
 
     def _through_ifstar(self, name: str, head: str, body: str) -> tuple[str, ...]:
         """The commands a heading defined as the CVPR and ICCV author kit defines it goes
@@ -1913,7 +1936,8 @@ class _Reader:
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
         self.defining_at, self.definer = at, self.command
-        self._takes_back(name)
+        if not self._provides_nothing(name):
+            self._takes_back(name)
         unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
         if name in FRONT_MATTER_COMMANDS or unloaded:
             # Told of it by the tree or not, the file that defines it says so (round 2). A
@@ -1936,8 +1960,9 @@ class _Reader:
             self.delimited.add(name)
             if name not in self.defined_delimited:
                 self.defined_delimited.append(name)
-            # Its body may be one of the two forms read as before (`_open`).
-            self.restyling = (name, at) if name in LEVELS or name in POINTERS else None
+            # Its body may be one of the three forms read as before (`_open`).
+            restyles = name in LEVELS or name in POINTERS
+            self.restyling = (name, at, self.definer) if restyles else None
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "

@@ -2391,13 +2391,17 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
     spacing and punctuation before the argument or nothing.
 
     - read as before, in the author's package and in the entry file's preamble past
-      `\\makeatletter`, its uses in the entry file and in a file it inputs;
+      `\\makeatletter`, its uses in the entry file and in a file it inputs, and so with a
+      `\\providecommand` of a helper below it, which defines nothing (round 1 of #757);
     - a use with a short title in brackets, after a star or not, refused where it stands in
-      the file input, which the tree tells of the heading;
+      the file input, which the tree tells of the heading, and so with a `\\providecommand`
+      of the heading below it;
     - the kit with one thing more or other, each refused where the heading is first used:
       words before the argument, a helper of two parameters, the `\\@startsection` of another
-      level, a helper defined below the heading or again below it, the branches swapped, a
-      helper by `\\providecommand`, and a font switch in a helper."""
+      level, a helper defined below the heading, each of the three commands it goes through
+      defined again below it, by `\\def` or `\\let`, the branches swapped, a helper by
+      `\\providecommand`, a font switch in a helper, the heading by `\\edef`, and the
+      `\\@startsection` command defined before `\\makeatletter`, where `@` is no letter."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -2425,36 +2429,48 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
     chain += f"{{\\@ifstar{branches}}}\n"
     defined = restyle + starring + plaining + chain
 
-    def tree(kit_text: str, where: str, part: str | None) -> tuple[dict, dict, str]:
+    def tree(kit_text: str, where: str, part: str | None,
+             outside: str = "") -> tuple[dict, dict, str]:  # fmt: skip
         preamble = ("\\usepackage{kit}\n" if where == "package"
-                    else "\\makeatletter\n" + kit_text + "\\makeatother\n")  # fmt: skip
+                    else outside + "\\makeatletter\n" + kit_text + "\\makeatother\n")  # fmt: skip
         uses = f"\\{level}{{{words()}}}\n{words()}.\n\\{level}*{{{words()}}}\n{words()}.\n"
         main = head + preamble + begin + uses + ("" if part is None else "\\input{part}\n") + end
         files = {"main.tex": main, **({} if part is None else {"part.tex": part})}
         return files, {"kit.sty": kit_text} if where == "package" else {}, main
 
+    def again(name: str) -> str:
+        how = draw(st.sampled_from(("\\def\\{0}#1{{\\textbf{{#1}}}}\n", "\\let\\{0}\\relax\n")))
+        return how.format(name)
+
     cases: list[LatexCase] = []
     for where in ("package", "preamble"):
         part = f"{words()}.\n\\{level}{{{words()}}}\n\\{level}*{{{words()}}} {words()}.\n"
-        files, packages, _main = tree(defined, where, part)
-        cases.append((files, packages, [], [], []))
+        provided = defined + f"\\providecommand{{\\{draw(st.sampled_from((starred, plain)))}}}" \
+                             "[1]{\\textbf{#1}}\n"
+        for kit_text in (defined, provided):
+            files, packages, _main = tree(kit_text, where, part)
+            cases.append((files, packages, [], [], []))
         gap = draw(st.sampled_from(("", " ", "\n", "*", " * ")))
         short = f"{words()}.\n\\{level}{gap}[{words()}]{{{words()}}} {words()}.\n"
-        files, packages, _main = tree(defined, where, short)
-        cases.append((files, packages, [("part.tex", short.index("\\" + level))], [], []))
-    spoilt = (
-        defined.replace(plain_body, f"\\{to}{{\\texorpdfstring{{Part~}}{{}}#1}}"),
-        defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"),
-        defined.replace(f"{{\\@startsection {{{level}}}", f"{{\\@startsection {{{other}}}"),
-        defined.replace(starring, "") + starring,
-        defined + f"\\def\\{plain}#1{{\\textbf{{#1}}}}\n",
-        defined.replace(branches, swapped),
-        defined.replace(plaining, f"\\providecommand{{\\{plain}}}[1]{{{plain_body}}}\n"),
-        defined.replace(plain_body, "\\bf" + plain_body),
-    )
-    for kit_text in spoilt:
-        files, packages, main = tree(kit_text, draw(st.sampled_from(("package", "preamble"))),
-                                     None)  # fmt: skip
+        for kit_text in (defined, defined + f"\\providecommand\\{level}{{x}}\n"):
+            files, packages, _main = tree(kit_text, where, short)
+            cases.append((files, packages, [("part.tex", short.index("\\" + level))], [], []))
+    spoilt = [
+        (defined.replace(plain_body, f"\\{to}{{\\texorpdfstring{{Part~}}{{}}#1}}"), ""),
+        (defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"), ""),
+        (defined.replace(f"{{\\@startsection {{{level}}}", f"{{\\@startsection {{{other}}}"), ""),
+        (defined.replace(starring, "") + starring, ""),
+        *((defined + again(name), "") for name in (starred, plain, to)),
+        (defined.replace(branches, swapped), ""),
+        (defined.replace(plaining, f"\\providecommand{{\\{plain}}}[1]{{{plain_body}}}\n"), ""),
+        (defined.replace(plain_body, "\\bf" + plain_body), ""),
+        (defined.replace(chain, f"\\edef\\{level}{{\\@ifstar{branches}}}\n"), ""),
+        # The `\@startsection` command in the preamble before `\makeatletter`.
+        (defined.replace(restyle, ""), restyle),
+    ]
+    for kit_text, outside in spoilt:
+        where = "preamble" if outside else draw(st.sampled_from(("package", "preamble")))
+        files, packages, main = tree(kit_text, where, None, outside)
         first = main.index("\\" + level, main.index(begin))
         cases.append((files, packages, [("main.tex", first)], [], []))
     return cases

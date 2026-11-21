@@ -17212,11 +17212,16 @@ been sorted yet.
   whole body of one command given `#1`, starred for the first branch and not for the
   second, with nothing before `#1` but `\texorpdfstring` of spaces, ties, punctuation and
   `\hskip` of a length, and nothing for the bookmarks; that command the same file defined
-  above with no parameter as the first form of the heading's own name; and none of the three
-  the heading itself. Its helper takes a short title's bracket as the heading, so a use with
-  one, `\section[Intro]{Introduction}` or `\section*[I]{I}`, is refused where it prints, in
-  every file of the tree. A definition of the heading or of one of the three that follows
-  takes it back, and its uses are refused again. The words such a body
+  above with no parameter as the first form of the heading's own name; the heading itself
+  defined by one of those five definers, not `\edef`; each definition that holds `@`
+  written where `@` is a letter; and none of the three the heading itself. Its helper takes
+  a short title's bracket as the heading, so a use with one, `\section[Intro]{Introduction}`
+  or `\section*[I]{I}`, is refused where it prints, in every file of the tree. A definition
+  below of one of the three, by `\def` or `\let`, takes the reading back, and the heading's
+  uses are refused again; a definition below of the heading itself is read as any is, and
+  refused where it prints unless it is one of the forms read as before. A
+  `\providecommand` of one already defined defines nothing, and takes nothing back (round 1
+  of #757). The words such a body
   prints beside the number, "equation", are not read where it is used, as no macro's body
   is (above). Anything else, a font switch round `\@startsection`, a parameter, another
   section's name, a second command in the body, is refused at its first use, and nothing of
@@ -17237,9 +17242,14 @@ been sorted yet.
   - The kit's helpers must stand above the heading in its file. TeX expands the heading
     where it is used, so helpers defined below it, before any use, print as the kit's do;
     the reader refuses the heading's uses there. JMLR's `\@startsiction` (jmlr2e.sty) and
-    dnd.sty's `\@ifnextchar*` are no form read as before, and are refused where used once
-    their files are read that far; today an earlier `\csname` stops each file before them.
+    dnd.sty's `\@ifnextchar*`, whose appendix heading prints "Appendix" in each title, are
+    no form read as before, and are refused where used.
     Pinned by `tests/test_latex_mask.py::test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints`.
+  - The tree tells every file of a kit heading whatever file defines the heading after it:
+    a file that restyles it again in the first form, `\renewcommand\section{\@startsection
+    {section}...}` in the entry file's preamble after `\usepackage{iccv}`, makes the heading
+    take a short title again, and the reader still refuses a use with one, in every file, a
+    refusal TeX would not need (round 1 of #757). Accepted.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left

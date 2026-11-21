@@ -1147,18 +1147,24 @@ def test_the_cvpr_author_kit_s_headings_are_read_as_before(defined: str, where: 
     assert "12 were fatal." in part.reading.masked and "77 died." in part.reading.masked
 
 
+@pytest.mark.parametrize(
+    "provided",
+    ["", "\\providecommand\\section{x}\n", "\\providecommand{\\iccvsect}[1]{\\textbf{#1}}\n"],
+    ids=["kit", "heading-provided", "helper-provided"],
+)
 @pytest.mark.parametrize("where", ["package", "preamble"])
 @pytest.mark.parametrize("short", ["\\section[Intro]{Introduction}", "\\subsection* [D]{Data}"])
 def test_a_short_title_after_the_author_kit_s_heading_is_refused_where_it_prints(
-    short: str, where: str
+    short: str, where: str, provided: str
 ) -> None:
     """The kit's helpers take one argument and no short title: given `[Intro]`, the bracket
     is the heading and the rest prints as text, so that use is refused where it prints, in
-    whichever file of the tree stands (Basile, 2026-11-22)."""
+    whichever file of the tree stands (Basile, 2026-11-22). A `\\providecommand` of the heading
+    or of a helper below defines nothing, and takes nothing back (round 1 of #757)."""
     from manuscript_guard.text.latex.structure import read_tree
 
     part = "Of 4100 reports, 12 were fatal.\n" + short + "\nThen 77 died.\n"
-    files, packages = _kit_tree(_KIT, where, part)
+    files, packages = _kit_tree(_KIT + provided, where, part)
     ((path, refusal),) = read_tree(files, packages=packages).refusals
     assert (path, refusal.offset) == ("sec/intro.tex", part.index(short))
     assert "short title" in refusal.message
@@ -1189,22 +1195,47 @@ def _spoilt(was: str, now: str) -> str:
         _spoilt("\\def\\iccvsect#1", "\\providecommand\\iccvsect[1]"),
         # A font switch in a helper.
         _spoilt("\\def\\iccvssect#1{", "\\def\\iccvssect#1{\\bf"),
+        # The heading by `\edef`, which expands its body where it stands (round 1 of #757).
+        _spoilt("\\def\\section{", "\\edef\\section{"),
+        # JMLR's own `\@startsiction` (jmlr2e.sty), and dnd.sty's appendix heading, which
+        # prints "Appendix" in each title.
+        "\\def\\section{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+        "             {\\large\\bf\\raggedright}}\n",
+        "\\def\\section{\\@ifnextchar*{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}%\n"
+        "             {\\large\\bf\\raggedright}}%\n"
+        "{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+        "             {\\large\\bf\\raggedright Appendix\\ }}}\n",
     ],
     ids=["words", "two-parameters", "another-level", "helper-below", "helper-again",
-         "swapped", "providecommand", "font-switch"],  # fmt: skip
+         "swapped", "providecommand", "font-switch", "edef", "jmlr-startsiction",
+         "dnd-ifnextchar"],  # fmt: skip
 )
 def test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints(
     defined: str,
 ) -> None:
     """Anything else of the kit's form, one thing more or one thing other, is a heading the
     preamble defines again, and refused where it prints (Basile, 2026-11-11), the subsection
-    no more than the section."""
+    no more than the section; and so are the other journal styles' headings the robustness
+    sweep of 2026-11-21 found, which are no form read as before."""
     from manuscript_guard.text.latex.structure import read_tree
 
     files, packages = _kit_tree(defined, "package")
     ((path, refusal),) = read_tree(files, packages=packages).refusals
     assert (path, refusal.offset) == ("sec/intro.tex", 0)
     assert "defines it again" in refusal.message
+
+
+def test_the_kit_s_heading_defined_where_at_is_no_letter_is_refused_where_it_prints() -> None:
+    """A definition is read for the kit's form only where it reads as written: one that holds
+    `@`, defined before `\\makeatletter`, holds `\\@` and the letters "startsection" to TeX,
+    and the heading through it is refused where it prints (round 1 of #757)."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    at = _KIT.index("\\def\\iccvssect")
+    main = (_HEAD + _KIT[:at] + "\\makeatletter\n" + _KIT[at:] + "\\makeatother\n"
+            "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n")  # fmt: skip
+    ((path, refusal),) = read_tree({"main.tex": main, "sec/intro.tex": _KIT_PART}).refusals
+    assert (path, refusal.offset) == ("sec/intro.tex", 0)
 
 
 def test_a_helper_of_the_author_kit_defined_again_in_another_file_is_not_seen() -> None:

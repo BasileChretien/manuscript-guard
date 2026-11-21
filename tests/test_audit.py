@@ -1340,14 +1340,15 @@ def test_an_unmarked_hash_heading_cuts_nothing_and_its_entries_are_read_by_shape
 
 
 @pytest.mark.parametrize(("under", "cut"), [("# Appendix", "lines 3-5"),
-                                            ("#Appendix", "lines 3-7")])  # fmt: skip
+                                            ("#Appendix", "lines 3-7"),
+                                            ("  # Appendix", "lines 3-7")])  # fmt: skip
 def test_a_hash_heading_directly_under_the_last_entry_ends_the_list(
     tmp_path: Path, under: str, cut: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "An unmarked `#` heading counts as no heading"):
-    `# Appendix` directly under the last entry is text to pandoc, and still ends the list a
-    real heading started, so the appendix's 9.99 is audited. `#Appendix` there ends nothing,
-    and the list runs on over it."""
+    `# Appendix` at the margin directly under the last entry is text to pandoc, and still
+    ends the list a real heading started, so the appendix's 9.99 is audited. `#Appendix`, or
+    an indented `  # Appendix`, there ends nothing, and the list runs on over it."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     paper = tmp_path / "paper.md"
@@ -1356,6 +1357,28 @@ def test_a_hash_heading_directly_under_the_last_entry_ends_the_list(
     report = audit([paper], [outputs])
     assert report.not_audited == [f"paper.md: {cut}, read as the reference list"]
     assert [c.text for c in report.unmatched] == (["9.99"] if under == "# Appendix" else [])
+
+
+@pytest.mark.parametrize(("styled", "unmatched"), [(False, []), (True, ["9.99"])])
+def test_a_word_paragraph_typed_as_a_hash_heading_ends_no_list(
+    tmp_path: Path, styled: bool, unmatched: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An unmarked `#` heading counts as no heading"):
+    a Word paragraph typed "# Appendix" with no heading style, under the last entry of a
+    list a styled References heading started, ends nothing, and the 9.99 after it goes
+    unaudited; the same paragraph styled as a heading ends the list."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    appendix = heading("Appendix") if styled else para("# Appendix")
+    body = (para("We saw 77.") + heading("References") + para(_ENTRY) + appendix
+            + para("It was 9.99 here."))  # fmt: skip
+    report = audit([make_docx(tmp_path / "paper.docx", body, styles)], [outputs])
+    assert [c.text for c in report.unmatched] == unmatched
+    paragraphs = "paragraph 1" if styled else "paragraphs 1-3"
+    assert report.not_audited == [f"paper.docx: References, {paragraphs}, read as the "
+                                  "reference list"]  # fmt: skip
 
 
 @pytest.mark.parametrize(

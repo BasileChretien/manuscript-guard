@@ -158,9 +158,11 @@ def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
 def test_a_latex_list_of_another_environment_is_no_level(inner: str, flows: list) -> None:
     """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
     point on LaTeX environments): a `compactitem`, or a list environment the paper defines,
-    nested in an item is not read as a level, so the list is no flow."""
+    nested in an item is not read as a level, so the list is no flow. The paper defines
+    `steps` as an itemize."""
     source = read_tree({"paper.tex": tex(
-        "!documentclass{article}\n!begin{document}\n!begin{itemize}\n!item Assessed (n = 412)\n"
+        "!documentclass{article}\n!newenvironment{steps}{!begin{itemize}}{!end{itemize}}\n"
+        "!begin{document}\n!begin{itemize}\n!item Assessed (n = 412)\n"
         f"!begin{{{inner}}}\n!item Excluded (n = 112)\n!end{{{inner}}}\n"
         "!item Randomised (n = 290)\n!end{itemize}\n!end{document}\n")}, "paper.tex").sources[0]
     from manuscript_guard.text.latex.views import bindings, markdown_view

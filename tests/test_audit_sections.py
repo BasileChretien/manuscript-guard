@@ -743,6 +743,25 @@ def test_where_a_dashed_or_starred_line_ends_a_markdown_reference_list(
     assert beyond == ([3] if numbers in ([1], [1, 2]) else [])
 
 
+def test_the_entries_under_a_simple_table_s_rule_are_read_as_the_paper_s_text(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
+    as a thematic break"): a simple table's dashed rule under the heading, after a blank
+    line, ends the list there, and the years, volumes and pages of the entries below it are
+    compared as the paper's numbers: a false alarm."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\nWe saw 77.\n\n# References\n\n-----  -----\n\n"
+                     + "\n".join(_ENTRIES[:2]) + "\n\n# Appendix\n\nText.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.not_audited == ["paper.md: lines 5-6, read as the reference list"]
+    assert [(c.text, c.line) for c in report.unmatched] == [("2019;393:100-10", 9),
+                                                           ("2020;370:m1", 10)]  # fmt: skip
+    assert report.reference_like == []
+
+
 def test_a_horizontal_line_word_draws_ends_no_reference_list(tmp_path: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
     as a thematic break"): a .docx has no thematic break in the text the audit reads, and a
@@ -755,6 +774,7 @@ def test_a_horizontal_line_word_draws_ends_no_reference_list(tmp_path: Path) -> 
     with zipfile.ZipFile(paper) as archive:
         parts = {name: archive.read(name) for name in archive.namelist()}
     second = f"<w:t xml:space='preserve'>{entries[1]}</w:t></w:r></w:p>".encode()
+    assert parts["word/document.xml"].count(second) == 1
     parts["word/document.xml"] = parts["word/document.xml"].replace(second, second + ruled.encode())
     with zipfile.ZipFile(paper, "w") as archive:
         for name, data in parts.items():
@@ -816,11 +836,8 @@ _LEVEL_1 = ("<w:lvl w:ilvl='1'><w:start w:val='1'/><w:numFmt w:val='decimal'/>"
         (_numbering(_DECIMAL.replace("decimal", "lowerLetter")), None, "not numbered"),
         (_numbering(_DECIMAL.replace("'1'", "'2'")), None, "not numbered"),
         (_numbering(_DECIMAL, "<w:numStyleLink w:val='RefList'/>"), None, "not numbered"),
-        (_numbering(_DECIMAL, lower=_LEVEL_1),
-         "<w:numPr><w:ilvl w:val='1'/><w:numId w:val='1'/></w:numPr>", "numbered by place"),
     ],
-    ids=["decimal from 1", "letters", "from 2", "linked to a numbering style",
-         "a lower level above the list"],
+    ids=["decimal from 1", "letters", "from 2", "linked to a numbering style"],
 )
 def test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one(
     tmp_path: Path, numberings: str, methods: str | None, style: str
@@ -828,8 +845,7 @@ def test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one(
     """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
     on the census): a numbering in another format, from another start, or linked to a
     numbering style is taken for none, and the list is counted and not held to the text's
-    numbers; a paragraph numbered at a lower level above the list is not looked at, and the
-    list is still numbered by place."""
+    numbers."""
     numbered = {SMITH: "1", JONES: "1", **({"Methods.": methods} if methods else {})}
     paper = make_docx(tmp_path / "paper.docx", ["Methods.", "The rate rose [1, 3].",
                                                 "References", SMITH, JONES],
@@ -838,6 +854,31 @@ def test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one(
     assert census.style == style
     held = [("citation-beyond-list", 3), ("entry-never-cited", 6)]
     assert [(p.code, p.line) for p in census.problems] == (held if style != "not numbered" else [])
+
+
+@pytest.mark.parametrize(("above", "style"), [(True, "not numbered"),
+                                              (False, "numbered by place")])  # fmt: skip
+def test_a_level_a_paragraph_above_restarts_is_not_looked_at(
+    tmp_path: Path, above: bool, style: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): the entries are numbered at level 1, and so is a paragraph with words
+    higher up. A paragraph at level 0 between them restarts level 1, so Word prints the
+    entries 1 and 2, but only the count is compared: the paragraph above is in it, and the
+    list is taken for not numbered. With nothing above, the list is numbered by place."""
+    level_1 = "<w:numPr><w:ilvl w:val='1'/><w:numId w:val='1'/></w:numPr>"
+    level_0 = "<w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr>"
+    numbered = {SMITH: level_1, JONES: level_1}
+    if above:
+        numbered |= {"Methods.": level_1, "Step.": level_0}
+    paper = make_docx(tmp_path / "paper.docx", ["Methods.", "Step.", "The rate rose [1, 3].",
+                                                "References", SMITH, JONES],
+                      heading="References", numbered=numbered,
+                      numberings=_numbering(_DECIMAL, lower=_LEVEL_1))  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == style
+    held = [("citation-beyond-list", 4), ("entry-never-cited", 7)]
+    assert [(p.code, p.line) for p in census.problems] == ([] if above else held)
 
 
 #: Two numberings of one abstract numbering, the second restarting its level at 1.
@@ -1274,9 +1315,10 @@ def test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
     on `--lookup`): of an entry's two DOIs and two PMIDs only the first of each is asked
-    about, and Crossref is asked for the title of an entry with neither; a record kept with
-    `--lookup-cache` is read however old it is, and asked for again only once the DOI it was
-    asked for changes."""
+    about, and Crossref is asked for the title of an article with neither, not of a web
+    page; a record kept with `--lookup-cache` is read however old it is, by its file and by
+    the date it says it was looked up on, and asked for again only once the DOI it was asked
+    for changes."""
     import os
 
     paper = tmp_path / "paper.md"
@@ -1284,17 +1326,28 @@ def test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old(
                                       "doi:10.5555/second.2")
                      .replace("PMID: 31000001", "PMID: 31000001 PMID: 31000002")
                      .replace("Brown L. A note.", "Brown L. Hepatic injury in a national "
-                              "cohort of older adults."), encoding="utf-8")  # fmt: skip
+                              "cohort of older adults.")
+                     .replace("Green M. A review. Pharmacoepidemiol Drug Saf. 2018;27:3-4.",
+                              "Example Agency. Hepatic injury in older adults [Internet]. "
+                              "Geneva: Example Agency; 2020 [cited 2021 Mar 5]. Available "
+                              "from: https://example.org/injury"), encoding="utf-8")  # fmt: skip
     assert main(["audit", str(paper), "--lookup", "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert f"for doi:{DOI} (entry 1)" in out and "second.2" not in out
     assert "would ask PubMed for PMID 31000001 (entry 2)" in out and "31000002" not in out
     assert ('an article: would ask Crossref for the title "Hepatic injury in a national cohort '
             'of older adults", first author Brown, 2021') in out  # fmt: skip
+    # The other side: a web page with neither is not searched for by its title.
+    assert out.count("would ask Crossref for the title") == 1
+    assert "no DOI expected: a web page (it says when it was accessed)" in out
     paper.write_text(NUMBERED, encoding="utf-8")
     cache = tmp_path / "kept"
     assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(cache)]) == 0
     for kept in cache.iterdir():
+        record = json.loads(kept.read_text(encoding="utf-8"))
+        assert "looked_up_on" in record, record
+        record["looked_up_on"] = "2000-01-01"
+        kept.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         os.utime(kept, (0, 0))
     registries.seen.clear()
     assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(cache)]) == 0

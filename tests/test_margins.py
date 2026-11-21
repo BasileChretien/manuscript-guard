@@ -235,6 +235,17 @@ def test_a_total_that_is_no_sum_is_said_to_be_off_and_gives_a_count_away_it_does
         "the 'Total' row, column 'Controls', prints 30, and the 2 rows above it add up to 35"]
     held = overlapping.replace("| 30 | 20 |", "| 38 | 20 |").replace("| 25 | 15 |", "| <5 | 15 |")
     assert given_away(held) == [(5, 2, True)]
+    # Rows that are subtypes of the row above them: breast cancers among any cancer.
+    subtypes = """
+| | Cases | Controls |
+|---|---|---|
+| Any cancer | 40 | 30 |
+| Breast | 25 | 20 |
+| Total | 40 | 30 |
+"""
+    assert off(subtypes) == [
+        "the 'Total' row, column 'Cases', prints 40, and the 2 rows above it add up to 65",
+        "the 'Total' row, column 'Controls', prints 30, and the 2 rows above it add up to 50"]
 
 
 def test_two_held_back_in_a_line_with_room_between_them_are_not_given_away() -> None:

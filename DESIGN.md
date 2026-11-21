@@ -20954,7 +20954,8 @@ Open, recorded as each change landed:
   above is no entry, and by drawing a break directly under an entry.
   Pinned by `tests/test_audit_sections.py::test_a_thematic_break_ends_the_reference_list`,
   `tests/test_audit_sections.py::test_a_setext_heading_s_underline_ends_no_list_it_opens`,
-  `tests/test_audit_sections.py::test_where_a_dashed_or_starred_line_ends_a_markdown_reference_list`
+  `tests/test_audit_sections.py::test_where_a_dashed_or_starred_line_ends_a_markdown_reference_list`,
+  `tests/test_audit_sections.py::test_the_entries_under_a_simple_table_s_rule_are_read_as_the_paper_s_text`
   and `tests/test_audit_sections.py::test_a_horizontal_line_word_draws_ends_no_reference_list`.
 - **A .docx list under a paragraph that is no heading ends only where its shape does.** The
   cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
@@ -21493,11 +21494,14 @@ Open, recorded as each change landed:
   is cut, and a paper with no other reference heading is read as having none. Its lines are
   then taken for reference entries by their shape, as in any headingless paper, and a
   sentence with an entry's shape has its unmatched numbers listed apart, where `--strict`
-  does not count them. One directly under a line still ends a list that a real heading
-  started, so an appendix heading written directly under the last entry stops the cut early
-  rather than hiding the appendix; `#Appendix` there ends nothing.
-  Pinned by `tests/test_audit.py::test_an_unmarked_hash_heading_cuts_nothing_and_its_entries_are_read_by_shape`
-  and `tests/test_audit.py::test_a_hash_heading_directly_under_the_last_entry_ends_the_list`.
+  does not count them. One at the margin directly under a line still ends a list that a
+  real heading started, so an appendix heading written directly under the last entry stops
+  the cut early rather than hiding the appendix; `#Appendix` or an indented `  # Appendix`
+  there ends nothing, and nor does a Word paragraph typed "# Appendix" with no heading
+  style.
+  Pinned by `tests/test_audit.py::test_an_unmarked_hash_heading_cuts_nothing_and_its_entries_are_read_by_shape`,
+  `tests/test_audit.py::test_a_hash_heading_directly_under_the_last_entry_ends_the_list`
+  and `tests/test_audit.py::test_a_word_paragraph_typed_as_a_hash_heading_ends_no_list`.
 - **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
   differences remain. Accepted.
   - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
@@ -26281,8 +26285,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "Methods, paragraph 3" (#616). The rewrite runs over the whole message and hint, the
     paper's words a finding quotes among them, so a sentence of paper.md "TODO: see
     manuscript/main.md" is quoted as "see paper.md" (round 1 of #545, finding 2; contrived).
-    `audit --journal` hands `run_journal` the staged lines and the PDF's map of them, as
-    the other gates are handed them; no journal message writes a place today (finding 1). A
+    `audit --journal` stages the paper itself and puts a journal finding's places back as
+    every gate's are, a PDF's as its page and line; no journal message writes a place today
+    (finding 1). A
     staged line outside the map reads "line None"; no path to one was found (finding 3).
     `test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree` and
     `test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line` hold a LaTeX tree's and a
@@ -26307,6 +26312,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_audit_sections.py::test_a_bracket_in_the_text_numbers_no_list_word_does_not_count`,
     `tests/test_audit_sections.py::test_a_level_word_may_not_count_1_2_3_is_no_numbering`,
     `tests/test_audit_sections.py::test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one`,
+    `tests/test_audit_sections.py::test_a_level_a_paragraph_above_restarts_is_not_looked_at`,
     `tests/test_audit_sections.py::test_a_paragraph_above_in_the_numbering_that_restarts_the_list_s_level_begins_its_count`,
     `tests/test_audit_sections.py::test_what_the_census_reads_as_a_citation_and_an_entry`
     and `tests/test_audit_sections.py::test_a_list_found_by_its_entries_shape_alone_is_not_counted`.
@@ -26315,7 +26321,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     entries after it are numbered as though it were not there (fix-only round of #463).
     Pinned by `tests/test_audit_sections.py::test_a_paragraph_word_numbers_in_a_table_s_cell_is_given_no_count`.
   - `--lookup` asks about the first DOI and the first PMID of an entry, and Crossref for the
-    title of one with neither. A record kept with
+    title of one with neither only where it is an article or a book. A record kept with
     `--lookup-cache` is used however old it is, until the identifiers it was asked for
     change. `--strict` counts no finding of G7's, in the census or from a registry.
     Pinned by `tests/test_audit_sections.py::test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old`
@@ -26363,8 +26369,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A header row repeated further down the table is not read: the columns keep the first
     header's names, totals and n, so the categories of a second panel are held to the first
     panel's n, but where the repeated row prints an n, categories over n are held to that
-    one. A first row of counts with no label is read as a header, and its counts are
-    in no line.
+    one, the message naming the first header's column, and a count held back under it is
+    still worked out from the first n. A first row of counts with no label is read as a
+    header, and its counts are in no line.
     Pinned by `tests/test_margins.py::test_a_header_row_repeated_down_the_table_is_not_read_for_its_names`.
   - A row of whole-number measures, a median of 24 months printed bare, under a Total
     column is read as counts unless its label names the statistic.

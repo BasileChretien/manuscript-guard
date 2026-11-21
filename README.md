@@ -327,7 +327,8 @@ here:
 | review | G10, G11 |
 | language and writing | G6, G14 |
 
-G7 is in two groups, and G0, which holds that the manuscript can be read at all, is in none.
+G7 is in two groups, and G0 is in none: it holds that the manuscript can be read at all, and
+also labels a file of the project that cannot be used as it stands (`schema-violation`).
 [What is checked](docs/gates.md) has what each gate holds, and what `check` says in words of
 what no gate decides. A finding fails from the stage at which it starts to matter, and
 until then it is printed and counted without failing the run ([stages](docs/stages.md)).

@@ -7,10 +7,11 @@ decision 31: "Both"). What says so is read in `stats/adjusted.py`.
   list: in any file of a LaTeX paper, and in a .docx's notes. A test in any file of the paper
   is read under it. A figure given with `--figures` is no part of a paper, and reads none.
 * **A table's weighting** is said in its caption, the legend that numbers it
-  (`numbered_captions`) or pandoc's; its note, the paragraph after it that opens with a
-  note's mark; a row's label, for that row; or a header cell, for its column. In LaTeX the
-  float's caption and its text outside the table. Only that table's shares are let off. A
-  PDF's tables are read as lines of text, so none is.
+  (`numbered_captions`), where the file's legends do not number its tables the legend
+  directly above it (`adjacent_captions`), or pandoc's; its note, the paragraph after it
+  that opens with a note's mark; a row's label, for that row; or a header cell, for its
+  column. In LaTeX the float's caption and its text outside the table. Only that table's
+  shares are let off. A PDF's tables are read as lines of text, so none is.
 
 Each question is of the kind `report.question` makes: INFO, never counted, under "Questions
 for the author", standing at its number.
@@ -232,8 +233,9 @@ def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list
     file, before it or after it with other paragraphs between, but no other table (Basile,
     2026-11-18). Only where the file's legends number its tables: all in one form ("Table
     N", or all "Table SN", "Table AN" ...), numbered 1 to the number of tables read, each
-    once. Else no table has one: a table given as a picture, a "Table 2 (continued)", or a
-    "Table S1" beside a "Table 1" says the legends and the tables read do not match. A legend
+    once. Else a table given as a picture, a "Table 2 (continued)", or a "Table S1" beside a
+    "Table 1" says the legends and the tables read do not match, and a table's caption is
+    the legend directly above it, or none (`adjacent_captions`). A legend
     reaches its table across no other table and no other legend (round 3 of #703: a legend of
     a table given as a picture, before the next table's legend, reached the table after it);
     one that cannot reach its table captions nothing, and the file's other legends caption
@@ -244,7 +246,7 @@ def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list
              for _paragraph, found in legends}  # fmt: skip
     numbers = sorted(int(found["number"]) for _paragraph, found in legends)
     if len(forms) != 1 or numbers != list(range(1, len(tables) + 1)):
-        return [""] * len(tables)
+        return adjacent_captions(paragraphs, tables)
     spans = [(min(_cells(table)), max(_cells(table))) for table in tables]
     others = [paragraph for paragraph, _found in legends]
     captions = [""] * len(tables)
@@ -258,6 +260,22 @@ def numbered_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list
             and not across_a_legend(last, paragraph.first, others)  # fmt: skip
         if before or after:
             captions[at] = paragraph.text
+    return captions
+
+
+def adjacent_captions(paragraphs: list[_Paragraph], tables: list[Table]) -> list[str]:
+    """Each table's caption where the file's legends do not number its tables: the legend
+    directly above it, the last paragraph before it, with no table between the two (Basile,
+    2026-11-21, "Adjacent fallback"). A legend below a table, or one with a paragraph between
+    it and the table, captions nothing; a legend below one table and directly above the next
+    is the next one's."""
+    spans = [(min(_cells(table)), max(_cells(table))) for table in tables]
+    captions = []
+    for at, (first, _last) in enumerate(spans):
+        above = next((paragraph for paragraph in reversed(paragraphs) if paragraph.last < first),
+                     None)  # fmt: skip
+        reached = above is not None and (at == 0 or above.first > spans[at - 1][1])
+        captions.append(above.text if reached and LEGEND.match(above.text) else "")
     return captions
 
 
@@ -391,5 +409,6 @@ def asked_share(share: Share, weighted: Weighted, path: Path, described: str) ->
 
 
 __all__ = ["ASKED_ADJUSTED", "ASKED_WEIGHTED", "LEGEND", "NOTE_MARK", "Asked", "Statement",
-           "Weighted", "Weighting", "asked_p", "asked_share", "numbered_captions",
+           "Weighted", "Weighting", "adjacent_captions", "asked_p", "asked_share",
+           "numbered_captions",
            "statement", "weighted_tables"]  # fmt: skip

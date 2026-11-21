@@ -690,7 +690,8 @@ def _names_covering(
     A term in `declared`, one the project names, counts after capitals as well, where
     nothing but capitals stands between it and its word's start: with CO2 declared,
     "ETCO~2~", "PCO~2~" and "VCO~2~" are `co2`, as they were before the subscript was held
-    apart. Built in, `r2` is no name in "HR~2~"; declared, `d2` is none in "PharmD~2~"."""
+    apart. Built in, `r2` is no name in "HR~2~", and declared it is one; "PharmD~2~" is
+    `d2` either way, its D a capital after a lower-case letter."""
     return _terms_covering(text, terms, raised, sunk, declared)
 
 

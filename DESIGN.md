@@ -5546,6 +5546,25 @@ with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**
 the text gave; another meaning is reported. A Markdown figure's caption, the text of its
 image, is not read at all.
 
+**Each other meaning is reported once.** A paper of the real-paper corpus gave one short form
+another long form in each of six table notes, and G14 said so six times. A definition whose
+meaning differs from the first is reported where that meaning is first given; a later one
+with a meaning already reported is not reported again, and one with a meaning not yet
+reported is (the corpus round of 2026-11-21). Whether a legend's other meaning is reported
+at all is unchanged.
+
+**What reads as a short form and is none.** Three readings that follow from how the text is
+typed, and need no guess (the same round). Author-year citations typed after a long form in
+its bracket, after its first semicolon, are no part of it: "QP2 (Quiet Profile 2;
+Fictional, 2014)" spells out "Quiet Profile 2", each part after the semicolon ending on a
+year the typed-citation reading reads as a citation's, as the short-form-first bracket
+"(SDSS DR15; York et al., 2000)" was already read. A catalogue's designation, a form in
+square brackets with a digit straight after the closing one, "[KX92]30", typed, escaped as
+pandoc writes it from Word, `\[KX92\]30`, or in LaTeX's mathematics, `$[$KX92$]$30`, is
+neither a definition nor a use. And a name whose parts underscores join, a series' or a
+variable's, "QMP_RATE", `QMP\_DURA\_12mth`, is no use of a short form any of its parts is;
+an underscore that joins no two parts, an emphasis mark's, joins nothing.
+
 **A paper with no heading is read as one text.** A Markdown manuscript converted from Word
 with its headings as bold lines has no section G14 can tell apart: the abstract is read with
 the main text, so a definition the abstract and the Introduction both give would be reported
@@ -24177,6 +24196,29 @@ Open, recorded as each change landed:
     long form is not looked for in the heading above it; in a PDF, whose headings are only
     its sections' names, a heading's definition is a line of the text and read as one.
     Accepted.
+
+- **G14 reads what is no short form by how it is typed, and says each other meaning once**
+  (the real-paper corpus's round of 2026-11-21). Each reading follows from the text's own
+  typing and no further. Accepted.
+  - A meaning is the same as one already reported as `_same_meaning` reads two long forms:
+    case, hyphens, a leading article and a final "s" aside. "Kids' Quiet Scale" and "Kids
+    Quiet Scale" are two meanings, each reported once. A meaning reported once is said only
+    where it is first given, so a note further down that gives it again is named by no
+    finding until the first is put right.
+    Pinned by `tests/test_language.py::test_another_meaning_given_in_each_note_is_reported_once`.
+  - Only author-year citations the typed-citation reading knows, after the bracket's first
+    semicolon, are set apart from a long form. A numbered citation after it, a citation after
+    a comma, "(Quiet Profile 2, Fictional, 2014)", and a semicolon before anything else stay
+    in the long form, which is then another meaning than a note's.
+    Pinned by `tests/test_language.py::test_a_citation_after_a_long_form_in_its_bracket_is_no_part_of_it`.
+  - A designation needs its digit straight after the closing bracket. "[KX92] 30", with a
+    space, reads as before, KX92 a use, and so does a catalogue's name with no bracket, "KX92
+    30".
+    Pinned by `tests/test_language.py::test_a_catalogue_designation_is_no_short_form`.
+  - A name underscores join is no use of any part, so a short form the paper defines and
+    then writes only inside such names, a table of series named so, is defined and not used
+    again.
+    Pinned by `tests/test_language.py::test_a_short_form_used_only_in_names_underscores_join_is_unused`.
 
 - **A paper that declares no English is held to a count, and is built in no region.**
   (Basile, 2026-10-23.) Accepted.

@@ -2168,6 +2168,45 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
             assert at not in defined, (short, text)
 
 
+from generated import apart_forms  # noqa: E402
+
+
+@holds(60, apart_forms())
+def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
+    drawn: tuple[str, list[tuple[str, str, str]]],
+) -> None:
+    """The real-paper corpus's round of 2026-11-21: a short form given another meaning in
+    several table notes is reported once for each other meaning, at the first note to give
+    it; author-year citations typed after a long form in its bracket are no part of it, so a
+    note that gives the long form again gives no other meaning; a catalogue's designation,
+    "[KX92]30", typed or escaped, defines nothing and is no use; and a name whose parts
+    underscores join, bare or escaped, is no use of a short form that one of its parts is,
+    in a table above the definition."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = [(f.code, f.message.split()[0],
+              (re.findall(r"defined as '([^']*)' here", f.message) or [""])[0])
+             for f in report.findings]  # fmt: skip
+    assert found == expected, (found, text)
+
+
+def _a_meaning_reported_is_reported_again(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_told_before", lambda long, told: False)
+
+
+def _a_citation_after_a_long_form_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_citations", lambda prose, bracket: bracket.group(1))
+
+
+def _a_designation_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_DESIGNATION", re.compile(r"(?!)(?P<form>)"))
+
+
+def _a_name_underscores_join_is_short_forms(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_JOINED_BY_UNDERSCORES", re.compile(r"(?!)"))
+
+
 def _g14_warned(files: list, known, root: Path, stage: str | None = None):
     """G14's report on files read, its question on the short forms never defined given back
     as the warnings it holds, one for each form, in its place (`auditing.undefined.unasked`):
@@ -26976,6 +27015,22 @@ BROKEN = {
     "a no-break space before a dash is no space": (
         _a_no_break_space_is_no_space_before_a_dash,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "another meaning already reported is reported again": (
+        _a_meaning_reported_is_reported_again,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "author-year citations after a long form in its bracket are part of it": (
+        _a_citation_after_a_long_form_is_part_of_it,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a catalogue's designation is read as a short form": (
+        _a_designation_is_a_short_form,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a name underscores join is read as short forms": (
+        _a_name_underscores_join_is_short_forms,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
     ),
     "a time of day is read as words": (
         _a_time_of_day_is_words,

@@ -30604,6 +30604,62 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     ]
 
 
+def test_each_other_meaning_pasted_is_caught_once_and_a_new_one_too(project: Path) -> None:
+    """Another meaning of ROR is pasted into two legends, and a third into the Discussion:
+    the meaning given twice is reported once, where it is first given, and the third, which
+    no finding has named yet, is reported too (a meaning already reported is not reported
+    again)."""
+    mended = with_ror_defined(project)
+    legends = ("Figure 1. The relative odds ratio (ROR) by year.\n\n"
+               "Figure 2. The relative odds ratio (ROR) by drug.\n\n")  # fmt: skip
+    again = mended.replace(
+        "The analysis was run in Python", legends + "The analysis was run in Python"
+    ).replace(
+        "The reporting odds ratio observed here", "The raw odds of reporting (ROR) observed here"
+    )
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == sorted([
+        ("abbreviation-redefined", line_of(again, "Figure 1. The relative")),
+        ("abbreviation-redefined", line_of(again, "reporting (ROR) observed")),
+    ])  # fmt: skip
+
+
+def test_another_meaning_before_a_typed_citation_is_still_caught(project: Path) -> None:
+    """The citation after a long form in its bracket is no part of it, "ROR (reporting odds
+    ratio; Fictional, 2014)": a long form of another meaning before the citation is still
+    another meaning."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here",
+        "The ROR (relative odds ratio; Fictional, 2014) observed here",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    found = language_findings(project)
+    assert found == [("abbreviation-redefined", line_of(again, "ROR (relative"))], found
+    from manuscript_guard.gates import check_language
+
+    (message,) = [f.message for f in check_language(load_project(project)[0]).findings]
+    assert "'relative odds ratio' here" in message, message
+
+
+def test_a_designation_or_a_joined_name_beside_a_slip_hides_none(project: Path) -> None:
+    """A catalogue's designation, "[ZK92]30", and a series' name whose parts underscores
+    join, "ROR_ALL", are no short forms; a use of ROR before its definition in the same
+    sentence as each is still a use before the definition, at its line. (The joined name is
+    said once more, as a name from the code: `code-name-in-prose`, not G14's abbreviations.)"""
+    mended = with_ror_defined(project)
+    early = mended.replace(
+        "# Introduction\n\n",
+        "# Introduction\n\nThe ROR_ALL series and the source [ZK92]30 were read; the ROR "
+        "was raised.\n\n", 1,
+    )
+    assert early != mended
+    main_md(project).write_text(early, encoding="utf-8")
+    found = [each for each in language_findings(project) if each[0].startswith("abbreviation-")]
+    assert found == [("abbreviation-used-before-defined", line_of(early, "The ROR_ALL series"))]
+
+
 def test_a_short_form_used_undefined_in_the_results_is_still_reported(project: Path) -> None:
     """Decision 28: no definition is asked of a short form that stands only in a statement,
     a keywords line or the title page. One the Results use undefined is reported all the

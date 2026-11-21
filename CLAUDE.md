@@ -54,32 +54,29 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
-`tests/test_generated_sessions.py` draws twelve sessions from its seed `PINNED`, and holds
-what the twelve contain. A change to `sessions()` in `tests/generated.py`, to `TAGS` or
-`SAYS` in `tests/readings.py`, or to the Hypothesis pin draws twelve others, and that test
-may then fail with nothing wrong in the import: its message says which numbers to try. Under the first two variables above,
-the two tests of the pinned twelve are skipped.
+`tests/test_generated_sessions.py` holds the twelve sessions its seed `PINNED` draws. A change
+to `sessions()` in `tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the
+Hypothesis pin draws twelve others, and it may fail with nothing wrong: its message says which
+numbers to try. Under the first two variables, the two tests of the pinned twelve are skipped.
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job compares
-with the base-branch commit the pull request's merge was made on (the first parent of what
-it checks out) and fails on any difference in what a reading of `tests/readings.py` reports.
-A pull request that means to change one, or what a reading goes through, says so in
-`tests/data/differential_expected.yaml` with the reason; the entry counts in that pull
-request only. DESIGN.md, "Generated inputs belong to the suite", has the rest.
+with the first parent of the pull request's merge, and fails on any difference in what a
+reading of `tests/readings.py` reports. A pull request that means to change one, or what a
+reading goes through, says so with the reason in `tests/data/differential_expected.yaml`; the
+entry counts in that pull request only. DESIGN.md, "Generated inputs belong to the suite",
+has the rest.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
 `./plugin`). The package and the plugin share one version number, written in four places:
 `version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
 `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace entry. **A pull
-request does not touch the version: leave the version line in each of the four files exactly
-as `main` has it.** The rest of each file is a pull request's to change like any other. The
-coordinating session raises the number on `main` after merges that change `src/` or
-`plugin/`, in a pull request that changes those four lines and nothing else. Do not ask it
-for a number and do not pick one. A branch that already carries a bump puts `main`'s version
-lines back, whether a merge of `main` conflicts on them or not; on a conflict, take `main`'s
-side on all four lines. `tests/test_version.py` holds the four equal and
-`tests/test_plugin.py` the two manifests. The session-start hook's warning that the tool and
-the plugin differ blocks nothing.
+request leaves the version line in each of the four files exactly as `main` has it**; the
+rest of each file it changes like any other. The coordinating session raises the number on
+`main` after merges that change `src/` or `plugin/`, in a pull request of those four lines
+alone. Do not ask it for a number or pick one.
+A branch that carries a bump puts `main`'s four lines back, and on a conflict takes `main`'s
+side. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
+manifests. The session-start hook's warning that the tool and the plugin differ blocks nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 
@@ -106,15 +103,16 @@ The subcommands and what each does are in `docs/commands.md`, and their flags in
 - `set` writes one setting of `paper.yaml`; the hook asks before an agent moves the stage
   back, takes a guideline away or replaces the journal.
 
-The README is the front page, and it and the pages its long tables moved to are held to the
-tool by `tests/test_docs.py`: `docs/commands.md` lists exactly the subcommands (all but
-`hook`) in the groups of `--help`, `docs/gates.md` exactly the gates, the README's summary of
-each keeps to those groups and to the ones `check` ends with, every link in it and in
-`docs/` resolves, and its pictures are what `python tools/readme_figures.py` draws and what
-`check` prints. So a new command or gate needs its row in `docs/commands.md` or
-`docs/gates.md`, a new skill its row in `docs/agent-tools.md` (`tests/test_plugin.py`), and a
-change to what `check` says of a typed number needs the script's `CARD` updated and the
-pictures drawn again. The long sections live under `docs/`.
+The README is the front page, and long sections go under `docs/`. `tests/test_docs.py` holds
+both to the tool: `docs/commands.md` lists exactly the subcommands (all but `hook`) in the
+groups of `--help`, `docs/gates.md` exactly the gates, the README sums up both as `--help`
+and `check` group them, every link resolves, and the pictures are what `python
+tools/readme_figures.py` draws and what `check` prints. So a new command or gate needs its
+row there, a new skill its row in `docs/agent-tools.md` (`tests/test_plugin.py`), and a
+change to what `check` says of a typed number a new `CARD` and the pictures redrawn.
+`docs/features.yaml` lists what the package promises, with its tests: read a feature's entry
+before changing it, change the entry with it, and redraw with `python tools/feature_map.py`
+(`tests/test_features.py` holds every command, gate, skill and hook to an entry).
 
 The skills have one home, `plugin/skills`. The wheel takes them from there when it is built
 and nothing under `src/` holds a copy, so edit them only there. The test suite sets
@@ -129,21 +127,20 @@ that writes it, with the authority for it. G14's spellings,
 `src/manuscript_guard/data/spelling_variants.tsv`, come from VarCon through
 `python tools/derive_spelling_variants.py path/to/varcon.txt`, which refuses any source but
 the one whose SHA-256 it names; `varcon.txt` is not in the repository, and the file and
-ATTRIBUTION.md keep VarCon's notices. The
-palettes, `src/manuscript_guard/data/palettes.json`, their licences and the R package's
-copies come from each collection's files at pinned commits through
-`python tools/derive_palettes.py path/to/folder --fetch`. With `MANUSCRIPT_GUARD_VARCON` or
-`MANUSCRIPT_GUARD_PALETTE_SOURCES` naming the sources, a test derives them again byte for byte.
+ATTRIBUTION.md keep VarCon's notices. The palettes (`src/manuscript_guard/data/palettes.json`),
+their licences and the R package's copies come from each collection's files at pinned
+commits through `python tools/derive_palettes.py path/to/folder --fetch`. With
+`MANUSCRIPT_GUARD_VARCON` or `MANUSCRIPT_GUARD_PALETTE_SOURCES` naming the sources, a test
+derives them again byte for byte.
 
 Reporting checklists are generated, not committed: `manuscript-guard fetch STROBE --url
 <link> --save-url` downloads a guideline's document and prints its licence, and
 `manuscript-guard transcribe` runs all recipes. The documents go in
 `profiles/reporting/sources/` (gitignored). Recipes ship in
 `src/manuscript_guard/profiles/reporting/recipes/`, and a workspace's own
-`profiles/reporting/recipes/` comes first; generated profiles land in `profiles/reporting/`
-and are gitignored until each licence is confirmed.
-Never hand-edit a generated profile — change the recipe and re-run, so the profile stays a
-function of the published checklist.
+`profiles/reporting/recipes/` comes first; generated profiles land in `profiles/reporting/`,
+gitignored until each licence is confirmed. Never hand-edit a generated profile: change the
+recipe and re-run, so the profile stays a function of the published checklist.
 
 ## Conventions
 
@@ -189,9 +186,7 @@ Verified 2026-08-03 on the author's machine.
 - Zotero must be **running** for the live-citation build; `build --offline` works without it.
 - pandoc on Windows installs per-user, at `%LOCALAPPDATA%\Pandoc\pandoc.exe`, and is often
   not on `PATH`. Verified against 3.9.0.2.
-- **`jq` is not installed.** Use `gh ... --json x --jq '...'` (gh has jq built in) or
-  `--template`. Piping to a standalone `jq` fails silently inside a loop, and a CI watcher
-  written that way reports nothing and looks like a pending build.
+- **`jq` is not installed**, and a pipe to it fails silently: use `gh ... --jq` or `--template`.
 - **`gh run view <id>` needs the id as a plain integer.** Anything that formats numbers turns
   `--json databaseId` into `3.08e+10` and gets a 404; `--jq '.[0].databaseId'` keeps it intact.
 - **Word 365 is installed and scriptable over COM** (`New-Object -ComObject Word.Application`,

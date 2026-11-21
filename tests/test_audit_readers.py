@@ -131,6 +131,26 @@ def test_what_g4_does_not_check_here_is_said_and_the_manual_rules_are_listed(
     assert "  Not checked here:\n" in text
 
 
+def test_a_journal_audit_runs_no_ai_use_check_and_says_so(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The AI-use statement is held to names, and to
+    the records that say a model made them"): a paper in no project has no records, so
+    `audit --journal` does not run the AI-use check, even on a statement naming no model
+    where the profile asks for one, and says so among what G4 did not check."""
+    more = ("  - id: ai-use\n    kind: ai_use\n    pattern: '(?im)^#+" + BS + "s*use of ai'\n"
+            "    why: Name each tool.\n")  # fmt: skip
+    path = profile(tmp_path)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("manual:\n", more + "manual:\n", 1), encoding="utf-8")
+    paper = PAPER + "\n# Use of AI\n\nA model read the draft.\n"
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, paper)), "--journal",
+                                  str(path))  # fmt: skip
+    journal = section(report, "Journal (G4)")
+    assert not [f for f in journal if f["code"].startswith("ai-use")], journal
+    skipped = [f["message"] for f in journal if f["code"] == "journal-not-checked"]
+    said = "the AI-use statement held to the records of a model's work"
+    assert len([m for m in skipped if said in m]) == 1, skipped
+
+
 def test_the_profiles_english_is_the_one_g14_holds_the_paper_to(tmp_path: Path, capsys) -> None:
     american = PAPER.replace("colour", "color")
     spelt = {"spelling-variant", "spelling-not-as-declared"}

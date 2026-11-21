@@ -127,6 +127,26 @@ def test_a_moved_paragraph_is_deleted_where_it_was_and_inserted_where_it_is(
 
 
 @needs_pandoc
+@pytest.mark.parametrize(("changed", "edited"), [(4, True), (5, False)])
+def test_a_paragraph_rewritten_past_half_its_words_reads_as_replaced(
+    tmp_path: Path, changed: int, edited: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Paragraphs alike only by half their words or
+    fewer"): of ten words, six kept is one paragraph edited, five kept is one deleted and
+    one inserted."""
+    words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+             "juliet"]
+    after = [f"x{word}" if k < changed else word for k, word in enumerate(words)]
+    made, _old, _new = _marked(tmp_path, "Kept first.\n\n" + " ".join(words) + "\n\nKept last.\n",
+                               "Kept first.\n\n" + " ".join(after) + "\n\nKept last.\n")
+    kept = " ".join(words[changed:])
+    assert shown(made.path) == ["Kept first.", *(
+        [f"[-{' '.join(words[:changed])}-]{{+{' '.join(after[:changed])}+}} {kept}"] if edited
+        else [f"{PILCROW}- [-{' '.join(words)}-]", f"{PILCROW}+ {{+{' '.join(after)}+}}"]),
+        "Kept last."]  # fmt: skip
+
+
+@needs_pandoc
 @pytest.mark.parametrize("was_last", [True, False])
 def test_the_last_paragraph_keeps_its_mark_untracked_whatever_became_of_it(
     tmp_path: Path, was_last: bool
@@ -225,6 +245,131 @@ def test_a_replaced_figure_is_removed_and_added_and_its_picture_is_carried(
     assert read_plainly(made.path, accept=False) == read_plainly(old, accept=True)
 
 
+_CHART = (
+    '</w:t></w:r><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/'
+    'drawingml/2006/wordprocessingDrawing"><a:graphic xmlns:a="http://schemas.openxmlformats.'
+    'org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/'
+    '2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+    'r:id="rIdChart1"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r><w:r><w:t '
+    'xml:space="preserve">'
+)
+
+
+@needs_pandoc
+def test_a_deleted_chart_is_refused_and_the_revision_s_comments_are_not_compared(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Headers, footers, comments, endnotes and text
+    boxes are the revision's"): a deleted paragraph that points at a chart is refused and no
+    copy is made; comments that differ are not compared, and the copy keeps the revision's."""
+    old, new = _pair(tmp_path, "Kept.\n\nGone CHART here.\n", "Kept.\n")
+    _rewrite(old, "word/document.xml", lambda xml: xml.replace("CHART", _CHART))
+    _rewrite(old, "word/_rels/document.xml.rels", lambda xml: xml.replace(
+        "</Relationships>", '<Relationship Id="rIdChart1" Type="http://schemas.openxmlformats.'
+        'org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/>'
+        "</Relationships>"))  # fmt: skip
+    with pytest.raises(MarkedUpError, match=r"points at something other than a picture \(chart\)"):
+        write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert not (tmp_path / "copy.docx").exists()
+    old, new = _pair(tmp_path, "Kept.\n", "Kept.\n")
+    for document, said in ((old, "Old comment."), (new, "New comment.")):
+        _rewrite(document, "word/comments.xml", lambda _xml, said=said: (
+            f'<w:comments xmlns:w="{W[1:-1]}"><w:comment w:id="0" w:author="A"><w:p><w:r><w:t>'
+            f"{said}</w:t></w:r></w:p></w:comment></w:comments>"))  # fmt: skip
+    made = write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert made.counts == {} and _changes(made.path) == []
+    assert "New comment." in _xml(made.path, "word/comments.xml")
+
+
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_ENDNOTE_REFERENCE = ('</w:t></w:r><w:r><w:endnoteReference w:id="1"/></w:r><w:r><w:t '
+                      'xml:space="preserve">')  # fmt: skip
+
+
+def _with_part(document: Path, name: str, data: str | bytes, kind: str, rid: str) -> None:
+    """`document` with a part of its own, `name`, related to its body as `kind` by `rid`."""
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr(name, data)
+    _rewrite(document, "word/_rels/document.xml.rels", lambda xml: xml.replace(
+        "</Relationships>", f'<Relationship Id="{rid}" Type="{_R_NS}/{kind}" '
+        f'Target="{name.removeprefix("word/")}"/></Relationships>'))  # fmt: skip
+
+
+def _story(kind: str, said: str) -> tuple[str, str, str]:
+    """A part of `kind` saying `said`, its name, and the element of the body that refers to
+    it: a header, a footer or an endnote."""
+    if kind == "endnote":
+        return ("word/endnotes.xml", f'<w:endnotes xmlns:w="{W[1:-1]}"><w:endnote w:id="1"><w:p>'
+                f"<w:r><w:t>{said}</w:t></w:r></w:p></w:endnote></w:endnotes>", "endnotes")
+    root = {"header": "hdr", "footer": "ftr"}[kind]
+    return (f"word/{kind}1.xml", f'<w:{root} xmlns:w="{W[1:-1]}"><w:p><w:r><w:t>{said}</w:t>'
+            f"</w:r></w:p></w:{root}>", kind)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("kind", ["header", "footer", "endnote", "text box"])
+def test_a_header_a_footer_an_endnote_and_a_text_box_are_the_revision_s(
+    tmp_path: Path, kind: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Headers, footers, comments, endnotes and text
+    boxes are the revision's"): the words of each edited between the two documents show no
+    change, and the copy holds the revision's."""
+    old, new = _pair(tmp_path, "Kept HERE now.\n", "Kept HERE now.\n")
+    for document, said in ((old, "Old words."), (new, "New words.")):
+        if kind == "text box":
+            box = ('</w:t></w:r><w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" '
+                   f'style="width:100pt;height:50pt"><v:textbox><w:txbxContent><w:p><w:r><w:t>'
+                   f"{said}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict>"
+                   '</w:r><w:r><w:t xml:space="preserve">')  # fmt: skip
+            _rewrite(document, "word/document.xml", lambda xml, box=box: xml.replace("HERE", box))
+            continue
+        name, data, relation = _story(kind, said)
+        _with_part(document, name, data, relation, "rIdStory1")
+        if kind == "endnote":
+            _rewrite(document, "word/document.xml",
+                     lambda xml: xml.replace("HERE", _ENDNOTE_REFERENCE))
+        else:
+            reference = (f'<w:{kind}Reference xmlns:r="{_R_NS}" w:type="default" '
+                         'r:id="rIdStory1"/>')  # fmt: skip
+            _rewrite(document, "word/document.xml", lambda xml, reference=reference: re.sub(
+                r"<w:sectPr([^>]*)>", lambda found: f"<w:sectPr{found.group(1)}>{reference}",
+                xml, count=1))  # fmt: skip
+        _rewrite(document, "word/document.xml", lambda xml: xml.replace("HERE", ""))
+    made = write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert (made.counts, _changes(made.path)) == ({}, [])
+    part = "word/document.xml" if kind == "text box" else _story(kind, "")[0]
+    assert "New words." in _xml(made.path, part) and "Old words." not in _xml(made.path, part)
+
+
+@needs_pandoc
+def test_a_deleted_embedded_object_is_refused_and_a_deleted_endnote_is_carried_as_it_was(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Headers, footers, comments, endnotes and text
+    boxes are the revision's"): a deleted paragraph that points at an embedded object is
+    refused, as one that points at a chart is, and no copy is made; one that refers to an
+    endnote is deleted with its reference as it was, where the revision holds no endnote."""
+    old, new = _pair(tmp_path, "Kept.\n\nGone OBJECT here.\n", "Kept.\n")
+    embedded = ('</w:t></w:r><w:r><w:object><o:OLEObject xmlns:o="urn:schemas-microsoft-com:'
+                f'office:office" xmlns:r="{_R_NS}" Type="Embed" ProgID="Excel.Sheet.12" '
+                'r:id="rIdOle1"/></w:object></w:r><w:r><w:t xml:space="preserve">')  # fmt: skip
+    _rewrite(old, "word/document.xml", lambda xml: xml.replace("OBJECT", embedded))
+    _with_part(old, "word/embeddings/oleObject1.bin", b"\0\1", "oleObject", "rIdOle1")
+    with pytest.raises(MarkedUpError, match=r"points at something other than a picture "
+                       r"\(oleObject\)"):  # fmt: skip
+        write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert not (tmp_path / "copy.docx").exists()
+    old, new = _pair(tmp_path, "Kept.\n\nGone NOTE here.\n", "Kept.\n")
+    _rewrite(old, "word/document.xml", lambda xml: xml.replace("NOTE", _ENDNOTE_REFERENCE))
+    _with_part(old, *_story("endnote", "A note.")[:2], "endnotes", "rIdStory1")
+    made = write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert shown(made.path) == ["Kept.", "[-Gone  here.-]"]
+    assert '<w:endnoteReference w:id="1"' in _xml(made.path)
+    with zipfile.ZipFile(made.path) as archive:
+        assert "word/endnotes.xml" not in archive.namelist()
+
+
 @needs_pandoc
 def test_a_footnote_is_merged_word_by_word(tmp_path: Path) -> None:
     made, old, new = _marked(
@@ -254,6 +399,43 @@ def test_a_change_of_formatting_or_of_style_records_what_it_was(tmp_path: Path) 
 
 
 @needs_pandoc
+def test_formatting_inside_a_link_and_a_picture_s_size_are_the_revision_s(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Formatting inside a whole is the revision's"): a
+    link's words made bold show no change, where the same words outside a link do, and the
+    link is written as the revision has it; so is a field the same in both but its words'
+    look; a table's properties and a picture's size are not compared."""
+    from readings import _png
+
+    made, _old, _new = _marked(tmp_path, "See [the words](http://x.example/a) here.\n",
+                               "See [**the words**](http://x.example/a) here.\n")  # fmt: skip
+    assert (shown(made.path), made.counts) == (["See the words here."], {})
+    (link,) = re.findall(r"<w:hyperlink\b.*?</w:hyperlink>", _xml(made.path))
+    assert "<w:b />" in link
+    before = _with_citation(tmp_path / "cited-before.docx", "[1]")
+    after = _with_citation(tmp_path / "cited-after.docx", "[1]")
+    _rewrite(after, "word/document.xml", lambda xml: xml.replace(
+        "<w:r><w:t>[1]</w:t></w:r>", "<w:r><w:rPr><w:b /></w:rPr><w:t>[1]</w:t></w:r>"))
+    made = write(before, after, tmp_path / "cited.docx", date=DAY)
+    assert (shown(made.path), made.counts, _changes(made.path)) == (["As shown [1]."], {}, [])
+    assert "<w:b />" not in _xml(before) and "<w:b />" in _xml(made.path)
+    made, _old, _new = _marked(tmp_path, "See the words here.\n", "See **the words** here.\n")
+    assert made.counts == {"paragraphs edited": 1, "words reformatted": 3}
+    (tmp_path / "red.png").write_bytes(_png((255, 0, 0)))
+    made, _old, _new = _marked(tmp_path, "![Caption.](red.png){width=50%}\n",
+                               "![Caption.](red.png){width=80%}\n")  # fmt: skip
+    assert (shown(made.path), made.counts) == (["(picture red)", "Caption."], {})
+    table = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    old, new = _pair(tmp_path, table, table)
+    _rewrite(old, "word/document.xml",
+             lambda xml: xml.replace("<w:tblPr>", '<w:tblPr><w:jc w:val="center" />', 1))
+    made = write(old, new, tmp_path / "table.docx", date=DAY)
+    assert (made.counts, _changes(made.path)) == ({}, [])
+    assert '<w:jc w:val="center"' in _xml(old) and '<w:jc w:val="center"' not in _xml(made.path)
+
+
+@needs_pandoc
 def test_a_deleted_list_item_keeps_a_numbering_of_its_own(tmp_path: Path) -> None:
     """A deleted item is the document sent's, numbered by a copy of its list, so that it
     joins none of the revision's lists."""
@@ -263,6 +445,35 @@ def test_a_deleted_list_item_keeps_a_numbering_of_its_own(tmp_path: Path) -> Non
     assert shown(made.path) == ["one", f"{PILCROW}- [-two-]", "three"]
     numbering = _xml(made.path, "word/numbering.xml")
     assert numbering.count("<w:num ") == _xml(old, "word/numbering.xml").count("<w:num ") + 1
+
+
+def _without(path: Path, part: str) -> None:
+    with zipfile.ZipFile(path) as source:
+        parts = [(item, source.read(item.filename)) for item in source.infolist()]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as out:
+        for item, data in parts:
+            if item.filename != part:
+                out.writestr(item, data)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("before", "part", "refusal"), [
+    ("Kept.\n\nGone.^[A note.]\n", "word/footnotes.xml", "refers to a footnote it does not hold"),
+    ("Kept.\n\n1. one\n2. two\n", "word/numbering.xml", "numbers a list it has no numbering for"),
+])  # fmt: skip
+def test_a_deleted_note_or_list_is_refused_where_the_revision_has_no_part_for_it(
+    tmp_path: Path, before: str, part: str, refusal: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A footnote or a list the revision's document has
+    no part for"): pandoc writes both parts, and the deleted note or item is carried; with
+    the revision's part taken out, it is refused and no copy is made."""
+    old, new = _pair(tmp_path, before, "Kept.\n")
+    made = write(old, new, tmp_path / "with.docx", date=DAY)
+    assert shown(made.path)[0] == "Kept." and len(shown(made.path)) == 3
+    _without(new, part)
+    with pytest.raises(MarkedUpError, match=refusal):
+        write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert not (tmp_path / "copy.docx").exists()
 
 
 @needs_pandoc
@@ -352,6 +563,43 @@ def test_the_highlighted_copy_tracks_nothing_and_strikes_what_was_deleted(
 
 
 @needs_pandoc
+def test_a_picture_redrawn_inline_shades_its_text_once_as_the_new_one(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "In the highlighted copy"): a paragraph of text
+    that holds the picture taken out and the one put in takes one shading, the new one's,
+    over its text, and so does a table's cell that holds both; a change of formatting is
+    highlighted as new text is."""
+    from xml.etree import ElementTree as ET
+
+    from readings import _png
+
+    (tmp_path / "red.png").write_bytes(_png((255, 0, 0)))
+    (tmp_path / "blue.png").write_bytes(_png((0, 0, 255)))
+    made, _old, _new = _marked(
+        tmp_path,
+        "Some text ![](red.png) more text.\n\nPlain *word* here.\n",
+        "Some text ![](blue.png) more text.\n\nPlain word here.\n",
+        form="highlighted",
+    )
+    paragraphs = []
+    for paragraph in ET.fromstring(_xml(made.path)).iter(W + "p"):
+        fill = paragraph.find(f"{W}pPr/{W}shd")
+        lit = [run_text for run in paragraph.iter(W + "r")
+               if run.find(f"{W}rPr/{W}highlight") is not None
+               and (run_text := "".join(t.text or "" for t in run.iter(W + "t")))]  # fmt: skip
+        paragraphs.append((len(list(paragraph.iter(W + "drawing"))),
+                           None if fill is None else fill.get(W + "fill"), lit))  # fmt: skip
+    assert paragraphs == [(2, "FFFF00", []), (0, None, ["word"])]
+    table = "| A | B |\n|---|---|\n| ![](red.png) | x |\n"
+    made, _old, _new = _marked(tmp_path, table, table.replace("red.png", "blue.png"),
+                               form="highlighted")  # fmt: skip
+    cells = [(len(list(paragraph.iter(W + "drawing"))), None if fill is None else
+              fill.get(W + "fill")) for paragraph in ET.fromstring(_xml(made.path)).iter(W + "p")
+             if (fill := paragraph.find(f"{W}pPr/{W}shd")) is not None
+             or paragraph.find(f".//{W}drawing") is not None]  # fmt: skip
+    assert cells == [(2, "FFFF00")]
+
+
+@needs_pandoc
 @pytest.mark.parametrize(
     ("was", "now"),
     [
@@ -370,6 +618,27 @@ def test_an_equation_changed_in_its_form_and_not_its_letters_is_a_change(
     made, _old, _new = _marked(tmp_path, was + "\n", now + "\n")
     kinds = [kind for kind, _author, _date in _changes(made.path)]
     assert "del" in kinds and "ins" in kinds, kinds
+
+
+@needs_pandoc
+def test_a_deleted_link_is_its_words_and_an_inline_equation_is_tracked_whole(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A deleted link is its words"): the deleted words
+    of a link carry no link and no address; an inline equation changed is deleted and
+    inserted whole, and the check's reading holds no text of it, where it reads a display
+    equation."""
+    made, _old, _new = _marked(tmp_path, "See [the site](http://x.example/a) now.\n",
+                               "See now.\n")  # fmt: skip
+    assert shown(made.path) == ["See[- the site-] now."]
+    assert "<w:hyperlink" not in _xml(made.path)
+    assert "x.example" not in _xml(made.path, "word/_rels/document.xml.rels")
+    made, old, _new = _marked(tmp_path, "An estimate $x+1$ here.\n", "An estimate $x+2$ here.\n")
+    assert shown(made.path) == ["An estimate [--]{++} here."]
+    assert [kind for kind, _author, _date in _changes(made.path)] == ["del", "ins"]
+    assert _readable(old) == [("", "An estimate here.")]
+    display, _new = _pair(tmp_path, "Display:\n\n$$x+1$$\n", "Display:\n\n$$x+1$$\n")
+    assert [kind for kind, _text in _readable(display)] == ["", "equation"]
 
 
 @needs_pandoc

@@ -423,6 +423,29 @@ def test_compare_pair_reads_a_paraphrase_against_its_source_whole() -> None:
     assert claims.compare_pair(source, "") is None
 
 
+def test_a_statement_s_hedge_is_lent_to_a_text_that_drops_it_from_its_sentence(
+    ready: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A claim is compared with its statements read
+    whole, as one stretch"): a statement that hedges one sentence and asserts another lends
+    its "may" to a text that drops it from the sentence that had it and puts it on the
+    other, and the text is told nothing; dropped altogether, the text claims more."""
+
+    def two_sentences(document: dict) -> None:
+        finding = next(one for one in document["findings"] if one["id"] == "findings.2")
+        finding["from"]["quote"] = ("Use may be associated with hepatic injury. Use increased "
+                                    "the reports.")
+
+    edit_brief(ready, two_sentences)
+    claim_codes = {"comm-claim-stronger", "comm-claim-weaker", "comm-claim-moved"}
+    text(ready, "post.md", "Use was associated with hepatic injury, and may have increased "
+         "the reports [](#brief:findings.2).")  # fmt: skip
+    assert codes(ready, "texts") & claim_codes == set()
+    text(ready, "post.md", "Use was associated with hepatic injury, and increased the reports "
+         "[](#brief:findings.2).")  # fmt: skip
+    assert ("comm-claim-stronger", FAIL) in found(ready, "texts")
+
+
 # ------------------------------------------------------------------- the graphical abstract
 
 
@@ -781,6 +804,118 @@ def test_a_label_this_does_not_know_ends_the_conclusion(project: Path) -> None:
     assert brief_module.opening("**Results**. Of 4000 reports")[1] == "results"
 
 
+_ROR = "The reporting odds ratio was {{results.ror.point}}"
+_CASES = "hepatic injury with example-drug. The reporting odds ratio"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "ror_found", "concluded"),
+    [
+        # Up to five words before a colon, opening with a capital, end the Results.
+        (_CASES, "hepatic injury with example-drug.\nMain point: reports were frequent.\n"
+                 "The reporting odds ratio", False, True),
+        # The other side: a sentence opening with an article is no label.
+        (_CASES, "hepatic injury with example-drug.\nThe main point: reports were frequent.\n"
+                 "The reporting odds ratio", True, True),
+        # A label with no stop or colon, and JAMA's set apart in bold: the Results run on.
+        ("**Conclusions.** ", "Conclusions ", True, False),
+        ("**Conclusions.** ", "**Conclusions and Relevance**\n\n", True, False),
+    ],
+)  # fmt: skip
+def test_a_part_of_the_abstract_is_ended_by_any_label_and_by_nothing_else(
+    project: Path, old: str, new: str, ror_found: bool, concluded: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): "Main point: ..." in the Results ends them, and the
+    finding after it is none; a label with no stop or colon, or JAMA's "**Conclusions and
+    Relevance**" set apart in bold, is not read, and the Results run on over the
+    conclusion."""
+    document = _scaffolded(project, old, new)
+    texts_ = [one["text"] for one in document["findings"]]
+    assert any(one.startswith(_ROR) for one in texts_) is ror_found, texts_
+    assert bool(document["conclusion"]) is concluded
+    if concluded:
+        assert document["conclusion"][0]["text"].startswith("Reporting of hepatic injury")
+
+
+def test_a_name_and_a_colon_in_an_abstract_of_no_parts_sends_its_findings_to_the_results(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): in an abstract with no part of its own, a sentence
+    opening "Example-drug: ..." opens one, none of the results, so no sentence of the
+    abstract is a finding and the findings are read from the Results section; without it,
+    from the abstract. A registration opens a part only as a label."""
+    paper = project / "manuscript" / "main.md"
+    text_ = paper.read_text(encoding="utf-8")
+    abstract = text_[text_.index("# Abstract"):text_.index("# Introduction")]
+    unparted = abstract
+    for label in ("**Background.** ", "**Methods.** ", "**Results.** ", "**Conclusions.** "):
+        unparted = unparted.replace(label, "")
+    named = unparted.replace("The reporting odds ratio", "Example-drug: the reporting odds ratio")
+    document = _scaffolded(project, abstract, named)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "The database contained {", "Hepatic injury was repor", "Reporting of hepatic inj",
+        "The signal criterion def", "Adjusted for age group a"]
+    document = _scaffolded(project, named, unparted)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "Disproportionality analy", "Of {{results.cohort.n_re", "The reporting odds ratio"]
+    said = "Example-drug: the reporting odds ratio was high."
+    at, part = brief_module.opening(said)
+    assert (said[at:], part) == ("the reporting odds ratio was high.", "other")
+    assert brief_module.opening("The finding: it was high.") == (0, None)
+    # A known part's name, and words in emphasis with no colon, are labels too.
+    assert brief_module.opening("Results: it was high.")[1] == "results"
+    assert brief_module.opening("*Main point.* It was high.")[1] == "other"
+    assert brief_module.opening("Trial registration: NCT01234567.")[1] == "other"
+    assert brief_module.opening("Registration of the trial was done late.")[1] is None
+
+
+def test_an_abstract_whose_parts_no_label_names_has_every_bound_sentence_for_a_finding(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): an abstract that names its parts by no heading and
+    no label the scaffold reads has its findings read from every sentence of it that binds
+    a value, the Methods' among them; labelled, from its Results alone."""
+    paper = project / "manuscript" / "main.md"
+    text_ = paper.read_text(encoding="utf-8")
+    abstract = text_[text_.index("# Abstract"):text_.index("# Introduction")]
+    unnamed = abstract
+    for label in ("Background", "Methods", "Results", "Conclusions"):
+        unnamed = unnamed.replace(f"**{label}.** ", f"**{label}** ")
+    document = _scaffolded(project, abstract, unnamed)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "**Methods** Disproportio", "**Results** Of {{results", "The reporting odds ratio"]
+    document = _scaffolded(project, unnamed, abstract)
+    assert [one["text"][:24] for one in document["findings"]] == [
+        "Of {{results.cohort.n_re", "The reporting odds ratio"]
+
+
+def test_a_latex_manuscript_s_statements_are_quoted_from_its_printed_view(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): a LaTeX manuscript's statements are quoted as its
+    printed view gives them, and held to it, not to the `.tex` as typed."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\n\\textbf{Results.} "
+        "Of \\mg{results.cohort.n_reports} reports, it was \\emph{high}.\n\\end{abstract}\n"
+        "\\section{Introduction}\nx\n\\section{Results}\nIt was so.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    enable(project)
+    assert main(["communicate", "brief", str(project)]) == 0
+    document = yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
+    said = "Of {{results.cohort.n_reports}} reports, it was high."
+    assert [(one["text"], one["from"]) for one in document["findings"]] == [
+        (said, {"file": "manuscript/main.tex", "quote": said})]
+    assert "brief-quote-not-in-source" not in codes(project, "brief")
+
+
 def test_a_quote_cut_from_inside_a_sentence_fails(ready: Path) -> None:
     """Finding 8: "cannot establish risk" of "Disproportionality is not incidence and cannot
     establish risk." is no sentence of the paper."""
@@ -827,6 +962,41 @@ def test_the_limitations_are_a_limitations_sections_and_nothing_else(project: Pa
     said = [(one["text"], one["from"]["quote"]) for one in document["limitations"]]
     assert said[0] == (_LIMITS, _LIMITS), said
     assert "brief-quote-not-in-source" not in codes(project, "brief")
+
+
+@pytest.mark.parametrize(
+    ("heading", "limited"),
+    [("", False), ("## Strengths and limitations of this study\n\n", False),
+     ("## Limitations of the study\n\n", False), ("## Limitations\n\n", True)],
+)  # fmt: skip
+def test_limitations_under_no_limitations_heading_leave_the_brief_without_any(
+    project: Path, heading: str, limited: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): the example's limitations in its Discussion under no
+    heading, under BMJ Open's "Strengths and limitations of this study" or under
+    "Limitations of the study" are none of the brief's; a press release, a plain-language
+    summary and a pitch then fail `comm-limitation-dropped` until one is written in. The
+    2026-11-09 triage planned a fix (F13), which will change this test."""
+    document = _scaffolded(project, "Several limitations follow",
+                           heading + "Several limitations follow")  # fmt: skip
+    assert [one["text"] for one in document["limitations"]][:1] == (
+        [_LIMITS] if limited else [])  # fmt: skip
+    if limited:
+        return
+    mark_primary(project)
+    for channel in ("press-release", "plain-language-summary", "pitch"):
+        text(project, "post.md", CLEAN, f"channel: {channel}")
+        assert ("comm-limitation-dropped", FAIL) in found(project, "texts"), channel
+
+    def written_in(document: dict) -> None:
+        document["limitations"] = [{"id": "limitations.1", "text": _LIMITS,
+                                    "from": {"file": "manuscript/main.md", "quote": _LIMITS}}]
+
+    edit_brief(project, written_in)
+    text(project, "post.md", f"{CLEAN} {_LIMITS} [](#brief:limitations.1)",
+         "channel: press-release")  # fmt: skip
+    assert "comm-limitation-dropped" not in codes(project, "texts")
 
 
 def test_a_numbered_heading_is_no_statement(project: Path) -> None:
@@ -880,6 +1050,34 @@ def test_a_statement_the_picture_cannot_print_is_not_drawn(ready: Path) -> None:
 
     edit_brief(ready, narrative)
     assert main(["communicate", "graphical-abstract", str(ready)]) == 2
+
+
+def test_the_graphical_abstract_refuses_a_narrative_citation_naming_the_statement(
+    ready: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate check` reads of a text, the
+    brief and the graphical abstract"): a statement that holds a narrative citation is not
+    drawn, and `communicate graphical-abstract` refuses, naming it, until its text is
+    shortened; a bracketed one is drawn without it."""
+    def narrative(document: dict) -> None:
+        document["conclusion"][0]["text"] = "As @fictionalClassSignal2019 found, it is so."
+
+    saved = brief_file(ready).read_bytes()
+    edit_brief(ready, narrative)
+    capsys.readouterr()
+    assert main(["communicate", "graphical-abstract", str(ready)]) == 2
+    assert capsys.readouterr().err.startswith(
+        "manuscript-guard: the graphical abstract does not draw what it cannot print as the "
+        "build does: conclusion.1: it cites a work in the sentence, @key,")
+    brief_file(ready).write_bytes(saved)
+
+    def bracketed(document: dict) -> None:
+        document["conclusion"][0]["text"] = "It is so [@fictionalClassSignal2019]."
+
+    edit_brief(ready, bracketed)
+    assert main(["communicate", "graphical-abstract", str(ready)]) != 2
+    # A LaTeX cross-reference, which the printed view marks, is not drawn either.
+    assert svg.not_drawn("See Figure " + chr(0xE000) + ".")
 
 
 def test_an_allow_entry_copied_with_its_anchor_matches(ready: Path) -> None:

@@ -333,6 +333,34 @@ def test_an_existing_panel_gains_its_readers_and_loses_nothing(
     assert report.counts["review_readings"] == 24
 
 
+@pytest.mark.parametrize("named_already", [False, True])
+def test_a_comment_typed_into_a_panel_is_lost_when_a_run_adds_its_readers(
+    project: Path, providers: Providers, named_already: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A panel that gains a reviewer or a reader is
+    written again from its data"): a run that adds its readers writes the panel again from
+    its fields, which are kept, and a comment typed into it goes. The other side: a panel
+    that names the run's readers already gains nothing, and is left byte for byte."""
+    configure(project, MODEL_A, MODEL_B)
+    path = project / "review" / "panel-2.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if named_already:
+        for reviewer in document["reviewers"]:
+            reviewer["readers"] = [MODEL_A, MODEL_B]
+    commented = "# The panel the editor agreed to.\n" + yaml.safe_dump(document, sort_keys=False)
+    path.write_text(commented, encoding="utf-8", newline="\n")
+
+    assert run(project, "--yes", "--round", "2") == 0
+    if named_already:
+        assert path.read_text(encoding="utf-8") == commented
+        return
+    assert "#" not in path.read_text(encoding="utf-8")
+    after = read_structured(path)
+    assert after["rationale"] == document["rationale"]
+    for was, now in zip(document["reviewers"], after["reviewers"], strict=True):
+        assert now == {**was, "readers": [MODEL_A, MODEL_B]}
+
+
 def test_a_local_model_needs_no_key(project: Path, providers: Providers, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY")
     monkeypatch.delenv("MISTRAL_API_KEY")

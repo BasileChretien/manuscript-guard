@@ -212,6 +212,45 @@ def test_revising_the_anchored_paragraph_satisfies_it(project: Path) -> None:
     assert "claimed-change-missed-the-point" not in codes(project)
 
 
+@needs_pandoc
+def test_a_copy_of_the_anchored_paragraph_left_unrevised_reads_as_unchanged(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G13 takes a surviving copy for the paragraph the
+    reviewer read"): a paper that repeats the anchored paragraph word for word, with one copy
+    revised, still reports it unchanged, a false alarm; with both copies revised it does not."""
+    path = project / "manuscript" / "main.md"
+    projekt, _ = load_project(project)
+    _anchor, (_path, text, _start) = next(iter(tagged_paragraphs(projekt).items()))
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + text + "\n", encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    copies = [name for name, (_p, body, _at) in known.items() if body == text]
+    assert len(copies) == 2
+    round_with(
+        project,
+        {
+            "id": "1.5",
+            "comment": "This paragraph is unclear.",
+            "where": copies[0],
+            "response": "We have rewritten it.",
+            "changed": [{"kind": "manuscript", "name": path.name}],
+        },
+        submitted_paragraphs={
+            name: hashlib.sha256(body.encode("utf-8")).hexdigest()
+            for name, (_p, body, _at) in known.items()
+        },
+    )
+    whole = path.read_text(encoding="utf-8")
+    path.write_text(whole.replace(text, text + " Now clarified.", 1), encoding="utf-8")
+    assert "claimed-change-missed-the-point" in codes(project)
+
+    whole = path.read_text(encoding="utf-8")
+    at = whole.rindex(text)
+    path.write_text(whole[:at] + text + " Also clarified." + whole[at + len(text):], "utf-8")
+    assert "claimed-change-missed-the-point" not in codes(project)
+
+
 def _anchored_round(project: Path, known: dict, anchor: str) -> None:
     round_with(
         project,

@@ -133,6 +133,35 @@ def test_an_error_raised_on_purpose_is_said_and_never_recorded(kept, monkeypatch
     assert not kept.exists()
 
 
+@pytest.mark.parametrize("raised", ["HarvestError", "PackageError"])
+def test_an_authors_error_main_does_not_catch_is_said_and_recorded_as_a_fault(
+    kept: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], raised: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A record of the tool's own failure holds what
+    the scrub caught out of it, and no more."): an error a command raises on purpose, as a
+    sentence about the author's files, of a class `main` does not catch reaches the author
+    as an error in manuscript-guard itself and is recorded as a fault. The 2026-11-09
+    triage planned a fix (F06), catching them in `main`, which will change this test."""
+    from manuscript_guard.deposit.plan import PackageError
+    from manuscript_guard.harvest import HarvestError
+
+    error, where = {"HarvestError": (HarvestError, "manuscript_guard.harvest.config"),
+                    "PackageError": (PackageError, "manuscript_guard.deposit.plan")}[raised]
+
+    def refused(_args) -> int:
+        raise error("harvest.yaml names no output to harvest")
+
+    monkeypatch.setattr(cli, "cmd_stages", refused)
+    assert cli.main(["stages"]) == 2
+    said = capsys.readouterr().err
+    assert said.startswith("manuscript-guard: stages stopped on an error in manuscript-guard "
+                           f"itself, not in your files: {raised}: harvest.yaml names no "
+                           "output to harvest\n")  # fmt: skip
+    assert not crashes.on_purpose(error("x"))
+    (found,) = _records(kept)
+    assert found["kind"] == "command" and found["exception"] == f"{where}.{raised}"
+
+
 def test_a_gate_that_fails_is_still_a_finding_and_is_recorded(kept) -> None:
     def gate():
         raise ValueError("unexpected shape")

@@ -137,6 +137,41 @@ def test_a_sentence_twice_in_its_paragraph_gets_no_comment_and_says_why(project:
     assert not document_of(project).exists()
 
 
+_NOT_PRINTED = "its words are not in the paragraph as the build printed it"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("change", "why"), [
+    pytest.param(("for the\ndrug class", "for the\n*drug class", "The\nnational agency",
+                  "The\nnational* agency"), _NOT_PRINTED, id="emphasis across its edge"),
+    pytest.param(("In a national cohort, the crude", "In a national cohort^[Crude. Not "
+                  "adjusted.], the crude", "", ""), _NOT_PRINTED, id="a stop in a note before it"),
+])  # fmt: skip
+def test_a_sentence_whose_words_the_build_does_not_print_as_cut_gets_no_comment(
+    project: Path, change: tuple[str, str, str, str], why: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A comment is put on a sentence only where its
+    words, as the build printed them, are once in their paragraph"): a sentence whose
+    emphasis runs across its edge, or one the splitter cuts inside a note, where pandoc
+    prints the note's mark, gets no comment, and the command says why. The first case holds
+    the emphasis, the second the splitter: its sentence starts inside the note, after the
+    note's stop, so its words are not what pandoc prints. The same note with no stop,
+    `^[Crude]`, leaves the sentence whole, and it is commented (tried in review of #733)."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text("utf-8")
+    for old, new in (change[:2], change[2:]):
+        if old:
+            assert old in text, old
+            text = text.replace(old, new, 1)
+    main_md.write_text(text, "utf-8")
+    case.case(project)
+    code, said = run("references", str(project), "--comments")
+    assert code == 0, said
+    assert f"not commented: {why}" in said, said
+    assert "no comment could be placed; nothing written" in said
+    assert not document_of(project).exists()
+
+
 @needs_pandoc
 def test_an_unplaced_entry_gets_no_comment_and_says_why(project: Path) -> None:
     case.case(project)

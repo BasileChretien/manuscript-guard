@@ -2560,3 +2560,176 @@ def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> Non
     )
     assert not found(report, "abbreviation-undefined"), found(report)
     assert not found(report, "abbreviation-used-before-defined"), found(report)
+
+
+# ------------------------------------------- short forms read as no short form (corpus round)
+
+
+def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> None:
+    """A paper of the real-paper corpus defined one short form once in its text and with
+    another long form in each of six table notes: six findings of one meaning. Each other
+    meaning is reported once, where it is first given, and a third meaning is a finding of
+    its own; the text's own meaning given again is still "defined again". A meaning that
+    differs by an apostrophe alone, "Kids' Quiet Scale", is another meaning to
+    `_same_meaning`, reported once too, as DESIGN.md's Known gaps write down."""
+    notes = "".join(f"| Item | n |\n|---|---|\n| one | {n} |\n\n*Note.* KQS = Kids Quiet Scale "
+                    "short form.\n\n" for n in range(3))  # fmt: skip
+    possessive = "".join(f"| Item | n |\n|---|---|\n| two | {n} |\n\n*Note.* KQS = Kids' Quiet "
+                         "Scale.\n\n" for n in range(2))  # fmt: skip
+    report = written(
+        project,
+        "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS held.\n\n" + notes
+        + possessive + "The Kids Quiet Scale Short Forms (KQS) were also given.\n\nThe kids "
+        "quiet score (KQS) was read.\n\nThe Kids Quiet Scale (KQS) was given again.\n",
+    )
+    assert found(report, "abbreviation-redefined") == [
+        "KQS is defined as 'Kids Quiet Scale short form' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined as 'Kids' Quiet Scale' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined as 'kids quiet score' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined again; it was defined at manuscript/main.md:3",
+    ], found(report)
+    lines = [f.line for f in report.findings if f.code == "abbreviation-redefined"]
+    assert lines[0] == 9, "the other meaning is reported where it is first given"
+
+
+@pytest.mark.parametrize(
+    "cited",
+    ["Fictional, 2014", "Fictional et al., 2014", "Fictional, 2014; Other & Made, 2015a"],
+)
+def test_a_citation_after_a_long_form_in_its_bracket_is_no_part_of_it(cited: str) -> None:
+    """A paper of the real-paper corpus gave an instrument's short form, its name and its
+    citation in one bracket, and the citation was read into the long form, and so as another
+    meaning than a table note's. What follows the first semicolon is author-year citations
+    typed as text, which the typed-citation reading reads as such, and no part of the long
+    form. A semicolon before anything else, and a citation after a comma, leave the bracket
+    whole: a limit DESIGN.md's Known gaps write down."""
+    text = f"For instance, the QP2 (Quiet Profile 2; {cited}) scores were read."
+    assert [(short, long) for _at, short, long in _definitions(text)] == [
+        ("QP2", "Quiet Profile 2")]
+    for kept in ("Quiet Profile 2; see Part 2", "Quiet Profile 2, Fictional, 2014"):
+        text = f"For instance, the QP2 ({kept}) scores were read."
+        assert [long for _at, _short, long in _definitions(text)] == [kept]
+
+
+def test_a_citation_after_a_long_form_gives_no_second_meaning(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe QP2 (Quiet Profile 2; Fictional, 2014) was read. The QP2 held.\n\n"
+        "| Item | n |\n|---|---|\n| QP2 | 3 |\n\n*Note.* QP2 = Quiet Profile 2.\n",
+    )
+    assert not found(report, "abbreviation-redefined"), found(report)
+
+
+@pytest.mark.parametrize("designated", ["[ZK92]30", "\\[ZK92\\]30", "[ZK92]4"])
+def test_a_catalogue_designation_is_no_short_form(project: Path, designated: str) -> None:
+    """"[KX92]30", as an astronomy preprint of the real-paper corpus names the thirtieth
+    source of a catalogue, was read as a definition of the catalogue's name whose long form
+    was the words after it, and as a use. A form in square brackets with a digit straight
+    after the closing one is neither, as typed or escaped as pandoc writes it from Word; one
+    with a space before its number is read as before, a limit DESIGN.md's Known gaps write
+    down."""
+    other = designated.replace("30", "21").replace("]4", "]5")
+    report = written(
+        project,
+        f"# Results\n\nThe outflow of the protostar {designated} is faint. The jets from "
+        f"{designated} and {other} are seen.\n",
+    )
+    assert not report.findings, found(report)
+    spaced = written(project, "# Results\n\nThe outflow of [ZK92] 30 is faint.\n")
+    assert "ZK92" in " ".join(found(spaced, "abbreviation-undefined")), found(spaced)
+
+
+def test_a_square_bracket_definition_before_a_flattened_citation_reads_as_a_designation(
+    project: Path,
+) -> None:
+    """The limit of the rule above, as DESIGN.md's Known gaps write it down (review round 1
+    of #717): a definition in square brackets with a citation's number flattened straight
+    after it, as a PDF or plain text prints a superscript, is a designation by its typing,
+    so it defines nothing and its short form is asked about as undefined. The same in round
+    brackets defines."""
+    square = written(project, "# Results\n\nThe C-reactive protein [CRP]12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert [f.message.split()[0] for f in square.findings] == ["CRP"], found(square)
+    assert found(square, "abbreviation-undefined"), found(square)
+    round_ = written(project, "# Results\n\nThe C-reactive protein (CRP)12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert not round_.findings, found(round_)
+
+
+def test_a_latex_catalogue_designation_is_no_short_form(tmp_path: Path) -> None:
+    """In LaTeX, the brackets typed bare and typed in mathematics, `$[$ZK92$]$12`, which
+    prints "[ZK92]12" and leaves only "ZK92" to read."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "The jets from [ZK92]21, and [ZK92]23. The source $[$ZK92$]$12 is faint.\n"
+        "\\begin{tabular}{ll}\n$[$ZK92$]$30 & I \\\\\n\\end{tabular}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    files = _latex_read(tmp_path, None)
+    assert not [each for read in files for each in read.definitions], "nothing is defined"
+    report = _judge(files, _Known(frozenset(), frozenset()), tmp_path)
+    assert not report.findings, [f.message for f in report.findings]
+
+
+@pytest.mark.parametrize(
+    "joined", ["QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "anti-QMP_RATE"]
+)
+def test_a_name_underscores_join_is_no_use_of_a_short_form(project: Path, joined: str) -> None:
+    """A series' name in a table of an economics preprint of the real-paper corpus, a short
+    form and a word joined by an underscore, was read as a use of the short form before the
+    text defined it. A name whose parts
+    underscores join, bare or escaped as Markdown writes one, is no use of any of its parts;
+    a short form alone is, and so is one an emphasis mark encloses."""
+    text = (f"# Results\n\n| Series | Loading |\n|---|---|\n| {joined} | 0.13 |\n\n"
+            "The quarterly market price (QMP) rose. The QMP fell.\n")  # fmt: skip
+    report = written(project, text)
+    assert not report.findings, found(report)
+    used = written(project, text.replace(joined, "_QMP_"))
+    assert found(used, "abbreviation-used-before-defined"), found(used)
+
+
+def test_a_short_form_used_only_in_names_underscores_join_is_unused(project: Path) -> None:
+    """The limit of the rule above, as DESIGN.md's Known gaps write it down: a short form the
+    paper defines and then writes only inside such names is defined and not used again."""
+    report = written(project, "# Results\n\nThe quarterly market price (QMP) rose.\n\n"
+                              "| Series | Loading |\n|---|---|\n| QMP_RATE | 0.13 |\n")  # fmt: skip
+    assert found(report) == [
+        "QMP is defined and not used again in the main text as G14 reads it"], found(report)
+
+
+@pytest.mark.parametrize(
+    ("cell", "said"),
+    [("LOG_GDP-QMP", ["QMP is used here, and defined later at manuscript/main.md:7"]),
+     ("LOG_QMP-IOS", ["IOS is used once in the main text as G14 reads it, and not defined "
+                      "there"])],
+)  # fmt: skip
+def test_a_word_a_hyphen_joins_after_a_joined_name_is_read_on_its_own(
+    project: Path, cell: str, said: list[str]
+) -> None:
+    """The limit DESIGN.md's Known gaps write down (review round 2 of #717): the name
+    underscores join ends at a hyphen, so a word a hyphen joins after it is read on its own.
+    QMP after "LOG_GDP-" is a use, before the text defines it; in "LOG_QMP-IOS", QMP is a
+    part of the name and no use, and IOS after the hyphen is read, and never defined."""
+    report = written(project, f"# Results\n\n| Series | Loading |\n|---|---|\n| {cell} | 0.13 "
+                              "|\n\nThe quarterly market price (QMP) rose. The QMP fell.\n")
+    assert found(report) == said, found(report)
+
+
+def test_a_latex_name_underscores_join_is_no_use_of_a_short_form(tmp_path: Path) -> None:
+    """In LaTeX, `QMP\\_RATE`, which the reader leaves as an underscore and a NUL."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "\\begin{tabular}{ll}\nQMP\\_RATE & 0.13 \\\\\nIOS\\_QMP & 0.2 \\\\\n"
+        "QMP\\_DURA\\_6-12mth & 0.1 \\\\\n\\end{tabular}\n"
+        "The quarterly market price (QMP) rose. The QMP fell.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    report = _judge(_latex_read(tmp_path, None), _Known(frozenset(), frozenset()), tmp_path)
+    assert not report.findings, [f.message for f in report.findings]

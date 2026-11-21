@@ -232,6 +232,29 @@ def test_an_edited_record_is_not_read(project: Path) -> None:
     assert read_record(loaded, ONLINE) is None
 
 
+def test_a_nine_character_issn_that_is_no_issn_is_kept_and_stops_the_lookup(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Journals on the shortlist"): an ISSN the NLM
+    Catalog lists that is nine characters and no ISSN, "1234 567X", is kept in the record,
+    which then fails its schema, and the lookup stops there, writing nothing and asking of
+    no later ISSN; one of another length is left out, and the lookup goes on."""
+    from manuscript_guard.contracts._schema import ContractError
+
+    write_shortlist(project)
+    table = Table(esummary=esummary(issns=(PRINT, "1234 567X")))
+    with pytest.raises(ContractError, match=r"the record for ISSN 1111-111X is not valid"):
+        look_up_journals(project, table)
+    loaded, _ = load_project(project)
+    assert not record_path(loaded, PRINT).exists()
+    assert table.sent and not any(ONLINE in unquote(request.url) for request in table.sent)
+    # The other side of the same rule: ten characters are not kept, and both are written.
+    look_up_journals(project, Table(esummary=esummary(issns=(PRINT, "1234-5678X"))))
+    record = read_record(loaded, PRINT)
+    assert record["sources"]["nlm_catalog"]["records"][0]["issns"] == [PRINT]
+    assert read_record(loaded, ONLINE) is not None
+
+
 # ------------------------------------------------------------- the real transport, on loopback
 
 

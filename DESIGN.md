@@ -26527,16 +26527,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     counts as an entry. Name the paper's own file, not its folder, to audit it alone (round 1
     of #463).
     Pinned by `tests/test_corruption.py::test_a_second_latex_document_in_an_audited_folder_is_read_as_a_paper`.
-  - In a folder given, a `.txt`, `.md` or `.markdown` file in the folder of an entry that
-    folder holds, or in any folder under it, is passed over and named, not read, unless the
-    entry prints `$body$` or `${body}` outside a comment as a pandoc template does
+  - In a folder given, a `.txt`, `.md` or `.markdown` file in the folder of an entry, or in
+    any folder under it, is passed over and named, not read, where the innermost folder given
+    that holds the file holds the entry too, unless the entry prints `$body$` or `${body}`
+    outside a comment as a pandoc template does
     (2026-11-22). So a Markdown paper beside a standalone figure's `.tex`, beside a letter
     that stands beside a template, or beside a template that prints its body by another name,
     is not audited unless it is named.
     Pinned by `tests/test_audit_sections.py::test_a_markdown_paper_beside_a_standalone_figure_is_passed_over`
     and `tests/test_audit_sections.py::test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside`.
-  - A LaTeX paper that prints `$body$` in a `verbatim` or a `\verb` is taken for a pandoc
-    template, so the text files of its folder are read as papers. Accepted.
+  - A LaTeX paper that prints `$body$` in a `verbatim` or a `\verb`, or writes it in a comment
+    that opens just after a line break, `\\%`, which is read as an escaped `%` (as
+    `\documentclass` is), is taken for a pandoc template, so the text files of its folder
+    are read as papers (round 2 of #753). Accepted.
   - A table whose rows a tabular `\input`s from another file, as xtable and esttab write
     them, is read nowhere as cells: its numbers are read where they stand, as text, and no
     n (%) or mean in it is held to its denominator (round 1 of #463).

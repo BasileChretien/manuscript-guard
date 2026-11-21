@@ -1202,7 +1202,7 @@ def test_a_markdown_paper_outside_a_latex_paper_s_folder_is_read(tmp_path: Path,
     assert "audit|passed-over|bundle/anc/data.txt|-" in _passed_over(report)
 
 
-@pytest.mark.parametrize("body", ["$body$", "${body}"])
+@pytest.mark.parametrize("body", ["$body$", "${body}", "Of 50!% $body$"])
 def test_a_pandoc_template_sets_no_text_file_aside(tmp_path: Path, capsys, body: str) -> None:
     """A pandoc template has a document class and prints the Markdown paper beside it, where
     `$body$` stands: it is read as a paper, as it was (Known gaps), and sets nothing aside
@@ -1260,12 +1260,15 @@ def test_a_named_tex_with_no_document_class_sets_nothing_aside_in_its_folder(
     assert "audit|passed-over|notes.md|-" not in _passed_over(report)
 
 
-def test_a_body_in_a_comment_makes_no_paper_a_template(tmp_path: Path, capsys) -> None:
+@pytest.mark.parametrize("line", ["% built from a $body$ template", "Of 50 % from $body$"])
+def test_a_body_in_a_comment_makes_no_paper_a_template(
+    tmp_path: Path, capsys, line: str
+) -> None:
     """Round 1 of #753: a `$body$` in a comment of a LaTeX paper took it for a pandoc
     template, and the data under its `anc/` was read as a paper again."""
     bundle = _bundle(tmp_path / "bundle")
     paper = bundle / "paper.tex"
-    paper.write_text("% built from a $body$ template\n" + paper.read_text(encoding="utf-8"),
+    paper.write_text(f"{line}\n" + paper.read_text(encoding="utf-8"),
                      encoding="utf-8")  # fmt: skip
     assert "audit|passed-over|anc/data.txt|-" in _passed_over(_audited(capsys, str(bundle)))
 

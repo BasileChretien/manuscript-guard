@@ -766,10 +766,11 @@ def test_each_way_of_seeing_a_figure_is_its_own_key_in_any_folder(
     assert sorted(_colour_keys(moved).values()) == sorted(found.values())
 
 
-def test_two_figures_of_one_name_outside_the_project_are_two_keys(project: Path) -> None:
+def test_two_figures_of_one_name_outside_the_project_share_a_key(project: Path) -> None:
     """Figures placed from outside the project, `../shared/a/fig.svg` and `../shared/b/fig.svg`,
-    each with its sidecar, are keyed by the path that climbs out to them, never an absolute
-    one: two keys, not one of the file's name (round 1 of #720)."""
+    each with its sidecar, are keyed by their name alone, as `placed_figures` names them and
+    as before: no path that climbs out of the project is a key, since one written absolute
+    would move with the checkout (round 2 of #720). So the two share one (Known gaps)."""
     from test_corruption import _GREEN, _RED
 
     lines = "".join(f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {colour}"/>'
@@ -790,8 +791,43 @@ def test_two_figures_of_one_name_outside_the_project_are_two_keys(project: Path)
 
     found = check_figure_colours(load_project(project)[0]).findings
     subjects = sorted(one.key.split("|")[2] for one in found if "fig.svg" in one.key)
-    assert subjects == ["../shared/a/fig.svg@deuteranopia",
-                        "../shared/b/fig.svg@deuteranopia"], subjects  # fmt: skip
+    assert subjects == ["fig.svg@deuteranopia", "fig.svg@deuteranopia"], subjects
+
+
+def test_a_figure_named_by_an_absolute_path_keeps_its_key_where_the_project_moves(
+    project: Path, tmp_path: Path
+) -> None:
+    """A figure the manuscript names by an absolute path outside the project is keyed by no
+    path that climbs from the root to it, which would change with where the checkout sits
+    and write the author's folders into the key, but by its name, as before (round 2 of the
+    review of #720)."""
+    import shutil
+
+    from test_corruption import _GREEN, _RED
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    lines = "".join(f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {colour}"/>'
+                    for n, colour in enumerate((_RED, _GREEN)))  # fmt: skip
+    (shared / "fig.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+        f'viewBox="0 0 100 80">{lines}</svg>', encoding="utf-8")
+    (shared / "fig.guard.yaml").write_text("schema: manuscript-guard/figure-guard/1\n",
+                                           encoding="utf-8")  # fmt: skip
+    main = project / MAIN
+    main.write_text(main.read_text(encoding="utf-8")
+                    + f"\n![One]({(shared / 'fig.svg').as_posix()})\n", encoding="utf-8")
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    def subjects(root: Path) -> list[str]:
+        found = check_figure_colours(load_project(root)[0]).findings
+        return sorted(one.key.split("|")[2] for one in found if "fig.svg" in one.key)
+
+    here = subjects(project)
+    assert here == ["fig.svg@deuteranopia"], here
+    moved = shutil.copytree(project, tmp_path / "deeper" / "x" / "paper")
+    assert subjects(moved) == here
 
 
 def _refusals(root: Path) -> dict[str, str]:
@@ -847,6 +883,10 @@ REFUSED_KINDS = {
     "binding-in-siunitx": (_PREAMBLE + "\\usepackage{siunitx}\n" + _BODY
                            + "\\qty{\\mg{results.x}}{kg}" + _END, {}),
     "binding-as-typed": (_PREAMBLE + _BODY + "\\verb|\\mg{results.x}|" + _END, {}),
+    # The second place that names it: a listing that holds a binding (round 2 of #720).
+    "binding-as-typed/listing": (_PREAMBLE + "\\usepackage{listings}\n" + _BODY
+                                 + "\\begin{lstlisting}\n\\mg{results.x}\n\\end{lstlisting}"
+                                 + _END, {}),
     "starred-import": (_PREAMBLE + "\\usepackage{import}\n" + _BODY + "\\import*{a/}{b}" + _END,
                        {}),
     "environment": (_PREAMBLE + _BODY + "\\begin{minted}{python}\nx\n\\end{minted}" + _END, {}),

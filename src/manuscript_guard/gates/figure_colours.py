@@ -122,23 +122,25 @@ def check_figure_colours(project: Project) -> Report:
 
 def _shown(path: Path, root: Path | None) -> str:
     """A figure's file as its key names it: its path from the project's root with forward
-    slashes, as written through any link, so that the key holds across machines and folders;
-    one outside the project by the path that climbs out to it, `../shared/a/fig.svg`, never an
-    absolute one, so that two files of one name are two keys (round 1 of #720). Its name
-    alone on another drive, where no path from the root reaches it, or with no root given."""
+    slashes, as written through any link, so that the key holds across machines and folders.
+    One outside the project by its name alone, as `placed_figures._named` names it and as the
+    key did before: a path that climbs from the root to it would change with where the
+    checkout sits where the manuscript names it by an absolute path, and would carry the
+    author's folders (round 2 of #720), and by the time a figure reaches here its path is
+    normalised, so how it was written is not known. Two figures of one name outside the
+    project share a key (Known gaps). Its name too with no root given."""
     import os
 
     if root is None:
         return path.name
-    named = None
     for one, base in ((path, root), (path.resolve(), root.resolve())):
         try:
             said = Path(os.path.relpath(one, base)).as_posix()
         except ValueError:  # another drive
             continue
-        if named is None or (named.startswith("../") and not said.startswith("../")):
-            named = said
-    return path.name if named is None else named
+        if said != ".." and not said.startswith("../"):
+            return said
+    return path.name
 
 
 def _pictures(folder: Path, stem: str) -> list[Path]:

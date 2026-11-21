@@ -35,18 +35,17 @@ expected:
       warning it came before. `check` is unchanged
   - reading: numbers asked
     why: >-
-      a new reading of the audit's Arithmetic, its items by code, line, severity, whether
-      counted and whether a question: where the paper says once that its P values are adjusted
-      for multiple comparisons (Bonferroni, Holm, the false discovery rate and the rest of a
-      closed list; "adjusted for age and sex" is none), a P larger than its statistic gives is
-      asked about, `question-p-adjusted`, and where a table's caption, cells or note says its
-      shares are weighted, a share off its column's n is, `question-share-weighted`; each is a
-      question at INFO, never counted, where the base gives a number that does not fit. A
-      smaller P, an interval's P, a share of a table that says nothing, and a share of a
-      file whose legends do not number its tables (a legend captions the table its number
-      names, Basile, 2026-11-18) stay numbers that do not fit, so the inputs of such a file
-      read alike (Basile, 2026-11-16, decision 31: docx-sport-A3 and docx-psych-A3 of the
-      real-paper corpus)
+      where a file's legends do not number its tables (a table given as a picture, a "Table 2
+      (continued)", "Table S1" beside "Table 1", "Table S1a" beside "Table S1b"), a legend
+      directly above a table, with no paragraph between, captions it, so a weighted table's
+      share off its column's n under such a legend is asked about,
+      `question-share-weighted`, where the base gives a number that does not fit; a legend
+      below a table or over a subtitle captions nothing, and where the legends do number the
+      tables nothing changes (Basile, 2026-11-21, "Adjacent fallback"). And "nationally
+      representative" in a table's caption, note, row label or header says its shares are
+      weighted, as "weighted" does, unless a word before it in its clause says not (Basile,
+      2026-11-21, "Caption wording": the 31 shares of docx-psych-B2's supplementary tables
+      in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
       the warnings on the short forms used and never defined, one for each form, are one

@@ -185,15 +185,17 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
 #: on acceptance" names Word, and passes for `[docx]`.
 #: Word, and not the word of a count or a limit ("8,000-word limit", "a word count of 8000"),
 #: which let `[docx]` pass for a page that asks for a PDF (round 2 of #724).
-_WORD = r"(?<!\d-)\bword\b(?![\s-]+(?:count|limit)s?\b)"
+#: Named apart from `_WORD` below, the template for numbers written as words (round 3).
+_WORD_FORMAT = r"(?<!\d-)\bword\b(?![\s-]+(?:count|limit)s?\b)"
 _FORMAT_WORDS = {
     "pdf": r"\bpdfs?\b|\bportable document format\b",
-    "docx": _WORD + r"|\bdocx\b",
-    "doc": _WORD + r"|\bdoc\b",
+    "docx": _WORD_FORMAT + r"|\bdocx\b",
+    "doc": _WORD_FORMAT + r"|\bdoc\b",
     "rtf": r"\brtf\b|\brich[\s-]?text\b",
     "odt": r"\bodt\b|\bodf\b|\bopen[\s-]?document\b|\b(?:open|libre)office\b",
-    # LaTeX2e as well: no boundary after "LaTeX" in it (round 2 of #724).
-    "tex": r"\b(?:la)?tex(?:\s?2e)?\b",
+    # LaTeX2e, and the project's own LaTeX2ε, as well: no boundary after "LaTeX" in them
+    # (rounds 2 and 3 of #724).
+    "tex": r"\b(?:la)?tex(?:\s?2[eε])?\b",
 }
 
 

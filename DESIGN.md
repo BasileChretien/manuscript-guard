@@ -17004,6 +17004,15 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
+- **`journal-format-not-in-quote` reads a format's name, not the sentence around it**
+  (`gates/journal_quotes.py`, `_FORMAT_WORDS`). It proves a format is named in the quote, not
+  that it is the one taken, and some wordings slip past it: "a 250 word abstract", "an
+  8k-word manuscript" and "word-processing files" still name Word, so `[docx]` passes on a
+  page that asks for a PDF; "PDF or Word – limit 20 MB" fails, the dash read as a hyphen before
+  "limit"; "Open Office" written apart fails `[odt]`; "rich text" in advice about a form passes
+  `[rtf]`; "pdfLaTeX" or "XeLaTeX" alone does not name LaTeX (rounds 2 and 3 of #724).
+  Accepted.
+
 - **The corpus tool finds a judged finding again only by its gate and code, by its line in
   the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A
   finding a later build gives under another code at another line, as a note, reads as gone:

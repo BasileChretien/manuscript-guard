@@ -8557,6 +8557,7 @@ _NAMING = [
     (["tex"], "LaTeX submissions are welcome."),
     # Round 2 of #724: LaTeX2e had no boundary after LaTeX, and these names were not read.
     (["tex"], "Manuscripts prepared in LaTeX2e are welcome."),
+    (["tex"], "Manuscripts prepared in LaTeX2ε are welcome."),
     (["tex"], "Manuscripts prepared in LaTeX 2e are welcome."),
     (["pdf"], "Send it in Portable Document Format."),
     (["rtf", "odt"], "A rich-text or Open-Document file is accepted."),

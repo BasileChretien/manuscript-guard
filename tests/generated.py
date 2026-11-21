@@ -1534,6 +1534,36 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: What stands between two paragraphs: a blank line, one of spaces, of a tab or of a carriage
+#: return, and two blank lines.
+CAPTION_GAPS = ("\n\n", "\n \n", "\n\t\n", "\n\r\n", "\n\n\n")
+
+
+@st.composite
+def caption_paragraphs(draw: st.DrawFn) -> str:
+    """A Markdown text of one paragraph of each kind a table's caption is read in or beside
+    (`glossary.markdown_captions`), in an order drawn, each two apart by a gap drawn among
+    `CAPTION_GAPS`: prose; a caption opened by `Table:`; two opened by a colon, which a
+    table's line above or below makes captions as the order falls; one after three spaces
+    and one after four, which is none; a colon before a mark, which is none; a pipe table and
+    a grid table; a colon's caption on a table's line's own paragraph; `Table:` on a
+    paragraph's second line; and a legend typed as one."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    kinds = [
+        f"{words().capitalize()} {words()}.", f"Table: {words()}", f": {words()}",
+        f": {words()}", f"   : {words()}", f"    : {words()}", f":-) {words()}",
+        "| A | B |\n|---|---|\n| 1 | 2 |", "+---+---+\n| a | b |\n+---+---+",
+        f"| A | B |\n|---|---|\n: {words()}", f"{words().capitalize()}.\nTable: {words()}",
+        f"Table 2. {words()}",
+    ]  # fmt: skip
+    order = draw(st.permutations(kinds))
+    gaps = [draw(st.sampled_from(CAPTION_GAPS)) for _ in order[1:]]
+    return order[0] + "".join(gap + kind for gap, kind in zip(gaps, order[1:], strict=True))
+
+
 #: The paragraphs that open a glossary with no heading over it, as a paper typed in Word has
 #: one: a sentence, a line in bold or in italics, a line with a colon, one in capitals.
 GLOSSARY_OPENERS = (

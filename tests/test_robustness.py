@@ -293,6 +293,20 @@ def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
     assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
 
 
+def test_the_captions_of_a_markdown_text_are_found_in_linear_time(assert_linear) -> None:
+    """G14 looks for a table's caption in each paragraph, and for a `:` caption at the line
+    above the paragraph and the line below it. Each was found in a copy of all the text
+    before the paragraph and all after it: quadratic in the paragraphs, 24 s of a book of
+    3,221 paragraphs converted from Word (zenodo 7929786, in the robustness sweep of
+    2026-11-21). Plain paragraphs, and `:` captions with prose about them."""
+    from manuscript_guard.gates.glossary import markdown_captions
+
+    assert_linear(lambda count: "".join(f"Paragraph {i} of the text.\n\n" for i in range(count)),
+                  markdown_captions, 100, "plain paragraphs")  # fmt: skip
+    assert_linear(lambda count: "".join(f"Text {i}.\n\n: Caption {i}\n\n" for i in range(count)),
+                  markdown_captions, 100, "captions with prose about them")  # fmt: skip
+
+
 def test_code_spans_are_found_in_linear_time(assert_linear) -> None:
     """Code spans are paired by reading the runs of backticks once, each to the next run as
     long: runs of every width that never close, and escaped backticks after long runs of

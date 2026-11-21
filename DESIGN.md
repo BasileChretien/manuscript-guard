@@ -22611,6 +22611,8 @@ Open, recorded as each change landed:
   - *A LaTeX binding is not read.* A cell holding `\mg{results.x}`, a LaTeX project's
     binding, is escaped by the LaTeX build and printed as typed, and nothing reports it
     (finding 5; the reviewer found no real input of the kind).
+    Pinned by `tests/test_emit.py::test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothing`
+    and `tests/test_emit.py::test_a_latex_project_reports_nothing_of_a_latex_binding_in_an_emitted_table`.
   - *No generated input holds the rule.* `binding-in-table` reads text, and no generator,
     reading or property draws it (`{{}}`, `{{ }}`, `{{{x}}}`, an unclosed `{{a`, a line
     break inside, each place a table has text): a broken pattern passes everything but the
@@ -26123,12 +26125,15 @@ Open, recorded as each change landed:
   than an accent, `"-` and `"=`, inside an open quotation are read as a closing mark too. A
   `\par` a definition's body holds ends the quotation where the body is written, not where
   the command prints it (2026-10-27).
+  Pinned by `tests/test_latex_mask.py::test_a_straight_quote_after_an_open_one_closes_it_whatever_the_font`.
 - **`lines-cited-alone` is not tried anywhere in a LaTeX document that sets out an algorithm
   or a listing.** A `verbatim` block anywhere in the document turns the rule off for every
   pointer in it, one into the reviewers' copy too: the rule cannot tell a listing's lines
   from the copy's. A Markdown paper is told of every pointer, a listing or not. An algorithm
   in an environment the reader does not name (`algorithm2e`'s `procedure` or `function`) is
   read as prose, and words to the reviewers in it are reported.
+  Pinned by `tests/test_corruption.py::test_g6_tries_lines_in_brackets_nowhere_in_a_latex_paper_with_a_listing_anywhere`
+  and `tests/test_corruption.py::test_g6_tells_a_markdown_paper_of_lines_in_brackets_beside_a_listing`.
 - **A comment's line breaks are NUL in the Markdown mask.** Pandoc reads a comment in a
   paragraph, a blank line inside it too, as a part of that paragraph, and a reader of
   paragraphs or sentences would cut one at a line break kept there. So a reader that cuts the
@@ -26228,12 +26233,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   regression against main. Accepted.
   - The printed view folds an accent beside a letter command from the unfolded mask, so
     `\L{}\'od\'z` loses its Ł there; the words view reads "Łódź".
+    Pinned by `tests/test_latex_words.py::test_a_letter_command_beside_an_accent_is_lost_in_the_printed_view_only`.
   - The second backslash of `\\` is read as the start of an accent: `a\\`Text'` prints
     "T̀ext".
+    Pinned by `tests/test_latex_words.py::test_the_second_backslash_of_a_line_break_is_read_as_an_accent`.
   - Inside `tabbing`, `\=`, `\'` and `\`` are tab commands, read as accents.
+    Pinned by `tests/test_latex_words.py::test_a_tab_command_inside_tabbing_is_read_as_an_accent`.
   - A heading's title is not folded: `\section{Caf\'e}` prints "Cafe" in the printed view.
+    Pinned by `tests/test_latex_words.py::test_a_heading_s_title_is_not_folded_in_the_printed_view`.
   - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
+    Pinned by `tests/test_latex_words.py::test_an_accent_at_a_line_s_end_does_not_take_the_next_line_s_letter`.
   - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
+    Pinned by `tests/test_latex_mask.py::test_a_par_inside_verb_or_a_group_ends_the_paragraph_for_the_quotation_marks`.
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.

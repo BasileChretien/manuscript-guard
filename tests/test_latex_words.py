@@ -119,6 +119,66 @@ def test_an_accent_with_no_composed_letter_keeps_every_place_of_the_file(command
     assert out[start].isalpha() and unicodedata.combining(out[start + 1])
 
 
+def _printed(text: str) -> str:
+    """The printed view of a document of one file, its runs of white space as one space."""
+    from manuscript_guard.text.latex.printed import printed_view
+
+    return " ".join(printed_view(list(read_tree({"main.tex": text}).sources)).split())
+
+
+def test_a_letter_command_beside_an_accent_is_lost_in_the_printed_view_only() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): the printed view folds an accent beside a letter command from the unfolded
+    mask, so `\\L{}\\'od\\'z` loses its Ł there, where the words view reads "Łódź"; a letter
+    command with no accent beside it is kept. The 2026-11-09 triage planned a fix (F19),
+    which will change this test."""
+    text = OPEN + "In \\L{}odz and \\L{}\\'od\\'z we met.\n" + CLOSE
+    stroke = "\N{LATIN CAPITAL LETTER L WITH STROKE}"
+    lodz = "\N{LATIN SMALL LETTER O WITH ACUTE}d\N{LATIN SMALL LETTER Z WITH ACUTE}"
+    assert _printed(text) == f"In {stroke}odz and {lodz} we met."
+    assert _read(_words(text)) == f"In {stroke}odz and {stroke}{lodz} we met."
+
+
+def test_the_second_backslash_of_a_line_break_is_read_as_an_accent() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): the second backslash of `\\\\` is read as the start of an accent, so
+    `a\\\\`Text'` prints "T̀ext"; with a space after the `\\\\`, no accent is read."""
+    grave = "T\N{COMBINING GRAVE ACCENT}ext"
+    assert _printed(OPEN + "a\\\\`Text' here.\n" + CLOSE) == f"a {grave}' here."
+    assert _printed(OPEN + "a\\\\ `Text' here.\n" + CLOSE) == (
+        "a \N{LEFT SINGLE QUOTATION MARK}Text' here.")
+
+
+def test_a_tab_command_inside_tabbing_is_read_as_an_accent() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): inside `tabbing`, `\\=`, `\\'` and `\\`` are tab commands, and both views read
+    each as an accent over the letter after it."""
+    text = OPEN + "\\begin{tabbing}\nA \\= B \\' C \\` D\\\\\n\\end{tabbing}\n" + CLOSE
+    accents = ("A B\N{COMBINING MACRON} \N{LATIN CAPITAL LETTER C WITH ACUTE} "
+               "D\N{COMBINING GRAVE ACCENT}")  # fmt: skip
+    assert _printed(text) == accents
+    assert _read(_words(text)) == accents
+
+
+def test_a_heading_s_title_is_not_folded_in_the_printed_view() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): `\\section{Caf\\'e}` prints "Cafe" in the printed view, where the same word in
+    the prose after it prints "Café". The 2026-11-09 triage planned a fix (F19), which will
+    change this test."""
+    text = OPEN + "\\section{Caf\\'e}\nCaf\\'e here.\n" + CLOSE
+    assert _printed(text) == "# Cafe Caf\N{LATIN SMALL LETTER E WITH ACUTE} here."
+
+
+def test_an_accent_at_a_line_s_end_does_not_take_the_next_line_s_letter() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): `caf\\'` at a line's end and `e` on the next print "caf" and "e", where TeX
+    prints "café"; on one line the accent takes its letter."""
+    text = OPEN + "caf\\'\ne here and caf\\'e.\n" + CLOSE
+    cafe = "caf\N{LATIN SMALL LETTER E WITH ACUTE}"
+    assert _printed(text) == f"caf e here and {cafe}."
+    assert _read(_words(text)) == f"caf e here and {cafe} ."
+
+
 def test_a_count_written_as_a_subscript_reads_as_markdown_writes_it() -> None:
     """`CO$_2$` is `CO~2~`, so that G14 reads a formula as one; a subscript in maths, or after
     no letter, is maths."""

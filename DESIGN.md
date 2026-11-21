@@ -17266,6 +17266,7 @@ been sorted yet.
   written by hand, is compared with the person's latest decision only: imported, superseded, and
   imported again, it is the latest once more. The page stamps every answer, so this needs a file
   it did not write.
+  Pinned by `tests/test_checking.py::test_a_bare_answer_imported_again_after_a_later_one_is_the_latest_once_more`.
 - **The hook is a guard against an agent's ordinary commands, not against a deliberate
   evasion.** It reads a command's words as a POSIX shell and as Windows give them, and asks
   where the tool's name, `checker` and `import` stand in the text or in those words (so
@@ -17288,12 +17289,14 @@ been sorted yet.
 - **The latest decision is the latest imported, not the latest given.** Among a person's answers
   about the item as it is now, the one imported last counts, whatever its `at` says, as before
   this register. Answers imported in another order than they were given count in that order.
+  Pinned by `tests/test_checking.py::test_the_answer_imported_last_counts_whatever_its_time_says`.
 - **A file rebuilt after the items changed loses a co-author's unsent progress.** The page keeps
   answers in the browser under a digest of the items' own digests and the person's name (not
   under its identifier, which digests the token too): a rebuild that changes nothing they were
   asked keeps their progress, and one that changes any item does not. So import what someone has
   before rebuilding a round they are part of, or that part of their reading is done twice.
   Nothing is lost that was saved and sent.
+  Pinned by `tests/test_checking.py::test_a_page_rebuilt_after_an_item_changed_keeps_unsent_answers_under_another_key`.
 - **A sentence is split by punctuation, and the list of abbreviations is finite.** The split is
   a stop, a space, then a capital letter or an opening quote or bracket — except after a word with
   a stop inside it ("U.S.", "e.g.", "Ph.D.", "b.i.d."), after a word in `NOT_AN_END` ("et al.",
@@ -17310,6 +17313,8 @@ been sorted yet.
   joined to the one before. The earlier text here said "the rest of the sentence is in the file
   either way", and then that an item with no claim in it could not happen any more; both were
   false.
+  Pinned by `tests/test_checking.py::test_a_stop_after_a_word_the_list_does_not_hold_ends_a_sentence`
+  and `tests/test_checking.py::test_a_word_with_a_stop_inside_it_never_ends_a_sentence`.
 - **A claim is one sentence citing something.** An argument made across two sentences is asked as
   two questions, and a sentence citing three papers is one question about all three, which a
   person can only answer as a whole or decline. A paper whose claims need finer grain writes its
@@ -17388,14 +17393,17 @@ been sorted yet.
   with the warning that they may not be what ran, while its digest holds the old run's; an ok
   given on it is recorded against that, and stays current until the run is made, when it goes
   stale if the code changed.
+  Pinned by `tests/test_checking.py::test_an_ok_on_code_edited_and_not_run_again_stands_until_the_run`.
 - **A cross-reference in a Methods item prints only where the count is exact.**
   `{{ref.figure.forest}}` is shown as the build prints it, "Figure 1", from G2's count of the
   displays; where that count is not exact (a display placed by hand, or sent as a file) the
   binding is shown by its name, `[ref.figure.forest]`, as an unresolved value is.
+  Pinned by `tests/test_checking.py::test_a_cross_reference_in_a_methods_claim_is_shown_by_name_where_the_count_is_not_exact`.
 - **`impact` finds the answers of the other groups by a file's name.** A methods item records
   its file's path under `manuscript/` and is matched by it; a cited sentence or a value records
   the file's name alone, so a file of the main text and one of the supplement with one name
   match each other's answers in `impact`.
+  Pinned by `tests/test_checking.py::test_impact_finds_a_supplements_cited_sentence_under_the_main_text_file_of_its_name`.
 - **A project's own `methods` group is read, and no longer built.** A project whose
   `checks/items.json` declared a group `methods` before the toolkit had one has it refused by
   `checker build`, where earlier releases built the page: on purpose, since the page would send the
@@ -17417,14 +17425,18 @@ been sorted yet.
   given an anchor, moves those below, and their answers go stale (never onto another
   paragraph, since the digest holds the text). A claim's place among the claims of the same
   steps works the same way, which matters only where several texts point at one step.
+  Pinned by `tests/test_checking.py::test_an_open_methods_paragraph_added_above_others_moves_their_ids_and_stales_answers`.
 - **`checker` is still refused for a LaTeX manuscript.** The methods producer reads
   `anchored`, which reads LaTeX, but the literature and claim producers read Markdown, and
   every verb draws its items from all of them.
+  Pinned by `tests/test_reads_nothing.py::test_a_command_that_reads_only_markdown_refuses_a_latex_manuscript`.
 - **Only comments are left out of the sentences.** A sentence a draft has commented out is not
   offered; one in a fenced code block or in the front matter is, if it cites something.
+  Pinned by `tests/test_checking.py::test_a_cited_sentence_in_a_fence_or_the_front_matter_is_offered`.
 - **The highlighter can mark inside a character reference.** A marked word is found in the
   escaped text, so a short one that also spells part of an escape (`amp`, `lt`) is marked inside
   `&amp;` or `&lt;`, and the page shows the escape's characters.
+  Pinned by `tests/test_checking.py::test_the_highlighter_marks_a_word_inside_an_escape_it_spells`.
 - **The splitter's time grows with the square of a paragraph's length.** Each stop is judged on
   the text before it, taken from the paragraph's start. A paragraph of ordinary length is split
   at once; one of hundreds of sentences is not. Accepted.
@@ -17476,14 +17488,17 @@ been sorted yet.
   `authors.yaml` a row and counts in it every decision recorded under that name, so two
   authors written alike each get a row counting both's decisions. `checker` refuses such
   namesakes before a round, so this is a record made before the second was added.
+  Pinned by `tests/test_checking.py::test_two_authors_of_one_name_each_get_a_recap_row_counting_both`.
 - **A header that repeats a column hides its first cell from the chain.** The chain reads each
   row as the CSV reader maps it to the header, so a `decisions.csv` whose header names a column
   twice keeps the last cell of the two, and an edit to the other leaves the head as it was.
   `checker import` never writes such a header; one made by hand is not refused.
+  Pinned by `tests/test_checking.py::test_a_header_naming_a_column_twice_hides_the_first_cell_from_the_chain`.
 - **`coauthor-flag-open` is held to the person, not to the item.** A flag stays open until the
   person who gave it answers again about the item as it is now, ok or not sure, or the item
   changes: a co-author's ok on someone else's flag does not close it, and an edit to the sentence closes it whether or
   not it did what was asked, until the item is sent again.
+  Pinned by `tests/test_checking.py::test_a_flag_is_closed_by_its_maker_or_an_edit_and_not_by_another_persons_ok`.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**
   The digests it compares are of the emitting script and of each path given to the emitter
@@ -23098,6 +23113,7 @@ Open, recorded as each change landed:
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still
   reports it unchanged. That is a false alarm, the safe direction.
+  Pinned by `tests/test_round_five.py::test_a_copy_of_the_anchored_paragraph_left_unrevised_reads_as_unchanged`.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -25679,8 +25695,10 @@ Open, recorded as each change landed:
   - *A comment saved by a Word that writes no durable id, then by one that does, is filed
     twice*: its key goes from `para:` to `durable:`. Word 2010 and 2013, and other editors,
     write no `commentsIds.xml`.
+    Pinned by `tests/test_filed_comments.py::test_a_comment_saved_with_no_durable_id_then_with_one_is_filed_twice`.
   - *A comment edited in Word after it was filed keeps the words first filed*; `import` says
     it reads differently. A reply edited since is filed as a further reply, beside the first.
+    Pinned by `tests/test_filed_comments.py::test_a_comment_edited_after_it_was_filed_keeps_its_first_words_and_import_says_so`.
   - *Only a paragraph's comment is said to be stale.* A heading's or a caption's has no
     digest of its source to look for. Accepted.
   - *A commenter is a label.* Two names with the same letters and digits share a record,
@@ -25691,6 +25709,7 @@ Open, recorded as each change landed:
   - *A comment whose range starts outside every paragraph of the body*, in a footnote for
     one, is filed as made on `text`, with no identifier and no words it was made on: only
     `word/document.xml` is read for ranges.
+    Pinned by `tests/test_filed_comments.py::test_a_comment_whose_range_starts_in_a_footnote_is_made_on_text_with_no_place`.
   - *Writing a record again keeps its values, not its layout*: quoting and line breaks are
     the tool's. Accepted.
   - *A record deleted whole is not noticed* (round 1 of #375). The seal covers what is in
@@ -25722,6 +25741,7 @@ Open, recorded as each change landed:
     of #375): `threads_of` reads its text with the font reading of `docxtext`, which
     reads `w:sym`, and `suggestions.decisions` reads `w:t` alone, so their digests
     differ. As before #375.
+    Pinned by `tests/test_filed_comments.py::test_a_panel_comment_with_a_symbol_inserted_is_filed_as_a_co_authors`.
 
 - **`check_data` reads a table one value at a time in Python.** A table of tens of millions
   of rows, a claims extract among them, takes minutes there; the R emitter's checks are

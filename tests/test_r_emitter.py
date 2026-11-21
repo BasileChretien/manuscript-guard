@@ -1630,6 +1630,33 @@ def test_r_and_python_print_day_month_year_where_the_paper_declares_no_english(
         assert values["dataset.vigibase.extracted"]["display"] == "1 March 2024", name
 
 
+def test_r_reads_the_english_from_its_own_line_and_not_from_a_flow_mapping(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The English a dataset's date is printed in is read
+    when the analysis runs"): R reads `english_variant` from its own line of `paper.yaml`, not
+    as YAML, and takes no English where it finds none there: a value in a flow mapping is not
+    seen, so an American paper that declares itself so prints "1 March 2024" from R, where
+    Python prints "March 1, 2024"."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path, None)
+    (root / "paper.yaml").write_text(
+        '{schema: manuscript-guard/paper/1, title: "P", english_variant: en-US}\n',
+        encoding="utf-8")  # fmt: skip
+    r_script = root / "analysis" / "data_r.R"
+    r_script.write_text(DATASETS["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix(),
+                                         **pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "data_py.py"
+    py_script.write_text(DATASETS["py"] % pins, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+    shown = {name: json.loads((root / "results" / name).read_text(encoding="utf-8"))["values"][
+        "dataset.vigibase.extracted"]["display"] for name in ("data_r.json", "data_py.json")}
+    assert shown == {"data_r.json": "1 March 2024", "data_py.json": "March 1, 2024"}
+
+
 DATASET_INPUTS = {
     "R": """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {

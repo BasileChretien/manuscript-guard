@@ -326,6 +326,20 @@ def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
     assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
 
 
+def test_the_captions_of_a_markdown_text_are_found_in_linear_time(assert_linear) -> None:
+    """G14 looks for a table's caption in each paragraph, and for a `:` caption at the line
+    above the paragraph and the line below it. Each was found in a copy of all the text
+    before the paragraph and all after it: quadratic in the paragraphs, 24 s of a book of
+    3,221 paragraphs converted from Word (zenodo 7929786, in the robustness sweep of
+    2026-11-21). Plain paragraphs, and `:` captions with prose about them."""
+    from manuscript_guard.gates.glossary import markdown_captions
+
+    assert_linear(lambda count: "".join(f"Paragraph {i} of the text.\n\n" for i in range(count)),
+                  markdown_captions, 100, "plain paragraphs")  # fmt: skip
+    assert_linear(lambda count: "".join(f"Text {i}.\n\n: Caption {i}\n\n" for i in range(count)),
+                  markdown_captions, 100, "captions with prose about them")  # fmt: skip
+
+
 def test_code_spans_are_found_in_linear_time(assert_linear) -> None:
     """Code spans are paired by reading the runs of backticks once, each to the next run as
     long: runs of every width that never close, and escaped backticks after long runs of
@@ -943,6 +957,47 @@ def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: 
 
 
 # ---------------------------------------------------------------- hostile files
+
+
+#: A Word paper whose title page holds a table with its columns' widths, and whose text
+#: holds a rule, as pandoc writes Word from Markdown.
+PADDED_PAPER = """\
++-----------------------------------+------------+
+| **A Journal of Things**           | Volume 1   |
++-----------------------------------+------------+
+
+Ana Martin and Paul Girard
+
+# Introduction
+
+Falls are common.
+
+------
+
+More text.
+"""
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_word_paper_is_not_padded_to_the_converters_line(tmp_path: Path) -> None:
+    """`init --from` and the audit write a Word paper with pandoc at 100,000 columns, so that
+    no table is too wide for its line (`from_word.WRITER`). A table set aside with the title
+    page kept its Word columns' widths and was padded to that line, and a rule was 100,000
+    hyphens: 22,000 characters of text came to 5.2 MB of Markdown, which every rule of G6
+    and G14 then read, and the audit timed out (zenodo 10010235, in the robustness sweep of
+    2026-11-21). Every table's widths are left to its cells, and a rule is pandoc's own."""
+    import subprocess
+
+    from manuscript_guard import from_word
+
+    source, docx = tmp_path / "paper.md", tmp_path / "paper.docx"
+    source.write_text(PADDED_PAPER, encoding="utf-8")
+    subprocess.run(["pandoc", str(source), "-o", str(docx)], check=True, timeout=120)
+    text = from_word.convert(docx).text
+    lines = text.splitlines()
+    assert max(map(len, lines)) < 1000, f"a line of {max(map(len, lines))} characters"
+    assert "-" * from_word.RULE_WIDTH in lines and "-" * 100 not in text
+    assert "**A Journal of Things**" in text and "Volume 1" in text
 
 
 def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_project: Path) -> None:

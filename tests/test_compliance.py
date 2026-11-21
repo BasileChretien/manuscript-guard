@@ -91,6 +91,19 @@ def test_words_exclude_what_journals_exclude() -> None:
     assert count_words(text) == 8
 
 
+def test_a_bound_pointer_or_value_counts_no_word_where_typed_it_counts() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A ref counts no word"): the count masks every
+    binding, so "Table 2" typed counts two words and `{{ref.table.a}}` none, and a value
+    typed counts one where bound it counts none. The 2026-11-09 triage planned a fix (F12),
+    which will change this test."""
+    assert count_words("See Table 2 here.") == 4
+    assert count_words("See {{ref.table.a}} here.") == 2
+    assert count_words("It was 3.2 here.") == 4
+    assert count_words("It was {{results.ror.point}} here.") == 3
+    # Measured as G4 measures the main text: the heading's word, and "See" and "here".
+    assert measure("# Results\n\nSee {{ref.table.a}} here.\n").main_text_words == 3
+
+
 def test_sections_are_split_on_top_level_headings() -> None:
     text = "# Abstract\n\nA.\n\n# Methods\n\nB.\n\n## Detail\n\nC.\n\n# References\n\nD.\n"
     sections = split_sections(text)
@@ -124,6 +137,28 @@ def test_a_subsection_of_the_abstract_is_counted_as_abstract() -> None:
     counts = measure(nested)
     assert counts.abstract_words == 4 + 2, "four words, plus the two subsection headings"
     assert counts.main_text_words == measure(flat).main_text_words
+
+
+def test_a_body_under_an_abstract_heading_of_a_higher_level_is_the_abstract_s(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A body under an abstract heading of a higher
+    level is the abstract's"): with `# Abstract` and the paper's sections at `##`, G4 finds
+    none of the required sections and the whole body is counted as abstract."""
+    import re
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    flat = measure(text)
+    main.write_text(re.sub(r"^# (?!Abstract\n)", "## ", text, flags=re.MULTILINE),
+                    encoding="utf-8")  # fmt: skip
+    missing = sorted(f.message for f in journal_report(project).failures
+                     if f.code == "missing-required-section")  # fmt: skip
+    names = ("Discussion", "Introduction", "Methods", "Results")
+    assert missing == [f"the journal requires a {name!r} section" for name in names]
+    counts = measure(main.read_text(encoding="utf-8"))
+    assert counts.main_text_words == 0
+    assert counts.abstract_words == counts.total_words > flat.abstract_words
 
 
 @pytest.mark.parametrize("gap", ["", "\n"])
@@ -245,6 +280,89 @@ def test_a_missing_required_statement_is_caught(project: Path) -> None:
     assert any("funding" in f.message for f in report.failures)
 
 
+#: A fence line a comment strays into, and a tilde fence and a fence indented a space, each
+#: directly under prose; with the bare fence line of a later listing that it pairs with.
+_STRAY_FENCES = {
+    "a fence line inside a comment": ("\n\n<!-- to do\n```\n-->", "\n\n```"),
+    "a tilde fence under prose": ("\n~~~", "\n\n~~~"),
+    "an indented fence under prose": ("\n ```", "\n\n```"),
+}
+
+
+def _missing_statements(report) -> list[str]:
+    return sorted(
+        f.message for f in report.failures if f.code == "missing-required-statement"
+    )
+
+
+@pytest.mark.parametrize("construct", sorted(_STRAY_FENCES))
+def test_a_stray_fence_hides_what_follows_from_the_statement_and_abstract_searches(
+    project: Path, construct: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G4's blanking of comments and fences is close
+    to pandoc's reading, not the same"): a fence line inside a comment, or a tilde or
+    indented fence directly under prose, is paired with the next fence line and what stands
+    between is blanked, so the statements there and the abstract's heading there are
+    reported missing, though pandoc prints them."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    stray, closer = _STRAY_FENCES[construct]
+    statements = text.replace("required.\n\n# Funding", f"required.{stray}\n\n# Funding")
+    path.write_text(statements.rstrip("\n") + closer + "\n", encoding="utf-8")
+    assert _missing_statements(journal_report(project)) == [
+        "the journal requires a competing-interests statement",
+        "the journal requires a funding statement",
+    ]
+    # The other side of the same rule: with no stray fence line, the later one hides nothing.
+    path.write_text(text.rstrip("\n") + closer + "\n", encoding="utf-8")
+    assert _missing_statements(journal_report(project)) == []
+
+    def headed(document):
+        document["structure"]["abstract_headings"] = [
+            "Background", "Methods", "Results", "Conclusions"
+        ]
+
+    edit_yaml(project / JOURNAL, headed)
+    abstract = text.replace("ci_high}}).\n**Conclusions.**",
+                            f"ci_high}}}}).{stray}\n**Conclusions.**")  # fmt: skip
+    path.write_text(abstract.replace("establish risk.\n", f"establish risk.{closer}\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    found = [f.message for f in journal_report(project).failures
+             if f.code == "abstract-headings-missing"]  # fmt: skip
+    assert found == ["structured abstract is missing: Conclusions"]
+
+
+def test_a_raw_openxml_block_is_blanked_and_an_indented_code_block_is_not(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G4's blanking of comments and fences is close
+    to pandoc's reading, not the same"): a statement in a ```` ```{=openxml} ```` block,
+    whose text pandoc passes into the document, is reported missing; a line of an indented
+    code block meets a pattern written for a phrase, and not one anchored on a heading."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+
+    def phrased(document):
+        document["required_statements"].append(
+            {"id": "no-funding", "pattern": "received no funding"}
+        )
+
+    edit_yaml(project / JOURNAL, phrased)
+    no_funding = "the journal requires a no-funding statement"
+    assert _missing_statements(journal_report(project)) == []
+    raw = "```{=openxml}\n<w:p><w:r><w:t>This work received no funding.</w:t></w:r></w:p>\n```"
+    path.write_text(text.replace("This work received no funding.", raw), encoding="utf-8")
+    assert _missing_statements(journal_report(project)) == [no_funding]
+    # An indented code block: the phrase's pattern is met by a line of code, the heading's
+    # is not, with the real heading gone.
+    code = "Nothing to add.\n\n    # Funding\n    x <- 'received no funding'"
+    path.write_text(text.replace("# Funding\n\nThis work received no funding.", code),
+                    encoding="utf-8")  # fmt: skip
+    assert _missing_statements(journal_report(project)) == [
+        "the journal requires a funding statement"
+    ]
+
+
 def test_a_missing_required_section_is_caught(project: Path) -> None:
     path = project / "manuscript" / "main.md"
     path.write_text(
@@ -350,6 +468,35 @@ def test_the_note_of_an_undeclared_english_fails_no_stage(project: Path) -> None
         staged, _ = apply_stage(report, stage)
         said = [(f.code, f.severity) for f in staged.findings if f.code.startswith("english")]
         assert said == [("english-variant-undeclared", "info")], stage
+
+
+@pytest.mark.parametrize("declared", [None, "en-GB"])
+def test_an_american_paper_that_declares_no_english_passes_a_british_journal(
+    project: Path, declared: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper that declares no English is held to a
+    count, and is built in no region."): nothing compares the journal's English with the
+    English the paper's words are in, so a paper in American spelling that declares none,
+    under a journal that asks for British English, passes G4 and G14 with G4's note alone.
+    The other side: declared British, G14 reports its American words."""
+    from manuscript_guard.gates import check_language
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert text.count("analysed") == 1, "the fixture's one British word moved"
+    main.write_text(text.replace("analysed", "analyzed") + "\n# Appendix\n\nThe color of "
+                    "the tumor and the behavior of the center were noted.\n",
+                    encoding="utf-8")  # fmt: skip
+    said = _english_said(project, "en-GB", declared)
+    spelling = [f.code for f in check_language(load_project(project)[0]).findings
+                if f.code.startswith("spelling-")]  # fmt: skip
+    if declared is None:
+        assert [(code, severity) for code, severity, _m, _h in said] == [
+            ("english-variant-undeclared", "info")]  # fmt: skip
+        assert spelling == []
+    else:
+        assert said == []
+        assert spelling == ["spelling-not-as-declared"]
 
 
 def test_an_old_profile_warns(project: Path) -> None:
@@ -609,6 +756,152 @@ def test_a_limit_is_stated_as_digits_or_a_small_number_word(
     from manuscript_guard.gates.journal_quotes import _states
 
     assert _states(quote, value) is states
+
+
+#: A sentence of a page in Japanese, and the words of it a profile would quote.
+_JAPANESE = ("本誌の規定：抄録は300語以内"
+             "とする。")  # fmt: skip
+_JAPANESE_QUOTE = "抄録は300語以内"
+#: And in Chinese: a quote run on from the words before it, and one a colon and a stop set
+#: apart.
+_CHINESE = "本刊规定摘要不超过300字。"
+_CHINESE_APART = "本刊规定：摘要不超过300字。"
+_CHINESE_QUOTE = "摘要不超过300字"
+
+
+@pytest.mark.parametrize(
+    ("page", "quote", "on_page"),
+    [
+        (_JAPANESE, _JAPANESE_QUOTE, False),
+        (f"See: {_JAPANESE_QUOTE} here.", _JAPANESE_QUOTE, True),
+        (_CHINESE, _CHINESE_QUOTE, False),
+        (_CHINESE_APART, _CHINESE_QUOTE, True),
+        ("should not exceed 300 words2.", "should not exceed 300 words", False),
+        ("should not exceed 300 words 2.", "should not exceed 300 words", True),
+        ("no more than four&nbsp;figures", "no more than four figures", False),
+        ("no more than four fig­ures", "no more than four figures", False),
+        ("no more than four fig-\nures", "no more than four figures", False),
+        ("no more than four\nfigures", "no more than four figures", True),
+    ],
+)
+def test_a_quote_in_a_script_without_spaces_or_across_markup_is_not_on_the_page(
+    page: str, quote: str, on_page: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): a quote run on from
+    the words of a sentence of Chinese or Japanese, or before a footnote digit glued to it,
+    is refused, and an HTML entity, a soft hyphen or a word broken across lines is not
+    folded; the other side of each, the words set apart by spaces, by marks of punctuation
+    or by a plain line break, is on the page. The
+    2026-11-09 triage planned a fix (F12), which will change this test."""
+    from manuscript_guard.gates.journal_quotes import _on_page
+
+    assert _on_page(page, quote) is on_page
+
+
+@pytest.mark.parametrize(
+    ("quote", "value", "states"),
+    [
+        ("no more than twenty-four figures", 4, True),
+        ("no more than twenty-four figures", 24, False),
+        ("should not exceed 3 500 words", 3, True),
+        ("should not exceed 123 456 words", 456, True),
+        # The other side of the rule of thousands: a group of one or two digits before.
+        ("should not exceed 12 456 words", 456, False),
+    ],
+)
+def test_a_quote_states_a_number_its_longer_number_holds(
+    quote: str, value: int, states: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): "twenty-four" states
+    4, "3 500" states 3 and "123 456" states 456. The 2026-11-09 triage planned a fix (F12),
+    which will change this test."""
+    from manuscript_guard.gates.journal_quotes import _states
+
+    assert _states(quote, value) is states
+
+
+@pytest.mark.parametrize("stored", ["not UTF-8", "a folder"])
+def test_a_page_not_utf8_or_a_folder_is_called_not_stored(project: Path, stored: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): a stored page that
+    is not UTF-8, or a folder where the page should be, is said to be not stored. The
+    2026-11-09 triage planned a fix (F12), which will change this test."""
+    page = project / PAGE
+    if stored == "a folder":
+        page.unlink()
+        page.mkdir()
+    else:
+        page.write_bytes(b"\xff\xfe" + page.read_bytes())
+    report = journal_report(project)
+    assert _quoted(report) == [("journal-page-not-stored", "warn")]
+    assert [f.message for f in report.findings if f.code == "journal-page-not-stored"] == [
+        f"the journal's page is not stored at {PAGE.as_posix()}, so no quote of the profile "
+        "can be held to it"
+    ]
+
+
+def test_an_empty_list_of_headings_needs_a_quote_and_a_negative_limit_is_not_held(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): an empty
+    `abstract_headings` is a rule that wants its quote where an empty `required_sections`
+    is none; a negative limit is not held to its quote's number, where one above 1 is. The
+    2026-11-09 triage planned a fix (F12), which will change this test."""
+    from manuscript_guard.gates.journal_quotes import check_quotes
+
+    def emptied(document: dict) -> None:
+        document["structure"]["required_sections"] = []
+        document["structure"]["abstract_headings"] = []
+        document["quotes"].pop("structure.required_sections")
+
+    edit_yaml(project / JOURNAL, emptied)
+    [said] = [f for f in journal_report(project).findings if f.code == "journal-rule-unquoted"]
+    assert said.message == (
+        "1 rule(s) of the profile carry no quote from the journal's page: "
+        "structure.abstract_headings"
+    )
+    loaded = load_project(project)[0]
+    document = yaml.safe_load((project / JOURNAL).read_text(encoding="utf-8"))
+    document["structure"]["abstract_headings"] = ["Background"]
+    document["quotes"]["structure.abstract_headings"] = "Cite"
+    for value, held in ((-5, False), (5, True)):
+        document["limits"]["figures"] = value
+        found = check_quotes(loaded, "demo-journal", document, project / JOURNAL)
+        codes_found = [f.code for f in found.findings if f.code == "journal-limit-not-in-quote"]
+        assert codes_found == (["journal-limit-not-in-quote"] if held else []), value
+
+
+def test_a_profile_the_schema_refuses_is_read_for_its_checklist_and_its_page(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): G4 stops at a
+    profile its schema refuses, and its checklist and `journal --reread` read the target's
+    profile without the schema; `--reread` says a profile it cannot read names no journal,
+    and diffs a stored page that is missing as an empty one. The 2026-11-09 triage planned
+    a fix (F12), which will change this test."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+
+    text = (project / PAGE).read_text(encoding="utf-8")
+    new = project / "page-again.txt"
+    new.write_text(text, encoding="utf-8")
+    edit_yaml(project / JOURNAL, lambda d: d["limits"].update(figures="four"))
+    report = journal_report(project)
+    assert not report.ok and not {f.code for f in report.findings} & QUOTED
+    checklist = journal_checklist(load_project(project)[0])
+    assert checklist is not None and "| [ ] | cover letter |" in checklist
+    assert main(["journal", str(project), "--reread", str(new)]) == 0
+    assert "The page read again is the stored page, word for word." in capsys.readouterr().out
+    (project / PAGE).unlink()
+    assert main(["journal", str(project), "--reread", str(new)]) == 0
+    out = capsys.readouterr().out
+    first = text.splitlines()[0]
+    assert f"--- stored page\n+++ page read again\n@@ -0,0 +1,{len(text.splitlines())} @@\n" \
+        f"+{first}\n" in out
+    (project / JOURNAL).write_text("schema: [\n", encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(new)]) == 2
+    assert capsys.readouterr().err.strip() == (
+        "manuscript-guard: paper.yaml names no journal with a profile to read the page for"
+    )
 
 
 @pytest.mark.parametrize(
@@ -1032,6 +1325,48 @@ def test_a_guideline_named_in_a_comment_is_not_a_claim(project: Path) -> None:
     projekt, _ = load_project(project)
     codes = {f.code for f in check_reporting(projekt).findings}
     assert "guideline-claimed-not-declared" not in codes
+
+
+_SIMPLE_TABLE = (
+    "Guideline   Note\n"
+    "----------  ----------------------------\n"
+    "RECORD-PE   for routinely collected data\n"
+    "Analyses    reported in full\n"
+)
+_MULTILINE_TABLE = (
+    "----------------------------------------\n"
+    "Guideline   Reported\n"
+    "----------  ----------------------------\n"
+    "RECORD-PE   for routinely collected\n"
+    "            data\n"
+    "----------------------------------------\n"
+)
+_PIPE_TABLE = (
+    "| Guideline | Note |\n|---|---|\n| RECORD-PE | for routinely collected data |\n"
+    "| Analyses | reported in full |\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("table", "claimed"),
+    [(_SIMPLE_TABLE, True), (_MULTILINE_TABLE, True), (_PIPE_TABLE, False)],
+    ids=["simple", "multiline", "pipe"],
+)
+def test_the_rows_of_a_simple_or_multiline_table_are_read_as_one_sentence(
+    project: Path, table: str, claimed: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452"): G5 reads the rows of a
+    simple or a multiline table as one sentence, so a row naming a guideline not declared is
+    joined to another row's word of a claim; a pipe table's rows each end the sentence."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_reporting
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{table}\n", encoding="utf-8")
+    said = [f.message for f in check_reporting(load_project(project)[0]).findings
+            if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert said == (["the manuscript says it followed RECORD-PE, which is not in "
+                     "`reporting_guideline:`"] if claimed else [])  # fmt: skip
 
 
 @pytest.mark.parametrize(

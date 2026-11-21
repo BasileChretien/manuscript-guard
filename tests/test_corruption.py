@@ -2184,6 +2184,26 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("title", "results"),
+    [("## **Results**", True), ("- Results\n---", True), ("# Results\n---", True),
+     ("# Results", True), ("# Results and discussion", False)],
+)  # fmt: skip
+def test_a_section_is_results_only_by_its_title(project: Path, title: str, results: bool) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A section is Results only by its title."): a
+    Results heading in bold, as a list item over a rule or hashed over a rule ends the
+    Methods, and a P under a "Sensitivity analyses" below it is reported; under "Results
+    and discussion" that subsection keeps the Methods rules, and the P passes as a
+    threshold. The 2026-11-09 triage planned a fix (F18), which will change this test."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n# Methods\n\nAlpha was set in "
+                    f"advance.\n\n{title}\n\nText.\n\n### Sensitivity analyses\n\nThe excess "
+                    "was significant (p < 0.001).\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in gate_report(project).failures
+             if f.code == "unclassified-number" and "'0.001'" in f.message]  # fmt: skip
+    assert len(found) == (1 if results else 0)
+
+
 def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
     """`numbered-heading` took the number opening any setext title for section numbering, so
     "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
@@ -4277,6 +4297,73 @@ def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
     ]
 
 
+def test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A number a summary gives is looked for by its
+    key, and in a table or figure by its display."): a display that stands as a number of
+    its own in a placed figure's text or a table's cells reports a key by coincidence, the
+    example's tick at 10 among them; a PNG alone and a table's caption report nothing. A
+    title that names the Results in other words reports only where the paper has no
+    Results heading, a bold "Conclusions." paragraph is no conclusion, and a `lit.` value
+    is not looked for."""
+    _emitted(project, extra__ten="10", extra__own="84", extra__seven="7")
+    abstract = _line_of(project, _CONCLUDES)
+    _swap(project, _CONCLUDES, "synthetic data, {{results.extra.ten}} of them. Disproportionality")
+    assert _unreported(project) == []  # the figure draws a tick at 10
+    _swap(project, "{{figure.forest}}", "")
+    assert _unreported(project) == [("results.extra.ten", "Abstract", abstract)]
+    _swap(project, "\n\n# Discussion", "\n\n{{figure.forest}}\n\n# Discussion")
+    assert _unreported(project) == []
+    svg = project / "figures" / "forest.svg"
+    drawn = svg.read_bytes()
+    svg.unlink()  # the PNG alone is left
+    assert _unreported(project) == [("results.extra.ten", "Abstract", abstract)]
+    # "84" stands in the figure only inside "3.84", which is no number of its own.
+    _swap(project, "{{results.extra.ten}}", "{{results.extra.own}}")
+    svg.write_bytes(drawn)
+    assert _unreported(project) == [("results.extra.own", "Abstract", abstract)]
+    # A table's caption is not read; its header row is.
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    baseline = document["tables"]["baseline"]
+    baseline["caption"] = "Reports by drug group, in 7 kinds."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _swap(project, "{{results.extra.own}}", "{{results.extra.seven}}")
+    assert _unreported(project) == [("results.extra.seven", "Abstract", abstract)]
+    baseline["columns"][0] = "Characteristic, of 7 kinds"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unreported(project) == []
+    # A title that names the Results in other words reports only with no Results heading.
+    _swap(project, "{{results.extra.seven}}", "{{results.extra.own}}")
+    for title in ("Outcomes", "Main results"):
+        restated = f"\n\n# {title}\n\nThey were {{{{results.extra.own}}}}.\n\n# Discussion"
+        _swap(project, "\n\n# Discussion", restated)
+        assert _unreported(project) == [("results.extra.own", "Abstract", abstract)], title
+        _swap(project, "\n# Results\n", "\n# Reports of hepatic injury\n")
+        assert _unreported(project) == [], title
+        _swap(project, "\n# Reports of hepatic injury\n", "\n# Results\n")
+        _swap(project, restated, "\n\n# Discussion")
+    # A conclusion set as a bold paragraph is the Discussion's, and summarises nothing.
+    _swap(project, "{{results.extra.own}}", "some")
+    _swap(project, "\n\n# Data availability",
+          "\n\n**Conclusions.** They were {{results.extra.own}}.\n\n# Data availability")
+    assert _unreported(project) == []
+    _swap(project, "**Conclusions.** They", "## Conclusions\n\nThey")
+    assert _unreported(project) == [
+        ("results.extra.own", "Conclusions", _line_of(project, "They were {{results.extra"))
+    ]
+    _swap(project, "## Conclusions\n\nThey were {{results.extra.own}}.", "")
+    # A literature value an abstract gives is not looked for.
+    _swap(project, "synthetic data, some of them.",
+          "synthetic data, against {{lit.background.class_ror}} for the class.")
+    assert _unreported(project) == []
+    _swap(project, "against {{lit.background.class_ror}} for", "against {{results.extra.own}} for")
+    assert _unreported(project) == [("results.extra.own", "Abstract", abstract)]
+
+
 def test_a_section_of_a_later_file_is_not_taken_for_one_of_an_earlier() -> None:
     """Round 1 of #272: which sections report and which summarise was kept by identity, and
     once a file's sections were freed a section of the next file could be given the address
@@ -4467,6 +4554,142 @@ def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(
     assert "binds results.ror.point (main.md:" in found.message, found.message
 
 
+def _held(root: Path, summary: str, results: str = "r.", supplement: str = "") -> list[str]:
+    """What `summary-claim-stronger` says moved, for a paper whose Abstract is `summary` and
+    whose Results are `results`; `supplement`, where given, a file of the supplement."""
+    main_md(root).write_text(f"# Abstract\n\n{summary}\n\n# Methods\n\nm.\n\n# Results\n\n"
+                             f"{results}\n", encoding="utf-8")  # fmt: skip
+    if supplement:
+        (root / "manuscript" / "supplementary" / "s9.md").write_text(supplement, "utf-8")
+    return [found.message.split("): ", 1)[1] for found in _overclaimed(root)]
+
+
+_A = "{{results.case.n_cases}}"
+_B = "{{results.case.n_serious}}"
+_HR = "{{results.ror.point}}"
+_CI = "95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}"
+
+
+@pytest.mark.parametrize(
+    ("summary", "results", "moved"),
+    [
+        # Only the words of the lists: a claim made stronger in other words, or a qualifier
+        # the limits do not list dropped, is not seen.
+        (f"Use was associated with twice the risk ({_HR}).",
+         f"Use was associated with a higher risk ({_HR}).", []),
+        (f"Use was associated with harm ({_HR}).",
+         f"Use was associated with harm in older women ({_HR}).", []),
+        # A Results sentence that holds none of them is compared with nothing; the claim
+        # beside it in a sentence of its own is not read.
+        (f"Use caused the outcome ({_HR}).",
+         f"Use was associated with the outcome. The adjusted HR was {_HR}.", []),
+        (f"Use caused the outcome ({_HR}).",
+         f"Use was associated with the outcome; the adjusted HR was {_HR}.",
+         ["'associated' (association) is now 'caused' (causation)"]),
+        # A summary sentence that holds none is held only to the hedges and limits it
+        # dropped: not to a negation or a word of the ladder, and a hedge only where the
+        # Results sentence negates nothing and its lowest word, if any, is of consistency.
+        (f"The HR was {_HR}.", f"Use was not associated with the outcome ({_HR}).", []),
+        (f"The HR was {_HR}.", f"The ratio suggests a signal ({_HR}).", []),
+        (f"Rates were higher in men ({_HR}).", f"Rates may be higher in men ({_HR}).",
+         ["'may' is gone"]),
+        (f"The HR was {_HR}.", f"These may be consistent with an association ({_HR}).",
+         ["'may' is gone; 'consistent with' (consistency) and 'association' (association) "
+          "are gone"]),
+        (f"The HR was {_HR}.", f"Use may be associated with the outcome ({_HR}).", []),
+        (f"The HR was {_HR}.", f"Use may not be associated with the outcome ({_HR}).", []),
+        # A negation new is claiming more, whatever it negates.
+        (f"Use was associated with the outcome, and not with death ({_HR}).",
+         f"Use was associated with the outcome ({_HR}).", ["'not' is new"]),
+        # Against a Results sentence that binds a result the summary does not give, only a
+        # word of the ladder moved up is read; the other side of each is the sentence that
+        # binds nothing else.
+        (f"Use was associated with A ({_A}).",
+         f"Use may be associated with A ({_A}) and with B ({_B}).", []),
+        (f"Use was associated with A ({_A}).", f"Use may be associated with A ({_A}).",
+         ["'may' is gone"]),
+        (f"Use was associated with the outcome ({_HR}).",
+         f"Use may be associated with the outcome ({_HR}, {_CI}).", []),
+        (f"Use was associated with the outcome ({_HR}, {_CI}).",
+         f"Use may be associated with the outcome ({_HR}, {_CI}).", ["'may' is gone"]),
+        (f"Use increased the outcome ({_HR}).",
+         f"The adjusted HR was {_HR}, and was not raised in women ({_A}).", []),
+        # A summary sentence that binds several keys: another key's sentence that claims as
+        # much keeps the warning back.
+        (f"Use was associated with A ({_A}) and B ({_B}).",
+         f"Use may be associated with A ({_A}). Use was associated with B ({_B}).", []),
+        (f"Use was associated with A ({_A}) and B ({_B}).",
+         f"Use may be associated with A ({_A}). B was {_B}.", ["'may' is gone"]),
+    ],
+)  # fmt: skip
+def test_a_summary_is_held_to_its_results_sentence_by_the_words_of_the_claim_lists(
+    project: Path, summary: str, results: str, moved: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): each pair of the entry, the Abstract's
+    sentence against the Results', and what `summary-claim-stronger` says moved, nothing
+    where it passes."""
+    assert _held(project, summary, results) == moved
+
+
+def test_a_summary_is_held_to_results_sentences_only(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): a key bound only in the Methods, in a
+    Results heading under the Methods, under a review's topical heading, or printed only in
+    an emitted table or figure, is compared with nothing; under the Results it is. The
+    title is not read."""
+    from manuscript_guard.gates import check_reported
+
+    caused = f"Use increased the outcome ({_HR})."
+    hedged = f"Use may be associated with the outcome ({_HR})."
+    moved = ["'may' is gone; 'associated' (association) is now 'increased' (effect)"]
+    assert _held(project, caused, f"r.\n\n## Results of the pilot\n\n{hedged}") == moved
+    # An emitted table whose caption and cell hedge beside the key's display, 3.84, and the
+    # figure, which prints "no association" beside it.
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["claimed"] = {
+        "columns": ["Finding", "Ratio"],
+        "rows": [["Use may be associated with the outcome", "3.84"]],
+        "caption": "Use may be associated with the outcome (3.84).",
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Methods\n\n{hedged}\n\n## Results "
+                                f"of the pilot\n\n{hedged}\n\n# Results\n\nr.\n\n"
+                                "{{table.claimed}}\n\n{{figure.forest}}\n",
+                                encoding="utf-8")  # fmt: skip
+    assert _overclaimed(project) == []
+    main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Introduction\n\ni.\n\n"
+                                f"# Reports of the drug\n\n{hedged}\n", encoding="utf-8")
+    assert _overclaimed(project) == []
+    main_md(project).write_text(f'---\ntitle: "{caused}"\n---\n\n# Methods\n\nm.\n\n'
+                                f"# Results\n\n{hedged}\n", encoding="utf-8")  # fmt: skip
+    loaded, _ = load_project(project)
+    assert list(check_reported(loaded, load_namespace(loaded)[1]).findings) == []
+
+
+@pytest.mark.parametrize(
+    ("heading", "results"),
+    [("Supplementary results", True), ("Supplemental results", True),
+     ("Additional findings", True), ("S3. Results", True), ("Appendix 2: Results", True),
+     ("Appendix S1: Results", True), ("Supplement 1. Results", True), ("eResults 2", True),
+     ("Sensitivity analyses", False), ("eTable 2", False),
+     ("Supplementary methods\n\nm.\n\n## eResults 1", True),
+     ("Supplementary results\n\nr.\n\n## Methods of the pilot", False)],
+)  # fmt: skip
+def test_a_results_section_of_the_supplement_is_known_by_its_heading(
+    project: Path, heading: str, results: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): in the supplement a Results section is one
+    whose heading opens with "Results" or "Findings" after one of the labels the entry
+    names, the innermost heading that names the Methods or the Results deciding."""
+    supplement = f"# {heading}\n\nUse may be associated with the outcome ({_HR}).\n"
+    said = _held(project, f"Use was associated with the outcome ({_HR}).", supplement=supplement)
+    assert said == (["'may' is gone"] if results else [])
+
+
 def _interpreted(root: Path) -> list:
     """What G8 notes of the sentences that claim on neither a result nor a citation."""
     from manuscript_guard.gates import check_interpretation
@@ -4558,6 +4781,81 @@ def test_the_supplement_s_interpretation_is_counted_where_it_argues(project: Pat
     assert (note.path, note.line) == (supplement, 7)
     assert note.message.startswith("2 of the 2 sentences")
     assert "`manuscript-guard explain manuscript/supplementary/s2.md`" in note.hint
+
+
+def _counted(root: Path) -> list[str]:
+    """The sentences of main.md G8's interpretation note counts, as `explain` lists them;
+    the note's count is held to the list."""
+    from manuscript_guard.gates.interpretation import listed
+
+    found = listed(load_project(root)[0], main_md(root))
+    notes = [note for note in _interpreted(root) if note.path == main_md(root)]
+    assert [note.message.split()[0] for note in notes] == ([str(len(found))] if found else [])
+    return [one.sentence for one in found]
+
+
+@pytest.mark.parametrize(
+    ("typed", "counted"),
+    [
+        # A claim with no word of the ladder is not counted; one with a word of it that
+        # claims nothing of this paper's results is.
+        ("The drug is hepatotoxic.", []),
+        ("Older patients are at higher risk.", []),
+        ("The class is associated with liver injury in other cohorts.",
+         ["The class is associated with liver injury in other cohorts."]),
+        # A binding stands it on a result, whatever it claims of it.
+        ("The risk increased with dose ({{results.ror.point}}).", []),
+        # A narrative citation is a citation; an author and year typed are none, nor is a
+        # citation in the footnote the sentence calls, nor the one the sentence before has.
+        ("@fictionalClassSignal2019 showed that the class increased injury.", []),
+        ("Smith (2019) showed that the class increased injury.",
+         ["Smith (2019) showed that the class increased injury."]),
+        ("The class increased injury.[^1]\n\n[^1]: As reported before "
+         "[@fictionalClassSignal2019].", ["The class increased injury.[^1]"]),
+        ("This was reported before [@fictionalClassSignal2019]. It increased injury.",
+         ["It increased injury."]),
+        ("Figure 1 suggests that use increased the reports.",
+         ["Figure 1 suggests that use increased the reports."]),
+        # A table typed by hand, its caption line and an image's alternative text.
+        ("Figure 1 shows the reports.\n\n| Finding | Seen |\n|---|---|\n"
+         "| Use increased injury | yes |\n\nTable: Use increased the reports.\n\n"
+         "![Use increased the reports.](figures/forest.png)\n",
+         ["| Use increased injury | yes |", "Table: Use increased the reports.",
+          "![Use increased the reports.](figures/forest.png) Spontaneous reports are subject "
+          "to notoriety bias, and the denominator is unknown."]),
+    ],
+)  # fmt: skip
+def test_the_interpretation_is_found_by_the_words_of_the_ladder_and_what_it_rests_on(
+    project: Path, typed: str, counted: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The paper's interpretation is found by the words
+    of the claim ladder alone"): each sentence of the entry, typed in the Discussion, and
+    whether the note counts it."""
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} {typed}")
+    assert _counted(project) == counted
+
+
+def test_a_placed_display_is_not_read_and_without_results_only_the_discussion_is(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The paper's interpretation is found by the words
+    of the claim ladder alone"): an emitted table's caption that claims, placed by its
+    binding, is not read; in a paper with no Results heading only the Discussion is read,
+    and a topical section's claim is not counted."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["two_by_two"]["caption"] = "Use increased these reports."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _counted(project) == []
+    main_md(project).write_text("# Abstract\n\na.\n\n# Reports of the drug\n\nUse increased "
+                                "injury.\n\n# Discussion\n\nUse increased the reports.\n",
+                                encoding="utf-8")  # fmt: skip
+    assert _counted(project) == ["Use increased the reports."]
+    # The other side: with a Results heading, the same claim there is counted.
+    main_md(project).write_text("# Abstract\n\na.\n\n# Results\n\nUse increased injury.\n\n"
+                                "# Discussion\n\nUse increased the reports.\n", encoding="utf-8")
+    assert _counted(project) == ["Use increased injury.", "Use increased the reports."]
 
 
 def test_explain_lists_the_sentences_the_interpretation_note_counts(
@@ -4731,6 +5029,82 @@ def test_a_findings_subheading_under_a_topical_section_is_read_as_the_results(
         ("results.ror.point", "Abstract"),
         ("results.ror.point", "Conclusions"),
     ]
+
+
+@pytest.mark.parametrize(
+    "heading", ["The problem of arrests", "What this means for regulators", "The signal in short"]
+)
+def test_a_review_s_own_introduction_discussion_or_summary_reports_where_it_has_no_results(
+    project: Path, heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper with no Results heading reports under
+    every heading that names no part."): a section of a review's own that is really an
+    introduction, a discussion or a summary reports, so the abstract's number it restates
+    passes; under the paper's Introduction it would be warned of."""
+    said = [f.message.split()[0] for f in _reported_said(project, _REVIEW_ROR_ALONE)]
+    assert said == ["results.ror.point"]
+    restated = f"# {heading}\n\nThe reporting odds ratio was {{{{results.ror.point}}}}.\n\n"
+    assert _reported_said(project, _REVIEW_ROR_ALONE.replace(
+        "# Discussion\n", restated + "# Discussion\n")) == []  # fmt: skip
+    # The other side: under a heading that names the Introduction, it reports nothing.
+    introduction = _REVIEW_ROR_ALONE.replace(
+        "Hepatic injury is a common reason for regulatory action.\n",
+        "Hepatic injury is a common reason for regulatory action.\n\n#" + restated,
+    )
+    assert [f.message.split()[0] for f in _reported_said(project, introduction)] == [
+        "results.ror.point"
+    ]
+
+
+def test_what_a_paper_with_no_results_heading_reads_as_its_results_and_its_title(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper with no Results heading reports under
+    every heading that names no part."): a heading that opens with "Results", at any level,
+    gives a review a Results heading, and its topical sections then report nothing; a
+    topical section over a subsection called "Background" is the paper's title, and the
+    text directly under it reports nothing; and an abstract that no heading names,
+    "Overview", is a section of the paper's own, whose "Results" heading is a Results
+    heading."""
+
+    def said(text: str) -> list[tuple[str, str]]:
+        return [(f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1])
+                for f in _reported_said(project, text)]  # fmt: skip
+
+    search = _REVIEW.replace("## Serious reports: a smaller group\n",
+                             "## Results of the search\n")  # fmt: skip
+    assert said(search) == [
+        ("results.cohort.n_reports", "Abstract"),
+        ("results.ror.point", "Abstract"),
+        ("results.ror.point", "Conclusions"),
+    ]
+    # The other side: a subheading that does not open with "Results" leaves the paper
+    # without one, and every topical section reports.
+    assert said(_REVIEW.replace("## Serious reports: a smaller group\n",
+                                "## The search and its results\n")) == []  # fmt: skip
+    ratio = "Against all other drugs, the reporting odds ratio was {{results.ror.point}}.\n"
+    background = _REVIEW.replace(
+        "# Regulatory responses\n\n" + ratio,
+        "# Regulatory responses\n\n" + ratio + "\n## Background\n\nIt was asked before.\n",
+    )
+    assert said(background) == [
+        ("results.ror.point", "Abstract"),
+        ("results.ror.point", "Conclusions"),
+    ]
+    # The other side: under a subsection of any other name the same text reports.
+    assert said(background.replace("## Background\n", "## Earlier questions\n")) == []
+    # An "Overview" is no abstract: its "Results" heading is the paper's, which then has
+    # Results, and the topical sections report nothing.
+    # A key the Conclusions give and only a topical section gives again.
+    topical = _REVIEW.replace(
+        "# Conclusions\n\n", "# Conclusions\n\nIt held {{results.cohort.n_drug_reports}}. "
+    ).replace("# Regulatory responses\n\n",
+              "# Regulatory responses\n\nOf {{results.cohort.n_drug_reports}}. ")  # fmt: skip
+    overview = topical.replace("# Abstract\n\n", "# Overview\n\n## Results\n\n")
+    assert said(overview) == [("results.cohort.n_drug_reports", "Conclusions")]
+    # The other side: under "Abstract", its "Results" summarise, the paper has no Results
+    # heading, and the topical section reports.
+    assert said(topical.replace("# Abstract\n\n", "# Abstract\n\n## Results\n\n")) == []
 
 
 def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
@@ -5418,6 +5792,77 @@ def test_an_elided_quotation_reads_points_as_a_reader_does(  # and a dash, as pi
     dashed = "rose with age … — … and did not differ"
     assert quoted_in("rose with age and did not differ", dashed)
     assert not quoted_in("rose with age, cost-effective, and differed", dashed)
+
+
+_MISQUOTED = "incidence fell with age and differed by sex"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param(f"The cohort found that “{_MISQUOTED}” [@fictionalHepaticCohort2021].",
+                     [("quotation-not-in-source", "warn")], id="double marks"),
+        pytest.param(f"The cohort found that ‘{_MISQUOTED}’ [@fictionalHepaticCohort2021].",
+                     [], id="single marks"),
+        pytest.param(f"The cohort found that «{_MISQUOTED}» [@fictionalHepaticCohort2021].",
+                     [], id="guillemets"),
+        pytest.param(f"The cohort found that „{_MISQUOTED}“ [@fictionalHepaticCohort2021].",
+                     [], id="german marks"),
+        pytest.param(f"> {_MISQUOTED} [@fictionalHepaticCohort2021].", [],
+                     id="a block quotation"),
+        pytest.param("Patients rated “I feel tired most of the day” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="a questionnaire's item"),
+        pytest.param("The cohort found that “incidence *rose* with age and did not differ” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="emphasis inside"),
+        pytest.param("The cohort found that “crude incidence […] confirmed by an alanine "
+                     "aminotransferase” [@fictionalHepaticCohort2021].", [],
+                     id="pieces far apart"),
+        pytest.param("The cohort found “crude … hepatic … age … sex” "
+                     "[@fictionalHepaticCohort2021].", [], id="four one-word pieces"),
+        pytest.param("The cohort found “crude … hepatic … age … cats” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="four one-word pieces, one not there"),
+    ],
+)  # fmt: skip
+def test_a_quotation_in_the_prose_is_found_by_its_marks_and_its_pieces(
+    project: Path, sentence: str, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quotation in the prose is found by its marks"):
+    single marks, a block quotation and other languages' marks are not read; a quotation of
+    something other than the cited work is looked for in it and warned of; emphasis marks
+    are compared as written; and the pieces of an elided quotation are found however far
+    apart, four one-word pieces counting as four words."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == said
+
+
+def test_an_elided_piece_is_held_to_its_word_s_edges_and_a_key_s_abstract_is_shared(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quotation in the prose is found by its
+    marks"): a piece after an elision is held to its word's edges by letters, digits, a
+    hyphen, an apostrophe and a decimal point, so a decimal comma and a minus sign are not
+    seen; a piece inside a range is not found; and a key ending in `.abstract` files its
+    source under the name of another key's abstract, each read as the other's."""
+    from manuscript_guard.gates.quotations import quoted_in
+    from manuscript_guard.literature.sources import is_abstract, normalise, stored_files
+
+    assert quoted_in(normalise("a change of \N{MINUS SIGN}0.5 mg daily"), "… 0.5 mg daily")
+    assert quoted_in(normalise("a dose of 2,5 mg daily"), "… 5 mg daily")
+    assert not quoted_in(normalise("a dose of 2.5 mg daily"), "… 5 mg daily")
+    assert not quoted_in(normalise("doses of 10–20 mg were safe"), "… 20 mg were safe")
+    (tmp_path / "smith.abstract.txt").write_text("An abstract.\n", encoding="utf-8")
+    assert stored_files(tmp_path, "smith") == [tmp_path / "smith.abstract.txt"]
+    assert stored_files(tmp_path, "smith.abstract") == [tmp_path / "smith.abstract.txt"]
+    assert is_abstract(tmp_path / "smith.abstract.txt")
 
 
 def test_a_quotation_is_looked_for_in_every_stored_file_of_its_work(project: Path) -> None:
@@ -8642,6 +9087,122 @@ def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: 
     assert not [f for f in check_journal(project_).findings if f.code.startswith("data-")]
 
 
+_MISSING = [("data-identifier-missing", "fail")]
+_ARCHIVED = "https://web.archive.org/web/20200101000000/https://example.org/data"
+#: The data policy with a forbidden phrasing and its `unless` written in small letters and
+#: with no `(?i)`, so that only the gate makes them blind to case.
+_CASED = {**_DATA_POLICY, "forbidden": [
+    {"pattern": r"\bon request\b", "unless": r"\bprivacy\b", "why": "say why"}]}
+
+
+@pytest.mark.parametrize(
+    ("statement", "policy", "said"),
+    [
+        # Each identifier the gate knows, and a DOI, whose citation is a rule of its own.
+        *((f"The data are deposited: {named}.", None, []) for named in (
+            "GSE123456", "SRP123456", "PRJNA123456", "EGAS00001000001", "E-MTAB-1234",
+            "phs000001.v1", "https://hdl.handle.net/1234/5678", "ark:/12345/abc",
+            "https://zenodo.org/records/1234567", "https://osf.io/abcde", _ARCHIVED,
+            "https://perma.cc/ABCD-1234")),
+        ("The data are deposited: doi:10.5281/zenodo.1234567.", None,
+         [("data-doi-uncited", "warn")]),
+        # Another archive's accession only where the profile lists it.
+        ("The data are in PRIDE, PXD012345.", None, _MISSING),
+        ("The data are in PRIDE, PXD012345.",
+         {**_DATA_POLICY, "identifier_patterns": [r"\bPXD\d{6}\b"]}, []),
+        # An identifier anywhere satisfies the rule, whatever it names.
+        ("The data are held by the team; we compared them with GSE123456.", None, []),
+        # A forbidden phrasing in any case, and its `unless` anywhere in the statement.
+        ("Data are available ON REQUEST. GSE123456.", None,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. We respect patient privacy.", None, []),
+        # The gate's own case-blindness: patterns written without `(?i)`.
+        ("Data are available ON REQUEST. GSE123456.", _CASED,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. PRIVACY rules apply.", _CASED, []),
+        # A link with a path after the repository's name, a branch's too, is a fixed
+        # version; a bare one is warned of with its archive named beside it.
+        ("The code is at https://github.com/someone/study/tree/main, GSE123456.", None, []),
+        ("The code is at https://github.com/someone/study, archived at "
+         "https://zenodo.org/records/1234567.", None, [("data-link-temporary", "warn")]),
+        # The section's subsections are the statement's.
+        ("See below.\n\n## Deposited data\n\nGSE123456.", None, []),
+        ("See below.", None, _MISSING),
+    ],
+)  # fmt: skip
+def test_a_data_statement_is_read_by_the_patterns_the_gate_and_the_profile_give(
+    project: Path, statement: str, policy: dict | None, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): the identifiers the gate knows, another archive's
+    only as the profile lists it, and any of them wherever it stands; a forbidden phrasing
+    in any case, let off by its `unless` anywhere; a repository linked with a path after
+    its name taken for a fixed version, and one linked bare warned of beside its archive;
+    and the subsections of the statement's section read as the statement."""
+    assert _data_statement(project, statement, policy) == said
+
+
+def test_a_data_statement_without_its_heading_or_citing_a_plain_misc_is_not_read_as_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a statement written as a paragraph with no heading
+    of its own is not read, and only the statement's own check says it is missing; a `@misc`
+    entry that holds a dataset and does not say so, cited by its key, names no dataset.
+    """
+    from manuscript_guard.gates import check_journal
+
+    assert _data_statement(project, "Data are available on request.") == [
+        ("data-identifier-missing", "fail"), ("data-statement-forbidden", "fail")]
+    path = main_md(project)
+    headed = path.read_text(encoding="utf-8")
+    path.write_text(headed.replace("# Data availability\n\n", "", 1), encoding="utf-8")
+    assert _data_findings(project) == []
+    report = check_journal(load_project(project)[0])
+    assert [f.message for f in report.failures if f.code == "missing-required-statement"] == [
+        "the journal requires a data-availability statement"]
+    path.write_text(headed, encoding="utf-8")
+    bib = project / "literature" / "references.bib"
+    misc = "@misc{fictionalHepaticCohort2021,\n  doi = {10.5281/zenodo.1234567},\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "@article{fictionalHepaticCohort2021,\n", misc, 1), encoding="utf-8")  # fmt: skip
+    cited = "Data are in Zenodo [@fictionalHepaticCohort2021]."
+    assert _data_statement(project, cited) == _MISSING
+    # The other side of the same rule: the entry of type `dataset` is read as one.
+    bib.write_text(bib.read_text(encoding="utf-8").replace("@misc{fictionalHepaticCohort2021",
+                                                           "@dataset{fictionalHepaticCohort2021"),
+                   encoding="utf-8")  # fmt: skip
+    assert _data_statement(project, cited) == []
+
+
+@pytest.mark.parametrize("where", ["identifier_patterns", "forbidden", "required_statements"])
+def test_a_pattern_of_the_profile_that_does_not_compile_stops_g4(
+    project: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a regular expression of the data policy that does
+    not compile raises out of G4, as one of its required statements does."""
+    from manuscript_guard.gates import check_journal
+
+    held = "The data are held by the team."
+    assert _data_statement(project, held) == _MISSING
+    if where == "required_statements":
+        profile = project / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["required_statements"][0]["pattern"] = "(unclosed"
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        with pytest.raises(re.error):
+            check_journal(load_project(project)[0])
+        return
+    policy = {**_DATA_POLICY}
+    if where == "identifier_patterns":
+        policy["identifier_patterns"] = ["(unclosed"]
+    else:
+        policy["forbidden"] = [{"pattern": "(unclosed", "why": "x"}]
+    with pytest.raises(re.error):
+        _data_statement(project, held, policy)
+
+
 def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) -> None:
     from manuscript_guard.gates import check_journal
     from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
@@ -9082,6 +9643,72 @@ def test_a_spread_labelled_the_other_kind_is_said(project: Path) -> None:
     assert _labels_said(project) == [("spread-label-differs", "warn")]
 
 
+#: A mean and three spreads of it: a standard deviation, a standard error, and one emitted
+#: without `spread`.
+_SPREADS = {
+    "age.mean": {"value": 45.2, "display": "45.2"},
+    "age.sd": {"value": 12.3, "display": "12.3", "spread": "sd", "of": "age.mean"},
+    "age.se": {"value": 0.9, "display": "0.9", "spread": "se", "of": "age.mean"},
+    "age.bare": {"value": 1.1, "display": "1.1"},
+}
+
+_LOW_HIGH = "{{results.ror.ci_low}} to {{results.ror.ci_high}}"
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A level written in another sentence, or before another binding of the sentence.
+        (f"The 90% intervals are below. The ratio ran from {_LOW_HIGH}.", []),
+        (f"The 90% CI around {{{{results.ror.point}}}} ran from {_LOW_HIGH}.", []),
+        (f"The ratio ran (90% CI {_LOW_HIGH}).", ["interval-level-differs"]),
+        # An interval quoted only in a table the analysis emits, headed "90% CI" over the
+        # 95% bounds, is not read; in a table typed by hand the header labels the bounds.
+        ("{{table.ratios}}", []),
+        ("| 90% CI |\n|---|\n| " + _LOW_HIGH + " |", ["interval-level-differs"]),
+        # A plus-minus sign with no word beside it is no label.
+        ("Age was {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} years.", []),
+        ("Age was {{results.age.mean}} (SD {{results.age.se}}) years.",
+         ["spread-label-differs"]),
+        # A spread emitted without `spread` is held to nothing.
+        ("Age was {{results.age.mean}} (SE {{results.age.bare}}) years.", []),
+        # The words read for each kind; another abbreviation of either is not read.
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.se}}}}) years.",
+           ["spread-label-differs"]) for label in ("SD", "s.d.", "standard deviation")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.",
+           ["spread-label-differs"])
+          for label in ("SE", "SEM", "s.e.", "standard error")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.", [])
+          for label in ("SD", "s.d.", "standard deviation")],
+        # Abbreviations of the other kind, no stop and a space before the binding.
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.se}}}}) years.", [])
+          for label in ("StDev", "std", "SDev", "Std.Dev")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.", [])
+          for label in ("StErr", "s.e.m")],
+    ],
+)  # fmt: skip
+def test_a_label_is_read_only_beside_its_binding_and_only_as_written(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A label is read only beside its binding, and
+    only what is written."): a level or a spread's label is read in the binding's own
+    sentence, after any other binding, in a table typed by hand but not in one the analysis
+    emits, and only in the words the entry lists."""
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-18T00:00:00+00:00"},
+        "values": _SPREADS,
+        "tables": {"ratios": {"columns": ["Ratio", "90% CI"],
+                              "rows": [["3.84", "2.89 to 5.12"]]}},
+    }  # fmt: skip
+    fragment = project / "results" / "02_labels.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _with_paragraph(project, paragraph)
+    assert _labels_said(project) == [(code, "warn") for code in said]
+
+
 def _whole_said(root: Path) -> list[tuple[str, str]]:
     codes_ = ("quoted-alone", "interval-not-quoted-whole", "family-uncorrected")
     return [(f.code, f.severity) for f in gate_report(root).findings if f.code in codes_]
@@ -9223,6 +9850,105 @@ def test_what_quoted_alone_does_not_read_is_pinned(
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A p value or a share emitted without `of` is held to nothing, whatever its key.
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.free.p}}}}.", []),
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.free.pct}}}}%.", []),
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.or.p}}}}.", ["quoted-alone"]),
+        # The estimate bound in the sentence passes it, whatever the sentence says of it.
+        (f"The ratio was {_ESTIMATE}. Unlike {{{{results.whole.or.point}}}}, the hazard ratio "
+         "had P = {{results.whole.or.p}}.", []),
+        # A sentence that ends at an abbreviation's stop parts the P from its estimate.
+        (f"The ratio was {_ESTIMATE} vs. the control, P = {{{{results.whole.or.p}}}}.",
+         ["quoted-alone"]),
+        (f"The ratio was {_ESTIMATE} versus the control, P = {{{{results.whole.or.p}}}}.", []),
+        # An estimate quoted only in a table the analysis emits is not read, nor a
+        # percentage in its cells; a share bound in a sentence is.
+        ("{{table.ratios}}\n\nP was {{results.whole.or.p}}.", ["quoted-alone"]),
+        (f"The ratio was {_ESTIMATE}.\n\n{{{{table.shares}}}}", []),
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.female.pct}}}}%.",
+         ["quoted-alone"]),
+    ],
+)  # fmt: skip
+def test_a_statistic_is_held_to_what_it_declares_and_only_by_sentence(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A statistic is held to what it declares it
+    belongs to, and only by sentence."): a key named `.p` or a share emitted without `of`
+    is held to nothing, an estimate's binding in the sentence passes it, an abbreviation's
+    stop parts a P from its estimate, and an emitted table's cells are not read."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.free.p"] = {"value": 0.03, "display": "0.030"}
+    document["values"]["whole.free.pct"] = {"value": 52.1, "display": "52.1"}
+    document["tables"] = {
+        "ratios": {"columns": ["Ratio", "95% CI"], "rows": [["2.50", "1.40 to 3.80"]]},
+        "shares": {"columns": ["Group", "Share"], "rows": [["Women", "52.1%"]]},
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+def test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A statistic is held to what it declares it
+    belongs to, and only by sentence."): one p value of a family in each of two fragments
+    is a family of two, and of two corrections declared for one family the fragment read
+    last decides."""
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "holm"}})
+    more = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-15T00:00:00+00:00"},
+        "values": {"more.p": {"value": 0.2, "display": "0.20", "of": "whole.or.point",
+                              "family": "across"}},
+    }  # fmt: skip
+    fragment = project / "results" / "03_more.json"
+    fragment.write_text(json.dumps(more, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == []  # a family of one
+    whole = project / "results" / "02_whole.json"
+    document = json.loads(whole.read_text(encoding="utf-8"))
+    document["values"]["whole.hr.p"]["family"] = "across"
+    whole.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(whole)
+    said = [f.message for f in gate_report(project).findings if f.code == "family-uncorrected"]
+    assert said == ["the 'across' family holds 2 p values and the analysis declares no "
+                    "correction for it: more.p, whole.hr.p"]  # fmt: skip
+    more["corrections"] = {"secondary": {"method": "bonferroni"}}
+    fragment.write_text(json.dumps(more, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _namespace, results, _literature, _report = load_namespace(load_project(project)[0])
+    assert results.corrections["secondary"] == {"method": "bonferroni"}
+
+
+@pytest.mark.parametrize(
+    ("above", "said"),
+    [("| Ratio | 95% CI |\n|---|---|\n| {{results.whole.or.point}} | "
+      "{{results.whole.or.ci_low}} to {{results.whole.or.ci_high}} |\n\n", []),
+     ("## Odds ratio {{results.whole.or.point}}\n\n", []),
+     ("- The odds ratio, {{results.whole.or.point}}\n\n", []),
+     ("![The odds ratio, {{results.whole.or.point}}](figures/forest.png)\n\n", []),
+     ("", ["quoted-alone"])],
+)  # fmt: skip
+def test_a_block_with_no_stop_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone(
+    project: Path, above: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A block with no stop at its end and the
+    paragraph after it are read as one sentence"): a typed table, a heading, a list item or
+    a display's line that holds the estimate and ends in no stop runs into the paragraph
+    after it, so a P written there passes as if the estimate stood beside it; the same P
+    with no such block before it is quoted alone."""
+    _with_whole(project, above + "P was {{results.whole.or.p}}.",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    assert [code for code, _ in _whole_said(project) if code == "quoted-alone"] == said
 
 
 @pytest.mark.parametrize(
@@ -9644,6 +10370,143 @@ def test_a_placeholder_in_an_uncited_reference_says_nothing(project: Path) -> No
         encoding="utf-8",
     )
     assert _placeholders(_g6(project)) == []
+
+
+#: Each way of ending "fill in later" or "replace later" that G6 does not read as the end of
+#: the phrase, and each that it does.
+_FILLER_UNREAD = ("| Dose | fill in later |\n|------|------|\n| Route | oral |",
+                  "The dose: fill in later?", "The dose: replace later!",
+                  'The dose: "fill in later"', "The dose: replace later - soon",
+                  "The dose: fill in later*")  # fmt: skip
+_FILLER_READ = ("The dose: fill in later.", "The dose: replace later)",
+                "The dose: fill in later: soon", "The dose: replace later; soon",
+                "The dose: fill in later, soon")  # fmt: skip
+
+
+def test_placeholders_are_read_by_the_shapes_their_rules_name(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Placeholders."): "47,XXX reports" is read as a
+    karyotype, and 69,XXX and 92,XXXX as gaps; a bracketed title that opens with an
+    instruction's verb, or holds a to-come word in capitals, fails in a cited entry; "[Your
+    ...]" is read in the manuscript and not in a caption; and "fill in later" or "replace
+    later" is read only before a stop, a bracket, a colon, a semicolon or a comma, not
+    before a pipe table's `|`, "?", "!", a quotation mark, a dash or an asterisk."""
+    from dataclasses import replace
+
+    _with_paragraph(project, "\n\n".join(("The count was 47,XXX reports.", *_FILLER_UNREAD)))
+    assert _placeholders(_g6(project)) == []
+    _with_paragraph(project, "\n\n".join(("The karyotypes were 69,XXX and 92,XXXX.",
+                                          "Approved at [Your hospital].", *_FILLER_READ)))
+    said = sorted(message.split(" — ")[0] for _severity, message in _placeholders(_g6(project)))
+    assert said == sorted(["'XXX'", "'XXXX'", "'[Your hospital]'", *["'fill in later'"] * 3,
+                           *["'replace later'"] * 2]), said  # fmt: skip
+    bib = project / "literature" / "references.bib"
+    entries = bib.read_text(encoding="utf-8")
+    bib.write_text(entries.replace(
+        "{Hepatic injury in a fictional national cohort, 2010--2019}",
+        "{[Describe a case of hepatitis]}").replace(
+        "{A disproportionality signal for a fictional drug class}",
+        "{[MISSING DATA IN PAEDIATRIC HEPATITIS]}"), encoding="utf-8")  # fmt: skip
+    _project, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(_project)
+    baseline = replace(results.tables["baseline"], caption="[Your title] by drug group.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    # Outside the manuscript: the caption's "[Your ...]" is not read, the titles are.
+    said = [message for _severity, message in _placeholders(_g6(project, results))
+            if " in the " in message.split(" — ")[0]]  # fmt: skip
+    assert sorted(message.split(" — ")[0] for message in said) == [
+        "'[Describe a case of hepatitis]' in the title of @fictionalHepaticCohort2021",
+        "'[MISSING DATA IN PAEDIATRIC HEPATITIS]' in the title of @fictionalClassSignal2019",
+    ], said
+
+
+def _png_saying(words: str) -> bytes:
+    """A PNG that draws `words` in its pixels and carries them in a tEXt chunk too, so a
+    reader of either finds them."""
+    import io
+
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    figure = Figure(figsize=(2, 1))
+    FigureCanvasAgg(figure)
+    figure.text(0.1, 0.4, words, fontsize=14)
+    drawn = io.BytesIO()
+    figure.savefig(drawn, format="png", metadata={"Comment": words})
+    return drawn.getvalue()
+
+
+def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A placeholder is found by its kind, and only in
+    the text the gate reads."): in the manuscript a Spanish "todo", or "tbd" in small
+    letters, fails, and "[Name of the hospital]", "[ETHICS COMMITTEE]", a lone "XX" and a
+    single "TK" pass; outside it, a PDF figure's text and every table's caption are read, a
+    table placed or not, and not a raster figure's text, a
+    table's cells, an entry's keywords or an entry nothing cites, under `nocite: '@*'` too;
+    "XXY and XXX girls" in a cited title fails. Of the essay's phrasing, "may possibly" is
+    read as a stacked hedge, and "holds great promise" and "the future looks bright" are
+    not read."""
+    import sys
+    from dataclasses import replace
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    unread = ("The hospital was [Name of the hospital].", "It was approved by [ETHICS "
+              "COMMITTEE].", "The sample was XX patients.", "The fraction was TK units.",
+              "The method holds great promise.", "In short, the future looks bright.")
+    hedge, todo = "The signal may possibly reflect reporting.", "Como dice, todo es posible."
+    tbd = "The dose was tbd at the time."
+    original = main_md(project).read_text(encoding="utf-8")
+    _with_paragraph(project, "\n\n".join((*unread, hedge, todo, tbd)))
+    lines = main_md(project).read_text(encoding="utf-8").splitlines()
+    at = {line: number for number, line in enumerate(lines, 1)
+          if line in (*unread, hedge, todo, tbd)}  # fmt: skip
+    said = [(f.code, f.message.split(":")[0], f.line, f.severity) for f in _g6(project).findings
+            if f.path is not None and f.path.name == "main.md" and f.line in at.values()]
+    assert sorted(said) == [("ai-phrasing", "stacked-hedge", at[hedge], "warn"),
+                            ("model-artefact", "'tbd' — Unfilled placeholder text", at[tbd],
+                             "fail"),
+                            ("model-artefact", "'todo' — Unfilled placeholder text", at[todo],
+                             "fail")], said  # fmt: skip
+    main_md(project).write_text(original, encoding="utf-8")
+    assert _placeholders(_g6(project)) == []
+    # Outside the manuscript: a PDF figure's text, and the caption of a table nothing
+    # places, are read; a raster figure's text and a table's cells are not.
+    (project / "figures" / "notes.pdf").write_bytes(typeset(["Panel TBD"], columns=1))
+    (project / "figures" / "panel.png").write_bytes(_png_saying("Panel TODO"))
+    _project, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(_project)
+    baseline = results.tables["baseline"]
+    cells = replace(baseline, rows=tuple(("TODO", *row[1:]) for row in baseline.rows))
+    unplaced = replace(baseline, key="unplaced", caption="Sensitivity analysis. TODO units.")
+    results = replace(results, tables={**results.tables, "baseline": cells,
+                                       "unplaced": unplaced})  # fmt: skip
+    said = sorted(message.split(" — ")[0] for _severity, message in
+                  _placeholders(_g6(project, results)))  # fmt: skip
+    assert said == ["'TBD' in the text of notes.pdf",
+                    "'TODO' in the caption of table 'unplaced'"], said  # fmt: skip
+    (project / "figures" / "notes.pdf").unlink()
+    (project / "figures" / "panel.png").unlink()
+    # A cited entry's keywords are not read, nor an entry nothing cites under `nocite`, and
+    # a karyotype written otherwise than "47,XXX" in a cited title is read as a gap.
+    _cited_entry_has(project, "keywords = {TODO}")
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "{A disproportionality signal for a fictional drug class}",
+        "{A disproportionality signal in XXY and XXX girls}")
+        + "\n@article{uncitedDraft2024,\n  title = {TODO},\n}\n", encoding="utf-8")  # fmt: skip
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\nnocite: '@*'\n", 1), encoding="utf-8")
+    said = [message.split(" — ")[0] for _severity, message in _placeholders(_g6(project))]
+    assert said == ["'XXX' in the title of @fictionalClassSignal2019"], said
+    # The other side of the entry nothing cites: cited, it is read.
+    _with_paragraph(project, "As drafted [@uncitedDraft2024].")
+    said = sorted(message.split(" — ")[0] for _severity, message in _placeholders(_g6(project)))
+    assert said == ["'TODO' in the title of @uncitedDraft2024",
+                    "'XXX' in the title of @fictionalClassSignal2019"], said  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -13470,6 +14333,24 @@ def test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone(
 
 
 @pytest.mark.parametrize(
+    ("between", "reversed_"),
+    [(", e.g.", False), (" approx.", False), (" vs.", False), (", for example,", True),
+     (" versus", True)],
+)  # fmt: skip
+def test_a_stop_after_an_abbreviation_ends_a_sentence_between_two_bounds(
+    project: Path, between: str, reversed_: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A stop after an abbreviation ends a sentence
+    between two bounds."): the upper bound typed before the lower passes where "e.g.",
+    "approx." or "vs." stands between them, and is reported where the same words are
+    written out."""
+    _with_paragraph(project, "The bounds ran from {{results.ror.ci_high}}" + between
+                    + " {{results.ror.ci_low}} in all.")  # fmt: skip
+    found = [f for f in gate_report(project).findings if f.code == "interval-reversed"]
+    assert len(found) == (1 if reversed_ else 0)
+
+
+@pytest.mark.parametrize(
     ("text", "backwards"),
     [
         ("It ran {high} <!-- was 7.02. --> to {low}.\n", [(1, "")]),
@@ -15962,6 +16843,85 @@ def test_g7_reads_the_types_of_the_pmid_pubmed_gives_a_doi(project: Path) -> Non
     assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
 
 
+def _weak_words(root: Path, paragraph: str, pubtypes: tuple[str, ...] = ("Case Reports",)):
+    """The words G7 names in its notes of `paragraph`, citing the example's first reference
+    and written before the Introduction's last paragraph, with that work typed `pubtypes`."""
+    main = root / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{paragraph}\n\n{_BEFORE_WHETHER}")
+    _looked_up(root, pmid="31000001", pubmed={**_CASE_REPORT, "pubtypes": list(pubtypes)})
+    return [re.findall(r"'([^']+)' \((?:effect|causation)\)", note.message)
+            for note in _weak_notes(root)]
+
+
+@pytest.mark.parametrize(
+    ("claim", "named"),
+    [
+        ("Hepatic injury was seen in patients with reduced renal function", [["reduced"]]),
+        ("Example-drug is responsible for hepatic injury", []),
+        ("Hepatic injury was due to example-drug", []),
+        ("Example-drug raised hepatic enzymes", []),
+    ],
+    ids=["an-effect-word-that-claims-nothing", "is-responsible-for", "due-to", "raised"],
+)
+def test_the_weak_source_note_reads_the_ladder_s_words_not_the_claim(
+    project: Path, claim: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "The word ladder is not an exact reading of a
+    claim"): a word of the effect rung that claims nothing sets the note off, and a claim in
+    words the list lacks does not."""
+    assert _weak_words(project, f"{claim} [@fictionalHepaticCohort2021].") == named
+
+
+def test_a_statement_that_evidence_is_lacking_is_noted_on_an_editorial(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A negation does not silence the note"): "There is
+    no evidence that X causes Y", cited to an editorial, gets the note."""
+    sentence = ("There is no evidence that example-drug causes hepatic injury "
+                "[@fictionalHepaticCohort2021].")  # fmt: skip
+    assert _weak_words(project, sentence, ("Editorial",)) == [["causes"]]
+
+
+@pytest.mark.parametrize(
+    ("before", "named"),
+    [
+        ("## Causes of liver injury\n", [["causes"]]),
+        ("## Causes of liver injury\n\n", []),
+        ("| Causes of liver injury |\n|---|\n| ", [["causes"]]),
+    ],
+    ids=["heading-with-no-blank-line", "heading-with-a-blank-line", "pipe-table-cells"],
+)
+def test_a_heading_or_a_table_cell_is_read_into_the_sentence_after_it(
+    project: Path, before: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A heading with no blank line after it"): a heading
+    with no blank line after it, or a pipe table's cell, is read as part of the sentence it
+    runs into, so a capitalised causation word opening it sets the note off. The 2026-11-09
+    triage planned a fix (F02), which will change this test."""
+    sentence = "Hepatic injury was seen after example-drug [@fictionalHepaticCohort2021]."
+    closing = " |" if before.startswith("|") else ""
+    assert _weak_words(project, f"{before}{sentence}{closing}") == named
+
+
+@pytest.mark.parametrize(
+    ("claim", "named"),
+    [
+        ("Example-drug caused hepatic injury, which may explain its withdrawal", []),
+        ("Example-drug has been reported to cause hepatic injury", [["cause"]]),
+    ],
+    ids=["a-hedge-on-another-clause", "a-hedge-the-list-lacks"],
+)
+def test_any_hedge_of_the_list_silences_the_weak_source_note(
+    project: Path, claim: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A hedge silences the note, whatever it hedges"):
+    "may" on another clause passes the sentence over, and "has been reported to cause",
+    which holds no hedge of `data/claim_strength.yaml`, is noted."""
+    assert _weak_words(project, f"{claim} [@fictionalHepaticCohort2021].") == named
+
+
 def test_g7_notes_an_effect_claimed_on_a_letter_beside_a_work_never_looked_up_not_at_all(
     project: Path,
 ) -> None:
@@ -17099,6 +18059,93 @@ def test_an_isbn_10_opening_978_before_another_word_is_pinned() -> None:
     assert [code for code, _said in found] == ["identifier-malformed"]
 
 
+def test_a_reference_s_identifiers_are_held_to_their_form_alone() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name"): a DOI of the right shape and a PMID of digits pass,
+    registered or not; BibLaTeX's `@online`, `@report`, `@thesis` and `@misc` need no field;
+    an ISBN-13 whose check digit adds up passes with no ISBN prefix; an ISBN-10 opening 978
+    and parted by a space only from another ISBN is read as an ISBN-13; and in an ISBN field
+    ten or thirteen digits in brackets are checked as an ISBN, an LCCN as well, while one in
+    brackets with its label is not read at all."""
+    from manuscript_guard.gates.identifiers import problems
+
+    def said(**fields: str) -> list[str]:
+        return [message for _code, message in problems("k", {"type": "misc", **fields})]
+
+    assert said(doi="10.99999/never.registered", pmid="1") == []
+    for kind in ("online", "report", "thesis", "misc"):
+        assert problems("k", {"type": kind}) == [], kind
+    assert [code for code, _ in problems("k", {"type": "techreport"})] == [
+        "reference-field-missing"] * 4  # fmt: skip
+    assert said(isbn="1234567890128") == []
+    assert said(isbn="9781234563 0-306-40615-2") == [
+        "@k: the ISBN '9781234563 0-306-40615-2' has a check digit that does not add up"]
+    assert said(isbn="9781234563; 0-306-40615-2") == []
+    assert said(isbn="0-306-40615-2 (2001012345)") == [
+        "@k: the ISBN '2001012345' has a check digit that does not add up"]
+    assert said(isbn="0-306-40615-2 (978-0-306-40615-8)") == [
+        "@k: the ISBN '9780306406158' has a check digit that does not add up"]
+    assert said(isbn="0-306-40615-2 (eISBN 978-0-306-40615-8)") == []
+    assert said(isbn="(eISBN 978-0-306-40615-7)") == [
+        "@k: the ISBN '(eISBN 978-0-306-40615-7)' holds no ISBN, only what is written beside "
+        "one"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("field", "word"),
+    [("0-306-40615-2, reprint", "reprint"), ("0-306-40615-2; 2nd printing", "2nd printing"),
+     ("0-306-40615-2 reprint", "reprint"), ("0-306-40615-2/reprint", "reprint"),
+     ("reprint, 0-306-40615-2", "reprint"), ("reprint 0-306-40615-2", "reprint 0-306-40615-2"),
+     ("reprinting 0-306-40615-2", "reprinting"), ("0-306-40615-2", None)],
+    ids=["after-a-comma", "after-a-semicolon", "after-a-space", "after-a-slash",
+         "before-a-comma", "before-a-space", "before-a-space-cut-at-ten", "the-isbn-alone"],
+)  # fmt: skip
+def test_a_word_beside_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
+    field: str, word: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name", its point "In an ISBN field, a word beside the ISBN"): a
+    word that is no label or listed qualifier, before the ISBN or after it, parted from it
+    by a space, a comma, a semicolon or a slash, is read as an ISBN (with the ISBN, where a
+    space parts a word before it and the run reaches neither ten nor thirteen characters
+    before the ISBN ends) and reported as one whose check digit does not add up,
+    where the ISBN alone gives no finding. An ISBN-10 opening 978 before a word is the
+    entry's own sentence (`test_an_isbn_10_opening_978_before_another_word_is_pinned`)."""
+    from manuscript_guard.gates.identifiers import problems
+
+    found = problems("k", {"type": "misc", "isbn": field})
+    assert found == ([] if word is None else [
+        ("identifier-malformed", f"@k: the ISBN '{word}' has a check digit that does not add "
+         "up")])  # fmt: skip
+
+
+def test_g7_reads_the_entry_s_own_type_and_a_book_s_title_for_its_chapter(tmp_path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name"): a field named `type` leaves the entry's type as G7 reads
+    it, so a `@thesis` with `type = {phdthesis}` is held to nothing; and a parent's title
+    goes where biber puts it by the parent's type alone, so an `@incollection` whose
+    `crossref` names a `@book` takes the book's title for its booktitle, and one whose
+    parent is an `@mvbook` does not."""
+    from manuscript_guard.gates.identifiers import problems
+    from manuscript_guard.literature.bibfile import read_entries
+
+    bib = tmp_path / "references.bib"
+    bib.write_text("@thesis{t,\n  type = {phdthesis},\n  title = {T},\n}\n\n"
+                   "@phdthesis{p,\n  title = {T},\n}\n", encoding="utf-8")  # fmt: skip
+    entries = read_entries(bib)
+    assert problems("t", entries["t"]) == []
+    assert [said for _code, said in problems("p", entries["p"])] == [
+        "@p: an @phdthesis entry needs its author, and has none",
+        "@p: an @phdthesis entry needs its school or institution, and has none",
+        "@p: an @phdthesis entry needs its year or date, and has none",
+    ]
+    chapter = {"type": "incollection", "author": "A", "title": "T", "year": "2000",
+               "crossref": "b"}  # fmt: skip
+    assert problems("a", chapter, {"type": "book", "title": "The book"}) == []
+    assert [said for _code, said in problems("a", chapter, {"type": "mvbook", "title": "B"})] == [
+        "@a: an @incollection entry needs its booktitle, and has none"]
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -17321,6 +18368,68 @@ def test_parts_of_one_book_are_two_works(
     assert _duplicate_findings(project) == []
 
 
+_FAIL = [("reference-duplicate", "fail")]
+_WARN = [("reference-title-duplicate", "warn")]
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second", "title", "said"),
+    [
+        # A preprint and its article: no identifier in common, titles that differ.
+        (("", ""), {"doi": "10.5555/pre.1"}, {"doi": "10.5555/art.1"}, None, []),
+        # A title of fewer than four words is not compared; one of four is.
+        (("", ""), {}, {}, "Hepatic injury reported", []),
+        (("", ""), {}, {}, "Hepatic injury in cohorts", _WARN),
+        # A chapter cited twice, by its DOI: found by its title only, and a warning.
+        (("incollection", "incollection"), {"doi": "10.5555/ch.1"}, {"doi": "10.5555/ch.1"},
+         None, []),
+        (("incollection", "incollection"), {"doi": "10.5555/ch.1"}, {"doi": "10.5555/ch.1"},
+         "A chapter on hepatic injury", _WARN),
+        # A conference paper cited twice, by its DOI: likewise.
+        (("inproceedings", "inproceedings"), {"doi": "10.5555/cp.1"}, {"doi": "10.5555/cp.1"},
+         None, []),
+        (("inproceedings", "inproceedings"), {"doi": "10.5555/cp.1"}, {"doi": "10.5555/cp.1"},
+         "A conference paper on hepatic injury", _WARN),
+        # A work and its translation: no identifier, and a title in another language.
+        (("", ""), {}, {}, ("Hepatic injury in a national cohort",
+                            "Les atteintes hépatiques dans une cohorte nationale"), []),
+        # A book cited twice with a volume in one entry only, or "I" and "1".
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN}, None, []),
+        (("book", "book"), {"isbn": _ISBN, "volume": "I"}, {"isbn": _ISBN, "volume": "1"},
+         None, []),
+        (("book", "book"), {"isbn": _ISBN, "volume": "Vol. 1"}, {"isbn": _ISBN, "volume": "1"},
+         None, _FAIL),
+        # A `%` and two hex digits of a printable character are read as that character.
+        (("", ""), {"doi": "10.5555/x%2Ey"}, {"doi": "10.5555/x.y"}, None, _FAIL),
+    ],
+    ids=["preprint-and-article", "title-of-three-words", "title-of-four-words",
+         "chapter-by-doi", "chapter-by-title", "conference-paper-by-doi",
+         "conference-paper-by-title", "a-translation", "volume-in-one", "volume-i-and-1",
+         "volume-with-its-word", "percent-escape"],
+)  # fmt: skip
+def test_two_keys_for_one_work_are_found_by_an_identifier_or_a_title_alone(
+    project: Path, types: tuple[str, str], first: dict, second: dict,
+    title: str | tuple[str, str] | None, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Two keys for one work are found by an identifier
+    or a title, and only among what is cited"): two entries of one work with no identifier
+    in common and titles that differ, a preprint and its article or a translation, are not
+    found, nor a title of fewer than four words; a chapter or a conference paper is found by
+    its title alone, a warning; a volume is compared without its word and otherwise as
+    written; and a DOI's `%2E` is read as a full stop."""
+    _both_have(project, first, second, types)
+    if title is not None:
+        bib = project / "literature" / "references.bib"
+        text = bib.read_text(encoding="utf-8")
+        titles = (title, title) if isinstance(title, str) else title
+        for written, new in zip(("Hepatic injury in a fictional national cohort, 2010--2019",
+                                 "A disproportionality signal for a fictional drug class"),
+                                titles, strict=True):  # fmt: skip
+            text = text.replace(written, new, 1)
+        bib.write_text(text, encoding="utf-8")
+    assert [(code, severity) for code, severity, _ in _duplicate_findings(project)] == said
+
+
 def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
     _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
     assert _duplicate_findings(project) == []
@@ -17480,6 +18589,37 @@ def test_a_literature_value_with_a_blank_field_fails(
         f.code == "schema-violation" and f"entries/0/{field}" in f.message
         for f in report.failures
     ), report.render(project)
+
+
+@pytest.mark.parametrize(
+    ("signature", "refused"),
+    [(chr(0x200B), False), (chr(0xFEFF), False), (" ", True)],
+    ids=["zero-width-space", "byte-order-mark", "a-space"],
+)
+def test_an_attestation_signed_with_an_invisible_character_passes(
+    project: Path, signature: str, refused: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A field the literature schemas call blank is one
+    of white space only"): the schemas' `\\S` takes a zero-width space or a byte-order mark
+    for a character, so `attested_by` made of either passes the schema and G7 as a
+    signature that shows nothing, where one of white space fails."""
+    from manuscript_guard.cli import _run_gates
+
+    path = project / "literature" / "attested.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["attested_by"] = signature
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    about = [(f.code, f.message) for f in report.failures
+             if "attested" in f.message or "agency.withdrawn_estimate" in f.message]  # fmt: skip
+    if refused:
+        # Refused, the value is not loaded, and the sentence binding it is unresolved too.
+        assert [code for code, _message in about][0] == "schema-violation", about
+        assert "entries/0/attested_by" in about[0][1]
+    else:
+        assert about == []
+        assert _literature_report(project).ok
 
 
 def _literature_report(root: Path, change=None):
@@ -18122,6 +19262,228 @@ def test_words_that_say_more_than_their_interval_are_found(
     severities = {f.code: f.severity for f in _recomputed(project).findings}
     assert all(severities[code] == ("info" if code == "no-effect-from-interval" else "warn")
                for code in found), severities  # fmt: skip
+
+
+#: A ratio's interval that includes 1 and a ratio above 1.5, named and bare.
+_NEAR = "(HR 1.2, 95% CI 0.9 to 1.6)"
+_NEAR_CI = "(95% CI 0.9 to 1.6)"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"The risk was higher in older patients; the hazard ratio was 1.2 {_NEAR_CI}",
+         ["claim-beyond-interval"]),
+        (f"The hazard ratio was 1.2 {_NEAR_CI}", []),
+        # After "with", "of", an article or another word of `describing`, a participle
+        # describes; after "who had" it states.
+        (f"In patients with reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients of reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In the reduced renal function group, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients among reduced dose groups, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients who had reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_word_of_effect_is_read_anywhere_in_its_sentence_unless_it_describes(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word of effect is read wherever it stands in
+    the sentence"): a word of effect about another clause claims a difference beside the
+    interval, and a participle is taken to describe only after a word of `describing`."""
+    assert _recomputed_codes(project, sentence + ".") == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"In patients whose dose was lower, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"Patients had a lower hazard ratio of 1.2 {_NEAR_CI}.", ["claim-beyond-interval"]),
+        # At most two words between the verb and its comparative.
+        (f"In patients whose dose was by far lower, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"In patients whose dose was by and large lower, the hazard ratio was 1.2 "
+         f"{_NEAR_CI}.", []),
+        # The other side: a comparative with no form of "be" or "have" before it.
+        (f"In patients on a lower dose, the hazard ratio was 1.2 {_NEAR_CI}.", []),
+    ],
+)  # fmt: skip
+def test_be_or_have_before_a_comparative_states_a_difference_where_it_describes_a_group(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A form of "be" or "have" with a comparative at
+    most two words after it is a difference stated"): "whose dose was lower" describes a
+    group and is read as a difference stated."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"After a dose increase, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"After a dose decrease, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"An association was found, with a hazard ratio of 1.2 {_NEAR_CI}.", []),
+        ("The hazard associated with use had a ratio of 1.2 (95% CI 0.9 to 1.6).", []),
+        (f"The hazard was associated with use {_NEAR}.", ["claim-beyond-interval"]),
+        ("The injury linked to use had an odds ratio of 1.2 (95% CI 0.9 to 1.6).", []),
+        ("Use was linked to liver injury (OR 1.2, 95% CI 0.9 to 1.6).",
+         ["claim-beyond-interval"]),
+        (f"With age as a predictor, the hazard ratio was 1.2 {_NEAR_CI}.", []),
+        (f"Age was a predictor, with a hazard ratio of 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_no_noun_but_increase_and_decrease_claims_and_association_needs_a_form_of_be(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "No noun is read as a claim but "increase" and
+    "decrease""): those two nouns claim, "an association" does not, and "associated with",
+    "linked to" and "predictor" claim only after a form of "be"."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Use not only increased the risk {_NEAR}.", ["no-effect-from-interval"]),
+        (f"Among patients not taking it, use increased the risk {_NEAR}.",
+         ["no-effect-from-interval"]),
+        # Five words on, the negation is not read, and the effect is a claim.
+        (f"Among patients not taking it at all, use increased the risk {_NEAR}.",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_negation_turns_round_a_word_of_effect_up_to_four_words_on(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A negation turns round any word of effect up to
+    four words after it"): about the effect or not, a negation in reach says no effect."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Use increased the risk {_NEAR}.", ["claim-beyond-interval"]),
+        (f"Use increased the risk {_NEAR}, P for trend 0.03.", []),
+        (f"Across a wide range of doses, use increased the risk {_NEAR}.", []),
+        (f"Across a range of doses, use increased the risk {_NEAR}.", ["claim-beyond-interval"]),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06) but had no "
+         "significant effect on bleeding.", []),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06) and had an effect on "
+         "bleeding.", ["claim-beyond-interval"]),
+        # Another test named, with a P or "test" within 40 characters.
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06); the test for "
+         "heterogeneity was significant (P = 0.02).", []),
+        (f"Use increased the risk {_NEAR}; the test for interaction was significant "
+         "(P = 0.02).", []),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06); heterogeneity "
+         "between the many included studies of the class was low, P = 0.30.",
+         ["claim-beyond-interval"]),
+        # A significance of another test named in no such word, or with no P or "test"
+        # beside it, is the interval's.
+        ("The log-rank test was significant (HR 1.40, 95% CI 0.95 to 2.06).",
+         ["significance-beyond-interval"]),
+        ("There was significant heterogeneity between studies (HR 1.40, 95% CI 0.95 to "
+         "2.06).", ["significance-beyond-interval"]),
+        # A "test" of the outcome's own names one all the same.
+        ("Treatment improved scores on the global cognition test (MD 1.2, 95% CI -0.3 to "
+         "2.7).", []),
+        ("Treatment improved scores on the global cognition scale (MD 1.2, 95% CI -0.3 to "
+         "2.7).", ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_doubt_a_hedge_a_significance_turned_round_or_another_test_stands_a_sentence_down(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word of doubt or a hedge stands the whole
+    sentence down"): of this estimate or not, each of the entry's words stands the sentence
+    down, and a significance said of a test it does not name so is read as the interval's."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_a_latex_heading_runs_into_the_sentence_under_it(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown heading ends a sentence at the end of
+    its line; a LaTeX one does not"): "Increased risk" as a `\\subsection` title over an
+    interval that includes 1 is read as a claim; as a Markdown heading it is not."""
+    said = "The hazard ratio was 1.2 (95% CI 0.9 to 1.6)."
+    assert _recomputed_codes(project, f"## Increased risk\n{said}") == []
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    tex = f"\\subsection{{Increased risk}}\n{said.replace('%', chr(92) + '%')}\n"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("\\end{document}", f"{tex}\n\\end{{document}}"), "utf-8")
+    found = [f for f in _recomputed(project).findings if f.code == "claim-beyond-interval"]
+    assert [(f.path.name, "'Increased'" in f.message) for f in found] == [("main.tex", True)]
+
+
+def test_no_effect_is_read_for_each_interval_of_its_sentence(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, ""No effect" is read for each ratio's interval of
+    its sentence"): B's interval, which another clause says increased, is read as one said
+    to show no effect. The 2026-11-09 triage planned a fix (F18), which will change this
+    test."""
+    sentence = ("X had no effect on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, "
+                "95% CI 0.6 to 2.8).")  # fmt: skip
+    assert _recomputed_codes(project, sentence) == [
+        "claim-beyond-interval", "no-effect-from-interval",
+    ]  # fmt: skip
+    claim, none = _recomputed(project).findings
+    assert claim.message.startswith("HR 1.1 (95% CI 0.9 to 1.3) includes 1 and HR 1.4 (95% CI "
+                                    "0.6 to 2.8) includes 1, and the sentence")  # fmt: skip
+    assert none.message.startswith("HR 1.4 (95% CI 0.6 to 2.8) includes 1 and the sentence "
+                                   "says 'no effect'")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("The hazard ratio, with its confidence interval (CI), was 1.2 (95% CI 0.9 to 1.6) and "
+         "use increased the risk.", []),
+        ("The hazard ratio, with its confidence interval (CI), was 1.01 (95% CI 0.60 to 1.70) "
+         "and use made no difference.", []),
+        # The other side: without the name, each is read.
+        ("The hazard ratio was 1.2 (95% CI 0.9 to 1.6) and use increased the risk.",
+         ["claim-beyond-interval"]),
+        ("Use made no difference (HR 1.01, 95% CI 0.60 to 1.70).", ["no-effect-from-interval"]),
+        # A second interval with no name is not read: one that excludes 1 keeps nothing back.
+        (f"Use increased the risk {_NEAR} and in women (HR 1.3, 1.1 to 1.9).",
+         ["claim-beyond-interval"]),
+        (f"Use increased the risk {_NEAR} and in women (HR 1.3, 95% CI 1.1 to 1.9).", []),
+    ],
+)  # fmt: skip
+def test_a_sentence_naming_more_intervals_than_are_read_is_passed_over(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that names more intervals than the
+    reader reads"): "confidence interval (CI)" before the interval passes the sentence over,
+    and a second interval with no name of its own is not read."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Patients with significant renal impairment had a hazard ratio of 1.2 {_NEAR_CI}.",
+         []),
+        (f"There was a significant risk of bleeding {_NEAR}.", ["significance-beyond-interval"]),
+        (f"Use carried a significant risk of bleeding {_NEAR}.",
+         ["significance-beyond-interval"]),
+        (f"Use was a significant risk of falls in the elderly {_NEAR}.",
+         ["significance-beyond-interval"]),
+        (f"The difference was significant {_NEAR}.", ["significance-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_significant_is_read_after_be_and_before_a_word_of_significant_of(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, ""Significant" is read after a form of "be" and
+    before a word of `significant_of`"): "significant renal impairment" is not read, and "a
+    significant risk of" is, whatever the risk is of."""
+    assert _recomputed_codes(project, sentence) == found
 
 
 def test_words_beyond_a_bound_interval_are_found_in_the_supplement_and_in_latex(
@@ -24410,6 +25772,67 @@ def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: P
     assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
+def test_a_name_written_otherwise_than_authors_yaml_writes_it_is_not_found_blind(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A blind document is read for the names
+    `authors.yaml` gives, as they are written there"): a nickname, a given name of several
+    words cut to its first, a family name alone, a name in another script, a user name in
+    Word's author fields, an institution's abbreviation or city, a funder and an ethics
+    committee are not found; a raster figure is not read, and the SVG the manuscript places
+    beside it is. The 2026-11-09 triage planned a fix (F12), which will change this test."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "given: Ada\n", "given: Ada Mary\n"), encoding="utf-8")  # fmt: skip
+
+    def paragraph(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    unfound = "".join(paragraph(text) for text in (
+        "As Addy Example showed, and Ada Example after her.",
+        "Example and Sample wrote the protocol.",
+        "\N{KATAKANA LETTER E}\N{KATAKANA LETTER I}\N{KATAKANA LETTER DA}"
+        "\N{KATAKANA MIDDLE DOT}\N{KATAKANA LETTER E}\N{KATAKANA LETTER GU}"
+        "\N{KATAKANA LETTER ZA}\N{KATAKANA LETTER N}\N{KATAKANA LETTER PU}"
+        "\N{KATAKANA LETTER RU} drew the figure.",
+        "Done at EUGSM in Springfield, funded by the Example Research Foundation and approved"
+        " by the Ethics Committee of Example University Hospital.",
+    ))  # fmt: skip
+    core = (f"<cp:coreProperties {_CORE_NS}><dc:creator>aexample</dc:creator>"
+            "<cp:lastModifiedBy>bsample</cp:lastModifiedBy></cp:coreProperties>")  # fmt: skip
+    # A raster figure that shows the name, in the document and placed by the manuscript.
+    import io
+
+    from matplotlib.figure import Figure
+
+    drawn = Figure(figsize=(4, 1))
+    drawn.text(0.05, 0.4, "Ada Mary Example", fontsize=24)
+    buffer = io.BytesIO()
+    drawn.savefig(buffer, format="png")
+    raster = buffer.getvalue()
+    (project / "figures" / "forest.png").write_bytes(raster)
+    (project / "figures" / "forest.svg").unlink()
+    document = _word(tmp_path / "a.docx", unfound, docProps__core_xml=core)
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/media/image1.png", raster)
+    assert _named(project, document) == []
+    # The other side of each: the name as `authors.yaml` writes it is found in the text and
+    # in Word's author field, and a figure is read through the SVG placed beside it.
+    (project / "figures" / "forest.svg").write_text(
+        "<svg xmlns='http://www.w3.org/2000/svg'><text>Ada Mary Example</text></svg>",
+        encoding="utf-8",
+    )
+    core = core.replace("aexample", "Ada Mary Example")
+    named = paragraph("As Ada Mary Example showed.")
+    document = _word(tmp_path / "b.docx", named, docProps__core_xml=core)
+    assert _named(project, document) == [
+        ("Ada Mary Example", "a figure (forest.svg)"),
+        ("Ada Mary Example", "the document's author (dc:creator)"),
+        ("Ada Mary Example", "the text"),
+    ]
+
+
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
     project: Path, tmp_path: Path
 ) -> None:
@@ -24673,6 +26096,46 @@ def test_a_built_document_the_hidden_text_reader_cannot_read_is_not_to_be_sent(
         archive.writestr("word/document.xml", "<w:document")
     report = check_hidden_text(document)
     assert hides(report) and [f.code for f in report.failures] == [UNREAD]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_zero_width_character_in_a_word_of_the_source_passes_check_and_fails_the_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Hidden text is read where a command reads a file,
+    or where `screen` is run on one."): a zero-width character inside a word of the
+    manuscript, or of a cited reference's record, is said by no gate of `check`, which
+    reports what it reports of the clean example, and the build fails on each. The
+    2026-11-09 triage planned a fix (F11), which will change this test."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    bib = project / "literature" / "references.bib"
+    entries = bib.read_text(encoding="utf-8")
+    assert "asks whether" in text and "{Hepatic injury in" in entries
+
+    def checked(zero: str) -> tuple[int, list[dict]]:
+        """`check` of the example with a word added to a sentence and to a cited title, and
+        `zero` inside a word of each, so that the edit itself is said alike."""
+        source.write_text(text.replace("asks whether", f"asks also whe{zero}ther", 1),
+                          encoding="utf-8")  # fmt: skip
+        bib.write_text(entries.replace("{Hepatic injury in", f"{{Hepatic liver in{zero}jury in",
+                                       1), encoding="utf-8")  # fmt: skip
+        code = main(["check", str(project), "--json"])
+        return code, json.loads(capsys.readouterr().out)["findings"]
+
+    clean_code, clean = checked("")
+    planted_code, planted = checked(chr(0x200B))
+    assert planted_code == clean_code
+    assert sorted((f["gate"], f["code"], f["severity"]) for f in planted) == sorted(
+        (f["gate"], f["code"], f["severity"]) for f in clean)  # fmt: skip
+    assert not [f for f in planted if chr(0x200B) in json.dumps(f, ensure_ascii=False)
+                or "200B" in f["message"] or "zero-width" in f["message"]]  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    out = capsys.readouterr().out
+    assert "zero-width characters, U+200B inside the word 'whether'" in out, out
+    assert "zero-width characters, U+200B inside the word 'injury'" in out, out
 
 
 # ------------------------------------------------ the marked-up copy is never the manuscript
@@ -25826,6 +27289,98 @@ def test_a_comment_pandoc_drops_as_the_gates_do_is_not_refused(paper: str) -> No
     from manuscript_guard.text.comments import unclear_comment_lines
 
     assert unclear_comment_lines(paper) == []
+
+
+_FENCE = "`" * 3
+#: Comments pandoc drops, as 3.9.0.2 reads them, that the refusal refuses all the same, by
+#: the point of Known gaps each is held for.
+_REFUSED_THOUGH_DROPPED = {
+    "across a blank line in an item's indented lines": "- item\n\n  text <!-- x\n\n  9.99 -->\n",
+    "across a footnote's paragraphs": "Text.[^1]\n\n[^1]: note <!-- x\n\n    more 9.99 -->\n",
+    "under a blank line after a list, indented less than the item's text":
+        "- item\n\n <!--\nx 9.99\n\n-->\n",
+    "a sub-item commented out under a blank line in its item":
+        "- A\n\n  <!--\n  - A.1 9.99\n  -->\n- B\n",
+    "a sub-item past its item's marker and short of its text":
+        "   - item <!-- x\n    - sub 9.99 -->\n",
+    "across a quotation's paragraphs": "> quote <!-- x\n>\n> more 9.99 -->\n",
+    "across a `>` alone continuing an item": "- item <!-- x\n>\nmore 9.99 -->\n",
+    "across a `|` line continuing an item": "- item <!-- x\n| b\nmore 9.99 -->\n",
+    "after a div's closing `:::` under a list": "::: note\n- item\n:::\n<!-- x\n\n9.99 -->\n",
+    "after a line indented under a table":
+        "| a | b |\n|---|---|\n| 1 | 2 |\n  indented\n<!-- x\n\n9.99 -->\n",
+    **{f"after a listing with a line starting {mark!r}":
+       f"{_FENCE}r\nggplot(d)\n{mark}geom_point()\n{_FENCE}\n<!--\nx 9.99\n\n-->\n"
+       for mark in ("+ ", "- ", "* ", "> ", "| ")},
+    "across a blank line in a caption under a table":
+        "| a |\n|---|\n| 1 |\n\n: Caption <!-- x\n\n9.99 -->\n",
+    "on a paragraph's line that looks like a quotation": "Patients aged\n> 65 years <!-- x\n\n"
+                                                         "9.99 -->\n",
+    "on a paragraph's line that looks like an item": "The score fell by\n- 5 points <!-- x\n\n"
+                                                     "9.99 -->\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", list(_REFUSED_THOUGH_DROPPED))
+def test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."): the blocks are cut short where pandoc's are
+    not worth modelling, so each of these comments, which pandoc drops, is refused on the
+    line of its `<!--`."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    paper = _REFUSED_THOUGH_DROPPED[name]
+    assert unclear_comment_lines(paper) == [paper[: paper.index("<!--")].count("\n") + 1]
+
+
+#: Comments pandoc prints, as 3.9.0.2 reads them, that the gates mask and the refusal lets
+#: be, by the point of Known gaps each is held for.
+_MASKED_THOUGH_PRINTED = {
+    "after `</div>` under an item": "- item\n</div> <!-- x\n\n9.99 -->\n",
+    "after `</span>` under an item": "- item\n</span> <!-- x\n\n9.99 -->\n",
+    "after `:::` under an item": "- item\n::: <!-- x\n\n9.99 -->\n",
+    "after `</div>`, closed in the next item": "- a\n</div> <!-- x\n- b 9.99 -->\n",
+    "after `</span>`, closed in the next item": "- a\n</span> <!-- x\n- b 9.99 -->\n",
+    "after `:::`, closed in the next item": "- a\n::: <!-- x\n- b 9.99 -->\n",
+    "in an item with a ten-digit marker": "1234567890. item\n<!-- x\n\n9.99 -->\n",
+    "behind a byte-order mark": chr(0xFEFF) + "- item\n<!-- x\n\n9.99 -->\n",
+    "over a line of dashes, a table": "Results <!-- x\n-------\nb 9.99 -->\n",
+    "over a line of dashes, a table in an item": "- a <!-- x\n---\nb 9.99 -->\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", list(_MASKED_THOUGH_PRINTED))
+def test_a_comment_pandoc_prints_is_masked_and_not_refused(
+    project: Path, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."): a `<!--` on a line the refusal takes for a
+    block's end under an item, in an item with a ten-digit marker or behind a byte-order
+    mark, or over a line of dashes that pandoc reads, with a line under it, as a table at
+    the margin or in an item, is masked, and `check` neither refuses it nor reads the 9.99
+    pandoc prints."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.text.comments import unclear_comment_lines
+    from manuscript_guard.text.masking import mask
+
+    paper = _MASKED_THOUGH_PRINTED[name]
+    assert "9.99" not in mask(paper) and unclear_comment_lines(paper) == []
+    probe = project / "manuscript" / "supplementary" / "S9_probe.md"
+    probe.write_text(paper, encoding="utf-8")
+    main(["check", str(project), "--json"])
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert [f for f in findings if f["code"] == "unclear-comment" or "9.99" in f["message"]
+            or "9.99" in (f.get("context") or "")] == []  # fmt: skip
+
+
+def test_a_setext_title_in_an_item_over_a_comment_is_refused() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."), the other side of the line of dashes in
+    `_MASKED_THOUGH_PRINTED`: with a blank line under the dashes, pandoc reads a setext
+    title in the item, and the refusal refuses the comment."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines("- a <!-- x\n---\n\n9.99 -->\n") == [1]
 
 
 def test_a_comment_under_a_list_item_is_refused_by_check_and_the_build(
@@ -30289,6 +31844,30 @@ def test_a_round_every_reading_of_which_came_from_one_provider_is_said(
     assert "round-one-provider" not in _review_warnings(project)
 
 
+@pytest.mark.parametrize("router", ["openrouter", "ollama"])
+def test_a_router_serving_several_families_is_one_provider(
+    project: Path, monkeypatch, router: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a provider is
+    judged by its name, so a round read through OpenRouter or a local Ollama by models of
+    two families is said to come from one provider. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.gates import check_review
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-0123456789SECRETC")
+    _read_by_models(project, monkeypatch, f"{router}/openai-gpt-x", f"{router}/mistral-large")
+    said = [f for f in check_review(load_project(project)[0]).warnings
+            if f.code == "round-one-provider"]  # fmt: skip
+    assert [f.message for f in said] == [
+        f"round 1: every reading came from one provider, {router}, whose models share their "
+        "blind spots"
+    ]
+    # The other side of judging by the name: the same two families under their own
+    # providers' names are two providers.
+    _read_by_models(project, monkeypatch, "openai/openai-gpt-x", "mistral/mistral-large")
+    assert "round-one-provider" not in _review_warnings(project)
+
+
 def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     project: Path, monkeypatch
 ) -> None:
@@ -30303,6 +31882,86 @@ def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     assert "figures-not-seen" not in _review_warnings(project)
     _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
                     remit="Whether the estimator is stated fully.")  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+
+
+@pytest.mark.parametrize(
+    ("remit", "covers"),
+    [
+        ("Whether the figures show what the text says.", True),
+        ("Whether the plots show what the text says.", True),
+        ("Whether the graphs show what the text says.", True),
+        ("Whether the charts show what the text says.", True),
+        ("Whether the visual presentation shows what the text says.", False),
+        ("Whether the display items show what the text says.", False),
+    ],
+)
+def test_a_remit_covers_the_figures_by_its_words(
+    project: Path, monkeypatch, remit: str, covers: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    model's pass of a remit naming figures, plots, graphs or charts is said, and of one that
+    says "visual" or "the display items" is not, though both ask for the figures."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert ("figures-not-seen" in _review_warnings(project)) is covers
+
+
+@pytest.mark.parametrize(
+    ("models", "said"),
+    [(["ollama/model-l", "relay/model-l"], False), (["ollama/model-l", "ollama/model-m"], True)],
+)
+def test_a_round_read_by_one_server_s_models_under_two_providers_names_counts_as_two(
+    project: Path, monkeypatch, models: list[str], said: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    provider is known by its name, so a local relay passing the request on to the server
+    `ollama` names is another provider, and a round read through both is not
+    `round-one-provider`. The other side of that rule: two models under the one name are."""
+    from test_review_run import Providers, answer, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SAID))
+    monkeypatch.setattr(client, "default_transport", transport)
+    shutil.rmtree(project / "review")
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8")
+        + f"\nreview:\n  models: [{', '.join(models)}]\n"
+        "  providers:\n    relay:\n      base_url: http://localhost:4000/v1\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    assert {request.url.split("/v1")[0] for request in transport.requests} == (
+        {"http://localhost:11434"} if said else {"http://localhost:11434", "http://localhost:4000"}
+    )
+    assert ("round-one-provider" in _review_warnings(project)) is said
+
+
+@pytest.mark.parametrize("remit", [
+    "Whether the chart review was blinded to exposure.",
+    "Whether the medical charts were abstracted twice.",
+])  # fmt: skip
+def test_a_remit_that_speaks_of_charts_is_taken_to_ask_for_the_figures(
+    project: Path, monkeypatch, remit: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a remit
+    covers the figures by its words, so one about a chart review or medical charts, which
+    asks for no figure, has a model's pass of it said as figures not seen. The 2026-11-09
+    triage planned a fix (F15), which will change this test."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert _review_warnings(project).count("figures-not-seen") == 1
+    # The other side of reading the remit's words: the same remit about records, with no
+    # word of a chart in it, is not said.
+    other = remit.replace("chart review", "record review").replace("medical charts",
+                                                                     "medical records")
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=other)  # fmt: skip
     assert "figures-not-seen" not in _review_warnings(project)
 
 
@@ -32377,6 +34036,264 @@ def test_a_named_reader_s_overridden_design_objection_is_signed_apart(project: P
     assert "--finding G12/design-override/1/methodologist.openai-gpt-x/d1" in hint
 
 
+def test_a_design_reading_outside_the_panel_or_outside_any_panel_is_passed_over(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    reading by a reviewer the panel does not list, and a design round folder with no panel,
+    are not read and not said, their major findings with them. The 2026-11-09 triage planned
+    a fix (F15), which will change this test."""
+    record = _design_recorded(project)
+    major = record.read_text(encoding="utf-8").replace("findings: []\n", _DESIGN_MAJOR)
+    (record.parent / "clinician.yaml").write_text(major, encoding="utf-8")
+    second = project / "review" / "design" / "round-2"
+    second.mkdir()
+    (second / "methodologist.yaml").write_text(major.replace("round: 1", "round: 2"), "utf-8")
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    report = check_design_rounds(load_project(project)[0])
+    assert report.findings == () and report.counts["design_rounds"] == 1
+    # The other side: once a panel lists the reviewer, and once the folder has a panel, the
+    # same files are read and their majors said.
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project).count(("design-major-open", "warn")) == 1
+    (panel.parent / "panel-2.yaml").write_text(yaml.safe_dump({**document, "round": 2}),
+                                               encoding="utf-8")  # fmt: skip
+    assert _design_said(project).count(("design-major-open", "warn")) == 2
+
+
+def test_a_stale_design_reading_is_superseded_by_its_reviewer_not_by_its_remit(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a later
+    reading of the plan as it stands by another reviewer with the same remit leaves a stale
+    one stale, and one by the same reviewer under another remit supersedes it. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "statistician", "--round",
+                 "2", "--verdict", "pass", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass", "--remit", "Whether the outcome can be counted"
+                 ]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_stale_plain_design_record_is_superseded_only_by_a_later_plain_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    reading of the reviewer's remit in a later round does not supersede the reviewer's
+    stale plain record; a later plain record does. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    _design_read_by(project, "openai/gpt-x", round_=2)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_signed_design_override_is_bound_to_its_finding_and_reason_alone(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the digest a
+    statistician signs is of the finding's words and the reason, so `where`, `ask` and
+    `overridden_by` added after the signature leave it signed; the finding's words changed
+    want it again. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    key = "G12/design-override/1/methodologist/d1"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("- id: d1\n", "- id: d1\n  where: the comparators\n"
+                                   "  ask: computation\n  overridden_by: Ada Example\n"),
+                      encoding="utf-8")  # fmt: skip
+    assert [(code, severity) for code, severity, _hint in _override_said(project)] == [
+        ("design-override-unsigned", "info")
+    ]
+    # The other side: the finding's own words are in the digest.
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "share the indication only in part", "share the indication in part"), "utf-8")  # fmt: skip
+    [(code, severity, hint)] = _override_said(project)
+    assert (code, severity) == ("design-override-unsigned", "warn") and "changed since" in hint
+
+
+def test_a_misfiled_design_reading_s_override_is_listed_under_its_file_s_name(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    design reading that says another reader inside is not counted, and its override is
+    still listed, named by the slug its file is filed under rather than by either reader.
+    The 2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    record = _design_read_by(project, "OpenAI/GPT-X", _DESIGN_MAJOR + _OVERRIDDEN)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "reader: OpenAI/GPT-X", "reader: mistral/m"), encoding="utf-8")  # fmt: skip
+    said = check_design_rounds(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in said] == [("design-reading-misfiled", "warn"),
+                                                    ("design-override-unsigned", "warn")]
+    assert said[1].message == ("design round 1: methodologist.openai-gpt-x d1 is overridden "
+                               "(The indication is recorded for too few reports to restrict "
+                               "on.)")  # fmt: skip
+
+
+def test_a_named_design_reading_is_opened_at_the_path_its_name_gives(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): on a file
+    system that tells case apart, a named design reading filed under other capitals is read
+    as missing, and not said as a file the panel does not name. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    record = _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    record.rename(record.with_name("methodologist.OpenAI-GPT-X.yaml"))
+    if record.exists():
+        pytest.skip("this file system does not tell case apart")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_two_design_readings_under_one_name_stored_two_ways_go_unsaid(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): two files
+    whose names are one reader's, composed and decomposed, are read as one in a design
+    round, and the second, a major finding in it, is not said; G11 says the same two in a
+    manuscript round (`duplicate-reading`). The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    import unicodedata
+
+    first = _design_read_by(project, "Zo" + chr(0xE9))
+    second = first.with_name(unicodedata.normalize("NFD", first.name))
+    assert second.name != first.name
+    if second.exists():
+        pytest.skip("this file system does not tell the two spellings apart")
+    second.write_text(first.read_text(encoding="utf-8").replace("findings: []\n",
+                                                                _DESIGN_MAJOR), "utf-8")
+    assert _design_said(project) == []
+    # The other side, the file the panel's name gives: the major written there is said.
+    first.write_text(second.read_text(encoding="utf-8"), encoding="utf-8")
+    assert ("design-major-open", "warn") in _design_said(project)
+
+
+def test_a_design_reader_named_o_brien_is_given_a_command_that_does_not_parse(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the command a
+    missing design reading's hint prints quotes a reader's name only where it has a space,
+    so `O'Brien` leaves an unclosed quote that a shell cannot parse. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    import shlex
+
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["O'Brien", "Dr Tanaka"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    hints = [f.hint for f in check_design_rounds(load_project(project)[0]).findings
+             if f.code == "design-review-missing"]  # fmt: skip
+    commands = [hint.split("`")[1] for hint in hints]
+    assert commands == [
+        "manuscript-guard review --record methodologist --design --round 1 --reading O'Brien "
+        "--verdict <verdict>",
+        'manuscript-guard review --record methodologist --design --round 1 --reading '
+        '"Dr Tanaka" --verdict <verdict>',
+    ]
+    with pytest.raises(ValueError, match="No closing quotation"):
+        shlex.split(commands[0])
+    # The other side: a name with a space is quoted, and parses to itself.
+    assert shlex.split(commands[1])[-3] == "Dr Tanaka"
+
+
+def test_recording_a_design_reading_against_a_panel_that_is_a_yaml_list_raises(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    panel written as a YAML list raises out of `review --record --design`, both where an
+    earlier panel is read for the reviewer's remit and where the round's own panel is read;
+    and the earlier panels are read for the remit outside the round's lock, the round's own
+    panel inside it. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from contextlib import contextmanager
+
+    from manuscript_guard import record as recording
+    from manuscript_guard.contracts import _schema
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    kept = panel.read_text(encoding="utf-8")
+    panel.write_text("- methodologist\n", encoding="utf-8")
+    projekt = load_project(project)[0]
+    with pytest.raises(AttributeError):  # the remit looked up in the earlier panels
+        recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    with pytest.raises(AttributeError):  # the round's own panel, under its lock
+        recording.write_design_review(projekt, "statistician", verdict="pass", remit="R")
+    assert not (project / "review" / "design" / "round-2").exists()
+
+    # The other side: a panel that is a mapping is read, and where each is read.
+    panel.write_text(kept, encoding="utf-8")
+    assert recording.write_design_review(projekt, "statistician", verdict="pass",
+                                         round_number=2, remit="R").path.is_file()  # fmt: skip
+    held: list[bool] = [False]
+    reads: list[tuple[str, bool]] = []
+    real_lock, real_read = recording.panel_lock, _schema.read_structured
+
+    @contextmanager
+    def lock(path):
+        with real_lock(path):
+            held[0] = True
+            try:
+                yield
+            finally:
+                held[0] = False
+
+    def read(path, *args, **kwargs):
+        reads.append((Path(path).name, held[0]))
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(recording, "panel_lock", lock)
+    monkeypatch.setattr(_schema, "read_structured", read)
+    recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    assert ("panel-1.yaml", False) in reads and ("panel-1.yaml", True) not in reads
+    assert ("panel-2.yaml", True) in reads
+
+
+@pytest.mark.parametrize("flag", ["--digest", "--files"])
+def test_the_design_status_passes_over_the_digest_and_the_files(
+    project: Path, flag: str, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): `review
+    --design` with `--digest` or `--files` prints the design rounds' status and neither,
+    and with no design round it says nothing. The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(project), "--design", flag]) == 0
+    assert capsys.readouterr().out == "  (nothing to report)\n"
+    _design_recorded(project, _DESIGN_MAJOR)
+    capsys.readouterr()
+    assert main(["review", str(project), "--design", flag]) == 0
+    out = capsys.readouterr().out
+    assert "design round 1: methodologist d1:" in out
+    assert "file_sha256:" not in out and "design_rounds=1" in out
+    # The other side: without `--design` the flag is answered.
+    assert main(["review", str(project), flag]) == 0
+    out = capsys.readouterr().out
+    assert ("file_sha256:" in out) if flag == "--files" else (len(out.strip()) == 64)
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------
@@ -33396,6 +35313,92 @@ def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, 
         ("spelling-variant", said), ("spelling-variant", said)
     ]  # fmt: skip
     assert ("abbreviation-undefined", said) in language_findings(project)
+
+
+_ENTRY = "1. Doe J. The register. 2019."
+
+#: Text set before the Data availability, `_SAID` once in it, and whether G14 reads it: where
+#: a list's title opens no list, or the list ends before `_SAID`, it does.
+_LIST_SHAPES = {
+    "a second-level heading inside it": (f"**References**\n\n{_ENTRY}\n\n## Books\n\n2. {_SAID}",
+                                         True),
+    "a bold title over a second list": (f"**References**\n\n{_ENTRY}\n\n**Additional "
+                                        f"references**\n\n2. {_SAID}", True),
+    "an entry opening with Table 1": (f"**References**\n\n{_ENTRY}\n\nTable 1 {_SAID}", True),
+    "an entry in French opening with an English caption's word": (
+        f"**References**\n\n{_ENTRY}\n\nFigure 3 : la couleur des tumeurs. Rev Prat. 2019.\n\n"
+        f"2. {_SAID}", True),
+    # The other side: a caption's word of another language, "Tabla", ends no list.
+    "an entry opening with a Spanish caption's word": (
+        f"**References**\n\n{_ENTRY}\n\nTabla 2. La color de los tumores. 2019.\n\n2. {_SAID}",
+        False),
+    "a hard wrap": (f"We read the\nReferences\nof each paper.\n\n1. {_SAID}", True),
+    "an indented line": (f"   **References**\n\n1. {_SAID}", True),
+    "a full stop": (f"**References.**\n\n1. {_SAID}", True),
+    "a number typed by hand": (f"6. References\n\n1. {_SAID}", True),
+    "brackets before braces of no attributes": (f"[References]{{see below}}\n\n1. {_SAID}",
+                                                True),
+    "escaped brackets": (f"\\[References\\]{{.underline}}\n\n1. {_SAID}", True),
+    # The other side of "a number typed by hand": as pandoc writes a numbered title.
+    "a number pandoc escapes": (f"6\\. References\n\n1. {_SAID}", False),
+    # The other side of "a second-level heading inside it": under a heading, the list runs
+    # on through the headings below its own.
+    "a second-level heading under a heading": (f"# References\n\n{_ENTRY}\n\n## Books\n\n2. "
+                                               f"{_SAID}", False),
+    # What follows the list under no title of its own is passed over with it.
+    "an appendix of plain paragraphs": (f"**References**\n\n{_ENTRY}\n\n{_SAID}", False),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", list(_LIST_SHAPES))
+def test_a_reference_list_under_a_line_that_is_no_heading_is_read_by_its_shape(
+    project: Path, shape: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list under a line that is no heading
+    ends where its shape does, and only a paragraph opens one."): a `## Books` inside the
+    list, a bold title over a second list, and an entry that opens with "Table 1", or one in
+    another language that opens with an English caption's word, end it, and what follows is
+    read as prose, where "Tabla 2." ends nothing; a title
+    in a hard wrap, indented, ending in a stop, numbered "6." by hand, or in brackets before
+    braces that are no attributes, or escaped, opens none. `6\\. References` opens one, a
+    list under `# References` runs on through a `## Books`, and plain paragraphs after a
+    list are passed over with it."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    inserted, read = _LIST_SHAPES[shape]
+    listed = text[:end] + inserted + "\n\n" + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    said = line_of(listed, _SAID)
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == (
+        [("spelling-variant", said), ("spelling-variant", said)] if read else []
+    )  # fmt: skip
+
+
+def test_a_reference_list_carried_on_into_the_next_file_is_read_there_as_prose(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list under a line that is no heading
+    ends where its shape does, and only a paragraph opens one."): a list that ends one file
+    of the main text and goes on in the next is read there as prose, where the same entry
+    in the first file is passed over."""
+    from manuscript_guard.gates import check_language
+
+    source = main_md(project)
+    source.write_text(source.read_text(encoding="utf-8") + "\n# Appendix\n\nText.\n\n"
+                      f"**References**\n\n{_ENTRY}\n", encoding="utf-8")  # fmt: skip
+    following = project / "manuscript" / "main_2.md"
+    following.write_text(f"2. {_SAID}\n", encoding="utf-8")
+
+    def said() -> list[tuple[str, str, int | None]]:
+        report = check_language(load_project(project)[0])
+        return [(f.path.name, f.code, f.line) for f in report.findings
+                if f.code.startswith("spelling-") and f.path is not None]  # fmt: skip
+
+    assert said() == [("main_2.md", "spelling-variant", 1)] * 2
+    # The other side: the same entry in the file the list opens in.
+    following.unlink()
+    source.write_text(source.read_text(encoding="utf-8") + f"\n2. {_SAID}\n", encoding="utf-8")
+    assert said() == []
 
 
 @pytest.mark.parametrize(
@@ -35527,6 +37530,55 @@ def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
     assert measure(text).main_text_words == 8 + len(title.split())
     assert not is_bibliography_heading(f"# {title}", marked=True)
     assert _kind_of(title, False, None) != SET_APART
+
+
+#: A reference list's entry the audit cannot tell by its shape, and one it can.
+_TURKISH_ENTRY = (
+    "Yılmaz A, Kaya B. Uzaktan eğitim. Eğitim ve Bilim 2021, cilt 46, sayı 207, s. 1-23."
+)
+_VANCOUVER_ENTRY = "1. Smith J, Roe A. A title of the cited work. Drug Saf. 2019;42(3):100-10."
+
+
+@pytest.mark.parametrize(
+    ("title", "g4", "audit_and_recycling"),
+    [
+        ("Kaynakça", True, True),
+        # Dutch, which is not among the eight, and "ç" typed as "c" and a combining cedilla.
+        ("Literatuurlijst", False, False),
+        ("Kaynakc\N{COMBINING CEDILLA}a", False, False),
+        # An English title read by its opening word by G4, and whole by the other two.
+        ("References and notes", True, False),
+        ("Bibliography of the trials searched", True, False),
+    ],
+)  # fmt: skip
+def test_a_reference_list_is_known_by_its_title_as_each_reader_reads_titles(
+    tmp_path: Path, title: str, g4: bool, audit_and_recycling: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list is known by its title in eight
+    languages"): a title in another language, or typed with a combining accent, names no
+    list to G4's count, the audit or the recycling check, and the audit tells its entries by
+    their shape; G4 and `is_references` take an English title by its opening word, "References
+    and notes", where the audit and the recycling check take neither."""
+    from manuscript_guard.audit import audit, is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure, split_sections
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    paper = tmp_path / "paper.md"
+
+    def unmatched(entry: str) -> list[str]:
+        paper.write_text(f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{entry}\n",
+                         encoding="utf-8")  # fmt: skip
+        return sorted(c.text for c in audit([paper], [outputs]).unmatched)
+
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{_TURKISH_ENTRY}\n"
+    assert split_sections(text)[-1].is_references is g4
+    # "Results", four words, and the list's title and entry where the list is not known.
+    assert measure(text).main_text_words == (5 if g4 else 5 + len(title.split()) + 16)
+    assert is_bibliography_heading(f"# {title}", marked=True) is audit_and_recycling
+    assert (_kind_of(title, False, None) == SET_APART) is audit_and_recycling
+    assert unmatched(_TURKISH_ENTRY) == ([] if audit_and_recycling else ["2021", "207", "46"])
+    assert unmatched(_VANCOUVER_ENTRY) == []
 
 
 def test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them(project: Path) -> None:

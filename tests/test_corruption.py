@@ -15071,6 +15071,36 @@ def test_g6_tells_a_markdown_paper_of_lines_in_brackets_beside_a_listing(project
                for f in _g6_findings(project))  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    ("block", "pointed"),
+    [
+        ("\\begin{verbatim}\nx <- 1\n\\end{verbatim}", False),
+        ("\\begin{procedure}\nWe have now clarified the step\n\\end{procedure}", True),
+    ],
+)  # fmt: skip
+def test_g6_tries_lines_in_brackets_nowhere_in_a_latex_paper_with_a_listing_anywhere(
+    project: Path, block: str, pointed: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`lines-cited-alone` is not tried anywhere in a
+    LaTeX document that sets out an algorithm or a listing"): a `verbatim` block in the
+    Introduction turns the rule off for every pointer in the Results, one into the
+    reviewers' copy too. An algorithm in `algorithm2e`'s `procedure`, an environment the
+    reader does not name, is read as prose: the rule stays on, and words to the reviewers in
+    it are reported."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Introduction}\n"
+    entry.write_text(text.replace(heading, heading + block + "\n\n", 1), encoding="utf-8")
+    _into_results(entry, "The stride is set (line 8) of the step.\n\n"
+                         "The wording was changed (lines 245-250).")  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    said = sorted(f.line for f in _g6_findings(project) if f.code == "revision-residue")
+    pointers = [text.count("\n", 0, text.index(words)) + 1
+                for words in ("(line 8)", "(lines 245-250)")]  # fmt: skip
+    inside = [text.count("\n", 0, text.index("We have now clarified")) + 1] if pointed else []
+    assert said == sorted(inside + (pointers if pointed else [])), said
+
+
 def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
     """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
     a claim in a comment is no claim of the paper's (step 7)."""

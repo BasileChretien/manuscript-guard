@@ -271,6 +271,29 @@ def test_style_without_a_style_to_fetch_says_why(project: Path, capsys) -> None:
     assert "names no style" in capsys.readouterr().err
 
 
+def test_references_as_text_raises_in_style_and_a_style_x_yaml_takes_x_s_record_path(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A journal's quoted rules"): a profile's
+    `references: "x"`, which the schema fails, raises in `style` rather than being said; and
+    `x.yaml` is a style's name whose folder is the path of the record of the style `x`. The
+    2026-11-09 triage planned a fix (F12), which will change this test."""
+    from manuscript_guard.contracts._schema import read_structured, validate
+
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["references"] = "x"
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert not validate(read_structured(profile), "journal", profile).ok
+    with pytest.raises(AttributeError):
+        main(["style", str(project)])
+    loaded = load_project(project)[0]
+    assert journal_style.style_name("x.yaml") == "x.yaml"
+    assert journal_style.files_of(loaded, "x.yaml") == journal_style.record_path(loaded, "x")
+    # The other side: a name with no `.yaml` in it has a folder of its own.
+    assert journal_style.files_of(loaded, "x") != journal_style.record_path(loaded, "x")
+
+
 # ------------------------------------------------------------- the real transport, on loopback
 
 

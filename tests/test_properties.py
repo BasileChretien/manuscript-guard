@@ -3539,6 +3539,107 @@ def _a_caption_is_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(glossary, "markdown_captions", lambda prose: [])
 
 
+from generated import caption_paragraphs  # noqa: E402
+
+
+def _captions_by_copies(prose: str) -> list[tuple[int, int]]:
+    """`glossary.markdown_captions` as it read until the robustness sweep of 2026-11-21: the
+    line above each paragraph and the line below it taken from a copy of all the text before
+    it and of all after it, which was quadratic in the paragraphs."""
+    from manuscript_guard.gates import glossary
+    from manuscript_guard.gates.pointers import opening_pointer
+
+    spans, start = [], 0
+    for gap in (*glossary._BLANK.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        if glossary._legend(prose[start:end], opening_pointer):
+            spans.append((start, end))
+        else:
+            lines = [line for _at, line in glossary._lines(prose, start, end)]
+            above = prose[:start].rstrip().rsplit("\n", 1)[-1]
+            below = prose[end:].lstrip("\r\n").split("\n", 1)[0]
+            at = start
+            for index, line in enumerate(lines):
+                caption = glossary._TABLE_CAPTION.match(line)
+                near = (lines[index - 1] if index else above,
+                        lines[index + 1] if index + 1 < len(lines) else below)  # fmt: skip
+                if caption is not None and (caption["table"] != ":" or any(
+                        glossary._TABLE_LINE.match(other) for other in near)):  # fmt: skip
+                    spans.append((at, end))
+                    break
+                at += len(line) + 1
+        if gap is not None:
+            start = gap.end()
+    return spans
+
+
+@holds(100, caption_paragraphs())
+def test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it(text: str) -> None:
+    """A table's caption is found where it was found while the lines above and below each
+    paragraph were read from copies of the whole text: `Table:` anywhere, and a colon beside
+    a table's line in the paragraph, above it across a blank line of any kind, or below it
+    across one of nothing but line ends; a legend typed as one; and nothing else."""
+    from manuscript_guard.gates.glossary import markdown_captions
+
+    assert markdown_captions(text) == _captions_by_copies(text), text
+
+
+def _the_line_above_a_paragraph_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_line_above", lambda prose, start: "")
+
+
+def _the_line_below_is_read_past_a_blank_line_of_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_line_below",
+                  lambda prose, end: prose[end:].lstrip().split("\n", 1)[0])  # fmt: skip
+
+
+def _a_caption_is_held_only_to_the_lines_about_its_paragraph(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """As round 1 of #734 put it: the line below the paragraph, never the paragraph's own
+    next line, so a caption over its table in one paragraph is none; the line before it as
+    the rule reads it (round 2)."""
+    from manuscript_guard.gates import glossary
+
+    def outside(prose: str, lines: list[str], index: int, start: int, end: int) -> bool:
+        previous = lines[index - 1] if index else glossary._line_above(prose, start)
+        about = (previous, glossary._line_below(prose, end))
+        return any(glossary._TABLE_LINE.match(line) for line in about)
+
+    patch.setattr(glossary, "_beside_a_table", outside)
+
+
+def _the_line_above_stops_at_a_no_break_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def narrow(prose: str, start: int) -> str:
+        stop = start
+        while stop and prose[stop - 1] in " \t\r\n":
+            stop -= 1
+        return prose[prose.rfind("\n", 0, stop) + 1 : stop]
+
+    patch.setattr(glossary, "_line_above", narrow)
+
+
+def _the_line_above_is_read_past_one_blank_line_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def one_gap(prose: str, start: int) -> str:
+        """Back over the whitespace to the second line feed, a blank line's, and no further
+        (round 2 of #734): as the rule reads a blank line of spaces, a tab or a return."""
+        stop, ends = start, 0
+        while stop and prose[stop - 1].isspace() and ends < 2:
+            ends += prose[stop - 1] == "\n"
+            stop -= 1
+        return prose[prose.rfind("\n", 0, stop) + 1 : stop]
+
+    patch.setattr(glossary, "_line_above", one_gap)
+
+
 def _a_headless_paper_is_read_as_one_with_headings(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_headless", lambda files: None)
 
@@ -27653,6 +27754,26 @@ BROKEN = {
     "a caption is read as text": (
         _a_caption_is_text,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "the line above a paragraph is not read for a table's line": (
+        _the_line_above_a_paragraph_is_not_read,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line below a paragraph is read past a blank line of spaces": (
+        _the_line_below_is_read_past_a_blank_line_of_spaces,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "a colon's caption is held only to the lines about its paragraph": (
+        _a_caption_is_held_only_to_the_lines_about_its_paragraph,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line above a paragraph stops at a no-break space": (
+        _the_line_above_stops_at_a_no_break_space,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line above a paragraph is read past one blank line only": (
+        _the_line_above_is_read_past_one_blank_line_only,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
     ),
     "a paper with no heading is read as one with headings": (
         _a_headless_paper_is_read_as_one_with_headings,

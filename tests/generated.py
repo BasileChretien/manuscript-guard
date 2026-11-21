@@ -1631,6 +1631,40 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: What stands between two paragraphs: a blank line, one of spaces, of a tab or of a carriage
+#: return, two blank lines and three, which hold an empty paragraph; and a line of a space no
+#: blank line is made of, a no-break space or a form feed, then a blank line (round 1 of #734).
+CAPTION_GAPS = ("\n\n", "\n \n", "\n\t\n", "\n\r\n", "\n\n\n", "\n\n\n\n",
+                "\n\N{NO-BREAK SPACE}\n\n", "\n\f\n\n")  # fmt: skip
+
+
+@st.composite
+def caption_paragraphs(draw: st.DrawFn) -> str:
+    """A Markdown text of one paragraph of each kind a table's caption is read in or beside
+    (`glossary.markdown_captions`), in an order drawn, each two apart by a gap of
+    `CAPTION_GAPS`, each gap at least once and the rest drawn: prose; a caption opened by
+    `Table:`; two opened by a colon, which a table's line above or below makes captions as
+    the order falls; one after three spaces and one after four, which is none; a colon before
+    a mark, which is none; a pipe table and a grid table; a colon's caption under a table's
+    line and one above it, in the table's own paragraph; `Table:` on a paragraph's second
+    line; and a legend typed as one."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    kinds = [
+        f"{words().capitalize()} {words()}.", f"Table: {words()}", f": {words()}",
+        f": {words()}", f"   : {words()}", f"    : {words()}", f":-) {words()}",
+        "| A | B |\n|---|---|\n| 1 | 2 |", "+---+---+\n| a | b |\n+---+---+",
+        f"| A | B |\n|---|---|\n: {words()}", f": {words()}\n| A | B |\n|---|---|",
+        f"{words().capitalize()}.\nTable: {words()}", f"Table 2. {words()}",
+    ]  # fmt: skip
+    order = draw(st.permutations(kinds))
+    more = [draw(st.sampled_from(CAPTION_GAPS)) for _ in range(len(order) - 1 - len(CAPTION_GAPS))]
+    gaps = draw(st.permutations([*CAPTION_GAPS, *more]))
+    return order[0] + "".join(gap + kind for gap, kind in zip(gaps, order[1:], strict=True))
+
+
 #: The paragraphs that open a glossary with no heading over it, as a paper typed in Word has
 #: one: a sentence, a line in bold or in italics, a line with a colon, one in capitals.
 GLOSSARY_OPENERS = (

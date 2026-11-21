@@ -29373,6 +29373,96 @@ def test_a_value_paragraph_joined_into_the_one_above_is_not_merged_once_the_valu
     assert after == before, "a number was typed into the source"
 
 
+def _checked(project: Path) -> str:
+    """What `check` prints of the project."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from manuscript_guard.cli import main
+
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["check", str(project)])
+    return printed.getvalue()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("copy", ["a value paragraph", "four words of a paragraph"])
+def test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number(
+    project: Path, tmp_path: Path, copy: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A copy of a re-run value, or a partial copy of
+    under five words, merges."): a paragraph that is only a value, printing 4000, copied
+    rather than cut onto the end of Papa, or "Of 4000 reports screened" copied there from a
+    paragraph, and the analysis re-run to 4100. Nothing vanished, and `_swallowed` looks for
+    a copy of five words or more, so Papa merges "...dates. 4000" or "...dates. Of 4000
+    reports screened", and `check` reports the typed number as unbound."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    if copy == "a value paragraph":
+        blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _REPORTS, _BRAVO)
+        change, typed = _pasted(">4000<", "Papa paragraph", cut=False), "4000"
+    else:
+        blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+        typed = "Of 4000 reports screened"
+
+        def change(xml: str) -> str:
+            papa = _word_paragraph(xml, "Papa paragraph")
+            run = f'<w:r><w:t xml:space="preserve"> {typed}</w:t></w:r>'
+            return xml.replace(papa, papa[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
+    assert after == before.replace(_PAPA, f"{_PAPA} {typed}", 1), out
+    assert "'4000' is not bound to any source" in _checked(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_partial_copy_of_five_words_or_more_merges_too(project: Path, tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A copy of a re-run value, or a partial copy of
+    under five words, merges.", "A partial copy of five words or more merges too."):
+    `_swallowed` looks for the whole of a paragraph, so seven words copied from one, "Of
+    4000 reports screened, twelve were duplicates", in a document whose analysis was re-run
+    since, merge onto Papa as four do, and `check` reports the typed number as unbound."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+    typed = "Of 4000 reports screened, twelve were duplicates"
+
+    def change(xml: str) -> str:
+        papa = _word_paragraph(xml, "Papa paragraph")
+        run = f'<w:r><w:t xml:space="preserve"> {typed}</w:t></w:r>'
+        return xml.replace(papa, papa[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
+    assert after == before.replace(_PAPA, f"{_PAPA} {typed}", 1), out
+    assert "'4000' is not bound to any source" in _checked(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sentence_cut_from_a_paragraph_the_md_changed_merges_where_it_was_pasted(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence cut from a paragraph the `.md`
+    changed since, and pasted into another, merges."): Papa, reworded in the `.md` since the
+    build and so not compared, loses its second sentence in Word, pasted onto the end of
+    Bravo. Bravo merges it, the sentence is then in the source twice, and with no number in
+    it `check` says nothing of it."""
+    second = "The exclusions were made before any analysis was run."
+    papa = f"{_PAPA} {second}"
+    blocks = ("# Intro", _ALPHA, papa, _ROMEO, _BRAVO)
+    now = tuple(_reworded(block) if block == papa else block for block in blocks)
+
+    def change(xml: str) -> str:
+        assert f" {second}" in xml
+        xml = xml.replace(f" {second}", "", 1)
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        run = f'<w:r><w:t xml:space="preserve"> {second}</w:t></w:r>'
+        return xml.replace(bravo, bravo[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(_BRAVO, f"{_BRAVO} {second}", 1), out
+    assert after.count(second) == 2
+    assert "exclusions were made" not in _checked(project)
+
+
 def _elsewhere(blocks: tuple[str, ...]) -> tuple[str, ...]:
     """The `.md` edited since the build where Word left it alone: stale, nothing re-run."""
     return tuple(block.replace("exposure window", "exposure period") for block in blocks)
@@ -29708,6 +29798,259 @@ def test_a_paragraph_whose_identifier_holds_text_it_cannot_be_told_by_is_not_sai
     assert "may not have come back (the one after 'Alpha paragraph" in reasons["unsure"]
     assert "did not come back" not in reasons["unsure"]
     assert "did not come back (the one after 'Alpha paragraph" in reasons["gone"]
+
+
+@pytest.mark.parametrize(
+    "unknown", ["changed in the .md", "dropped from the .md", "a value re-run"]
+)
+def test_a_rewording_that_gained_five_words_or_a_number_is_refused_beside_one_not_known(
+    tmp_path: Path, unknown: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A rewording that gained five words in a row, or a
+    number, is refused whenever a paragraph that did not come back said something not
+    known."). Romeo did not come back and what it said is not known: the `.md` changed it or
+    dropped it since the build, or it is only a value in a document built from other
+    inputs. A rewording elsewhere that gained a run of five words, or a word with a digit,
+    is refused; one that gained a word, fixed a word or cut a clause merges, and so does a
+    paragraph of four words with no digit copied into it, whose words are then in the source
+    twice."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    short = "Duplicates were removed early."
+    bravo = "Bravo paragraph describes the exposure window, as the protocol set it."
+    value = "{{results.cohort.n_reports}}"
+    middle = {"changed in the .md": _reworded(_ROMEO), "a value re-run": value}.get(unknown)
+    path = tmp_path / "main.md"
+    text = "\n\n".join([_ALPHA, short, *([middle] if middle else []), bravo]) + "\n"
+    path.write_text(text, encoding="utf-8")
+    names = {"a": _ALPHA, "s": short, "b": bravo, **({"v": value} if middle == value else {})}
+    known = {name: (path, words, text.index(words)) for name, words in names.items()}
+    sent = [Block(("a",), _ALPHA), Block(("s",), short)]
+    marked, flags = None, {}
+    if unknown == "a value re-run":
+        # Printing 4100 now, all of it the value: what it printed at the build is not known.
+        marked = [*sent, Block(("v",), "4100", tokens=((0, 4),)), Block(("b",), bravo)]
+        sent.append(Block(("v",), "4100"))
+        flags["stale"] = True
+    else:
+        sent += [Block(("r",), middle)] if middle else []
+        flags["built"] = ("a", "s", "r", "b")
+    sent.append(Block(("b",), bravo))
+    refused = {
+        "five words in a row": bravo[:-1] + ", which ran from the first dose.",
+        "a number": bravo.replace("window", "window of 2019"),
+    }
+    merged = {
+        "a word added": bravo.replace("the exposure", "the whole exposure"),
+        "a word fixed": bravo.replace("describes", "details"),
+        "a clause cut": "Bravo paragraph describes the exposure window.",
+        "four words copied in": f"{bravo} {short}",
+    }
+    for gained, now in {**refused, **merged}.items():
+        plan = plan_import(known, sent, [*sent[:2], Block(("b",), now)], marked, **flags)
+        if gained in refused:
+            assert [refusal.name for refusal in plan.refused] == ["b"], (gained, plan)
+            assert "and what it said then is not known" in plan.refused[0].why[0], gained
+        else:
+            assert plan.merged == {"b": now} and not plan.refused, (gained, plan)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8").count(short) == 2
+
+
+#: The returned blocks of the next test, by where Word left the identifier of Romeo, which
+#: the `.md` changed since the build: in front of Bravo's, on an empty line, at the end of
+#: Papa (its emptied line joined up), on text reading exactly as another paragraph or as a
+#: heading, on a sentence typed where it stood, on one typed after its line was joined up,
+#: on a block with Bravo's where neither bookmark's place is known, with and without text
+#: typed, and nowhere, deleted with Track Changes on; with whether Romeo counts as gone.
+_LEFT_BEHIND = {
+    "in front of another's": (True, ("r", "b"), _BRAVO, (("r", 0), ("b", 0))),
+    "on an empty line": (True, ("r",), "", ()),
+    "at the end of a paragraph": (True, ("p", "r"), _PAPA, (("p", 0), ("r", len(_PAPA)))),
+    "on another paragraph's text": (True, ("r",), _BRAVO, ()),
+    "on a heading's text": (True, ("r",), "Intro", ()),
+    "on a sentence typed": (False, ("r",), "A sentence typed where the cut one stood.", ()),
+    "on a sentence typed after a join": (
+        False, ("p", "r"), f"{_PAPA} A sentence typed there next.",
+        (("p", 0), ("r", len(_PAPA) + 1)),
+    ),
+    "beside another's, places unknown": (True, ("r", "b"), _BRAVO, ()),
+    "after a join, places unknown": (True, ("p", "r"), f"{_PAPA} A sentence typed there.", ()),
+    "deleted, tracked": (True, (), "", ()),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("gained", ["five words in a row", "a number"])
+@pytest.mark.parametrize("left", list(_LEFT_BEHIND))
+def test_without_the_record_an_identifier_left_behind_counts_as_gone_by_what_it_holds(
+    tmp_path: Path, left: str, gained: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), for a paragraph whose text is not
+    known. Romeo counts as gone where its identifier holds nothing - in front of another's,
+    on an empty line, at the end of the paragraph its line was joined onto - and where what
+    it holds reads exactly as another paragraph or a heading; and where a block holds it
+    with another and the place of neither bookmark is known; and deleted outright, as a
+    tracked deletion was. Gone, its words not known, it holds back Alpha's rewording that
+    gained five words in a row or a number. Holding text that reads as nothing sent - a
+    sentence typed where it stood, or after its emptied line was joined up - it counts as
+    Romeo reworded, and Alpha's rewording merges."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    gone, names, held, at = _LEFT_BEHIND[left]
+    path = tmp_path / "main.md"
+    text = f"# Intro\n\n{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"a": _ALPHA, "p": _PAPA, "b": _BRAVO}
+    known = {name: (path, line, text.index(line)) for name, line in words.items()}
+    heading = Block((), "Intro", role="heading")
+    sent = [heading, Block(("a",), _ALPHA), Block(("p",), _PAPA),
+            Block(("r",), _reworded(_ROMEO)), Block(("b",), _BRAVO)]  # fmt: skip
+    papa, bravo = Block(("p",), _PAPA), Block(("b",), _BRAVO)
+    rest = [Block(names, held, at=at)] if names else []
+    if "p" not in names:
+        rest = [papa, *rest]
+    if "b" not in names:
+        rest = [*rest, bravo]
+    grown = _ALPHA[:-1] + (
+        ", which ran from the first to the last dose." if gained == "five words in a row"
+        else " in 2019."
+    )  # fmt: skip
+    returned = [heading, Block(("a",), grown), *rest]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if gone:
+        assert "a" in [refusal.name for refusal in plan.refused], plan
+        refusal = next(refusal for refusal in plan.refused if refusal.name == "a")
+        assert "and what it said then is not known" in refusal.why[0]
+        assert "a" not in plan.merged
+    else:
+        assert plan.merged.get("a") == grown, plan
+        assert "a" not in [refusal.name for refusal in plan.refused]
+
+
+def test_without_the_record_a_paragraph_counted_reworded_is_not_looked_for_elsewhere(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), the paste not looked for.
+    Romeo, which the `.md` changed since the build, is cut and its old text pasted onto the
+    end of Alpha, and a sentence typed on its emptied line: its identifier holds text that
+    reads as nothing sent, it counts as Romeo reworded, and Alpha merges holding Romeo's old
+    sentence. With the identifier nowhere, Romeo is gone and Alpha is refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    pasted = Block(("a",), f"{_ALPHA} {_ROMEO}")
+    typed = Block(("r",), "A sentence typed where the cut one stood.")
+    plan = plan_import(known, sent, [pasted, sent[1], typed, sent[3]], built=("a", "p", "r", "b"))
+    assert plan.merged == {"a": pasted.text} and not plan.refused, plan
+    plan = plan_import(known, sent, [pasted, sent[1], sent[3]], built=("a", "p", "r", "b"))
+    assert [refusal.name for refusal in plan.refused] == ["a"] and not plan.merged, plan
+
+
+@pytest.mark.parametrize("kind", ["of its own kind", "of another kind"])
+@pytest.mark.parametrize("block", ["changed in the .md", "as built"])
+def test_without_the_record_an_identifier_on_a_block_the_md_changed_counts_as_the_paragraph(
+    tmp_path: Path, kind: str, block: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), the block given no identifier.
+    Romeo, which the `.md` changed since the build, deleted in Word, leaves its identifier on
+    the block under it, a paragraph over a code fence that the build gave none. Where that
+    block was changed in the `.md` since and is body text as Romeo was built, what the
+    identifier holds reads as nothing the fresh build prints: Romeo counts as reworded, and
+    its old text pasted onto Alpha is not looked for, so Alpha merges. A block as built
+    reads as itself, and one of another kind - a quotation - is known by its kind
+    (`merge._off_headings`): Romeo is gone, and Alpha is refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    then = "Uniform paragraph over a code fence says the old thing here."
+    now = "Uniform paragraph over a code fence now says something new."
+    role = "" if kind == "of its own kind" else "quote"
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{now}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    fresh = now if block == "changed in the .md" else then
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block((), fresh, role=role), Block(("b",), _BRAVO)]  # fmt: skip
+    pasted = Block(("a",), f"{_ALPHA} {_ROMEO}")
+    returned = [pasted, sent[1], Block(("r",), then, role=role), sent[4]]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if kind == "of its own kind" and block == "changed in the .md":
+        assert plan.merged == {"a": pasted.text} and not plan.refused, plan
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["a"] and not plan.merged, plan
+
+
+@pytest.mark.parametrize("holds", ["other text", "its own text"])
+def test_without_the_record_a_known_paragraph_counts_as_gone_where_its_text_is_not_held(
+    tmp_path: Path, holds: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), for a paragraph whose text is
+    known. Papa's identifier comes back in front of Bravo's on one block, holding text typed
+    there and not Papa's: Papa counts as gone, and a rewording of it pasted onto Alpha is
+    found and refused. Holding Papa's own text, Papa came back, and Alpha merges."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    grown = Block(("a",), f"{_ALPHA} {_PAPA.replace('twelve', 'a dozen')}")
+    first = "Some text typed here." if holds == "other text" else _PAPA
+    block = Block(("p", "b"), f"{first} {_BRAVO}", at=(("p", 0), ("b", len(first) + 1)))
+    plan = plan_import(known, sent, [grown, sent[2], block], built=("a", "p", "r", "b"))
+    if holds == "other text":
+        assert "a" in [refusal.name for refusal in plan.refused] and "a" not in plan.merged, plan
+        refusal = next(refusal for refusal in plan.refused if refusal.name == "a")
+        assert "it came back holding another paragraph" in refusal.why[0], refusal
+    else:
+        assert plan.merged == {"a": grown.text}, plan
+
+
+@pytest.mark.parametrize("papa", ["on other text", "gone"])
+def test_without_the_record_a_paragraph_on_other_text_is_not_looked_for_in_another(
+    tmp_path: Path, papa: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), its last sentence. Papa, compared,
+    comes back with its identifier on text reading as Bravo's: it is refused itself
+    (`_not_its_own`), and a rewording of it pasted onto Bravo is not looked for, so Bravo
+    merges, as on `main`. Papa deleted instead, the same paste is found, and Bravo is
+    refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    grown = Block(("b",), f"{_BRAVO} {_PAPA.replace('twelve', 'a dozen')}")
+    papa_back = [Block(("p",), _BRAVO)] if papa == "on other text" else []
+    returned = [sent[0], *papa_back, sent[2], grown]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if papa == "on other text":
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert "came back with its identifier on other text" in plan.refused[0].why[0]
+        assert plan.merged == {"b": grown.text}
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["b"] and not plan.merged, plan
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
@@ -30687,6 +31030,265 @@ def test_an_identifier_a_build_put_behind_text_is_not_read_as_joined_up() -> Non
     assert out == back and not untold
     out, untold = _off_as_sent([replace(sent, at=(("mg-p-main-1", 0),))], back, Counter())
     assert not out[0].names and "behind 'Label:'" in untold["mg-p-main-1"].why
+
+
+def _as_recorded(
+    tmp_path: Path,
+    sent: list,
+    returned: list,
+    *,
+    record: list | None = None,
+    recorded: bool = True,
+    left_out: tuple[str, ...] = (),
+    **flags,
+):
+    """`plan_import` of `returned` against a one-file source of `sent`'s blocks, a heading
+    written as one, with the document's record saying it printed `sent` (or `record`), or
+    with no record unless `recorded`. Identifiers in `left_out` are not compared. Returns
+    the plan, the file and its text."""
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "".join(
+        ("# " if block.role == "heading" else "") + block.text + "\n\n"
+        for block in sent
+        if not block.table
+    )
+    path.write_text(text, encoding="utf-8")
+    known = {
+        block.names[0]: (path, block.text, text.index(block.text))
+        for block in sent
+        if block.names and block.names[0] not in left_out
+    }
+    printed = (sent if record is None else record) if recorded else None
+    return plan_import(known, sent, returned, printed=printed, **flags), path, text
+
+
+#: The two blocks around the paragraphs of the tests below.
+_OPENS = "Alpha opens the results here."
+_CLOSES = "Zulu closes the results here."
+
+
+def test_with_the_record_a_caption_edited_to_read_like_the_deleted_sentence_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the first of them: a sentence above the caption that repeats it,
+    deleted in Word, its identifier on the caption, and the caption edited so that it reads
+    like the sentence too. The record cannot tell it from the sentence reworded, and it is
+    refused, not merged and not reported deleted."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    lead = "Table one shows the counts of reports by age group and sex."
+    caption = Block((), "Counts of reports by age group.", role="caption", style="caption")
+    edited = replace(caption, names=("p",), text=lead.replace("the counts", "counts"))
+    plan, _path, _text = _as_recorded(tmp_path, [alpha, Block(("p",), lead), caption, zulu],
+                                      [alpha, edited, zulu])  # fmt: skip
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "either this paragraph, reworded" in plan.refused[0].why[0]
+    assert not plan.merged and not plan.gone
+
+
+@pytest.mark.parametrize("side", ["above", "under"])
+def test_with_the_record_a_rewording_past_most_words_beside_a_deleted_block_of_its_kind_is_refused(
+    tmp_path: Path, side: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the second: a paragraph rewritten past most of its words in the
+    round in which a block of its own kind directly above or under it was deleted - the
+    text beside a displayed equation, a line block, a div with no style: a block without an
+    identifier, in the paragraph's style. The document is byte for byte that block typed
+    over with the paragraph deleted, and the rewording is refused. Reworded less far, it
+    merges: the other side of the same rule."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    beside = Block((), "where the counts come from the whole database.")
+    middle = [beside, paragraph] if side == "above" else [paragraph, beside]
+    sent = [alpha, *middle, zulu]
+    far = "We derived the estimate by logistic modelling instead."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), far), zulu])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "either this paragraph, reworded" in plan.refused[0].why[0]
+    assert not plan.merged and not plan.gone
+    near = "The ratio was computed from a two by two table of counts for each drug."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), near), zulu])
+    assert plan.merged == {"p": near} and not plan.refused, plan
+
+
+def test_with_the_record_a_joined_up_line_with_text_typed_after_its_identifier_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the third and fourth. A paragraph's text deleted, its emptied line
+    joined up onto the heading above, and the end of that heading retyped after the
+    identifier: what the identifier holds was typed after the join or is what is left of the
+    paragraph, so it is refused, not reported deleted, and nothing is written. With nothing
+    after the identifier the paragraph is reported deleted, and without the record so is
+    this one: the other sides. The paragraph after such a line, reworded in the round in
+    which the heading above was edited, is refused as beside new text; beside the heading as
+    sent, it merges."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    sent = [heading, paragraph, after]
+    # "Methods" with "ds" deleted before the identifier and " and design" typed after it.
+    typed = replace(heading, names=("p",), text="Metho and design", at=(("p", 5),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [typed, after])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "came back inside another block, behind 'Metho'" in plan.refused[0].why[0]
+    assert not plan.gone and not plan.merged
+    plan, _path, _text = _as_recorded(tmp_path, sent, [typed, after], recorded=False)
+    assert plan.gone == ("p",) and not plan.merged, plan
+    joined = replace(heading, names=("p",), at=(("p", len(heading.text)),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [joined, after])
+    assert plan.gone == ("p",) and not plan.refused, plan
+
+    reworded = Block(("q",), "Quebec closes the whole section here.")
+    retitled = replace(heading, names=("p",), text="Study methods", at=(("p", 13),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [retitled, reworded])
+    assert [refusal.name for refusal in plan.refused] == ["q"], plan
+    assert "came back after a new paragraph, 'Study methods'" in plan.refused[0].why[0]
+    assert plan.gone == ("p",) and not plan.merged
+    plan, _path, _text = _as_recorded(tmp_path, sent, [joined, reworded])
+    assert plan.merged == {"q": reworded.text} and not plan.refused, plan
+
+
+def test_with_the_record_the_refusals_that_rest_on_hashes_still_stand(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the fifth: the record could settle each of these, and none is
+    read from it. A rewording beside a heading the `.md` changed since the build
+    (`beside_changed`), in a stale document beside a heading that is missing
+    (`_printed_otherwise`), and just before a paragraph left out of the comparison that did
+    not come back (`_beside_lost`) are refused. The same rewording with none of them merges."""
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    reworded = Block(("p",), "We analysed the data in a single pass.")
+    sent = [heading, paragraph, after]
+
+    def refused(plan) -> str:
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert not plan.merged
+        return plan.refused[0].why[0]
+
+    changed = frozenset({"p"})
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, reworded, after],
+                                      beside_changed=changed)  # fmt: skip
+    assert "not the one the document was sent with" in refused(plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [reworded, after], stale=True)
+    assert "not the one the document was sent with" in refused(plan)
+    left_out = Block(("r",), "Romeo was left out of the comparison.")
+    plan, _path, _text = _as_recorded(
+        tmp_path, [paragraph, left_out, after], [reworded, after],
+        left_out=("r",), built=("p", "r", "q"),
+    )  # fmt: skip
+    assert "the paragraph after it in the document as sent did not come back" in refused(plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, reworded, after])
+    assert plan.merged == {"p": reworded.text} and not plan.refused, plan
+
+
+def test_where_a_bookmark_sits_is_read_only_for_one_identifier_the_record_holds(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its first three sentences. One
+    identifier the record holds, behind the text of a heading it was joined up onto, is
+    told by that place, and refused. A block carrying it with another, or carrying one the
+    record does not hold, is judged by its kind as a document without the record is: the
+    identifiers come off the heading, and their paragraphs are reported deleted. One whose
+    place is not known - Word's tracked changes moved it - is read as at the start of its
+    block: reported deleted, as one there is. Several identifiers on a block of body text
+    are a join, and never merged as a rewording."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    sent = [heading, paragraph, after]
+    behind = replace(heading, names=("p",), text="Metho and design", at=(("p", 5),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [behind, after])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "came back inside another block" in plan.refused[0].why[0]
+    for at in ((("p", 0),), ()):
+        plan, _path, _text = _as_recorded(tmp_path, sent, [replace(behind, at=at), after])
+        assert plan.gone == ("p",) and not plan.refused, (at, plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [behind, after], record=[heading, after])
+    assert plan.gone == ("p",) and not plan.refused, plan
+    both = replace(behind, names=("p", "q"), at=(("p", 5), ("q", 16)))
+    for recorded in (True, False):
+        plan, _path, _text = _as_recorded(tmp_path, sent, [both], recorded=recorded)
+        assert plan.gone == ("p", "q") and not plan.refused and not plan.merged, plan
+
+    reworded = "We analysed the data in a single pass."
+    joined = Block(("p", "q"), f"{reworded} {after.text}", at=(("p", 0), ("q", len(reworded) + 1)))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, joined])
+    assert plan.joined == (("p", "q"),) and not plan.merged, plan
+
+
+@pytest.mark.parametrize("table", ["edited in place", "as sent"])
+def test_with_the_record_a_table_edited_in_place_counts_as_gone(tmp_path: Path, table: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its table. A table with no copy of
+    the same content in the returned document counts as gone, so one edited in place does
+    too, and the text beyond it - here deleted, and of the paragraph's own kind - is weighed
+    with the text under the paragraph: a rewording past most of its words is refused. With
+    the table as sent, the text beyond it is not weighed, and the same rewording merges."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    counts = Block(kind="table", key="the counts as sent")
+    beyond = Block((), "Yankee paragraph text sits under the table here.")
+    sent = [alpha, paragraph, counts, beyond, zulu]
+    back = counts if table == "as sent" else Block(kind="table", key="one cell corrected")
+    far = Block(("p",), "We derived the estimate by logistic modelling instead.")
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, far, back, zulu])
+    if table == "as sent":
+        assert plan.merged == {"p": far.text} and not plan.refused, plan
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert "either this paragraph, reworded" in plan.refused[0].why[0]
+        assert not plan.merged
+
+
+def test_a_block_of_the_paragraphs_kind_pasted_onto_its_emptied_line_is_its_rewording(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its last sentence. A block of the
+    paragraph's own kind - a line block, the text beside an equation - cut from elsewhere,
+    pasted onto the line the paragraph's text was deleted from and edited there, is read as
+    the paragraph reworded: its text is merged into the paragraph's slot, and its old place
+    is listed as a block that vanished. The other side of "edited there": pasted as it was,
+    it reads exactly as that block, the identifier comes off it, and the paragraph is
+    reported deleted, with nothing vanished."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    bravo = Block(("b",), "Bravo sits between them.")
+    lima = Block((), "Lima is a line block that stood below.")
+    sent = [alpha, paragraph, bravo, lima, zulu]
+    edited = "Lima is a line block that once stood below."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), edited), bravo, zulu])
+    assert plan.merged == {"p": edited} and not plan.refused and not plan.gone, plan
+    assert plan.vanished == (lima.text,)
+    unedited = [alpha, Block(("p",), lima.text), bravo, zulu]
+    plan, _path, _text = _as_recorded(tmp_path, sent, unedited)
+    assert plan.gone == ("p",) and not plan.merged and not plan.vanished, plan
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

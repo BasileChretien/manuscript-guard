@@ -260,15 +260,30 @@ def _unpadded(node: object) -> object:
     5.2 MB of Markdown, every rule of G6 and G14 read it, and the audit timed out (zenodo
     10010235, in the robustness sweep of 2026-11-21)."""
     if isinstance(node, list):
-        return [_unpadded(item) for item in node]
+        copied_list: list = []
+        for item in node:
+            if isinstance(item, dict) and item.get("t") == "HorizontalRule":
+                before = copied_list[-1] if copied_list else None
+                copied_list.append(_rule(isinstance(before, dict) and before.get("t") == "Plain"))
+            else:
+                copied_list.append(_unpadded(item))
+        return copied_list
     if not isinstance(node, dict):
         return node
     if node.get("t") == "HorizontalRule":
-        return {"t": "RawBlock", "c": ["markdown", "-" * RULE_WIDTH]}
+        return _rule(False)
     copied = {key: _unpadded(value) for key, value in node.items()}
     if copied.get("t") == "Table":
         copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
     return copied
+
+
+def _rule(after_plain: bool) -> dict:
+    """A rule as raw Markdown, `RULE_WIDTH` hyphens, read back as the rule pandoc wrote. After
+    a plain paragraph, a cell's or a tight list item's, a blank line first: pandoc writes one
+    between a plain paragraph and its own rule and none before raw Markdown, and the hyphens
+    then underlined the paragraph as a heading (round 1 of #732)."""
+    return {"t": "RawBlock", "c": ["markdown", ("\n" if after_plain else "") + "-" * RULE_WIDTH]}
 
 
 def _comment(markdown: str) -> str:

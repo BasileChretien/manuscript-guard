@@ -541,6 +541,32 @@ def test_nothing_written_keeps_a_width_or_a_rule_as_long_as_the_line() -> None:
     assert written[1]["c"][4][0][3][0][1][1][4] == [rule]
 
 
+@needs_pandoc
+def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote() -> None:
+    """A rule is written as raw Markdown, a line of hyphens (`from_word._unpadded`), and read
+    back it is what pandoc's own rule was: apart from the paragraphs about it, which a table
+    of one column would hold if no blank line stood between them, and apart from a plain
+    paragraph before it, which pandoc writes on the line straight above raw Markdown, where
+    the hyphens underlined it as a heading (round 1 of #732)."""
+    import subprocess
+
+    def pandoc(text: str) -> dict:
+        done = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True,
+                              input=text.encode("utf-8"), capture_output=True, timeout=60)
+        return json.loads(done.stdout)  # fmt: skip
+
+    def para(word: str) -> dict:
+        return {"t": "Para", "c": [{"t": "Str", "c": word}]}
+
+    rule = {"t": "HorizontalRule"}
+    blocks = [rule, para("a"), para("b"), *_plain("x"), rule, para("y"), rule]
+    tree = {"pandoc-api-version": pandoc("")["pandoc-api-version"]}
+    written = from_word._write(tree, blocks, Path("paper.docx"))
+    read = [block["t"] for block in pandoc(written)["blocks"]]
+    assert read == ["HorizontalRule", "Para", "Para", "Para", "HorizontalRule", "Para",
+                    "HorizontalRule"], written  # fmt: skip
+
+
 def test_a_second_header_row_becomes_the_first_of_the_body() -> None:
     table = _table(
         [[_ATTR, [_cell(_plain("A")), _cell(_plain("B"))]],

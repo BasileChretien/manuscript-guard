@@ -40,7 +40,7 @@ name is reported once, where it first stands, with how often it does.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -143,6 +143,15 @@ def code_shaped(name: str) -> bool:
     """Whether a key or a dictionary name is one no word of the prose is written like: with
     an underscore or a dot in it, or in camelCase from two small letters."""
     return "_" in name or "." in name or bool(_CAMEL.match(name))
+
+
+def joined_names(text: str) -> Iterator[tuple[int, int]]:
+    """Where each word joined by underscores stands in `text`, `(start, end)`, its
+    underscores typed as this reading reads them: bare, escaped, or as the LaTeX reader
+    writes `\\_`. G14's notation reads no space left out inside one (`notation`)."""
+    for found in _NAME.finditer(text):
+        if "_" in found.group():
+            yield found.span()
 
 
 def _exact(name: str, names: Names) -> tuple[str, str | None] | None:

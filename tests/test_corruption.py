@@ -32499,12 +32499,22 @@ def test_a_number_typed_against_its_word_beside_a_lowered_index_is_caught(
         ("notation-space-missing",
          "a number and a word run together 2 times: '12patients', '0.05and'"),
     ]  # fmt: skip
-    # Two footnotes' anchors with no blank between them raise nothing: an anchor is not
-    # read as prose, so its caret opens no piece and "12patients" between them is caught
-    # (round 1 of #719).
-    edited = text.replace(old, old + " It was seen[^n1];12patients[^n2] later.\n\n"
-                          "[^n1]: One note.\n\n[^n2]: Another note.\n")  # fmt: skip
-    main_md(project).write_text(edited, encoding="utf-8")
+
+
+@pytest.mark.parametrize("notes", [
+    " It was seen[^n1];12patients[^n2] later.\n\n[^n1]: One note.\n\n[^n2]: Another note.\n",
+    " It was seen^[Ibid.];12patients^[See the protocol for details.] later.",
+], ids=["anchors", "inline notes"])  # fmt: skip
+def test_a_number_typed_against_its_word_between_two_notes_is_caught(
+    project: Path, notes: str
+) -> None:
+    """Two notes with no blank between them raise nothing: a footnote's anchor is blanked
+    before notation reads the text, and an inline note's caret stands before a bracket, so
+    neither opens a raised piece, and "12patients" between them is caught (rounds 1 and 2 of
+    the review of #719)."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    main_md(project).write_text(text.replace(old, old + notes), encoding="utf-8")
     assert [(code, message) for code, _line, message in notation_findings(project)
             if code == "notation-space-missing"] == [
         ("notation-space-missing", "a number and a word run together once: '12patients'"),

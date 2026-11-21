@@ -7998,6 +7998,17 @@ def _any_tildes_lower_a_piece(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(notation, "_RAISED_OR_LOWERED", re.compile(r"~[^~\s]+~|\^[^\^\s]+\^"))
 
 
+def _an_inline_note_raises_a_piece(patch: pytest.MonkeyPatch) -> None:
+    """As at 9866fcc: an inline note's caret, `^[Ibid.]`, opened a raised piece that ran to
+    the next note's (round 2 of the review of #719)."""
+    from manuscript_guard.gates import notation
+
+    pattern = notation._RAISED_OR_LOWERED.pattern
+    assert pattern.count(r"\^(?![\^\[])") == 1
+    patch.setattr(notation, "_RAISED_OR_LOWERED",
+                  re.compile(pattern.replace(r"\^(?![\^\[])", r"\^(?!\^)")))  # fmt: skip
+
+
 def _a_name_joined_by_underscores_is_prose(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import code_names
 
@@ -28518,6 +28529,10 @@ BROKEN = {
     ),
     "an escaped tilde or a strikeout's lowers a piece": (
         _any_tildes_lower_a_piece,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "an inline note's caret raises a piece": (
+        _an_inline_note_raises_a_piece,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "a number inside a name joined by underscores is a space left out": (

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 
@@ -139,6 +140,10 @@ FAMILIES = {
     "compare": ("version-read", "version-pdf", "file-read",
                 "fact-changed", "fact-gone", "fact-new", "section-same", "section-changed",
                 "section-new", "section-gone", "section-moved"),
+    # Keyed by the figure's file and the way of seeing, and by the refused file and the
+    # kind of refusal (Basile, 2026-11-21, "Stable key first": their messages change).
+    "G3": ("figure-colours-confused", "figure-greyscale-confused"),
+    "BUILD": ("tex-refused",),
 }  # fmt: skip
 KEYED = frozenset(code for codes in FAMILIES.values() for code in codes)
 
@@ -199,9 +204,10 @@ def fallen_back(found: list[dict]) -> set[str]:
 
 def test_the_key_scheme_is_numbered_and_raised_past_the_first() -> None:
     """The corpus tool reads the scheme from each run's commit; #709 changed the part of
-    Word and PDF papers on purpose, and raised it from 1 (Basile, 2026-11-20)."""
+    Word and PDF papers on purpose, and raised it from 1 (Basile, 2026-11-20); G3's colours
+    and BUILD's refusals named their subject, and raised it from 2 (2026-11-21)."""
     assert isinstance(keys.SCHEME, int) and not isinstance(keys.SCHEME, bool)
-    assert keys.SCHEME >= 2
+    assert keys.SCHEME >= 3
 
 
 def test_a_sentence_is_read_the_same_wrapped_or_not_and_however_it_is_typed() -> None:
@@ -708,6 +714,122 @@ def test_each_use_of_a_citation_beyond_the_list_is_keyed_in_its_sentence(tmp_pat
             "1. Smith J. A paper. J Test. 2020;1:1-2.\n")  # fmt: skip
     found = keyed(audited(a_paper(tmp_path, text)), "citation-beyond-list")
     assert len(found) == 2 and len(set(found)) == 2, found
+
+
+def _colour_keys(root: Path) -> dict[str, str]:
+    """The key of each finding G3 makes of a project's figures' colours, by its message."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    return {found.message: found.key
+            for found in check_figure_colours(load_project(root)[0]).findings}  # fmt: skip
+
+
+def test_a_figures_confused_colours_keep_their_key_when_the_pairs_listed_change(
+    project: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G3's finding on one way of seeing lists the pairs it confuses: one pair more, as
+    another rule for comparing them gives (#715 stops pairing white), is the same finding
+    with the same key, named by the figure's file from the project's root and the way
+    (Basile, 2026-11-21, "Stable key first")."""
+    from test_corruption import _GREEN, _RED, _painted
+
+    from manuscript_guard.gates import figure_colours
+
+    _painted(project, _RED, _GREEN)
+    (before,) = _colour_keys(project).items()
+    assert before[1] == "G3|figure-colours-confused|figures/forest.svg@deuteranopia|-"
+    found = figure_colours.confusions
+    monkeypatch.setattr(figure_colours, "confusions", lambda colours, *rest: [
+        *(said := found(colours, *rest)), *(replace(one, first="#123456") for one in said)])
+    (after,) = _colour_keys(project).items()
+    assert after[0] != before[0] and "#123456" in after[0]
+    assert after[1] == before[1]
+
+
+def test_each_way_of_seeing_a_figure_is_its_own_key_in_any_folder(
+    project: Path, tmp_path: Path,
+) -> None:
+    """Colours one figure confuses in two ways, with deuteranopia and in grey, are two
+    findings and two keys; the same project in another folder gives the same keys."""
+    import shutil
+
+    from test_corruption import _GREEN, _ORANGE, _RED, _SKY, _painted
+
+    _painted(project, _RED, _GREEN, _ORANGE, _SKY)
+    found = _colour_keys(project)
+    subjects = sorted(key.split("|")[2] for key in found.values())
+    assert "figures/forest.svg@deuteranopia" in subjects
+    assert "figures/forest.svg@greyscale" in subjects
+    assert len(subjects) == len(set(subjects)) == len(found)
+    moved = shutil.copytree(project, tmp_path / "elsewhere" / "paper")
+    assert sorted(_colour_keys(moved).values()) == sorted(found.values())
+
+
+def _refusals(root: Path) -> dict[str, str]:
+    """The message of each `tex-refused` BUILD gives a project, by its key as `--json` says
+    it, numbered where two share one."""
+    from manuscript_guard.build.latex_check import check_latex
+    from manuscript_guard.contracts import load_project
+
+    said = json.loads(check_latex(load_project(root)[0]).to_json())["findings"]
+    return {found["key"]: found["message"] for found in said if found["code"] == "tex-refused"}
+
+
+def test_a_latex_refusal_keeps_its_key_when_its_message_changes(
+    project: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refusal is keyed by its file and its kind, with the line it stands on: reworded or
+    lengthened, as #716 lengthens one, it keeps its key. Two inputs of one kind on two lines
+    are two keys, and two on one line two numbered keys (Basile, 2026-11-21)."""
+    from test_corruption import _as_latex
+
+    from manuscript_guard.text.latex import commands
+
+    entry = _as_latex(project)
+    entry.write_text("\\documentclass{article}\n\\begin{document}\n\\input{gone}\n"
+                     "\\input{lost} \\input{missing}\n\\includepdf{x.pdf}\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    before = _refusals(project)
+    subjects = sorted(key.split("|")[2] for key in before)
+    assert subjects == ["manuscript/main.tex@command", "manuscript/main.tex@input-not-followed",
+                        "manuscript/main.tex@input-not-followed#1",
+                        "manuscript/main.tex@input-not-followed#2"], subjects  # fmt: skip
+    assert len({key.split("|")[3] for key in before}) == 3
+    monkeypatch.setitem(commands.REFUSED, "includepdf", "reworded, and said at greater length")
+    after = _refusals(project)
+    assert set(after) == set(before)
+    assert [after[key] for key in after if "@command" in key] != [
+        before[key] for key in before if "@command" in key]
+
+
+def test_every_tex_refused_the_reader_makes_names_its_kind() -> None:
+    """Each place the LaTeX reader refuses with `tex-refused` names the kind its key takes:
+    one with none would key on the code, and two kinds of refusal on one line would share a
+    key."""
+    import ast
+
+    from manuscript_guard.text.latex import mask
+
+    folder = Path(mask.__file__).parent
+    unnamed = []
+    for name in ("mask.py", "structure.py"):
+        tree = ast.parse((folder / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            called = getattr(node.func, "attr", getattr(node.func, "id", None))
+            first = node.args[0] if node.args else None
+            refused = isinstance(first, ast.Constant) and first.value == "tex-refused"
+            kind = next((one.value for one in node.keywords if one.arg == "kind"), None)
+            if called == "_refuse" and refused and kind is None and len(node.args) > 3:
+                kind = node.args[3]
+            if called in ("_refuse", "Refusal") and refused and not (
+                    isinstance(kind, ast.Name) or (isinstance(kind, ast.Constant) and kind.value)):
+                unnamed.append(f"{name}:{node.lineno}")
+            if called == "_skip_block" and not any(one.arg == "kind" for one in node.keywords):
+                unnamed.append(f"{name}:{node.lineno}")
+    assert unnamed == [], unnamed
 
 
 # --------------------------------------------------------------------- what moves a key

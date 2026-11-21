@@ -19,7 +19,9 @@ manuscript has none of these.
 
 from __future__ import annotations
 
+from manuscript_guard import keys
 from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.text.latex.mask import Refusal
 from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, SUPPLEMENT_ENTRY, read_document
 from manuscript_guard.text.reader import LATEX, manuscript_format
 
@@ -63,6 +65,7 @@ def check_latex(project) -> Report:
                     message=f"manuscript/{path}: {refusal.message}",
                     path=folder / path,
                     line=text.count("\n", 0, refusal.offset) + 1,
+                    **_keyed(path, text, refusal, supplementary),
                     # One the tree makes, an input it cannot follow, leaves the file read.
                     hint=_SKIPPED_HINT if refusal.end >= 0 else _TREE_HINT
                     if refusal.code == "tex-refused" and (path, refusal) not in stops
@@ -84,3 +87,19 @@ def check_latex(project) -> Report:
                 )
             )
     return Report(tuple(findings))
+
+
+def _keyed(path: str, text: str, refusal: Refusal, supplementary: bool) -> dict:
+    """What a `tex-refused` finding's key is made of (`keys`): its subject, the file as the
+    project names it with the refusal's kind, `manuscript/main.tex@encoding`, never its
+    message, which is reworded; and the line it stands on as its sentence, so that two of one
+    kind in one file are two keys, numbered where they stand on one line. The other codes
+    keep the key of their context."""
+    if refusal.code != "tex-refused":
+        return {}
+    start = text.rfind("\n", 0, refusal.offset) + 1
+    end = text.find("\n", refusal.offset)
+    line = text[start : end if end >= 0 else len(text)]
+    part = keys.SUPPLEMENT if supplementary else keys.MAIN
+    return {"subject": f"manuscript/{path}@{refusal.kind or refusal.code}",
+            "sentence": keys.digest(part, line), "at": refusal.offset}  # fmt: skip

@@ -115,8 +115,22 @@ def check_figure_colours(project: Project) -> Report:
         held = {**rules, **own} if isinstance(own, dict) else rules
         grey = held.get("print") == "greyscale" or guard.get("greyscale") is True
         allowed = _allowed(_declared(sidecar, "allow_colours"))
-        findings += _judged(name, vector, colours, grey, allowed, sidecar)
+        findings += _judged(name, vector, colours, grey, allowed, sidecar,
+                            _shown(vector, project.root))  # fmt: skip
     return Report(tuple(findings)).with_counts(figures_colour_checked=checked)
+
+
+def _shown(path: Path, root: Path | None) -> str:
+    """A figure's file as the project names it, its path from the project's root with forward
+    slashes, so that its key holds across machines and folders; its name alone where it is
+    outside the root, or no root is given."""
+    if root is not None:
+        for one, base in ((path, root), (path.resolve(), root.resolve())):
+            try:
+                return one.relative_to(base).as_posix()
+            except ValueError:
+                continue
+    return path.name
 
 
 def _pictures(folder: Path, stem: str) -> list[Path]:
@@ -133,14 +147,16 @@ def _pictures(folder: Path, stem: str) -> list[Path]:
         return []
 
 
-def colour_findings(path: Path, name: str, *, greyscale: bool = False) -> list[Finding] | None:
+def colour_findings(path: Path, name: str, *, greyscale: bool = False,
+                    root: Path | None = None) -> list[Finding] | None:  # fmt: skip
     """What G3 says of the colours one vector file paints, outside the manuscript: the
-    graphical abstract `communicate check` reads, which has no sidecar to allow a pair.
-    None where the file is no SVG or PDF that can be read."""
+    graphical abstract `communicate check` reads, which has no sidecar to allow a pair, its
+    file named from the project's `root`. None where the file is no SVG or PDF that can be
+    read."""
     colours = painted(path)
     if colours is None:
         return None
-    return _judged(name, path, colours, greyscale, {}, None)
+    return _judged(name, path, colours, greyscale, {}, None, _shown(path, root))
 
 
 def _judged(
@@ -150,9 +166,11 @@ def _judged(
     grey: bool,
     allowed: dict[frozenset[str], str],
     sidecar: Path | None,
+    shown: str,
 ) -> list[Finding]:
     """The findings of one figure's colours: a scale or too many are not compared, and each
-    way of seeing that confuses two of the rest is one finding."""
+    way of seeing that confuses two of the rest is one finding, keyed by the figure's file as
+    the project names it (`shown`) and the way."""
     if len(colours) > MANY:
         return [_many(name, vector, len(colours))]
     shades = scales([parse(code)[0] for code in colours])
@@ -166,7 +184,8 @@ def _judged(
             continue
         open_ = [c for c in pairs if _reason(c, allowed) is None]
         severity = WARN if open_ and (way != GREYSCALE or grey) else INFO
-        findings.append(_confused(vector, way, open_ or pairs, allowed, severity, sidecar))
+        findings.append(_confused(vector, way, open_ or pairs, allowed, severity, sidecar,
+                                  shown))  # fmt: skip
     return findings
 
 
@@ -201,7 +220,12 @@ def _confused(
     allowed: dict[frozenset[str], str],
     severity: str,
     sidecar: Path | None,
+    shown: str,
 ) -> Finding:
+    """One way of seeing's finding on a figure's colours, which names the pairs it confuses.
+    Its key names the figure's file and the way, `figures/forest.svg@deuteranopia`, never the
+    pairs, which another rule for comparing them changes (`keys`, Basile, 2026-11-21): one
+    figure is one sidecar and one file, so no two findings of one way share it."""
     worst = sorted(pairs, key=lambda c: c.after)
     named = "; ".join(
         f"{c.first} and {c.second}, {c.normal:.0f} apart to normal vision, {c.after:.1f}"
@@ -222,6 +246,7 @@ def _confused(
         f"{THRESHOLD:g} is the least taken to tell two apart): {named}{more}",
         path=path,
         hint=hint,
+        subject=f"{shown}@{way}",
     )
 
 

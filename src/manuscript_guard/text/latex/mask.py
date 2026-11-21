@@ -24,7 +24,7 @@ the file is refused as before (Basile, 2026-11-13).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from manuscript_guard.text.latex import pictures
 from manuscript_guard.text.latex.commands import (
@@ -136,6 +136,10 @@ class Refusal:
     #: Where a skipped block ends, past its `\\makeatother` or `\\fi`; -1 where the reader
     #: stopped, and read nothing more of the file.
     end: int = -1
+    #: The kind of a `tex-refused`, a short fixed name its finding's key names, so that a
+    #: reworded message moves no key (`build/latex_check.py`); "" for the other codes. No part
+    #: of what makes two refusals one.
+    kind: str = field(default="", compare=False)
 
 
 @dataclass(frozen=True)
@@ -882,9 +886,9 @@ class _Reader:
         return _before(Reading(masked[:at] + _unread(self.text[at:]), (self.refused,), *found),
                        at)  # fmt: skip
 
-    def _refuse(self, code: str, at: int, message: str) -> None:
+    def _refuse(self, code: str, at: int, message: str, kind: str = "") -> None:
         if self.refused is None:
-            self.refused = Refusal(code, at, message)
+            self.refused = Refusal(code, at, message, kind=kind)
 
     def _role(self) -> str:
         if self.stack:
@@ -983,7 +987,8 @@ class _Reader:
                 if here == "(" and self.command in CITATIONS:
                     # Read past, the note would hide the keys after it (round 2 of step 5).
                     said = f"its global note is not closed within {_NOTE_REACH} characters"
-                    self._refuse("tex-refused", at, f"\\{self.command} is not read: {said}")
+                    self._refuse("tex-refused", at, f"\\{self.command} is not read: {said}",
+                                 "citation-note")  # fmt: skip
                     return True
                 self.pending = self.pending[1:]
                 continue
@@ -1300,16 +1305,18 @@ class _Reader:
             if self._expands_a_definition(name, end):
                 self.expanding = True
             elif not self._machinery(name):
-                self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
+                self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}",
+                             "command")  # fmt: skip
         elif name in self.delimited and self._prints():
             # Before any command the reader reads by its name: one the preamble defined again
             # prints what the author wrote, not what the reader takes it to print.
-            self._refuse("tex-refused", at, f"\\{name} is not read: {_redefined_said(name)}")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {_redefined_said(name)}",
+                         "redefined")  # fmt: skip
         elif name in ("makeatletter", "makeatother"):
             header = self._list_header()
             if name == "makeatletter" and self.body and not self.loose and not header:
                 said = "\\makeatletter in the body changes how characters are read"
-                self._skip_block(at, "makeatother", said)
+                self._skip_block(at, "makeatother", said, kind="makeatletter")
                 return
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
         elif name == "iffalse":
@@ -1323,7 +1330,8 @@ class _Reader:
                 said = "a conditional in the body prints one branch, and which is not read"
                 self._skip_block(at, "fi", f"\\{name} is not read: {said}",
                                  f"\\{name} in the body opens a conditional, which prints one "
-                                 "of its branches, and neither is read")  # fmt: skip
+                                 "of its branches, and neither is read",
+                                 kind="conditional")  # fmt: skip
         elif name in ("input", "include") and not self.definitions:
             self._input(at, end)
         elif name in IMPORTS and not self.definitions:
@@ -1377,7 +1385,7 @@ class _Reader:
             # "Citations"); one an author defines is refused where it is used.
             said = ("a citation command the reader does not know, whose keys G7 would not see; "
                     "cite with \\cite or one of the natbib and biblatex commands it reads")
-            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}", "unknown-citation")
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
 
@@ -1431,7 +1439,7 @@ class _Reader:
         elif self._prints():
             said = ("what its definition says follows it does not, and TeX stops there; "
                     "define it with \\newcommand")
-            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}", "delimiter-missing")
 
     def _past_header(self) -> None:
         """Mark the innermost reference list as past its header, at its first `\\bibitem`."""
@@ -1478,7 +1486,7 @@ class _Reader:
         written = _BINDING.match(self.text, end)
         if self.siunitx:
             if written and _KEYED.match(written.group("inner")):
-                self._refuse("tex-refused", at, _BOUND_IN_SIUNITX)
+                self._refuse("tex-refused", at, _BOUND_IN_SIUNITX, "binding-in-siunitx")
             return
         stop = written.end() if written else _BARE.match(self.text, end).end()
         self.bindings.append(BindingUse(at, stop, written.group("inner") if written else None))
@@ -1520,7 +1528,7 @@ class _Reader:
         starred forms are refused by name (round 1)."""
         if self.text.startswith("*", end):
             said = f"it is not followed; write \\{name} without the star"
-            self._refuse("tex-refused", at, f"\\{name}* is not read: {said}")
+            self._refuse("tex-refused", at, f"\\{name}* is not read: {said}", "starred-import")
             return
         folder = _BRACED_PATH.match(self.text, end)
         named = _BRACED_PATH.match(self.text, folder.end()) if folder else None
@@ -1577,7 +1585,7 @@ class _Reader:
             self.encodings.append(at)
             return
         self._refuse("tex-refused", at, "the input encoding is not UTF-8, in which the file is "
-                     "read")  # fmt: skip
+                     "read", "encoding")  # fmt: skip
 
     def _skip_false(self, at: int) -> None:
         """Blank an `\\iffalse` block to its `\\fi`, or to its `\\else`, whose branch TeX
@@ -1623,7 +1631,8 @@ class _Reader:
         return self.newif_end >= 0 and _SPACES_ONLY.fullmatch(self.text, self.newif_end,
                                                               at) is not None  # fmt: skip
 
-    def _skip_block(self, at: int, closer: str, said: str, skipped: str = "") -> None:
+    def _skip_block(self, at: int, closer: str, said: str, skipped: str = "", *,
+                    kind: str) -> None:
         """Skip a block in the body that opens at `at` to its matching `closer`, blanked and
         nothing in it read, `skipped` why (`said` where none is given), and read on past it;
         where it has no such end in the file, refuse it, `said` why, and read nothing more
@@ -1631,11 +1640,11 @@ class _Reader:
         real papers' bodies, and with it their checks)."""
         end = _block_end(self.text, self.pos, closer)
         if end < 0:
-            self._refuse("tex-refused", at, said)
+            self._refuse("tex-refused", at, said, kind)
             return
         self._blank(at, end)
         said = f"{skipped or said}, up to its \\{closer}"
-        self.skipped.append(Refusal("tex-refused", at, said, end))
+        self.skipped.append(Refusal("tex-refused", at, said, end, kind=kind))
         self.pos = end
 
     def _verb(self, at: int, end: int) -> None:
@@ -1655,7 +1664,8 @@ class _Reader:
             self.code.append((start, close + 1))
         bound = _MG_USE.search(self.text, start + 1, close)
         if bound is not None:
-            self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"))
+            self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"),
+                         "binding-as-typed")  # fmt: skip
 
     def _definition(self, name: str, at: int, end: int) -> None:
         # The definer is this one, not the command read last, a `\providecommand` (`_defines`).
@@ -1685,7 +1695,7 @@ class _Reader:
         parameters, delimited = self._parameter_text(name_end, word)
         if parameters < 0:
             said = f"the body of \\{defined} is not found within {_DELIMITED_REACH} characters"
-            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}", "definition-body")
             return
         written = _parameter_tokens(self.text, name_end, parameters, word)
         if delimited and not _PARAMETER.search(written):
@@ -1793,7 +1803,7 @@ class _Reader:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "
-                         "it as LaTeX defines it")  # fmt: skip
+                         "it as LaTeX defines it", "defined-again")  # fmt: skip
 
     def _environment(self, which: str, at: int, end: int) -> None:
         named = _ENVIRONMENT_NAME.match(self.text, end)
@@ -1813,7 +1823,8 @@ class _Reader:
         if which == "end":
             self._end(name, at)
         elif name in REFUSED_ENVIRONMENTS:
-            self._refuse("tex-refused", at, f"{name} is not read: {REFUSED_ENVIRONMENTS[name]}")
+            self._refuse("tex-refused", at, f"{name} is not read: {REFUSED_ENVIRONMENTS[name]}",
+                         "environment")  # fmt: skip
         elif name == "document":
             self.body = True
             self.body_start = self.pos
@@ -1838,7 +1849,8 @@ class _Reader:
             self.pos = closing.end()
             bound = _MG_USE.search(self.text, at, closing.start()) if name in LISTINGS else None
             if bound is not None:
-                self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
+                self._refuse("tex-refused", bound.start(), _bound_as_typed(name),
+                             "binding-as-typed")  # fmt: skip
         else:
             if name in PICTURES and self._role() == PROSE:
                 self._picture_printed(self.pos, self._picture_end(name))

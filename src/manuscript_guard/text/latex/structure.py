@@ -362,7 +362,7 @@ def _encoded(document: Document) -> Document:
     if other is None:
         return document
     said = f"the input encoding is not UTF-8, in which {other} is read"
-    refused = [(source.path, Refusal("tex-refused", at, said))
+    refused = [(source.path, Refusal("tex-refused", at, said, kind="encoding"))
                for source in tree for at in source.reading.encodings]  # fmt: skip
     return Document(document.sources, (*document.refusals, *refused),
                     document.classes) if refused else document  # fmt: skip
@@ -578,11 +578,13 @@ def _read_tree(
             if target is None and _pictured(entry, put):
                 continue
             if target is None:
-                refusals.append((path, Refusal("tex-refused", put.offset, why)))
+                refusals.append((path, Refusal("tex-refused", put.offset, why,
+                                               kind="input-not-followed")))  # fmt: skip
                 continue
             if target in chain:
                 said = f"{target} inputs itself, through {' > '.join((*chain, target))}"
-                refusals.append((path, Refusal("tex-refused", put.offset, said)))
+                refusals.append((path, Refusal("tex-refused", put.offset, said,
+                                               kind="input-cycle")))  # fmt: skip
                 continue
             targets.append((put.offset, target))
             if target in seen:

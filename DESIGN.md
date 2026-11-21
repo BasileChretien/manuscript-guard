@@ -16900,7 +16900,17 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
   matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
   fact as it was and is, `12.5→12.6`; a section as `parent/title`, its title as compare
-  matches it after the title of the section it stands under.
+  matches it after the title of the section it stands under. Two codes of gates the corpus
+  does not otherwise key name one because their messages change while the finding stays
+  (Basile, 2026-11-21, "Stable key first"; scheme 3): G3's `figure-colours-confused` and
+  `figure-greyscale-confused`, one finding per figure per way of seeing whose message lists
+  the pairs, are the figure's file from the project's root and the way,
+  `figures/forest.svg@deuteranopia` (one figure is one sidecar and one file, so no two
+  share it); BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
+  the reader gives each place it refuses (`Refusal.kind`: `command`, `redefined`,
+  `encoding`, `input-not-followed`, `makeatletter`, `conditional` and the rest),
+  `manuscript/main.tex@encoding`, with the line it stands on for its sentence, so that two
+  of one kind in one file are two keys.
 - **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
   characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no

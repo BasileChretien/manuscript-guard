@@ -4986,8 +4986,11 @@ copy with the comments, the listings and the front matter's machinery blanked, l
 included, and an offset is the same in both. Counted in the copy, the line fell short by
 every line blanked above it: a phrase under a four-line comment was reported three lines up,
 on the comment. And the line is the one the matched words begin on, not the match: the rule
-for a chat assistant's opening word reads from the start of a line through any blank lines,
-and its finding was put on the blank line above the paragraph. That rule passes over a
+for a chat assistant's opening word read from the start of a line through any blank lines,
+and its finding was put on the blank line above the paragraph. It reads from the start of
+the words' own line now: through a long blank stretch, as the LaTeX reader leaves a file
+past a construct it refuses, it was quadratic in the stretch's lines, 36 s for a paper of
+187,000 characters (the robustness sweep of 2026-11-21). That rule passes over a
 match whose words carry on a sentence from the line before (`paragraph_start`,
 `writing._continues_a_sentence`): the words are in lower case, and the line before is prose
 that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing

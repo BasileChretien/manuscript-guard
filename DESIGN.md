@@ -18613,12 +18613,26 @@ Added by the adversarial review, verified and **not** fixed:
   is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
   and its number; a legend written above it, or in the figure, is not counted. A megabyte
   is 1,048,576 bytes, the larger of the two a journal may mean.
+  Pinned by `tests/test_figure_files.py::test_a_raster_inside_an_svg_a_pdf_or_an_eps_is_not_read_for_its_pixels`,
+  `tests/test_figure_files.py::test_a_raster_that_records_no_resolution_is_not_said_to_shrink`,
+  `tests/test_figure_files.py::test_a_megabyte_of_a_figure_file_is_1048576_bytes`,
+  `tests/test_corruption.py::test_a_figure_kept_as_png_and_tiff_is_held_to_the_journal_s_limits_twice`
+  and `tests/test_corruption.py::test_a_legend_written_above_its_figure_is_not_counted`.
 - **A PDF figure is read for its first page, and as far as its operators say.** A stream
   under a filter other than Flate is not read, nor is an encrypted PDF. A Type 3 font's
   `/FontMatrix` is not applied, so one drawn in other than a thousand units to the em is
-  read at the size `Tf` gives; a text's rise and horizontal scaling are not read, nor are
-  the lines a Type 3 glyph draws. A font is said where the page's or a form's resources name
-  it, whether any text uses it or not.
+  read at the size `Tf` gives; a text's rise and horizontal scaling change nothing the
+  check reports, and the lines a Type 3 glyph draws are not read. A font is said where the
+  page's or a form's resources name it, whether any text uses it or not.
+  Pinned by `tests/test_figure_pdf.py::test_only_the_first_page_of_a_pdf_figure_is_read`,
+  `tests/test_figure_pdf.py::test_a_page_not_compressed_is_read_and_one_under_another_filter_is_not`,
+  `tests/test_figure_pdf.py::test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read`,
+  `tests/test_figure_pdf.py::test_a_type_3_font_s_matrix_and_the_lines_of_its_glyphs_are_not_read`
+  and `tests/test_figure_pdf.py::test_a_font_the_resources_name_is_listed_whether_any_text_uses_it_or_not`.
+  - The first page is the page object with the lowest number, not the first the page
+    tree's `/Kids` lists: a PDF whose tree lists object 4 before object 3 is read for
+    object 3, its text, lines and fonts, and nothing of object 4, the page it opens with.
+    Pinned by `tests/test_figure_pdf.py::test_the_first_page_read_is_the_lowest_numbered_page_object`.
 - **An SVG's text and lines are read from its elements, not drawn.** A `<style>` rule is
   read where its selector is made of types, classes and ids joined as descendants or
   children; one with a pseudo-class, an attribute or a sibling is not, and `!important`
@@ -18628,12 +18642,16 @@ Added by the adversarial review, verified and **not** fixed:
   a `stroke-width` in percent is taken of the font size and not of the figure, and a text's
   `dx`, `dy` and `text-anchor` do not move its anchor. A `<use>` that refers to itself is
   followed sixteen deep.
+  Pinned by `tests/test_figure_svg.py::test_a_style_rule_is_read_only_where_its_selector_is_types_classes_and_ids`,
+  `tests/test_figure_svg.py::test_a_text_is_cut_off_only_where_its_anchor_is_outside`,
+  `tests/test_figure_svg.py::test_a_line_is_read_from_its_element_and_not_as_it_is_drawn`
+  and `tests/test_figure_svg.py::test_a_use_that_refers_to_itself_is_followed_sixteen_deep`.
 - **A figure's alternative text is checked for being there, not for being right.** That
   it says what is drawn is the figure review's and a person's to read. It is read from the
   figure's guard file only: alternative text set in Word by a co-author, or in a PDF figure's
   own structure, is not read, and `import` does not bring Word's back into the guard file. A
-  LaTeX manuscript's build writes none, and the check reads nothing there, since it finds
-  the figures placed in the Markdown sources alone. A link's target, a URL, a citation key or
+  LaTeX manuscript's build writes none, though the check holds its figures to the rule as
+  it holds a Markdown manuscript's. A link's target, a URL, a citation key or
   attributes in the text are hidden by the prose's mask and printed by the build, so a number
   in one is not read, and a release typed across two numbers is said twice. The pack's `alt-text.md` names each figure by its
   key, not by the number the document prints. A figure the manuscript places twice is held to
@@ -18641,6 +18659,15 @@ Added by the adversarial review, verified and **not** fixed:
   the document's stamp, the custodian's minimum and the synthetic-data check, as the
   manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
   alone is still one the manuscript does not quote.
+  Pinned by `tests/test_corruption.py::test_alternative_text_is_read_from_the_guard_file_and_not_for_what_it_says`,
+  `tests/test_roundtrip.py::test_a_picture_s_description_changed_in_word_is_not_brought_back`,
+  `tests/test_corruption.py::test_a_latex_manuscript_s_build_writes_no_alternative_text_the_check_reads`,
+  `tests/test_corruption.py::test_a_number_the_mask_hides_in_the_alternative_text_is_not_read_and_a_release_twice`,
+  `tests/test_submission.py::test_the_pack_lists_each_figures_alternative_text_for_the_portal`,
+  `tests/test_corruption.py::test_a_figure_placed_in_the_main_text_and_the_supplement_is_held_to_the_main_rule`,
+  `tests/test_corruption.py::test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum`,
+  `tests/test_corruption.py::test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data`
+  and `tests/test_corruption.py::test_a_value_quoted_in_the_alternative_text_alone_is_stamped_and_still_unquoted`.
 - **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
   figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
   nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
@@ -18662,7 +18689,16 @@ Added by the adversarial review, verified and **not** fixed:
   space of three numbers is read as sRGB. The deficiencies are simulated at full severity
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
   Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
-  convention, not a standard. A LaTeX manuscript's figures are not read.
+  convention, not a standard.
+  Pinned by `tests/test_corruption.py::test_a_figure_with_only_a_raster_is_said_to_be_unread`,
+  `tests/test_corruption.py::test_a_colour_in_an_image_a_gradient_a_pattern_or_a_shading_is_not_read`,
+  `tests/test_corruption.py::test_a_figure_that_draws_a_scale_is_said_not_to_be_compared`,
+  `tests/test_corruption.py::test_a_heat_map_of_many_colours_is_said_not_to_be_compared`,
+  `tests/test_corruption.py::test_a_figure_is_taken_to_draw_a_scale_by_the_chain_of_its_shades`,
+  `tests/test_corruption.py::test_a_text_drawn_as_glyphs_is_known_only_where_matplotlib_or_cairo_draws_it`,
+  `tests/test_corruption.py::test_a_texts_colour_is_not_a_series`,
+  `tests/test_corruption.py::test_every_colour_a_figure_paints_is_compared_its_background_among_them`
+  and `tests/test_corruption.py::test_a_colour_at_an_opacity_is_laid_over_white_and_not_over_what_is_under_it`.
 - **A marker or a line style is not seen.** The check reads the colours a figure paints and
   nothing else, so two series that differ by marker shape or line style as well as colour
   are warned of as though colour alone told them apart: a ggplot drawn with
@@ -18679,6 +18715,11 @@ Added by the adversarial review, verified and **not** fixed:
   it fails. The palette is read from `palettes.json` when the hint is written, and nothing
   there is caught: on an install with that file missing or corrupt, every figure with a
   confusion gives `gate-errored` from `check`, and `communicate check` may raise.
+  Pinned by `tests/test_corruption.py::test_two_series_told_apart_by_marker_and_line_style_as_well_are_warned_of`,
+  `tests/test_corruption.py::test_the_hint_offers_no_palette_the_check_it_reports_finds_wanting`,
+  `tests/test_corruption.py::test_a_figure_warned_for_a_deficiency_is_offered_a_palette_its_grey_check_warns_of`,
+  `tests/test_corruption.py::test_a_palette_offered_is_asked_only_of_the_pairs_normal_vision_tells_apart`
+  and `tests/test_corruption.py::test_a_figure_with_a_confusion_stops_g3_where_the_palettes_cannot_be_read`.
 - **A palette's verdict is the check's, at its threshold, on its colours as written.** The
   number of a set's colours that stay apart is counted in the collection's order for that
   many, so a set whose first colours are close is rated low though a figure could take
@@ -18732,6 +18773,11 @@ Added by the adversarial review, verified and **not** fixed:
   only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
   quiets them: each needs a reason under `allow_estimates`, or the computation moved into
   the analysis.
+  Pinned by `tests/test_corruption.py::test_a_figure_that_estimates_is_found_by_the_names_of_the_calls_it_makes`,
+  `tests/test_corruption.py::test_a_draw_from_a_generator_the_script_made_is_not_read_as_pinned`,
+  `tests/test_corruption.py::test_an_allowlist_section_that_is_no_list_allows_nothing`,
+  `tests/test_corruption.py::test_an_r_summary_or_smoother_has_no_argument_that_quiets_it`
+  and `tests/test_corruption.py::test_an_estimate_with_its_reason_beside_the_figure_is_not_warned`.
 - **Bars of means are found by the names of the calls that draw them, in a script under
   `figures/`.** Only the calls in `data/figure_bars.yaml` are read, by the last part of
   their name and the first token of each argument given by name, as for an estimate; a
@@ -19067,6 +19113,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,
   `geom_jitter(position = "jitter")` passes quietly, and R's `rt`, `rchisq`, `rlnorm`,
   `rnbinom`, `rweibull` and `sample.int` are not among the draws.
+  Pinned by `tests/test_corruption.py::test_figure_estimates_reads_as_the_known_gaps_say`
+  and `tests/test_corruption.py::test_an_rmd_figure_script_is_read_as_r_throughout`.
 - **Figure files.** With no `widths_mm` in the profile and no `print_width_mm` beside the
   figure, resolution, height and shrinking are not checked;
   72 dpi written as a placeholder gives an absurd shrink, and EXIF's resolution is not

@@ -1988,11 +1988,14 @@ The result is compiled and packed by the code above, and checked three times:
   `\input`, 15 of them judged false). So is one input only inside a block the reader
   skipped, by `\input{...}` or `\include{...}`, in that block's finding, "the file an input
   inside it names, …" (`structure.inside_blocks`; round 1 of #716). An input is looked for
-  among every `.tex` file of `manuscript/`, a document of its own and a class's among them,
-  and from the folder its file was imported from, as the tree looks for it (round 1 of
-  #716). One whose path a command builds, one a block holds without braces, and one a file
-  reached past a stop inputs past that file's own stop are warned of as before (Known
-  gaps). Past a stop in the author's package nothing is named: an `\input` the package
+  among every `.tex` file of its own half of `manuscript/`, the main text's or the
+  supplement's, as `read_document` splits them, a document of its own and a class's among
+  them, and from the folder its file was imported from, as the tree looks for it (rounds 1
+  and 2 of #716). Warned of as before (Known gaps) are one whose path a command builds, one
+  a block holds without braces or by `\import` or `\subimport` (the block is read for
+  `\input` and `\include` alone), one that a file input only inside a block inputs in turn
+  (a block's inputs are not followed further), and one a file reached past a stop inputs
+  past that file's own stop. Past a stop in the author's package nothing is named: an `\input` the package
   makes is the class's, there as before it, and one inside a definition is warned of as
   one input from inside a definition is.
 - A file input from the preamble by a path with no folder that `manuscript/` lacks,
@@ -17077,11 +17080,12 @@ been sorted yet.
   - What a block holds is read by no check, the branch TeX prints among it: a heading, a
     citation or a binding in it is not seen. A file the paper inputs only from inside a
     block, by `\input{...}` or `\include{...}`, is passed over and said to be (round 1 of
-    #674); one it inputs by `\input name`, without braces, or one that file inputs in turn,
-    is passed over with the advice for a file nothing inputs. `check` fails BUILD on the
-    block, so a project's paper is not built with it in the body, and names in that
-    finding each file the block inputs in braces, by the same rule, and warns of the others
-    as `tex-not-input` (round 1 of #716). Accepted.
+    #674); one it inputs by `\input name`, without braces, or by `\import` or `\subimport`,
+    or one that file inputs in turn, is passed over with the advice for a file nothing
+    inputs. `check` fails BUILD on the block, so a project's paper is not built with it in
+    the body, and names in that finding each file the block inputs by `\input{...}` or
+    `\include{...}`, by the same rule, and warns of the others as `tex-not-input` (rounds 1
+    and 2 of #716). Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
   but in two exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it

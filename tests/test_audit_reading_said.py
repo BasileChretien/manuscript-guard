@@ -121,6 +121,20 @@ def test_a_file_input_only_from_a_skipped_block_is_said_so(tmp_path: Path) -> No
     (said,) = [one for one in audit([paper], None).passed_over if "names.tex" in one]
     assert "inside a block the reader skipped" in said and "paper.tex, lines 4-6" in said, said
     assert "\\input it" not in said, said
+    # Round 2 of #716: in a file `\subimport` reads, the block's input is looked for in the
+    # folder it was imported from, as the tree looks for it.
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    paper.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n\\makeatletter\n\\input{methods}\n"
+                                        "\\makeatother\n", encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    found = [chapters / "intro.tex", chapters / "methods.tex", tmp_path / "names.tex"]
+    passed = audit([paper], None, found_tex=found).passed_over
+    (said,) = [one for one in passed if one.split(": ")[0].endswith("chapters/methods.tex")]
+    assert "inside a block the reader skipped" in said, said
+    assert "chapters/intro.tex, lines 2-4" in said, said
 
 
 def test_a_file_input_past_a_skipped_block_s_own_inputs_keeps_the_old_advice(

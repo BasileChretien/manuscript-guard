@@ -13758,6 +13758,19 @@ def test_a_file_input_only_inside_a_skipped_block_is_named_by_the_block(
     assert warned == ["bare.tex"], (warned, refused)
     assert ("the 2 files inputs inside it name, manuscript/more.tex, manuscript/names.tex, "
             "are read") in refused["main.tex"], refused
+    # Round 2 of #716: in a file `\subimport` reads, the block's input is looked for in the
+    # folder it was imported from, as the tree looks for it.
+    (folder / "chapters").mkdir()
+    entry.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (folder / "chapters" / "intro.tex").write_text("Words.\n" + block.format("methods") + "\n",
+                                                   encoding="utf-8")  # fmt: skip
+    (folder / "chapters" / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert "chapters/methods.tex" not in warned, (warned, refused)
+    assert refused["chapters/intro.tex"].endswith(
+        "; the file an input inside it names, manuscript/chapters/methods.tex, is read as body "
+        "under no heading"), refused
 
 
 def test_a_stop_in_the_author_s_package_names_no_file_and_moves_no_warning(
@@ -13766,7 +13779,8 @@ def test_a_stop_in_the_author_s_package_names_no_file_and_moves_no_warning(
     """Round 1 of #716: past a stop in the author's package, an `\\input` the package makes
     is the class's, as before it, and not read; one inside a command's definition is printed
     where the paper uses it, and warned of as named by no `\\input` the reader follows, as
-    before it. Neither is named in the package's refusal."""
+    before it. Neither is named in the package's refusal. This pins what held before the
+    change, since a class's file is never loose; it is no fix (round 2 of #716)."""
     entry = _as_latex(project)
     folder = entry.parent
     entry.write_text("\\documentclass{article}\n\\usepackage{mine}\n\\begin{document}\n"

@@ -42,8 +42,10 @@ command, and is read. A `.tex` file that nothing inputs is read as main text and
 (`tex-not-input`). One input past where `check` stopped reading the file that inputs it, or
 only inside a block `check` skipped, is read as main text too, and named once in that
 refusal's finding rather than warned of on its own. It is still warned of on its own where a command builds its path
-(`\input{\dir/methods}`), where a skipped block inputs it without braces, and where the file
-that inputs it was itself reached past a stop and stopped before that `\input`. A picture in the `standalone` class that the paper places with
+(`\input{\dir/methods}`), where a skipped block inputs it without braces or by `\import` or
+`\subimport`, where the file that inputs it was itself input only inside a skipped block,
+and where the file that inputs it was itself reached past a stop and stopped before that
+`\input`. A picture in the `standalone` class that the paper places with
 `\includestandalone`, and a part in the `subfiles` class that it places with `\subfile`, are
 read where the command stands, under its heading and inside its float, past their own
 preamble; one the paper places nowhere is read as main text and warned of. The submission

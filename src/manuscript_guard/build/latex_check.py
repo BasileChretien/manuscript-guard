@@ -13,11 +13,13 @@ definition or a hook, which LaTeX may still print, and one whose path a command 
 `\\input{\\dir/methods}`, which the reader cannot read exactly. One input by a path written
 out in full past where the reader stopped in a file, there or through a file input there,
 is named once in that refusal's finding instead, which fails already, and so is one input
-inside a block the reader skipped, in that block's (`past_stops`, `inside_blocks`, the
-rules `audit` says each is not followed by; Basile, 2026-11-21, "Fold the warnings": a
-paper refused at its preamble had 17 files warned of as named by no `\\input`, 15 of them
-judged false). One that a file reached past a stop inputs past that file's own stop is
-warned of as before. A `.tex` file that holds
+inside a block the reader skipped, by `\\input{...}` or `\\include{...}`, in that block's
+(`past_stops`, `inside_blocks`, the rules `audit` says each is not followed by; Basile,
+2026-11-21, "Fold the warnings": a paper refused at its preamble had 17 files warned of as
+named by no `\\input`, 15 of them judged false). Warned of as before are one that a file
+reached past a stop inputs past that file's own stop, one a block inputs without braces or
+by `\\import` or `\\subimport`, and one that a file input only inside a block inputs in
+turn. A `.tex` file that holds
 a document of its own, its own `\\begin{document}`, beside a document's entry file is
 another document, which is never read as part of that one (`tex-second-document`): it fails
 at every stage, as a file of the other format does, since no gate reads it and no build

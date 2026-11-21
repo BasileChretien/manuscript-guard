@@ -233,6 +233,41 @@ def test_a_design_run_files_a_design_reading_for_each_reviewer_and_model(
     assert providers.requests == []
 
 
+def test_the_plan_sent_and_its_digest_come_from_two_reads(
+    planned: Path, providers: Providers, monkeypatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the plan is
+    read once for the request and again for its `plan_sha256`, so a plan edited between the
+    two reads is sent as it was and filed with the digest of the plan as edited. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    import sys
+
+    from manuscript_guard.gates import design_review
+
+    real = design_review.plan_digest
+    sent_as_it_was = real(load_project(planned)[0])
+    edits: list[bool] = []
+
+    def edited_between(project, *, checks: bool = True) -> str:
+        if sys._getframe(1).f_code.co_name == "gather_design" and not edits:
+            _plan_edited(planned, "## Outcome", "## Outcome\n\nEdited between the reads.\n")
+            edits.append(True)
+        return real(project, checks=checks)
+
+    monkeypatch.setattr(design_review, "plan_digest", edited_between)
+    assert design_run(planned, "--yes") == 0
+    monkeypatch.setattr(design_review, "plan_digest", real)
+    capsys.readouterr()
+    assert providers.requests and not any(b"Edited between the reads" in request.body
+                                          for request in providers.requests)  # fmt: skip
+    edited = real(load_project(planned)[0])
+    assert edited != sent_as_it_was
+    assert {read_structured(path)["plan_sha256"] for path in design_readings(planned)} == {
+        edited
+    }
+    assert _stale(planned) == []
+
+
 def test_a_design_major_from_a_model_is_said_until_it_is_answered(
     planned: Path, providers: Providers
 ) -> None:

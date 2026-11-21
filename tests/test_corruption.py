@@ -9016,6 +9016,122 @@ def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: 
     assert not [f for f in check_journal(project_).findings if f.code.startswith("data-")]
 
 
+_MISSING = [("data-identifier-missing", "fail")]
+_ARCHIVED = "https://web.archive.org/web/20200101000000/https://example.org/data"
+#: The data policy with a forbidden phrasing and its `unless` written in small letters and
+#: with no `(?i)`, so that only the gate makes them blind to case.
+_CASED = {**_DATA_POLICY, "forbidden": [
+    {"pattern": r"\bon request\b", "unless": r"\bprivacy\b", "why": "say why"}]}
+
+
+@pytest.mark.parametrize(
+    ("statement", "policy", "said"),
+    [
+        # Each identifier the gate knows, and a DOI, whose citation is a rule of its own.
+        *((f"The data are deposited: {named}.", None, []) for named in (
+            "GSE123456", "SRP123456", "PRJNA123456", "EGAS00001000001", "E-MTAB-1234",
+            "phs000001.v1", "https://hdl.handle.net/1234/5678", "ark:/12345/abc",
+            "https://zenodo.org/records/1234567", "https://osf.io/abcde", _ARCHIVED,
+            "https://perma.cc/ABCD-1234")),
+        ("The data are deposited: doi:10.5281/zenodo.1234567.", None,
+         [("data-doi-uncited", "warn")]),
+        # Another archive's accession only where the profile lists it.
+        ("The data are in PRIDE, PXD012345.", None, _MISSING),
+        ("The data are in PRIDE, PXD012345.",
+         {**_DATA_POLICY, "identifier_patterns": [r"\bPXD\d{6}\b"]}, []),
+        # An identifier anywhere satisfies the rule, whatever it names.
+        ("The data are held by the team; we compared them with GSE123456.", None, []),
+        # A forbidden phrasing in any case, and its `unless` anywhere in the statement.
+        ("Data are available ON REQUEST. GSE123456.", None,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. We respect patient privacy.", None, []),
+        # The gate's own case-blindness: patterns written without `(?i)`.
+        ("Data are available ON REQUEST. GSE123456.", _CASED,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. PRIVACY rules apply.", _CASED, []),
+        # A link with a path after the repository's name, a branch's too, is a fixed
+        # version; a bare one is warned of with its archive named beside it.
+        ("The code is at https://github.com/someone/study/tree/main, GSE123456.", None, []),
+        ("The code is at https://github.com/someone/study, archived at "
+         "https://zenodo.org/records/1234567.", None, [("data-link-temporary", "warn")]),
+        # The section's subsections are the statement's.
+        ("See below.\n\n## Deposited data\n\nGSE123456.", None, []),
+        ("See below.", None, _MISSING),
+    ],
+)  # fmt: skip
+def test_a_data_statement_is_read_by_the_patterns_the_gate_and_the_profile_give(
+    project: Path, statement: str, policy: dict | None, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): the identifiers the gate knows, another archive's
+    only as the profile lists it, and any of them wherever it stands; a forbidden phrasing
+    in any case, let off by its `unless` anywhere; a repository linked with a path after
+    its name taken for a fixed version, and one linked bare warned of beside its archive;
+    and the subsections of the statement's section read as the statement."""
+    assert _data_statement(project, statement, policy) == said
+
+
+def test_a_data_statement_without_its_heading_or_citing_a_plain_misc_is_not_read_as_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a statement written as a paragraph with no heading
+    of its own is not read, and only the statement's own check says it is missing; a `@misc`
+    entry that holds a dataset and does not say so, cited by its key, names no dataset.
+    """
+    from manuscript_guard.gates import check_journal
+
+    assert _data_statement(project, "Data are available on request.") == [
+        ("data-identifier-missing", "fail"), ("data-statement-forbidden", "fail")]
+    path = main_md(project)
+    headed = path.read_text(encoding="utf-8")
+    path.write_text(headed.replace("# Data availability\n\n", "", 1), encoding="utf-8")
+    assert _data_findings(project) == []
+    report = check_journal(load_project(project)[0])
+    assert [f.message for f in report.failures if f.code == "missing-required-statement"] == [
+        "the journal requires a data-availability statement"]
+    path.write_text(headed, encoding="utf-8")
+    bib = project / "literature" / "references.bib"
+    misc = "@misc{fictionalHepaticCohort2021,\n  doi = {10.5281/zenodo.1234567},\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "@article{fictionalHepaticCohort2021,\n", misc, 1), encoding="utf-8")  # fmt: skip
+    cited = "Data are in Zenodo [@fictionalHepaticCohort2021]."
+    assert _data_statement(project, cited) == _MISSING
+    # The other side of the same rule: the entry of type `dataset` is read as one.
+    bib.write_text(bib.read_text(encoding="utf-8").replace("@misc{fictionalHepaticCohort2021",
+                                                           "@dataset{fictionalHepaticCohort2021"),
+                   encoding="utf-8")  # fmt: skip
+    assert _data_statement(project, cited) == []
+
+
+@pytest.mark.parametrize("where", ["identifier_patterns", "forbidden", "required_statements"])
+def test_a_pattern_of_the_profile_that_does_not_compile_stops_g4(
+    project: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a regular expression of the data policy that does
+    not compile raises out of G4, as one of its required statements does."""
+    from manuscript_guard.gates import check_journal
+
+    held = "The data are held by the team."
+    assert _data_statement(project, held) == _MISSING
+    if where == "required_statements":
+        profile = project / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["required_statements"][0]["pattern"] = "(unclosed"
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        with pytest.raises(re.error):
+            check_journal(load_project(project)[0])
+        return
+    policy = {**_DATA_POLICY}
+    if where == "identifier_patterns":
+        policy["identifier_patterns"] = ["(unclosed"]
+    else:
+        policy["forbidden"] = [{"pattern": "(unclosed", "why": "x"}]
+    with pytest.raises(re.error):
+        _data_statement(project, held, policy)
+
+
 def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) -> None:
     from manuscript_guard.gates import check_journal
     from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
@@ -25165,6 +25281,67 @@ def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: P
     assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
+def test_a_name_written_otherwise_than_authors_yaml_writes_it_is_not_found_blind(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A blind document is read for the names
+    `authors.yaml` gives, as they are written there"): a nickname, a given name of several
+    words cut to its first, a family name alone, a name in another script, a user name in
+    Word's author fields, an institution's abbreviation or city, a funder and an ethics
+    committee are not found; a raster figure is not read, and the SVG the manuscript places
+    beside it is. The 2026-11-09 triage planned a fix (F12), which will change this test."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "given: Ada\n", "given: Ada Mary\n"), encoding="utf-8")  # fmt: skip
+
+    def paragraph(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    unfound = "".join(paragraph(text) for text in (
+        "As Addy Example showed, and Ada Example after her.",
+        "Example and Sample wrote the protocol.",
+        "\N{KATAKANA LETTER E}\N{KATAKANA LETTER I}\N{KATAKANA LETTER DA}"
+        "\N{KATAKANA MIDDLE DOT}\N{KATAKANA LETTER E}\N{KATAKANA LETTER GU}"
+        "\N{KATAKANA LETTER ZA}\N{KATAKANA LETTER N}\N{KATAKANA LETTER PU}"
+        "\N{KATAKANA LETTER RU} drew the figure.",
+        "Done at EUGSM in Springfield, funded by the Example Research Foundation and approved"
+        " by the Ethics Committee of Example University Hospital.",
+    ))  # fmt: skip
+    core = (f"<cp:coreProperties {_CORE_NS}><dc:creator>aexample</dc:creator>"
+            "<cp:lastModifiedBy>bsample</cp:lastModifiedBy></cp:coreProperties>")  # fmt: skip
+    # A raster figure that shows the name, in the document and placed by the manuscript.
+    import io
+
+    from matplotlib.figure import Figure
+
+    drawn = Figure(figsize=(4, 1))
+    drawn.text(0.05, 0.4, "Ada Mary Example", fontsize=24)
+    buffer = io.BytesIO()
+    drawn.savefig(buffer, format="png")
+    raster = buffer.getvalue()
+    (project / "figures" / "forest.png").write_bytes(raster)
+    (project / "figures" / "forest.svg").unlink()
+    document = _word(tmp_path / "a.docx", unfound, docProps__core_xml=core)
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/media/image1.png", raster)
+    assert _named(project, document) == []
+    # The other side of each: the name as `authors.yaml` writes it is found in the text and
+    # in Word's author field, and a figure is read through the SVG placed beside it.
+    (project / "figures" / "forest.svg").write_text(
+        "<svg xmlns='http://www.w3.org/2000/svg'><text>Ada Mary Example</text></svg>",
+        encoding="utf-8",
+    )
+    core = core.replace("aexample", "Ada Mary Example")
+    named = paragraph("As Ada Mary Example showed.")
+    document = _word(tmp_path / "b.docx", named, docProps__core_xml=core)
+    assert _named(project, document) == [
+        ("Ada Mary Example", "a figure (forest.svg)"),
+        ("Ada Mary Example", "the document's author (dc:creator)"),
+        ("Ada Mary Example", "the text"),
+    ]
+
+
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
     project: Path, tmp_path: Path
 ) -> None:
@@ -31044,6 +31221,30 @@ def test_a_round_every_reading_of_which_came_from_one_provider_is_said(
     assert "round-one-provider" not in _review_warnings(project)
 
 
+@pytest.mark.parametrize("router", ["openrouter", "ollama"])
+def test_a_router_serving_several_families_is_one_provider(
+    project: Path, monkeypatch, router: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a provider is
+    judged by its name, so a round read through OpenRouter or a local Ollama by models of
+    two families is said to come from one provider. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.gates import check_review
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-0123456789SECRETC")
+    _read_by_models(project, monkeypatch, f"{router}/openai-gpt-x", f"{router}/mistral-large")
+    said = [f for f in check_review(load_project(project)[0]).warnings
+            if f.code == "round-one-provider"]  # fmt: skip
+    assert [f.message for f in said] == [
+        f"round 1: every reading came from one provider, {router}, whose models share their "
+        "blind spots"
+    ]
+    # The other side of judging by the name: the same two families under their own
+    # providers' names are two providers.
+    _read_by_models(project, monkeypatch, "openai/openai-gpt-x", "mistral/mistral-large")
+    assert "round-one-provider" not in _review_warnings(project)
+
+
 def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     project: Path, monkeypatch
 ) -> None:
@@ -31058,6 +31259,86 @@ def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     assert "figures-not-seen" not in _review_warnings(project)
     _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
                     remit="Whether the estimator is stated fully.")  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+
+
+@pytest.mark.parametrize(
+    ("remit", "covers"),
+    [
+        ("Whether the figures show what the text says.", True),
+        ("Whether the plots show what the text says.", True),
+        ("Whether the graphs show what the text says.", True),
+        ("Whether the charts show what the text says.", True),
+        ("Whether the visual presentation shows what the text says.", False),
+        ("Whether the display items show what the text says.", False),
+    ],
+)
+def test_a_remit_covers_the_figures_by_its_words(
+    project: Path, monkeypatch, remit: str, covers: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    model's pass of a remit naming figures, plots, graphs or charts is said, and of one that
+    says "visual" or "the display items" is not, though both ask for the figures."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert ("figures-not-seen" in _review_warnings(project)) is covers
+
+
+@pytest.mark.parametrize(
+    ("models", "said"),
+    [(["ollama/model-l", "relay/model-l"], False), (["ollama/model-l", "ollama/model-m"], True)],
+)
+def test_a_round_read_by_one_server_s_models_under_two_providers_names_counts_as_two(
+    project: Path, monkeypatch, models: list[str], said: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    provider is known by its name, so a local relay passing the request on to the server
+    `ollama` names is another provider, and a round read through both is not
+    `round-one-provider`. The other side of that rule: two models under the one name are."""
+    from test_review_run import Providers, answer, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SAID))
+    monkeypatch.setattr(client, "default_transport", transport)
+    shutil.rmtree(project / "review")
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8")
+        + f"\nreview:\n  models: [{', '.join(models)}]\n"
+        "  providers:\n    relay:\n      base_url: http://localhost:4000/v1\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    assert {request.url.split("/v1")[0] for request in transport.requests} == (
+        {"http://localhost:11434"} if said else {"http://localhost:11434", "http://localhost:4000"}
+    )
+    assert ("round-one-provider" in _review_warnings(project)) is said
+
+
+@pytest.mark.parametrize("remit", [
+    "Whether the chart review was blinded to exposure.",
+    "Whether the medical charts were abstracted twice.",
+])  # fmt: skip
+def test_a_remit_that_speaks_of_charts_is_taken_to_ask_for_the_figures(
+    project: Path, monkeypatch, remit: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a remit
+    covers the figures by its words, so one about a chart review or medical charts, which
+    asks for no figure, has a model's pass of it said as figures not seen. The 2026-11-09
+    triage planned a fix (F15), which will change this test."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert _review_warnings(project).count("figures-not-seen") == 1
+    # The other side of reading the remit's words: the same remit about records, with no
+    # word of a chart in it, is not said.
+    other = remit.replace("chart review", "record review").replace("medical charts",
+                                                                     "medical records")
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=other)  # fmt: skip
     assert "figures-not-seen" not in _review_warnings(project)
 
 
@@ -33130,6 +33411,264 @@ def test_a_named_reader_s_overridden_design_objection_is_signed_apart(project: P
                  "openai/gpt-x"]) == 0  # fmt: skip
     [(code, _severity, hint)] = _override_said(project)
     assert "--finding G12/design-override/1/methodologist.openai-gpt-x/d1" in hint
+
+
+def test_a_design_reading_outside_the_panel_or_outside_any_panel_is_passed_over(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    reading by a reviewer the panel does not list, and a design round folder with no panel,
+    are not read and not said, their major findings with them. The 2026-11-09 triage planned
+    a fix (F15), which will change this test."""
+    record = _design_recorded(project)
+    major = record.read_text(encoding="utf-8").replace("findings: []\n", _DESIGN_MAJOR)
+    (record.parent / "clinician.yaml").write_text(major, encoding="utf-8")
+    second = project / "review" / "design" / "round-2"
+    second.mkdir()
+    (second / "methodologist.yaml").write_text(major.replace("round: 1", "round: 2"), "utf-8")
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    report = check_design_rounds(load_project(project)[0])
+    assert report.findings == () and report.counts["design_rounds"] == 1
+    # The other side: once a panel lists the reviewer, and once the folder has a panel, the
+    # same files are read and their majors said.
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project).count(("design-major-open", "warn")) == 1
+    (panel.parent / "panel-2.yaml").write_text(yaml.safe_dump({**document, "round": 2}),
+                                               encoding="utf-8")  # fmt: skip
+    assert _design_said(project).count(("design-major-open", "warn")) == 2
+
+
+def test_a_stale_design_reading_is_superseded_by_its_reviewer_not_by_its_remit(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a later
+    reading of the plan as it stands by another reviewer with the same remit leaves a stale
+    one stale, and one by the same reviewer under another remit supersedes it. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "statistician", "--round",
+                 "2", "--verdict", "pass", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass", "--remit", "Whether the outcome can be counted"
+                 ]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_stale_plain_design_record_is_superseded_only_by_a_later_plain_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    reading of the reviewer's remit in a later round does not supersede the reviewer's
+    stale plain record; a later plain record does. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    _design_read_by(project, "openai/gpt-x", round_=2)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_signed_design_override_is_bound_to_its_finding_and_reason_alone(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the digest a
+    statistician signs is of the finding's words and the reason, so `where`, `ask` and
+    `overridden_by` added after the signature leave it signed; the finding's words changed
+    want it again. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    key = "G12/design-override/1/methodologist/d1"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("- id: d1\n", "- id: d1\n  where: the comparators\n"
+                                   "  ask: computation\n  overridden_by: Ada Example\n"),
+                      encoding="utf-8")  # fmt: skip
+    assert [(code, severity) for code, severity, _hint in _override_said(project)] == [
+        ("design-override-unsigned", "info")
+    ]
+    # The other side: the finding's own words are in the digest.
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "share the indication only in part", "share the indication in part"), "utf-8")  # fmt: skip
+    [(code, severity, hint)] = _override_said(project)
+    assert (code, severity) == ("design-override-unsigned", "warn") and "changed since" in hint
+
+
+def test_a_misfiled_design_reading_s_override_is_listed_under_its_file_s_name(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    design reading that says another reader inside is not counted, and its override is
+    still listed, named by the slug its file is filed under rather than by either reader.
+    The 2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    record = _design_read_by(project, "OpenAI/GPT-X", _DESIGN_MAJOR + _OVERRIDDEN)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "reader: OpenAI/GPT-X", "reader: mistral/m"), encoding="utf-8")  # fmt: skip
+    said = check_design_rounds(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in said] == [("design-reading-misfiled", "warn"),
+                                                    ("design-override-unsigned", "warn")]
+    assert said[1].message == ("design round 1: methodologist.openai-gpt-x d1 is overridden "
+                               "(The indication is recorded for too few reports to restrict "
+                               "on.)")  # fmt: skip
+
+
+def test_a_named_design_reading_is_opened_at_the_path_its_name_gives(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): on a file
+    system that tells case apart, a named design reading filed under other capitals is read
+    as missing, and not said as a file the panel does not name. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    record = _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    record.rename(record.with_name("methodologist.OpenAI-GPT-X.yaml"))
+    if record.exists():
+        pytest.skip("this file system does not tell case apart")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_two_design_readings_under_one_name_stored_two_ways_go_unsaid(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): two files
+    whose names are one reader's, composed and decomposed, are read as one in a design
+    round, and the second, a major finding in it, is not said; G11 says the same two in a
+    manuscript round (`duplicate-reading`). The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    import unicodedata
+
+    first = _design_read_by(project, "Zo" + chr(0xE9))
+    second = first.with_name(unicodedata.normalize("NFD", first.name))
+    assert second.name != first.name
+    if second.exists():
+        pytest.skip("this file system does not tell the two spellings apart")
+    second.write_text(first.read_text(encoding="utf-8").replace("findings: []\n",
+                                                                _DESIGN_MAJOR), "utf-8")
+    assert _design_said(project) == []
+    # The other side, the file the panel's name gives: the major written there is said.
+    first.write_text(second.read_text(encoding="utf-8"), encoding="utf-8")
+    assert ("design-major-open", "warn") in _design_said(project)
+
+
+def test_a_design_reader_named_o_brien_is_given_a_command_that_does_not_parse(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the command a
+    missing design reading's hint prints quotes a reader's name only where it has a space,
+    so `O'Brien` leaves an unclosed quote that a shell cannot parse. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    import shlex
+
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["O'Brien", "Dr Tanaka"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    hints = [f.hint for f in check_design_rounds(load_project(project)[0]).findings
+             if f.code == "design-review-missing"]  # fmt: skip
+    commands = [hint.split("`")[1] for hint in hints]
+    assert commands == [
+        "manuscript-guard review --record methodologist --design --round 1 --reading O'Brien "
+        "--verdict <verdict>",
+        'manuscript-guard review --record methodologist --design --round 1 --reading '
+        '"Dr Tanaka" --verdict <verdict>',
+    ]
+    with pytest.raises(ValueError, match="No closing quotation"):
+        shlex.split(commands[0])
+    # The other side: a name with a space is quoted, and parses to itself.
+    assert shlex.split(commands[1])[-3] == "Dr Tanaka"
+
+
+def test_recording_a_design_reading_against_a_panel_that_is_a_yaml_list_raises(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    panel written as a YAML list raises out of `review --record --design`, both where an
+    earlier panel is read for the reviewer's remit and where the round's own panel is read;
+    and the earlier panels are read for the remit outside the round's lock, the round's own
+    panel inside it. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from contextlib import contextmanager
+
+    from manuscript_guard import record as recording
+    from manuscript_guard.contracts import _schema
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    kept = panel.read_text(encoding="utf-8")
+    panel.write_text("- methodologist\n", encoding="utf-8")
+    projekt = load_project(project)[0]
+    with pytest.raises(AttributeError):  # the remit looked up in the earlier panels
+        recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    with pytest.raises(AttributeError):  # the round's own panel, under its lock
+        recording.write_design_review(projekt, "statistician", verdict="pass", remit="R")
+    assert not (project / "review" / "design" / "round-2").exists()
+
+    # The other side: a panel that is a mapping is read, and where each is read.
+    panel.write_text(kept, encoding="utf-8")
+    assert recording.write_design_review(projekt, "statistician", verdict="pass",
+                                         round_number=2, remit="R").path.is_file()  # fmt: skip
+    held: list[bool] = [False]
+    reads: list[tuple[str, bool]] = []
+    real_lock, real_read = recording.panel_lock, _schema.read_structured
+
+    @contextmanager
+    def lock(path):
+        with real_lock(path):
+            held[0] = True
+            try:
+                yield
+            finally:
+                held[0] = False
+
+    def read(path, *args, **kwargs):
+        reads.append((Path(path).name, held[0]))
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(recording, "panel_lock", lock)
+    monkeypatch.setattr(_schema, "read_structured", read)
+    recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    assert ("panel-1.yaml", False) in reads and ("panel-1.yaml", True) not in reads
+    assert ("panel-2.yaml", True) in reads
+
+
+@pytest.mark.parametrize("flag", ["--digest", "--files"])
+def test_the_design_status_passes_over_the_digest_and_the_files(
+    project: Path, flag: str, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): `review
+    --design` with `--digest` or `--files` prints the design rounds' status and neither,
+    and with no design round it says nothing. The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(project), "--design", flag]) == 0
+    assert capsys.readouterr().out == "  (nothing to report)\n"
+    _design_recorded(project, _DESIGN_MAJOR)
+    capsys.readouterr()
+    assert main(["review", str(project), "--design", flag]) == 0
+    out = capsys.readouterr().out
+    assert "design round 1: methodologist d1:" in out
+    assert "file_sha256:" not in out and "design_rounds=1" in out
+    # The other side: without `--design` the flag is answered.
+    assert main(["review", str(project), flag]) == 0
+    out = capsys.readouterr().out
+    assert ("file_sha256:" in out) if flag == "--files" else (len(out.strip()) == 64)
 
 
 # --------------------------------------------------------------------------------------
@@ -36282,6 +36821,55 @@ def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
     assert measure(text).main_text_words == 8 + len(title.split())
     assert not is_bibliography_heading(f"# {title}", marked=True)
     assert _kind_of(title, False, None) != SET_APART
+
+
+#: A reference list's entry the audit cannot tell by its shape, and one it can.
+_TURKISH_ENTRY = (
+    "Yılmaz A, Kaya B. Uzaktan eğitim. Eğitim ve Bilim 2021, cilt 46, sayı 207, s. 1-23."
+)
+_VANCOUVER_ENTRY = "1. Smith J, Roe A. A title of the cited work. Drug Saf. 2019;42(3):100-10."
+
+
+@pytest.mark.parametrize(
+    ("title", "g4", "audit_and_recycling"),
+    [
+        ("Kaynakça", True, True),
+        # Dutch, which is not among the eight, and "ç" typed as "c" and a combining cedilla.
+        ("Literatuurlijst", False, False),
+        ("Kaynakc\N{COMBINING CEDILLA}a", False, False),
+        # An English title read by its opening word by G4, and whole by the other two.
+        ("References and notes", True, False),
+        ("Bibliography of the trials searched", True, False),
+    ],
+)  # fmt: skip
+def test_a_reference_list_is_known_by_its_title_as_each_reader_reads_titles(
+    tmp_path: Path, title: str, g4: bool, audit_and_recycling: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list is known by its title in eight
+    languages"): a title in another language, or typed with a combining accent, names no
+    list to G4's count, the audit or the recycling check, and the audit tells its entries by
+    their shape; G4 and `is_references` take an English title by its opening word, "References
+    and notes", where the audit and the recycling check take neither."""
+    from manuscript_guard.audit import audit, is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure, split_sections
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    paper = tmp_path / "paper.md"
+
+    def unmatched(entry: str) -> list[str]:
+        paper.write_text(f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{entry}\n",
+                         encoding="utf-8")  # fmt: skip
+        return sorted(c.text for c in audit([paper], [outputs]).unmatched)
+
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{_TURKISH_ENTRY}\n"
+    assert split_sections(text)[-1].is_references is g4
+    # "Results", four words, and the list's title and entry where the list is not known.
+    assert measure(text).main_text_words == (5 if g4 else 5 + len(title.split()) + 16)
+    assert is_bibliography_heading(f"# {title}", marked=True) is audit_and_recycling
+    assert (_kind_of(title, False, None) == SET_APART) is audit_and_recycling
+    assert unmatched(_TURKISH_ENTRY) == ([] if audit_and_recycling else ["2021", "207", "46"])
+    assert unmatched(_VANCOUVER_ENTRY) == []
 
 
 def test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them(project: Path) -> None:

@@ -26277,17 +26277,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     in the paper by its shape, `manuscript/<file>` with or without `:<line>`, standing
     alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
     (2026-11-06). A place a gate writes in another shape, or a path outside the project, is
-    left as written. The line in a converted .docx is the converted text's, as the finding's
-    own is. The rewrite runs over the whole message and hint, the paper's words a finding
-    quotes among them, so a sentence of paper.md "TODO: see manuscript/main.md" is quoted as
-    "see paper.md" (round 1 of #545, finding 2; contrived). `audit --journal` hands
-    `run_journal` the staged lines but not the PDF's map of them, so a place in a journal
-    finding on a PDF would read "paper.pdf:N" with the staged Markdown's line; no journal
-    message writes a place today (finding 1). A staged line outside the map would read
-    "paper.pdf, line None"; no path to one was found (finding 3).
+    left as written. A line in a converted .docx is said as its section and paragraph,
+    "Methods, paragraph 3" (#616). The rewrite runs over the whole message and hint, the
+    paper's words a finding quotes among them, so a sentence of paper.md "TODO: see
+    manuscript/main.md" is quoted as "see paper.md" (round 1 of #545, finding 2; contrived).
+    `audit --journal` hands `run_journal` the staged lines and the PDF's map of them, as
+    the other gates are handed them; no journal message writes a place today (finding 1). A
+    staged line outside the map reads "line None"; no path to one was found (finding 3).
     `test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree` and
     `test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line` hold a LaTeX tree's and a
     PDF's places end to end; nothing holds the journal's (finding 4).
+    Pinned by `tests/test_audit_sections.py::test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own`,
+    `tests/test_audit_sections.py::test_a_place_a_finding_names_is_in_the_audited_file`
+    and `tests/test_audit_sections.py::test_a_place_in_a_docx_is_its_paragraph_and_one_outside_a_pdf_s_map_is_line_none`.
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
     place in its count. A count that a paragraph with words above the list is numbered in

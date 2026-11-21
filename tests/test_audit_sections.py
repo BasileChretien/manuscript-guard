@@ -552,6 +552,28 @@ def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
     assert pdf("defined at manuscript/main.md:5") == "defined at page 1, line 7"
 
 
+def test_a_place_in_a_docx_is_its_paragraph_and_one_outside_a_pdf_s_map_is_line_none() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on places put back in the paper): a line of a converted .docx is said as its section and
+    paragraph; the words a finding quotes are rewritten with the rest, "TODO: see
+    manuscript/main.md" becoming "see paper.md"; and a staged line of a PDF outside the map
+    reads "line None", where one inside it reads as its page and line."""
+    from manuscript_guard.auditing.gates import _relocated
+    from manuscript_guard.auditing.paragraphs import Paragraph, Paragraphs
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    placed = Paragraphs((None, Paragraph("Methods", 3)))
+    docx = _relocated({"main.md": Path("/x/paper.docx")}, (), placed.said)
+    assert docx("defined at manuscript/main.md:2") == "defined at Methods, paragraph 3"
+    assert docx("defined at manuscript/main.md:1") == "defined at line 1"
+    quoted = _relocated({"main.md": Path("/x/paper.md")})
+    assert quoted('it says "TODO: see manuscript/main.md"') == 'it says "TODO: see paper.md"'
+    read = PdfText(Path("/x/paper.pdf"), "pdftotext", 1, "a\nb\n", (Place(1, 1), Place(1, 2)))
+    pdf = _relocated({"main.md": Path("/x/paper.pdf")}, (1, 2), read.said)
+    assert pdf("at manuscript/main.md:2") == "at page 1, line 2"
+    assert pdf("at manuscript/main.md:9") == "at line None"
+
+
 def test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree(tmp_path: Path,
                                                                     capsys) -> None:
     """End to end, as round 1 of #545 asked (finding 4): G14 says where an abbreviation was

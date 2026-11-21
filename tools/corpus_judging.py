@@ -127,10 +127,12 @@ class Judged:
     #: The only finding of its gate and code in the judged run's report (the packet's
     #: `totals`), and about something that tells it from others of its code (`telling`).
     alone: bool = False
-    #: The batch whose packet holds it (`unjudged`), that run's key scheme and the run.
+    #: The batch whose packet holds it (`unjudged`), that run's key scheme, the run's folder
+    #: and the run's name as the packet gives it.
     batch: str = ""
     scheme: int = 0
     source: Path | None = None
+    run: str = ""
 
     @property
     def code(self) -> str:
@@ -197,7 +199,8 @@ def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
                 folders = [Path(str(paper["folder"]))] if paper.get("folder") else []
                 folders.append(root / "runs" / str(paper.get("run")))
                 item = replace(item, batch=batch, scheme=int(paper.get("scheme") or 1),
-                               source=next((f for f in folders if f.is_dir()), None))
+                               source=next((f for f in folders if f.is_dir()), None),
+                               run=str(paper.get("run") or ""))
                 if item.key in seen:
                     raise CorpusError(f"{path}: {' '.join(map(str, item.key))} is judged twice")
                 seen.add(item.key)

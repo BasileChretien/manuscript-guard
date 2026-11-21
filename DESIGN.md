@@ -11590,9 +11590,12 @@ left empty; a second header row and the footer's rows made rows of the body. No 
 added or left out. Simple and multiline tables are switched off in the writer, so that a
 table of one-line cells is a pipe table and any other a grid table, and the line is made
 long enough that a table of more than nine columns is not written as raw HTML, which
-pandoc's default of 72 columns did. Nothing written is padded to that line: every table's
+pandoc's default of 72 columns did. Nothing else is padded to that line: every table's
 widths are left to its cells, the text's and one in a cell or in the title page set aside
-too, and a rule is pandoc's own, its line cut to 72 hyphens once it is written. A table that
+too, and a rule is pandoc's own, its line of 100,000 hyphens cut to 72 once it is written.
+Only a line of exactly that many is cut, and none in a paper whose text holds a run as long:
+a code block's line is written as it is, and a looser cut shortened one (round 4 of #732).
+Known gaps has both limits. A table that
 kept its Word columns' widths was spread over all 100,000 columns and a rule was 100,000
 hyphens, so 22,000 characters of text came to 5.2 MB of Markdown and the audit timed out (the
 robustness sweep of 2026-11-21). A rule written as raw Markdown instead stood on the line
@@ -25730,8 +25733,10 @@ Open, recorded as each change landed:
 - **A rule in a Word table's cell is as long as the converter's line.** pandoc writes a rule
   as long as its line, 100,000 hyphens, and `init --from` cuts it to 72 only where it stands
   on a line of its own (#732): in a cell, its row is as wide, and so is every line of its
-  table, as before. Pinned by
-  `tests/test_from_word.py::test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length`.
+  table, as before. Where the paper's own text holds a run of 100,000 hyphens, as a code
+  block's line may, a rule's line cannot be told from it, and no rule is cut. Pinned by
+  `tests/test_from_word.py::test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length` and
+  `tests/test_from_word.py::test_a_paper_holding_a_rule_s_run_of_hyphens_keeps_every_rule_as_pandoc_wrote_it`.
 - **What `init --from` sets aside is chosen by a count of words.** The run before the first
   heading is set aside up to 600 words. A short introduction with no heading over it, after a
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a

@@ -628,15 +628,15 @@ def test_nothing_written_keeps_a_width_as_long_as_the_line() -> None:
 
 
 def test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length() -> None:
-    """A line of hyphens alone, after any indentation or quotation marks, is a rule pandoc
-    wrote, and is cut to `RULE_WIDTH`; a table's border and a shorter run are not."""
+    """A line of exactly the writer's line of hyphens, after any indentation or quotation
+    marks, is a rule pandoc wrote, and is cut to `RULE_WIDTH`; a table's border and a run of
+    any other length, as a code block's line may be, are not."""
     NL, CR = chr(10), chr(13)  # noqa: N806 - a line feed and a carriage return
     long, short = "-" * 100_000, "-" * from_word.RULE_WIDTH
-    text = (f"a{NL}{NL}{long}{CR}{NL}{NL}  {long}{NL}> {long}{NL}|{long}|{NL}+{long}+{NL}"
-            f"{'-' * 999}{NL}")
+    kept = f"|{long}|{NL}+{long}+{NL}{'-' * 1200}{NL}    {'-' * 1200}{NL}{long}-{NL}"
+    text = f"a{NL}{NL}{long}{CR}{NL}{NL}  {long}{NL}> {long}{NL}{kept}"
     assert from_word._short_rules(text) == (
-        f"a{NL}{NL}{short}{CR}{NL}{NL}  {short}{NL}> {short}{NL}|{long}|{NL}+{long}+{NL}"
-        f"{'-' * 999}{NL}")
+        f"a{NL}{NL}{short}{CR}{NL}{NL}  {short}{NL}> {short}{NL}{kept}")
 
 
 def _para(word: str) -> dict:
@@ -646,7 +646,8 @@ def _para(word: str) -> dict:
 _RULE = {"t": "HorizontalRule"}
 #: Where a rule stands, as Word's blocks put one: between paragraphs, a heading after the
 #: second; after a plain paragraph and before one; after another rule; after raw HTML; in a
-#: list's item; in a quotation; in a table's cell. Written as raw Markdown, a rule stood on
+#: list's item; in a quotation; in a table's cell; beside code blocks of hyphens, which keep
+#: theirs (round 4 of #732). Written as raw Markdown, a rule stood on
 #: the line under a plain paragraph, under another rule and over a plain paragraph, and read
 #: back as a heading or a table (rounds 1 to 3 of #732).
 _RULES_STAND = {
@@ -661,6 +662,10 @@ _RULES_STAND = {
     "in a quotation": [{"t": "BlockQuote", "c": [_RULE, *_plain("x"), _RULE]}, _para("b")],
     "in a table's cell": [_table([], [[_ATTR, [_cell([*_plain("x"), _RULE]), _cell(_plain("2"))]]],
                                  [], columns=2), _para("b")],
+    "beside code of hyphens": [
+        {"t": "CodeBlock", "c": [_ATTR, "-" * 1200]}, _RULE,
+        {"t": "CodeBlock", "c": [["", ["r"], []], "x" + chr(10) + "-" * 1200]},
+        {"t": "RawBlock", "c": ["markdown", "-" * 1200]}],
 }  # fmt: skip
 
 
@@ -688,6 +693,23 @@ def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) ->
     assert read(written) == read(pandoc_s), written
     if "Table" not in json.dumps(blocks):
         assert written == from_word._short_rules(pandoc_s)
+        assert "-" * from_word.COLUMNS in pandoc_s and "-" * from_word.COLUMNS not in written
+
+
+@needs_pandoc
+def test_a_paper_holding_a_rule_s_run_of_hyphens_keeps_every_rule_as_pandoc_wrote_it() -> None:
+    """Where a code block of the paper holds a line of hyphens as long as a rule, a rule's
+    line cannot be told from it, and nothing is cut: the Markdown is pandoc's."""
+    import subprocess
+
+    empty = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True, input=b"",
+                           capture_output=True, timeout=60)  # fmt: skip
+    tree = {"pandoc-api-version": json.loads(empty.stdout)["pandoc-api-version"]}
+    blocks = [_RULE, {"t": "CodeBlock", "c": [_ATTR, "-" * from_word.COLUMNS]}, _para("b")]
+    written = from_word._write(tree, blocks, Path("paper.docx"))
+    document = json.dumps({**tree, "meta": {}, "blocks": blocks})
+    assert written == from_word._pandoc(["-f", "json", *from_word.WRITER], document,
+                                        Path("paper.docx"))  # fmt: skip
 
 
 def _widths_aside(node: object) -> object:

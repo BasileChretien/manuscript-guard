@@ -22483,9 +22483,6 @@ Open, recorded as each change landed:
   looks at string literals, because that is where a hard-coded result hides in a figure
   script. A bare numeric literal in displayed code is left alone; treating every constant
   in an example snippet as a claim would make code blocks unusable. Accepted.
-- **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
-  this section; repeated here because it is the same shape as the two above — the toolkit
-  judges what it can parse and says so, rather than guessing.
 - **The exemption inventory is open-world.** `tests/test_exemptions.py` checks that every
   listed exemption has a passing abuse test, and that nothing listed has quietly left the
   code. It cannot see an escape hatch nobody wrote down: a new grant, spelled some way the
@@ -23677,8 +23674,9 @@ Open, recorded as each change landed:
     Pinned by `tests/test_corruption.py::test_the_annotated_copy_marks_what_main_marked`.
   - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked (the extra
     round);
-  - a number straight after a TeX command, `\a 5`, is left unmarked: the command took the
-    mark for its argument, and the paragraph lost every mark (the final round);
+  - a number straight after a TeX command, `\a 5`, is left unmarked, since the command would
+    take the mark for its argument; the paragraph's other numbers keep theirs, as "12" in
+    "Of 12 patients, \a 5 were seen." does (the final round);
     Pinned by `tests/test_corruption.py::test_the_annotated_copy_marks_what_main_marked`.
   - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
     file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
@@ -24115,9 +24113,11 @@ Open, recorded as each change landed:
     computed it", and PRR is then defined by its prose. And a run of thousands of
     paragraphs that each open on the word and are each an entry, "Glossary: terms used",
     is read in time that grows as its square.
-    A glossary's entries are read one to a line, and "ROR reporting odds
-    ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
-    PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
+    A glossary's entries are read one to a line, or run on in one paragraph with a colon
+    after each short form and a semicolon between them, "ROR: reporting odds ratio; PRR:
+    ...", and "ROR reporting odds ratio" only in a table or a definition list: a paragraph
+    of "ROR, reporting odds ratio; PRR, ..." is not read, and a grid table's long form over
+    several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.
     A run-on glossary paragraph wrapped so that one word stands alone above a line that
     opens with a colon and a space is cut before that word, which is read as a
@@ -25748,14 +25748,17 @@ Open, recorded as each change landed:
   the counts run together in a cell, the audit does not pair a count with its share there,
   and a reader of the Markdown sees one row. Rewrite such a table by hand, or emit it from
   the analysis.
+  Pinned by `tests/test_from_word.py::test_a_word_table_s_rows_stacked_in_one_cell_become_one_row`.
 - **A merged cell's text stands in its first column only.** A header spanning a count's and a
   share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
   audit reads its denominator for that column alone.
+  Pinned by `tests/test_from_word.py::test_a_merged_header_s_n_is_read_for_its_first_column_alone`.
 - **What `init --from` sets aside is chosen by a count of words.** The run before the first
   heading is set aside up to 600 words. A short introduction with no heading over it, after a
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
   title page over 600 words stays in the text, where its names and affiliations are read.
   `init` prints which it did and how many words.
+  Pinned by `tests/test_from_word.py::test_init_sets_aside_a_title_page_by_a_count_of_words`.
 - **`init --from` finds an abstract on the title page by its style alone.** A paragraph in
   Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
   document with its styles is, the styles taken off, its ordinary reading block for block;
@@ -25764,6 +25767,8 @@ Open, recorded as each change landed:
   read by no gate until it is moved out; one under a line "Abstract" alone, in bold or not,
   in a paper that uses a heading style elsewhere, or opening on a run-in "Abstract:", has that line made a
   heading (below, "A Word paper's typed titles are headings only by a closed list of names").
+  Pinned by `tests/test_from_word.py::test_an_abstract_in_another_style_stays_in_the_comment`
+  and `tests/test_from_word.py::test_an_abstract_style_stays_set_aside_where_readings_differ`.
 - **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
   top-level paragraph of words, in bold or not, numbered as typed or not, in capitals or not
@@ -26012,15 +26017,19 @@ Open, recorded as each change landed:
 - **A table `init --from` leaves as a grid table keeps pandoc's numbering.** A numbered list
   in a cell is written with its numbers, "1.", "2.", and `check` reports them as numbers
   typed in a table, as it reports the rest of the grid table's rows.
+  Pinned by `tests/test_from_word.py::test_a_numbered_list_in_a_grid_table_keeps_its_numbers`.
 - **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
   tracked changes; the audit and `import` read comments, `init` does not. Accepted.
 - **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
   superscript of digits or `*`, `†`, `‡`, `§`, `¶`, `‖`, `#` at the title's end out of `paper.yaml`, so "per
   m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
+  Pinned by `tests/test_from_word.py::test_digits_or_a_note_s_sign_at_a_title_s_end_are_a_mark`
+  and `tests/test_from_word.py::test_a_power_at_a_word_title_s_end_is_left_out`.
 - **A Word title's mark inside a wrapper stays in the title.** `init --from` looks for the
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+  Pinned by `tests/test_from_word.py::test_a_word_title_s_mark_inside_a_wrapper_stays_in_the_title`.
 - **`init --from` reads a typed reference entry in two of APA's shapes only.** A journal
   article, `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.` with a DOI
   or an address after it or not, and a book, `Lee, C. (2018). *Title*. Publisher.`, are
@@ -26207,8 +26216,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading's title is not folded: `\section{Caf\'e}` prints "Cafe" in the printed view.
   - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
   - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
-  - `classify._names_covering`'s docstring says "PharmD~2~" is no term with D2 declared; it
-    is one, as DESIGN says.
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
@@ -26219,7 +26226,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `docx-unreadable` from the live-field check says the journal's review is blind.
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
-  - ci.yml's comment on setup-pandoc names a step that is gone.
 
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
   Accepted.
@@ -27271,8 +27277,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_compare.py::test_tables_the_view_cannot_count_are_not_numbered`
     and `tests/test_latex_pointers.py::test_a_table_the_view_cannot_count_leaves_tables_unchecked`.
   - A table display's cells are read only where its float holds one table display and one
-    table: subtables, two captions over two tables, a picture of a table, and a file two
-    floats input are "not read"; the caption is still compared.
+    table: subtables, two captions over two tables and a picture of a table are "not read",
+    and a file two floats input is read for the first float and "not read" for the second;
+    the caption is still compared.
     Pinned by `tests/test_compare.py::test_a_float_whose_captions_and_tables_are_not_one_to_one_is_not_read`
     and `tests/test_compare.py::test_a_file_two_floats_input_is_read_for_the_first_only`.
   - The numbers of the reference list and of the tables are not compared as the prose's: a
@@ -27620,42 +27627,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   And CLAUDE.md says a new gate needs its row in `docs/gates.md`, not that it must also join
   a group of `assurance.DIMENSIONS` or be named after the README's table of groups, with
   "Seventeen gates" changed: two tests fail otherwise, and their messages name what is
-  missing (round 1 of #550). Closed by reading a page's sentences through the Markdown
-  reader and matching the link on either side of the word, and by a line in CLAUDE.md.
-  Accepted.
+  missing (round 1 of #550). Neither part is closed: the test still splits a page after "."
+  and ":", and CLAUDE.md names neither `assurance.DIMENSIONS` nor the count. Reading a
+  page's sentences through the Markdown reader and matching the link on either side of the
+  word, and a line in CLAUDE.md, would close it. Accepted.
 
-- **Five sentences of the docs pages say more or less than the tool does.** Each was found
-  by review and left, each is a sentence to change, and no test reads them (round 1 of
-  #556; round 1 of #550 for the last):
-  - `docs/teams.md`, approvals and sign-offs: "under Codex they refuse it" leaves out that
-    Codex runs the hooks only once the user has trusted them under `/hooks` (see "Under
-    Codex the hooks are tested against its source"); until then an agent's `approve` or
-    `sign` goes through.
-  - `docs/teams.md`, the layout table: `authors.yaml` is said to hold "who signs off what",
-    but the file `init` writes has no `roles:` key and no comment naming one; the section
-    below the table says where it goes.
-  - `docs/teams.md`, the badge: the warning to look at `literature/sources/` before a
-    repository is made public leaves out that a new project's `.gitignore` keeps the copies
-    out of git, and which projects commit them (`docs/github-actions.md`). Overcautious
-    rather than false.
-  - `docs/getting-started.md`, "What you need": "nothing has to be installed" is followed by
-    the `uvx` route, which needs uv; only the audit page needs nothing.
-  - The README, under "What is checked": "G0, which holds that the manuscript can be read at
-    all, is in none" gives G0 its gate's meaning only; G0 also labels a file of the project
-    that cannot be used (`schema-violation`), as `docs/gates.md` says under "G0 and BUILD".
-
-- **The brand drawings' test holds the SVGs, not the PNGs, and reads the banner's CSS for
-  one spelling.** `tests/test_brand.py` holds every SVG to what `tools/brand_assets.py`
-  writes, and the PNGs (`social-preview.png`, `emblem-512.png`, `favicon-32.png`) only to
-  their presence and size, since their pixels depend on the browser that renders them:
-  after an edit to the emblem the PNGs stay as they were and the suite passes (round 1 of
-  #551, finding 4; `brand/README.md` says so). The banner's still frame is held by the exact
-  set of drawings it hides and by its reduced-motion rule coming after the last
-  `animation-name:`; a shorthand `animation:` rule placed after it would override it and
-  pass (round 2 of #554, finding 1). The test's comment, and `brand/README.md`'s account of
-  the still frame, leave out the spark, which is shown; the assertion is right (finding 2).
-  Closed by rendering the PNGs in CI against the committed ones, and by reading the
-  shorthand too.
+- **The brand drawings' test holds the SVGs, not the PNGs.** `tests/test_brand.py` holds
+  every SVG to what `tools/brand_assets.py` writes, and the PNGs (`social-preview.png`,
+  `emblem-512.png`, `favicon-32.png`) only to their presence and size, since their pixels
+  depend on the browser that renders them: after an edit to the emblem the PNGs stay as
+  they were and the suite passes (round 1 of #551, finding 4; `brand/README.md` says so).
+  Rendering the PNGs in CI against the committed ones would close it. Accepted.
 
 - **The AI-use statement is held to names, and to the records that say a model made them.**
   G4's AI-use check (`gates/ai_use.py`, `text/model_names.py`; "The AI-use statement names
@@ -28631,6 +28613,34 @@ Closed since, and why each mattered (an open gap goes above this line):
   (`_bracket_wins`). A bracket after the words that defines nothing, "(see the appendix)",
   leaves the pair as it was. Held by
   `tests/test_definition_shapes.py::test_a_bracket_after_a_colon_pair_s_long_form_wins`.
+
+- **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
+  A sentence that says more or less than the tool does is believed by the author who reads
+  it, and a Known gap that contradicts another is trusted for whichever is read first:
+  - "A fence tagged with a language nothing can lex is read as prose", an entry of its own
+    near "`em.cell()` launders whatever its parts are", repeated the entry at the top of
+    Known gaps and contradicted it: such a block is reported unread (`code-block-unread`),
+    as `tests/test_text.py::test_a_fenced_block_is_judged_as_code` holds. It is gone.
+  - Under "Left by round 2 of #452": `classify._names_covering`'s docstring said that with
+    D2 declared "PharmD~2~" is no term; it is `d2` declared or not, and the docstring says
+    so. And ci.yml's comment on the r-interop job's setup-pandoc named
+    setup-r-dependencies, a step gone since R came from conda-forge; it names the pinned
+    pandoc the requirement asks for.
+  - Five sentences of the docs pages (round 1 of #556 and of #550). `docs/teams.md` said
+    that under Codex the hooks refuse `approve` and `sign`, and now says that until the user
+    trusts them under `/hooks` the hooks do not run; that `authors.yaml` holds who signs off
+    what, which a `roles:` key the author adds holds, as it now says, since the file `init`
+    writes has none; and its warning on `literature/sources/` before a repository is made
+    public now says that a new project's `.gitignore` keeps the copies out and which
+    projects commit them. `docs/getting-started.md` said nothing had to be installed to
+    check a paper, before the `uvx` route, which needs uv; only the audit page needs
+    nothing, as it says now. And the README gave G0 its gate's meaning only; it says now
+    that G0 also labels a file of the project that cannot be used (`schema-violation`).
+  - Under "The brand drawings' test holds the SVGs, not the PNGs": two of its points had
+    been closed by #561 and were still listed, the test refusing a shorthand `animation:`
+    after the reduced-motion rule as well as `animation-name:`, and its comment naming the
+    spark among what the still frame shows. `brand/README.md` still left the spark and the
+    gate's tag out of the still frame, and names them now.
 
 - **An input past a stop was looked for beside the entry, not where its file was imported
   from (round 1 of #716).** What a `\subimport{chapters/}{intro}` past a stop reached, and

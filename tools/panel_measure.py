@@ -181,9 +181,11 @@ def requests_of(project: Path) -> list[tuple[str, dict]]:
     code = "import sys; from manuscript_guard.cli import main; sys.exit(main(sys.argv[1:]))"
     # This tree's package, not whichever one is installed.
     path = os.pathsep.join(filter(None, [str(ROOT / "src"), os.environ.get("PYTHONPATH")]))
+    # UTF-8 unless the environment told the child otherwise (`PYTHONIOENCODING=cp1252`): a
+    # byte that is not UTF-8 is replaced rather than raised while the failure is said.
     run = subprocess.run([sys.executable, "-c", code, "review", "--run", "--dry-run"],
                          cwd=project, capture_output=True, text=True, encoding="utf-8",
-                         env={**os.environ, "PYTHONPATH": path})  # fmt: skip
+                         errors="replace", env={**os.environ, "PYTHONPATH": path})  # fmt: skip
     if run.returncode != 0:
         said = run.stdout + run.stderr
         raise SystemExit(f"{project.name}: review --run --dry-run failed:\n{said}")

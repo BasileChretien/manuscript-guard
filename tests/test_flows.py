@@ -125,6 +125,19 @@ def test_items_under_an_arm_are_said_and_not_read() -> None:
                           "read",)  # fmt: skip
 
 
+def test_items_under_a_reason_are_noted_and_not_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on steps for each arm): items under a reason are noted, and their 10 is held to
+    nothing."""
+    text = FLOW.replace("    - Declined to participate (n = 25)\n",
+                        "    - Declined to participate (n = 25)\n      - By phone (n = 10)\n")
+    [flow] = _flows(text)
+    assert flow.read and flow.problems == ()
+    assert flow.notes == ("the items under a reason of 'Excluded' are not read",)
+    [flow] = _flows(text.replace("(n = 10)", "(n = 99)"))
+    assert flow.problems == ()
+
+
 def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
     source = read_tree({"paper.tex": tex(
         "!documentclass{article}\n!begin{document}\n"
@@ -138,6 +151,24 @@ def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
     assert flow.stages == (412, 290) and flow.line == 4
     assert flow.problems == ("stage 1 (412) less its exclusions (112) is 300, and stage 2 is "
                              "290",)  # fmt: skip
+
+
+@pytest.mark.parametrize(("inner", "flows"), [("itemize", [(412, 290)]), ("compactitem", []),
+                                              ("steps", [])])  # fmt: skip
+def test_a_latex_list_of_another_environment_is_no_level(inner: str, flows: list) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on LaTeX environments): a `compactitem`, or a list environment the paper defines,
+    nested in an item is not read as a level, so the list is no flow. The paper defines
+    `steps` as an itemize."""
+    source = read_tree({"paper.tex": tex(
+        "!documentclass{article}\n!newenvironment{steps}{!begin{itemize}}{!end{itemize}}\n"
+        "!begin{document}\n!begin{itemize}\n!item Assessed (n = 412)\n"
+        f"!begin{{{inner}}}\n!item Excluded (n = 112)\n!end{{{inner}}}\n"
+        "!item Randomised (n = 290)\n!end{itemize}\n!end{document}\n")}, "paper.tex").sources[0]
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+    assert [flow.stages for flow in flows_in(latex_lists(source, hidden))] == flows
 
 
 def tex(text: str) -> str:
@@ -208,6 +239,27 @@ def test_counts_in_text_boxes_are_noted_as_a_flow_not_read(tmp_path: Path) -> No
     assert report.flows_read == 0
     assert [(d.line, d.message.split(":")[0]) for d in report.flow_notes] == [
         (0, "its text boxes give 2 counts (n = N), as a flow drawn in boxes does")]
+
+
+@pytest.mark.parametrize(("style", "levels"), [("<w:pPr><w:pStyle/></w:pPr>", ((2, 1),)),
+                                               ("", ())])  # fmt: skip
+def test_a_paragraph_style_with_no_value_is_looked_up_as_the_style_named_nothing(
+    tmp_path: Path, style: str, levels: tuple
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on `<w:pStyle/>`): a style written with no value is the style whose id is "", here
+    a heading, so "Participant flow" is a heading of the first level; with no style written
+    it is no heading."""
+    styles = (f"<w:styles {NS}><w:style w:type='paragraph' w:styleId=''><w:name "
+              "w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
+    body = (f"<w:p><w:r><w:t>Intro</w:t></w:r></w:p><w:p>{style}<w:r><w:t>Participant flow"
+            "</w:t></w:r></w:p>")  # fmt: skip
+    path = tmp_path / "p.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<?xml version='1.0'?><w:document {NS}><w:body>"
+                                              f"{body}</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/styles.xml", styles)
+    assert read_docx_text(path).heading_levels == levels
 
 
 # ------------------------------------------------------------------ Abstract against Results
@@ -487,6 +539,42 @@ def test_a_subgroup_list_is_a_note_and_the_same_list_named_a_flow_fails(
     capsys.readouterr()
 
 
+def test_a_list_of_subgroups_under_participants_is_a_broken_flow_that_fails_strict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on lists of subgroups): men over smokers and women over smokers read as two
+    stages and an exclusion, and under "Participants", a name for a flow, the list is said
+    to be broken and fails `--strict`."""
+    [flow] = _flows("## Participants\n\n" + SUBGROUPS)
+    assert (flow.stages, flow.exclusions, flow.named) == ((200, 180), ((50,),), True)
+    assert flow.problems == ("the reasons after stage 1 (50) cannot account for the 20 "
+                             "excluded, even overlapping",)  # fmt: skip
+    paper = tmp_path / "p.md"
+    paper.write_text("# Participants\n\n" + SUBGROUPS, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("heading", ["Diagrama de flujo", "Teilnehmerfluss", "Results"])
+def test_a_broken_flow_under_a_heading_that_names_no_flow_in_english_passes_strict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on `FLOW_NAMES`): the names for a flow are English, so a broken flow under a
+    Spanish or a German one, or under "Results" with nothing naming it, is a note and
+    passes `--strict`, where under "Participant flow" it fails."""
+    broken = FLOW.replace("149", "148")
+    [flow] = _flows(f"## {heading}\n\n{broken}")
+    assert not flow.named and flow.problems == ("the arms sum to 299, and the last stage is 300",)
+    paper = tmp_path / "p.md"
+    paper.write_text(f"# {heading}\n\n{broken}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Participant flow\n\n{broken}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    capsys.readouterr()
+
+
 def test_a_latex_and_a_word_list_are_named_by_their_heading_or_caption(tmp_path: Path) -> None:
     source = read_tree({"paper.tex": tex(
         "!documentclass{article}\n!begin{document}\n!section{Participant flow}\n\nText.\n\n"
@@ -613,6 +701,39 @@ def test_flow_alone_names_no_flow() -> None:
                     "Flow of patients through the trial"):
         [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
         assert flow.named, heading
+
+
+@pytest.mark.parametrize(("heading", "named"), [
+    ("Patient flow cytometry", True), ("Blood flow of the forearm", True),
+    ("Study population characteristics", True), ("Flow cytometry", False),
+    ("Blood flow", False), ("Population characteristics", False)])  # fmt: skip
+def test_a_name_for_a_flow_is_read_as_words_of_a_title_not_as_its_subject(
+    heading: str, named: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on names read as words): "Patient flow cytometry", "Blood flow of the forearm" and
+    "Study population characteristics" name a list a flow, for the words of a name in them,
+    where the same titles without those words do not."""
+    [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+    assert flow.named is named
+
+
+def test_a_review_s_sources_and_duplicates_under_identified_fail_as_exclusions() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on sources and a removal under one stage): databases, registers and duplicates
+    removed under "Identified" are read as that stage's exclusions, overlapping, and fail
+    under a PRISMA heading. The 2026-11-09 triage planned a fix (F10), which will change this
+    test."""
+    prisma = ("## PRISMA flow chart\n\n- Identified (n = 520)\n  - Databases (n = 500)\n"
+              "  - Registers (n = 20)\n  - Duplicates removed (n = 120)\n- Screened (n = 400)\n"
+              "  - Excluded (n = 300)\n- Included (n = 100)\n")  # fmt: skip
+    [flow] = _flows(prisma)
+    assert flow.named
+    assert flow.problems == ("the reasons after stage 1 (500, 20, 120) cannot account for the "
+                             "120 excluded, even overlapping",)  # fmt: skip
+    assert flow.notes == ("the exclusions after stage 1 add up to 640, more than the 120 it "
+                          "removes: read as overlapping, a record excluded for more than one "
+                          "reason",)  # fmt: skip
 
 
 def test_each_file_is_placed_by_its_own_headings(tmp_path: Path) -> None:

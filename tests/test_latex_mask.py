@@ -1088,6 +1088,181 @@ def test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read(
         assert [refusal.code for _path, refusal in refused] == ["tex-refused"]
 
 
+#: The CVPR and ICCV author kit's headings, as iccv.sty, cvpr.sty and wacv.sty write them:
+#: each level a `\@startsection` of its own name, and the command an `\@ifstar` between two
+#: helpers that hand their argument on to it, starred or not.
+_KIT = ("\\def\\iccvsection{\\@startsection {section}{1}{\\z@}\n"
+        "   {-10pt plus -2pt minus -2pt}{7pt} {\\large\\bf}}\n"
+        "\\def\\iccvssect#1{\\iccvsection*{#1}}\n"
+        "\\def\\iccvsect#1{\\iccvsection{\\texorpdfstring{\\hskip -1em.~}{}#1}}\n"
+        "\\def\\section{\\@ifstar\\iccvssect\\iccvsect}\n"
+        "\n"
+        "\\def\\iccvsubsection{\\@startsection {subsection}{2}{\\z@}\n"
+        "   {-8pt plus -2pt minus -2pt}{5pt} {\\elvbf}}\n"
+        "\\def\\iccvssubsect#1{\\iccvsubsection*{#1}}\n"
+        "\\def\\iccvsubsect#1{\\iccvsubsection{\\texorpdfstring{\\hskip -1em.~}{}#1}}\n"
+        "\\def\\subsection{\\@ifstar\\iccvssubsect\\iccvsubsect}\n")  # fmt: skip
+#: The same, as LaTeX's own definers write it, the branches braced.
+_KIT_AS_NEWCOMMAND = (
+    "\\newcommand{\\cvprsection}{\\@startsection{section}{1}{\\z@}{-10pt}{7pt}{\\bf}}\n"
+    "\\newcommand*{\\cvprssect}[1]{\\cvprsection*{#1}}\n"
+    "\\newcommand\\cvprsect[1]{%\n  \\cvprsection{#1}}\n"
+    "\\renewcommand{\\section}{\\@ifstar{\\cvprssect}{\\cvprsect}}\n"
+    "\\newcommand{\\cvprsubsection}{\\@startsection{subsection}{2}{\\z@}{-8pt}{5pt}{\\bf}}\n"
+    "\\newcommand{\\cvprssubsect}[1]{\\cvprsubsection*{#1}}\n"
+    "\\newcommand{\\cvprsubsect}[1]{\\cvprsubsection{#1}}\n"
+    "\\renewcommand\\subsection{\\@ifstar\\cvprssubsect\\cvprsubsect}\n"
+)
+_KIT_PART = ("\\section{Introduction}\nOf 4100 reports, 12 were fatal.\n"
+             "\\subsection*{Data}\nThen 77 died.\n")  # fmt: skip
+
+
+def _kit_tree(defined: str, where: str, part: str = _KIT_PART) -> tuple[dict, dict]:
+    """A manuscript whose headings `defined` restyles, in the author's package or in the
+    entry file's preamble past `\\makeatletter`, and whose body inputs `part`."""
+    preamble = ("\\usepackage{kit}\n" if where == "package"
+                else "\\makeatletter\n" + defined + "\\makeatother\n")  # fmt: skip
+    main = _HEAD + preamble + "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n"
+    packages = {"kit.sty": defined} if where == "package" else {}
+    return {"main.tex": main, "sec/intro.tex": part}, packages
+
+
+@pytest.mark.parametrize("where", ["package", "preamble"])
+@pytest.mark.parametrize("defined", [_KIT, _KIT_AS_NEWCOMMAND], ids=["iccv-sty", "newcommand"])
+def test_the_cvpr_author_kit_s_headings_are_read_as_before(defined: str, where: str) -> None:
+    """Basile, 2026-11-22: a heading the CVPR and ICCV author kit defines, `\\@ifstar` between
+    two helpers defined above it in the same file, each handing its one argument, starred or
+    not, to a command defined above as the `\\@startsection` of the heading's own name, is read
+    as before (robustness sweep of 2026-11-21: iccv.sty's `\\def\\section` refused every
+    section file of two papers from their first line). Only `\\texorpdfstring` of spacing and
+    punctuation stands before the argument: the kit's full stop after the number."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files, packages = _kit_tree(defined, where)
+    document = read_tree(files, packages=packages)
+    assert document.refusals == ()
+    (part,) = [source for source in document.sources if source.path == "sec/intro.tex"]
+    headings = [(heading.level, heading.title) for heading in part.reading.headings]
+    assert headings == [(1, "Introduction"), (2, "Data")]
+    assert "12 were fatal." in part.reading.masked and "77 died." in part.reading.masked
+
+
+@pytest.mark.parametrize(
+    "provided",
+    ["", "\\providecommand\\section{x}\n", "\\providecommand{\\iccvsect}[1]{\\textbf{#1}}\n"],
+    ids=["kit", "heading-provided", "helper-provided"],
+)
+@pytest.mark.parametrize("where", ["package", "preamble"])
+@pytest.mark.parametrize("short", ["\\section[Intro]{Introduction}", "\\subsection* [D]{Data}"])
+def test_a_short_title_after_the_author_kit_s_heading_is_refused_where_it_prints(
+    short: str, where: str, provided: str
+) -> None:
+    """The kit's helpers take one argument and no short title: given `[Intro]`, the bracket
+    is the heading and the rest prints as text, so that use is refused where it prints, in
+    whichever file of the tree stands (Basile, 2026-11-22). A `\\providecommand` of the heading
+    or of a helper below defines nothing, and takes nothing back (round 1 of #757)."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    part = "Of 4100 reports, 12 were fatal.\n" + short + "\nThen 77 died.\n"
+    files, packages = _kit_tree(_KIT + provided, where, part)
+    ((path, refusal),) = read_tree(files, packages=packages).refusals
+    assert (path, refusal.offset) == ("sec/intro.tex", part.index(short))
+    assert "short title" in refusal.message
+
+
+def _spoilt(was: str, now: str) -> str:
+    assert was in _KIT
+    return _KIT.replace(was, now)
+
+
+@pytest.mark.parametrize(
+    "defined",
+    [
+        # Words before the title, which the reader would not read.
+        _spoilt("{\\hskip -1em.~}", "{Part~}"),
+        # A helper of two parameters.
+        _spoilt("\\def\\iccvsect#1{\\iccvsection{\\texorpdfstring{\\hskip -1em.~}{}#1}}",
+                "\\def\\iccvsect#1#2{\\iccvsection{#1#2}}"),
+        # The `\@startsection` of another level.
+        _spoilt("{\\@startsection {section}", "{\\@startsection {paragraph}"),
+        # A helper defined below the heading, or defined again below it.
+        _spoilt("\\def\\iccvssect#1{\\iccvsection*{#1}}\n", "")
+        .replace("\\iccvsect}\n", "\\iccvsect}\n\\def\\iccvssect#1{\\iccvsection*{#1}}\n", 1),
+        _KIT + "\\def\\iccvsect#1{\\textbf{#1}}\n",
+        # The branches swapped, so that the star is the plain heading's.
+        _spoilt("\\@ifstar\\iccvssect\\iccvsect", "\\@ifstar\\iccvsect\\iccvssect"),
+        # A helper that `\providecommand` may leave as it was.
+        _spoilt("\\def\\iccvsect#1", "\\providecommand\\iccvsect[1]"),
+        # A font switch in a helper.
+        _spoilt("\\def\\iccvssect#1{", "\\def\\iccvssect#1{\\bf"),
+        # The heading by `\edef`, which expands its body where it stands (round 1 of #757),
+        # or by `\newcommand`, which stops LaTeX at a command defined (round 2).
+        _spoilt("\\def\\section{", "\\edef\\section{"),
+        _spoilt("\\def\\section{", "\\newcommand\\section{"),
+        # JMLR's own `\@startsiction` (jmlr2e.sty), and dnd.sty's appendix heading, which
+        # prints "Appendix" in each title.
+        "\\def\\section{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+        "             {\\large\\bf\\raggedright}}\n",
+        "\\def\\section{\\@ifnextchar*{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}%\n"
+        "             {\\large\\bf\\raggedright}}%\n"
+        "{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+        "             {\\large\\bf\\raggedright Appendix\\ }}}\n",
+    ],
+    ids=["words", "two-parameters", "another-level", "helper-below", "helper-again",
+         "swapped", "providecommand", "font-switch", "edef", "newcommand", "jmlr-startsiction",
+         "dnd-ifnextchar"],  # fmt: skip
+)
+def test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints(
+    defined: str,
+) -> None:
+    """Anything else of the kit's form, one thing more or one thing other, is a heading the
+    preamble defines again, and refused where it prints (Basile, 2026-11-11), the subsection
+    no more than the section; and so are the other journal styles' headings the robustness
+    sweep of 2026-11-21 found, which are no form read as before."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files, packages = _kit_tree(defined, "package")
+    ((path, refusal),) = read_tree(files, packages=packages).refusals
+    assert (path, refusal.offset) == ("sec/intro.tex", 0)
+    assert "defines it again" in refusal.message
+
+
+def test_the_kit_s_heading_defined_where_at_is_no_letter_is_refused_where_it_prints() -> None:
+    """A definition is read for the kit's form only where it reads as written: one that holds
+    `@`, defined before `\\makeatletter`, holds `\\@` and the letters "startsection" to TeX,
+    and the heading through it is refused where it prints (round 1 of #757)."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    at = _KIT.index("\\def\\iccvssect")
+    main = (_HEAD + _KIT[:at] + "\\makeatletter\n" + _KIT[at:] + "\\makeatother\n"
+            "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n")  # fmt: skip
+    ((path, refusal),) = read_tree({"main.tex": main, "sec/intro.tex": _KIT_PART}).refusals
+    assert (path, refusal.offset) == ("sec/intro.tex", 0)
+    # An `@` in a comment is no part of what TeX reads (round 2 of #757).
+    helper = "\\def\\iccvssect#1{% the kit's, from a@b.org\n\\iccvsection*{#1}}\n"
+    plain = _KIT.replace("\\def\\iccvssect#1{\\iccvsection*{#1}}\n", "")
+    main = (_HEAD + helper + "\\makeatletter\n" + plain + "\\makeatother\n"
+            "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n")  # fmt: skip
+    assert read_tree({"main.tex": main, "sec/intro.tex": _KIT_PART}).refusals == ()
+
+
+def test_a_helper_of_the_author_kit_defined_again_in_another_file_is_not_seen() -> None:
+    """Known gap: a helper of the kit's heading defined again in another file of the tree, the
+    entry file's preamble past `\\makeatletter`, is not seen, and the heading is read as
+    before, though LaTeX prints the words the new helper adds. The tree tells each file of the
+    commands the others define again that the reader knows, and the kit's helpers are not."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files, packages = _kit_tree(_KIT, "package")
+    again = "\\makeatletter\n\\def\\iccvsect#1{\\iccvsection{Part #1}}\n\\makeatother\n"
+    files["main.tex"] = files["main.tex"].replace("\\usepackage{kit}\n",
+                                                  "\\usepackage{kit}\n" + again)  # fmt: skip
+    document = read_tree(files, packages=packages)
+    assert document.refusals == ()
+    (part,) = [source for source in document.sources if source.path == "sec/intro.tex"]
+    assert [heading.title for heading in part.reading.headings][0] == "Introduction"
+
+
 def test_nothing_found_past_an_unclosed_construct_is_kept() -> None:
     """Round 1 of #637, finding 4: a construct left open is refused where it opens, found at
     the end of the run, and the text past it blanked; but the headings, citations, bindings

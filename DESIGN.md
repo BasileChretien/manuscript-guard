@@ -21383,7 +21383,7 @@ Open, recorded as each change landed:
   - a mark with no closer: an unclosed `<!-- TODO`, or a `<script>`, `<?php` or `<pre>`
     never closed, which pandoc reads as text;
     Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`
-    and `tests/test_corruption.py::test_the_hint_of_a_listing_refused_after_an_unclosed_comment_names_the_comment`.
+    and `tests/test_corruption.py::test_a_listing_after_an_unclosed_comment_is_refused_as_an_unclear_fence`.
   - `\begin{center}` named in a line of prose, `<pre/>`, `</pre foo>`, and a `<!--` in
     indented code;
     Pinned by `tests/test_corruption.py::test_a_listing_after_a_context_the_tracker_opens_is_refused`.

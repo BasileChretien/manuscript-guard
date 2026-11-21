@@ -502,19 +502,25 @@ def _pixel() -> bytes:
 
 @needs_pandoc
 def test_pandoc_s_own_caption_and_a_quoted_one_are_styled_as_the_known_gap_says(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The figure-caption style reads one convention
     and nothing else"): a figure with pandoc's own caption keeps `Image Caption`, which the
-    build's reference document does not size; a caption in a block quotation takes `Figure
-    Caption` in place of `Block Text`; a table's caption is untouched. The 2026-11-09
-    triage planned a fix (F08), which will change this test."""
+    build's reference document does not size, nor the `Caption` it is based on; a caption
+    in a block quotation takes `Figure Caption` in place of `Block Text`; a table's caption
+    is untouched. The build's reference document is made from pandoc's own: pandoc's user
+    data folder is pointed at an empty one, as XDG_DATA_HOME points it, so that no
+    `reference.docx` of whoever runs the test is read. The 2026-11-09 triage planned a fix
+    (F08), which will change this test."""
     import re
     import subprocess
 
     from manuscript_guard.build.document import FIGURE_CAPTION_LUA, pandoc
-    from manuscript_guard.build.styles import reference_with
+    from manuscript_guard.build.styles import reference_with, user_reference
 
+    (tmp_path / "data-home").mkdir()
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data-home"))
+    assert user_reference(pandoc()) is None
     (tmp_path / "figure.png").write_bytes(_pixel())
     reference = reference_with(pandoc(), tmp_path / "reference.docx")
     markdown = (
@@ -542,8 +548,14 @@ def test_pandoc_s_own_caption_and_a_quoted_one_are_styled_as_the_known_gap_says(
     assert style_of("Quoted prose words.") == "BlockText"
     assert style_of("Table caption words.") == "TableCaption"
     styles = _styles(output)
+    for style in ("ImageCaption", "Caption"):
+        defined = re.search(
+            rf'<w:style [^>]*w:styleId="{style}".*?</w:style>', styles, re.DOTALL
+        )
+        assert defined is not None and "<w:sz " not in defined.group(0), (style, defined)
     image = re.search(r'<w:style [^>]*w:styleId="ImageCaption".*?</w:style>', styles, re.DOTALL)
-    assert image is not None and "<w:sz " not in image.group(0), image
+    assert image is not None, styles
+    assert '<w:basedOn w:val="Caption"/>' in image.group(0).replace(" />", "/>"), image
 
 
 @needs_pandoc

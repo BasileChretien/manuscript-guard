@@ -9795,7 +9795,8 @@ def test_a_pointer_in_a_heading_is_checked_for_a_target_and_cites_nothing(
 def test_another_paper_s_table_is_read_as_the_paper_s_own(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A typed pointer is held to the number of a
     placement"): "Table 3 of Smith et al." points at this paper's Table 3, which it does
-    not have; "Table 2 of Smith et al." passes as a citation of this paper's Table 2."""
+    not have; "Table 2 of Smith et al." passes as a citation of this paper's Table 2, which
+    the paper cites nowhere else."""
     from manuscript_guard.gates.pointers import pointers_in
 
     said = pointers_in("Table 3 of Smith et al. gave the same.", Path("x"))
@@ -9804,6 +9805,8 @@ def test_another_paper_s_table_is_read_as_the_paper_s_own(project: Path) -> None
     said = _pointer_findings(project)
     assert [code for code, _ in said] == ["pointer-to-nothing"], said
     assert "points at table 3," in said[0][1]
+    _rewrite(project, ("Table 3 of Smith", "Table 2 of Smith"), ("in Table 2, so", "below, so"))
+    assert _pointer_findings(project) == []
 
 
 def test_a_box_a_section_and_an_equation_are_no_pointers_the_check_counts(
@@ -10142,7 +10145,7 @@ def test_bind_pointers_offers_another_paper_s_table_and_a_count_after_a_list(
     """A known gap (DESIGN.md, Known gaps, "`bind --pointers` offers what G2 reads as a
     pointer"): "Table 2 of Smith et al." is offered as this paper's Table 2, and the 2 of
     "in Tables 1, 2 patients" as a table's number. The list is printed and nothing written
-    before `--apply`; `--only` takes one line; applied, it prints as typed, and another
+    before `--apply`; `--only` takes one line; applied, either prints as typed, and another
     number once the tables move."""
     from manuscript_guard.binding import label, typed_pointers
     from manuscript_guard.cli import main
@@ -10173,13 +10176,21 @@ def test_bind_pointers_offers_another_paper_s_table_and_a_count_after_a_list(
     assert "{{ref.table.two_by_two}} of Smith et al." in text
     assert "In Tables 1, 2 patients were excluded." in text
     assert _assembled_all(project)["main.md"] == printed
+    assert main(["bind", str(project), "--pointers", "--apply", "--only",
+                 label(listed[1], project)]) == 0  # fmt: skip
+    text = main_md(project).read_text(encoding="utf-8")
+    assert "In Tables {{num.table.baseline}}, {{num.table.two_by_two}} patients" in text
+    assert "In Tables 1, 2 patients were excluded." in _assembled_all(project)["main.md"]
+    assert _assembled_all(project)["main.md"] == printed
     _rewrite(
         project,
         ("{{table.baseline}}", "{{table.swapped}}"),
         ("{{table.two_by_two}}\n", "{{table.baseline}}\n"),
         ("{{table.swapped}}", "{{table.two_by_two}}"),
     )
-    assert "Table 1 of Smith et al." in _assembled_all(project)["main.md"]
+    moved = _assembled_all(project)["main.md"]
+    assert "Table 1 of Smith et al." in moved
+    assert "In Tables 2, 1 patients were excluded." in moved
 
 
 # ---------------------------------------------------------------------- captions numbered
@@ -22231,7 +22242,11 @@ def test_the_other_rendered_keys_of_a_front_matter_are_checked_and_printed_by_no
     source.write_text(text.replace("---\n", "---\n" + keys, 1), encoding="utf-8")
     assert main(["check", str(project), "--json"]) == 1
     findings = json.loads(capsys.readouterr().out)["findings"]
-    in_header = sorted((f["code"], f["line"]) for f in findings if f["line"] in range(2, 7))
+    in_header = sorted(
+        (f["code"], f["line"])
+        for f in findings
+        if f["path"] and Path(f["path"]).name == "main.md" and f["line"] in range(2, 7)
+    )
     assert in_header == [("unclassified-number", line) for line in range(2, 7)], in_header
     said = {f["code"] for f in findings}
     assert not said & {"front-matter-abstract", "two-titles"}, said
@@ -24501,6 +24516,10 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
         ("-   Step\n\n    ---\n    title: Evil 9.99\n---\n", [12], True),
         # with a blank line before that rule, pandoc reads no metadata, and it is no refusal
         ("> ---\n> title: Evil 9.99\n\n---\n", [], False),
+        # under a line of text: behind a quotation's markup the rules are the quotation's
+        # and not refused, and behind a list marker they are
+        ("We also saw it.\n> ---\n> title: Evil 9.99\n> ---\n", [], False),
+        ("We also saw it.\n- ---\n  title: Evil 9.99\n  ---\n", [9, 11], False),
     ],
 )
 def test_a_line_of_dashes_inside_a_quotation_or_an_item_is_not_refused_by_check(
@@ -25854,15 +25873,18 @@ def test_a_listing_after_a_context_the_tracker_opens_is_refused(name: str) -> No
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{listing}\nThe end.\n") == []
 
 
-def test_the_hint_of_a_listing_refused_after_an_unclosed_comment_names_the_comment() -> None:
+def test_a_listing_after_an_unclosed_comment_is_refused_as_an_unclear_fence() -> None:
     """A known gap (DESIGN.md, Known gaps, "Some listings pandoc makes are refused"): the
-    finding on a listing after an unclosed `<!-- TODO` names an open comment as a cause."""
+    build's refusal of a listing after an unclosed `<!-- TODO` is `unclear-fence` on the
+    listing's two lines, with the hint every unclear fence gets, which says to open a
+    listing outside any comment; nothing names the `<!--` that caused it."""
     from manuscript_guard.build.assemble import fence_findings
 
     text = f"# Results\n\nWe found it.\n\n<!-- TODO\n\n{_HTML_LISTING}\nThe end.\n"
     findings = fence_findings(Path("main.md"), text)
-    assert [f.line for f in findings] == [7, 10]
-    assert all("comment" in f.hint for f in findings), [f.hint for f in findings]
+    assert [(f.code, f.line) for f in findings] == [("unclear-fence", 7), ("unclear-fence", 10)]
+    assert all("outside any comment" in f.hint for f in findings), [f.hint for f in findings]
+    assert not any("line 5" in f.message or "main.md:5" in f.message for f in findings)
 
 
 @pytest.mark.skipif(
@@ -30636,7 +30658,8 @@ def test_a_heading_swallowed_by_a_header_never_closed_is_said_by_nothing(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A heading under a header that is never closed
     can be read as a YAML comment"): `check`'s gates report the example with a heading
-    swallowed by its header as they report it with a YAML comment there."""
+    swallowed by its header as they report it with a YAML comment there that no reader
+    takes for a heading, `#keep` with no space after its mark."""
     from manuscript_guard.cli import _run_gates
 
     source = main_md(project)
@@ -30644,13 +30667,13 @@ def test_a_heading_swallowed_by_a_header_never_closed_is_said_by_nothing(
     opening = "---\n\n# Abstract\n"
     assert text.count(opening) == 1
 
-    def said(line: str) -> list[tuple[str, str, int]]:
+    def said(line: str) -> list[tuple[str, str]]:
         source.write_text(
             text.replace(opening, f"\n{line}\n\n---\n\n# Abstract\n", 1), encoding="utf-8"
         )
-        return sorted((f.code, f.severity, f.line or 0) for f in _run_gates(project)[0].findings)
+        return sorted((f.code, f.severity) for f in _run_gates(project)[0].findings)
 
-    assert said("# Note to the editor") == said("# keep in step")
+    assert said("# Note to the editor") == said("#keep")
 
 
 def test_the_warning_of_two_titles_names_the_line_of_the_header_s_title(tmp_path: Path) -> None:

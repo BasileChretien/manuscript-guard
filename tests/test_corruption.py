@@ -16946,6 +16946,28 @@ def test_a_reference_s_identifiers_are_held_to_their_form_alone() -> None:
         "one"]  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    ("field", "word"),
+    [("0-306-40615-2, reprint", "reprint"), ("0-306-40615-2; 2nd printing", "2nd printing"),
+     ("0-306-40615-2 reprint", "reprint"), ("0-306-40615-2", None)],
+    ids=["after-a-comma", "after-a-semicolon", "after-a-space", "the-isbn-alone"],
+)  # fmt: skip
+def test_a_word_after_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
+    field: str, word: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name", its point "In an ISBN field, a word after the ISBN"): a
+    word that is no label or listed qualifier, parted from the ISBN by a space, a comma or
+    a semicolon, is read as an ISBN and reported as one whose check digit does not add up,
+    where the ISBN alone gives no finding."""
+    from manuscript_guard.gates.identifiers import problems
+
+    found = problems("k", {"type": "misc", "isbn": field})
+    assert found == ([] if word is None else [
+        ("identifier-malformed", f"@k: the ISBN '{word}' has a check digit that does not add "
+         "up")])  # fmt: skip
+
+
 def test_g7_reads_the_entry_s_own_type_and_a_book_s_title_for_its_chapter(tmp_path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
     form, not for what they name"): a field named `type` leaves the entry's type as G7 reads

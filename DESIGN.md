@@ -19419,6 +19419,11 @@ Open, recorded as each change landed:
   `tests/test_corruption.py::test_a_field_named_type_leaves_the_entry_s_type`,
   `tests/test_corruption.py::test_a_dataset_written_as_misc_with_its_type_field_is_named_by_its_doi`
   and `tests/test_checking.py::test_a_co_author_is_shown_a_reference_s_type_field_before_its_entry_type`.
+  - In an ISBN field, a word after the ISBN that is no label or listed qualifier, parted from
+    it by a space, a comma or a semicolon ("0-306-40615-2, reprint", "0-306-40615-2; 2nd
+    printing", "0-306-40615-2 reprint"), is read as an ISBN and reported as one whose check
+    digit does not add up: a false alarm, and its message calls a word an ISBN.
+    Pinned by `tests/test_corruption.py::test_a_word_after_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit`.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four

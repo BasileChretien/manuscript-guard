@@ -638,6 +638,32 @@ def test_a_folder_named_as_a_results_file_is_not_an_output(tmp_path, capsys) -> 
     assert code == 0 and report["counts"]["outputs"] == 1
 
 
+@pytest.mark.parametrize(("where", "read"), [("results/sub/extra.json", False),
+                                             ("results/extra.json", True)])
+def test_only_the_results_folder_s_own_json_files_are_results(
+    tmp_path, capsys, where: str, read: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A package read by `audit --package`"): a results
+    file in a subfolder of `results/` is a file like any other, as `load_results` reads none,
+    so the paper's number it holds is in no output; one in the folder itself is read."""
+    root = small_package(tmp_path)
+    extra = root / where
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_text(json.dumps({
+        "provenance": {"generated_by": "analysis/count.py", "generated_at": "2026-01-01"},
+        "values": {"women": {"value": 2718}}}), encoding="utf-8", newline="\n")  # fmt: skip
+    sign(root)
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER.replace("37 had dark urine", "37 had dark urine and 2718 were women"),
+                     encoding="utf-8")  # fmt: skip
+    code, report, _ = audited(capsys, str(paper), "--package", str(root))
+    assert code == 0
+    assert (report["counts"]["package_results"], report["counts"]["outputs"]) == (
+        (2, 2) if read else (1, 1))
+    unmatched = [f["message"] for f in report["findings"] if "2718" in f["message"]]
+    assert unmatched == ([] if read else ["2718 is in no output given"])
+
+
 # ------------------------------------------------------------------ fix-only round
 
 
@@ -705,6 +731,51 @@ def test_a_name_with_a_line_break_is_refused_everywhere(monkeypatch, code: int) 
 
     monkeypatch.setattr(unpack, "windows", lambda: False)
     assert "line break" in unpack._unsafe("pkg/a" + chr(code) + "b.json")
+
+
+def _line_separated(tmp_path: Path) -> Path:
+    """A whole package as a folder, but for a file whose name holds U+2028, which a folder
+    can hold and a .zip is refused for."""
+    root = small_package(tmp_path)
+    (root / ("notes" + chr(0x2028) + "x.txt")).write_text("left here\n", encoding="utf-8")
+    sign(root)
+    return root
+
+
+def test_a_folder_s_file_named_with_a_line_break_gives_false_sums_warnings(
+    tmp_path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A package read by `audit --package`"): a name
+    holding a line break is refused in a .zip only; in a folder its line of SHA256SUMS is
+    read as two, with false warnings that a line is not a digest and a path and that the
+    manifest lists the file SHA256SUMS does not. Named plainly, it passes."""
+    root = _line_separated(tmp_path)
+    _code, report, _ = audited(capsys, "--package", str(root))
+    warned = [(f["code"], f["message"]) for f in report["findings"]
+              if f["section"] == "Package" and not f["counted"]]  # fmt: skip
+    assert ("package-sums-differ", "SHA256SUMS line 4 is not a digest and a path") in warned
+    assert ("package-sums-differ", f"notes{chr(0x2028)}x.txt: MANIFEST.yaml lists it and "
+            "SHA256SUMS does not") in warned  # fmt: skip
+    with pytest.raises(Refused, match="line break"):
+        members(zipped(root, tmp_path / "pkg.zip"))
+    plain = small_package(tmp_path / "plain")
+    (plain / "notes.txt").write_text("left here\n", encoding="utf-8")
+    sign(plain)
+    code, report, _ = audited(capsys, "--package", str(plain), "--strict")
+    assert code == 0 and codes(report) == ["package-withheld"]
+
+
+def test_a_folder_s_file_named_with_a_line_break_fails_strict_as_missing(
+    tmp_path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A package read by `audit --package`"): the first
+    half of the line SHA256SUMS splits names a file the package does not hold, a counted
+    finding, so `--strict` fails a package whose every file is there."""
+    code, report, _ = audited(capsys, "--package", str(_line_separated(tmp_path)), "--strict")
+    counted = [(f["code"], f["message"]) for f in report["findings"]
+               if f["section"] == "Package" and f["counted"]]  # fmt: skip
+    assert code == 1 and counted == [
+        ("package-file-missing", "notes: SHA256SUMS lists it, and the package does not hold it")]
 
 
 def test_a_drive_is_said_to_be_a_drive(monkeypatch) -> None:

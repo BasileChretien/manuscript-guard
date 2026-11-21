@@ -9,6 +9,7 @@ own Word documents with pandoc, from Markdown, and hold what `init --from` makes
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -611,6 +612,132 @@ def test_a_merged_cell_keeps_its_text_once_in_its_first_row_and_column() -> None
     assert table["c"][5][1] == []
 
 
+def test_nothing_written_keeps_a_width_as_long_as_the_line() -> None:
+    """Every table written, one in a cell of another among them, has its widths left to its
+    cells, a rule stays pandoc's own, and the blocks given are not changed (the robustness
+    sweep of 2026-11-21: `test_robustness.py` has the paper)."""
+    inner = _table([], [[_ATTR, [_cell(_plain("1")), _cell(_plain("2"))]]], [], columns=2)
+    outer = _table([], [[_ATTR, [_cell([inner]), _cell([_RULE])]]], [], columns=2)
+    blocks = [_RULE, outer]
+    before = json.dumps(blocks)
+    written = from_word._unpadded(blocks)
+    assert json.dumps(blocks) == before
+    assert written[0] == _RULE and written[1]["c"][4][0][3][0][1][1][4] == [_RULE]
+    widths = [spec[1] for table in (written[1], written[1]["c"][4][0][3][0][1][0][4][0])
+              for spec in table["c"][2]]  # fmt: skip
+    assert widths == [{"t": "ColWidthDefault"}] * 4
+
+
+def test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length() -> None:
+    """A line of exactly the writer's line of hyphens, after any indentation or quotation
+    marks, is a rule pandoc wrote, and is cut to `RULE_WIDTH`; a table's border and a run of
+    any other length, as a code block's line may be, are not."""
+    NL, CR = chr(10), chr(13)  # noqa: N806 - a line feed and a carriage return
+    long, short = "-" * 100_000, "-" * from_word.RULE_WIDTH
+    kept = f"|{long}|{NL}+{long}+{NL}{'-' * 1200}{NL}    {'-' * 1200}{NL}{long}-{NL}"
+    text = f"a{NL}{NL}{long}{CR}{NL}{NL}  {long}{NL}> {long}{NL}{kept}"
+    assert from_word._short_rules(text) == (
+        f"a{NL}{NL}{short}{CR}{NL}{NL}  {short}{NL}> {short}{NL}{kept}")
+
+
+def _para(word: str) -> dict:
+    return {"t": "Para", "c": [{"t": "Str", "c": word}]}
+
+
+_RULE = {"t": "HorizontalRule"}
+#: Where a rule stands, as Word's blocks put one: between paragraphs, a heading after the
+#: second; after a plain paragraph and before one; after another rule; after raw HTML; in a
+#: list's item; in a quotation; in a table's cell; beside code blocks of hyphens, at the top
+#: level, in a quotation and in a list's item, which keep theirs (rounds 4 and 5 of #732).
+#: Written as raw Markdown, a rule stood on
+#: the line under a plain paragraph, under another rule and over a plain paragraph, and read
+#: back as a heading or a table (rounds 1 to 3 of #732).
+_RULES_STAND = {
+    "between paragraphs": [_RULE, _para("a"), _para("b"), _RULE,
+                           {"t": "Header", "c": [1, ["", [], []], [{"t": "Str", "c": "H"}]]}],
+    "after a plain paragraph": [_para("a"), *_plain("x"), _RULE, _para("y")],
+    "before a plain paragraph": [_RULE, *_plain("y"), _RULE, *_plain("y"), _para("z"), _RULE],
+    "after a rule": [_para("a"), _RULE, _RULE, _para("b"), _RULE, _RULE],
+    "after raw HTML": [{"t": "RawBlock", "c": ["html", "<div>x</div>"]}, _RULE, _para("b")],
+    "in a list's item": [{"t": "BulletList", "c": [[*_plain("x"), _RULE, *_plain("y")],
+                                                   _plain("z")]}],
+    "in a quotation": [{"t": "BlockQuote", "c": [_RULE, *_plain("x"), _RULE]}, _para("b")],
+    "in a table's cell": [_table([], [[_ATTR, [_cell([*_plain("x"), _RULE]), _cell(_plain("2"))]]],
+                                 [], columns=2), _para("b")],
+    "beside code of hyphens": [
+        {"t": "CodeBlock", "c": [_ATTR, "-" * 1200]}, _RULE,
+        {"t": "CodeBlock", "c": [["", ["r"], []], "x" + chr(10) + "-" * 1200]},
+        {"t": "RawBlock", "c": ["markdown", "-" * 1200]}],
+    "beside code of hyphens in a quotation and a list": [
+        {"t": "BlockQuote", "c": [{"t": "CodeBlock", "c": [_ATTR, "-" * 1200]}, _RULE]},
+        {"t": "BulletList", "c": [[*_plain("x"), {"t": "CodeBlock", "c": [_ATTR, "-" * 1200]},
+                                   _RULE]]}],
+}  # fmt: skip
+#: A line of hyphens alone, after any indentation or quotation marks.
+_HYPHENS_ALONE = re.compile(r"[ \t>]*(-{3,})")
+
+
+@needs_pandoc
+@pytest.mark.parametrize("where", list(_RULES_STAND))
+def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) -> None:
+    """A rule is pandoc's own, its line cut short after it is written
+    (`from_word._short_rules`), so wherever it stands (`_RULES_STAND`) the Markdown is what
+    pandoc wrote but for that line, and reads back as pandoc's did: the same blocks, a
+    table's widths aside, which are left to its cells now."""
+    import subprocess
+
+    def read(text: str) -> list:
+        done = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True,
+                              input=text.encode("utf-8"), capture_output=True, timeout=60)
+        return _widths_aside(json.loads(done.stdout)["blocks"])  # fmt: skip
+
+    blocks = _RULES_STAND[where]
+    empty = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True, input=b"",
+                           capture_output=True, timeout=60)  # fmt: skip
+    tree = {"pandoc-api-version": json.loads(empty.stdout)["pandoc-api-version"]}
+    written = from_word._write(tree, blocks, Path("paper.docx"))
+    document = json.dumps({**tree, "meta": {}, "blocks": blocks})
+    pandoc_s = from_word._pandoc(["-f", "json", *from_word.WRITER], document, Path("paper.docx"))
+    assert read(written) == read(pandoc_s), written
+    if "Table" not in json.dumps(blocks):
+        assert written == from_word._short_rules(pandoc_s)
+        assert "-" * from_word.COLUMNS in pandoc_s and "-" * from_word.COLUMNS not in written
+        runs = [len(alone[1]) for line in written.splitlines()
+                if (alone := _HYPHENS_ALONE.fullmatch(line))]  # fmt: skip
+        code = json.dumps(blocks).count("-" * 1200)
+        assert sorted(runs) == sorted([from_word.RULE_WIDTH] * json.dumps(blocks).count(
+            "HorizontalRule") + [1200] * code), runs  # fmt: skip
+        if not code:
+            assert max(map(len, written.splitlines())) < 1000
+
+
+@needs_pandoc
+def test_a_paper_holding_a_rule_s_run_of_hyphens_keeps_every_rule_as_pandoc_wrote_it() -> None:
+    """Where a code block of the paper holds a line of hyphens as long as a rule, a rule's
+    line cannot be told from it, and nothing is cut: the Markdown is pandoc's."""
+    import subprocess
+
+    empty = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True, input=b"",
+                           capture_output=True, timeout=60)  # fmt: skip
+    tree = {"pandoc-api-version": json.loads(empty.stdout)["pandoc-api-version"]}
+    blocks = [_RULE, {"t": "CodeBlock", "c": [_ATTR, "-" * from_word.COLUMNS]}, _para("b")]
+    written = from_word._write(tree, blocks, Path("paper.docx"))
+    document = json.dumps({**tree, "meta": {}, "blocks": blocks})
+    assert written == from_word._pandoc(["-f", "json", *from_word.WRITER], document,
+                                        Path("paper.docx"))  # fmt: skip
+
+
+def _widths_aside(node: object) -> object:
+    if isinstance(node, list):
+        return [_widths_aside(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    copied = {key: _widths_aside(value) for key, value in node.items()}
+    if copied.get("t") == "Table":
+        copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
+    return copied
+
+
 def test_a_second_header_row_becomes_the_first_of_the_body() -> None:
     table = _table(
         [[_ATTR, [_cell(_plain("A")), _cell(_plain("B"))]],
@@ -913,6 +1040,109 @@ def test_an_abstract_in_another_style_stays_in_the_comment(
     code, found = findings(capsys, str(root), "--stage", "drafting")
     assert [f["message"] for f in found if f["code"] == "unclassified-number"] == (
         ["'120' is not bound to any source"] if made else [])
+
+
+def _restyled(docx: Path, name: str, change) -> Path:
+    """A copy of `docx` beside it named `name`, each part's bytes `change(part, data)`, and
+    without the parts for which it gives None."""
+    import zipfile
+
+    out = docx.with_name(name)
+    with zipfile.ZipFile(docx) as source, zipfile.ZipFile(out, "w") as made:
+        for info in source.infolist():
+            data = change(info.filename, source.read(info.filename))
+            if data is not None:
+                made.writestr(info, data)
+    return out
+
+
+#: pandoc's writer defines an Abstract style in every .docx it makes, as Word does not.
+_ABSTRACT_STYLE = rb'<w:style [^>]*w:styleId="Abstract"[^>]*>.*?</w:style>'
+
+
+def _styles(change):
+    """`change` applied to the styles part alone."""
+    return lambda part, data: change(data) if part == "word/styles.xml" else data
+
+
+#: The styles part of a Word paper, each way it can say what a paragraph in the Abstract
+#: style is in, with whether a style is named Abstract by it.
+STYLE_PARTS = {
+    "as pandoc writes it": (_styles(lambda d: d), True),
+    "with no styles part": (lambda part, data: None if part == "word/styles.xml" else data,
+                            False),
+    "with the style renamed": (_styles(lambda d: d.replace(
+        b'<w:name w:val="Abstract"', b'<w:name w:val="Summary"')), False),
+    "with the style's name left out": (_styles(lambda d: re.sub(
+        rb'(w:styleId="Abstract"[^>]*>)\s*<w:name w:val="Abstract"\s*/>', rb"\1", d)), True),
+    "with the name in lower case": (_styles(lambda d: d.replace(
+        b'<w:name w:val="Abstract"', b'<w:name w:val="abstract"')), True),
+    "with another id": (lambda part, data: data.replace(b'w:styleId="Abstract"', b'w:styleId="Zz9"')
+                        if part == "word/styles.xml" else data.replace(
+                            b'w:val="Abstract"', b'w:val="Zz9"')
+                        if part == "word/document.xml" else data, True),
+    "with the style undefined": (_styles(lambda d: re.sub(_ABSTRACT_STYLE, b"", d, flags=re.S)),
+                                 False),
+    # Word's "Strict Open XML Document": pandoc reads the `w:` prefix in another namespace
+    # (round 1 of #752).
+    "in Strict Open XML": (lambda part, data: data.replace(
+        b"http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        b"http://purl.oclc.org/ooxml/wordprocessingml/main") if part.endswith(".xml") else data,
+        True),
+}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("variant", list(STYLE_PARTS))
+def test_a_style_is_named_abstract_wherever_pandoc_reads_a_paragraph_in_it(
+        tmp_path: Path, variant: str) -> None:  # fmt: skip
+    """Where no style is named Abstract, the reading with styles is not made
+    (`from_word._names_the_abstract_style`): which holds only where pandoc's reading with
+    styles then puts no paragraph in the Abstract style. Held here for each way the styles
+    part can say it, against the pandoc that runs: one that read the styles otherwise fails
+    it."""
+    change, named = STYLE_PARTS[variant]
+    paper = _restyled(word(tmp_path / "word", ABSTRACT_LATER), "variant.docx", change)
+    tree = json.loads(subprocess.run(
+        ["pandoc", str(paper), "-f", "docx+styles", "-t", "json"], capture_output=True,
+        check=True, timeout=120).stdout)  # fmt: skip
+    styled = [from_word._custom_style(block) for block in tree["blocks"]]
+    assert (from_word.ABSTRACT_STYLE in styled) <= from_word._names_the_abstract_style(paper)
+    assert from_word._names_the_abstract_style(paper) is named
+    if from_word.ABSTRACT_STYLE in styled:
+        # As main lifted it: round 1 of #752 found a Strict paper's left on the title page.
+        converted = from_word.convert(paper)
+        assert converted.abstract and "We followed 120 patients." not in (
+            converted.text[: converted.text.index("-->")])
+
+
+@needs_pandoc
+def test_a_paper_with_no_abstract_style_is_read_once(tmp_path: Path, monkeypatch) -> None:
+    """A Word paper with a title page and no style named Abstract, as Word papers have
+    none, was read by pandoc twice, the second time with its styles to find paragraphs in the
+    Abstract style there, which it has none of: a quarter of the time the 50 Word papers of
+    the robustness sweep of 2026-11-21 took to convert, 25 s of a book's 80. It is read once,
+    and converted as it was."""
+    markdown = "".join(line for line in ABSTRACT_LATER.splitlines(keepends=True)
+                       if not line.startswith(":::"))  # fmt: skip
+    written = word(tmp_path / "word", markdown)
+    paper = _restyled(written, "plain.docx", STYLE_PARTS["with the style undefined"][0])
+    read = from_word._pandoc
+    readings: list[str] = []
+
+    def counted(arguments: list[str], given: str | None, path: Path) -> str:
+        if given is None:
+            readings.append(arguments[arguments.index("-f") + 1])
+        return read(arguments, given, path)
+
+    monkeypatch.setattr(from_word, "_pandoc", counted)
+    once = from_word.convert(paper)
+    assert readings == ["docx"]
+    comment = once.text[: once.text.index("-->")]
+    assert "Department of Things" in comment and "We followed 120 patients." in comment
+    monkeypatch.setattr(from_word, "_names_the_abstract_style", lambda path: True)
+    assert from_word.convert(paper) == once
+    assert readings == ["docx", "docx", "docx+styles"]
 
 
 #: A Word paper with no heading style, its section titles typed in bold, one of them also

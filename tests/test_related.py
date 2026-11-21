@@ -1423,6 +1423,7 @@ def test_a_printed_value_is_compared_as_printed_and_paired_by_the_author(
     interval = Value(key="k", value=2.3, display="2.3 (1.9 to 2.8)", origin="results")
     assert _same_printed("2.3 (1.9 to 2.8)", interval) is True
     assert _same_printed("2.3 (1.9 to 2.9)", interval) is False
+    assert _same_printed("2.3 (1.90 to 2.8)", interval) is False
     quote = "Of 4,012 reports, 12.5% were serious and 77 were fatal."
     source = _source(project, f"Results. {quote} More text.")
     from manuscript_guard.emit import write_digest

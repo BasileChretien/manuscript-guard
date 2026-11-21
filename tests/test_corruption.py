@@ -3984,8 +3984,12 @@ def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
 
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
-    data = document["provenance"]["inputs"][0]["path"]
-    document["provenance"]["inputs"][0]["restricted"] = True
+    # The list of event terms, which no other finding of G1 names (the simulated reports are
+    # named by the demonstration's note that its results come from synthetic data).
+    data = "data/event_terms.txt"
+    for record in document["provenance"]["inputs"]:
+        if record["path"] == data:
+            record["restricted"] = True
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
 
@@ -3994,9 +3998,9 @@ def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
         _, results, _, _ = load_namespace(loaded)
         return [(f.code, f.message) for f in check_restricted_inputs(loaded, results).findings]
 
-    def gates() -> set[str]:
+    def gates() -> list:
         report, _project, _chosen, _deferred = _run_gates(project, stage="design")
-        return {f.code for f in report.findings}
+        return list(report.findings)
 
     _git(project, "init", "-q")
     _git(project, "config", "user.email", "a@example.org")
@@ -4021,7 +4025,11 @@ def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
                            cwd=project, capture_output=True, timeout=60)  # fmt: skip
     assert shown.returncode == 0 and shown.stdout, "the history still holds the data"
     assert said() == []
-    assert "restricted-input-tracked" not in gates()
+    found = gates()
+    assert "restricted-input-tracked" not in {f.code for f in found}
+    names = (Path(data).name, "copy-of-the-data.csv")
+    assert [(f.code, f.message) for f in found if f.gate == "G1" and any(
+        name in f"{f.message} {f.path}" for name in names)] == []  # fmt: skip
 
 
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:

@@ -543,6 +543,11 @@ def test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown(project: Path) -
 
     ready(project)
     with_package(project, share=[], request="Apply to the custodian.")
+    # The other side: the input withheld, and no record saying the figure was drawn from it.
+    loaded, results, plan = _loaded(project)
+    text = companion_html(loaded, results, list(plan.entries), list(plan.inputs))
+    shown = re.search(r'<figure id="figure-forest">(.*?)</figure>', text, re.DOTALL)[1]
+    assert "data:image/svg+xml" in shown
     record = project / "figures" / "forest.render.json"
     document = json.loads(record.read_text(encoding="utf-8"))
     document["inputs"] = ["data/event_terms.txt"]

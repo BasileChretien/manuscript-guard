@@ -573,7 +573,7 @@ def test_an_introduction_s_interval_on_the_results_heading_s_line_is_read_as_rep
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
     membership"): a `.tex` line keeps its first place where the paper reports, so another
-    trial's interval in the Introduction, on the line of the `!section{Results}` after it,
+    trial's interval in the Introduction, on the line of the `\\section{Results}` after it,
     is the Abstract's counterpart and its conflict is said; on a line of its own it is the
     Introduction's, and nothing is."""
     text = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\nThe OR was 1.52 (95!% "

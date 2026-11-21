@@ -334,6 +334,12 @@ def test_a_429_from_a_page_with_no_retry_after_is_not_waited_out() -> None:
         assert found == {"status": "unresolvable",
                          "why": "throttled (HTTP 429): asked too often, or past the allowance"}
         assert len(sent) == asked and waited[:1] == waits
+        # No API key is sent: a page's lookups have none, and OpenAlex is asked without one.
+        sources.openalex("10.5555/x", ask, lookup.Services().openalex, None)
+        assert len(sent) == 2 * asked
+        assert sent[0].startswith("https://api.crossref.org/works/10.5555/x")
+        assert sent[-1].startswith("https://api.openalex.org/works/doi:10.5555/x")
+        assert not [url for url in sent if "key" in url.lower()], sent
 
 
 def test_a_page_sends_nothing_but_https() -> None:

@@ -200,7 +200,7 @@ def test_a_number_split_by_a_hyphen_a_late_float_and_a_rare_running_head_are_rea
     Discussion's heading is the Discussion's; and a running head on fewer than half the
     pages, or away from a page's edge, is read as text, where one at the edge of every page
     is taken out."""
-    from proof_pdf import LEFT, Piece, pdf
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
 
     path = tmp_path / "paper.pdf"
     for results, not_found in ((["In all, 12-", "345 adults were enrolled."],
@@ -221,12 +221,14 @@ def test_a_number_split_by_a_hyphen_a_late_float_and_a_rare_running_head_are_rea
     head = "Journal of Things 2024;77:345"
 
     def page(number: int, at: float | None) -> list:
-        pieces = _one_page([f"Line {k} of page {number}." for k in range(10)])
+        # Two lines' room left after line 4, so that a head set mid-page there overlaps none.
+        pieces = [Piece(LEFT, TOP - LEADING * (k if k < 5 else k + 2), f"Line {k} of page "
+                        f"{number}.") for k in range(10)]  # fmt: skip
         return pieces + ([] if at is None else [Piece(LEFT, at, head, size=7.0)])
 
     for pages, taken in (([page(1, 810.0), page(2, None), page(3, None)], False),
                          ([page(n, 810.0) for n in (1, 2, 3)], True),
-                         ([page(n, 731.5) for n in (1, 2, 3)], False)):  # fmt: skip
+                         ([page(n, TOP - LEADING * 5.5) for n in (1, 2, 3)], False)):  # fmt: skip
         path.write_bytes(pdf(pages))
         read = reading.read_pdf(path)
         assert (head in read.text, read.furniture) == (
@@ -629,6 +631,50 @@ def test_a_pdf_table_s_numbers_are_the_text_s_and_its_words_count_toward_g4(
                      "| Women | 40 | 41 |\n| Total | 100 | 97 |\n", encoding="utf-8")  # fmt: skip
     _code, report, _err = audited(capsys, str(paper))
     assert report["counts"]["totals_off"] == 1 and len(found(report, "sum-off")) == 1
+
+
+#: Tables and a list of a paper, each with one fault a table's or a list's check finds: a
+#: share its count does not give, a mean less than twice its SD, categories over their
+#: column's n, a count held back that the total gives away, and a flow that does not add up.
+_HELD = [
+    ("Table 1. Baseline", [("Characteristic", "Cases (n = 100)"), ("Women", "40 (45%)"),
+                           ("CRP, mean (SD)", "5.0 (4.0)")]),
+    ("Table 2. Sites", [("Characteristic", "Cases (n = 120)"), ("Region", ""),
+                        ("North", "70 (50.0)"), ("South", "70 (50.0)")]),
+    ("Table 3. Wards", [("Ward", "Cases"), ("East", "60"), ("West", "<5"), ("Total", "63")]),
+]  # fmt: skip
+_FLOW = ["Assessed (n = 412)", "Excluded (n = 112)", "Randomised (n = 299)"]
+#: What each fault is said as, where its check reads it.
+_HELD_CODES = ["count-recoverable", "does-not-fit", "flow-broken", "mean-sd-skewed",
+               "over-header-n"]  # fmt: skip
+
+
+@needs_pdftotext
+def test_no_share_mean_flow_count_held_back_or_n_is_held_in_a_pdf_table(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): in a PDF no share, mean, flow,
+    count held back or n is held to another, its tables and lists being lines of text; the
+    same tables and list in a Markdown paper have each fault said."""
+    flags = ("--non-negative", "crp", "--minimum-cell-count", "5", "--json")
+    markdown = "# Results\n\nOf 412 patients, 77 had it.\n\n"
+    rows: list = ["Abstract", "Of 412 patients, 77 had it.", "Introduction", _LONG, "Methods",
+                  _LONG, "Results", "Of 412 patients, 77 had it."]  # fmt: skip
+    for caption, lines in _HELD:
+        markdown += f"{caption}\n\n| {lines[0][0]} | {lines[0][1]} |\n|---|---|\n" + "".join(
+            f"| {label} | {cell} |\n" for label, cell in lines[1:]) + "\n"
+        rows += [caption, *(((0, label), (160, cell)) if cell else label
+                            for label, cell in lines)]  # fmt: skip
+    markdown += ("Participant flow\n\n- " + _FLOW[0] + "\n  - " + _FLOW[1] + "\n- " + _FLOW[2]
+                 + "\n\n# Discussion\n\nNone.\n")  # fmt: skip
+    rows += ["Participant flow", f"- {_FLOW[0]}", f"  - {_FLOW[1]}", f"- {_FLOW[2]}",
+             "Discussion", _LONG]  # fmt: skip
+    (tmp_path / "paper.md").write_text(markdown, encoding="utf-8")
+    (tmp_path / "paper.pdf").write_bytes(_set(rows))
+    for name, said in (("paper.md", _HELD_CODES), ("paper.pdf", [])):
+        main(["audit", str(tmp_path / name), *flags])
+        report = json.loads(capsys.readouterr().out)
+        assert sorted({f["code"] for f in report["findings"]} & set(_HELD_CODES)) == said, name
 
 
 @needs_pdftotext

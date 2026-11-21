@@ -23,6 +23,8 @@ from manuscript_guard.cli import main
 from manuscript_guard.gates.journal import FROM_RECORDS
 
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+needs_pdftotext = pytest.mark.skipif(shutil.which("pdftotext") is None,
+                                     reason="pdftotext is not installed")  # fmt: skip
 BS = chr(92)
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
@@ -786,6 +788,19 @@ def test_a_self_citation_is_read_as_text_where_the_list_is_not_cut_out(
         with zipfile.ZipFile(paper, "a") as archive:
             archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
         assert _named(capsys, tmp_path, paper) == (["'Ada Example'"] if leaks else []), shaped
+    # A table between two entries ends the cut there too, and the entry after it is read.
+    for between, leaks in (("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cohort 2019</w:t></w:r></w:p>"
+                            "</w:tc></w:tr></w:tbl>", True), ("", False)):  # fmt: skip
+        paper = tmp_path / "tabled.docx"
+        with zipfile.ZipFile(paper, "w") as archive:
+            archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), (
+                f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body><w:p><w:r><w:t>Of 40 "
+                "patients, 12 had dark urine.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle "
+                "w:val='Heading1'/></w:pPr><w:r><w:t>References</w:t></w:r></w:p><w:p><w:r>"
+                "<w:t>Other, B. (2019). X. J Ex 2:3.</w:t></w:r></w:p>" + between
+                + f"<w:p><w:r><w:t>{SELF_CITED}</w:t></w:r></w:p></w:body></w:document>"))
+            archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
+        assert _named(capsys, tmp_path, paper) == (["'Ada Example'"] if leaks else []), between
     cell = "<w:tc><w:p><w:r><w:t xml:space='preserve'>{}</w:t></w:r></w:p></w:tc>"
     rows = "".join(f"<w:tr>{cell.format(n)}{cell.format(text)}</w:tr>"
                    for n, text in (("1.", "Other, B. (2019). X. J Ex 2:3."), ("2.", SELF_CITED)))
@@ -979,7 +994,9 @@ def test_the_tables_and_figures_counted_are_pandoc_s_four_kinds_floats_and_place
     for name in ("f1.png", "f2.png"):
         (tmp_path / name).write_bytes(b"\x89PNG\r\n\x1a\n")
     placed = paper_md(tmp_path, PAPER + "\n![Figure 1. Flow](f1.png)\n")
-    assert _over_and_unchecked(capsys, placed, figures_1, str(tmp_path / "f2.png")) == ([], [])
+    sent = tmp_path / "figure2.svg"
+    sent.write_text(svg("Figure 2. Patients screened"), encoding="utf-8")
+    assert _over_and_unchecked(capsys, placed, figures_1, "--figures", str(sent)) == ([], [])
     both = paper_md(tmp_path, PAPER + "\n![Figure 1. Flow](f1.png)\n\n![Figure 2. Flow](f2.png)\n")
     assert _over_and_unchecked(capsys, both, figures_1)[0] == ["figures: 2, limit 1"]
 
@@ -1038,7 +1055,7 @@ def test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_o
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
     LaTeX paper's pictures are found from the entry's folder or the placing file's own, by
-    the name as written and with `.svg` or `.pdf` after it; `\\graphicspath` is not followed, and a
+    the name as written and with `.svg` after it; `\\graphicspath` is not followed, and a
     raster picture holds no text to read, an author's name in its bytes among them."""
     (tmp_path / "figs").mkdir()
     (tmp_path / "sections").mkdir()
@@ -1064,23 +1081,30 @@ def test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_o
         assert named == ([] if figure is None else [
             f"'Ada Example' is in a figure ({figure}) of main.tex, and the journal's review is "
             "double-blind"]), placed
-    if shutil.which("pdftotext") is not None:
-        import sys
 
-        sys.path.insert(0, str(Path(__file__).parent))
-        from proof_pdf import typeset
 
-        (tmp_path / "plot.pdf").write_bytes(typeset(["Drawn by Ada Example"], columns=1))
+@needs_pdftotext
+def test_a_latex_picture_is_found_with_pdf_after_its_name(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    LaTeX paper's picture placed by its name alone is found with `.pdf` after it, and the
+    text the PDF draws is read; placed by a name no file has with either ending, nothing
+    is."""
+    monkeypatch.syspath_prepend(str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    (tmp_path / "plot.pdf").write_bytes(typeset(["Drawn by Ada Example"], columns=1))
+    for name, named in (("plot", ["'Ada Example' is in a figure (plot.pdf) of main.tex, and the "
+                                  "journal's review is double-blind"]), ("chart", [])):  # fmt: skip
         (tmp_path / "main.tex").write_text(
             f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
-            f"{BS}includegraphics{{plot}}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+            f"{BS}includegraphics{{{name}}}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
         _code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
                                       str(profile(tmp_path, blinding="double")), "--authors",
                                       str(authors_file(tmp_path)))  # fmt: skip
         assert [f["message"] for f in report["findings"]
-                if f["code"] == "blind-document-names-author"] == [
-            "'Ada Example' is in a figure (plot.pdf) of main.tex, and the journal's review is "
-            "double-blind"]  # fmt: skip
+                if f["code"] == "blind-document-names-author"] == named, name
 
 
 @pytest.mark.parametrize("placed", [f"{BS}includesvg{{flow}}", f"{BS}includegraphics{{flow.v2}}",

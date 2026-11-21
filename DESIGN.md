@@ -27055,8 +27055,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `\includesvg`, found from the entry's folder or the file's own, by the name as written
     and with `.pdf` and `.svg` after it; `\graphicspath` is not followed, and a raster
     picture holds no text to read.
-    Pinned by `tests/test_audit_readers.py::test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_other`
-    and `tests/test_audit_readers.py::test_a_picture_placed_by_includesvg_or_with_a_dot_in_its_name_is_searched`.
+    Pinned by `tests/test_audit_readers.py::test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_other`,
+    `tests/test_audit_readers.py::test_a_latex_picture_is_found_with_pdf_after_its_name` and
+    `tests/test_audit_readers.py::test_a_picture_placed_by_includesvg_or_with_a_dot_in_its_name_is_searched`.
   - The confidentiality guard reads an agent's ordinary commands, as the other shell guards
     do: an `audit` started from a script, or with its options built at run time, is not
     asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,
@@ -27118,7 +27119,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Tables are not read as cells: their numbers are compared and read as the text's, and no
     total, share, mean, flow, count held back or n is held to another in them. A table's
     words count toward G4's word limits.
-    Pinned by `tests/test_audit_pdf.py::test_a_pdf_table_s_numbers_are_the_text_s_and_its_words_count_toward_g4`
+    Pinned by `tests/test_audit_pdf.py::test_a_pdf_table_s_numbers_are_the_text_s_and_its_words_count_toward_g4`,
+    `tests/test_audit_pdf.py::test_no_share_mean_flow_count_held_back_or_n_is_held_in_a_pdf_table`
     and `tests/test_audit_pdf.py::test_each_place_in_a_pdf_is_a_page_and_a_line`.
   - Two `pdftotext` builds can read one PDF differently (Xpdf's and poppler's, 2026-10-30:
     other line breaks, a column of line numbers kept or dropped), so a place, a heading found
@@ -27131,11 +27133,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading is a line that holds a section's name alone (`HEADINGS`): a section under
     another title is read as the one before, a Results headed "Outcomes" among them, so its
     numbers are the section before's; a structured abstract whose headings stand on lines of
-    their own with no Introduction after them leaves the PDF's lines unplaced, and so does a
+    their own with no Introduction after them, none of its parts named again and no words
+    under the Abstract's own heading, leaves the PDF's lines unplaced, and so does a
     name on two lines. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
-    Pinned by `tests/test_audit_pdf.py::test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places_nothing`
-    and `tests/test_audit_pdf.py::test_headings_that_cannot_be_placed_place_nothing`.
+    Pinned by `tests/test_audit_pdf.py::test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places_nothing`,
+    `tests/test_audit_pdf.py::test_headings_that_cannot_be_placed_place_nothing`,
+    `tests/test_audit_pdf.py::test_a_structured_abstract_ends_where_the_main_text_names_a_part_again`
+    and `tests/test_audit_pdf.py::test_an_abstract_of_words_then_background_methods_and_results_is_placed`.
   - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
     line, an author's address or a title page's other lines typed before it are the
     Abstract's, their numbers among its own; and where the Introduction has no heading, the

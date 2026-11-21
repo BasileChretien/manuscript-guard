@@ -21024,9 +21024,10 @@ Open, recorded as each change landed:
   model is compared under its key only, so a model renamed since is compared with nothing;
   its engine's class is not compared (a GLM and a mixed model of one family and link read
   alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
-  `-` here differs, and a heading given an attribute (`{#id}`) is the same heading. A reason
-  under `methods:` answers for its model or section, not for one difference, so a later
-  change to a model already explained is explained by the old reason. A heading that stands
+  `-` here differs. A heading's attribute (`{#id}`) is stripped, so the heading is the same
+  heading. A reason under `methods:` answers for its model or section, not for one
+  difference, so a later change to a model already explained is explained by the old
+  reason. A heading that stands
   twice in a plan is not compared at all, though one of the two may have changed. A heading
   that opens with a number of one or two digits loses it, so `12 months` and `24 months` are
   one heading: in one plan both stand twice, and across the two they are compared as one

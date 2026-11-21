@@ -9,7 +9,6 @@ deposit's `ask_at_terminal`; without the patch, standard input under pytest is n
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import shutil
@@ -294,6 +293,9 @@ def test_a_run_s_fragment_records_no_vcs_and_its_record_the_project_s_commit(
                           capture_output=True, text=True).stdout.strip()  # fmt: skip
     (paper / "analysis" / "01_model.py").write_text(SCRIPT.format(extra="print('later')"),
                                                     encoding="utf-8")  # fmt: skip
+    status = subprocess.run(["git", "-c", "core.fsmonitor=false", "status", "--porcelain"],
+                            cwd=paper, capture_output=True, text=True).stdout  # fmt: skip
+    assert "analysis/01_model.py" in status, "the project is dirty when the run is made"
     answers, _asked = terminal
     answers.append("y")
     assert vault_cli(paper, "run") == 0
@@ -303,6 +305,10 @@ def test_a_run_s_fragment_records_no_vcs_and_its_record_the_project_s_commit(
     assert fragment["provenance"]["vcs"] == {}
     record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
     assert record["commit"] == head
+    # The commit alone: nothing in the record says the tree held uncommitted changes.
+    said = json.dumps(record).casefold()
+    assert not {"dirty", "uncommitted", "clean", "status"} & set(record)
+    assert "dirty" not in said and "uncommitted" not in said
     # The other side: outside a run, the project's own repository is recorded.
     em = Emitter(paper / "analysis" / "01_model.py", root=paper)
     em.value("cohort.n", 1)
@@ -954,7 +960,7 @@ def test_the_scripts_listed_and_recorded_are_every_one_the_run_can_run(
 
 
 def test_with_no_script_named_each_file_of_analysis_is_run_in_the_order_of_its_name(
-    tmp_path: Path, monkeypatch
+    paper: Path, vault: Path, terminal, monkeypatch
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "What is run"): with no
     script named, each file directly in `analysis/` that a runner here knows is run, in the
@@ -963,32 +969,57 @@ def test_with_no_script_named_each_file_of_analysis_is_run_in_the_order_of_its_n
     from manuscript_guard import verify
     from manuscript_guard.vault import run as running
 
-    folder = tmp_path / "analysis"
-    (folder / "lib").mkdir(parents=True)
-    for name in ("02_fit.py", "01_clean.R", "helpers.py", "notes.txt"):
-        (folder / name).write_text("# x\n", encoding="utf-8")
-    (folder / "lib" / "util.py").write_text("# x\n", encoding="utf-8")
-    assert running.default_scripts(tmp_path) == [
-        "analysis/01_clean.R", "analysis/02_fit.py", "analysis/helpers.py"]  # fmt: skip
+    folder = paper / "analysis"
+    (folder / "lib").mkdir()
+    for name in ("02_fit.py", "01_clean.py", "helpers.py"):
+        (folder / name).write_text(f"print('ran {name}')\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("not run\n", encoding="utf-8")
+    (folder / "lib" / "util.py").write_text("print('ran util.py')\n", encoding="utf-8")
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    order = ["analysis/01_clean.py", "analysis/02_fit.py", "analysis/helpers.py"]
+    assert [one["path"] for one in _summary(paper)["scripts"]] == order
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    log = (vault / ".runs" / run / "log.txt").read_text(encoding="utf-8")
+    ran = [line for line in log.splitlines() if line.startswith("ran ")]
+    assert ran == ["ran 01_clean.py", "ran 02_fit.py", "ran helpers.py"]
 
+    # A script stopped at the terminal: the wait, which has no time limit, is broken by the
+    # interrupt, the script's tree is ended, and the run ends as a failure.
     waited: list[dict] = []
     killed: list[object] = []
+    real_execute = running.execute
 
-    class Stopped:
-        def __init__(self, *args, **kwargs) -> None:
-            self.stdout, self.stderr = io.BytesIO(), io.BytesIO()
+    def stopped(command, cwd, env, log):
+        real = running.subprocess.Popen
 
-        def wait(self, **kwargs) -> int:
-            waited.append(kwargs)
-            if len(waited) == 1:
-                raise KeyboardInterrupt
-            return 130
+        class Stopping(real):
+            def wait(self, *args, **kwargs):
+                waited.append(kwargs)
+                if len(waited) == 1:
+                    raise KeyboardInterrupt
+                return super().wait(*args, **kwargs)
 
-    monkeypatch.setattr(running.subprocess, "Popen", Stopped)
-    monkeypatch.setattr(verify, "_kill_tree", killed.append)
-    code, _tail = running.execute(["python", "x.py"], tmp_path, {}, io.BytesIO())
-    assert code == 130 and len(killed) == 1
-    assert waited == [{}, {}], "no time limit is given to the wait"
+        running.subprocess.Popen = Stopping
+        try:
+            return real_execute(command, cwd, env, log)
+        finally:
+            running.subprocess.Popen = real
+
+    def ended(process) -> None:
+        killed.append(process)
+        process.kill()
+
+    monkeypatch.setattr(running, "execute", stopped)
+    monkeypatch.setattr(verify, "_kill_tree", ended)
+    (folder / "01_clean.py").write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    summary = _summary(paper)
+    assert summary["failed"]["path"] == "analysis/01_clean.py"
+    assert summary["failed"]["exit_code"] not in (0, None) and len(killed) == 1
+    assert waited[0] == {}, "no time limit is given to the wait"
 
 
 def test_a_release_does_not_write_through_a_link(
@@ -1407,40 +1438,33 @@ def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
 
 
 def test_a_failure_deep_in_a_library_copied_with_the_project_names_no_frame(
-    tmp_path: Path,
+    paper: Path, vault: Path, terminal
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "The summary file is
-    read up to 64 KiB"): the summary keeps the last 20 frames in the project's scripts; a
-    library copied with the project (a `venv/` inside it) is inside the copy, and a failure 20
-    or more frames deep in it keeps 20 of its frames, which the summary drops as no
-    script's, and names no frame."""
-    from manuscript_guard.vault.run import source_texts
-    from manuscript_guard.vault.summary import python_failure
-
-    work = tmp_path / "copy"
-    (work / "analysis").mkdir(parents=True)
-    (work / "venv" / "lib").mkdir(parents=True)
-    (work / "analysis" / "01_model.py").write_text("import deep\ndeep.down(30)\n", "utf-8")
+    read up to 64 KiB"): the wrapper writes the last 20 frames in the copy; a library copied
+    with the project (a `venv/` inside it) is inside the copy, and a failure 20 or more
+    frames deep in it keeps 20 of its frames, which the summary drops as no script's, and
+    names no frame."""
     deep = "def down(n):\n    return down(n - 1) if n else 1 / 0\n"
-    (work / "venv" / "lib" / "deep.py").write_text(deep, encoding="utf-8")
-    (work / "analysis" / "deep.py").write_text(deep, encoding="utf-8")
-    texts = source_texts(work)
-    assert "venv/lib/deep.py" not in texts and "analysis/deep.py" in texts
-    summary = tmp_path / "summary.json"
-
-    def failed(where: str) -> dict:
-        frames = [[str(work / "analysis" / "01_model.py"), 2, "<module>"]]
-        frames += [[str(work / where), 2, "down"]] * 30
-        record = {"class": "ZeroDivisionError", "module": "builtins", "frames": frames[-20:],
-                  "key": None}  # fmt: skip
-        summary.write_text(json.dumps(record), encoding="utf-8")
-        return python_failure(None, texts, work, "analysis/01_model.py", 1, summary)
-
-    assert failed("venv/lib/deep.py") == {"path": "analysis/01_model.py", "exit_code": 1,
-                                          "class": "ZeroDivisionError"}  # fmt: skip
-    # The other side: the same depth in the project's own code keeps its last 20 frames.
-    kept = failed("analysis/deep.py")["frames"]
-    assert kept == [{"path": "analysis/deep.py", "line": 2, "function": "down"}] * 20
+    (paper / "venv" / "lib").mkdir(parents=True)
+    (paper / "venv" / "lib" / "deep.py").write_text(deep, encoding="utf-8")
+    (paper / "analysis" / "deep.py").write_text(deep, encoding="utf-8")
+    answers, _asked = terminal
+    into_the_venv = ("import os, sys\nsys.path.insert(0, os.path.join(os.path.dirname("
+                     "os.path.abspath(__file__)), '..', 'venv', 'lib'))\n")  # fmt: skip
+    _script(paper, into_the_venv + "import deep\ndeep.down(30)")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed == {"path": "analysis/01_model.py", "exit_code": 1,
+                      "class": "ZeroDivisionError"}  # fmt: skip
+    # The other side: the same depth in the project's own code keeps the wrapper's last 20.
+    (paper / "venv" / "lib" / "deep.py").unlink()
+    _script(paper, "import deep\ndeep.down(30)")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed["frames"] == [{"path": "analysis/deep.py", "line": 2, "function": "down"}] * 20
 
 
 @pytest.mark.parametrize("where", ["analysis/sub/build/helper.py", "analysis/cpp/build/model.so",

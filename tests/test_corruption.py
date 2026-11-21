@@ -3971,30 +3971,57 @@ def test_a_restricted_input_is_found_in_git_by_its_own_name(
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
-    tmp_path: Path,
+    project: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A small count is found where it is bound, by its
-    value"): a restricted input that a person copies elsewhere is not seen, and one that was
-    committed and then removed stays in the history, which the check does not read."""
-    from manuscript_guard.gates import custodian
-
-    _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "a@example.org")
-    _git(tmp_path, "config", "user.name", "A")
-    (tmp_path / "cohort.csv").write_text("a\n", encoding="utf-8")
-    _git(tmp_path, "add", "cohort.csv")
-    assert custodian._tracked(tmp_path, "cohort.csv") is True
-    _git(tmp_path, "commit", "-q", "-m", "data")
-    _git(tmp_path, "rm", "-q", "--cached", "cohort.csv")
-    _git(tmp_path, "commit", "-q", "-m", "no data")
-    assert custodian._tracked(tmp_path, "cohort.csv") is False
+    value"): a restricted input that git ignores but that a person copies elsewhere is not
+    seen, and one that was committed and then removed stays in the history, which the check
+    does not read: G1 says nothing of either."""
     import subprocess
 
-    shown = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", "HEAD~1:cohort.csv"],
-                           cwd=tmp_path, capture_output=True, text=True, timeout=60)  # fmt: skip
-    assert shown.stdout == "a\n"
-    (tmp_path.parent / "copy-of-cohort.csv").write_text("a\n", encoding="utf-8")
-    assert custodian._tracked(tmp_path, "../copy-of-cohort.csv") is False
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.custodian import check_restricted_inputs
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    data = document["provenance"]["inputs"][0]["path"]
+    document["provenance"]["inputs"][0]["restricted"] = True
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    def said() -> list[tuple[str, str]]:
+        loaded, _ = load_project(project)
+        _, results, _, _ = load_namespace(loaded)
+        return [(f.code, f.message) for f in check_restricted_inputs(loaded, results).findings]
+
+    def gates() -> set[str]:
+        report, _project, _chosen, _deferred = _run_gates(project, stage="design")
+        return {f.code for f in report.findings}
+
+    _git(project, "init", "-q")
+    _git(project, "config", "user.email", "a@example.org")
+    _git(project, "config", "user.name", "A")
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "with the data")
+    # The other side: committed and still tracked, it is said.
+    assert said() == [("restricted-input-tracked",
+                       f"{data} is declared restricted, and git tracks it")]  # fmt: skip
+    _git(project, "rm", "-q", "--cached", data)
+    ignored = project / ".gitignore"
+    kept = ignored.read_bytes() if ignored.is_file() else b""
+    ignored.write_bytes(kept + f"\n{data}\n".encode())
+    # A copy under another name, committed, and one outside the project.
+    copy = project / "notes" / "copy-of-the-data.csv"
+    copy.parent.mkdir(exist_ok=True)
+    copy.write_bytes((project / data).read_bytes())
+    (project.parent / "copy-of-the-data.csv").write_bytes((project / data).read_bytes())
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "the data taken out")
+    shown = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", f"HEAD~1:{data}"],
+                           cwd=project, capture_output=True, timeout=60)  # fmt: skip
+    assert shown.returncode == 0 and shown.stdout, "the history still holds the data"
+    assert said() == []
+    assert "restricted-input-tracked" not in gates()
 
 
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
@@ -6690,10 +6717,25 @@ def test_an_approval_s_file_is_named_by_a_fold_two_authors_can_share(project: Pa
     with neither ORCID nor e-mail share a file, an e-mail differing only in characters
     outside `[\\w.@-]` folds into another, a device name is a file name as it is, and a very
     long name makes no file."""
-    from manuscript_guard.approvals import approve, slug_of
+    from manuscript_guard.approvals import approve, authors_of, slug_of
 
+    # Two authors named Wei Zhang, with neither an ORCID nor an e-mail.
+    authors = project / "authors.yaml"
+    document = yaml.safe_load(authors.read_text(encoding="utf-8"))
+    for author in document["authors"]:
+        author.update(given="Wei", family="Zhang")
+        author.pop("orcid", None)
+        author.pop("email", None)
+    authors.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")] * 2
+    first, _second = authors_of(load_project(project)[0])
+    approve(load_project(project)[0], first)
+    assert sorted(p.name for p in (project / "approvals").iterdir()) == ["wei-zhang.yaml"]
+    # The second has approved nothing, and the first's approval stands for both.
+    assert _approvals_said(project) == []
+    for name in (project / "approvals").iterdir():
+        name.unlink()
     wei = {"given": "Wei", "family": "Zhang"}
-    assert slug_of(wei) == slug_of(dict(wei)) == "wei-zhang"
     assert slug_of({**wei, "email": "a+b@x.org"}) == slug_of({**wei, "email": "a-b@x.org"}) == (
         "a-b@x.org")
     # The other side of the fold: characters inside `[\w.@-]` are kept.

@@ -435,12 +435,10 @@ def test_the_page_shows_a_figure_as_its_svg_and_dates_what_the_records_date(
     project: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The companion page shows what the records hold,
-    and no more"): a figure drawn from a run whose input the package withholds is shown, as
-    no record says what it was drawn from; the history holds nothing of a deposit and the
-    version is one more than the revision rounds; and a figure drawn only as a raster is
+    and no more"): a figure is shown as its SVG; the history holds nothing of a deposit and
+    the version is one more than the revision rounds; and a figure drawn only as a raster is
     described and not shown."""
     ready(project)
-    with_package(project, share=[], request="Apply to the custodian.")
     assert main(["respond", str(project), "--open"]) == 0
     round_one = project / "revision" / "round-1.yaml"
     document = yaml.safe_load(round_one.read_text(encoding="utf-8"))
@@ -513,10 +511,17 @@ def test_a_latex_float_of_two_captions_gives_its_figure_none(project: Path) -> N
     one = "\\caption{The estimate and its interval.}"
     text = entry.read_text(encoding="utf-8")
     assert one in text
+
+    def shown() -> str:
+        package(project, "--skip-checks")
+        return re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                         section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+
+    # The control: the float as the twin writes it, one figure and one caption, is read.
+    assert "The estimate and its interval." in shown()
+    shutil.rmtree(project / "build" / "package")
     entry.write_text(text.replace(one, one + "\\caption{And its bounds.}"), encoding="utf-8")
-    package(project, "--skip-checks")
-    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
-                       section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+    figure = shown()
     assert "The estimate and its interval." not in figure
     assert "And its bounds." not in figure
 

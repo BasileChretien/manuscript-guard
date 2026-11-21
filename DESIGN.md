@@ -21179,8 +21179,10 @@ Open, recorded as each change landed:
   read the folder is from their documentation. No skill has been activated in a session of
   any of the three. Accepted.
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
-  and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
-  ones are not distinguishable from a sentence break.
+  and 200, because atoms are split on whitespace. Non-breaking spaces are handled in the
+  outputs; in the paper they split the number too, and ordinary ones are not
+  distinguishable from a sentence break.
+  Pinned by `tests/test_audit.py::test_a_thousands_separator_typed_as_a_space_splits_the_number_in_two`.
 - **The audit reads a sign, so a magnitude quoted without one is not found.** "Fell by
   0.51" against an output of -0.51 is reported. That is the price of catching a paper that
   prints 0.51 for -0.51. U+2212 is always a sign, and a hyphen or an en dash is one where
@@ -21209,6 +21211,8 @@ Open, recorded as each change landed:
   generated inputs holds the outputs' reader (`_numbers_in`) only; the paper's split of
   ".72–.82" and the Abstract reader go through the same `_NUMBER` and are held by two fixed
   cases (finding 4).
+  Pinned by `tests/test_audit.py::test_a_decimal_with_no_digit_before_its_point_is_read_as_one`
+  and `tests/test_audit.py::test_a_leading_point_joined_to_a_word_or_after_a_closing_bracket_starts_no_signed_number`.
 - **A Markdown reference list ends at any line shaped as a thematic break.** `---`, `***`
   or `___`, spaced or indented up to three spaces, ends it as a heading does (2026-11-06: a
   note after a rule under the list was read as one more entry with no number, so the list
@@ -21232,6 +21236,11 @@ Open, recorded as each change landed:
   the text the audit reads, and a horizontal line Word draws ends nothing. Closed, for the
   dash lines, by passing over one only where `blocks._UNDERLINE` matches it and the line
   above is no entry, and by drawing a break directly under an entry.
+  Pinned by `tests/test_audit_sections.py::test_a_thematic_break_ends_the_reference_list`,
+  `tests/test_audit_sections.py::test_a_setext_heading_s_underline_ends_no_list_it_opens`,
+  `tests/test_audit_sections.py::test_where_a_dashed_or_starred_line_ends_a_markdown_reference_list`,
+  `tests/test_audit_sections.py::test_the_entries_under_a_simple_table_s_rule_are_read_as_the_paper_s_text`
+  and `tests/test_audit_sections.py::test_a_horizontal_line_word_draws_ends_no_reference_list`.
 - **A .docx list under a paragraph that is no heading ends only where its shape does.** The
   cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
   runs to the next styled heading or the end of the body, but the report names the lines,
@@ -21239,6 +21248,8 @@ Open, recorded as each change landed:
   of a .docx, so a bold title that is neither a caption nor a back-matter title, "Search
   strategy" over an appendix, does not end it, where `**Search strategy**` in Markdown ends
   one for `check`.
+  Pinned by `tests/test_audit.py::test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends_one`
+  and `tests/test_audit.py::test_a_bold_title_ends_no_docx_list_under_a_paragraph_where_markdown_s_ends_one`.
 - **A text box anchored in a reference heading is cut with the list.** A text box is read
   after the paragraph that holds it, so one anchored in a styled `References` heading is
   the list's first line and is not audited. The report gives the range of lines it cut
@@ -21248,6 +21259,7 @@ Open, recorded as each change landed:
   found: the entries with a reference's shape were listed apart and the rest were audited
   as prose. A floating box has an anchor but no place in the text, and reading it before
   its paragraph instead would cut one anchored in the heading that ends a list.
+  Pinned by `tests/test_audit.py::test_a_text_box_anchored_in_a_reference_heading_is_cut_with_the_list`.
 - **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
   mark was deleted into the first cell of a table after it. The audit joins a paragraph only
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
@@ -21255,6 +21267,8 @@ Open, recorded as each change landed:
   moving the row and cell separators the reader writes before the cell's text. A table
   whose every row was deleted or moved away is the exception, since nothing of it is left
   to join into: the paragraph runs on past it into the next, as Word 16 shows it.
+  Pinned by `tests/test_audit.py::test_a_paragraph_whose_mark_was_deleted_runs_on_into_no_table_or_content_control`
+  and `tests/test_audit.py::test_a_join_runs_past_a_table_word_drops_whole`.
 - **The audit and the import read every `mc:Choice` and no `mc:Fallback`, whatever the
   choice requires.** Word does the same for everything it writes, since it writes a choice
   only where it understands it. Text that sits only in a fallback, behind a choice the
@@ -21395,6 +21409,8 @@ Open, recorded as each change landed:
   deleted column as a tracked change, so a cell marked deleted in its properties
   (`w:tcPr/w:cellDel`), which the format allows and another program may write, is read
   as present, and an empty one leaves an empty line.
+  Pinned by `tests/test_audit.py::test_a_table_row_gone_is_read_as_absent_and_an_inserted_one_as_present`
+  and `tests/test_audit.py::test_a_row_marked_otherwise_than_word_16_marks_one_is_read_as_it_stands`.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
@@ -21404,6 +21420,9 @@ Open, recorded as each change landed:
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
+  Pinned by `tests/test_corruption.py::test_audit_does_not_start_a_reference_list_in_code_or_a_comment`,
+  `tests/test_audit.py::test_a_references_line_in_a_listing_not_fenced_starts_a_reference_list`
+  and `tests/test_audit.py::test_a_numpydoc_references_section_pasted_into_word_starts_a_reference_list`.
 - **A reference list under a line that is no heading ends where its shape does, and only a
   paragraph opens one.** `check` passes over a list under `**References**`,
   `**References:**` or "References" alone on a line, in the span pandoc writes for a title
@@ -21778,9 +21797,14 @@ Open, recorded as each change landed:
   is cut, and a paper with no other reference heading is read as having none. Its lines are
   then taken for reference entries by their shape, as in any headingless paper, and a
   sentence with an entry's shape has its unmatched numbers listed apart, where `--strict`
-  does not count them. Such a line still ends a list that a real heading started, so an
-  appendix heading written directly under the last entry stops the cut early rather than
-  hiding the appendix.
+  does not count them. One at the margin directly under a line still ends a list that a
+  real heading started, so an appendix heading written directly under the last entry stops
+  the cut early rather than hiding the appendix; `#Appendix` or an indented `  # Appendix`
+  there ends nothing, and nor does a Word paragraph typed "# Appendix" with no heading
+  style.
+  Pinned by `tests/test_audit.py::test_an_unmarked_hash_heading_cuts_nothing_and_its_entries_are_read_by_shape`,
+  `tests/test_audit.py::test_a_hash_heading_directly_under_the_last_entry_ends_the_list`
+  and `tests/test_audit.py::test_a_word_paragraph_typed_as_a_hash_heading_ends_no_list`.
 - **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
   differences remain. Accepted.
   - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
@@ -21793,6 +21817,7 @@ Open, recorded as each change landed:
     pandoc cannot close, and pandoc then prints the rest of the line, braces and `#`s
     included. The toolkit takes them off, and the audit cuts a reference list there that
     pandoc does not head, so the numbers under it go unread.
+    Pinned by `tests/test_audit.py::test_an_unpaired_emphasis_before_the_block_cuts_a_list_pandoc_does_not_head`.
 
   A block kept in the title is the strict way to be wrong: G2 does not read that heading
   as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
@@ -22035,6 +22060,11 @@ Open, recorded as each change landed:
   section of their own, which `--strict` does not count: each shape added is a little more
   that `--strict` can miss, which is why each is held to an ending a caption or a sentence
   does not have, and to lookalikes in the tests (`AUDIT_LOOKALIKES`).
+  Pinned by `tests/test_audit.py::test_an_entry_of_another_style_is_recognised_without_a_heading`,
+  `tests/test_audit.py::test_numbers_on_lines_read_as_references_are_listed_apart`,
+  `tests/test_audit.py::test_an_entry_of_a_shape_the_list_does_not_know_has_its_numbers_reported`,
+  `tests/test_audit.py::test_the_other_side_of_an_unknown_entry_is_read_as_an_entry`
+  and `tests/test_audit.py::test_a_data_statement_shaped_as_a_web_page_is_listed_apart_and_not_counted`.
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
@@ -23071,6 +23101,16 @@ Open, recorded as each change landed:
   percent sign is read: see "Closed since"). And a citation that happens to enclose a
   number before it, `found 2 [1,3]`, `Table 2 [1-4]`, `Grade 3 [2,5]` or `1,5 [1-2]`, is
   listed as unexplained.
+  Pinned by `tests/test_audit.py::test_a_value_glued_to_a_citation_marker_is_audited_apart_from_it`,
+  `tests/test_audit.py::test_a_run_the_marker_rule_never_took_whole_is_listed_whole`,
+  `tests/test_audit.py::test_a_comma_written_value_keeps_its_bracket`,
+  `tests/test_audit.py::test_a_value_read_apart_from_its_marker_is_not_filed_as_an_author_year_citation`,
+  `tests/test_audit.py::test_a_number_read_apart_falls_through_to_the_other_rules`,
+  `tests/test_audit.py::test_a_number_glued_to_a_marker_that_is_no_result_is_listed`,
+  `tests/test_audit.py::test_a_run_opening_on_a_bracketed_word_is_listed_whole`,
+  `tests/test_audit.py::test_a_whole_number_interval_after_its_value_is_audited`,
+  `tests/test_audit.py::test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation`
+  and `tests/test_audit.py::test_what_the_marker_s_shape_and_position_miss`.
 - **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
   "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
   blank line between them they are two paragraphs, and the number opening the second is
@@ -26861,12 +26901,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A number an author's macro prints where it is used is not read there, as in G2; nor is a
     table `\csvautotabular` or pgfplotstable draws from a file. A `longtable`'s caption is read
     as a row of it, and a head it repeats with `\endhead` is read once, where it is typed.
+    Pinned by `tests/test_audit_sections.py::test_a_number_a_macro_prints_or_a_table_drawn_from_a_file_is_not_read_there`
+    and `tests/test_audit_sections.py::test_a_longtable_s_caption_is_a_row_and_its_repeated_head_is_read_once`.
   - A reference list BibTeX or biber makes from a `.bib` is not counted: only a typed
     `thebibliography` is, and the report says so where the paper cites and has none.
     Pinned by `tests/test_audit_claims.py::test_a_latex_cite_is_listed_and_a_bib_list_is_said_unread`.
   - A folder's `.tex` with `\documentclass` is an entry however it is used: a standalone
     figure's file is read as a paper of its own, and so is a file whose `\documentclass`
     stands in a `\verb` or a `comment` environment.
+    Pinned by `tests/test_audit_sections.py::test_a_tex_with_a_document_class_anywhere_in_it_is_a_paper_of_its_own`.
   - G6 and G14 run on a project made for each paper, so an abbreviation defined in the main
     text and used in a supplement given beside it is undefined in the supplement. Nothing of
     a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
@@ -26875,17 +26918,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
     in the paper by its shape, `manuscript/<file>` with or without `:<line>`, standing
     alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
     (2026-11-06). A place a gate writes in another shape, or a path outside the project, is
-    left as written. The line in a converted .docx is the converted text's, as the finding's
-    own is. The rewrite runs over the whole message and hint, the paper's words a finding
-    quotes among them, so a sentence of paper.md "TODO: see manuscript/main.md" is quoted as
-    "see paper.md" (round 1 of #545, finding 2; contrived). `audit --journal` hands
-    `run_journal` the staged lines but not the PDF's map of them, so a place in a journal
-    finding on a PDF would read "paper.pdf:N" with the staged Markdown's line; no journal
-    message writes a place today (finding 1). A staged line outside the map would read
-    "paper.pdf, line None"; no path to one was found (finding 3).
+    left as written. A line in a converted .docx is said as its section and paragraph,
+    "Methods, paragraph 3" (#616). The rewrite runs over the whole message and hint, the
+    paper's words a finding quotes among them, so a sentence of paper.md "TODO: see
+    manuscript/main.md" is quoted as "see paper.md" (round 1 of #545, finding 2; contrived).
+    `audit --journal` stages the paper itself and puts a journal finding's places back as
+    every gate's are, a PDF's as its page and line; no journal message writes a place today
+    (finding 1). A
+    staged line outside the map reads "line None"; no path to one was found (finding 3).
     `test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree` and
     `test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line` hold a LaTeX tree's and a
     PDF's places end to end; nothing holds the journal's (finding 4).
+    Pinned by `tests/test_audit_sections.py::test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own`,
+    `tests/test_audit_sections.py::test_a_place_a_finding_names_is_in_the_audited_file`
+    and `tests/test_audit_sections.py::test_a_place_in_a_docx_is_its_paragraph_and_one_outside_a_pdf_s_map_is_line_none`.
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
     place in its count. A count that a paragraph with words above the list is numbered in
@@ -26898,13 +26944,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
     as one. Two lists each numbered from 1 are read as one. A Markdown entry wrapped over
     lines with no blank line between entries is one entry only where each starts with its
     number. A list found by its entries' shape alone, with no heading, is not counted.
+    Pinned by `tests/test_audit_sections.py::test_a_numbered_list_is_held_to_the_citations_by_number`,
+    `tests/test_audit_sections.py::test_a_docx_list_word_numbers_is_numbered_by_place`,
+    `tests/test_audit_sections.py::test_a_bracket_in_the_text_numbers_no_list_word_does_not_count`,
+    `tests/test_audit_sections.py::test_a_level_word_may_not_count_1_2_3_is_no_numbering`,
+    `tests/test_audit_sections.py::test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one`,
+    `tests/test_audit_sections.py::test_a_level_a_paragraph_above_restarts_is_not_looked_at`,
+    `tests/test_audit_sections.py::test_a_paragraph_above_in_the_numbering_that_restarts_the_list_s_level_begins_its_count`,
+    `tests/test_audit_sections.py::test_what_the_census_reads_as_a_citation_and_an_entry`
+    and `tests/test_audit_sections.py::test_a_list_found_by_its_entries_shape_alone_is_not_counted`.
   - A paragraph in a table's cell is given no count, though Word numbers it: one numbered in
     the list's count above the list does not stop the list being numbered by place, and the
     entries after it are numbered as though it were not there (fix-only round of #463).
-  - `--lookup` asks about the first DOI and the first PMID of an entry, and nothing about one
-    with neither: `lookup`'s search by title is not run. A record kept with
-    `--lookup-cache` is used however old it is, until the identifiers it was asked for
-    change. `--strict` counts no finding of G7's, in the census or from a registry.
+    Pinned by `tests/test_audit_sections.py::test_a_paragraph_word_numbers_in_a_table_s_cell_is_given_no_count`.
+  - `--lookup` asks about the first DOI and the first PMID of an entry, and Crossref for the
+    title of one with neither only where it is an article, a book or a chapter. A record
+    kept with `--lookup-cache` is used however old it is, until the identifiers it was
+    asked for change. `--strict` counts no finding of G7's, in the census or from a
+    registry.
+    Pinned by `tests/test_audit_sections.py::test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old`
+    and `tests/test_audit_sections.py::test_a_retracted_work_is_said_and_kept_only_where_asked`.
   - In a folder given, a `.tex` with `\documentclass` is audited as a paper beside the
     Markdown or Word one: a pandoc template or a LaTeX export of the paper is read as a paper
     of its own, its numbers are not found in the outputs, and the reader's refusals in it are
@@ -26928,14 +26987,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A table whose rows a tabular `\input`s from another file, as xtable and esttab write
     them, is read nowhere as cells: its numbers are read where they stand, as text, and no
     n (%) or mean in it is held to its denominator (round 1 of #463).
-  - A citation that encloses the number before it, `2 studies [1,3]`, is read as an
+    Pinned by `tests/test_audit_sections.py::test_rows_a_tabular_inputs_are_read_as_text_and_held_to_no_denominator`.
+  - A citation that encloses the number before it, `found 2 [1,3]`, is read as an
     interval after its value and no citation, so the entries it cites can be reported as
     cited nowhere (round 1 of #463).
+    Pinned by `tests/test_audit_sections.py::test_a_citation_enclosing_the_number_before_it_is_read_as_an_interval`.
 
 - **A table's totals are read in English, as partitions, a line at a time** (Task 3, PR 2,
   `stats/margins.py`). Accepted.
   - Only Total, Totals, All and Overall, alone in their cell, make a total: "Gesamt",
     "Totale", "All patients" and "Subtotal" total nothing, and their lines are not read.
+    Pinned by `tests/test_margins.py::test_only_four_english_words_make_a_total_and_the_line_of_another_is_not_read`.
   - A total is taken to be the sum of the counts above it or before it. One that is not, a
     "Total" of patients with any of several events that overlap, or rows that are subtypes
     of the row above them, is said to be off when it is right (`sum-off`, a false alarm),
@@ -26945,22 +27007,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
     failure, so a table whose total is a sum gives a small count away with nothing failing.
     Declaring the sum does not change that: a sum relation sums results values, never a
     table's cells (rounds 1 and 2 of #469, Basile's choice of 2026-10-29).
+    Pinned by `tests/test_margins.py::test_a_total_that_is_no_sum_is_said_to_be_off_and_gives_a_count_away_it_does_not`,
+    `tests/test_audit_sections.py::test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict`,
+    `tests/test_margins.py::test_g2_warns_of_a_count_a_bound_tables_total_gives_away`
+    and `tests/test_deposit.py::test_a_count_a_carried_tables_total_gives_away_is_warned_of_and_stops_nothing`.
   - An n (%) is a count only where its share fits a known n: its own denominator, its
     column's header n, or the count of its column's next total row. What that costs: where
     no n is printed, neither in the header nor in a total row below, its cells are no
     counts, and a count held back beside them that a total would give away is missed, as is
     a total they do not add up to (the fix-only round of #469).
+    Pinned by `tests/test_margins.py::test_an_n_percent_with_no_n_printed_hides_what_a_total_would_give_away`.
   - A header row repeated further down the table is not read: the columns keep the first
     header's names, totals and n, so the categories of a second panel are held to the first
-    panel's n. A first row of counts with no label is read as a header, and its counts are
-    in no line.
+    panel's n, but where the repeated row prints an n, categories over n are held to that
+    one, the message naming the first header's column, and a count held back under it is
+    still worked out from the first n. A first row of counts with no label is read as a
+    header, and its counts are in no line.
+    Pinned by `tests/test_margins.py::test_a_header_row_repeated_down_the_table_is_not_read_for_its_names`.
   - A row of whole-number measures, a median of 24 months printed bare, under a Total
     column is read as counts unless its label names the statistic.
+    Pinned by `tests/test_margins.py::test_a_bare_measure_under_a_total_column_is_read_as_counts_unless_named`.
   - A total header spanning several columns, the "n | %" pairs under one, totals none of
     them.
+    Pinned by `tests/test_margins.py::test_a_total_header_spanning_several_columns_totals_none_of_them`.
   - A characteristic's categories are a line under their column's header n only where they
     stand under a label of their own; a table that is one characteristic with no such label
     has no header line.
+    Pinned by `tests/test_margins.py::test_categories_with_no_label_of_their_own_make_no_line_under_the_header_n`.
 
 - **A count held back is worked out a line at a time** (Task 3, PR 2). Each line, a total
   and its counts, is read alone: a cell that only its row and its column together pin down,
@@ -26978,21 +27051,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
     document's text boxes that give two counts or more are noted. Accepted.
   - A step for each arm, the items under an arm, is noted and not read, and so are items
     under a reason.
+    Pinned by `tests/test_flows.py::test_items_under_an_arm_are_said_and_not_read`
+    and `tests/test_flows.py::test_items_under_a_reason_are_noted_and_not_read`.
   - Overlapping exclusions are allowed for, never checked: where a step's exclusions add up
     to more than it removes, only that none is larger than the step is held.
+    Pinned by `tests/test_flows.py::test_exclusions_over_what_a_step_removes_are_read_as_overlapping`.
   - A list in which some items give a count and others none, or two, is noted and not
     read.
+    Pinned by `tests/test_flows.py::test_a_list_whose_items_do_not_each_give_one_count_is_noted_and_not_read`.
   - Any nested list of counts in that shape is read as a flow, a list of subgroups too: men
     over smokers and women over smokers reads as two stages and an exclusion. Its faults are
     counted only under a name for a flow (Basile, 2026-10-29), so a list of subgroups under
     a heading that names a flow, "Participants" say, is said to be broken and fails
     `--strict`.
+    Pinned by `tests/test_flows.py::test_a_subgroup_list_is_a_note_and_the_same_list_named_a_flow_fails`
+    and `tests/test_flows.py::test_a_list_of_subgroups_under_participants_is_a_broken_flow_that_fails_strict`.
   - The names for a flow are English only (`FLOW_NAMES`): a flow under "Diagrama de flujo"
     or "Teilnehmerfluss" is only a note, and so is a flow under a heading that names nothing,
     "Results", with no caption or paragraph naming it either. A broken flow there passes
     `--strict`.
+    Pinned by `tests/test_flows.py::test_a_broken_flow_under_a_heading_that_names_no_flow_in_english_passes_strict`.
   - A LaTeX list in an environment of another name, `compactitem` or one the paper defines,
     is not read as a level (round 1 of #472, finding 10).
+    Pinned by `tests/test_flows.py::test_a_latex_list_of_another_environment_is_no_level`.
   - A Word list whose levels are styles with their own numbering, "List Number 2" or "List
     Bullet 2", reads flat: Word 16 gives "List Number 2" a numbering of its own whose one
     level, 0, its `pStyle` links to the style (verified over COM, 2026-10-29), so every item
@@ -27000,6 +27081,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     otherwise, and it is not read. Accepted.
   - A paragraph style written `<w:pStyle/>` with no value is looked up as the style named
     "" (round 1 of #472, finding 11).
+    Pinned by `tests/test_flows.py::test_a_paragraph_style_with_no_value_is_looked_up_as_the_style_named_nothing`.
   - Two items or more under a stage that happen to add up to it are read as a breakdown,
     whether they are or are exclusions that add up to the stage by chance; a single item is
     always an exclusion (round 2 of #472). What that costs: a single-arm trial, "Enrolled
@@ -27019,9 +27101,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_flows.py::test_a_heading_of_the_first_level_names_a_list_title_or_section`.
   - The names are read as words in a title, not as its subject: "Patient flow cytometry",
     "Blood flow of the forearm" and "Study population characteristics" name a list a flow.
+    Pinned by `tests/test_flows.py::test_a_name_for_a_flow_is_read_as_words_of_a_title_not_as_its_subject`.
   - Sources and a removal under one stage, a review's databases, registers and duplicates
     removed under "Identified", are read as that stage's exclusions, overlapping, and fail
     under a PRISMA heading (round 2 of #472, finding 4).
+    Pinned by `tests/test_flows.py::test_a_review_s_sources_and_duplicates_under_identified_fail_as_exclusions`.
   - No property draws a Word list's levels; the Word reader is held by examples only (round
     2 of #472, finding 6). Accepted.
 

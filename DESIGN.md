@@ -26959,16 +26959,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
     roundings count in it. Accepted.
   - An Abstract under no heading that names it, or under one a journal names otherwise
     ("Summary"), is not found, and nothing is compared.
+    Pinned by `tests/test_flows.py::test_an_abstract_under_summary_or_no_heading_is_not_found`.
   - A conflict needs a unique counterpart: where two intervals of the same estimate and
     level, or two tests of the same kind, degrees of freedom and statistic, could be it,
     none is said.
+    Pinned by `tests/test_flows.py::test_a_conflict_needs_a_unique_counterpart`.
   - An estimate is paired by its name, its abbreviation and its words taken as one; one
     named another way, "aOR" or "adj. OR" against "OR", has no counterpart. "Adjusted OR" is
     an OR, adjusted being no part of its name.
+    Pinned by `tests/test_flows.py::test_an_estimate_named_another_way_has_no_counterpart`.
   - Where the true counterpart of an Abstract's interval cannot be read as an interval
     where the paper reports, another of the same name and level that agrees in two of its
     numbers is the one near match, and its third number is said to conflict (round 1 of
     #472, finding 16).
+    Pinned by `tests/test_flows.py::test_where_the_true_counterpart_is_unreadable_a_near_one_is_said_to_conflict`.
   - Each file is placed by its own headings, and a file with no Abstract is reported
     whole, as a supplement is. A paper split into files, its Discussion or its Introduction
     in a file of its own, has that file counted as where the paper reports, so a number of
@@ -26978,8 +26982,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `.tex` line keeps its first place in the Abstract or where the paper reports, so an
     Introduction's interval on the line of the `\section{Results}` after it is read as
     reported (round 2 of #472, finding 11).
+    Pinned by `tests/test_flows.py::test_an_introduction_s_interval_on_the_results_heading_s_line_is_read_as_reported`.
   - A table's lines are where the paper reports wherever the table stands, a table in the
-    Abstract included. A Word document's footnotes are placed under the body's last heading.
+    Abstract included. A Word document's footnotes are a note's lines, searched under no
+    heading.
+    Pinned by `tests/test_flows.py::test_a_table_in_the_abstract_reports_and_a_word_footnote_is_searched_nowhere`.
   - Every section is where the paper reports but the Abstract, the Introduction, the
     Discussion, a conclusion, a summary of the paper and the back matter, each with what
     stands under it (Basile, 2026-11-11, after 52 real preprints whose numbers under
@@ -27555,6 +27562,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   limits.** Accepted.
   - G4 on a bare paper finds a statement by the profile's pattern; with the template's
     patterns, anchored on a heading, a declaration set as a bold paragraph reads as missing.
+    Pinned by `tests/test_audit_readers.py::test_a_declaration_set_in_bold_reads_as_missing_with_the_template_s_pattern`.
   - Its word counts are this tool's counting, after pandoc's conversion of a .docx, and not
     the journal's own; neither is counted by `--strict`. Accepted.
   - A Markdown paper's tables, and a .docx's as pandoc writes them, are counted as the four
@@ -27567,6 +27575,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`latex_displays`): a `tabular` in no captioned float is not counted. Figures are
     counted as `measure` counts them: a Word picture with no caption pandoc reads, and a
     figure sent as a file of its own, are not.
+    Pinned by `tests/test_audit_readers.py::test_the_tables_and_figures_counted_are_pandoc_s_four_kinds_floats_and_placed_figures`,
+    `tests/test_audit_readers.py::test_a_word_layout_table_is_counted_and_a_picture_with_no_caption_is_not`,
+    `tests/test_audit_readers.py::test_a_table_in_a_block_quotation_is_counted`,
+    `tests/test_audit_readers.py::test_a_table_written_in_html_puts_the_table_limit_under_not_checked`,
+    `tests/test_audit_readers.py::test_a_table_indented_in_a_list_item_puts_the_table_limits_under_not_checked`,
+    `tests/test_audit_readers.py::test_a_limit_not_checked_is_never_said_to_be_kept` and
+    `tests/test_audit_readers.py::test_a_latex_paper_s_table_floats_are_held_to_the_limit`.
   - Where the main document's own reference list was not read, a LaTeX paper's `.bib` among
     them, a DOI its data availability statement names is not said to be cited or not, and
     the report says so; a supplement's list is not read for it.
@@ -27575,6 +27590,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     against its stored page are not checked, and the report says so. Accepted.
   - The main document is the first paper named. A main document named second is read as the
     rest of the submission, and a supplement named first is held to the limits.
+    Pinned by `tests/test_audit_readers.py::test_the_first_paper_named_is_the_main_document_whichever_it_is`.
   - `journal --template` needs a project, so an editor makes one to keep the profile in.
     Accepted.
   - The Document section reads a .docx, and of a PDF the Author of its Info dictionary
@@ -27583,6 +27599,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     not counted as a tracked change. A text box's fallback
     copy is not read, as `text.docx` reads none: a document whose box Word wrote only as a
     fallback has its changes there uncounted.
+    Pinned by `tests/test_audit_pdf.py::test_of_a_pdf_only_the_author_of_its_info_dictionary_is_read`,
+    `tests/test_audit_readers.py::test_a_latex_file_s_metadata_names_no_person_in_the_document_section`
+    and `tests/test_audit_readers.py::test_a_change_of_formatting_and_a_box_written_only_as_a_fallback_are_not_counted`.
   - The blinding check finds a name as the build does: the given and family name, or an
     initial with its stop; a family name alone is not looked for, nor a part of an
     affiliation under three words. The reference list is left out where the audit finds it
@@ -27595,10 +27614,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     self-citation among them (a false alarm, where running on hid the acknowledgements).
     A reference list laid out as a Word table under a styled "References" heading is cut at
     its first row, so a self-citation in it is reported: a false alarm the check may raise.
+    Pinned by `tests/test_audit_readers.py::test_the_blinding_check_finds_a_name_as_the_build_does`
+    and `tests/test_audit_readers.py::test_a_self_citation_is_read_as_text_where_the_list_is_not_cut_out`.
   - A LaTeX paper's pictures are those its files place with `\includegraphics` or
     `\includesvg`, found from the entry's folder or the file's own, by the name as written
     and with `.pdf` and `.svg` after it; `\graphicspath` is not followed, and a raster
     picture holds no text to read.
+    Pinned by `tests/test_audit_readers.py::test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_other`,
+    `tests/test_audit_readers.py::test_a_latex_picture_is_found_with_pdf_after_its_name` and
+    `tests/test_audit_readers.py::test_a_picture_placed_by_includesvg_or_with_a_dot_in_its_name_is_searched`.
   - The confidentiality guard reads an agent's ordinary commands, as the other shell guards
     do: an `audit` started from a script, or with its options built at run time, is not
     asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,
@@ -27627,14 +27651,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
     `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a
     superscript number in a .docx (its text reads the digits run on to the word) and Word's
-    Zotero or EndNote fields are not listed, and the file says so; a `\cite` whose list is a
+    Zotero or EndNote fields are not listed, and the file says so, except a field that prints
+    a number in brackets, which is; a `\cite` whose list is a
     `.bib` is listed without its entry. A file's citations are held to its own list only, so a
-    supplement that cites the main document's list by number lists them as unread. A citation
+    supplement that cites the main document's list by number lists none of them. A citation
     typed right after a stop is the sentence before's, even where the author meant the next;
     one that opens a paragraph is that paragraph's.
+    Pinned by `tests/test_audit_claims.py::test_what_the_cited_sentences_table_does_not_list`,
+    `tests/test_audit_claims.py::test_the_cited_sentences_are_written_to_the_file_and_counted_on_stdout`,
+    `tests/test_audit_claims.py::test_a_latex_cite_is_listed_and_a_bib_list_is_said_unread`,
+    `tests/test_audit_claims.py::test_the_rows_follow_the_files_in_the_order_given` and
+    `tests/test_audit_claims.py::test_a_citation_directly_after_a_stop_ends_the_sentence_it_cites_for`.
   - A journal's name is matched folded, whole or before PubMed's " : " subtitle, with a
     qualifier in brackets at its end left out; an abbreviation (Crossref's short container
     title) is not matched.
+    Pinned by `tests/test_audit_claims.py::test_a_journal_s_abbreviation_is_not_matched`,
+    `tests/test_audit_claims.py::test_a_journal_s_name_is_folded`,
+    `tests/test_audit_claims.py::test_a_journal_s_subtitle_after_a_colon_is_no_part_of_its_name`
+    and `tests/test_audit_claims.py::test_pubmed_s_qualifier_after_a_journal_s_name_is_no_part_of_it`.
   - Self-citation relies on the registries' author lists: a namesake with the same initial
     counts, a changed surname does not, nor does an author a registry lists in another script
     or with no given name. The journal's titles match by folded name only (the profile holds
@@ -27648,9 +27682,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     or not at a page's edge) is read as text, its numbers among the paper's. A DOI or a PMID
     that ends a line its entry goes on after is not looked up, whether or not the wrap cut
     it; one that ends its entry's last line is sent as read.
+    Pinned by `tests/test_audit_pdf.py::test_a_number_split_by_a_hyphen_a_late_float_and_a_rare_running_head_are_read_as_set`,
+    `tests/test_audit_pdf.py::test_a_doi_cut_at_a_lines_end_is_not_sent`,
+    `tests/test_audit_pdf.py::test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none`
+    and `tests/test_audit_pdf.py::test_a_doi_on_the_line_after_its_prefix_is_sent`.
   - Tables are not read as cells: their numbers are compared and read as the text's, and no
     total, share, mean, flow, count held back or n is held to another in them. A table's
     words count toward G4's word limits.
+    Pinned by `tests/test_audit_pdf.py::test_a_pdf_table_s_numbers_are_the_text_s_and_its_words_count_toward_g4`,
+    `tests/test_audit_pdf.py::test_no_share_mean_flow_count_held_back_or_n_is_held_in_a_pdf_table`
+    and `tests/test_audit_pdf.py::test_each_place_in_a_pdf_is_a_page_and_a_line`.
   - Two `pdftotext` builds can read one PDF differently (Xpdf's and poppler's, 2026-10-30:
     other line breaks, a column of line numbers kept or dropped), so a place, a heading found
     or a number split can differ between machines; the report names the build that read it.
@@ -27662,10 +27703,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading is a line that holds a section's name alone (`HEADINGS`): a section under
     another title is read as the one before, a Results headed "Outcomes" among them, so its
     numbers are the section before's; a structured abstract whose headings stand on lines of
-    their own with no Introduction after them leaves the PDF's lines unplaced, and so does a
-    paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
-    the paper's Background its own. A wrapped line that holds only "Results", with a capital,
+    their own with no Introduction after them, no part whose place in their order comes at
+    or before the last one's, and no words under the Abstract's own heading, leaves
+    the PDF's lines unplaced, and so does a
+    name on two lines. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
+    Pinned by `tests/test_audit_pdf.py::test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places_nothing`,
+    `tests/test_audit_pdf.py::test_headings_that_cannot_be_placed_place_nothing`,
+    `tests/test_audit_pdf.py::test_a_structured_abstract_ends_where_the_main_text_names_a_part_again`
+    and `tests/test_audit_pdf.py::test_an_abstract_of_words_then_background_methods_and_results_is_placed`.
   - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
     line, an author's address or a title page's other lines typed before it are the
     Abstract's, their numbers among its own; and where the Introduction has no heading, the
@@ -27708,25 +27754,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
     told apart, a blank line between them or not. A PMID of three digits or fewer on the line
     after "PMID:", a stop after it ("123. Epub"), reads as an entry's number: it is listed as
     not looked up.
+    Pinned by `tests/test_audit_pdf.py::test_two_dois_a_wrapped_next_number_and_a_hyphen_at_an_entry_s_end_misread_a_list`,
+    `tests/test_audit_pdf.py::test_a_number_that_skips_tells_no_entry_apart` and
+    `tests/test_audit_pdf.py::test_an_entry_number_is_not_read_as_a_pmid`.
   - A heading between a PDF's Abstract and its Introduction that is no part of the abstract,
-    an "Abbreviations" or a "Funding" of the paper, is placed under the Abstract, and its
-    words count toward the abstract's limit in G4.
-  - A BMC-style paper, an Abstract and then a main text headed Background, Methods and Results
-    with no Introduction, is read as a structured abstract with no Introduction after it and
-    left unplaced: no Abstract against Results, no causal words and no G4 word limits for
-    it; the report says why.
+    an "Abbreviations" or a "Funding" of the paper, is placed under a structured Abstract,
+    and its words count toward the abstract's limit in G4.
+    Pinned by `tests/test_audit_pdf.py::test_a_heading_after_a_structured_abstract_counts_toward_its_limit`.
   - Where one version of `compare` is a PDF, a table's numbers on the other side are read as
     prose too: a number moved between a table and the prose reads as the same.
     Pinned by `tests/test_audit_pdf.py::test_a_tables_numbers_are_read_alike_beside_a_pdf`.
   - G6 and G14 read the text staged as Markdown, a page's lines one paragraph between two
     headings: a rule that reads a paragraph reads that, and a line Markdown reads as markup (a
     `#`, a list item's number) is read as such.
+    Pinned by `tests/test_audit_pdf.py::test_g6_and_g14_read_a_pdf_s_lines_as_markdown_one_paragraph_between_headings`.
   - A figure's labels, where the PDF draws them as text, are read as the paper's text.
     Accepted.
   - A PDF in a folder is not read, though it may be the paper; it is counted in a note.
     Pinned by `tests/test_audit_pdf.py::test_a_pdf_in_a_folder_is_not_read`.
   - One PDF named as the paper and with `--figures` is read as both, and the report draft says
     no figure was given.
+    Pinned by `tests/test_audit_pdf.py::test_one_pdf_as_the_paper_and_a_figure_is_read_as_both_and_no_figure_is_said`.
 - **A package read by `audit --package` is held to its own manifest, which the authors
   wrote.** Accepted.
   - Anyone who changes a file can write a new manifest and new `.sha256` files: a consistent
@@ -27744,6 +27792,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - Only the results folder's own `*.json` files are read as results, as `load_results` reads
     them; a results file in a subfolder is a file like any other.
+    Pinned by `tests/test_audit_package.py::test_only_the_results_folder_s_own_json_files_are_results`.
   - A receipt is read only where the package holds it at the path the results file names;
     `package` does not pack `receipts/`, so a harvested result is usually said to have its
     receipt not packaged.
@@ -27754,8 +27803,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_audit_package.py::test_an_archive_past_the_limits_is_refused`.
   - A name holding a line break is refused in a .zip only. A folder given on POSIX can hold a
     file whose name has one (U+2028, say), and its line of SHA256SUMS is then read as two,
-    with false warnings that the line is not a digest and a path and that the file is listed
-    nowhere.
+    with false warnings that the line is not a digest and a path and that SHA256SUMS does
+    not list the file.
+    Pinned by `tests/test_audit_package.py::test_a_folder_s_file_named_with_a_line_break_gives_false_sums_warnings`.
+  - The first of those two lines names a file the package does not hold, the name cut at its
+    line break, and `--strict` counts that it is missing: such a folder fails though every
+    file is there.
+    Pinned by `tests/test_audit_package.py::test_a_folder_s_file_named_with_a_line_break_fails_strict_as_missing`.
 - **The report draft is the report's findings laid out, and says no more than they do.**
   Accepted.
   - What a check read is counted where the audit counts it: the tables pandoc reads, the tests
@@ -27844,6 +27898,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A quotation is looked for word for word, as G13 looks: a quotation the letter retypes with
     other punctuation, a dash for a hyphen, or words left out with an ellipsis, reads as in
     neither version.
+    Pinned by `tests/test_compare.py::test_a_quotation_retyped_reads_as_in_neither_version`.
   - A finding of v2's audit stood in v1 only where v1's audit gave it word for word: a
     finding whose message names a line, a count or a file that moved reads as new in v2 though
     it stood (an Abstract conflict, which names its line in the Results, once a paragraph is
@@ -27853,6 +27908,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Within a changed stretch, a number is paired with one in the sentence most like its own by
     the words they share; two sentences rewritten so that their words change places can pair
     a number with the wrong one.
+    Pinned by `tests/test_compare.py::test_sentences_whose_words_change_places_pair_a_number_with_the_wrong_one`.
   - A paragraph with a straight mark after a digit, an inch's mark or a quotation that ends
     in a number ("the rate was 12"), has none of its straight quotations read, and nor has
     one whose straight marks are odd in number; the note names the paragraph. Curly marks
@@ -28158,7 +28214,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *A lookup from a page* sends no User-Agent, which a browser forbids; the browser follows
     a redirect itself, where `default_transport` refuses one, though only to a host the
     policy allows; and Crossref does not expose `Retry-After` to a page, so a 429 from it is
-    not waited out but taken as no answer. No API key is sent.
+    not waited out but taken as no answer. No API key is sent, the page's environment naming
+    none: its lookups read `OPENALEX_API_KEY` from it as the command line's do.
+    Pinned by `tests/test_web.py::test_a_page_sends_one_synchronous_get_without_the_user_agent`,
+    `tests/test_lookup.py::test_the_real_transport_follows_no_redirect`,
+    `tests/test_web.py::test_a_429_from_a_page_with_no_retry_after_is_not_waited_out` and
+    `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
   - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),
@@ -28178,6 +28239,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     nothing on stderr reaches `json.loads`, whose ValueError `gates._stage` turns into the note
     that G6 and G14 were not run, rather than the message the command line gives (round 1 of
     #527).
+    Pinned by `tests/test_web.py::test_a_silent_failure_of_the_wasm_is_said_as_g6_and_g14_not_run_from_json`
+    and `tests/test_web.py::test_pandocs_complaint_with_nothing_printed_is_a_failure`.
   - *The release a page is built from.* Where a run of publish.yml tagged, pages.yml builds
     the newest `v` tag, which is that run's unless a later run tagged a higher version before
     this one checked out: two releases close together, the second tagged and then stopped
@@ -29213,6 +29276,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A BMC-style PDF paper was left unplaced (found fixed while pinning, 2026-11-21).** Under
+  "A PDF manuscript (`audit paper.pdf`, `compare`) is read as `pdftotext` sets out its text":
+  a paper whose Abstract is followed by a main text headed Background, Methods and Results
+  with no Introduction, as BMC's journals set one, was read as a structured abstract with no
+  Introduction after it and left unplaced, so a whole class of real papers had no Abstract
+  against Results, no causal words and no G4 word limits. Since 564a1558f (#598) a
+  structured abstract's parts end where one of their names comes again, and words under the
+  Abstract's own heading make the heading after it the main text's: such a paper is placed,
+  compared, read for causal words and held to the limits. Held by
+  `tests/test_audit_pdf.py::test_a_structured_abstract_ends_where_the_main_text_names_a_part_again`
+  and `tests/test_audit_pdf.py::test_an_abstract_of_words_then_background_methods_and_results_is_placed`.
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

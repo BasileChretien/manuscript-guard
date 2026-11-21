@@ -88,6 +88,35 @@ def test_pandocs_complaint_with_nothing_printed_is_a_failure(tmp_path: Path) -> 
     assert warned(["-f", "json", "-t", "markdown"], "{}", tmp_path / "paper.docx") == "text\n"
 
 
+def test_a_silent_failure_of_the_wasm_is_said_as_g6_and_g14_not_run_from_json(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit page"): pandoc.wasm's exit status is not
+    read, so a failure with nothing on stderr reaches `json.loads`, and its ValueError is the
+    note that G6 and G14 were not run; with its complaint on stderr, pandoc's own words are
+    said."""
+    from manuscript_guard.build import document
+
+    def absent() -> str:
+        raise document.BuildError("pandoc is not on PATH")
+
+    monkeypatch.setattr(document, "pandoc", absent)
+    paper = tmp_path / "paper.docx"
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr("word/document.xml", f"<?xml version='1.0'?><w:document {ns}><w:body>"
+                         "<w:p><w:r><w:t>The ROR was 2.5.</w:t></w:r></w:p></w:body></w:document>")
+    for stderr, said in (("", "Expecting value: line 1 column 1 (char 0)"),
+                         ("Unknown input format docy\n", "pandoc could not convert paper.docx, "
+                          "so nothing was made: Unknown input format docy")):  # fmt: skip
+        monkeypatch.setattr(from_word, "runner", web.runner_for(
+            lambda options, stdin, files, stderr=stderr: ("", stderr, {})))  # fmt: skip
+        assert main(["audit", str(paper), "--json"]) == 0
+        found = json.loads(capsys.readouterr().out)["findings"]
+        assert [f["message"] for f in found if f["code"] == "gates-not-run"] == [
+            f"G6 and G14 were not run on paper.docx: {said}"]
+
+
 def test_the_pictures_extracted_are_saved_and_none_outside_the_folder(tmp_path: Path) -> None:
     paper = tmp_path / "paper.docx"
     paper.write_bytes(b"PK\x03\x04")
@@ -278,6 +307,33 @@ def test_a_status_that_is_not_2xx_is_an_answer() -> None:
     xhr = FakeXHR(404, "", "Resource not found.")
     answer = web.xhr_transport(REQUEST, 30.0, new_xhr=lambda: xhr)
     assert (answer.status, answer.body) == (404, b"Resource not found.")
+
+
+def test_a_429_from_a_page_with_no_retry_after_is_not_waited_out() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit page"): Crossref does not expose
+    `Retry-After` to a page, so its 429 is asked once and taken as no answer; where the
+    header is seen, the wait it names is waited and the request sent again."""
+    from manuscript_guard.lookup import run as lookup
+    from manuscript_guard.lookup import sources
+
+    for headers, asked, waits in (("content-type: application/json\r\n", 1, []),
+                                  ("content-type: application/json\r\nretry-after: 3\r\n", 2,
+                                   [3.0])):  # fmt: skip
+        sent: list[str] = []
+        waited: list[float] = []
+
+        def transport(request: Request, timeout: float, headers: str = headers,
+                      sent: list[str] = sent):  # fmt: skip
+            sent.append(request.url)
+            return web.xhr_transport(request, timeout,
+                                     new_xhr=lambda: FakeXHR(429, headers, "{}"))  # fmt: skip
+
+        ask = lookup._asker(transport, lookup.Pacer(clock=lambda: 0.0, sleep=waited.append),
+                            lookup.Credentials())  # fmt: skip
+        found = sources.crossref("10.5555/x", ask, lookup.Services().crossref, None)
+        assert found == {"status": "unresolvable",
+                         "why": "throttled (HTTP 429): asked too often, or past the allowance"}
+        assert len(sent) == asked and waited[:1] == waits
 
 
 def test_a_page_sends_nothing_but_https() -> None:

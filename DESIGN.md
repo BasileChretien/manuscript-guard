@@ -18991,8 +18991,8 @@ Added by the adversarial review, verified and **not** fixed:
   when its YAML holds a blank line. An attempt that opens in one source file
   and stops in the next - each file is tagged on its own and the build joins them - would
   read the second file's paragraphs into a table whose bookmarks `import` ignores; the build
-  refuses its opening line, as it does any line of dashes with a line under it
-  (`rule-opens-a-block`).
+  refuses its opening line, as it does a line of dashes with a line above or under it,
+  outside a quotation, code, a comment or the front matter (`rule-opens-a-block`).
   Pinned by `tests/test_roundtrip.py::test_no_marker_inside_a_table_or_yaml_across_blank_lines`,
   `tests/test_roundtrip.py::test_yaml_opened_mid_block_is_not_followed_and_its_marker_fails_the_build`
   and `tests/test_roundtrip.py::test_yaml_opened_in_one_file_and_stopped_in_the_next_is_tagged_apart_and_refused`.
@@ -23139,7 +23139,8 @@ Open, recorded as each change landed:
     than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
     a caption, a list item, a quotation, an entry of the reference list.
     Pinned by `tests/test_corruption.py::test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs`,
-    `tests/test_corruption.py::test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun`
+    `tests/test_corruption.py::test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun`,
+    `tests/test_corruption.py::test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_inputs`
     and `tests/test_corruption.py::test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_import`.
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not

@@ -937,6 +937,7 @@ def test_a_citation_inserted_where_nothing_is_compared_is_not_named(
     returned = edit_docx(
         project / "build" / "manuscript.docx", tmp_path / "back.docx", {where: where + field}
     )
+    assert where + field in _docx_part(returned, "word/document.xml"), "the field was not inserted"
     code = main(["import", str(returned), str(project), "--apply"])
     out = capsys.readouterr().out
     assert "was cited in Word" not in out and "fictionalClassSignal2019" not in out, out
@@ -3821,7 +3822,8 @@ def test_yaml_opened_mid_block_is_not_followed_and_its_marker_fails_the_build(
 
     text = f"Intro.\n\n{layout}\n\nAfter.\n"
     tagged = tag(text, "main.md")
-    inside = tagged[tagged.index("---") : tagged.index("...")]
+    opener = tagged.rindex("---\n", 0, tagged.index("title: x"))
+    inside = tagged[opener : tagged.index("...", opener)]
     assert "[]{#mg-p-" in inside, tagged
     if PANDOC:
         import subprocess
@@ -8072,12 +8074,14 @@ def test_a_number_corrected_in_a_table_is_only_counted_and_a_heading_reworded_is
     cell = rewrite(
         document, tmp_path / "cell.docx", lambda x: x.replace(">426</w:t>", ">427</w:t>", 1)
     )
+    assert ">427</w:t>" in _docx_part(cell, "word/document.xml"), "the cell was not edited"
     capsys.readouterr()
     assert main(["import", str(cell), str(project), "--apply"]) == 0
     out = capsys.readouterr().out
     assert "nothing came back" in out and "427" not in out, out
     assert "None outside a table changed; an edit inside a table is not reported at all" in out
     heading = edit_docx(document, tmp_path / "heading.docx", {">Discussion<": ">Discussion of it<"})
+    assert ">Discussion of it<" in _docx_part(heading, "word/document.xml")
     assert main(["import", str(heading), str(project), "--apply"]) == 1
     out = capsys.readouterr().out
     assert "    - Discussion\n    + Discussion of it\n" in out, out
@@ -12578,6 +12582,7 @@ def test_curly_quotes_turned_straight_in_word_come_back_as_nothing(
     returned = edit_docx(
         built(project), tmp_path / "back.docx", {"\u201ca signal\u201d": "&quot;a signal&quot;"}
     )
+    assert "&quot;a signal&quot;" in _docx_part(returned, "word/document.xml")
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
     capsys.readouterr()

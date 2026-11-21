@@ -25376,8 +25376,21 @@ def test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it(
                  if "mg-p-" in p and _shown(p) == "None."]
         return xml.replace(nones[edited], nones[edited].replace("None.", "None at all."), 1)
 
-    after, before, _out = _forced_import(project, tmp_path, blocks, now, change)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
     assert after == before, "the edit landed in a copy"
+    blocks_said = [" ".join(block.split()) for block in out.split("\n\n")]
+    if edited == 0:
+        # The first is refused by name: the block beside it is not the one sent.
+        [refused] = [b for b in blocks_said if b.startswith("NOT merged into")]
+        assert "- None. + None at all." in refused, out
+        assert "a heading or other block beside it is not the one the document was sent" in refused
+    else:
+        # The second is read as "None." joined with Bravo, whose identifier is not compared,
+        # and left as it was.
+        [joined] = [b for b in blocks_said if "came back joined into one" in b]
+        assert joined.startswith("2 paragraphs came back joined into one"), out
+        assert "None. (mg-p-" in joined and "not compared)" in joined, out
+        assert "Not applied" in joined, out
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
@@ -29508,8 +29521,8 @@ def test_every_move_in_a_section_where_one_passed_a_paragraph_not_compared_is_wi
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A paragraph moved in Word past one left out of
     the comparison may not be reported as moved"): with Bravo moved above Papa, which is not
-    compared, the other move in its section, Delta below Echo, is named as not applied with
-    it."""
+    compared, the other move in its section, Delta and Echo swapped, which is read as Echo
+    moved up, is named as not applied with it: Bravo and Echo are withheld."""
     delta = "Delta paragraph closes the section after Bravo."
     echo = "Echo paragraph comes last of all here."
 
@@ -29598,62 +29611,126 @@ def test_a_join_retyped_from_a_paragraph_not_compared_reads_as_a_deletion(
     assert "were not compared, because their identifier no longer names" in out, out
 
 
+#: The main text as built, for the run of blocks around Papa, and as the `.md` has it since.
+_RUN_BUILT = ("# Intro", _ALPHA, "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO)
+_RUN_NOW = {
+    "far-heading-changed": ("# Intro", _ALPHA, "## Approach", "### Design", _PAPA, _ROMEO, _BRAVO),
+    # A paragraph put between the headings splits the run; Alpha written straight under
+    # `# Intro` keeps every identifier where it was.
+    "split": ("# Intro\n" + _ALPHA, "## Methods", "A paragraph put between the headings.",
+              "### Design", _PAPA, _ROMEO, _BRAVO),
+    # Alpha removed joins the run to the one above it; a heading in its place keeps every
+    # identifier where it was.
+    "join": ("# Intro", "## Extra", "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO),
+    # The same two without the identifiers kept: Papa's has moved, and it is not compared.
+    "split-shifting": ("# Intro", _ALPHA, "## Methods", "A paragraph put between the headings.",
+                       "### Design", _PAPA, _ROMEO, _BRAVO),
+    "join-shifting": ("# Intro", "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO),
+    "unchanged": _RUN_BUILT,
+}  # fmt: skip
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
-@pytest.mark.parametrize("changed", [True, False], ids=["far-heading-changed", "unchanged"])
+@pytest.mark.parametrize("now", sorted(_RUN_NOW))
 def test_an_edit_beside_a_run_of_blocks_changed_at_its_far_end_is_refused_under_force(
-    project: Path, tmp_path: Path, changed: bool
+    project: Path, tmp_path: Path, now: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
     forced import", the run of blocks without an identifier around the paragraph): with
-    `## Methods` renamed in the `.md` since the build and `### Design`, beside Papa, as it
-    was, Papa's clean edit is refused; with the run unchanged it merges."""
-    blocks = ("# Intro", _ALPHA, "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO)
-    now = tuple(b.replace("Methods", "Approach") for b in blocks) if changed else blocks
+    `### Design`, beside Papa, as it was, Papa's clean edit is refused where the run changed
+    at its far end since the build: `## Methods` renamed, a paragraph put between the two
+    headings, which splits the run, or Alpha removed, which joins it to the one above. With
+    the run unchanged it merges."""
     after, before, out = _forced_import(
-        project, tmp_path, blocks, now, lambda xml: xml.replace("missing dates", "absent dates", 1)
-    )
-    if changed:
-        assert after == before, "an edit beside a changed run was merged"
-        assert "a heading or other block beside it is not the one the document was sent with" in out
-    else:
+        project, tmp_path, _RUN_BUILT, _RUN_NOW[now],
+        lambda xml: xml.replace("missing dates", "absent dates", 1),
+    )  # fmt: skip
+    if now == "unchanged":
         assert after == before.replace("missing dates", "absent dates", 1)
+        return
+    assert after == before, "an edit beside a changed run was merged"
+    if now.endswith("-shifting"):
+        assert "were not compared, because their identifier no longer names" in out, out
+        return
+    refusal = next(b for b in out.split("\n\n") if "NOT merged into" in b and "absent dates" in b)
+    said = " ".join(refusal.split())
+    assert "a heading or other block beside it is not the one the document was sent with" in said
+
+
+#: What `import` says of Papa's edit refused beside a block that is not the one sent.
+_NOT_THE_ONE = "a heading or other block beside it is not the one the document was sent with"
+
+
+def _papa_refused(out: str) -> str:
+    """The refusal `import` printed for Papa's edit, its lines joined."""
+    block = next(b for b in out.split("\n\n") if "NOT merged into" in b and "absent dates" in b)
+    return " ".join(block.split())
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
-    ("beside", "shown", "rerun"),
+    ("beside", "shown", "rerun", "deleted"),
     [
-        ("## Methods", "Methods", True),
-        ("- An item of the list.", "An item of the list.", True),
-        ("> A quoted line.", "A quoted line.", True),
-        ("## Methods", "Methods", False),
-        ("- An item of the list.", "An item of the list.", False),
-        ("> A quoted line.", "A quoted line.", False),
+        ("## Methods", "Methods", True, True),
+        ("- An item of the list.", "An item of the list.", True, True),
+        ("> A quoted line.", "A quoted line.", True, True),
+        ("## Methods", "Methods", False, True),
+        ("- An item of the list.", "An item of the list.", False, True),
+        ("> A quoted line.", "A quoted line.", False, True),
+        ("## Methods", "Methods", True, False),
+        ("- An item of the list.", "An item of the list.", True, False),
+        ("> A quoted line.", "A quoted line.", True, False),
     ],
     ids=["heading", "list-item", "quotation", "heading-same-inputs", "list-item-same-inputs",
-         "quotation-same-inputs"],
+         "quotation-same-inputs", "heading-kept", "list-item-kept", "quotation-kept"],
 )  # fmt: skip
 def test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs(
-    project: Path, tmp_path: Path, beside: str, shown: str, rerun: bool
+    project: Path, tmp_path: Path, beside: str, shown: str, rerun: bool, deleted: bool
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
     forced import", a block deleted in Word in a document built from other inputs): with the
     analysis re-run since the build, Papa's clean edit beside a heading, a list item or a
-    quotation the co-author deleted is refused; from the same inputs it merges."""
+    quotation the co-author deleted is refused, and says why; from the same inputs, or with
+    the block kept, it merges."""
 
     def change(xml: str) -> str:
-        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
-        found = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == shown)
-        return xml.replace(found, "", 1).replace("missing dates", "absent dates", 1)
+        if deleted:
+            paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            found = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == shown)
+            xml = xml.replace(found, "", 1)
+        return xml.replace("missing dates", "absent dates", 1)
 
     blocks = ("# Intro", _ALPHA, beside, _PAPA, _ROMEO, _BRAVO)
+    after, before, out = _forced_import(
+        project, tmp_path, blocks, blocks, change, reports=4100 if rerun else None
+    )
+    if rerun and deleted:
+        assert after == before, "an edit beside a deleted block was merged"
+        assert _NOT_THE_ONE in _papa_refused(out), out
+    else:
+        assert after == before.replace("missing dates", "absent dates", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("rerun", [True, False], ids=["re-run", "same-inputs"])
+def test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_inputs(
+    project: Path, tmp_path: Path, rerun: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", a block deleted in Word in a document built from other inputs, other
+    than a table): the table under Papa deleted in Word, its values re-run since the build,
+    and Papa's clean edit still merges, as it does from the same inputs."""
+
+    def change(xml: str) -> str:
+        table = re.search(r"<w:tbl>.*?</w:tbl>", xml, re.DOTALL)
+        assert table, "the build has the table"
+        return xml.replace(table.group(0), "", 1).replace("missing dates", "absent dates", 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, "{{table.baseline}}", _ROMEO, _BRAVO)
     after, before, _out = _forced_import(
         project, tmp_path, blocks, blocks, change, reports=4100 if rerun else None
     )
-    if rerun:
-        assert after == before, "an edit beside a deleted block was merged"
-    else:
-        assert after == before.replace("missing dates", "absent dates", 1)
+    assert after == before.replace("missing dates", "absent dates", 1)
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
@@ -29673,6 +29750,7 @@ def test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_i
     )  # fmt: skip
     if "{{" in heading:
         assert after == before, "an edit beside a heading that prints otherwise was merged"
+        assert _NOT_THE_ONE in _papa_refused(_out), _out
     else:
         assert after == before.replace("missing dates", "absent dates", 1)
 
@@ -29711,6 +29789,7 @@ def test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_
     after, before, _out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
     if deleted:
         assert after == before, "an edit beside a deleted block was merged"
+        assert _NOT_THE_ONE in _papa_refused(_out), _out
     else:
         assert after == before.replace("missing dates", "absent dates", 1)
 

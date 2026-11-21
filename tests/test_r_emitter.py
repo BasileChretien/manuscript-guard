@@ -2352,13 +2352,13 @@ if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest",
 source("%(emit)s")
 half <- function(x) x / 2
 fifth <- function(x) x / 5
-h <- list(sixth = function(x) x / 6)
+h <- list(half = function(x) x / 6)
 K <- 2
 root <- sqrt(4)
 values <- c(1, 2)
 em <- mg_emitter("%(script)s")
 em$step("ci", {
-  se <- root / K + sum(sapply(values, half)) + h$sixth(1) + do.call("fifth", list(1))
+  se <- root / K + sum(sapply(values, half)) + h$half(1) + do.call("fifth", list(1))
 })
 run <- function() {
   inner <- function(x) x / 7
@@ -2374,33 +2374,48 @@ em$write()
 """
 
 
+#: The step of `STEP_READS_R` with nothing in it but the item's own example, `h$half(1)`.
+LIST_ONLY = (
+    '  se <- root / K + sum(sapply(values, half)) + h$half(1) + do.call("fifth", list(1))',
+    "  se <- h$half(1)",
+)
+
+
 @pytest.mark.parametrize(
-    ("was", "now", "changed"),
+    ("step", "was", "now", "changed"),
     [
-        ("K <- 2", "K <- 3", set()),
-        ("root <- sqrt(4)", "root <- sqrt(9)", set()),
-        ("function(x) x / 6", "function(x) x / 8", set()),
-        ("fifth <- function(x) x / 5", "fifth <- function(x) x / 8", set()),
-        ("half <- function(x) x / 2", "half <- function(x) x / 3", {"ci"}),
-        ("inner <- function(x) x / 7", "inner <- function(x) x / 9", {"inner"}),
+        (None, "K <- 2", "K <- 3", set()),
+        (None, "root <- sqrt(4)", "root <- sqrt(9)", set()),
+        (None, "function(x) x / 6", "function(x) x / 8", set()),
+        (LIST_ONLY, "function(x) x / 6", "function(x) x / 8", set()),
+        (LIST_ONLY, "half <- function(x) x / 2", "half <- function(x) x / 3", {"ci"}),
+        (None, "fifth <- function(x) x / 5", "fifth <- function(x) x / 8", set()),
+        (None, "half <- function(x) x / 2", "half <- function(x) x / 3", {"ci"}),
+        (None, "inner <- function(x) x / 7", "inner <- function(x) x / 9", {"inner"}),
     ],
     ids=["a constant", "a variable computed before the block", "a function kept in a list",
+         "a function kept in a list, alone in the step",
+         "the top-level function of the list's name, alone in the step",
          "a function named by a string", "a function handed on by its name",
          "a function defined inside the function the step runs in"],
 )  # fmt: skip
 def test_r_follows_a_step_s_functions_by_name_only(
-    tmp_path: Path, was: str, now: str, changed: set[str]
+    tmp_path: Path, step: tuple[str, str] | None, was: str, now: str, changed: set[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A step follows only the analysis's own
     functions, in its own script"): in R a constant, a variable computed before the block, a
-    function kept in a list (`h$sixth(1)`) and one named by a string (`do.call("fifth",
+    function kept in a list (`h$half(1)`) and one named by a string (`do.call("fifth",
     ...)`) can change with the step's digest as it was. A function handed on by its name,
     `sapply(values, half)`, and one defined inside the function the step runs in are
-    followed."""
-    assert was in STEP_READS_R
+    followed. A name stands in the step wherever it is written, so `h$half(1)` alone
+    follows the top-level `half`, and the list's own function is still not followed."""
+    script = STEP_READS_R if step is None else STEP_READS_R.replace(*step)
+    assert was in script and (step is None or step[1] in script)
     root = _parameter_project(tmp_path)
-    before = _steps_from_r(root, STEP_READS_R)
-    after = _steps_from_r(root, STEP_READS_R.replace(was, now, 1))
+    before = _steps_from_r(root, script)
+    if step is not None:
+        assert before["ci"]["follows"] == ["half"]
+    after = _steps_from_r(root, script.replace(was, now, 1))
     assert {name for name in before if after[name]["digest"] != before[name]["digest"]} == changed
 
 

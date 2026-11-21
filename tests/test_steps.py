@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import runpy
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 
@@ -223,8 +224,8 @@ em.write()
          "a function defined inside main()", "a function called by its name"],
 )  # fmt: skip
 def test_a_step_follows_its_script_s_functions_by_name(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str, was: str, now: str,
-    follows: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest,
+    relative: str, was: str, now: str, follows: bool,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A step follows only the analysis's own
     functions, in its own script"): a change to a constant, to a variable computed before
@@ -237,12 +238,14 @@ def test_a_step_follows_its_script_s_functions_by_name(
     (tmp_path / "analysis").mkdir()
     (tmp_path / "analysis" / "helper.py").write_text("def third(x):\n    return x / 3\n", "utf-8")
     monkeypatch.syspath_prepend(str(tmp_path / "analysis"))
-    monkeypatch.delitem(__import__("sys").modules, "helper", raising=False)
+    # Each run imports this folder's helper afresh, and none is left behind for another test.
+    monkeypatch.delitem(sys.modules, "helper", raising=False)
+    request.addfinalizer(lambda: sys.modules.pop("helper", None))
     before = run(make(tmp_path, UNFOLLOWED, methods), UNFOLLOWED)
     assert before["ci"]["follows"] == ["quarter"]
     reconcile(load_project(tmp_path)[0])
     edit(tmp_path, relative, was, now)
-    monkeypatch.delitem(__import__("sys").modules, "helper", raising=False)
+    sys.modules.pop("helper", None)
     after = run(tmp_path, (tmp_path / "analysis" / "a.py").read_text(encoding="utf-8"))
     changed = {name for name in before if after[name]["digest"] != before[name]["digest"]}
     assert changed == ({"ci"} if follows else set())
@@ -354,32 +357,32 @@ def test_a_claim_ends_at_a_blank_line_and_a_heading_and_not_at_a_comment(tmp_pat
 
 
 @needs_pandoc
-def test_a_hash_line_is_a_heading_to_g9_and_text_to_pandoc(
-    tmp_path: Path,
-) -> None:
+def test_a_hash_line_is_a_heading_to_g9_and_text_to_pandoc(project: Path, capsys) -> None:
     """A known gap (DESIGN.md, Known gaps, "G9 takes any line that opens with `#` and a
     space for a heading"): "# of reports was counted" with no blank line above it is text of
     the paragraph to pandoc, and a heading to G9, which claims only the line after it.
-    `check` passes it; the build asks pandoc, and refuses."""
-    from manuscript_guard.build.reading import misreading
-
-    paragraph = "The first line\n# of reports was counted\nand the second. {{method.ci}}\n"
+    `check` passes it, as it passes the example without it; the build asks pandoc, and
+    refuses."""
+    paragraph = "The first line\n# of reports was counted\nand the second. {{method.signal}}\n"
     found, _bare = claims_in(paragraph)
     assert [(steps, paragraph[start:end].strip()) for steps, start, end, _at in found] == [
-        (("ci",), "and the second.")
+        (("signal",), "and the second.")
     ]
     assert _blocks_read(substitute(paragraph, {})) == ["Para"]
-    methods = METHODS.replace("Its standard error is half the usual one. {{method.ci}}",
-                              paragraph.rstrip("\n"))  # fmt: skip
-    root = make(tmp_path, methods=methods)
-    report = judged(root)
-    assert not report.failures, report.render(tmp_path)
-    assert [claim.text for claim in anchored(load_project(root)[0])[0]][-1] == "and the second."
-    header = "---\ntitle: A study\n---\n"
-    body = substitute(methods, {})
-    differs = misreading(header + body, header, [("main.md", body)], PANDOC, Path())
-    assert differs is not None and differs.startswith("as text")
-    assert "the level-1 heading 'of reports was counted'" in differs, differs
+    assert main(["check", str(project)]) == 0
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    # At the end of the Methods, so that no number is read under the heading G9 sees.
+    edit(project, "manuscript/main.md", "\n# Results\n", f"\n{paragraph}\n# Results\n")
+    reconcile(load_project(project)[0])
+    claims = [claim.text for claim in anchored(load_project(project)[0])[0]]
+    assert "and the second." in claims and not [c for c in claims if "first line" in c]
+    capsys.readouterr()
+    assert main(["check", str(project)]) == 0, capsys.readouterr().out
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    said = capsys.readouterr().err
+    assert "pandoc reads as text" in said, said
+    assert "the level-1 heading 'of reports was counted'" in said, said
 
 
 def test_an_anchor_that_opens_its_paragraph_claims_nothing_and_fails(tmp_path: Path) -> None:

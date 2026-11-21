@@ -224,7 +224,10 @@ def test_a_number_split_by_a_hyphen_a_late_float_and_a_rare_running_head_are_rea
         # Two lines' room left after line 4, so that a head set mid-page there overlaps none.
         pieces = [Piece(LEFT, TOP - LEADING * (k if k < 5 else k + 2), f"Line {k} of page "
                         f"{number}.") for k in range(10)]  # fmt: skip
-        return pieces + ([] if at is None else [Piece(LEFT, at, head, size=7.0)])
+        # Drawn where it stands, from the top down, so that a build reading the drawing
+        # order (Xpdf 4.00) and one reading the layout (poppler) set it at the same place.
+        set_out = pieces + ([] if at is None else [Piece(LEFT, at, head, size=7.0)])
+        return sorted(set_out, key=lambda piece: -piece.y)
 
     for pages, taken in (([page(1, 810.0), page(2, None), page(3, None)], False),
                          ([page(n, 810.0) for n in (1, 2, 3)], True),
@@ -812,11 +815,15 @@ def test_a_heading_after_a_structured_abstract_counts_toward_its_limit(
         encoding="utf-8")  # fmt: skip
     extra = [title, " ".join(["word"] * 8) + ".", " ".join(["word"] * 8) + "."]
     for opening, level, words in (([PAPER[1], "Background", "Drugs are used.", "Results"], 2,
-                                   ("abstract: 42 words", "main text: 44 words")),
-                                  ([PAPER[1]], 1, ("abstract: 20 words", "main text: 61 words")),
+                                   ("abstract: 42 words", "main text: 41 words")),
+                                  ([PAPER[1]], 1, ("abstract: 20 words", "main text: 58 words")),
                                   ):  # fmt: skip
         lines = [PAPER[0], *opening, PAPER[2], PAPER[3], *extra, *PAPER[4:]]
-        path = write(tmp_path / "paper.pdf", lines, per_column=70)
+        # One page, with no running head or foot: a one-page PDF does not have them taken
+        # out, and Xpdf 4.00 reads them first, poppler its foot last, so the words before
+        # the Abstract would differ by build.
+        path = write(tmp_path / "paper.pdf", lines, per_column=70, head=None, foot=None,
+                     first_page=None)  # fmt: skip
         assert (title, level) in [(t, n) for _line, t, n in reading.read_pdf(path).placed]
         _code, report, _err = audited(capsys, str(path), "--journal", str(journal))
         assert sorted(f["message"] for f in found(report, "over-journal-limit")) == [

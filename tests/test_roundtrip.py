@@ -4996,6 +4996,44 @@ def test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain
     assert edited.flattened == ()
 
 
+#: A citation style whose citations are notes, which pandoc writes as footnotes.
+NOTE_CSL = MINIMAL_CSL.replace('class="in-text"', 'class="note"').replace(
+    "Minimal numeric", "Minimal note"
+)
+
+
+@needs_pandoc
+def test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): in a note style pandoc drops the
+    space before the note, so the source's "word " is printed "word"; a word edited beside it
+    in Word refuses the paragraph before any stretch is written, as one whose numbers,
+    citations and markup could not be told apart from its prose."""
+    from manuscript_guard.cli import main
+
+    style = tmp_path / "note.csl"
+    style.write_text(NOTE_CSL, encoding="utf-8", newline="\n")
+    with_paragraphs(project, "A *big* word [@fictionalClassSignal2019] and more of it here.")
+    assert main(["build", str(project), "--offline", "--csl", str(style)]) == 0
+    built = project / "build" / "manuscript.docx"
+    xml = _docx_part(built, "word/document.xml")
+    assert re.search(r">word</w:t></w:r><w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"", xml)
+    returned = edit_docx(built, tmp_path / "back.docx", {">word</w:t>": ">term</w:t>"})
+    assert ">term</w:t>" in _docx_part(returned, "word/document.xml")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--csl", str(style)]) == 1
+    out = capsys.readouterr().out
+    refused = next(b for b in out.split("\n\n") if "+ A big term and more of it here." in b)
+    said = " ".join(refused.split())
+    assert said.startswith("NOT merged into"), out
+    assert "citations and markup could not be told apart from its prose" in said, out
+    assert source.read_text(encoding="utf-8") == before
+
+
 def test_of_two_equal_words_the_comparison_chooses_which_was_typed() -> None:
     """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
     meets", which of two equal words was edited): "very" typed before a bold "very" is
@@ -5089,6 +5127,42 @@ def test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight(
         "’Tis 3.84 and very high’ in all.",
     )  # fmt: skip
     assert tis.rebuilt == "'Tis {{results.x}} and very high’ in all."
+
+
+#: Where a straight `'` opens a quotation around a binding, each placement the quote rule was
+#: tried in against pandoc; `{X}` stands for the binding.
+_QUOTE_PLACEMENTS = [
+    "They said 'it was {X}' in all.",
+    "They said ('it was {X}') in all.",
+    "They said -'it was {X}' in all.",
+    "They said—'it was {X}' in all.",
+    "They said:'it was {X}' in all.",
+    "They said ['it was {X}'] in all.",
+    "They said '{X} was it' in all.",
+    "They said '*it* was {X}' in all.",
+    "They said '90s {X}' in all.",
+    "They said 'it was {X}'s' in all.",
+    "It was 'a' {X} and 'b' in all.",
+    "They said 'tis {X}' in all.",
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("placement", _QUOTE_PLACEMENTS)
+def test_a_quote_the_rule_opens_prints_as_word_s_text_read(placement: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where a straight quote opens is read by a rule,
+    not by pandoc"): in each placement tried, the stretch after the binding edited in Word
+    and the paragraph rebuilt, pandoc prints it exactly as Word's text read, every quote the
+    right way round."""
+    printed = _pandoc_prints(placement.replace("{X}", "QQQ"))
+    assert "QQQ" in printed, printed
+    returned = printed.replace("QQQ", "3.84").replace("in all", "in most")
+    aligned = merged_alignment(
+        placement.replace("{X}", "{{results.x}}"), printed.replace("QQQ", "⟦3.84⟧"),
+        returned,
+    )  # fmt: skip
+    assert aligned.rebuilt is not None, placement
+    assert _pandoc_prints(aligned.rebuilt.replace("{{results.x}}", "3.84")) == returned
 
 
 def test_a_straight_quote_from_word_is_written_as_typed_and_may_pair_across_a_token() -> None:

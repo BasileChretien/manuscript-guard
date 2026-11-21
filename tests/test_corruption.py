@@ -29616,7 +29616,8 @@ _RUN_BUILT = ("# Intro", _ALPHA, "## Methods", "### Design", _PAPA, _ROMEO, _BRA
 _RUN_NOW = {
     "far-heading-changed": ("# Intro", _ALPHA, "## Approach", "### Design", _PAPA, _ROMEO, _BRAVO),
     # A paragraph put between the headings splits the run; Alpha written straight under
-    # `# Intro` keeps every identifier where it was.
+    # `# Intro` keeps Papa's identifier and those after it where they were (Alpha's own
+    # goes from 2 to 0).
     "split": ("# Intro\n" + _ALPHA, "## Methods", "A paragraph put between the headings.",
               "### Design", _PAPA, _ROMEO, _BRAVO),
     # Alpha removed joins the run to the one above it; a heading in its place keeps every
@@ -29718,15 +29719,16 @@ def test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
     forced import", a block deleted in Word in a document built from other inputs, other
-    than a table): the table under Papa deleted in Word, its values re-run since the build,
-    and Papa's clean edit still merges, as it does from the same inputs."""
+    than a table): a table with no caption, so that it stands directly under Papa in Word,
+    deleted there with the analysis re-run since the build, and Papa's clean edit still
+    merges, as it does from the same inputs."""
 
     def change(xml: str) -> str:
         table = re.search(r"<w:tbl>.*?</w:tbl>", xml, re.DOTALL)
         assert table, "the build has the table"
         return xml.replace(table.group(0), "", 1).replace("missing dates", "absent dates", 1)
 
-    blocks = ("# Intro", _ALPHA, _PAPA, "{{table.baseline}}", _ROMEO, _BRAVO)
+    blocks = ("# Intro", _ALPHA, _PAPA, _TABLE, _ROMEO, _BRAVO)
     after, before, _out = _forced_import(
         project, tmp_path, blocks, blocks, change, reports=4100 if rerun else None
     )

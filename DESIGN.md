@@ -22903,12 +22903,15 @@ Open, recorded as each change landed:
     `>` of the source after it, can turn what pandoc read as text into a tag. A paragraph
     whose prose has a bare brace is not written word by word at all, so the refusals of a
     brace pair split across a value (#90) stand as they were. So too a stretch while a
-    straight quote opened before it is still open, one whose source does not line up with
-    what the build printed of it, and any paragraph whose merge does not read back as
-    Word's text.
+    straight quote opened before it is still open, and any paragraph whose merge does not
+    read back as Word's text. A stretch whose source does not line up with what the build
+    printed of it would be too, but the one such source found, a citation in a note style,
+    for which pandoc drops the space before the note, is refused before any stretch is
+    written: its "numbers, citations and markup could not be told apart from its prose".
     Pinned by `tests/test_roundtrip.py::test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain`,
     `tests/test_roundtrip.py::test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain`,
     `tests/test_roundtrip.py::test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain`,
+    `tests/test_roundtrip.py::test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written`,
     `tests/test_roundtrip.py::test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word`
     and `tests/test_roundtrip.py::test_a_brace_pair_split_across_a_value_is_refused`.
   - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
@@ -23025,10 +23028,14 @@ Open, recorded as each change landed:
 - **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
   punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
   stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
-  closes it is written straight. Where that rule and pandoc disagree, one quote prints
-  the wrong way round, and no word changes. A space typed just before that closing quote is
-  lost: pandoc trims it from inside the quotation, so "3.84 ’" prints as "3.84’".
-  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight`.
+  closes it is written straight. The rule and pandoc agree in every placement tried: after
+  a space, a bracket, a hyphen, a dash or a colon, before or after a binding, around
+  emphasis, beside a decade's or a possessive's apostrophe. A source where they disagreed
+  would print one quote the wrong way round, with no word changed. A space typed just
+  before that closing quote is lost: pandoc trims it from inside the quotation, so
+  "3.84 ’" prints as "3.84’".
+  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight`
+  and `tests/test_roundtrip.py::test_a_quote_the_rule_opens_prints_as_word_s_text_read`.
 - **A straight quote from Word is typeset like one in the source.** Word's text is written
   back with its quotes as they are, and pandoc curls a straight one. So a co-author who
   types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
@@ -23118,6 +23125,13 @@ Open, recorded as each change landed:
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
   Pinned by `tests/test_corruption.py::test_a_join_retyped_from_a_paragraph_not_compared_reads_as_a_deletion`.
+- **An edit to a repeated paragraph whose copy was added above it since the build can be
+  reported as a join.** "None." under "# Funding" in two places, a copy of both added
+  above them in the `.md`, and the second edited in Word: the import says "2 paragraphs
+  came back joined into one", the edited "None." and the paragraph after it, not
+  compared, and prints the co-author's words nowhere. Nothing is written, and the edit is
+  carried over by hand only if the author sees that it was one.
+  Pinned by `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`.
 - **A document built before the record held the blocks around each paragraph is read as
   it was.** Its record hashes only each paragraph's text and the block before it. So a
   heading beside a paragraph removed from the `.md` since the build goes unseen, and a
@@ -23133,7 +23147,9 @@ Open, recorded as each change landed:
   - the run of blocks without an identifier around the paragraph, up to the paragraphs on
     either side, changed in the `.md` since the build. That includes a paragraph added or
     removed at the far end of the run, which joins it to the next run or splits it, while
-    the block beside the paragraph stays as it was;
+    the block beside the paragraph stays as it was. A plain paragraph added or removed
+    before the paragraph also shifts its identifier, so its edit is refused as not
+    compared;
     Pinned by `tests/test_corruption.py::test_an_edit_beside_a_run_of_blocks_changed_at_its_far_end_is_refused_under_force`.
   - in a document built from other inputs, a block without an identifier beside it, other
     than a table, was deleted by the co-author in Word or prints otherwise now: a heading,

@@ -26,7 +26,10 @@ Two findings are not about consistency:
   than on any unit; where one prints "37°C", the warning is that journal's to overrule.
 * `notation-space-missing`: a number typed against the word after it, "0.41points",
   "10hours", "2ndyear", or a word typed against a signed number, "to+0.77". No house style
-  writes these: a space was left out (the author's Abstract, 2026-11-10, eight times).
+  writes these: a space was left out (the author's Abstract, 2026-11-10, eight times). Not
+  inside a piece raised or lowered as pandoc writes one, "u~0school~", nor inside a name
+  joined by underscores, `RATE\\_12mth`; and in text the audit read from a PDF, no word
+  against a signed number, since pdftotext sets an exponent or an index on the line.
 
 **A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
 bindings, `{{results.ror.point}}`, so the notation is read with each binding that stands in
@@ -46,8 +49,9 @@ and nothing where two forms are used as often.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import WARN, Finding, Report
@@ -195,6 +199,14 @@ _WORD_THEN_NUMBER = re.compile(
     r"\b[a-z]{2,}[+\N{MINUS SIGN}](?:" + _TYPED + "|" + VALUE + r"+)(?!\w|\.\d)"
 )
 _HEXADECIMAL = re.compile(r"0x[0-9a-f]+")
+#: A piece raised or lowered as pandoc writes one, `~…~` or `^…^`: no blank in it but one
+#: escaped, neither mark escaped, and not a strikeout's two tildes. A Word table's note
+#: writes a symbol's index in one, "u~0school~", which is no prose; and the LaTeX reader
+#: writes a subscript count so, `CO~2~` (`text/latex/words.py`).
+_RAISED_OR_LOWERED = re.compile(
+    r"(?<![~\\])~(?!~)(?:\\.|[^~\s\\])+~(?!~)"
+    r"|(?<![\^\\])\^(?!\^)(?:\\.|[^\^\s\\])+\^(?!\^)"
+)
 # What may stand between such a word and the number: the rest of its sentence. A full stop
 # ends it only before a capital, so that "Fig. 2f vs. 2g" is one, and a line may be
 # wrapped in it.
@@ -409,8 +421,10 @@ def _letters_before(found: re.Match[str]) -> int:
     return found.start() + len(typed) - len(typed.lstrip("abcdefghijklmnopqrstuvwxyz"))
 
 
-def _read(passages: Iterable[Passage]) -> _Read:
-    """Each place the notation stands, over the whole manuscript in the order it is read."""
+def _read(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> _Read:
+    """Each place the notation stands, over the whole manuscript in the order it is read;
+    of a passage whose path is in `pdf`, its text read from a PDF, no word typed against a
+    signed number."""
     read = _Read()
     symbols, signs, joins, percents = read.symbols, read.signs, read.joins, read.percents
     closed, run_on = read.closed, read.run_on
@@ -483,27 +497,48 @@ def _read(passages: Iterable[Passage]) -> _Read:
                        ((between, between),))  # fmt: skip
             closed.append((use, unit))
 
+        not_prose: list[tuple[int, int]] | None = None
         for found in _NUMBER_THEN_WORD.finditer(text):
             word = found["word"]
             if word in _LOWER_UNITS:
                 continue  # "30min": a unit, which `notation-unit` reports
             if _HEXADECIMAL.fullmatch(found.group(0)):
                 continue  # "0xff", a number written in hexadecimal
+            if not_prose is None:
+                not_prose = _not_prose(text)
+            if any(start <= found.start() and found.end() <= end for start, end in not_prose):
+                continue  # "u~0school~", "RATE\_12mth": an index, a name from code
             between = found.start("word")
             run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
                                ((between, between),)))  # fmt: skip
-        for found in _WORD_THEN_NUMBER.finditer(text):
+        # pdftotext sets an exponent or an index on the line, a unit's negative power right
+        # after it and "tn+1", which cannot be told from a word typed against a signed
+        # number (Basile, 2026-11-21, "Skip in PDF text").
+        signed = () if passage.path in pdf else _WORD_THEN_NUMBER.finditer(text)
+        for found in signed:
             between = _letters_before(found)
             run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
                                ((between, between),)))  # fmt: skip
     return read
 
 
-def judge_notation(passages: Iterable[Passage]) -> Report:
+def _not_prose(text: str) -> list[tuple[int, int]]:
+    """Where no space can be left out in `text`: a piece raised or lowered as pandoc writes
+    one, and a word joined by underscores, a name from code as `code-name-in-prose` reads
+    one (`code_names.joined_names`)."""
+    from manuscript_guard.gates.code_names import joined_names
+
+    return [found.span() for found in _RAISED_OR_LOWERED.finditer(text)] + list(
+        joined_names(text)
+    )
+
+
+def judge_notation(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> Report:
     """The findings of the notation reading, over the whole manuscript in the order it is
     read. It takes no setting: the manuscript is held to itself, and to the SI Brochure
-    for the space before a unit."""
-    read = _read(passages)
+    for the space before a unit. `pdf` holds the paths of the passages whose text the
+    audit read from a PDF."""
+    read = _read(passages, pdf)
     symbols, signs, joins, percents = read.symbols, read.signs, read.joins, read.percents
     closed, run_on = read.closed, read.run_on
     findings: list[Finding] = []
@@ -637,15 +672,15 @@ _PERCENT_SPACE = {"spaced": " ", "closed": ""}
 _DASHES = frozenset({"an en dash", "an em dash", "a hyphen"})
 
 
-def notation_edits(passages: Iterable[Passage]) -> list[Edit]:
+def notation_edits(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> list[Edit]:
     """What the reading would change, at every place: each sign after P or n spaced as the
     manuscript spaces most of them, each interval joined and each "%" set as most are, and
     a space between a number and the unit or the word run into it. Nothing of the P's
     symbol, which is the journal's to say, nor where two forms are used as often; and no
     dash put before or after a negative bound, whose sign it would read as; and nothing of
     an interval whose hyphens may hold its high bound's sign, "-1.2--0.3" (round 1 of
-    #636)."""
-    read = _read(passages)
+    #636). `pdf` is as `judge_notation` takes it."""
+    read = _read(passages, pdf)
     edits: list[Edit] = []
     kept = _kept(read.signs, ("spaced", "closed"))
     if kept is not None:

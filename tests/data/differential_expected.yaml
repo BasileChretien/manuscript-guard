@@ -153,11 +153,6 @@ expected:
       a number after a link on its line, "[the code](https://...). Data (n = 1213)", is read
       and judged, where the link's target hid it up to the next `)`; the inputs now hold a
       link of each kind of target
-  - reading: notation
-    why: >-
-      the hint of a form written two ways ends "The place given is the first use of the
-      other form", where it said "This is the first place the other form stands", which the
-      author did not understand (the author's audit, 2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -379,3 +374,13 @@ expected:
       two sections and inside one; a citation beyond the reference list after one is said at
       its own line, where the base said it as many lines too early as the comment is high
       (the bug found building #691)
+  - reading: notation
+    why: >-
+      `notation-space-missing` reads no number inside a piece raised or lowered as pandoc
+      writes one, "u~0school~", nor inside a word joined by underscores, "12mth\_rate", a name
+      from code as `code-name-in-prose` reads one; the inputs now hold both, which the base
+      reports as spaces left out; the entry it replaces, for the hint of a form written two
+      ways (2026-11-10), is spent
+  - reading: notation edits
+    why: >-
+      the same: no space is put inside "u~0school~" or "12mth\_rate", where the base put one

@@ -10,6 +10,7 @@ runs into its unit is reported wherever it stands.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -365,6 +366,97 @@ def test_what_is_no_space_left_out_is_not_reported(written: str) -> None:
     are none."""
     report = read(f"# Methods\n\nIt was {written} throughout.\n")
     assert "notation-space-missing" not in codes(report), written
+
+
+#: A word typed against a signed number as pdftotext prints an exponent or an index it has
+#: flattened onto the line, and a number typed against its word, which it does not make.
+FLATTENED = ("The gas reached 40 cm\N{MINUS SIGN}3 and 2 beam\N{MINUS SIGN}1 here, from tn+1 "
+             "and ti\N{MINUS SIGN}1 on.")  # fmt: skip
+
+
+def test_a_word_against_a_signed_number_is_not_read_in_a_pdf_s_text() -> None:
+    """pdftotext sets a superscript or a subscript on the line, so "cm−3" and "tn+1" are an
+    exponent and an index there, which cannot be told from a word typed against a signed
+    number (Basile, 2026-11-21, "Skip in PDF text"). The same words in Markdown are read; a
+    number typed against its word is read in a PDF's text too."""
+    text = f"# Results\n\n{FLATTENED} It rose by 12patients later.\n"
+    file = _file(0, Path("main.md"), text, [], False)
+    passages = [Passage(file.path, file.text, file.printed, file.line_of)]
+    from_pdf = judge_notation(passages, pdf=frozenset({file.path}))
+    (finding,) = from_pdf.findings
+    assert finding.message == "a number and a word run together once: '12patients'"
+    assert from_pdf.counts["notation_spaces_missing"] == 1
+    typed = judge_notation(passages)
+    assert typed.counts["notation_spaces_missing"] == 5
+    other = judge_notation(passages, pdf=frozenset({Path("other.md")}))
+    assert other.counts["notation_spaces_missing"] == 5, "only the PDF's own text"
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["u~0school~", "k^12rep^", "H~2abc\\ low~"],
+    ids=["a subscript", "a superscript", "an escaped space"],
+)  # fmt: skip
+def test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out(written: str) -> None:
+    """pandoc writes a Word subscript or superscript as `~…~` or `^…^`, a symbol's name run
+    on in it: no prose, so no space is left out inside it. A number typed against its word
+    outside one is."""
+    assert read(f"# Results\n\nThe slope {written} was 1.25.\n").counts[
+        "notation_spaces_missing"] == 0, written  # fmt: skip
+    report = read(f"# Results\n\nThe slope {written} was 1.25 in 12patients.\n")
+    assert report.counts["notation_spaces_missing"] == 1, written
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["~12patients ~", "\\~12patients\\~", "~~12patients~~", "~a~12patients~b~",
+     "^12patients", "12patients~2~"],
+    ids=["a space inside", "escaped tildes", "a strikeout", "between two", "unclosed",
+         "before one"],
+)  # fmt: skip
+def test_a_number_against_its_word_beside_such_marks_is_a_space_left_out(written: str) -> None:
+    """Only a piece pandoc reads as raised or lowered is passed over: one with a space in it,
+    a tilde escaped, a strikeout's two tildes, and a mark left open are prose."""
+    report = read(f"# Results\n\nIt was {written} later.\n")
+    assert report.counts["notation_spaces_missing"] == 1, written
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["12mth\\_rate", "12mth\\_\\_rate", "RATE\\_12mth", "GILT\\_10yrs\\_yld"],
+    ids=["before one", "before two", "after one", "between two"],
+)  # fmt: skip
+def test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out(
+    written: str,
+) -> None:
+    """A word joined by underscores is a name from code, as `code-name-in-prose` reads one
+    (`code_names.joined_names`), and a number in it is no space left out. A number typed
+    against its word beside it is."""
+    assert read(f"# Results\n\nThe series {written} held.\n").counts[
+        "notation_spaces_missing"] == 0, written  # fmt: skip
+    report = read(f"# Results\n\nThe series {written} held for 12patients.\n")
+    assert report.counts["notation_spaces_missing"] == 1, written
+    # A number joined by a hyphen stands outside the name, as `code-name-in-prose` reads it
+    # (DESIGN.md, Known gaps).
+    hyphen = read("# Results\n\nThe series RATE\\_6-12mth held.\n")
+    assert hyphen.counts["notation_spaces_missing"] == 1
+
+
+def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> None:
+    """In LaTeX, `\\_` in a tabular's cell, as a data table names its series: no space is
+    left out in `RATE\\_12mth`. The sentence after the table is read."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+        "\\begin{tabular}{lll}\nRATE\\_12mth & 0,532 & 6 \\\\\nGILT\\_5yrs\\_yld & 0,366 & 6"
+        " \\\\\n\\end{tabular}\n\nIt rose by 12patients after the table.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    report = check_language(load_project(project)[0])
+    (finding,) = (f for f in report.findings if f.code == "notation-space-missing")
+    assert finding.message == "a number and a word run together once: '12patients'"
 
 
 def test_forms_used_as_often_show_the_later_one_and_say_so() -> None:

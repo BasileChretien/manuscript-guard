@@ -18503,8 +18503,8 @@ Added by the adversarial review, verified and **not** fixed:
   under a filter other than Flate is not read, nor is an encrypted PDF. A Type 3 font's
   `/FontMatrix` is not applied, so one drawn in other than a thousand units to the em is
   read at the size `Tf` gives; a text's rise and horizontal scaling change nothing the
-  check reports, and the lines a Type 3 glyph draws are not read. A font is said where the page's or a form's resources name
-  it, whether any text uses it or not.
+  check reports, and the lines a Type 3 glyph draws are not read. A font is said where the
+  page's or a form's resources name it, whether any text uses it or not.
   Pinned by `tests/test_figure_pdf.py::test_only_the_first_page_of_a_pdf_figure_is_read`,
   `tests/test_figure_pdf.py::test_a_page_not_compressed_is_read_and_one_under_another_filter_is_not`,
   `tests/test_figure_pdf.py::test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read`,

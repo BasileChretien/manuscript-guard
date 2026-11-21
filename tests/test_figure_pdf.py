@@ -193,16 +193,18 @@ def test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read() -> None:
     assert [font.name for font in encrypted.fonts] == ["Helvetica"]
 
 
-def test_a_type_3_font_s_matrix_and_the_lines_of_its_glyphs_are_not_read() -> None:
+@pytest.mark.parametrize("shown", [b"(a) Tj", b"50 Tz 3 Ts (a) Tj"], ids=["plain", "rise, scaling"])
+def test_a_type_3_font_s_matrix_and_the_lines_of_its_glyphs_are_not_read(shown: bytes) -> None:
     """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): a
     Type 3 font of a hundred units to the em, set at 10, draws its text ten times as large,
-    and is read at 10; and the stroke its glyph draws is no line."""
+    and is read at 10; and the stroke its glyph draws is no line. A horizontal scaling and a
+    rise (`50 Tz 3 Ts`) change nothing of what is read: the text is still read at 10."""
     font = (b"<< /Type /Font /Subtype /Type3 /FontMatrix [0.01 0 0 0.01 0 0] /FontBBox"
             b" [0 0 100 100] /CharProcs << /a 6 0 R >> /Encoding << /Type /Encoding"
             b" /Differences [97 /a] >> /FirstChar 97 /LastChar 97 /Widths [100] >>")  # fmt: skip
     document = _raw(
         b"<< /Type /Catalog /Pages 2 0 R >>", PAGES, PAGE % (b"5 0 R", b""), font,
-        _stream(b"BT /F1 10 Tf (a) Tj ET"), _stream(b"100 0 d0 0.2 w 0 0 m 100 100 l S"),
+        _stream(b"BT /F1 10 Tf " + shown + b" ET"), _stream(b"100 0 d0 0.2 w 0 0 m 100 100 l S"),
     )  # fmt: skip
     figure = parse_pdf(document)
     assert figure is not None

@@ -157,6 +157,57 @@ def test_running_heads_and_page_numbers_are_taken_out(tmp_path: Path) -> None:
     assert [line.page for line in reading.lines][:2] == [1, 1]
 
 
+HEAD = "Example et al. J Imag Pharm 2026"
+
+
+def test_a_line_at_the_top_of_half_the_pages_is_taken_out_as_a_running_head(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule."): a
+    table's header repeated at the top of half the pages is taken out with the running head,
+    and its cells are reported missing; so is a line of the text that stands there as often.
+    The same header atop one page of four is kept."""
+    lines = typeset_lines()
+    header, female, serious = (line for line in lines if "   " in line)
+    pages = [[HEAD, *lines[:9], "101"], [HEAD, header, female, "102"],
+             [HEAD, header, serious, *lines[12:20], "103"], [HEAD, *lines[20:], "104"]]
+    result = changes_of(tmp_path, text="\f".join("\n".join(page) for page in pages))
+    assert "Characteristic example-drug Other drugs" in result.reading.furniture
+    assert [(c.what, c.part) for c in result.changes] == [
+        ("missing", PARTS[3].label), ("missing", PARTS[4].label), ("missing", PARTS[5].label)]
+    del pages[2][1]
+    assert changes_of(tmp_path, text="\f".join("\n".join(page) for page in pages)).changes == ()
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "Table 1 shows the counts by year.", "one"),
+                                 *PARTS[1:3],
+                                 Part(PARAGRAPH, "Table 2 shows the counts by year.", "two"),
+                                 *PARTS[13:15]), (), None)  # fmt: skip
+    text = typeset_lines(sent.parts)
+    cut = text.index("Table 2 shows the counts by year.")
+    proof = "\f".join("\n".join([HEAD, *page, str(101 + k)])
+                      for k, page in enumerate((text[:cut], text[cut:])))  # fmt: skip
+    result = changes_of(tmp_path, sent=sent, text=proof)
+    assert [(c.what, c.part, c.page) for c in result.changes] == [("missing", "one", 1),
+                                                                   ("missing", "two", 2)]
+
+
+def test_a_running_head_off_the_edge_or_on_a_proof_of_one_page_is_added(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule."): a
+    running head a reader puts in the middle of a page, here between two parts, is shown as
+    added; a proof of one page has nothing taken out, and its head and number are added."""
+    lines = typeset_lines()
+    pages = paged(lines, per_page=7).split("\f")
+    second = pages[1].split("\n")
+    second.insert(second.index("Discussion"), HEAD)
+    pages[1] = "\n".join(second)
+    result = changes_of(tmp_path, text="\f".join(pages))
+    assert HEAD in result.reading.furniture
+    assert [(c.kind, c.printed, c.page) for c in result.changes] == [(ADDED, HEAD, 2)]
+    result = changes_of(tmp_path, text="\n".join([HEAD, *lines, "101"]))
+    assert result.reading.furniture == ()
+    assert [(c.kind, c.printed) for c in result.changes] == [(ADDED, f"{HEAD} 101")]
+    assert changes_of(tmp_path, text=paged(lines)).changes == ()
+
+
 def test_a_word_broken_at_a_line_end_is_one_word(tmp_path: Path) -> None:
     text = paged(typeset_lines())
     text = edited(text, ("notoriety", "noto-\nriety"), ("class-level", "class-\nlevel"))
@@ -185,9 +236,55 @@ def test_a_decimal_mark_changed_is_a_correction(tmp_path: Path) -> None:
     assert change.what == "decimal mark"
 
 
+def test_a_decimal_comma_before_three_digits_is_a_number_changed(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Numbers stand for any number in the
+    alignment."): a comma before exactly three digits groups them, so "3.845" printed
+    "3,845" is a correction of the number, and "3.84" printed "3,84" one of its mark."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "The ratio was 3.845 in the primary "
+                                      "analysis of the cohort.", "p"),), (), None)  # fmt: skip
+    (change,) = corrections(changes_of(tmp_path, ("3.845", "3,845"), sent=sent))
+    assert (change.what, change.was, change.now) == ("number", "3.845", "3,845")
+    assert change.note == "the number is printed otherwise"
+    two = Sent(Path("m.docx"), (Part(PARAGRAPH, "The ratio was 3.84 in the primary analysis "
+                                     "of the cohort.", "p"),), (), None)  # fmt: skip
+    (change,) = corrections(changes_of(tmp_path, ("3.84", "3,84"), sent=two))
+    assert (change.what, change.was, change.now) == ("decimal mark", "3.84", "3,84")
+
+
 def test_a_sign_lost_is_a_correction(tmp_path: Path) -> None:
     (change,) = corrections(changes_of(tmp_path, (f"{MINUS}0.51", "0.51")))
     assert (change.what, change.was, change.now) == ("sign", f"{MINUS}0.51", "0.51")
+
+
+def test_a_minus_left_at_a_line_s_end_is_the_sign_lost(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A proof is compared as far as its text can be
+    read, and no further."): a minus a reader leaves at the end of a line, apart from its
+    number, is reported as the sign lost; kept with its number, it is no change."""
+    text = f"The mean change in weight was {MINUS}0.51 mg over the twelve weeks of the study."
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, text, "p"),), (), None)
+    broken = text.replace(f"was {MINUS}", f"was {MINUS}\n")
+    (change,) = corrections(changes_of(tmp_path, sent=sent, text=broken))
+    assert (change.what, change.was, change.now) == ("sign", f"{MINUS}0.51", "0.51")
+    whole = text.replace(f"was {MINUS}", f"was\n{MINUS}")
+    assert changes_of(tmp_path, sent=sent, text=whole).changes == ()
+
+
+@pytest.mark.parametrize(("printed", "sign"), [
+    ("0.71 \N{EN DASH}0.89", True), ("0.71\N{EN DASH}0.89", False),
+    ("0.71 \N{EN DASH} 0.89", False),
+])  # fmt: skip
+def test_a_range_s_dash_spaced_on_one_side_reads_as_a_minus(
+    tmp_path: Path, printed: str, sign: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A proof is compared as far as its text can be
+    read, and no further."): a range's dash spaced on its left only reads as a minus, and the
+    bound is reported as a sign changed; spaced on neither side or on both, it joins a
+    range."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "The interval was 0.71-0.89 in the primary "
+                                      "analysis of the cohort.", "p"),), (), None)  # fmt: skip
+    result = changes_of(tmp_path, ("0.71-0.89", printed), sent=sent)
+    said = [(c.what, c.was, c.now) for c in corrections(result)]
+    assert said == ([("sign", "0.89", "\N{EN DASH}0.89")] if sign else [])
 
 
 @pytest.mark.parametrize("glyph", ["-", "\N{HYPHEN}", "\N{EN DASH}"])
@@ -244,6 +341,35 @@ def test_a_superscript_citation_changed_is_a_correction(tmp_path: Path) -> None:
     assert change.what == "citation"
 
 
+@pytest.mark.parametrize(("sent_as", "printed", "what"), [
+    ("ICD10", "ICD11", "citation"), ("H2O", "H3O", "citation"), ("ICD1000", "ICD1001", "number"),
+])  # fmt: skip
+def test_a_number_set_against_a_word_is_told_from_a_citation_by_its_shape(
+    tmp_path: Path, sent_as: str, printed: str, what: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A proof is compared as far as its text can be
+    read, and no further."): a superscript loses its raise, so three digits at most set
+    against a letter read as a citation's, and a change in "ICD10" or "H2O" is called a
+    citation's; four digits are a number."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, f"Every report was coded as {sent_as} in the "
+                                      "cohort as a whole.", "p"),), (), None)  # fmt: skip
+    (change,) = corrections(changes_of(tmp_path, (sent_as, printed), sent=sent))
+    assert change.what == what
+
+
+def test_an_exponent_that_lost_its_raise_is_typography(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A proof is compared as far as its text can be
+    read, and no further."): "10" with a raised minus and "3" read as "10-3" is shown as
+    typography, the dash shown as a copy-edit, and nothing is counted."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, f"The rate was 5 x 10{MINUS}3 per patient-year "
+                                      "in the cohort.", "p"),), (), None)  # fmt: skip
+    result = changes_of(tmp_path, (f"10{MINUS}3", "10-3"), sent=sent)
+    assert corrections(result) == []
+    (change,) = kinds(result, TYPOGRAPHY)
+    assert change.note == "the sign is set differently beside the number before it"
+    assert [(c.sent, c.printed) for c in kinds(result, COPY_EDIT)] == [("", "-")]
+
+
 @pytest.mark.parametrize("edit", [("Jones 2019)", "Jones 2018)"), ("(Smith and", "(Smyth and")])
 def test_an_author_year_citation_changed_is_a_correction(tmp_path: Path, edit) -> None:
     (change,) = corrections(changes_of(tmp_path, edit))
@@ -277,6 +403,28 @@ def test_a_number_the_proof_drops_from_a_sentence_is_a_correction(tmp_path: Path
     assert change.note == "a number sent is not printed"
 
 
+def test_a_number_dropped_beside_another_may_name_the_first_s_binding(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Numbers stand for any number in the
+    alignment."): "12 15" printed "15" reads as the first changed and the second dropped,
+    two corrections, the first naming the first number's binding; printed "12", it reads as
+    the second dropped."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "The counts were 12 15 in the two arms of "
+                                      "the trial at baseline.", "p"),), (), None)  # fmt: skip
+
+    def said(printed: str) -> list[tuple[str, str, str, str, str]]:
+        proof = tmp_path / "proof.txt"
+        proof.write_text(sent.parts[0].text.replace("12 15", printed), encoding="utf-8")
+        (reading,) = readings(proof)
+        result = compare(sent, reading, origin=lambda _part, raw: f"the binding of {raw}")
+        return [(c.what, c.was, c.now, c.source, c.note) for c in corrections(result)]
+
+    assert said("15") == [
+        ("number", "12", "15", "the binding of 12", "the number is printed otherwise"),
+        ("number", "", "", "the binding of 15", "a number sent is not printed"),
+    ]
+    assert said("12") == [("number", "", "", "the binding of 15", "a number sent is not printed")]
+
+
 # ---------------------------------------------------------------- shown, not counted
 
 
@@ -295,6 +443,37 @@ def test_text_the_proof_adds_between_parts_is_shown_and_not_counted(tmp_path: Pa
     assert "Received 3 May 2026" in change.printed
 
 
+def test_the_document_s_footnotes_are_not_compared_and_the_proof_s_are_added(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The document's footnotes are not compared."):
+    the document is read as `docxtext.blocks` reads its body, so a note's text is no part,
+    and the proof's note is shown as added text, a number changed in it counted as nothing."""
+    import zipfile
+
+    from manuscript_guard.proof.sent import read_sent
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    body = ("<w:p><w:r><w:t>The dose was capped for every patient in the trial.</w:t></w:r>"
+            "<w:r><w:footnoteReference w:id='1'/></w:r></w:p>"
+            "<w:p><w:r><w:t>Hepatic injury was rare in the cohort as a whole.</w:t></w:r></w:p>")
+    notes = (f"<w:footnotes xmlns:w='{w}'><w:footnote w:id='1'><w:p><w:r><w:t>Capped at 40 mg "
+             "a day.</w:t></w:r></w:p></w:footnote></w:footnotes>")  # fmt: skip
+    document = tmp_path / "m.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document xmlns:w='{w}'><w:body>{body}</w:body></w:document>")
+        archive.writestr("word/footnotes.xml", notes)
+    sent = read_sent(document)
+    assert [part.text for part in sent.parts] == [
+        "The dose was capped for every patient in the trial.",
+        "Hepatic injury was rare in the cohort as a whole."]
+    proof = ("The dose was capped for every patient in the trial.\nHepatic injury was rare in "
+             "the cohort as a whole.\n1 Capped at 50 mg a day.")  # fmt: skip
+    result = changes_of(tmp_path, sent=sent, text=proof)
+    assert [(c.kind, c.printed) for c in result.changes] == [(ADDED, "1 Capped at 50 mg a day.")]
+
+
 def test_a_paragraph_set_elsewhere_is_moved_and_still_compared(tmp_path: Path) -> None:
     lines = typeset_lines()
     funding = [k for k, line in enumerate(lines) if line in ("Funding", PARTS[16].text)]
@@ -305,6 +484,54 @@ def test_a_paragraph_set_elsewhere_is_moved_and_still_compared(tmp_path: Path) -
     assert [c.what for c in kinds(result, MOVED)] == ["place"]
     assert corrections(result) == []
     assert [c.printed for c in kinds(result, COPY_EDIT)] == ["at all"]
+
+
+def _spelt(n: int) -> str:
+    """A word of its own for every `n`, of letters only."""
+    return "w" + "".join(chr(97 + (n // 26**k) % 26) for k in range(2))
+
+
+@pytest.mark.parametrize(("every", "found"), [(3, False), (4, False), (5, True)])
+def test_a_paragraph_set_elsewhere_is_found_by_runs_of_four_keys(
+    tmp_path: Path, every: int, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The alignment chooses between readings within
+    limits."): a short paragraph the proof sets elsewhere with a word changed every four
+    tokens or fewer shares no run of four keys there, and reads as missing, its text as
+    added; one changed every fifth token is found moved."""
+    parts = (Part(PARAGRAPH, "Alpha " + " ".join(map(_spelt, range(30))) + ".", "first"),
+             Part(PARAGRAPH, "Bravo " + " ".join(map(_spelt, range(100, 116))) + ".", "short"),
+             Part(PARAGRAPH, "Charlie " + " ".join(map(_spelt, range(200, 230))) + ".", "third"))
+    words = parts[1].text.rstrip(".").split()
+    moved = " ".join(f"x{w}" if k % every == every - 1 else w for k, w in enumerate(words))
+    text = "\n".join([parts[0].text, parts[2].text, moved + "."])
+    result = changes_of(tmp_path, sent=Sent(Path("m.docx"), parts, (), None), text=text)
+    if found:
+        assert [c.what for c in kinds(result, MOVED)] == ["place"]
+        assert corrections(result) == [] and kinds(result, ADDED) == []
+    else:
+        assert [(c.kind, c.what, c.part) for c in result.changes] == [
+            (CORRECTION, "missing", "short"), (ADDED, "text", "")]
+        assert result.changes[1].printed == moved + "."
+
+
+@pytest.mark.parametrize(("words", "missing"), [(392, True), (393, False)])
+def test_a_paragraph_left_out_beside_one_ending_alike_is_left_out_whole_within_400_tokens(
+    tmp_path: Path, words: int, missing: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The alignment chooses between readings within
+    limits."): a paragraph left out next to one copy-edited, both ending in the same words,
+    is left out whole where the stretch is 400 tokens or fewer; past that it reads as part
+    of a copy-edit of the first."""
+    tail = "and the same words close it."
+    first = f"Alpha one two three remained {tail}"
+    second = " ".join(map(_spelt, range(words))) + f" {tail}"
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, first, "first"),
+                                 Part(PARAGRAPH, second, "second")), (), None)  # fmt: skip
+    result = changes_of(tmp_path, sent=sent, text=first.replace("remained", "stayed"))
+    said = [(c.kind, c.what, c.part) for c in result.changes]
+    assert said == [(COPY_EDIT, "words", "first")] + (
+        [(CORRECTION, "missing", "second")] if missing else [])
 
 
 def test_a_table_set_on_another_page_is_compared_where_it_is(tmp_path: Path) -> None:
@@ -329,6 +556,51 @@ def test_line_numbers_in_the_margin_name_the_line(tmp_path: Path) -> None:
     assert reading.numbered
     (change,) = corrections(compare(SENT, reading))
     assert change.line == next(n for n, line in enumerate(set_lines, 1) if "3.48" in line)
+
+
+@pytest.mark.parametrize(("step", "first", "where", "read"), [
+    (1, 1, "start", True), (5, 1, "start", True), (10, 1, "start", True),
+    (2, 1, "start", False), (1, 50, "start", False), (1, 1, "end", False),
+])  # fmt: skip
+def test_line_numbers_are_read_at_a_line_s_start_from_one_by_one_five_or_ten(
+    tmp_path: Path, step: int, first: int, where: str, read: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule."): a proof's
+    line numbers are read only at the start of a line, counting from one, by one, five or
+    ten: by two, from 50, or after the line, they are not."""
+    lines = wrapped(unwrapped(PARTS * 2), 44)
+    numbered = [(f"{n} {line}" if where == "start" else f"{line} {n}") if n % step == 0
+                else line for n, line in enumerate(lines, first)]  # fmt: skip
+    proof = tmp_path / "proof.txt"
+    proof.write_text("\n".join(numbered), encoding="utf-8")
+    (reading,) = readings(proof)
+    assert reading.numbered is read
+
+
+@pytest.mark.parametrize("count", [4, 5])
+def test_line_numbers_are_read_on_five_lines_at_least(tmp_path: Path, count: int) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule."): four
+    lines numbered from one are no line numbers, five are."""
+    words = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
+    proof = tmp_path / "proof.txt"
+    proof.write_text("\n".join(f"{n} {word} reads a line of its own here."
+                               for n, word in enumerate(words[:count], 1)), encoding="utf-8")
+    (reading,) = readings(proof)
+    assert reading.numbered is (count == 5)
+
+
+def test_a_correction_where_no_line_number_is_read_is_named_by_its_page(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule."): line
+    numbers a reader gives as a column of their own are dropped, and a correction is named
+    by its page and a quotation, as on a proof with no line numbers."""
+    set_lines = wrapped(edited(unwrapped(), ("ratio was 3.84", "ratio was 3.48")))
+    for text in ("\n".join([*map(str, range(1, 31)), *set_lines]), paged(set_lines)):
+        (change,) = corrections(changes_of(tmp_path, text=text))
+        assert (change.page, change.line) == (1, None)
+        assert change.printed == "\N{HORIZONTAL ELLIPSIS}reporting odds ratio was 3.48 (95% CI" \
+            "\N{HORIZONTAL ELLIPSIS}"
+    assert "line numbers 1-30" in changes_of(tmp_path, text="\n".join(
+        [*map(str, range(1, 31)), *set_lines])).reading.furniture  # fmt: skip
 
 
 def test_a_column_of_line_numbers_is_taken_out(tmp_path: Path) -> None:
@@ -493,6 +765,43 @@ def test_a_unit_of_time_a_word_away_from_its_number_is_a_copy_edit(tmp_path: Pat
     result = changes_of(tmp_path, edit, sent=sent)
     assert corrections(result) == []
     assert kinds(result, COPY_EDIT)
+
+
+@pytest.mark.parametrize(("sent_as", "printed", "kind"), [
+    # Case aside: a heading in capitals, a name's case in the body.
+    ("The Results of the cohort were clear.", "The RESULTS of the cohort were clear.", None),
+    ("As Smith found in the cohort.", "As smith found in the cohort.", None),
+    # A litre's and a microgram's two spellings are one; "hours" and "h" are not.
+    ("The dose was 5 mL in the bath.", "The dose was 5 ml in the bath.", None),
+    ("The dose was 5 mcg in the bath.", "The dose was 5 \N{MICRO SIGN}g in the bath.", None),
+    ("Patients were seen after 12 hours of rest.", "Patients were seen after 12 h of rest.",
+     CORRECTION),
+    # An abbreviation G14 does not know is a word, though it names another unit.
+    ("They were followed for 12 weeks in all.", "They were followed for 12 mo in all.",
+     COPY_EDIT),
+    ("They were followed for 12 weeks in all.", "They were followed for 12 d in all.",
+     COPY_EDIT),
+    # A unit is read only beside its number.
+    ("They were followed for two weeks in all.", "They were followed for two months in all.",
+     COPY_EDIT),
+    # A stretch after a number and a hyphen holds a unit anywhere in it.
+    ("They took a 12-fold larger dose daily.", "They took a 12-point mg dose daily.",
+     CORRECTION),
+    ("They took a 12-fold larger dose daily.", "They took a 12-point big dose daily.",
+     COPY_EDIT),
+])  # fmt: skip
+def test_a_case_change_or_a_style_s_synonym_is_seen_only_as_the_units_g14_knows(
+    tmp_path: Path, sent_as: str, printed: str, kind: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A case change and a style's synonym are not
+    seen."): words are compared case aside, a litre's and a microgram's two spellings are
+    one, an abbreviation G14 does not know is a word, and a unit is read only beside its
+    number, or anywhere in a stretch after a number and a hyphen."""
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, sent_as, "p"),), (), None)
+    result = changes_of(tmp_path, sent=sent, text=printed)
+    said = [(c.kind, c.what) for c in result.changes]
+    assert said == ({None: [], CORRECTION: [(CORRECTION, "unit or symbol")],
+                     COPY_EDIT: [(COPY_EDIT, "words")]}[kind])  # fmt: skip
 
 
 def test_a_dash_at_a_line_end_joins_no_word(tmp_path: Path) -> None:
@@ -669,6 +978,82 @@ def test_a_name_with_its_affiliation_marks_set_against_it_is_found(
     # Review of #397, round 1: "Example1,2" was not "Example".
     assert _front(built_example, tmp_path, edited(FRONT, ("Ada Example1,*", f"Ada Example{marks}"))
                   ) == []  # fmt: skip
+
+
+def test_a_name_with_letters_for_its_affiliation_marks_is_printed_otherwise(
+    built_example: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Affiliation marks are read as digits and
+    signs."): "Examplea,b" is not the name, and is reported as printed otherwise, where
+    "Example1,2" is."""
+    (change,) = _front(built_example, tmp_path, edited(FRONT, ("Ada Example1,*", "Ada Examplea,b")))
+    assert (change.kind, change.what, change.sent, change.printed, change.note) == (
+        CORRECTION, "author's name", "Ada Example", "Ada Examplea,b",
+        "the name is printed otherwise")  # fmt: skip
+    assert _front(built_example, tmp_path, edited(FRONT, ("Ada Example1,*", "Ada Example1,2"))
+                  ) == []  # fmt: skip
+
+
+def test_the_title_page_is_held_by_its_words_and_not_its_layout(
+    built_example: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The title page is held to `authors.yaml` by its
+    words, not its layout."): which mark ties an author to an affiliation, and which marks
+    the corresponding one, are not read; a name in capitals is found; an ORCID iD the proof
+    does not print as text is not compared, one it prints is."""
+    names = "Ada Example1,*, Blaise Sample2"
+    for front in (edited(FRONT, (names, "Ada Example2, Blaise Sample1,*")),
+                  edited(FRONT, (names, "ADA EXAMPLE1,*, BLAISE SAMPLE2")), FRONT):  # fmt: skip
+        assert _front(built_example, tmp_path, front) == []
+    wrong = FRONT + "ORCID: 0000-0002-1825-0097; 0000-0001-5109-3701\n"
+    assert [c.what for c in _front(built_example, tmp_path, wrong)] == ["ORCID iD", "ORCID iD"]
+
+
+@pytest.mark.parametrize("edit", [
+    ("Centre, Department of Pharmacology, Hopital", "Centre, Hopital"),
+    ("Springfield, Japan", "Japan, Springfield"),
+])  # fmt: skip
+def test_an_affiliation_the_journal_rewords_is_printed_otherwise(
+    built_example: Path, tmp_path: Path, edit: tuple[str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The title page is held to `authors.yaml` by its
+    words, not its layout."): a department dropped or a country moved is reported as the
+    affiliation printed otherwise."""
+    (change,) = _front(built_example, tmp_path, edited(FRONT, edit))
+    assert (change.kind, change.what, change.note) == (
+        CORRECTION, "affiliation", "the affiliation is printed otherwise")
+
+
+@pytest.mark.parametrize(("printed", "said"), [
+    ("Blaise van der Sample2", []),
+    ("Blaise Sample2", [("author's name", "not in the proof")]),
+])  # fmt: skip
+def test_a_particle_set_otherwise_is_found_and_one_dropped_is_reported(
+    project: Path, tmp_path: Path, printed: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The title page is held to `authors.yaml` by its
+    words, not its layout."): "van der" for "Van der" is found, case aside; dropped, the
+    name is reported."""
+    _authors_edited(project, ("family: Sample", "family: Van der Sample"))
+    text = edited(FRONT, ("Blaise Sample2", printed))
+    assert [(c.what, c.note) for c in _front(project, tmp_path, text)] == said
+
+
+@pytest.mark.parametrize(("printed", "said"), [
+    ("jean-\npierre.example@uni.example",
+     [("printed otherwise", "jean-pierre.example@uni.example")]),
+    ("jeanpierre.example@uni.example", []),
+])  # fmt: skip
+def test_an_address_with_no_hyphen_broken_at_a_line_s_end_is_read_with_one(
+    project: Path, tmp_path: Path, printed: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The title page is held to `authors.yaml` by its
+    words, not its layout."): an address the typesetter breaks with a hyphen it never had,
+    beside the "@", is read with that hyphen and reported printed otherwise."""
+    _authors_edited(project, ("ada.example@invalid.example", "jeanpierre.example@uni.example"))
+    found = _front(project, tmp_path, edited(FRONT, ("ada.example@invalid.example", printed)))
+    assert [(c.note, c.printed) for c in found if c.what == "e-mail address"] == said
+    assert [c.what for c in found] == ["e-mail address"] * len(said)
 
 
 def _authors_edited(project: Path, *edits: tuple[str, str]) -> None:

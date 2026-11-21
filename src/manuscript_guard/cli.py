@@ -63,6 +63,7 @@ from manuscript_guard.gates import (
     check_journal,
     check_language,
     check_literature_chain,
+    check_main_document,
     check_methods,
     check_models,
     check_numbers,
@@ -221,6 +222,9 @@ def _gate_run(
         ("G7", lambda: check_rrids(project)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_boxes(project, namespace, chosen)),
+        # The pack's main document in a format the journal takes, as the last pack's manifest
+        # records it, or as `submit` will pack it.
+        ("G4", lambda: check_main_document(project, chosen)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_package_doi(project, submission=at_submission)),
         # It reads paper.yaml and the receipts, and none of the manuscript.

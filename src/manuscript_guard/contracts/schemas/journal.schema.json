@@ -63,7 +63,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, abbreviations.<key>, reporting_guidelines, pointers.<kind>, graphical_abstract.<name>, boxes.<id>, sharing.<version>. G4 holds each to the stored page, and a limit's number to its quote.",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, abbreviations.<key>, reporting_guidelines, pointers.<kind>, graphical_abstract.<name>, boxes.<id>, sharing.<version>, submission.<name>. G4 holds each to the stored page, and a limit's number to its quote.",
       "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
@@ -553,6 +553,21 @@
               "licence": { "type": "string", "minLength": 1 }
             }
           }
+        }
+      }
+    },
+    "submission": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What the journal takes as files at submission, each rule quoted under `quotes:` as submission.<name>.",
+      "properties": {
+        "main_document": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["pdf", "docx", "doc", "rtf", "odt", "tex"] },
+          "description": "The formats the journal takes the main document in, where its page says (\"Please submit a PDF as your main document\": [pdf]); tex where it takes the LaTeX source. `submit` records the pack's main document in MANIFEST.yaml and says, with the pack and in journal-checklist.md, where the journal does not take it; G4 warns of it at submission (`main-document-format`). A Markdown manuscript is packed as a .docx, and as a PDF with its LaTeX source by `submit --latex`; a LaTeX one as its PDF and source."
         }
       }
     },

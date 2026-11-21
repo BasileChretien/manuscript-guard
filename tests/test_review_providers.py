@@ -772,6 +772,17 @@ def test_part_of_a_key_in_any_error_is_taken_out(status: int) -> None:
     assert "Check your key" in str(failed.value)
 
 
+def test_a_word_that_shares_four_characters_with_the_key_loses_them() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Taking a key out of a message can take a word
+    with it"): "latest" holds the key's "test", and loses it; "tes", "SEC" and "012", three
+    of the key's characters in a row, are not recognised as the key's and stay."""
+    said = "the latest ran; SEC, tes and 012 stay"
+    assert client.without_key(said, KEY) == "the la[key] ran; SEC, tes and 012 stay"
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(error(400, said)))
+    assert "the la[key] ran; SEC, tes and 012 stay" in str(failed.value)
+
+
 def test_control_characters_in_a_providers_words_are_not_printed() -> None:
     said = f"bad {ESCAPE}[31mrequest{ESCAPE}[0m {chr(7)}now"
     with pytest.raises(CallFailed) as failed:

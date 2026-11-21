@@ -15,6 +15,7 @@ No test here opens a connection: `review --run` is answered by the transport of
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -27,6 +28,8 @@ from manuscript_guard import anchoring
 from manuscript_guard.cli import main
 from manuscript_guard.contracts import load_project
 from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.docxtext import paragraphs_of
+from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import INFO
 from manuscript_guard.gates import check_review
 from manuscript_guard.gates.review import reading_digest
@@ -138,6 +141,22 @@ def test_what_pandoc_prints_otherwise_stands_as_word_prints_it(written: str, quo
     quote it as written. Either stands."""
     assert stands(quoted, written)
     assert stands(written, written)
+
+
+def test_a_latex_tie_and_a_strikeout_s_marks_are_not_read_as_word_prints_them() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
+    manuscript"): LaTeX's tie, `Table~1`, and a strikeout's `~~` are not read as Word shows
+    them, as a dash, a link and a script are (the test above), so a quote of the printed
+    words across one is unanchored; as written, or beside it, the words stand."""
+    tie = "\\section{Results}\nThe counts are given in Table~1 and in the supplement.\n"
+    read = anchoring.read_of([tie], latex=True)
+    assert not anchoring.stands("The counts are given in Table 1 and", read)
+    assert anchoring.stands("The counts are given in Table~1", read)
+    assert anchoring.stands("The counts are given in", read)
+    struck = "We removed ~~all~~ the duplicate reports before counting them."
+    assert not stands("We removed all the duplicate reports", struck)
+    assert stands("We removed ~~all~~ the duplicate", struck)
+    assert stands("the duplicate reports before counting", struck)
 
 
 def test_a_heading_s_hashes_come_off_once() -> None:
@@ -476,6 +495,116 @@ def test_a_reading_that_read_only_the_main_text_does_not_anchor_a_quote_of_the_s
     assert read_structured(path)["quotes"]["unanchored"] == ["h4", "h5"]
 
 
+def quoting_only(*quotes: str, prefix: str = "h") -> list[dict]:
+    """Findings that each quote one of `quotes`, numbered from 1."""
+    return [{"id": f"{prefix}{number}", "severity": "minor", "quote": quote,
+             "finding": "Say more."} for number, quote in enumerate(quotes, 1)]  # fmt: skip
+
+
+def dumped(findings: list[dict]) -> str:
+    return yaml.safe_dump(findings, sort_keys=False, allow_unicode=True, width=10**6)
+
+
+#: The example's title, as paper.yaml and the front matter have it.
+TITLE_WORDS = "Reporting of hepatic injury with example-drug: a disproportionality analysis"
+#: An abstract kept in the front matter, in words no file's body holds.
+FRONT_ABSTRACT = "Spontaneous reports were read for a signal in a synthetic database"
+#: Words of the example's body, beside the two.
+BODY_WORDS = "Drug-induced hepatic injury remains among the commonest reasons"
+
+
+def test_a_quote_of_the_title_or_of_an_abstract_in_the_front_matter_is_unanchored(
+    project: Path, providers: Providers
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
+    manuscript"): the title is sent from paper.yaml and printed from the front matter, an
+    abstract kept in the front matter is left out of the request, and neither is looked
+    in, by `review --run` or at `review --seal`: a quote of either is unanchored, where one
+    of the body is not."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8").replace(
+        "---\n\n", f'abstract: "{FRONT_ABSTRACT}."\n---\n\n', 1)  # fmt: skip
+    main_md.write_bytes(text.encode("utf-8"))
+    shutil.rmtree(project / "review")
+    configure(project, MODEL_A)
+    said = [{"severity": "minor", "quote": quote, "finding": "Say more."}
+            for quote in (TITLE_WORDS, FRONT_ABSTRACT, BODY_WORDS)]  # fmt: skip
+    providers.default = lambda request: answer(reply_text("minor-revision", said))
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    assert providers.requests
+    for request in providers.requests:
+        assert b"Title: " + TITLE_WORDS.encode() in request.body
+        assert FRONT_ABSTRACT.encode() not in request.body
+    for path in model_readings(project):
+        quotes = read_structured(path)["quotes"]
+        assert (quotes["anchored"], quotes["unanchored"]) == (["r1-03"], ["r1-01", "r1-02"])
+    path = file_by_hand(project, dumped(quoting_only(TITLE_WORDS, FRONT_ABSTRACT, BODY_WORDS)))
+    assert seal(project) == 0
+    quotes = read_structured(path)["quotes"]
+    assert (quotes["anchored"], quotes["unanchored"]) == (["h3"], ["h1", "h2"])
+
+
+#: The example's sentence across its citation, as the offline build prints it: the work
+#: has two authors and the example names no CSL style.
+ACROSS_THE_CITATION = (
+    "100 000 person-years (Fictional and Fictional 2021), and a disproportionality signal"
+)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_citation_is_searched_as_the_source_writes_it(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
+    manuscript"): a citation is sent and searched as `[@key]`, so a quote across it as the
+    built document prints it is unanchored, and one that leaves it out with "...", or
+    copies it as written, is anchored."""
+    assert "person-years\n[@fictionalHepaticCohort2021], and" in printed(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    built = " ".join(p.text for p in paragraphs_of(project / "build" / "manuscript.docx"))
+    assert ACROSS_THE_CITATION in " ".join(built.split())
+    path = file_by_hand(project, dumped(quoting_only(
+        ACROSS_THE_CITATION,
+        "100 000 person-years ... and a disproportionality signal has been reported",
+        "person-years [@fictionalHepaticCohort2021], and a disproportionality signal",
+    )))  # fmt: skip
+    assert seal(project) == 0
+    quotes = read_structured(path)["quotes"]
+    assert (quotes["anchored"], quotes["unanchored"]) == (["h2", "h3"], ["h1"])
+
+
+#: Words of a comment that the example's main.md holds as an HTML comment and the LaTeX
+#: twin as a `%` comment.
+COMMENT_WORDS = "That checklist is a demonstration profile, not a published guideline"
+
+
+def test_latex_is_searched_as_it_is_sent_its_commands_and_comments_in(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
+    manuscript"): LaTeX is searched with its commands in, so a quote across `\\textit{a} b`
+    as printed is unanchored and one as written is not; and the words of a `%` comment in a
+    hand-filed reading's source are found, where Markdown's HTML comment is not."""
+    path = file_by_hand(project, dumped(quoting_only(COMMENT_WORDS)))
+    assert seal(project) == 0
+    assert read_structured(path)["quotes"]["unanchored"] == ["h1"]
+    shutil.rmtree(project / "review" / "round-9")
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    main_tex = project / "manuscript" / "main.tex"
+    text = main_tex.read_text(encoding="utf-8")
+    assert f"% {COMMENT_WORDS}" in text
+    text = text.replace("\\section{Discussion}",
+                        "The reports were read \\textit{a} b by two of us.\n\n"
+                        "\\section{Discussion}", 1)  # fmt: skip
+    main_tex.write_bytes(text.encode("utf-8"))
+    path = file_by_hand(project, dumped(quoting_only(
+        "The reports were read a b by two",
+        "The reports were read \\textit{a} b by two",
+        COMMENT_WORDS,
+    )))  # fmt: skip
+    assert seal(project) == 0
+    quotes = read_structured(path)["quotes"]
+    assert (quotes["anchored"], quotes["unanchored"]) == (["h2", "h3"], ["h1"])
+
+
 def test_a_reading_whose_files_changed_before_it_was_sealed_is_sealed_unchecked(
     project: Path, capsys
 ) -> None:
@@ -494,6 +623,30 @@ def test_a_reading_whose_files_changed_before_it_was_sealed_is_sealed_unchecked(
     report = check_review(loaded(project))
     assert report.counts["review_findings_anchored"] == 0
     assert "finding-unanchored" not in {f.code for f in report.findings}
+
+
+def test_results_run_again_before_the_seal_move_the_numbers_a_quote_is_looked_for_in(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
+    manuscript"): `review --seal` prints the results as they are when it runs, and the
+    reading's file digests do not cover them, so after the analysis is run again the
+    sentence the reader quoted is unanchored and one with numbers it never saw is found."""
+    seen = contained(project)
+    assert " 4000 reports" in seen
+    path = file_by_hand(project, dumped(quoting_only(seen, seen.replace("4000", "4100"))))
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_reports"].update(value=4100, display="4100")
+    fragment.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    write_digest(fragment)
+    capsys.readouterr()
+    assert seal(project) == 0
+    said = capsys.readouterr().out
+    assert "quotes: 1 found in what the reading read, 1 not (h1)" in said
+    assert "changed since the reading was filed" not in said
+    quotes = read_structured(path)["quotes"]
+    assert (quotes["anchored"], quotes["unanchored"]) == (["h2"], ["h1"])
 
 
 def test_a_model_s_reading_sealed_again_must_still_quote(read_by_a_model: Path) -> None:

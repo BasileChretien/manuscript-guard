@@ -522,43 +522,54 @@ def test_a_merged_cell_keeps_its_text_once_in_its_first_row_and_column() -> None
     assert table["c"][5][1] == []
 
 
-def test_nothing_written_keeps_a_width_or_a_rule_as_long_as_the_line() -> None:
+def test_nothing_written_keeps_a_width_as_long_as_the_line() -> None:
     """Every table written, one in a cell of another among them, has its widths left to its
-    cells, and a rule, wherever it stands, is pandoc's own; the blocks given are not changed
-    (the robustness sweep of 2026-11-21: `test_robustness.py` has the paper)."""
+    cells, a rule stays pandoc's own, and the blocks given are not changed (the robustness
+    sweep of 2026-11-21: `test_robustness.py` has the paper)."""
     inner = _table([], [[_ATTR, [_cell(_plain("1")), _cell(_plain("2"))]]], [], columns=2)
-    outer = _table([], [[_ATTR, [_cell([inner]), _cell([{"t": "HorizontalRule"}])]]], [],
-                   columns=2)  # fmt: skip
-    blocks = [{"t": "HorizontalRule"}, outer]
+    outer = _table([], [[_ATTR, [_cell([inner]), _cell([_RULE])]]], [], columns=2)
+    blocks = [_RULE, outer]
     before = json.dumps(blocks)
     written = from_word._unpadded(blocks)
     assert json.dumps(blocks) == before
-    rule = {"t": "RawBlock", "c": ["markdown", "-" * from_word.RULE_WIDTH]}
-    assert written[0] == rule
+    assert written[0] == _RULE and written[1]["c"][4][0][3][0][1][1][4] == [_RULE]
     widths = [spec[1] for table in (written[1], written[1]["c"][4][0][3][0][1][0][4][0])
               for spec in table["c"][2]]  # fmt: skip
     assert widths == [{"t": "ColWidthDefault"}] * 4
-    assert written[1]["c"][4][0][3][0][1][1][4] == [rule]
 
 
-@needs_pandoc
+def test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length() -> None:
+    """A line of hyphens alone, after any indentation or quotation marks, is a rule pandoc
+    wrote, and is cut to `RULE_WIDTH`; a table's border and a shorter run are not."""
+    NL, CR = chr(10), chr(13)  # noqa: N806 - a line feed and a carriage return
+    long, short = "-" * 100_000, "-" * from_word.RULE_WIDTH
+    text = (f"a{NL}{NL}{long}{CR}{NL}{NL}  {long}{NL}> {long}{NL}|{long}|{NL}+{long}+{NL}"
+            f"{'-' * 999}{NL}")
+    assert from_word._short_rules(text) == (
+        f"a{NL}{NL}{short}{CR}{NL}{NL}  {short}{NL}> {short}{NL}|{long}|{NL}+{long}+{NL}"
+        f"{'-' * 999}{NL}")
+
+
 def _para(word: str) -> dict:
     return {"t": "Para", "c": [{"t": "Str", "c": word}]}
 
 
 _RULE = {"t": "HorizontalRule"}
 #: Where a rule stands, as Word's blocks put one: between paragraphs, a heading after the
-#: second; after a plain paragraph; after another rule; after raw HTML; in a list's item; in
-#: a table's cell. pandoc writes a plain paragraph and raw Markdown each with no blank line
-#: before raw Markdown, and the hyphens then underlined them as a heading (rounds 1 and 2 of
-#: #732).
+#: second; after a plain paragraph and before one; after another rule; after raw HTML; in a
+#: list's item; in a quotation; in a table's cell. Written as raw Markdown, a rule stood on
+#: the line under a plain paragraph, under another rule and over a plain paragraph, and read
+#: back as a heading or a table (rounds 1 to 3 of #732).
 _RULES_STAND = {
     "between paragraphs": [_RULE, _para("a"), _para("b"), _RULE,
                            {"t": "Header", "c": [1, ["", [], []], [{"t": "Str", "c": "H"}]]}],
     "after a plain paragraph": [_para("a"), *_plain("x"), _RULE, _para("y")],
+    "before a plain paragraph": [_RULE, *_plain("y"), _RULE, *_plain("y"), _para("z"), _RULE],
     "after a rule": [_para("a"), _RULE, _RULE, _para("b"), _RULE, _RULE],
     "after raw HTML": [{"t": "RawBlock", "c": ["html", "<div>x</div>"]}, _RULE, _para("b")],
-    "in a list's item": [{"t": "BulletList", "c": [[*_plain("x"), _RULE], _plain("y")]}],
+    "in a list's item": [{"t": "BulletList", "c": [[*_plain("x"), _RULE, *_plain("y")],
+                                                   _plain("z")]}],
+    "in a quotation": [{"t": "BlockQuote", "c": [_RULE, *_plain("x"), _RULE]}, _para("b")],
     "in a table's cell": [_table([], [[_ATTR, [_cell([*_plain("x"), _RULE]), _cell(_plain("2"))]]],
                                  [], columns=2), _para("b")],
 }  # fmt: skip
@@ -567,9 +578,10 @@ _RULES_STAND = {
 @needs_pandoc
 @pytest.mark.parametrize("where", list(_RULES_STAND))
 def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) -> None:
-    """A rule is written as raw Markdown, a line of hyphens (`from_word._unpadded`), and the
-    Markdown reads back as pandoc's own did, wherever the rule stands (`_RULES_STAND`): the
-    same blocks, a table's widths aside, which are left to its cells now."""
+    """A rule is pandoc's own, its line cut short after it is written
+    (`from_word._short_rules`), so wherever it stands (`_RULES_STAND`) the Markdown is what
+    pandoc wrote but for that line, and reads back as pandoc's did: the same blocks, a
+    table's widths aside, which are left to its cells now."""
     import subprocess
 
     def read(text: str) -> list:
@@ -585,6 +597,8 @@ def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) ->
     document = json.dumps({**tree, "meta": {}, "blocks": blocks})
     pandoc_s = from_word._pandoc(["-f", "json", *from_word.WRITER], document, Path("paper.docx"))
     assert read(written) == read(pandoc_s), written
+    if "Table" not in json.dumps(blocks):
+        assert written == from_word._short_rules(pandoc_s)
 
 
 def _widths_aside(node: object) -> object:

@@ -11555,10 +11555,13 @@ table of one-line cells is a pipe table and any other a grid table, and the line
 long enough that a table of more than nine columns is not written as raw HTML, which
 pandoc's default of 72 columns did. Nothing written is padded to that line: every table's
 widths are left to its cells, the text's and one in a cell or in the title page set aside
-too, and a rule is a line of 72 hyphens, pandoc's own. A table that kept its Word columns'
-widths was spread over all 100,000 columns and a rule was 100,000 hyphens, so 22,000
-characters of text came to 5.2 MB of Markdown and the audit timed out (the robustness sweep
-of 2026-11-21). A table with anything else in a cell, a list, a table
+too, and a rule is pandoc's own, its line cut to 72 hyphens once it is written. A table that
+kept its Word columns' widths was spread over all 100,000 columns and a rule was 100,000
+hyphens, so 22,000 characters of text came to 5.2 MB of Markdown and the audit timed out (the
+robustness sweep of 2026-11-21). A rule written as raw Markdown instead stood on the line
+under a plain paragraph or another rule, or over a plain paragraph, and read back as a
+heading or a table (rounds 1 to 3 of #732): pandoc spaces its own rule from what is about
+it. A table with anything else in a cell, a list, a table
 or code, is left a grid table and named in what `init` prints. `check` reads a grid table's
 rows as a table's (a line that starts with a pipe), and the audit does not read its cells.
 The tree, not a Lua filter: the change is a function of pandoc's tree and is tested on trees
@@ -25619,6 +25622,11 @@ Open, recorded as each change landed:
 - **A merged cell's text stands in its first column only.** A header spanning a count's and a
   share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
   audit reads its denominator for that column alone.
+- **A rule in a Word table's cell is as long as the converter's line.** pandoc writes a rule
+  as long as its line, 100,000 hyphens, and `init --from` cuts it to 72 only where it stands
+  on a line of its own (#732): in a cell, its row is as wide, and so is every line of its
+  table, as before. Pinned by
+  `tests/test_from_word.py::test_a_rule_on_a_line_of_its_own_is_cut_to_pandoc_s_length`.
 - **What `init --from` sets aside is chosen by a count of words.** The run before the first
   heading is set aside up to 600 words. A short introduction with no heading over it, after a
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a

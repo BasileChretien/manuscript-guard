@@ -81,8 +81,12 @@ MEDIA = "manuscript/media"
 #: left to the cells, and the line made long enough for any table.
 WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", "--columns=100000"]
 #: How long a rule is written: pandoc's own, its default line of 72 columns. At the writer's
-#: 100,000 a rule was 100,000 hyphens (`_unpadded`).
+#: 100,000 a rule was 100,000 hyphens (`_short_rules`).
 RULE_WIDTH = 72
+#: A rule as pandoc writes it at that line, on a line of its own after any indentation or
+#: quotation marks: hyphens alone, which pandoc writes nowhere else, since it escapes a
+#: paragraph's own (`\-\-`). A table's border holds `+` or `|` too.
+_LONG_RULE = re.compile(r"^([ \t>]*)-{1000,}(?=\r?$)", re.MULTILINE)
 #: The longest pandoc is given to read or write one paper.
 PANDOC_SECONDS = 300
 
@@ -243,52 +247,40 @@ def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
 
 def _write(tree: dict, blocks: list, path: Path) -> str:
     """The blocks as pandoc writes them in Markdown, a paragraph to a line, padded to no
-    line of the writer's (`_unpadded`)."""
+    line of the writer's (`_unpadded`, `_short_rules`)."""
     if not blocks:
         return ""
     document = {"pandoc-api-version": tree["pandoc-api-version"], "meta": {},
                 "blocks": _unpadded(blocks)}  # fmt: skip
-    return _pandoc(["-f", "json", *WRITER], json.dumps(document), path)
+    return _short_rules(_pandoc(["-f", "json", *WRITER], json.dumps(document), path))
 
 
 def _unpadded(node: object) -> object:
-    """A copy of `node` with nothing in it that pandoc writes as long as the writer's line
-    of 100,000 columns (`WRITER`): every table's widths left to its cells, at any depth, as
-    `_tables` leaves the text's, and each rule a line of `RULE_WIDTH` hyphens. A table kept
-    its Word columns' widths in the title page set aside, in a cell and in a table left as it
-    came, and pandoc spread them over the whole line: 22,000 characters of text came to
+    """A copy of `node` with every table's widths left to its cells, at any depth, as
+    `_tables` leaves the text's. A table kept its Word columns' widths in the title page set
+    aside, in a cell and in a table left as it came, and pandoc spread them over the
+    writer's whole line of 100,000 columns (`WRITER`): 22,000 characters of text came to
     5.2 MB of Markdown, every rule of G6 and G14 read it, and the audit timed out (zenodo
     10010235, in the robustness sweep of 2026-11-21)."""
     if isinstance(node, list):
-        copied_list: list = []
-        for item in node:
-            if isinstance(item, dict) and item.get("t") == "HorizontalRule":
-                before = copied_list[-1] if copied_list else None
-                copied_list.append(_rule(isinstance(before, dict) and before.get("t") in _TIGHT))
-            else:
-                copied_list.append(_unpadded(item))
-        return copied_list
+        return [_unpadded(item) for item in node]
     if not isinstance(node, dict):
         return node
-    if node.get("t") == "HorizontalRule":
-        return _rule(False)
     copied = {key: _unpadded(value) for key, value in node.items()}
     if copied.get("t") == "Table":
         copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
     return copied
 
 
-#: The blocks pandoc writes with no blank line before raw Markdown: a plain paragraph, a
-#: cell's or a tight list item's, and raw Markdown itself, a rule among it.
-_TIGHT = frozenset({"Plain", "RawBlock"})
-
-
-def _rule(after_tight: bool) -> dict:
-    """A rule as raw Markdown, `RULE_WIDTH` hyphens, read back as the rule pandoc wrote. After
-    a block of `_TIGHT`, a blank line first: pandoc writes one between such a block and its
-    own rule and none before raw Markdown, and the hyphens then underlined a plain paragraph
-    or another rule as a heading (rounds 1 and 2 of #732)."""
-    return {"t": "RawBlock", "c": ["markdown", ("\n" if after_tight else "") + "-" * RULE_WIDTH]}
+def _short_rules(markdown: str) -> str:
+    """`markdown` with each rule `RULE_WIDTH` hyphens long, where pandoc wrote it as long as
+    the writer's line, 100,000 hyphens (`_LONG_RULE`). The rule is pandoc's own, so it stands
+    apart from the blocks about it as pandoc puts it, and reads back as it did: written as
+    raw Markdown instead, it stood on the line under a plain paragraph, under another rule
+    and over a plain paragraph, and read back as a heading or a table (rounds 1 to 3 of
+    #732). A rule in a table's cell is no line of its own and keeps the line's length
+    (DESIGN.md, Known gaps)."""
+    return _LONG_RULE.sub(lambda found: found[1] + "-" * RULE_WIDTH, markdown)
 
 
 def _comment(markdown: str) -> str:

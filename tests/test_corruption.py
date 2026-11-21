@@ -2082,6 +2082,26 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("title", "results"),
+    [("## **Results**", True), ("- Results\n---", True), ("# Results\n---", True),
+     ("# Results", True), ("# Results and discussion", False)],
+)  # fmt: skip
+def test_a_section_is_results_only_by_its_title(project: Path, title: str, results: bool) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A section is Results only by its title."): a
+    Results heading in bold, as a list item over a rule or hashed over a rule ends the
+    Methods, and a P under a "Sensitivity analyses" below it is reported; under "Results
+    and discussion" that subsection keeps the Methods rules, and the P passes as a
+    threshold. The 2026-11-09 triage planned a fix (F18), which will change this test."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n# Methods\n\nAlpha was set in "
+                    f"advance.\n\n{title}\n\nText.\n\n### Sensitivity analyses\n\nThe excess "
+                    "was significant (p < 0.001).\n", encoding="utf-8")  # fmt: skip
+    found = [f for f in gate_report(project).failures
+             if f.code == "unclassified-number" and "'0.001'" in f.message]  # fmt: skip
+    assert len(found) == (1 if results else 0)
+
+
 def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
     """`numbered-heading` took the number opening any setext title for section numbering, so
     "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
@@ -4175,6 +4195,73 @@ def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
     ]
 
 
+def test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A number a summary gives is looked for by its
+    key, and in a table or figure by its display."): a display that stands as a number of
+    its own in a placed figure's text or a table's cells reports a key by coincidence, the
+    example's tick at 10 among them; a PNG alone and a table's caption report nothing. A
+    title that names the Results in other words reports only where the paper has no
+    Results heading, a bold "Conclusions." paragraph is no conclusion, and a `lit.` value
+    is not looked for."""
+    _emitted(project, extra__ten="10", extra__own="84", extra__seven="7")
+    abstract = _line_of(project, _CONCLUDES)
+    _swap(project, _CONCLUDES, "synthetic data, {{results.extra.ten}} of them. Disproportionality")
+    assert _unreported(project) == []  # the figure draws a tick at 10
+    _swap(project, "{{figure.forest}}", "")
+    assert _unreported(project) == [("results.extra.ten", "Abstract", abstract)]
+    _swap(project, "\n\n# Discussion", "\n\n{{figure.forest}}\n\n# Discussion")
+    assert _unreported(project) == []
+    svg = project / "figures" / "forest.svg"
+    drawn = svg.read_bytes()
+    svg.unlink()  # the PNG alone is left
+    assert _unreported(project) == [("results.extra.ten", "Abstract", abstract)]
+    # "84" stands in the figure only inside "3.84", which is no number of its own.
+    _swap(project, "{{results.extra.ten}}", "{{results.extra.own}}")
+    svg.write_bytes(drawn)
+    assert _unreported(project) == [("results.extra.own", "Abstract", abstract)]
+    # A table's caption is not read; its header row is.
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    baseline = document["tables"]["baseline"]
+    baseline["caption"] = "Reports by drug group, in 7 kinds."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _swap(project, "{{results.extra.own}}", "{{results.extra.seven}}")
+    assert _unreported(project) == [("results.extra.seven", "Abstract", abstract)]
+    baseline["columns"][0] = "Characteristic, of 7 kinds"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unreported(project) == []
+    # A title that names the Results in other words reports only with no Results heading.
+    _swap(project, "{{results.extra.seven}}", "{{results.extra.own}}")
+    for title in ("Outcomes", "Main results"):
+        restated = f"\n\n# {title}\n\nThey were {{{{results.extra.own}}}}.\n\n# Discussion"
+        _swap(project, "\n\n# Discussion", restated)
+        assert _unreported(project) == [("results.extra.own", "Abstract", abstract)], title
+        _swap(project, "\n# Results\n", "\n# Reports of hepatic injury\n")
+        assert _unreported(project) == [], title
+        _swap(project, "\n# Reports of hepatic injury\n", "\n# Results\n")
+        _swap(project, restated, "\n\n# Discussion")
+    # A conclusion set as a bold paragraph is the Discussion's, and summarises nothing.
+    _swap(project, "{{results.extra.own}}", "some")
+    _swap(project, "\n\n# Data availability",
+          "\n\n**Conclusions.** They were {{results.extra.own}}.\n\n# Data availability")
+    assert _unreported(project) == []
+    _swap(project, "**Conclusions.** They", "## Conclusions\n\nThey")
+    assert _unreported(project) == [
+        ("results.extra.own", "Conclusions", _line_of(project, "They were {{results.extra"))
+    ]
+    _swap(project, "## Conclusions\n\nThey were {{results.extra.own}}.", "")
+    # A literature value an abstract gives is not looked for.
+    _swap(project, "synthetic data, some of them.",
+          "synthetic data, against {{lit.background.class_ror}} for the class.")
+    assert _unreported(project) == []
+    _swap(project, "against {{lit.background.class_ror}} for", "against {{results.extra.own}} for")
+    assert _unreported(project) == [("results.extra.own", "Abstract", abstract)]
+
+
 def test_a_section_of_a_later_file_is_not_taken_for_one_of_an_earlier() -> None:
     """Round 1 of #272: which sections report and which summarise was kept by identity, and
     once a file's sections were freed a section of the next file could be given the address
@@ -4365,6 +4452,131 @@ def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(
     assert "binds results.ror.point (main.md:" in found.message, found.message
 
 
+def _held(root: Path, summary: str, results: str = "r.", supplement: str = "") -> list[str]:
+    """What `summary-claim-stronger` says moved, for a paper whose Abstract is `summary` and
+    whose Results are `results`; `supplement`, where given, a file of the supplement."""
+    main_md(root).write_text(f"# Abstract\n\n{summary}\n\n# Methods\n\nm.\n\n# Results\n\n"
+                             f"{results}\n", encoding="utf-8")  # fmt: skip
+    if supplement:
+        (root / "manuscript" / "supplementary" / "s9.md").write_text(supplement, "utf-8")
+    return [found.message.split("): ", 1)[1] for found in _overclaimed(root)]
+
+
+_A = "{{results.case.n_cases}}"
+_B = "{{results.case.n_serious}}"
+_HR = "{{results.ror.point}}"
+_CI = "95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}"
+
+
+@pytest.mark.parametrize(
+    ("summary", "results", "moved"),
+    [
+        # Only the words of the lists: a claim made stronger in other words, or a qualifier
+        # the limits do not list dropped, is not seen.
+        (f"Use was associated with twice the risk ({_HR}).",
+         f"Use was associated with a higher risk ({_HR}).", []),
+        (f"Use was associated with harm ({_HR}).",
+         f"Use was associated with harm in older women ({_HR}).", []),
+        # A Results sentence that holds none of them is compared with nothing; the claim
+        # beside it in a sentence of its own is not read.
+        (f"Use caused the outcome ({_HR}).",
+         f"Use was associated with the outcome. The adjusted HR was {_HR}.", []),
+        (f"Use caused the outcome ({_HR}).",
+         f"Use was associated with the outcome; the adjusted HR was {_HR}.",
+         ["'associated' (association) is now 'caused' (causation)"]),
+        # A summary sentence that holds none is held only to the hedges and limits it
+        # dropped: not to a negation or a word of the ladder, and a hedge only where the
+        # Results sentence negates nothing and its lowest word, if any, is of consistency.
+        (f"The HR was {_HR}.", f"Use was not associated with the outcome ({_HR}).", []),
+        (f"The HR was {_HR}.", f"The ratio suggests a signal ({_HR}).", []),
+        (f"Rates were higher in men ({_HR}).", f"Rates may be higher in men ({_HR}).",
+         ["'may' is gone"]),
+        (f"The HR was {_HR}.", f"These may be consistent with an association ({_HR}).",
+         ["'may' is gone; 'consistent with' (consistency) and 'association' (association) "
+          "are gone"]),
+        (f"The HR was {_HR}.", f"Use may be associated with the outcome ({_HR}).", []),
+        (f"The HR was {_HR}.", f"Use may not be associated with the outcome ({_HR}).", []),
+        # A negation new is claiming more, whatever it negates.
+        (f"Use was associated with the outcome, and not with death ({_HR}).",
+         f"Use was associated with the outcome ({_HR}).", ["'not' is new"]),
+        # Against a Results sentence that binds a result the summary does not give, only a
+        # word of the ladder moved up is read; the other side of each is the sentence that
+        # binds nothing else.
+        (f"Use was associated with A ({_A}).",
+         f"Use may be associated with A ({_A}) and with B ({_B}).", []),
+        (f"Use was associated with A ({_A}).", f"Use may be associated with A ({_A}).",
+         ["'may' is gone"]),
+        (f"Use was associated with the outcome ({_HR}).",
+         f"Use may be associated with the outcome ({_HR}, {_CI}).", []),
+        (f"Use was associated with the outcome ({_HR}, {_CI}).",
+         f"Use may be associated with the outcome ({_HR}, {_CI}).", ["'may' is gone"]),
+        (f"Use increased the outcome ({_HR}).",
+         f"The adjusted HR was {_HR}, and was not raised in women ({_A}).", []),
+        # A summary sentence that binds several keys: another key's sentence that claims as
+        # much keeps the warning back.
+        (f"Use was associated with A ({_A}) and B ({_B}).",
+         f"Use may be associated with A ({_A}). Use was associated with B ({_B}).", []),
+        (f"Use was associated with A ({_A}) and B ({_B}).",
+         f"Use may be associated with A ({_A}). B was {_B}.", ["'may' is gone"]),
+    ],
+)  # fmt: skip
+def test_a_summary_is_held_to_its_results_sentence_by_the_words_of_the_claim_lists(
+    project: Path, summary: str, results: str, moved: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): each pair of the entry, the Abstract's
+    sentence against the Results', and what `summary-claim-stronger` says moved, nothing
+    where it passes."""
+    assert _held(project, summary, results) == moved
+
+
+def test_a_summary_is_held_to_results_sentences_only(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): a key bound only in the Methods, in a
+    Results heading under the Methods, under a review's topical heading, or printed only in
+    an emitted table or figure, is compared with nothing; under the Results it is. The
+    title is not read."""
+    from manuscript_guard.gates import check_reported
+
+    caused = f"Use increased the outcome ({_HR})."
+    hedged = f"Use may be associated with the outcome ({_HR})."
+    moved = ["'may' is gone; 'associated' (association) is now 'increased' (effect)"]
+    assert _held(project, caused, f"r.\n\n## Results of the pilot\n\n{hedged}") == moved
+    main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Methods\n\n{hedged}\n\n## Results "
+                                f"of the pilot\n\n{hedged}\n\n# Results\n\nr.\n\n"
+                                "{{table.two_by_two}}\n\n{{figure.forest}}\n",
+                                encoding="utf-8")  # fmt: skip
+    assert _overclaimed(project) == []
+    main_md(project).write_text(f"# Abstract\n\n{caused}\n\n# Introduction\n\ni.\n\n"
+                                f"# Reports of the drug\n\n{hedged}\n", encoding="utf-8")
+    assert _overclaimed(project) == []
+    main_md(project).write_text(f'---\ntitle: "{caused}"\n---\n\n# Methods\n\nm.\n\n'
+                                f"# Results\n\n{hedged}\n", encoding="utf-8")  # fmt: skip
+    loaded, _ = load_project(project)
+    assert list(check_reported(loaded, load_namespace(loaded)[1]).findings) == []
+
+
+@pytest.mark.parametrize(
+    ("heading", "results"),
+    [("Supplementary results", True), ("Supplemental results", True),
+     ("Additional findings", True), ("S3. Results", True), ("Appendix 2: Results", True),
+     ("Appendix S1: Results", True), ("Supplement 1. Results", True), ("eResults 2", True),
+     ("Sensitivity analyses", False), ("eTable 2", False),
+     ("Supplementary methods\n\nm.\n\n## eResults 1", True),
+     ("Supplementary results\n\nr.\n\n## Methods of the pilot", False)],
+)  # fmt: skip
+def test_a_results_section_of_the_supplement_is_known_by_its_heading(
+    project: Path, heading: str, results: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A summary is held to the Results by the words of
+    the claim lists, sentence against sentence"): in the supplement a Results section is one
+    whose heading opens with "Results" or "Findings" after one of the labels the entry
+    names, the innermost heading that names the Methods or the Results deciding."""
+    supplement = f"# {heading}\n\nUse may be associated with the outcome ({_HR}).\n"
+    said = _held(project, f"Use was associated with the outcome ({_HR}).", supplement=supplement)
+    assert said == (["'may' is gone"] if results else [])
+
+
 def _interpreted(root: Path) -> list:
     """What G8 notes of the sentences that claim on neither a result nor a citation."""
     from manuscript_guard.gates import check_interpretation
@@ -4456,6 +4668,81 @@ def test_the_supplement_s_interpretation_is_counted_where_it_argues(project: Pat
     assert (note.path, note.line) == (supplement, 7)
     assert note.message.startswith("2 of the 2 sentences")
     assert "`manuscript-guard explain manuscript/supplementary/s2.md`" in note.hint
+
+
+def _counted(root: Path) -> list[str]:
+    """The sentences of main.md G8's interpretation note counts, as `explain` lists them;
+    the note's count is held to the list."""
+    from manuscript_guard.gates.interpretation import listed
+
+    found = listed(load_project(root)[0], main_md(root))
+    notes = [note for note in _interpreted(root) if note.path == main_md(root)]
+    assert [note.message.split()[0] for note in notes] == ([str(len(found))] if found else [])
+    return [one.sentence for one in found]
+
+
+@pytest.mark.parametrize(
+    ("typed", "counted"),
+    [
+        # A claim with no word of the ladder is not counted; one with a word of it that
+        # claims nothing of this paper's results is.
+        ("The drug is hepatotoxic.", []),
+        ("Older patients are at higher risk.", []),
+        ("The class is associated with liver injury in other cohorts.",
+         ["The class is associated with liver injury in other cohorts."]),
+        # A binding stands it on a result, whatever it claims of it.
+        ("The risk increased with dose ({{results.ror.point}}).", []),
+        # A narrative citation is a citation; an author and year typed are none, nor is a
+        # citation in the footnote the sentence calls, nor the one the sentence before has.
+        ("@fictionalClassSignal2019 showed that the class increased injury.", []),
+        ("Smith (2019) showed that the class increased injury.",
+         ["Smith (2019) showed that the class increased injury."]),
+        ("The class increased injury.[^1]\n\n[^1]: As reported before "
+         "[@fictionalClassSignal2019].", ["The class increased injury.[^1]"]),
+        ("This was reported before [@fictionalClassSignal2019]. It increased injury.",
+         ["It increased injury."]),
+        ("Figure 1 suggests that use increased the reports.",
+         ["Figure 1 suggests that use increased the reports."]),
+        # A table typed by hand, its caption line and an image's alternative text.
+        ("Figure 1 shows the reports.\n\n| Finding | Seen |\n|---|---|\n"
+         "| Use increased injury | yes |\n\nTable: Use increased the reports.\n\n"
+         "![Use increased the reports.](figures/forest.png)\n",
+         ["| Use increased injury | yes |", "Table: Use increased the reports.",
+          "![Use increased the reports.](figures/forest.png) Spontaneous reports are subject "
+          "to notoriety bias, and the denominator is unknown."]),
+    ],
+)  # fmt: skip
+def test_the_interpretation_is_found_by_the_words_of_the_ladder_and_what_it_rests_on(
+    project: Path, typed: str, counted: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The paper's interpretation is found by the words
+    of the claim ladder alone"): each sentence of the entry, typed in the Discussion, and
+    whether the note counts it."""
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} {typed}")
+    assert _counted(project) == counted
+
+
+def test_a_placed_display_is_not_read_and_without_results_only_the_discussion_is(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The paper's interpretation is found by the words
+    of the claim ladder alone"): an emitted table's caption that claims, placed by its
+    binding, is not read; in a paper with no Results heading only the Discussion is read,
+    and a topical section's claim is not counted."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["two_by_two"]["caption"] = "Use increased these reports."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _counted(project) == []
+    main_md(project).write_text("# Abstract\n\na.\n\n# Reports of the drug\n\nUse increased "
+                                "injury.\n\n# Discussion\n\nUse increased the reports.\n",
+                                encoding="utf-8")  # fmt: skip
+    assert _counted(project) == ["Use increased the reports."]
+    # The other side: with a Results heading, the same claim there is counted.
+    main_md(project).write_text("# Abstract\n\na.\n\n# Results\n\nUse increased injury.\n\n"
+                                "# Discussion\n\nUse increased the reports.\n", encoding="utf-8")
+    assert _counted(project) == ["Use increased injury.", "Use increased the reports."]
 
 
 def test_explain_lists_the_sentences_the_interpretation_note_counts(
@@ -4629,6 +4916,82 @@ def test_a_findings_subheading_under_a_topical_section_is_read_as_the_results(
         ("results.ror.point", "Abstract"),
         ("results.ror.point", "Conclusions"),
     ]
+
+
+@pytest.mark.parametrize(
+    "heading", ["The problem of arrests", "What this means for regulators", "The signal in short"]
+)
+def test_a_review_s_own_introduction_discussion_or_summary_reports_where_it_has_no_results(
+    project: Path, heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper with no Results heading reports under
+    every heading that names no part."): a section of a review's own that is really an
+    introduction, a discussion or a summary reports, so the abstract's number it restates
+    passes; under the paper's Introduction it would be warned of."""
+    said = [f.message.split()[0] for f in _reported_said(project, _REVIEW_ROR_ALONE)]
+    assert said == ["results.ror.point"]
+    restated = f"# {heading}\n\nThe reporting odds ratio was {{{{results.ror.point}}}}.\n\n"
+    assert _reported_said(project, _REVIEW_ROR_ALONE.replace(
+        "# Discussion\n", restated + "# Discussion\n")) == []  # fmt: skip
+    # The other side: under a heading that names the Introduction, it reports nothing.
+    introduction = _REVIEW_ROR_ALONE.replace(
+        "Hepatic injury is a common reason for regulatory action.\n",
+        "Hepatic injury is a common reason for regulatory action.\n\n#" + restated,
+    )
+    assert [f.message.split()[0] for f in _reported_said(project, introduction)] == [
+        "results.ror.point"
+    ]
+
+
+def test_what_a_paper_with_no_results_heading_reads_as_its_results_and_its_title(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper with no Results heading reports under
+    every heading that names no part."): a heading that opens with "Results", at any level,
+    gives a review a Results heading, and its topical sections then report nothing; a
+    topical section over a subsection called "Background" is the paper's title, and the
+    text directly under it reports nothing; and an abstract that no heading names,
+    "Overview", is a section of the paper's own, whose "Results" heading is a Results
+    heading."""
+
+    def said(text: str) -> list[tuple[str, str]]:
+        return [(f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1])
+                for f in _reported_said(project, text)]  # fmt: skip
+
+    search = _REVIEW.replace("## Serious reports: a smaller group\n",
+                             "## Results of the search\n")  # fmt: skip
+    assert said(search) == [
+        ("results.cohort.n_reports", "Abstract"),
+        ("results.ror.point", "Abstract"),
+        ("results.ror.point", "Conclusions"),
+    ]
+    # The other side: a subheading that does not open with "Results" leaves the paper
+    # without one, and every topical section reports.
+    assert said(_REVIEW.replace("## Serious reports: a smaller group\n",
+                                "## The search and its results\n")) == []  # fmt: skip
+    ratio = "Against all other drugs, the reporting odds ratio was {{results.ror.point}}.\n"
+    background = _REVIEW.replace(
+        "# Regulatory responses\n\n" + ratio,
+        "# Regulatory responses\n\n" + ratio + "\n## Background\n\nIt was asked before.\n",
+    )
+    assert said(background) == [
+        ("results.ror.point", "Abstract"),
+        ("results.ror.point", "Conclusions"),
+    ]
+    # The other side: under a subsection of any other name the same text reports.
+    assert said(background.replace("## Background\n", "## Earlier questions\n")) == []
+    # An "Overview" is no abstract: its "Results" heading is the paper's, which then has
+    # Results, and the topical sections report nothing.
+    # A key the Conclusions give and only a topical section gives again.
+    topical = _REVIEW.replace(
+        "# Conclusions\n\n", "# Conclusions\n\nIt held {{results.cohort.n_drug_reports}}. "
+    ).replace("# Regulatory responses\n\n",
+              "# Regulatory responses\n\nOf {{results.cohort.n_drug_reports}}. ")  # fmt: skip
+    overview = topical.replace("# Abstract\n\n", "# Overview\n\n## Results\n\n")
+    assert said(overview) == [("results.cohort.n_drug_reports", "Conclusions")]
+    # The other side: under "Abstract", its "Results" summarise, the paper has no Results
+    # heading, and the topical section reports.
+    assert said(topical.replace("# Abstract\n\n", "# Abstract\n\n## Results\n\n")) == []
 
 
 def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
@@ -8861,6 +9224,64 @@ def test_a_spread_labelled_the_other_kind_is_said(project: Path) -> None:
     assert _labels_said(project) == [("spread-label-differs", "warn")]
 
 
+#: A mean and three spreads of it: a standard deviation, a standard error, and one emitted
+#: without `spread`.
+_SPREADS = {
+    "age.mean": {"value": 45.2, "display": "45.2"},
+    "age.sd": {"value": 12.3, "display": "12.3", "spread": "sd", "of": "age.mean"},
+    "age.se": {"value": 0.9, "display": "0.9", "spread": "se", "of": "age.mean"},
+    "age.bare": {"value": 1.1, "display": "1.1"},
+}
+
+_LOW_HIGH = "{{results.ror.ci_low}} to {{results.ror.ci_high}}"
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A level written in another sentence, or before another binding of the sentence.
+        (f"The 90% intervals are below. The ratio ran from {_LOW_HIGH}.", []),
+        (f"The 90% CI around {{{{results.ror.point}}}} ran from {_LOW_HIGH}.", []),
+        (f"The ratio ran (90% CI {_LOW_HIGH}).", ["interval-level-differs"]),
+        # An interval quoted only in a table.
+        ("| Ratio | 90% CI |\n|---|---|\n| {{results.ror.point}} | " + _LOW_HIGH + " |", []),
+        # A plus-minus sign with no word beside it is no label.
+        ("Age was {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} years.", []),
+        ("Age was {{results.age.mean}} (SD {{results.age.se}}) years.",
+         ["spread-label-differs"]),
+        # A spread emitted without `spread` is held to nothing.
+        ("Age was {{results.age.mean}} (SE {{results.age.bare}}) years.", []),
+        # The words read for each kind; another abbreviation of either is not read.
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.se}}}}) years.",
+           ["spread-label-differs"]) for label in ("SD", "s.d.", "standard deviation")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.",
+           ["spread-label-differs"])
+          for label in ("SE", "SEM", "s.e.", "standard error")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.sd}}}}) years.", [])
+          for label in ("SD", "s.d.", "standard deviation")],
+        *[(f"Age was {{{{results.age.mean}}}} ({label} {{{{results.age.se}}}}) years.", [])
+          for label in ("St. Dev.", "StDev", "std", "S.E.", "std. err.")],
+    ],
+)  # fmt: skip
+def test_a_label_is_read_only_beside_its_binding_and_only_as_written(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A label is read only beside its binding, and
+    only what is written."): a level or a spread's label is read in the binding's own
+    sentence, after any other binding, and only in the words the entry lists."""
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-18T00:00:00+00:00"},
+        "values": _SPREADS,
+    }  # fmt: skip
+    fragment = project / "results" / "02_labels.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _with_paragraph(project, paragraph)
+    assert _labels_said(project) == [(code, "warn") for code in said]
+
+
 def _whole_said(root: Path) -> list[tuple[str, str]]:
     codes_ = ("quoted-alone", "interval-not-quoted-whole", "family-uncorrected")
     return [(f.code, f.severity) for f in gate_report(root).findings if f.code in codes_]
@@ -9002,6 +9423,83 @@ def test_what_quoted_alone_does_not_read_is_pinned(
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A p value or a share emitted without `of` is held to nothing, whatever its key.
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.free.p}}}}.", []),
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.free.pct}}}}%.", []),
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.or.p}}}}.", ["quoted-alone"]),
+        # The estimate bound in the sentence passes it, whatever the sentence says of it.
+        (f"The ratio was {_ESTIMATE}. Unlike {{{{results.whole.or.point}}}}, the hazard ratio "
+         "had P = {{results.whole.or.p}}.", []),
+        # A sentence that ends at an abbreviation's stop parts the P from its estimate.
+        (f"The ratio was {_ESTIMATE} vs. the control, P = {{{{results.whole.or.p}}}}.",
+         ["quoted-alone"]),
+        (f"The ratio was {_ESTIMATE} versus the control, P = {{{{results.whole.or.p}}}}.", []),
+        # An estimate quoted only in a table the analysis emits is not read, nor a
+        # percentage in its cells; a share bound in a sentence is.
+        ("{{table.ratios}}\n\nP was {{results.whole.or.p}}.", ["quoted-alone"]),
+        (f"The ratio was {_ESTIMATE}.\n\n{{{{table.shares}}}}", []),
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.female.pct}}}}%.",
+         ["quoted-alone"]),
+    ],
+)  # fmt: skip
+def test_a_statistic_is_held_to_what_it_declares_and_only_by_sentence(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A statistic is held to what it declares it
+    belongs to, and only by sentence."): a key named `.p` or a share emitted without `of`
+    is held to nothing, an estimate's binding in the sentence passes it, an abbreviation's
+    stop parts a P from its estimate, and an emitted table's cells are not read."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.free.p"] = {"value": 0.03, "display": "0.030"}
+    document["values"]["whole.free.pct"] = {"value": 52.1, "display": "52.1"}
+    document["tables"] = {
+        "ratios": {"columns": ["Ratio", "95% CI"], "rows": [["2.50", "1.40 to 3.80"]]},
+        "shares": {"columns": ["Group", "Share"], "rows": [["Women", "52.1%"]]},
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+def test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A statistic is held to what it declares it
+    belongs to, and only by sentence."): one p value of a family in each of two fragments
+    is a family of two, and of two corrections declared for one family the fragment read
+    last decides."""
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "holm"}})
+    more = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-15T00:00:00+00:00"},
+        "values": {"more.p": {"value": 0.2, "display": "0.20", "of": "whole.or.point",
+                              "family": "across"}},
+    }  # fmt: skip
+    fragment = project / "results" / "03_more.json"
+    fragment.write_text(json.dumps(more, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == []  # a family of one
+    whole = project / "results" / "02_whole.json"
+    document = json.loads(whole.read_text(encoding="utf-8"))
+    document["values"]["whole.hr.p"]["family"] = "across"
+    whole.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(whole)
+    said = [f.message for f in gate_report(project).findings if f.code == "family-uncorrected"]
+    assert said == ["the 'across' family holds 2 p values and the analysis declares no "
+                    "correction for it: more.p, whole.hr.p"]  # fmt: skip
+    more["corrections"] = {"secondary": {"method": "bonferroni"}}
+    fragment.write_text(json.dumps(more, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _namespace, results, _literature, _report = load_namespace(load_project(project)[0])
+    assert results.corrections["secondary"] == {"method": "bonferroni"}
 
 
 @pytest.mark.parametrize(
@@ -13162,6 +13660,24 @@ def test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone(
     the binding is counted one sentence on from the rest of its own, among the bindings of
     the next. DESIGN.md has it under Known gaps."""
     assert _reversed_in(text) == backwards
+
+
+@pytest.mark.parametrize(
+    ("between", "reversed_"),
+    [(", e.g.", False), (" approx.", False), (" vs.", False), (", for example,", True),
+     (" versus", True)],
+)  # fmt: skip
+def test_a_stop_after_an_abbreviation_ends_a_sentence_between_two_bounds(
+    project: Path, between: str, reversed_: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A stop after an abbreviation ends a sentence
+    between two bounds."): the upper bound typed before the lower passes where "e.g.",
+    "approx." or "vs." stands between them, and is reported where the same words are
+    written out."""
+    _with_paragraph(project, "The bounds ran from {{results.ror.ci_high}}" + between
+                    + " {{results.ror.ci_low}} in all.")  # fmt: skip
+    found = [f for f in gate_report(project).findings if f.code == "interval-reversed"]
+    assert len(found) == (1 if reversed_ else 0)
 
 
 @pytest.mark.parametrize(
@@ -17787,6 +18303,228 @@ def test_words_that_say_more_than_their_interval_are_found(
     severities = {f.code: f.severity for f in _recomputed(project).findings}
     assert all(severities[code] == ("info" if code == "no-effect-from-interval" else "warn")
                for code in found), severities  # fmt: skip
+
+
+#: A ratio's interval that includes 1 and a ratio above 1.5, named and bare.
+_NEAR = "(HR 1.2, 95% CI 0.9 to 1.6)"
+_NEAR_CI = "(95% CI 0.9 to 1.6)"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"The risk was higher in older patients; the hazard ratio was 1.2 {_NEAR_CI}",
+         ["claim-beyond-interval"]),
+        (f"The hazard ratio was 1.2 {_NEAR_CI}", []),
+        # After "with", "of", an article or another word of `describing`, a participle
+        # describes; after "who had" it states.
+        (f"In patients with reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients of reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In the reduced renal function group, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients among reduced dose groups, the hazard ratio was 1.2 {_NEAR_CI}", []),
+        (f"In patients who had reduced renal function, the hazard ratio was 1.2 {_NEAR_CI}",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_word_of_effect_is_read_anywhere_in_its_sentence_unless_it_describes(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word of effect is read wherever it stands in
+    the sentence"): a word of effect about another clause claims a difference beside the
+    interval, and a participle is taken to describe only after a word of `describing`."""
+    assert _recomputed_codes(project, sentence + ".") == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"In patients whose dose was lower, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"Patients had a lower hazard ratio of 1.2 {_NEAR_CI}.", ["claim-beyond-interval"]),
+        # At most two words between the verb and its comparative.
+        (f"In patients whose dose was by far lower, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"In patients whose dose was by and large lower, the hazard ratio was 1.2 "
+         f"{_NEAR_CI}.", []),
+        # The other side: a comparative with no form of "be" or "have" before it.
+        (f"In patients on a lower dose, the hazard ratio was 1.2 {_NEAR_CI}.", []),
+    ],
+)  # fmt: skip
+def test_be_or_have_before_a_comparative_states_a_difference_where_it_describes_a_group(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A form of "be" or "have" with a comparative at
+    most two words after it is a difference stated"): "whose dose was lower" describes a
+    group and is read as a difference stated."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"After a dose increase, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"After a dose decrease, the hazard ratio was 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+        (f"An association was found, with a hazard ratio of 1.2 {_NEAR_CI}.", []),
+        ("The hazard associated with use had a ratio of 1.2 (95% CI 0.9 to 1.6).", []),
+        (f"The hazard was associated with use {_NEAR}.", ["claim-beyond-interval"]),
+        ("The injury linked to use had an odds ratio of 1.2 (95% CI 0.9 to 1.6).", []),
+        ("Use was linked to liver injury (OR 1.2, 95% CI 0.9 to 1.6).",
+         ["claim-beyond-interval"]),
+        (f"With age as a predictor, the hazard ratio was 1.2 {_NEAR_CI}.", []),
+        (f"Age was a predictor, with a hazard ratio of 1.2 {_NEAR_CI}.",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_no_noun_but_increase_and_decrease_claims_and_association_needs_a_form_of_be(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "No noun is read as a claim but "increase" and
+    "decrease""): those two nouns claim, "an association" does not, and "associated with",
+    "linked to" and "predictor" claim only after a form of "be"."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Use not only increased the risk {_NEAR}.", ["no-effect-from-interval"]),
+        (f"Among patients not taking it, use increased the risk {_NEAR}.",
+         ["no-effect-from-interval"]),
+        # Five words on, the negation is not read, and the effect is a claim.
+        (f"Among patients not taking it at all, use increased the risk {_NEAR}.",
+         ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_negation_turns_round_a_word_of_effect_up_to_four_words_on(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A negation turns round any word of effect up to
+    four words after it"): about the effect or not, a negation in reach says no effect."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Use increased the risk {_NEAR}.", ["claim-beyond-interval"]),
+        (f"Use increased the risk {_NEAR}, P for trend 0.03.", []),
+        (f"Across a wide range of doses, use increased the risk {_NEAR}.", []),
+        (f"Across a range of doses, use increased the risk {_NEAR}.", ["claim-beyond-interval"]),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06) but had no "
+         "significant effect on bleeding.", []),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06) and had an effect on "
+         "bleeding.", ["claim-beyond-interval"]),
+        # Another test named, with a P or "test" within 40 characters.
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06); the test for "
+         "heterogeneity was significant (P = 0.02).", []),
+        (f"Use increased the risk {_NEAR}; the test for interaction was significant "
+         "(P = 0.02).", []),
+        ("X increased the risk of stroke (HR 1.40, 95% CI 0.95 to 2.06); heterogeneity "
+         "between the many included studies of the class was low, P = 0.30.",
+         ["claim-beyond-interval"]),
+        # A significance of another test named in no such word, or with no P or "test"
+        # beside it, is the interval's.
+        ("The log-rank test was significant (HR 1.40, 95% CI 0.95 to 2.06).",
+         ["significance-beyond-interval"]),
+        ("There was significant heterogeneity between studies (HR 1.40, 95% CI 0.95 to "
+         "2.06).", ["significance-beyond-interval"]),
+        # A "test" of the outcome's own names one all the same.
+        ("Treatment improved scores on the global cognition test (MD 1.2, 95% CI -0.3 to "
+         "2.7).", []),
+        ("Treatment improved scores on the global cognition scale (MD 1.2, 95% CI -0.3 to "
+         "2.7).", ["claim-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_a_doubt_a_hedge_a_significance_turned_round_or_another_test_stands_a_sentence_down(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word of doubt or a hedge stands the whole
+    sentence down"): of this estimate or not, each of the entry's words stands the sentence
+    down, and a significance said of a test it does not name so is read as the interval's."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_a_latex_heading_runs_into_the_sentence_under_it(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown heading ends a sentence at the end of
+    its line; a LaTeX one does not"): "Increased risk" as a `\\subsection` title over an
+    interval that includes 1 is read as a claim; as a Markdown heading it is not."""
+    said = "The hazard ratio was 1.2 (95% CI 0.9 to 1.6)."
+    assert _recomputed_codes(project, f"## Increased risk\n{said}") == []
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    tex = f"\\subsection{{Increased risk}}\n{said.replace('%', chr(92) + '%')}\n"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("\\end{document}", f"{tex}\n\\end{{document}}"), "utf-8")
+    found = [f for f in _recomputed(project).findings if f.code == "claim-beyond-interval"]
+    assert [(f.path.name, "'Increased'" in f.message) for f in found] == [("main.tex", True)]
+
+
+def test_no_effect_is_read_for_each_interval_of_its_sentence(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, ""No effect" is read for each ratio's interval of
+    its sentence"): B's interval, which another clause says increased, is read as one said
+    to show no effect. The 2026-11-09 triage planned a fix (F18), which will change this
+    test."""
+    sentence = ("X had no effect on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, "
+                "95% CI 0.6 to 2.8).")  # fmt: skip
+    assert _recomputed_codes(project, sentence) == [
+        "claim-beyond-interval", "no-effect-from-interval",
+    ]  # fmt: skip
+    claim, none = _recomputed(project).findings
+    assert claim.message.startswith("HR 1.1 (95% CI 0.9 to 1.3) includes 1 and HR 1.4 (95% CI "
+                                    "0.6 to 2.8) includes 1, and the sentence")  # fmt: skip
+    assert none.message.startswith("HR 1.4 (95% CI 0.6 to 2.8) includes 1 and the sentence "
+                                   "says 'no effect'")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("The hazard ratio, with its confidence interval (CI), was 1.2 (95% CI 0.9 to 1.6) and "
+         "use increased the risk.", []),
+        ("The hazard ratio, with its confidence interval (CI), was 1.01 (95% CI 0.60 to 1.70) "
+         "and use made no difference.", []),
+        # The other side: without the name, each is read.
+        ("The hazard ratio was 1.2 (95% CI 0.9 to 1.6) and use increased the risk.",
+         ["claim-beyond-interval"]),
+        ("Use made no difference (HR 1.01, 95% CI 0.60 to 1.70).", ["no-effect-from-interval"]),
+        # A second interval with no name is not read: one that excludes 1 keeps nothing back.
+        (f"Use increased the risk {_NEAR} and in women (HR 1.3, 1.1 to 1.9).",
+         ["claim-beyond-interval"]),
+        (f"Use increased the risk {_NEAR} and in women (HR 1.3, 95% CI 1.1 to 1.9).", []),
+    ],
+)  # fmt: skip
+def test_a_sentence_naming_more_intervals_than_are_read_is_passed_over(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that names more intervals than the
+    reader reads"): "confidence interval (CI)" before the interval passes the sentence over,
+    and a second interval with no name of its own is not read."""
+    assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        (f"Patients with significant renal impairment had a hazard ratio of 1.2 {_NEAR_CI}.",
+         []),
+        (f"There was a significant risk of bleeding {_NEAR}.", ["significance-beyond-interval"]),
+        (f"Use carried a significant risk of bleeding {_NEAR}.",
+         ["significance-beyond-interval"]),
+        (f"Use was a significant risk of falls in the elderly {_NEAR}.",
+         ["significance-beyond-interval"]),
+        (f"The difference was significant {_NEAR}.", ["significance-beyond-interval"]),
+    ],
+)  # fmt: skip
+def test_significant_is_read_after_be_and_before_a_word_of_significant_of(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, ""Significant" is read after a form of "be" and
+    before a word of `significant_of`"): "significant renal impairment" is not read, and "a
+    significant risk of" is, whatever the risk is of."""
+    assert _recomputed_codes(project, sentence) == found
 
 
 def test_words_beyond_a_bound_interval_are_found_in_the_supplement_and_in_latex(

@@ -17515,6 +17515,7 @@ been sorted yet.
   heading, and a conclusion written as a bold paragraph rather than a heading is not read as
   one. Literature values (`lit.`) are not looked for: an abstract may give the background
   it rests on.
+  Pinned by `tests/test_corruption.py::test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display`.
 - **A paper with no Results heading reports under every heading that names no part.** A
   section of a review's own that is really an introduction ("The problem of arrests"), a
   discussion ("What this means for regulators") or a summary is read as reporting, so a
@@ -17540,6 +17541,14 @@ been sorted yet.
   against the Results (`auditing/abstract.py`) still compares only a paper with a Results
   heading, or a heading that is the Results by another name (`RESULTS_LIKE`, see the entry
   on it).
+  Pinned by `tests/test_corruption.py::test_a_review_s_own_introduction_discussion_or_summary_reports_where_it_has_no_results`,
+  `tests/test_corruption.py::test_a_heading_that_reports_nothing_reports_where_the_paper_has_no_results`,
+  `tests/test_corruption.py::test_what_a_paper_with_no_results_heading_reads_as_its_results_and_its_title`,
+  `tests/test_corruption.py::test_a_findings_subheading_under_a_topical_section_is_read_as_the_results`,
+  `tests/test_corruption.py::test_a_latex_paper_s_unheaded_opening_reports_where_it_has_no_results`,
+  `tests/test_corruption.py::test_a_number_restated_only_under_the_limitations_is_told_a_list_without_them`,
+  `tests/test_audit.py::test_a_heading_that_is_the_results_by_another_name_has_the_abstract_compared`
+  and `tests/test_audit.py::test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared`.
 - **A summary is held to the Results by the words of the claim lists, sentence against
   sentence** (`summary-claim-stronger`, item 3 of the borrowed checks, 2026-11-07). Only the
   words of `data/claim_strength.yaml` are compared, as `claims.compare_pair` compares them:
@@ -17576,9 +17585,10 @@ been sorted yet.
   Results do (round 2 of #573, pinned by
   `test_a_summary_sentence_that_negates_another_result_is_warned_a_known_gap`; Basile chose
   a follow-up that reads the Results sentences of a summary's results together, one taken
-  for each result). Only a Results section is read: a key bound only in the Methods, a table
-  or a figure, or, in a paper with no Results heading, under its topical headings, is
-  compared with nothing, and a Results heading under the Methods is the Methods'. In the
+  for each result). Only a Results section is read: a key bound only in the Methods, or
+  printed only in a table or a figure the analysis emits, or, in a paper with no Results
+  heading, under its topical headings, is compared with nothing, and a Results heading
+  under the Methods is the Methods'. In the
   supplement a Results section is one whose heading opens with "Results" or "Findings",
   after "Supplementary", "Supplemental" or "Additional", a label such as "S3.", "Appendix
   2:", "Appendix S1:" or "Supplement 1.", or JAMA's "e" ("eResults 2"); "Sensitivity
@@ -17587,6 +17597,10 @@ been sorted yet.
   sentences of all of them together, so where it claims more of one result than that
   result's sentence does, another key's sentence that claims as much keeps the warning back.
   The title and the covering letter are not read (D3.1).
+  Pinned by `tests/test_corruption.py::test_a_summary_is_held_to_its_results_sentence_by_the_words_of_the_claim_lists`,
+  `tests/test_corruption.py::test_a_summary_is_held_to_results_sentences_only`,
+  `tests/test_corruption.py::test_a_results_section_of_the_supplement_is_known_by_its_heading`
+  and `tests/test_corruption.py::test_a_summary_sentence_that_negates_another_result_is_warned_a_known_gap`.
 - **The paper's interpretation is found by the words of the claim ladder alone**
   (`interpretation-sentences`, item 10 of the borrowed checks, 2026-11-07). A sentence that
   claims with no word of the ladder, "the drug is hepatotoxic", "older patients are at
@@ -17611,6 +17625,10 @@ been sorted yet.
   Discussion is read. The figures that gave the reason are those of an automated
   scientist's reports: the note says nothing of how often a person's interpretation is
   wrong, only where it stands.
+  Pinned by `tests/test_corruption.py::test_the_interpretation_is_found_by_the_words_of_the_ladder_and_what_it_rests_on`,
+  `tests/test_corruption.py::test_a_placed_display_is_not_read_and_without_results_only_the_discussion_is`,
+  `tests/test_corruption.py::test_a_citation_typed_against_a_stop_belongs_to_the_sentence_it_ends`
+  and `tests/test_corruption.py::test_g8_gives_the_twin_s_citation_typed_against_a_stop_to_the_sentence_before`.
 - **G8 knows a trial's table of baseline characteristics by what its caption names and a P
   header of its first row.** `baseline-p-values` warns where the `study_type` is one whose
   guidelines include CONSORT (`data/study_types.yaml`), and `audit --design trial` reads a
@@ -18330,17 +18348,21 @@ Added by the adversarial review, verified and **not** fixed:
     word of `describing` is taken to describe, "patients with reduced renal function"; one
     after "who had" is not, so "patients who had reduced renal function" states a
     difference.
+    Pinned by `tests/test_corruption.py::test_a_word_of_effect_is_read_anywhere_in_its_sentence_unless_it_describes`.
   - A form of "be" or "have" with a comparative at most two words after it is a difference
     stated, "was higher", "had a lower", where it describes a group too: "whose dose was
     lower".
+    Pinned by `tests/test_corruption.py::test_be_or_have_before_a_comparative_states_a_difference_where_it_describes_a_group`.
   - No noun is read as a claim but "increase" and "decrease", which are verbs too, so
     "after a dose increase" states a difference and "an association was found" does not.
     Nor are "associated with" and "linked to" with no form of "be" before them, "the
     hazard associated with use", nor "predictor" without one, "with age as a predictor"
     (round 1 of #572).
+    Pinned by `tests/test_corruption.py::test_no_noun_but_increase_and_decrease_claims_and_association_needs_a_form_of_be`.
   - A negation turns round any word of effect up to four words after it, about it or not:
     "not only increased" says no effect, and so does "among patients not taking it, use
     increased the risk". One further back is not read.
+    Pinned by `tests/test_corruption.py::test_a_negation_turns_round_a_word_of_effect_up_to_four_words_on`.
   - A word of doubt or a hedge stands the whole sentence down, of this estimate or not:
     "trend" in "P for trend", "wide" in "a wide range of doses". So does a significance
     turned round, of another outcome too: "X increased the risk of stroke (HR 1.40, 95%
@@ -18352,13 +18374,16 @@ Added by the adversarial review, verified and **not** fixed:
     "test" beside it, "there was significant heterogeneity between studies", is read as
     the interval's. A "test" of the outcome's own within 40 characters names one all the
     same, so "improved scores on the global cognition test" claims nothing.
+    Pinned by `tests/test_corruption.py::test_a_doubt_a_hedge_a_significance_turned_round_or_another_test_stands_a_sentence_down`.
   - A Markdown heading ends a sentence at the end of its line; a LaTeX one does not, since
     G8 reads a LaTeX file's view with its values put in, where the heading's place is no
     longer known. So "Increased risk" as a `\subsection` title directly over "The hazard
     ratio was 1.2 (95% CI 0.9 to 1.6)." is read as a claim.
+    Pinned by `tests/test_corruption.py::test_a_latex_heading_runs_into_the_sentence_under_it`.
   - "No effect" is read for each ratio's interval of its sentence, so in "X had no effect
     on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, 95% CI 0.6 to 2.8)", B's
     interval is read as one said to show no effect.
+    Pinned by `tests/test_corruption.py::test_no_effect_is_read_for_each_interval_of_its_sentence`.
   - "No effect" is not read for a difference: what is far from 0 depends on its scale, and
     neither the analysis plan nor the data dictionary declares a minimal important
     difference. A field for one would let it be read.
@@ -18366,9 +18391,11 @@ Added by the adversarial review, verified and **not** fixed:
   - A sentence that names more intervals than the reader reads is not read for the first
     two, so one that writes "confidence interval (CI)" before its interval is passed over,
     and so is a second interval with no name of its own.
+    Pinned by `tests/test_corruption.py::test_a_sentence_naming_more_intervals_than_are_read_is_passed_over`.
   - "Significant" is read after a form of "be" and before a word of `significant_of`, so
     "significant renal impairment" is not read and "a significant risk of bleeding" is,
     whatever the risk is of.
+    Pinned by `tests/test_corruption.py::test_significant_is_read_after_be_and_before_a_word_of_significant_of`.
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -21660,6 +21687,7 @@ Open, recorded as each change landed:
   discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
   old scan did the same. Reading every title that starts with "Results" as Results would
   also report the thresholds under a Methods subsection called "Summary statistics".
+  Pinned by `tests/test_corruption.py::test_a_section_is_results_only_by_its_title`.
 - **A heading directly under a `{{figure.x}}` line is printed as text.** The line is prose to
   the gates and to the build: the build writes an image there, and a heading on the next line
   does not interrupt the paragraph. A blank line avoids it, as the example leaves one
@@ -21753,6 +21781,7 @@ Open, recorded as each change landed:
   a spread emitted without `spread` is held to nothing. The words read for a dispersion are
   SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard error": another
   abbreviation of either is not read.
+  Pinned by `tests/test_corruption.py::test_a_label_is_read_only_beside_its_binding_and_only_as_written`.
 - **A reply is checked for what it holds, not for what it claims in prose.** A reply that
   says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
   is compared without Markdown's marks of emphasis and code and without its line breaks,
@@ -21772,9 +21801,11 @@ Open, recorded as each change landed:
   named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
   of the estimate in the same sentence passes whatever the sentence says of it, and a
   sentence that ends at an abbreviation's stop parts a p value from its estimate. An
-  estimate quoted only in a table, or a percentage in a table cell, is not read. A family
-  is counted across the whole results, and a correction declared twice for one family in two
-  fragments keeps the last read.
+  estimate quoted only in a table the analysis emits, or a percentage in its cells, is not
+  read. A family is counted across the whole results, and a correction declared twice for
+  one family in two fragments keeps the last read.
+  Pinned by `tests/test_corruption.py::test_a_statistic_is_held_to_what_it_declares_and_only_by_sentence`
+  and `tests/test_corruption.py::test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept`.
 - **A data statement is read by patterns, and only where the profile records a policy.** An
   identifier is a DOI, an accession number of the archives listed in
   `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
@@ -22099,11 +22130,15 @@ Open, recorded as each change landed:
   records none, and R records the first level. `manuscript-guard models` exits on the
   findings of G15 alone, whatever the stage of the paper. Accepted.
 - **Events by level are counted for a term of one categorical variable.** An interaction's
-  cells are not, so a cell of an interaction with no events is not found. Nor are those of a
-  category whose reference is not recorded: a coding other than treatment, or, in Python, an
-  object column that holds `1` the number beside `"1"` the text, two levels written alike,
-  where the level left over could be either. R counts none for a logical term, which has no
-  `xlevels`; Python counts them for a comparison, under the name of the variable it reads.
+  cells are not, so a cell of an interaction with no events is not found. Nor, in Python,
+  are those of a category whose reference is not recorded: a coding other than treatment,
+  or an object column that holds `1` the number beside `"1"` the text, two levels written
+  alike, where the level left over could be either; R counts those of another coding all
+  the same. R counts none for a logical term, which has no `xlevels`; Python counts them
+  for a comparison, under the name of the variable it reads.
+  Pinned by `tests/test_models.py::test_events_by_level_are_counted_for_one_variable_and_not_an_interaction_s_cells`,
+  `tests/test_models.py::test_the_reference_is_the_level_no_column_stands_for`
+  and `tests/test_r_emitter.py::test_r_counts_events_by_level_for_no_logical_and_the_level_glm_models`.
 - **Grouped data are read in the forms that say what the trials are.** In statsmodels that
   is a two-column outcome. A proportion with the trials as `var_weights` or `freq_weights`
   is not read: those weights may be anything else as well, so the card holds no events, and
@@ -22125,6 +22160,13 @@ Open, recorded as each change landed:
   other events in each language: for `I(score > 5)` Python counts the rows with
   `score <= 5` and R those with `score > 5`. A proportion with weights has events and
   trials in R and none in Python.
+  Pinned by `tests/test_models.py::test_grouped_binomial_data_are_read_as_events_among_trials`,
+  `tests/test_models.py::test_a_proportion_whose_trials_are_weights_has_no_events_recorded`,
+  `tests/test_models.py::test_grouped_data_are_read_only_in_the_forms_that_say_what_the_trials_are`,
+  `tests/test_models.py::test_a_grouped_card_passes_with_its_columns_declared_counts`,
+  `tests/test_models.py::test_an_outcome_of_two_levels_is_one_variable_and_no_table_of_counts`,
+  `tests/test_r_emitter.py::test_r_and_python_read_the_same_grouped_table`
+  and `tests/test_r_emitter.py::test_r_counts_events_by_level_for_no_logical_and_the_level_glm_models`.
 - **A model's terms are those of its formula.** A variable transformed in the formula
   (`np.log(x)`) is recorded with its expression and checked as the variable it reads; one
   derived before the formula is a variable of its own, and must be declared as one. A
@@ -22146,12 +22188,21 @@ Open, recorded as each change landed:
   level is written as Python prints it,
   an integer-valued float as the integer, except that a numpy float of another width
   (`float32`) handed to `values=` as an array keeps its `.0`.
+  Pinned by `tests/test_models.py::test_a_model_s_terms_are_those_of_its_formula`,
+  `tests/test_models.py::test_a_comparison_is_known_at_the_top_of_an_expression`,
+  `tests/test_models.py::test_a_variable_dichotomised_in_the_formula_is_a_term_of_its_own`,
+  `tests/test_models.py::test_a_linear_model_of_a_comparison_is_not_reported`,
+  `tests/test_models.py::test_a_float32_array_handed_to_values_keeps_its_point_nought`,
+  `tests/test_r_emitter.py::test_r_marks_nothing_else_a_comparison`,
+  `tests/test_r_emitter.py::test_r_keeps_the_names_that_are_columns_of_the_data`
+  and `tests/test_r_emitter.py::test_r_holds_a_comparison_inside_a_call_to_its_variables_and_reads_data_as_it_now_is`.
 - **A word that changes the model is known from a list.** `data/models.yaml` lists the words
   after which a model's name is the name of another model. One that is missing leaves the
   name read as the fitted kind, a false failure until it is added: "bivariate probit model"
   fails `typed-model-kind` beside a fitted probit regression today. The list is somebody's
   judgement, kept in the data file where it can be corrected. A possessive is another word,
   so "Firth's logistic regression" is read where "Firth logistic regression" is not.
+  Pinned by `tests/test_models.py::test_a_word_missing_from_the_list_or_a_possessive_leaves_the_fitted_kind_read`.
 - **A model's name in a heading is not read.** `typed-model-kind` and `model-kind-unfitted`
   read the running text of the Methods. A heading names the analysis it heads, and a
   binding there would print the kind without its capital ("logistic regression"), so the
@@ -23706,6 +23757,7 @@ Open, recorded as each change landed:
   `{{results.ror.ci_high}}, e.g. {{results.ror.ci_low}}` passes, and so does a reversal
   with `approx.` or `vs.` between its bounds: a sentence is not parsed, it is cut at each
   stop before a space. A list of abbreviations would cut ordinary sentences wrongly.
+  Pinned by `tests/test_corruption.py::test_a_stop_after_an_abbreviation_ends_a_sentence_between_two_bounds`.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and
@@ -23913,6 +23965,8 @@ Open, recorded as each change landed:
     "suggestion", "increasing". A noun of effect is not read, "an effect of", "a reduction
     in", and the noun "causes" is read as causation: "the leading causes of death" made
     "the leading reasons" is a claim made weaker.
+    Pinned by `tests/test_claims.py::test_a_word_or_a_form_not_in_the_list_moves_nothing`
+    and `tests/test_claims.py::test_the_noun_causes_is_read_as_causation`.
   - "Increased", "reduced" and the rest of the effect rung are read as an effect where they
     describe a trend too: "incidence rose" made "incidence increased" is a claim made
     stronger. A participle is taken for an adjective only directly after "a", "an" or
@@ -23926,6 +23980,7 @@ Open, recorded as each change landed:
     and `tests/test_claims.py::test_a_stretch_of_unequal_length_is_compared_whole`.
   - Negations are counted, not read: "not uncommon" made "common" is a negation gone, and
     "failed to show" made "did not show" is a negation new.
+    Pinned by `tests/test_claims.py::test_negations_are_counted_not_read`.
   - A capital away from the start of a sentence marks a name, so a heading in title case,
     "Factors Associated With Injury", is not read, nor a word in capitals.
     Pinned by `tests/test_claims.py::test_a_capital_is_read_only_where_the_word_opens_its_sentence`.
@@ -23936,6 +23991,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_claims.py::test_a_sentence_ends_at_a_stop_and_a_space_before_a_capital_or_a_block`.
   - A stretch compared whole hides a word that moved between its sentences: a sentence
     split, with its "may" carried from one half to the other, is no change.
+    Pinned by `tests/test_claims.py::test_a_hedge_carried_across_a_split_sentence_is_no_change`.
   - A sentence added or deleted whole is not read. A limitation dropped in a polish, "This
     may reflect confounding.", is told by nothing here, though its facts are held.
     Pinned by `tests/test_claims.py::test_a_paragraph_moved_added_deleted_or_rewrapped_is_no_change_of_claim`.
@@ -23943,11 +23999,13 @@ Open, recorded as each change landed:
     set aside as unchanged. In the middle of one it is compared with what stands at its
     place where the stretch has as many sentences on each side, and read with the rest of
     the stretch where it has not.
+    Pinned by `tests/test_claims.py::test_a_sentence_that_stands_twice_lines_nothing_up`.
   - A stretch with as many sentences before as after is compared sentence by sentence in
     order, so a sentence deleted and another added in one stretch pair each sentence with
     its neighbour: "Kept. Use may be linked to harm. Age was associated with risk. Kept."
     made "Kept. Age was linked to risk. Smoking increased risk. Kept." warns twice of a
     claim made stronger.
+    Pinned by `tests/test_claims.py::test_a_sentence_deleted_and_another_added_in_one_stretch_pair_with_their_neighbours`.
   - In a stretch compared whole, a finding is placed on the first sentence that holds a
     word that came, and where that word stands in several of them, the first is taken: "A
     may hold, and B holds." split into "A may hold." and "B may hold." is told on the
@@ -26729,6 +26787,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A claim is compared with its statements read whole, as one stretch: a statement that
     hedges one sentence and asserts another lends its hedge to a text that drops it from the
     one that had it.
+    Pinned by `tests/test_communicate.py::test_a_statement_s_hedge_is_lent_to_a_text_that_drops_it_from_its_sentence`.
   - A claim that moved both ways, a hedge new and a word up the ladder, fails as
     `comm-claim-moved`, as one made stronger does, and the front matter's `allow:` lets it
     stand. Whether it should warn instead is open: it is the author's to decide. Accepted.
@@ -26987,6 +27046,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     viz., Fig., ref., Eq., approx., ca., suppl.): another before a citation, "see p. [3]
     showed", ends the sentence there, as `claims` cuts it. A file
     with no heading that names a part is not read, and the report says so.
+    Pinned by `tests/test_audit_claims.py::test_causal_words_are_read_as_the_causation_rung_of_a_sentence`,
+    `tests/test_audit_claims.py::test_every_heading_of_a_structured_abstract_is_the_abstract_s`,
+    `tests/test_audit_claims.py::test_a_closing_summary_is_the_conclusion`,
+    `tests/test_audit_claims.py::test_a_citation_after_an_abbreviation_s_stop_stays_in_its_sentence`
+    and `tests/test_audit_claims.py::test_a_file_with_no_heading_that_names_a_part_is_said_to_be_unread`.
   - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
     `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a
     superscript number in a .docx (its text reads the digits run on to the word) and Word's

@@ -2201,6 +2201,107 @@ def test_r_counts_the_events_of_a_fit_that_kept_its_outcome_and_of_no_other(r_fi
     assert not {"events", "events_by_level"} & set(models["no_y"])
 
 
+#: Fits whose readings DESIGN.md's Known gaps describe, on data made without chance so that
+#: Python can count them too: `score` is the row's number modulo 11.
+READINGS_R = NEEDS_R + """
+i <- seq_len(120)
+d <- data.frame(y = as.integer(i %%%% 3 == 0), score = i %%%% 11, age = 30 + i %%%% 50,
+                g = c("a", "b")[1 + i %%%% 2], w = 1 + 2 * (i %%%% 4 == 0),
+                stringsAsFactors = FALSE)
+d$exposed <- d$g == "b"
+t <- data.frame(p = c(0, 1, 1, 0, 1, 0), x = c(0, 1, 0, 1, 0, 1), n = c(5, 7, 3, 9, 2, 4))
+em$variable("y", "binary", label = "the outcome", levels = c(0, 1))
+em$variable("score", "continuous", label = "score")
+em$variable("age", "continuous", label = "age")
+em$variable("g", "categorical", label = "group", levels = c("a", "b"), reference = "a")
+em$variable("exposed", "binary", label = "exposure", levels = c(FALSE, TRUE))
+em$variable("p", "continuous", label = "a proportion")
+em$variable("x", "binary", label = "exposure", levels = c(0, 1))
+knots <- c(40, 60)
+record("logical", glm(y ~ exposed, binomial, data = d))
+record("factored", glm(y ~ factor(g), binomial, data = d))
+record("summed", glm(y ~ g, binomial, data = d, contrasts = list(g = "contr.sum")))
+record("outcome", glm(I(score > 5) ~ age, binomial, data = d))
+record("weighted", glm(y ~ age, binomial, weights = w, data = d))
+record("ones", glm(p ~ x, binomial, weights = n, data = t))
+record("ifelse", glm(y ~ ifelse(age > 65, 1, 0), binomial, data = d))
+record("joined", glm(y ~ (age > 65) & (g == "b"), binomial, data = d))
+record("environment", glm(y ~ splines::ns(age, knots = knots), binomial, data = list2env(d)))
+d2 <- d
+changed <- lm(score ~ age + w, data = d2)
+d2$w <- NULL
+record("changed", changed)
+f <- score ~ age + w
+d3 <- d[, c("score", "age")]
+inside <- function() {
+  d3 <- d
+  lm(f, data = d3)
+}
+record("elsewhere", inside())
+here <- function() {
+  d3 <- d
+  lm(score ~ age + w, data = d3)
+}
+record("here", here())
+em$write()
+"""
+
+
+@pytest.fixture(scope="module")
+def r_readings(tmp_path_factory: pytest.TempPathFactory) -> tuple[dict, dict[str, set[str]]]:
+    return _judged_from_r(_parameter_project(tmp_path_factory.mktemp("readings")), READINGS_R)
+
+
+def test_r_counts_events_by_level_for_no_logical_and_the_level_glm_models(r_readings) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Events by level are counted for a term of one
+    categorical variable." and "Grouped data are read in the forms that say what the trials
+    are."): R counts no events by level for a logical term, which has no `xlevels`, and does
+    for a factor, of any coding; for `I(score > 5)` it counts the rows where it is true, the
+    level `glm` models, where Python counts the others; a 0/1 outcome with weights, and a table of
+    proportions all 0 or 1 with the trials as weights, are counted by their rows, with no
+    trials."""
+    models = r_readings[0]["models"]
+    assert "events_by_level" not in models["logical"]
+    assert models["factored"]["events_by_level"] == {"g": {"a": 20, "b": 20}}
+    # A coding other than treatment records no reference, and R counts its levels all the
+    # same, where Python counts none.
+    assert "reference" not in _entered_in(r_readings[0], "summed")[0]
+    assert models["summed"]["events_by_level"] == {"g": {"a": 20, "b": 20}}
+    above = sum(1 for i in range(1, 121) if i % 11 > 5)
+    assert models["outcome"]["events"] == above != 120 - above
+    weighted = models["weighted"]
+    assert weighted["events"] == 40 and "trials" not in weighted
+    assert sum(1 + 2 * (i % 4 == 0) for i in range(1, 121) if i % 3 == 0) != 40
+    assert models["ones"]["events"] == 3 and "trials" not in models["ones"]
+
+
+def test_r_holds_a_comparison_inside_a_call_to_its_variables_and_reads_data_as_it_now_is(
+    r_readings,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A model's terms are those of its formula."):
+    `ifelse(age > 65, 1, 0)` and two comparisons joined by `&` are held to the variables
+    they read; with `data` an environment every name of the formula is recorded, `knots`
+    too; an `lm` whose data lost a column after the fit records it as no variable; and an
+    `lm` fitted in a function on a formula made at the top level is read against the top
+    level's data of that name, so `w`, declared nowhere, goes unreported, where a formula
+    made in the function is reported."""
+    document, said = r_readings
+
+    def read(key: str) -> list[tuple[str, list[str], bool]]:
+        return [(one["expression"], one["variables"], one.get("comparison", False))
+                for one in _entered_in(document, key)]  # fmt: skip
+
+    assert read("ifelse") == [("ifelse(age > 65, 1, 0)", ["age"], False)]
+    assert read("joined") == [('(age > 65) & (g == "b")', ["age", "g"], False)]
+    assert read("environment") == [("splines::ns(age, knots = knots)", ["age", "knots"], False)]
+    assert "model-variable-undeclared" in said["environment"]
+    assert read("changed") == [("age", ["age"], False), ("w", [], False)]
+    assert read("elsewhere") == [("age", ["age"], False), ("w", [], False)]
+    assert "model-variable-undeclared" not in said["elsewhere"]
+    assert read("here") == [("age", ["age"], False), ("w", ["w"], False)]
+    assert "model-variable-undeclared" in said["here"]
+
+
 GROUPED_R = NEEDS_R + """
 t <- read.csv("%(data)s", stringsAsFactors = FALSE)
 t$n <- t$s + t$f

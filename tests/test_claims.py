@@ -64,6 +64,33 @@ def test_a_word_in_a_compound_is_not_read() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "unlisted",
+    ["raised", "lowered", "drives", "explains", "is responsible for", "due to",
+     "attributable to", "suggestion", "increasing", "an effect of", "a reduction in"],
+)  # fmt: skip
+def test_a_word_or_a_form_not_in_the_list_moves_nothing(unlisted: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word not in the list moves nothing"): neither
+    the unlisted words, the forms not listed nor a noun of effect is read, so each written
+    in moves no claim; "caused" in its place does."""
+    assert words(f"Use {unlisted} harm.") == []
+    assert told("Use preceded harm.", f"Use {unlisted} harm.") == []
+    assert told("Use preceded harm.", "Use caused harm.") == [
+        (STRONGER, "'caused' (causation) is new")
+    ]
+
+
+def test_the_noun_causes_is_read_as_causation() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word not in the list moves nothing"): "the
+    leading causes of death" made "the leading reasons" is a claim made weaker."""
+    assert words("These are the leading causes of death.") == [("causes", lists().rungs.index(
+        "causation"))]  # fmt: skip
+    assert told("These are the leading causes of death.",
+                "These are the leading reasons for death.") == [
+        (WEAKER, "'causes' (causation) is gone")
+    ]  # fmt: skip
+
+
 def test_a_participle_after_an_article_is_an_adjective() -> None:
     effect = lists().kinds["increased"]
     assert words("There was an increased risk, the reduced dose and a predicted value.") == []
@@ -185,6 +212,16 @@ def test_a_negation_gone_or_new_says_the_opposite_whatever_else_moved() -> None:
     ]
 
 
+def test_negations_are_counted_not_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Negations are counted, not read"): "not
+    uncommon" made "common" is a negation gone, and "failed to show" made "did not show" a
+    negation new, though neither says the opposite."""
+    assert told("This is not uncommon.", "This is common.") == [(NEGATION, "'not' is gone")]
+    assert told("Use failed to show harm.", "Use did not show harm.") == [
+        (NEGATION, "'not' is new")
+    ]
+
+
 def test_moves_both_ways_are_a_claim_moved() -> None:
     assert told("Use may cause harm.", "Use was associated with harm.") == [
         (MOVED, "'may' is gone; 'cause' (causation) is now 'associated' (association)")
@@ -208,6 +245,59 @@ def test_a_hedge_moved_to_the_next_sentence_is_told_in_each() -> None:
         (STRONGER, "'may' is gone"),
         (WEAKER, "'may' is new"),
     ]
+
+
+def test_a_hedge_carried_across_a_split_sentence_is_no_change() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A stretch compared whole hides a word that moved
+    between its sentences"): one sentence split in two, its "may" carried from the first
+    half to the second, is compared whole and is no change; in a stretch of as many
+    sentences on each side the same move is told in each."""
+    assert told("Use may be linked to harm and to death.",
+                "Use is linked to harm. This may extend to death.") == []  # fmt: skip
+    assert told("Use may be linked to harm. Death followed.",
+                "Use is linked to harm. Death may have followed.") == [
+        (STRONGER, "'may' is gone"), (WEAKER, "'may' is new"),
+    ]  # fmt: skip
+
+
+def _units(before: str, after: str) -> list[tuple[list[str], list[str]]]:
+    return [([one.key for one in was], [one.key for one in now])
+            for was, now in changed(sentences(before), sentences(after))]  # fmt: skip
+
+
+def test_a_sentence_that_stands_twice_lines_nothing_up() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that stands twice in a text lines
+    nothing up."): "Twice." at the end of a stretch is set aside as unchanged; in the middle
+    of one with as many sentences on each side it is compared with what stands at its
+    place, and in one with more on one side it is read with the rest of the stretch."""
+    assert _units("Kept. Twice. Use may harm. Twice. End.",
+                  "Kept. Twice. Use harms. Other. Twice. End.") == [
+        (["Use may harm."], ["Use harms.", "Other."]),
+    ]  # fmt: skip
+    assert _units("Kept. Use may harm. Twice. Age was linked to risk. End. Twice.",
+                  "Kept. Twice. Use harms. Age caused risk. End. Twice.") == [
+        (["Use may harm."], ["Twice."]), (["Twice."], ["Use harms."]),
+        (["Age was linked to risk."], ["Age caused risk."]),
+    ]  # fmt: skip
+    assert _units("Kept. Use may harm. Twice. Age was linked to risk. End. Twice.",
+                  "Kept. Use harms. Twice. Age caused risk. Extra. End. Twice.") == [
+        (["Use may harm.", "Twice.", "Age was linked to risk."],
+         ["Use harms.", "Twice.", "Age caused risk.", "Extra."]),
+    ]  # fmt: skip
+
+
+def test_a_sentence_deleted_and_another_added_in_one_stretch_pair_with_their_neighbours() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A stretch with as many sentences before as after
+    is compared sentence by sentence in order"): a sentence deleted and another added pair
+    each with its neighbour, and the edit warns twice of a claim made stronger."""
+    before = "Kept. Use may be linked to harm. Age was associated with risk. Kept."
+    after = "Kept. Age was linked to risk. Smoking increased risk. Kept."
+    assert _units(before, after) == [
+        (["Use may be linked to harm."], ["Age was linked to risk."]),
+        (["Age was associated with risk."], ["Smoking increased risk."]),
+    ]
+    found = moved(before, after)
+    assert [(one.code, one.severity) for one in found] == [(STRONGER, WARN), (STRONGER, WARN)]
 
 
 def test_a_finding_is_a_warning_on_the_line_the_sentence_stands_on_now() -> None:

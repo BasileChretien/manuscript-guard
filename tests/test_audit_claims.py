@@ -791,6 +791,42 @@ def test_a_citation_after_an_abbreviation_s_stop_stays_in_its_sentence(
     ]
 
 
+@pytest.mark.parametrize(
+    ("sentence", "warned"),
+    [
+        # The causation rung only: a cause in other words passes.
+        ("Exercise protects against falls.", False),
+        ("Statins reduced the risk of death.", False),
+        # A causal word that claims no cause warns, a method's name among them.
+        ("We demonstrated that the method works.", True),
+        ("These are the causes of death.", True),
+        ("We used causal mediation analysis.", True),
+        # A hedge or a negation anywhere in the sentence passes it.
+        ("Not all patients were seen; smoking causes cancer.", False),
+        ("Tea may be harmless; smoking causes cancer.", False),
+        # A narrative citation carries no citation the reading sees.
+        ("Smith et al. showed that smoking causes cancer.", True),
+        # A stop of an abbreviation the list does not hold ends the sentence before the
+        # citation; one of the list does not.
+        ("Smoking causes cancer, see p. [3] showed.", True),
+        *[(f"Smoking causes cancer, as {abbreviation} [3] showed.", False)
+          for abbreviation in ("i.e.", "vs.", "viz.", "ref.", "Eq.", "approx.", "ca.",
+                               "suppl.")],
+    ],
+)  # fmt: skip
+def test_causal_words_are_read_as_the_causation_rung_of_a_sentence(
+    tmp_path: Path, capsys, sentence: str, warned: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Causal words read the causation rung only."):
+    each sentence of the entry in the Discussion, and whether `audit --design observational`
+    warns of it; a method's name warns in the Abstract as well."""
+    text = f"## Discussion\n\n{sentence}\n\n{REFERENCES}"
+    assert _causal(capsys, paper_md(tmp_path, text)) == ([(3, "Discussion")] if warned else [])
+    if sentence.startswith("We used causal"):
+        text = f"## Abstract\n\n{sentence}\n\n## Methods\n\nWe drew it.\n\n{REFERENCES}"
+        assert _causal(capsys, paper_md(tmp_path, text)) == [(3, "Abstract")]
+
+
 @pytest.mark.parametrize("tie", [" ", "~", ""])
 def test_a_latex_cite_after_et_al_stays_in_its_sentence(tmp_path: Path, capsys, tie: str) -> None:
     paper = tmp_path / "paper.tex"

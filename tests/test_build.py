@@ -518,7 +518,8 @@ def test_pandoc_s_own_caption_and_a_quoted_one_are_styled_as_the_known_gap_says(
     from manuscript_guard.build.document import FIGURE_CAPTION_LUA, pandoc
     from manuscript_guard.build.styles import reference_with, user_reference
 
-    (tmp_path / "data-home").mkdir()
+    # Its `pandoc` folder made, or pandoc falls back to its older user data folder.
+    (tmp_path / "data-home" / "pandoc").mkdir(parents=True)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data-home"))
     assert user_reference(pandoc()) is None
     (tmp_path / "figure.png").write_bytes(_pixel())

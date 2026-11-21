@@ -24516,10 +24516,12 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
         ("-   Step\n\n    ---\n    title: Evil 9.99\n---\n", [12], True),
         # with a blank line before that rule, pandoc reads no metadata, and it is no refusal
         ("> ---\n> title: Evil 9.99\n\n---\n", [], False),
-        # under a line of text: behind a quotation's markup the rules are the quotation's
-        # and not refused, and behind a list marker they are
-        ("We also saw it.\n> ---\n> title: Evil 9.99\n> ---\n", [], False),
-        ("We also saw it.\n- ---\n  title: Evil 9.99\n  ---\n", [9, 11], False),
+        # a quotation apart from a line of text: its rules are not refused, and the build
+        # finds its title
+        ("We also saw it.\n\n> ---\n> title: Evil 9.99\n> ---\n", [], True),
+        # behind a list marker under a line of text the refusal reads the rule and the one
+        # closing it, though pandoc reads all four lines as the paragraph's text
+        ("We also saw it.\n1. ---\n   title: Evil 9.99\n   ---\n", [9, 11], False),
     ],
 )
 def test_a_line_of_dashes_inside_a_quotation_or_an_item_is_not_refused_by_check(

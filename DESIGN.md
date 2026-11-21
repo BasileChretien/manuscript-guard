@@ -9634,8 +9634,8 @@ verdict covered (`docs/corpus.md`, "Judging"):
 | `code-name-in-prose` (G14) | 50 | 18 | 8 papers | INFO | warns, fails at submission |
 | `model-artefact` (G6), a bare placeholder | 12 | 1 | 4 papers | INFO | fails from drafting |
 | `entries-not-told-apart` (G7) | 13 | 13 | none | warning | not given |
-| `abstract-not-found` (audit) | 21 | 8 | 5 papers | INFO, in `audit` | not given |
-| `claim-negation` (compare) | 17 | 1 | 4 papers | INFO, in `compare` | not given |
+| `abstract-not-found` (audit) | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
+| `claim-negation` (compare) | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
 
 The Abstract's numbers found nowhere were false where the paper gives the number another
 way: written out as a word, as a proportion where the Abstract gives a share, inside a name

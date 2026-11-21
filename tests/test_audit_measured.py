@@ -12,6 +12,7 @@ sentence that may now say the opposite, are notes. Every paper here is made up.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,21 @@ def test_a_number_of_the_abstract_found_nowhere_is_a_note(tmp_path: Path, capsys
     assert found["message"].startswith("57 in the Abstract") and found["severity"] == "info"
 
 
+def test_a_journal_s_abstract_missing_still_warns_in_an_audit(tmp_path: Path, capsys) -> None:
+    """G4's code of the same name, a journal's limited Abstract under no heading, is another
+    finding than a number found nowhere, and keeps its warning."""
+    profile = tmp_path / "journal.yaml"
+    profile.write_text("schema: manuscript-guard/journal/1\nname: The Journal of Examples\n"
+                       "source_url: https://example.org/authors\nretrieved_on: "
+                       f"{date.today().isoformat()}\nlimits:\n  abstract_words: 250\n",
+                       encoding="utf-8")  # fmt: skip
+    paper = _paper(tmp_path, ABSTRACT.replace("# Abstract\n\n", ""))
+    main(["audit", str(paper), "--journal", str(profile), "--json"])
+    report = json.loads(capsys.readouterr().out)
+    said = [(f["gate"], f["severity"]) for f in _of(report, "abstract-not-found")]
+    assert said == [("G4", "warn")]
+
+
 def test_the_text_report_marks_only_the_template_as_failing(tmp_path: Path, capsys) -> None:
     """The report's line for each place says "FAIL:" of a failure only (`auditing.summary`)."""
     assert main(["audit", str(_paper(tmp_path))]) == 0
@@ -176,6 +192,15 @@ def test_compare_says_a_claim_reversed_as_a_note(tmp_path: Path, capsys) -> None
     said = sorted((f["code"], f["severity"]) for f in report["findings"]
                   if f["code"].startswith("claim-"))  # fmt: skip
     assert said == [("claim-negation", "info"), ("claim-stronger", "warn")]
+
+
+def test_compare_audits_v2_s_abstract_numbers_as_notes(tmp_path: Path, capsys) -> None:
+    """The audit of v2 that `compare` gives says a number found nowhere as the audit does."""
+    old = _paper(tmp_path, ABSTRACT.replace(", and 57 left the study", ""), "v1.md")
+    new = _paper(tmp_path, ABSTRACT, "v2.md")
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert [f["severity"] for f in _of(report, "abstract-not-found")] == ["info"]
 
 
 def test_reworded_keeps_its_warning_on_a_claim_reversed() -> None:

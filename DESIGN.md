@@ -21806,6 +21806,12 @@ Open, recorded as each change landed:
   one family in two fragments keeps the last read.
   Pinned by `tests/test_corruption.py::test_a_statistic_is_held_to_what_it_declares_and_only_by_sentence`
   and `tests/test_corruption.py::test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept`.
+  - A typed Markdown table and the paragraph after it are read as one sentence by G2's
+    quoted-alone check, since a table has no stop to end it:
+    `P was {{results.whole.or.p}}.` in the paragraph after a typed table whose row binds
+    the estimate passes as if its estimate stood beside it, where the same P with no table
+    before it is quoted alone.
+    Pinned by `tests/test_corruption.py::test_a_typed_table_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone`.
 - **A data statement is read by patterns, and only where the profile records a policy.** An
   identifier is a DOI, an accession number of the archives listed in
   `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),

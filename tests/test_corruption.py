@@ -9503,6 +9503,24 @@ def test_a_family_is_counted_across_the_results_and_its_last_correction_is_kept(
 
 
 @pytest.mark.parametrize(
+    ("above", "said"),
+    [("| Ratio | 95% CI |\n|---|---|\n| {{results.whole.or.point}} | "
+      "{{results.whole.or.ci_low}} to {{results.whole.or.ci_high}} |\n\n", []),
+     ("", ["quoted-alone"])],
+)  # fmt: skip
+def test_a_typed_table_and_the_paragraph_after_it_are_one_sentence_to_quoted_alone(
+    project: Path, above: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A typed Markdown table and the paragraph after
+    it are read as one sentence"): a table has no stop to end it, so a P written in the
+    paragraph after a typed table that holds its estimate passes as if the estimate stood
+    beside it; the same P with no table before it is quoted alone."""
+    _with_whole(project, above + "P was {{results.whole.or.p}}.",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    assert [code for code, _ in _whole_said(project) if code == "quoted-alone"] == said
+
+
+@pytest.mark.parametrize(
     "fields",
     [
         {"over": "whole.cohort.n"},

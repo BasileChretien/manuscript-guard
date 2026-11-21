@@ -1,0 +1,262 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1066" width="880" height="1066" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 69 work, 1 works in part and 2 are planned.</title>
+  <rect width="880" height="1066" fill="#0d1117"/>
+  <circle cx="25" cy="22" r="4.5" fill="#3fb950"/>
+  <text x="36" y="26" font-size="12.5" fill="#9198a1">works (69)</text>
+  <circle cx="125" cy="22" r="4.5" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/><path d="M 125 17.5 A 4.5 4.5 0 0 0 125 26.5 Z" fill="#d29922"/>
+  <text x="136" y="26" font-size="12.5" fill="#9198a1">works in part (1)</text>
+  <circle cx="274" cy="22" r="4.5" fill="#0d1117" stroke="#9198a1" stroke-width="1.5"/>
+  <text x="285" y="26" font-size="12.5" fill="#9198a1">planned (2)</text>
+  <rect x="20" y="44" width="266" height="312" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="32" y="68" font-size="15" font-weight="600" fill="#f0f6fc">1 &#183; Start</text>
+  <text x="32" y="86" font-size="11.5" fill="#9198a1">Set up a paper project, and find out what</text>
+  <text x="32" y="101" font-size="11.5" fill="#9198a1">to do next.</text>
+  <rect x="28" y="116" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="126.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="131" font-size="12" fill="#f0f6fc">Start a project</text>
+  <rect x="28" y="142" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="152.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="157" font-size="12" fill="#f0f6fc">Say what to do now</text>
+  <rect x="28" y="168" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="178.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="183" font-size="12" fill="#f0f6fc">Change a setting</text>
+  <rect x="28" y="194" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="204.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="209" font-size="12" fill="#f0f6fc">Stages of a paper</text>
+  <rect x="28" y="220" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="230.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="235" font-size="12" fill="#f0f6fc">Skills for agent tools</text>
+  <rect x="28" y="246" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="256.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="261" font-size="12" fill="#f0f6fc">Hooks that catch slips</text>
+  <rect x="28" y="272" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="282.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="287" font-size="12" fill="#f0f6fc">Checks on GitHub</text>
+  <rect x="28" y="298" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="308.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="313" font-size="12" fill="#f0f6fc">Report a problem</text>
+  <rect x="306" y="44" width="266" height="312" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="318" y="68" font-size="15" font-weight="600" fill="#f0f6fc">2 &#183; Plan</text>
+  <text x="318" y="86" font-size="11.5" fill="#9198a1">Decide the study before its data are</text>
+  <text x="318" y="101" font-size="11.5" fill="#9198a1">analysed.</text>
+  <rect x="314" y="116" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="126.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="131" font-size="12" fill="#f0f6fc">Analysis plan</text>
+  <rect x="314" y="142" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="152.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="157" font-size="12" fill="#f0f6fc">Choose the dataset</text>
+  <rect x="314" y="168" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="178.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="183" font-size="12" fill="#f0f6fc">Data dictionary</text>
+  <rect x="314" y="194" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="204.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="209" font-size="12" fill="#f0f6fc">Methods of similar studies</text>
+  <rect x="314" y="220" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="230.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="235" font-size="12" fill="#f0f6fc">Registration</text>
+  <rect x="314" y="246" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="256.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="261" font-size="12" fill="#f0f6fc">Controls and held-out data</text>
+  <rect x="314" y="272" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="282.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="287" font-size="12" fill="#f0f6fc">Review of the design</text>
+  <rect x="592" y="44" width="266" height="312" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="604" y="68" font-size="15" font-weight="600" fill="#f0f6fc">3 &#183; Analyse</text>
+  <text x="604" y="86" font-size="11.5" fill="#9198a1">Run the analysis so that each result is</text>
+  <text x="604" y="101" font-size="11.5" fill="#9198a1">kept with what made it.</text>
+  <rect x="600" y="116" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="126.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="131" font-size="12" fill="#f0f6fc">Results from Python or R</text>
+  <rect x="600" y="142" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="152.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="157" font-size="12" fill="#f0f6fc">Results a script writes</text>
+  <rect x="600" y="168" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="178.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="183" font-size="12" fill="#f0f6fc">Results still current</text>
+  <rect x="600" y="194" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="204.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="209" font-size="12" fill="#f0f6fc">Run it all again</text>
+  <rect x="600" y="220" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="230.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="235" font-size="12" fill="#f0f6fc">Data kept from the agent</text>
+  <rect x="600" y="246" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="256.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="261" font-size="12" fill="#f0f6fc">Small counts held back</text>
+  <rect x="600" y="272" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="282.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="287" font-size="12" fill="#f0f6fc">Models that fit their data</text>
+  <rect x="600" y="298" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="308.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="313" font-size="12" fill="#f0f6fc">Data held to the dictionary</text>
+  <rect x="600" y="324" width="250" height="21" rx="5" fill="#0d1117" stroke="#9198a1" stroke-width="1" stroke-dasharray="4 3"/>
+  <circle cx="612" cy="334.5" r="4.5" fill="#0d1117" stroke="#9198a1" stroke-width="1.5"/>
+  <text x="624" y="339" font-size="12" fill="#9198a1">Health data warehouses</text>
+  <rect x="20" y="376" width="266" height="390" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="32" y="400" font-size="15" font-weight="600" fill="#f0f6fc">4 &#183; Write</text>
+  <text x="32" y="418" font-size="11.5" fill="#9198a1">Write the paper with every number tied to</text>
+  <text x="32" y="433" font-size="11.5" fill="#9198a1">its source.</text>
+  <rect x="28" y="448" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="458.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="463" font-size="12" fill="#f0f6fc">Numbers tied to results</text>
+  <rect x="28" y="474" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="484.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="489" font-size="12" fill="#f0f6fc">Numbers filled in</text>
+  <rect x="28" y="500" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="510.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="515" font-size="12" fill="#f0f6fc">Word documents</text>
+  <rect x="28" y="526" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="536.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="541" font-size="12" fill="#f0f6fc">A manuscript it can read</text>
+  <rect x="28" y="552" width="250" height="21" rx="5" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <circle cx="40" cy="562.5" r="4.5" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/><path d="M 40 558.0 A 4.5 4.5 0 0 0 40 567.0 Z" fill="#d29922"/>
+  <text x="52" y="567" font-size="12" fill="#f0f6fc">LaTeX manuscripts</text>
+  <rect x="28" y="578" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="588.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="593" font-size="12" fill="#f0f6fc">Tables and figures by key</text>
+  <rect x="28" y="604" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="614.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="619" font-size="12" fill="#f0f6fc">Figures from the results</text>
+  <rect x="28" y="630" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="640.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="645" font-size="12" fill="#f0f6fc">Figures every reader can read</text>
+  <rect x="28" y="656" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="666.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="671" font-size="12" fill="#f0f6fc">Prose that reads as written</text>
+  <rect x="28" y="682" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="692.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="697" font-size="12" fill="#f0f6fc">One English, one notation</text>
+  <rect x="28" y="708" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="718.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="723" font-size="12" fill="#f0f6fc">Methods that match the code</text>
+  <rect x="306" y="376" width="266" height="390" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="318" y="400" font-size="15" font-weight="600" fill="#f0f6fc">5 &#183; Cite</text>
+  <text x="318" y="418" font-size="11.5" fill="#9198a1">Cite the literature, and keep each</text>
+  <text x="318" y="433" font-size="11.5" fill="#9198a1">citation true to its source.</text>
+  <rect x="314" y="448" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="458.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="463" font-size="12" fill="#f0f6fc">Citations that resolve</text>
+  <rect x="314" y="474" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="484.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="489" font-size="12" fill="#f0f6fc">From the Zotero library</text>
+  <rect x="314" y="500" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="510.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="515" font-size="12" fill="#f0f6fc">Registries asked</text>
+  <rect x="314" y="526" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="536.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="541" font-size="12" fill="#f0f6fc">Numbers from other papers</text>
+  <rect x="314" y="552" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="562.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="567" font-size="12" fill="#f0f6fc">Passages that support</text>
+  <rect x="314" y="578" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="588.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="593" font-size="12" fill="#f0f6fc">Works a claim could cite</text>
+  <rect x="314" y="604" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="614.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="619" font-size="12" fill="#f0f6fc">Still the work to cite</text>
+  <rect x="314" y="630" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="640.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="645" font-size="12" fill="#f0f6fc">Claims to be first</text>
+  <rect x="314" y="656" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="666.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="671" font-size="12" fill="#f0f6fc">Research resources</text>
+  <rect x="314" y="682" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="692.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="697" font-size="12" fill="#f0f6fc">Text from earlier papers</text>
+  <rect x="314" y="708" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="718.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="723" font-size="12" fill="#f0f6fc">Earlier outputs of the data</text>
+  <rect x="314" y="734" width="250" height="21" rx="5" fill="#0d1117" stroke="#9198a1" stroke-width="1" stroke-dasharray="4 3"/>
+  <circle cx="326" cy="744.5" r="4.5" fill="#0d1117" stroke="#9198a1" stroke-width="1.5"/>
+  <text x="338" y="749" font-size="12" fill="#9198a1">Currency run unattended</text>
+  <rect x="592" y="376" width="266" height="390" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="604" y="400" font-size="15" font-weight="600" fill="#f0f6fc">6 &#183; Check</text>
+  <text x="604" y="418" font-size="11.5" fill="#9198a1">Hold the paper to the journal, the</text>
+  <text x="604" y="433" font-size="11.5" fill="#9198a1">guideline and its own records.</text>
+  <rect x="600" y="448" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="458.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="463" font-size="12" fill="#f0f6fc">Run every check</text>
+  <rect x="600" y="474" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="484.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="489" font-size="12" fill="#f0f6fc">The journal&#x27;s rules</text>
+  <rect x="600" y="500" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="510.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="515" font-size="12" fill="#f0f6fc">Declarations</text>
+  <rect x="600" y="526" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="536.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="541" font-size="12" fill="#f0f6fc">Reporting checklist</text>
+  <rect x="600" y="552" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="562.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="567" font-size="12" fill="#f0f6fc">Claims kept to the results</text>
+  <rect x="600" y="578" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="588.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="593" font-size="12" fill="#f0f6fc">Arithmetic that holds</text>
+  <rect x="600" y="604" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="614.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="619" font-size="12" fill="#f0f6fc">Edits that keep the numbers</text>
+  <rect x="600" y="630" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="640.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="645" font-size="12" fill="#f0f6fc">What a change reaches</text>
+  <rect x="20" y="786" width="266" height="260" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="32" y="810" font-size="15" font-weight="600" fill="#f0f6fc">7 &#183; Review</text>
+  <text x="32" y="828" font-size="11.5" fill="#9198a1">Have the paper read by co-authors, a panel</text>
+  <text x="32" y="843" font-size="11.5" fill="#9198a1">and the people who sign.</text>
+  <rect x="28" y="858" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="868.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="873" font-size="12" fill="#f0f6fc">Review panel</text>
+  <rect x="28" y="884" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="894.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="899" font-size="12" fill="#f0f6fc">Figures looked at</text>
+  <rect x="28" y="910" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="920.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="925" font-size="12" fill="#f0f6fc">Co-authors in Word</text>
+  <rect x="28" y="936" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="946.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="951" font-size="12" fill="#f0f6fc">Questions for co-authors</text>
+  <rect x="28" y="962" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="972.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="977" font-size="12" fill="#f0f6fc">Approvals and sign-offs</text>
+  <rect x="28" y="988" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="998.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="1003" font-size="12" fill="#f0f6fc">Text hidden in a file</text>
+  <rect x="306" y="786" width="266" height="260" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="318" y="810" font-size="15" font-weight="600" fill="#f0f6fc">8 &#183; Submit</text>
+  <text x="318" y="828" font-size="11.5" fill="#9198a1">Send the paper, answer the reviewers, and</text>
+  <text x="318" y="843" font-size="11.5" fill="#9198a1">publish what it rests on.</text>
+  <rect x="314" y="858" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="868.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="873" font-size="12" fill="#f0f6fc">Submission pack</text>
+  <rect x="314" y="884" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="894.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="899" font-size="12" fill="#f0f6fc">Answer the reviewers</text>
+  <rect x="314" y="910" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="920.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="925" font-size="12" fill="#f0f6fc">Marked-up copy</text>
+  <rect x="314" y="936" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="946.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="951" font-size="12" fill="#f0f6fc">Reproducibility package</text>
+  <rect x="314" y="962" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="972.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="977" font-size="12" fill="#f0f6fc">Deposit</text>
+  <rect x="314" y="988" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="998.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="1003" font-size="12" fill="#f0f6fc">The publisher&#x27;s proof</text>
+  <rect x="314" y="1014" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="326" cy="1024.5" r="4.5" fill="#3fb950"/>
+  <text x="338" y="1029" font-size="12" fill="#f0f6fc">Posts and summaries</text>
+  <rect x="592" y="786" width="266" height="260" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="604" y="810" font-size="15" font-weight="600" fill="#f0f6fc">Other people&#x27;s papers</text>
+  <text x="604" y="828" font-size="11.5" fill="#9198a1">Read a paper written some other way, as</text>
+  <text x="604" y="843" font-size="11.5" fill="#9198a1">its author, an editor or a referee.</text>
+  <rect x="600" y="858" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="868.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="873" font-size="12" fill="#f0f6fc">Audit a paper</text>
+  <rect x="600" y="884" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="894.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="899" font-size="12" fill="#f0f6fc">Audit in a web browser</text>
+  <rect x="600" y="910" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="920.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="925" font-size="12" fill="#f0f6fc">Compare two versions</text>
+  <rect x="600" y="936" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="946.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="951" font-size="12" fill="#f0f6fc">Start a referee&#x27;s report</text>
+</svg>

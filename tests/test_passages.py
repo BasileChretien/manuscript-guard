@@ -549,6 +549,74 @@ def test_what_a_list_of_words_cannot_tell_is_as_known_gaps_says(
     assert [f.code for f in claim_findings(project)] == [code]
 
 
+@pytest.mark.parametrize(
+    ("passage", "sentence", "moved"),
+    [
+        pytest.param("[...] reduce hepatic injury", "Example-drug reduces hepatic injury",
+                     None, id="a hedge left out with an elision"),
+        pytest.param("Example-drug may in some patients reduce hepatic injury",
+                     "Example-drug reduces hepatic injury", "'may' is gone",
+                     id="the hedge recorded"),
+        pytest.param("Example-drug may in some patients reduce hepatic injury",
+                     "Example-drug reduces hepatic injury, and may lower costs", None,
+                     id="a hedge on another clause"),
+        pytest.param("Example-drug reduced hepatic injury. The effect may be small",
+                     "Example-drug reduces hepatic injury", "'may' is gone",
+                     id="a hedge in the passage's other sentence"),
+        pytest.param("Example-drug may in some patients reduce hepatic injury",
+                     "Example-drug may reduce hepatic injury, but not costs", "'not' is new",
+                     id="a negation on another clause, beside the hedge"),
+        pytest.param("Example-drug reduced hepatic injury",
+                     "Example-drug reduced hepatic injury, only in this sample", None,
+                     id="a limit on another clause"),
+    ],
+)  # fmt: skip
+def test_a_passage_is_read_as_it_is_recorded_and_a_sentence_whole(
+    project: Path, passage: str, sentence: str, moved: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A cited sentence is held to its passage by a list
+    of words", its point "The passage is read as it is recorded"): "may [...] reduce"
+    recorded as "[...] reduce" holds no hedge, so the sentence's "reduces" is told nothing;
+    a passage of two sentences is read whole, its hedge in the other sentence counting for
+    the claim; and a hedge, a limit or a negation on another clause of the sentence counts
+    for the whole claim."""
+    stored(project, "Example-drug may in some patients reduce hepatic injury")
+    stored(project, "Example-drug reduced hepatic injury. The effect may be small")
+    cited_claim(project, sentence, passage=passage)
+    assert "passage-not-in-source" not in {f.code for f in report(project).findings}
+    found = [one.message.rsplit(": ", 1)[-1] for one in claim_findings(project)]
+    assert found == ([moved] if moved else [])
+
+
+def test_each_passage_is_compared_with_its_sentence_alone(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A cited sentence is held to its passage by a list
+    of words", its point "Each passage is compared with its sentence alone"): a sentence
+    resting on an association in one work and an effect in the other warns for the first,
+    and one that sets itself against its work reads as saying the opposite, and warns."""
+    association = stored(project, "Example-drug was associated with hepatic injury")
+    signal = project / "literature" / "sources" / f"{CLASS}.txt"
+    signal.write_text(signal.read_text(encoding="utf-8")
+                      + "\nExample-drug increased hepatic injury.\n", "utf-8")  # fmt: skip
+    both = f"Example-drug increased hepatic injury [@{COHORT}; @{CLASS}]."
+    swap(project, "\n# Discussion", f"\n{both}\n\n# Discussion")
+    write(project,
+          {"sentence": both, "citekey": COHORT, "passage": association, "locator": "Results"},
+          {"sentence": both, "citekey": CLASS, "passage": "Example-drug increased hepatic "
+           "injury", "locator": "Results"})  # fmt: skip
+    found = claim_findings(project)
+    assert [(one.code, one.message.split(", ")[0]) for one in found] == [
+        ("passage-claim-stronger", f"passage 1 (@{COHORT}")]
+    swap(project, both, f"Unlike @{COHORT}, we found no association of example-drug with "
+         "hepatic injury.")
+    against = f"Unlike @{COHORT}, we found no association of example-drug with hepatic injury."
+    write(project, {"sentence": against, "citekey": COHORT, "passage": association,
+                    "locator": "Results"})  # fmt: skip
+    found = claim_findings(project)
+    assert [(one.code, one.message.rsplit(": ", 1)[-1]) for one in found] == [
+        ("passage-claim-stronger", "'no' is new")]
+    assert "the sentence may say the opposite of what the passage says" in found[0].message
+
+
 def test_a_sentence_written_twice_is_held_to_its_passage_in_each_place(project: Path) -> None:
     """Round 1 of #571: a passage belongs to every copy of its sentence, the main text's and
     the supplement's, and each copy that claims more is told where it stands."""

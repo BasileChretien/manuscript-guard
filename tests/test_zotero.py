@@ -241,6 +241,31 @@ def test_the_preferences_are_read_by_a_key_of_the_users_library(monkeypatch) -> 
     assert ("item.export", [["mineKey2019"], "BetterBibTeX JSON"]) in fake.calls
 
 
+def test_keys_of_a_group_library_alone_are_held_to_extra_under_better_bibtex_8(
+    monkeypatch,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From Better BibTeX 8, a key is taken as pinned
+    only where a key of the user's own library can ask for the preferences"): a group's key
+    alone reads no preference and is held to Extra, and one of the user's library beside it
+    pins both; the whole-library fallback asks with the first key of every library, a
+    group's here, and holds both to Extra. The 2026-11-09 triage planned a fix (F02), which
+    will change this test."""
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("g", False, library=7)],
+                                               better_bibtex="9.0.77"))  # fmt: skip
+    assert lookup(("g",)).pinned == frozenset()
+    reset_cache()
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("g", False, library=7), csl("m", False)],
+                                               better_bibtex="9.0.77"))  # fmt: skip
+    assert lookup(("g", "m")).pinned == {"g", "m"}
+    reset_cache()
+    fallback = FakeBBT([csl("aGroup", False, library=7), csl("zMine", False)],
+                       better_bibtex="9.0.77", refuse={"item.pandoc_filter"})  # fmt: skip
+    monkeypatch.setattr(client, "rpc", fallback)
+    result = lookup(("aGroup", "zMine"))
+    assert result.found == {"aGroup", "zMine"} and result.pinned == frozenset()
+    assert ("item.export", [["aGroup"], "BetterBibTeX JSON"]) in fallback.calls
+
+
 def test_an_export_given_as_a_list_is_read(monkeypatch) -> None:
     """Round 2 of #540: `export` reads a result that is a list holding the text; so does the
     reading of the preferences."""
@@ -335,6 +360,37 @@ def test_a_zotero_that_cannot_be_read_is_not_called_absent(project: Path, monkey
     assert "zotero-unreadable" in all_codes(report)
     assert "could not be read" in messages
     assert "not running" not in messages
+
+
+def test_g7_fails_every_key_of_a_group_library_under_better_bibtex_8(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From Better BibTeX 8, a key is taken as pinned
+    only where a key of the user's own library can ask for the preferences"): a manuscript
+    citing only a group library's works fails each as `citation-key-unpinned`, its hint
+    saying "where its preferences can be read"; and a timeout in the export skips G7's
+    Zotero side as `zotero-unreadable`. The 2026-11-09 triage planned a fix (F02), which
+    will change this test."""
+    group = [csl(HEPATIC, False, library=7), csl(CLASS, False, library=7)]
+    online(monkeypatch, FakeBBT(group, better_bibtex="9.0.77"))
+    unpinned = [f for f in g7(project).failures if f.code == "citation-key-unpinned"]
+    assert sorted(f.message for f in unpinned) == [
+        f"@{CLASS} is not pinned in Zotero", f"@{HEPATIC} is not pinned in Zotero"]
+    assert all("is taken as pinned where its preferences can be read" in f.hint
+               for f in unpinned)  # fmt: skip
+    reset_cache()
+
+    class SlowExport(FakeBBT):
+        def __call__(self, method: str, params, timeout: int = 20):
+            if method == "item.export":
+                raise ZoteroUnavailable("Better BibTeX did not answer item.export within 20 s")
+            return super().__call__(method, params, timeout)
+
+    online(monkeypatch, SlowExport([csl(HEPATIC, False), csl(CLASS, False)],
+                                   better_bibtex="9.0.77"))  # fmt: skip
+    report = g7(project)
+    assert "zotero-unreadable" in all_codes(report)
+    assert "citation-key-unpinned" not in failure_codes(report)
 
 
 def test_nothing_cited_means_nothing_to_warn_about(project: Path, monkeypatch) -> None:

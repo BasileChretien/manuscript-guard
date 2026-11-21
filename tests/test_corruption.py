@@ -9016,6 +9016,122 @@ def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: 
     assert not [f for f in check_journal(project_).findings if f.code.startswith("data-")]
 
 
+_MISSING = [("data-identifier-missing", "fail")]
+_ARCHIVED = "https://web.archive.org/web/20200101000000/https://example.org/data"
+#: The data policy with a forbidden phrasing and its `unless` written in small letters and
+#: with no `(?i)`, so that only the gate makes them blind to case.
+_CASED = {**_DATA_POLICY, "forbidden": [
+    {"pattern": r"\bon request\b", "unless": r"\bprivacy\b", "why": "say why"}]}
+
+
+@pytest.mark.parametrize(
+    ("statement", "policy", "said"),
+    [
+        # Each identifier the gate knows, and a DOI, whose citation is a rule of its own.
+        *((f"The data are deposited: {named}.", None, []) for named in (
+            "GSE123456", "SRP123456", "PRJNA123456", "EGAS00001000001", "E-MTAB-1234",
+            "phs000001.v1", "https://hdl.handle.net/1234/5678", "ark:/12345/abc",
+            "https://zenodo.org/records/1234567", "https://osf.io/abcde", _ARCHIVED,
+            "https://perma.cc/ABCD-1234")),
+        ("The data are deposited: doi:10.5281/zenodo.1234567.", None,
+         [("data-doi-uncited", "warn")]),
+        # Another archive's accession only where the profile lists it.
+        ("The data are in PRIDE, PXD012345.", None, _MISSING),
+        ("The data are in PRIDE, PXD012345.",
+         {**_DATA_POLICY, "identifier_patterns": [r"\bPXD\d{6}\b"]}, []),
+        # An identifier anywhere satisfies the rule, whatever it names.
+        ("The data are held by the team; we compared them with GSE123456.", None, []),
+        # A forbidden phrasing in any case, and its `unless` anywhere in the statement.
+        ("Data are available ON REQUEST. GSE123456.", None,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. We respect patient privacy.", None, []),
+        # The gate's own case-blindness: patterns written without `(?i)`.
+        ("Data are available ON REQUEST. GSE123456.", _CASED,
+         [("data-statement-forbidden", "fail")]),
+        ("Data are available on request. GSE123456. PRIVACY rules apply.", _CASED, []),
+        # A link with a path after the repository's name, a branch's too, is a fixed
+        # version; a bare one is warned of with its archive named beside it.
+        ("The code is at https://github.com/someone/study/tree/main, GSE123456.", None, []),
+        ("The code is at https://github.com/someone/study, archived at "
+         "https://zenodo.org/records/1234567.", None, [("data-link-temporary", "warn")]),
+        # The section's subsections are the statement's.
+        ("See below.\n\n## Deposited data\n\nGSE123456.", None, []),
+        ("See below.", None, _MISSING),
+    ],
+)  # fmt: skip
+def test_a_data_statement_is_read_by_the_patterns_the_gate_and_the_profile_give(
+    project: Path, statement: str, policy: dict | None, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): the identifiers the gate knows, another archive's
+    only as the profile lists it, and any of them wherever it stands; a forbidden phrasing
+    in any case, let off by its `unless` anywhere; a repository linked with a path after
+    its name taken for a fixed version, and one linked bare warned of beside its archive;
+    and the subsections of the statement's section read as the statement."""
+    assert _data_statement(project, statement, policy) == said
+
+
+def test_a_data_statement_without_its_heading_or_citing_a_plain_misc_is_not_read_as_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a statement written as a paragraph with no heading
+    of its own is not read, and only the statement's own check says it is missing; a `@misc`
+    entry that holds a dataset and does not say so, cited by its key, names no dataset.
+    """
+    from manuscript_guard.gates import check_journal
+
+    assert _data_statement(project, "Data are available on request.") == [
+        ("data-identifier-missing", "fail"), ("data-statement-forbidden", "fail")]
+    path = main_md(project)
+    headed = path.read_text(encoding="utf-8")
+    path.write_text(headed.replace("# Data availability\n\n", "", 1), encoding="utf-8")
+    assert _data_findings(project) == []
+    report = check_journal(load_project(project)[0])
+    assert [f.message for f in report.failures if f.code == "missing-required-statement"] == [
+        "the journal requires a data-availability statement"]
+    path.write_text(headed, encoding="utf-8")
+    bib = project / "literature" / "references.bib"
+    misc = "@misc{fictionalHepaticCohort2021,\n  doi = {10.5281/zenodo.1234567},\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "@article{fictionalHepaticCohort2021,\n", misc, 1), encoding="utf-8")  # fmt: skip
+    cited = "Data are in Zenodo [@fictionalHepaticCohort2021]."
+    assert _data_statement(project, cited) == _MISSING
+    # The other side of the same rule: the entry of type `dataset` is read as one.
+    bib.write_text(bib.read_text(encoding="utf-8").replace("@misc{fictionalHepaticCohort2021",
+                                                           "@dataset{fictionalHepaticCohort2021"),
+                   encoding="utf-8")  # fmt: skip
+    assert _data_statement(project, cited) == []
+
+
+@pytest.mark.parametrize("where", ["identifier_patterns", "forbidden", "required_statements"])
+def test_a_pattern_of_the_profile_that_does_not_compile_stops_g4(
+    project: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data statement is read by patterns, and only
+    where the profile records a policy"): a regular expression of the data policy that does
+    not compile raises out of G4, as one of its required statements does."""
+    from manuscript_guard.gates import check_journal
+
+    held = "The data are held by the team."
+    assert _data_statement(project, held) == _MISSING
+    if where == "required_statements":
+        profile = project / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["required_statements"][0]["pattern"] = "(unclosed"
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        with pytest.raises(re.error):
+            check_journal(load_project(project)[0])
+        return
+    policy = {**_DATA_POLICY}
+    if where == "identifier_patterns":
+        policy["identifier_patterns"] = ["(unclosed"]
+    else:
+        policy["forbidden"] = [{"pattern": "(unclosed", "why": "x"}]
+    with pytest.raises(re.error):
+        _data_statement(project, held, policy)
+
+
 def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) -> None:
     from manuscript_guard.gates import check_journal
     from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
@@ -25165,6 +25281,67 @@ def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: P
     assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
+def test_a_name_written_otherwise_than_authors_yaml_writes_it_is_not_found_blind(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A blind document is read for the names
+    `authors.yaml` gives, as they are written there"): a nickname, a given name of several
+    words cut to its first, a family name alone, a name in another script, a user name in
+    Word's author fields, an institution's abbreviation or city, a funder and an ethics
+    committee are not found; a raster figure is not read, and the SVG the manuscript places
+    beside it is. The 2026-11-09 triage planned a fix (F12), which will change this test."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "given: Ada\n", "given: Ada Mary\n"), encoding="utf-8")  # fmt: skip
+
+    def paragraph(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    unfound = "".join(paragraph(text) for text in (
+        "As Addy Example showed, and Ada Example after her.",
+        "Example and Sample wrote the protocol.",
+        "\N{KATAKANA LETTER E}\N{KATAKANA LETTER I}\N{KATAKANA LETTER DA}"
+        "\N{KATAKANA MIDDLE DOT}\N{KATAKANA LETTER E}\N{KATAKANA LETTER GU}"
+        "\N{KATAKANA LETTER ZA}\N{KATAKANA LETTER N}\N{KATAKANA LETTER PU}"
+        "\N{KATAKANA LETTER RU} drew the figure.",
+        "Done at EUGSM in Springfield, funded by the Example Research Foundation and approved"
+        " by the Ethics Committee of Example University Hospital.",
+    ))  # fmt: skip
+    core = (f"<cp:coreProperties {_CORE_NS}><dc:creator>aexample</dc:creator>"
+            "<cp:lastModifiedBy>bsample</cp:lastModifiedBy></cp:coreProperties>")  # fmt: skip
+    # A raster figure that shows the name, in the document and placed by the manuscript.
+    import io
+
+    from matplotlib.figure import Figure
+
+    drawn = Figure(figsize=(4, 1))
+    drawn.text(0.05, 0.4, "Ada Mary Example", fontsize=24)
+    buffer = io.BytesIO()
+    drawn.savefig(buffer, format="png")
+    raster = buffer.getvalue()
+    (project / "figures" / "forest.png").write_bytes(raster)
+    (project / "figures" / "forest.svg").unlink()
+    document = _word(tmp_path / "a.docx", unfound, docProps__core_xml=core)
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/media/image1.png", raster)
+    assert _named(project, document) == []
+    # The other side of each: the name as `authors.yaml` writes it is found in the text and
+    # in Word's author field, and a figure is read through the SVG placed beside it.
+    (project / "figures" / "forest.svg").write_text(
+        "<svg xmlns='http://www.w3.org/2000/svg'><text>Ada Mary Example</text></svg>",
+        encoding="utf-8",
+    )
+    core = core.replace("aexample", "Ada Mary Example")
+    named = paragraph("As Ada Mary Example showed.")
+    document = _word(tmp_path / "b.docx", named, docProps__core_xml=core)
+    assert _named(project, document) == [
+        ("Ada Mary Example", "a figure (forest.svg)"),
+        ("Ada Mary Example", "the document's author (dc:creator)"),
+        ("Ada Mary Example", "the text"),
+    ]
+
+
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
     project: Path, tmp_path: Path
 ) -> None:
@@ -36644,6 +36821,55 @@ def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
     assert measure(text).main_text_words == 8 + len(title.split())
     assert not is_bibliography_heading(f"# {title}", marked=True)
     assert _kind_of(title, False, None) != SET_APART
+
+
+#: A reference list's entry the audit cannot tell by its shape, and one it can.
+_TURKISH_ENTRY = (
+    "Yılmaz A, Kaya B. Uzaktan eğitim. Eğitim ve Bilim 2021, cilt 46, sayı 207, s. 1-23."
+)
+_VANCOUVER_ENTRY = "1. Smith J, Roe A. A title of the cited work. Drug Saf. 2019;42(3):100-10."
+
+
+@pytest.mark.parametrize(
+    ("title", "g4", "audit_and_recycling"),
+    [
+        ("Kaynakça", True, True),
+        # Dutch, which is not among the eight, and "ç" typed as "c" and a combining cedilla.
+        ("Literatuurlijst", False, False),
+        ("Kaynakc\N{COMBINING CEDILLA}a", False, False),
+        # An English title read by its opening word by G4, and whole by the other two.
+        ("References and notes", True, False),
+        ("Bibliography of the trials searched", True, False),
+    ],
+)  # fmt: skip
+def test_a_reference_list_is_known_by_its_title_as_each_reader_reads_titles(
+    tmp_path: Path, title: str, g4: bool, audit_and_recycling: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list is known by its title in eight
+    languages"): a title in another language, or typed with a combining accent, names no
+    list to G4's count, the audit or the recycling check, and the audit tells its entries by
+    their shape; G4 and `is_references` take an English title by its opening word, "References
+    and notes", where the audit and the recycling check take neither."""
+    from manuscript_guard.audit import audit, is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure, split_sections
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    paper = tmp_path / "paper.md"
+
+    def unmatched(entry: str) -> list[str]:
+        paper.write_text(f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{entry}\n",
+                         encoding="utf-8")  # fmt: skip
+        return sorted(c.text for c in audit([paper], [outputs]).unmatched)
+
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{_TURKISH_ENTRY}\n"
+    assert split_sections(text)[-1].is_references is g4
+    # "Results", four words, and the list's title and entry where the list is not known.
+    assert measure(text).main_text_words == (5 if g4 else 5 + len(title.split()) + 16)
+    assert is_bibliography_heading(f"# {title}", marked=True) is audit_and_recycling
+    assert (_kind_of(title, False, None) == SET_APART) is audit_and_recycling
+    assert unmatched(_TURKISH_ENTRY) == ([] if audit_and_recycling else ["2021", "207", "46"])
+    assert unmatched(_VANCOUVER_ENTRY) == []
 
 
 def test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them(project: Path) -> None:

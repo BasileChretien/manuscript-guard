@@ -110,6 +110,37 @@ def test_a_link_is_marked_at_its_utf8_bytes_and_ends_before_its_stop() -> None:
     assert bluesky.facets("no link here, http:// alone") == []
 
 
+def test_a_post_is_posted_as_typed_and_only_a_link_written_whole_is_marked() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate approve` and `publish` rest
+    on"): Markdown in a post, `**bold**` or `[words](link)`, is posted as typed; a mention
+    and a hashtag are plain text; only a link written whole is a facet."""
+    said = ("See **the paper** and [our data](doi.org/10.1/x), with @alice.bsky.social "
+            "#pharmacovigilance at https://example.org/paper")  # fmt: skip
+    post = bluesky.record(said, "t", langs=["en"])
+    assert post["text"] == said
+    assert [(one["features"], said.encode("utf-8")[one["index"]["byteStart"]:
+             one["index"]["byteEnd"]].decode("utf-8")) for one in post["facets"]] == [
+        ([{"$type": "app.bsky.richtext.facet#link", "uri": "https://example.org/paper"}],
+         "https://example.org/paper")]  # fmt: skip
+    assert mastodon.status(said, language="en")["status"] == said
+
+
+@pytest.mark.parametrize(
+    ("after", "link"),
+    [(".", "https://e.org/a"), (",", "https://e.org/a"), ('"', "https://e.org/a"),
+     ("'", "https://e.org/a"), (")", "https://e.org/a"), (" and more", "https://e.org/a"),
+     ("/b.c", "https://e.org/a/b.c"), ("_(b)", "https://e.org/a_(b)")],
+)  # fmt: skip
+def test_a_link_ends_at_a_space_and_before_a_mark_or_a_bracket_it_does_not_open(
+    after: str, link: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate approve` and `publish` rest
+    on"): a link ends at a space, and a stop, a comma, a quote or a closing bracket it does
+    not open after it is not in it; a stop inside it, or a bracket it opens, is."""
+    said = f"At https://e.org/a{after} too"
+    assert [found for _start, _end, found in bluesky.links(said)] == [link]
+
+
 def test_a_record_key_is_thirteen_letters_that_sort_as_their_moments() -> None:
     first = bluesky.tid(datetime(2026, 10, 29, 12, tzinfo=timezone.utc))
     later = bluesky.tid(datetime(2026, 10, 29, 12, 0, 1, tzinfo=timezone.utc))

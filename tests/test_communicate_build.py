@@ -189,6 +189,21 @@ def test_a_channel_paper_yaml_lists_and_the_build_does_not_write_is_passed_over(
     assert {p.name for p in (ready / "communication").glob("*.md")} == {"bluesky.md"}
 
 
+def test_a_doi_holding_a_less_than_sign_is_not_found_among_a_text_s_links(ready: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): a link ends at `<`, so the paper's DOI holding one is not found
+    among the links of the text the build writes, which says `version_shared: none`."""
+    doi = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
+    assert build_module.linked(f"Read https://doi.org/{doi} now.") == [
+        "https://doi.org/10.1002/(SICI)1097-0258(19980430)17:8"]
+    append(ready, f"publication:\n  status: published-online\n  doi: '{doi}'\n")
+    main(["communicate", "build", str(ready), "--channels", "bluesky"])
+    text = (ready / "communication" / "bluesky.md").read_text(encoding="utf-8")
+    assert f"https://doi.org/{doi}" in text and "version_shared: none" in text
+    # The other side of the same rule: a DOI without one is the version linked.
+    assert build_module.linked(f"Read https://doi.org/{DOI} now.") == [f"https://doi.org/{DOI}"]
+
+
 def test_the_paper_is_linked_once_it_is_online_and_not_before(ready: Path) -> None:
     append(ready, f"publication:\n  status: accepted\n  doi: {DOI}\n")
     main(["communicate", "build", str(ready), "--channels", "bluesky,bluesky-thread"])
@@ -255,6 +270,52 @@ def test_the_overview_slide_names_what_it_prints_and_is_held_to_the_results(read
     shown = load_namespace(project)[0]["results.ror.point"].display
     slide.write_text(slide.read_text(encoding="utf-8").replace(shown, "9.99"), encoding="utf-8")
     assert ("comm-ga-stale", FAIL, "overview.svg") in found(ready)
+
+
+def test_the_overview_slide_is_checked_only_while_a_text_names_it(ready: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): the overview slide is checked as an attachment only while a text
+    names it; with its text gone, a value edited in it is told nothing."""
+    from manuscript_guard.contracts import load_namespace
+
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 0
+    slide = ready / "communication" / "overview.svg"
+    shown = load_namespace(load_project(ready)[0])[0]["results.ror.point"].display
+    slide.write_text(slide.read_text(encoding="utf-8").replace(shown, "9.99"), encoding="utf-8")
+    assert ("comm-ga-stale", FAIL, "overview.svg") in found(ready, only=None)
+    (ready / "communication" / "overview.md").unlink()
+    assert [one for one in found(ready, only=None) if one[2] == "overview.svg"] == []
+
+
+def test_a_primary_finding_the_paper_reports_nowhere_passes_the_texts_and_fails_the_brief(
+    ready: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): the overview is held to the texts' part of the check, so a
+    primary finding binding a value the paper reports nowhere is drawn and passes `check
+    --only texts`; the brief's part fails it."""
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.reported import _shows
+
+    project, _ = load_project(ready)
+    namespace, results, _lit, _report = load_namespace(project)
+    reported = checking._reported_keys(project, results)
+    printed = checking._printed_elsewhere(project, results)
+    key = next(ref for ref, value in sorted(namespace.items())
+               if ref.startswith("results.") and ref not in reported
+               and not _shows(printed, value.display))  # fmt: skip
+
+    def unreported(document: dict) -> None:
+        primary = next(one for one in document["findings"] if one["primary"])
+        primary["text"] = f"It was {{{{{key}}}}}."
+        primary["keys"] = [key]
+
+    edit_brief(ready, unreported)
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 0
+    assert (ready / "communication" / "overview.svg").is_file()
+    assert [one for one in failures(ready) if one[2].startswith("overview")] == []
+    assert [code for code, severity, _name in found(ready, only="brief")
+            if severity == FAIL and code == "comm-not-reported"] == ["comm-not-reported"]
 
 
 def test_a_translation_has_a_slot_for_each_statement_and_is_held_to_its_numbers(
@@ -358,6 +419,22 @@ def test_nothing_is_shared_before_the_embargo_lifts(ready: Path, at) -> None:
     at(datetime(2026, 12, 1, 0, 0, tzinfo=timezone.utc))
     assert ("comm-embargo", FAIL, "post.md") in found(ready)
     at(datetime(2026, 12, 1, 0, 1, tzinfo=timezone.utc))
+    assert "comm-embargo" not in {code for code, _s, _p in found(ready)}
+
+
+def test_a_press_release_under_embargo_fails_like_a_post_until_a_zoneless_day_s_noon_utc(
+    ready: Path, at
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): a press release sent to journalists under embargo fails
+    `comm-embargo` as a post does, and an embargo with no zone lifts twelve hours behind
+    UTC."""
+    append(ready, "publication:\n  status: accepted\n  embargo_until: 2026-12-01\n")
+    write(ready, "release.md", f"{CLEAN} {LIMITATION} [](#brief:limitations.1)",
+          "channel: press-release")  # fmt: skip
+    at(datetime(2026, 12, 1, 11, 59, tzinfo=timezone.utc))
+    assert ("comm-embargo", FAIL, "release.md") in found(ready)
+    at(datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc))
     assert "comm-embargo" not in {code for code, _s, _p in found(ready)}
 
 
@@ -636,6 +713,20 @@ def test_a_data_announcement_names_an_spdx_licence_and_passes(ready: Path, licen
     assert failures(ready) == []
 
 
+@pytest.mark.parametrize("licence", ["mit", "LicenseRef-our-own"])
+def test_a_licence_s_page_is_made_from_its_id_as_written(ready: Path, licence: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): the data announcement links each licence's SPDX page made from
+    the id as written, `mit` as much as `MIT`, and a `LicenseRef-` of the project's own,
+    which has no page there. The 2026-11-09 triage planned a fix (F13), which will change
+    this test."""
+    _deposit(ready, licence)
+    assert main(["communicate", "build", str(ready), "--channels", "data-announcement"]) == 0
+    text = (ready / "communication" / "data-announcement.md").read_text(encoding="utf-8")
+    assert f"under the licence https://spdx.org/licenses/{licence}.html." in text
+    assert failures(ready) == []
+
+
 def test_a_data_announcement_named_with_no_deposit_is_refused(
     ready: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -669,6 +760,17 @@ def test_links_of_another_shape_fail_too(out: Path) -> None:
     assert failures(out) == []
 
 
+def test_a_doi_in_a_text_s_links_is_not_held_to_the_paper_s_status(ready: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): the paper's DOI under a text's `links:` before the paper is out
+    is not `comm-status-ahead`; only the body is read, where it is."""
+    append(ready, f"publication:\n  status: accepted\n  doi: {DOI}\n")
+    write(ready, "bluesky.md", CLEAN, f"channel: bluesky\nlinks: [https://doi.org/{DOI}]")
+    assert failures(ready) == []
+    write(ready, "bluesky.md", f"Read https://doi.org/{DOI}. " + CLEAN, "channel: bluesky")
+    assert failures(ready) == [("comm-status-ahead", FAIL, "bluesky.md")]
+
+
 _CAUSES = ("Example-drug causes hepatic injury: the reporting odds ratio was "
            "{{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}) "
            "[](#brief:findings.2).")  # fmt: skip
@@ -691,6 +793,18 @@ def test_only_another_languages_tag_lets_a_text_off_the_claim_ladder(
         assert failures(ready) == []
 
 
+@pytest.mark.parametrize(("language", "held"), [("no", True), ('"no"', False), ("nb", False)])
+def test_a_language_yaml_reads_as_a_boolean_is_no_tag(
+    ready: Path, language: str, held: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): `language: no`, which YAML reads as false, is no tag, so the text
+    is held in full; `"no"` and `nb` let it off the claim ladder, as `fr` does an English
+    post."""
+    write(ready, "bluesky.md", _CAUSES, f"channel: bluesky\nlanguage: {language}")
+    assert (("comm-claim-stronger", FAIL, "bluesky.md") in found(ready)) is held
+
+
 def test_a_month_after_a_months_last_day_is_the_next_months_last_day() -> None:
     from manuscript_guard.communicate import sharing
 
@@ -704,6 +818,27 @@ def test_an_upload_is_known_by_its_suffix_in_any_case() -> None:
 
     attached = {"attachments": ["Paper.PDF", "fig.PNG", "a.Docx", "notes.TeX"]}
     assert sharing.uploads(attached) == ["Paper.PDF", "a.Docx", "notes.TeX"]
+
+
+def test_an_upload_is_a_document_by_its_suffix_and_a_channel_puts_it_where_its_data_says(
+    out: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): an upload is a document by its suffix, an image none whatever it
+    shows; `researchgate` puts it on an academic network and `blog` on a personal site,
+    and any other channel at no place a policy names."""
+    from manuscript_guard.communicate import sharing
+
+    names = ["a.pdf", "a.docx", "a.doc", "a.odt", "a.rtf", "a.epub", "a.tex"]
+    assert sharing.uploads({"attachments": [*names, "a.png", "a.svg", "a.jpg", "a.txt"]}) == names
+    _sharing(out, "sharing:\n  published:\n    where: [personal-site]\n")
+    front = "version_shared: published\nattachments: [paper.pdf]"
+    write(out, "blog.md", CLEAN, f"channel: blog\n{front}")
+    write(out, "researchgate.md", CLEAN, f"channel: researchgate\n{front}")
+    write(out, "pitch.md", CLEAN + " [](#brief:limitations.1)", f"channel: pitch\n{front}")
+    said = {(code, name) for code, severity, name in found(out) if severity == FAIL}
+    assert said == {("comm-sharing-not-allowed", "researchgate.md"),
+                    ("comm-sharing-unknown", "pitch.md")}  # fmt: skip
 
 
 def test_the_preview_counts_a_post_as_the_check_does(ready: Path) -> None:
@@ -748,6 +883,19 @@ def test_a_post_carries_no_citation_and_no_emphasis_and_a_long_text_keeps_them(
     poster = (ready / "communication" / "poster.md").read_text(encoding="utf-8")
     assert "[@fictionalClassSignal2019]" in poster and "*The*" in poster
     assert failures(ready) == []
+
+
+def test_a_post_keeps_a_citation_in_the_sentence_and_drops_a_list_or_quote_marker() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `communicate build`, `status` and the
+    sharing checks read"): what a post and a thread carry of a statement keeps a citation
+    in the sentence, `@smith2020 showed`, where a bracketed one and emphasis are taken out;
+    and a statement opening with a list or quote marker and a space loses the marker."""
+    from manuscript_guard.communicate.svg import bare
+
+    said = "As @smith2020 showed, it was *so* [@roe2019]."
+    assert bare(said) == "As @smith2020 showed, it was so."
+    assert bare("> 12 days passed.") == "12 days passed."
+    assert bare("- 3 reports were serious.") == "3 reports were serious."
 
 
 def test_an_overview_slide_that_exists_is_kept_without_force(ready: Path) -> None:

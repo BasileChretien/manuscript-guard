@@ -5564,6 +5564,25 @@ with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**
 the text gave; another meaning is reported. A Markdown figure's caption, the text of its
 image, is not read at all.
 
+**Each other meaning is reported once.** A paper of the real-paper corpus gave one short form
+another long form in each of six table notes, and G14 said so six times. A definition whose
+meaning differs from the first is reported where that meaning is first given; a later one
+with a meaning already reported is not reported again, and one with a meaning not yet
+reported is (the corpus round of 2026-11-21). Whether a legend's other meaning is reported
+at all is unchanged.
+
+**What reads as a short form and is none.** Three readings that follow from how the text is
+typed, and need no guess (the same round). Author-year citations typed after a long form in
+its bracket, after its first semicolon, are no part of it: "QP2 (Quiet Profile 2;
+Fictional, 2014)" spells out "Quiet Profile 2", each part after the semicolon ending on a
+year the typed-citation reading reads as a citation's, as the short-form-first bracket
+"(SDSS DR15; York et al., 2000)" was already read. A catalogue's designation, a form in
+square brackets with a digit straight after the closing one, "[KX92]30", typed, escaped as
+pandoc writes it from Word, `\[KX92\]30`, or in LaTeX's mathematics, `$[$KX92$]$30`, is
+neither a definition nor a use. And a name whose parts underscores join, a series' or a
+variable's, "QMP_RATE", `QMP\_DURA\_12mth`, is no use of a short form any of its parts is;
+an underscore that joins no two parts, an emphasis mark's, joins nothing.
+
 **A paper with no heading is read as one text.** A Markdown manuscript converted from Word
 with its headings as bold lines has no section G14 can tell apart: the abstract is read with
 the main text, so a definition the abstract and the Introduction both give would be reported
@@ -16952,7 +16971,25 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
   matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
   fact as it was and is, `12.5→12.6`; a section as `parent/title`, its title as compare
-  matches it after the title of the section it stands under.
+  matches it after the title of the section it stands under. Two codes of gates the corpus
+  does not otherwise key name one because their messages change while the finding stays
+  (Basile, 2026-11-21, "Stable key first"; scheme 3): G3's `figure-colours-confused` and
+  `figure-greyscale-confused`, one finding per figure per way of seeing whose message lists
+  the pairs, are the figure's file from the project's root and the way,
+  `figures/forest.svg@deuteranopia`; a path written outside the project that a link brings
+  back inside is keyed by its resolved path from the root, `figures/f.svg@…`. One outside
+  the project as written and as resolved is keyed by its name alone, `fig.svg@deuteranopia`,
+  as before: a path climbing from the root to it would change with where the checkout sits
+  where the manuscript names it by an absolute path, and would carry the author's folders
+  (round 2 of #720). One figure inside the project is one sidecar and one file, so no two
+  there share a key. The same colour check on the graphical abstract,
+  `communicate check`'s COMM findings of those two codes, keys its file from the root the
+  same way, `communication/graphical-abstract/concept-1.svg@deuteranopia`, and so changed
+  key with them. BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
+  the reader gives each place it refuses (`Refusal.kind`: `command`, `redefined`,
+  `encoding`, `input-not-followed`, `makeatletter`, `conditional` and the rest),
+  `manuscript/main.tex@encoding`, with the line it stands on for its sentence, so that two
+  of one kind in one file are two keys.
 - **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
   characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
@@ -24225,10 +24262,10 @@ Open, recorded as each change landed:
     Accepted.
   - A section's name before a colon is a label (`SECTION_NAMES`),
     but a label not on that list, "AIM:", is read as any short form is. A colon that
-    introduces words beginning with the short form's letters defines it all the same:
-    "iterations of CAPs: Content Acquisition Podcasts Professional Development (CAP-PD)"
-    defines CAP a second time, and a label in capitals before a sentence that holds its
-    letters in order defines the label.
+    introduces words beginning with the short form's letters defines it all the same,
+    unless a bracket after those words defines its own short form from them (see "Closed
+    since"), and a label in capitals before a sentence that holds its letters in order
+    defines the label.
     Pinned by `tests/test_definition_shapes.py::test_each_shape_defines_nothing_where_its_words_do_not_match`
     and `tests/test_definition_shapes.py::test_a_colon_that_introduces_words_with_the_letters_defines`.
   - A bracket's short form and its word before a semicolon define where an author-year
@@ -24252,6 +24289,39 @@ Open, recorded as each change landed:
     long form is not looked for in the heading above it; in a PDF, whose headings are only
     its sections' names, a heading's definition is a line of the text and read as one.
     Accepted.
+
+- **G14 reads what is no short form by how it is typed, and says each other meaning once**
+  (the real-paper corpus's round of 2026-11-21). Each reading follows from the text's own
+  typing and no further. Accepted.
+  - A meaning is the same as one already reported as `_same_meaning` reads two long forms:
+    case, hyphens, a leading article and a final "s" aside. "Kids' Quiet Scale" and "Kids
+    Quiet Scale" are two meanings, each reported once. A meaning reported once is said only
+    where it is first given, so a note further down that gives it again is named by no
+    finding until the first is put right.
+    Pinned by `tests/test_language.py::test_another_meaning_given_in_each_note_is_reported_once`.
+  - Only author-year citations the typed-citation reading knows, after the bracket's first
+    semicolon, are set apart from a long form. A numbered citation after it, a citation after
+    a comma, "(Quiet Profile 2, Fictional, 2014)", and a semicolon before anything else stay
+    in the long form, which is then another meaning than a note's.
+    Pinned by `tests/test_language.py::test_a_citation_after_a_long_form_in_its_bracket_is_no_part_of_it`.
+  - A designation needs its digit straight after the closing bracket. "[KX92] 30", with a
+    space, reads as before, KX92 a use, and so does a catalogue's name with no bracket, "KX92
+    30".
+    Pinned by `tests/test_language.py::test_a_catalogue_designation_is_no_short_form`.
+  - A definition in square brackets with a citation's number straight after it, as a PDF
+    or plain text flattens a superscript, "The C-reactive protein [CRP]12 was measured", is
+    a designation by its typing: it defines nothing, and CRP is asked about as undefined.
+    The same in round brackets, "(CRP)12", defines (review round 1 of #717).
+    Pinned by `tests/test_language.py::test_a_square_bracket_definition_before_a_flattened_citation_reads_as_a_designation`.
+  - A name underscores join is no use of any part, so a short form the paper defines and
+    then writes only inside such names, a table of series named so, is defined and not used
+    again.
+    Pinned by `tests/test_language.py::test_a_short_form_used_only_in_names_underscores_join_is_unused`.
+  - The name ends where its underscores do, so a word a hyphen joins after it is read on
+    its own: in "LOG_GDP-QMP" QMP is a use, and in "LOG_QMP-IOS" QMP is a part of the name
+    and IOS a use (review round 2 of #717). A word a hyphen joins before the name is not:
+    each part of a hyphenated word is set apart at its own place, "anti-QMP_RATE".
+    Pinned by `tests/test_language.py::test_a_word_a_hyphen_joins_after_a_joined_name_is_read_on_its_own`.
 
 - **A paper that declares no English is held to a count, and is built in no region.**
   (Basile, 2026-10-23.) Accepted.
@@ -28514,6 +28584,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
+  - G3's confused colours name a figure outside the project, as written and as resolved, by
+    its file name alone, one on another drive or reached by `../` or by an absolute path,
+    since a path from the root to it would name the author's folders and, written absolute,
+    move with the checkout: two such figures of one name share a key, as before scheme 3.
+    Pinned by
+    `tests/test_finding_keys.py::test_two_figures_of_one_name_outside_the_project_share_a_key`
+    and `tests/test_finding_keys.py::test_a_figure_named_by_an_absolute_path_keeps_its_key_where_the_project_moves`.
+  - On a file system that ignores case where paths do not (macOS), an inside figure written
+    through the root's folder in another case, `../Paper/figures/f.svg`, is read as outside
+    and keyed by its name, as `placed_figures` reads it. Accepted.
+  - A refusal's key is moved by an edit of the line it stands on. Accepted.
   - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
     Abstract is read as structured where its first line after the heading is shaped as a
     heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its
@@ -28584,6 +28665,17 @@ Closed since, and why each mattered (an open gap goes above this line):
     3 of #296), were tested with Latin names only: a name in Japanese, in Greek and
     Cyrillic, with accents, and with a letter beyond the Basic Multilingual Plane is read
     as printed.
+
+- **A colon before a long form that a bracket after it defines made a second definition
+  (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an
+  education preprint of the real-paper corpus wrote its own, defined CAP a second time, as
+  "Content Acquisition Podcasts Plus", beside CAP-P, and so reported CAP as defined as two
+  things. The author's rule (Basile, 2026-11-21, "Bracket wins"): where a bracket defines a
+  short form right after its long form, alone or in a list, "(CAP-P)" or "(CAP, CAP-T)",
+  that definition wins over a colon pair or an equals sign's the same words could make
+  (`_bracket_wins`). A bracket after the words that defines nothing, "(see the appendix)",
+  leaves the pair as it was. Held by
+  `tests/test_definition_shapes.py::test_a_bracket_after_a_colon_pair_s_long_form_wins`.
 
 - **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
   A sentence that says more or less than the tool does is believed by the author who reads

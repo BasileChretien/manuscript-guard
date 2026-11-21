@@ -16952,7 +16952,25 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
   matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
   fact as it was and is, `12.5→12.6`; a section as `parent/title`, its title as compare
-  matches it after the title of the section it stands under.
+  matches it after the title of the section it stands under. Two codes of gates the corpus
+  does not otherwise key name one because their messages change while the finding stays
+  (Basile, 2026-11-21, "Stable key first"; scheme 3): G3's `figure-colours-confused` and
+  `figure-greyscale-confused`, one finding per figure per way of seeing whose message lists
+  the pairs, are the figure's file from the project's root and the way,
+  `figures/forest.svg@deuteranopia`; a path written outside the project that a link brings
+  back inside is keyed by its resolved path from the root, `figures/f.svg@…`. One outside
+  the project as written and as resolved is keyed by its name alone, `fig.svg@deuteranopia`,
+  as before: a path climbing from the root to it would change with where the checkout sits
+  where the manuscript names it by an absolute path, and would carry the author's folders
+  (round 2 of #720). One figure inside the project is one sidecar and one file, so no two
+  there share a key. The same colour check on the graphical abstract,
+  `communicate check`'s COMM findings of those two codes, keys its file from the root the
+  same way, `communication/graphical-abstract/concept-1.svg@deuteranopia`, and so changed
+  key with them. BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
+  the reader gives each place it refuses (`Refusal.kind`: `command`, `redefined`,
+  `encoding`, `input-not-followed`, `makeatletter`, `conditional` and the rest),
+  `manuscript/main.tex@encoding`, with the line it stands on for its sentence, so that two
+  of one kind in one file are two keys.
 - **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
   characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
@@ -28523,6 +28541,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
+  - G3's confused colours name a figure outside the project, as written and as resolved, by
+    its file name alone, one on another drive or reached by `../` or by an absolute path,
+    since a path from the root to it would name the author's folders and, written absolute,
+    move with the checkout: two such figures of one name share a key, as before scheme 3.
+    Pinned by
+    `tests/test_finding_keys.py::test_two_figures_of_one_name_outside_the_project_share_a_key`
+    and `tests/test_finding_keys.py::test_a_figure_named_by_an_absolute_path_keeps_its_key_where_the_project_moves`.
+  - On a file system that ignores case where paths do not (macOS), an inside figure written
+    through the root's folder in another case, `../Paper/figures/f.svg`, is read as outside
+    and keyed by its name, as `placed_figures` reads it. Accepted.
+  - A refusal's key is moved by an edit of the line it stands on. Accepted.
   - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
     Abstract is read as structured where its first line after the heading is shaped as a
     heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its

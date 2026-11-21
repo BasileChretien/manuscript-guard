@@ -25611,14 +25611,17 @@ Open, recorded as each change landed:
   the counts run together in a cell, the audit does not pair a count with its share there,
   and a reader of the Markdown sees one row. Rewrite such a table by hand, or emit it from
   the analysis.
+  Pinned by `tests/test_from_word.py::test_a_word_table_s_rows_stacked_in_one_cell_become_one_row`.
 - **A merged cell's text stands in its first column only.** A header spanning a count's and a
   share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
   audit reads its denominator for that column alone.
+  Pinned by `tests/test_from_word.py::test_a_merged_header_s_n_is_read_for_its_first_column_alone`.
 - **What `init --from` sets aside is chosen by a count of words.** The run before the first
   heading is set aside up to 600 words. A short introduction with no heading over it, after a
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
   title page over 600 words stays in the text, where its names and affiliations are read.
   `init` prints which it did and how many words.
+  Pinned by `tests/test_from_word.py::test_init_sets_aside_a_title_page_by_a_count_of_words`.
 - **`init --from` finds an abstract on the title page by its style alone.** A paragraph in
   Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
   document with its styles is, the styles taken off, its ordinary reading block for block;
@@ -25627,6 +25630,8 @@ Open, recorded as each change landed:
   read by no gate until it is moved out; one under a line "Abstract" alone, in bold or not,
   in a paper that uses a heading style elsewhere, or opening on a run-in "Abstract:", has that line made a
   heading (below, "A Word paper's typed titles are headings only by a closed list of names").
+  Pinned by `tests/test_from_word.py::test_an_abstract_in_another_style_stays_in_the_comment`
+  and `tests/test_from_word.py::test_an_abstract_style_stays_set_aside_where_readings_differ`.
 - **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
   top-level paragraph of words, in bold or not, numbered as typed or not, in capitals or not
@@ -25875,15 +25880,19 @@ Open, recorded as each change landed:
 - **A table `init --from` leaves as a grid table keeps pandoc's numbering.** A numbered list
   in a cell is written with its numbers, "1.", "2.", and `check` reports them as numbers
   typed in a table, as it reports the rest of the grid table's rows.
+  Pinned by `tests/test_from_word.py::test_a_numbered_list_in_a_grid_table_keeps_its_numbers`.
 - **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
   tracked changes; the audit and `import` read comments, `init` does not. Accepted.
 - **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
   superscript of digits or `*`, `†`, `‡`, `§`, `¶`, `‖`, `#` at the title's end out of `paper.yaml`, so "per
   m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
+  Pinned by `tests/test_from_word.py::test_digits_or_a_note_s_sign_at_a_title_s_end_are_a_mark`
+  and `tests/test_from_word.py::test_a_power_at_a_word_title_s_end_is_left_out`.
 - **A Word title's mark inside a wrapper stays in the title.** `init --from` looks for the
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+  Pinned by `tests/test_from_word.py::test_a_word_title_s_mark_inside_a_wrapper_stays_in_the_title`.
 - **`init --from` reads a typed reference entry in two of APA's shapes only.** A journal
   article, `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.` with a DOI
   or an address after it or not, and a book, `Lee, C. (2018). *Title*. Publisher.`, are

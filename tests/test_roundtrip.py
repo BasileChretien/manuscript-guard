@@ -4016,6 +4016,21 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
     assert re.search(r"\[\]\{#mg-p-[^}]+\}After\.", tagged), "the prose after them keeps its"
 
 
+def test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source() -> None:
+    """DESIGN.md, Closed since, "A paragraph inside an HTML comment was said to carry an
+    identifier in the source": the source's own list of identified paragraphs, which import
+    compares and writes by, names none inside a comment, so there is nothing of it for a
+    write to miss."""
+    from manuscript_guard.roundtrip import identified
+
+    text = "Alpha.\n\n<!--\n\nInside the comment.\n\n-->\n\nOmega.\n"
+    found = identified(text, "main.md")
+    assert [words for _name, words, _start in found] == ["Alpha.", "Omega."], found
+    assert [text[start : start + len(words)] for _name, words, start in found] == [
+        "Alpha.", "Omega."
+    ]
+
+
 def _identified(text: str) -> dict[str, bool]:
     """For each of the words Alpha to Omega that pandoc prints in the body of `tag(text)`,
     whether the paragraph holding it carries an identifier. A word inside raw content, which

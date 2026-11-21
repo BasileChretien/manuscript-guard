@@ -23918,8 +23918,6 @@ Open, recorded as each change landed:
     did it cannot be told. The rewordings in that file are refused, and if that is not it,
     the moves are held after.
     Pinned by `tests/test_roundtrip.py::test_a_write_that_would_cost_another_paragraph_its_identifier_is_held`.
-  - *A paragraph that never reached the document is not checked.* One inside an HTML
-    comment has an identifier in the source and none in Word, and nothing writes it.
 - **A paragraph under a heading or a link's definition carries the identifier.** Pandoc
   needs no blank line after a heading, nor after a link's definition, so `# Methods` with
   its paragraph on the next line is a heading and a paragraph. Every block starting with
@@ -29272,6 +29270,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A paragraph inside an HTML comment was said to carry an identifier in the source
+  (2026-11-21).** A point under "`import` refuses a write the next build would not find
+  again, by `tag`'s reading" said such a paragraph had an identifier in the source and none
+  in Word, and was not checked. It had none in the source either: `identified`, which lists
+  the paragraphs import compares and writes, names none inside a comment, and already did at
+  the commit that wrote the point (a24189b52, #69), so no commit closed it. Found fixed while
+  pinning. Held by
+  `tests/test_roundtrip.py::test_nothing_inside_a_code_block_or_a_comment_is_marked`
+  and `tests/test_roundtrip.py::test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source`.
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

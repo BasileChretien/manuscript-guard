@@ -17116,13 +17116,14 @@ sentence only, each beside a broken rule in `BROKEN`.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-Once sorted, an open entry ends its own text, before any points under it, in one of two
-tags, and so does each point under one. `Accepted.` marks a limit that stays as it is
-written. ``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the
-limit as it is written: a change that closes the gap or moves it fails one of them, and the
-entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
-only that each test a tag names is one pytest collects. An entry with neither has not
-been sorted yet.
+An open entry ends its own text, before any points under it, in one of two tags, and so
+does each point under one. `Accepted.` marks a limit that stays as it is written.
+``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the limit as it
+is written: a change that closes the gap or moves it fails one of them, and the entry is
+then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` fails on an
+open entry or point with neither tag, and on a tag that names a test pytest does not
+collect. A limit that is a defect to fix is pinned until the fix lands, and the fix changes
+its test.
 
 - **The corpus tool finds a judged finding again only by its gate and code, by its line in
   the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A

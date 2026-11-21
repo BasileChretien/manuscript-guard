@@ -605,12 +605,92 @@ def test_every_test_a_known_gap_is_pinned_by_is_there() -> None:
     """An open entry of DESIGN.md's Known gaps, or a point under one, that a test holds ends
     in `Pinned by` and the names of the tests that hold the limit as it is written. A test
     renamed or deleted would leave the entry trusted on the word of a test that no longer
-    runs. That every entry ends in this or in `Accepted.` is not held yet: the triage of
-    2026-11-09 tags them a group at a time."""
+    runs."""
     names, garbled = pins_of(open_gaps(text_of(DESIGN)))
     assert garbled == [], "a Pinned by names its tests in backticks, path::name"
     assert names, "no open entry names a test: has the form of the tag changed?"
     assert unfound(names, REPO) == []
+
+
+def own_texts(text: str) -> list[tuple[str, str]]:
+    """Each open entry of DESIGN.md's Known gaps and each point under one: its first line,
+    and its own text on one line. An entry's own text runs to its first point, past blank
+    lines; a point's is its lines indented under it, its own deeper points among them, to
+    the first blank line or line indented less. A paragraph between the lists, and one an
+    entry goes on to after its points, is no item's."""
+    start = text.index("\n## Known gaps\n")
+    end = text.index(f"\n{CLOSED_SINCE}\n", start)
+    items: list[list[str]] = []
+    own: list[str] | None = None  # the item a line indented enough still belongs to
+    indent, in_list = 2, False
+    for line in text[start:end].splitlines()[2:]:
+        if line.startswith("- "):
+            own, indent, in_list = [line], 2, True
+            items.append(own)
+        elif line.startswith("  - ") and in_list:
+            own, indent = [line], 4
+            items.append(own)
+        elif not line.strip() or line.startswith(" ") and in_list:
+            if line.startswith(" " * indent) and own is not None:
+                own.append(line)
+            elif indent == 4:
+                own = None
+        else:
+            own, in_list = None, False
+    return [(item[0].strip(), " ".join(" ".join(item).split())) for item in items]
+
+
+def tagged(own: str) -> bool:
+    """Whether an item's own text ends in `Accepted.` or in a whole `Pinned by` tag."""
+    if own.endswith("Accepted."):
+        return True
+    at = own.rfind("Pinned by ")
+    pin = PINNED.match(own, at) if at >= 0 else None
+    return pin is not None and pin.end() == len(own)
+
+
+def test_an_item_s_own_text_stops_at_its_first_point_or_its_paragraph() -> None:
+    """An entry's lead text and each point's lines are told apart, a point's deeper points
+    are its own text, and neither a group's paragraph nor what an entry says after its
+    points counts as an item; so a tag is looked for where the preamble of Known gaps says
+    it stands."""
+    text = (
+        "# D\n\n## Known gaps\n\nWhat the tags mean. Accepted.\n\n"
+        "- **One.** Its lead\n  text, two lines.\n\n  A second paragraph. Accepted.\n"
+        "  - A point\n    of two lines. Pinned by `tests/a.py::test_a`.\n"
+        "  - A point with points:\n    - a deeper one,\n    - and another.\n\n"
+        "  What the entry goes on to say.\n\nA group.\n\n"
+        "- **Two.** Accepted. And more.\n"
+        "- **Three.** Pinned by `tests/a.py::test_a` and\n  `tests/b.py::test_b`.\n"
+        "- **Four.** Pinned by test_a.\n"
+        f"\n{CLOSED_SINCE}\n\n- **Closed.**\n"
+    )
+    assert own_texts(text) == [
+        ("- **One.** Its lead",
+         "- **One.** Its lead text, two lines. A second paragraph. Accepted."),
+        ("- A point", "- A point of two lines. Pinned by `tests/a.py::test_a`."),
+        ("- A point with points:", "- A point with points: - a deeper one, - and another."),
+        ("- **Two.** Accepted. And more.", "- **Two.** Accepted. And more."),
+        ("- **Three.** Pinned by `tests/a.py::test_a` and",
+         "- **Three.** Pinned by `tests/a.py::test_a` and `tests/b.py::test_b`."),
+        ("- **Four.** Pinned by test_a.", "- **Four.** Pinned by test_a."),
+    ]  # fmt: skip
+    assert [tagged(own) for _, own in own_texts(text)] == [
+        True, True, False, False, True, False,
+    ]  # fmt: skip
+
+
+def test_every_open_known_gap_ends_in_accepted_or_pinned_by() -> None:
+    """Every open entry of DESIGN.md's Known gaps, and every point under one, ends its own
+    text in `Accepted.` (a limit that stays as written) or in `Pinned by` and the tests that
+    hold it as written (Basile, 2026-11-09; every item was sorted by 2026-11-21). An item
+    with neither is a limit nobody has decided on, which is how a gate comes to be trusted
+    beyond it."""
+    untagged = [first for first, own in own_texts(text_of(DESIGN)) if not tagged(own)]
+    assert not untagged, (
+        "end each of these items of Known gaps in `Accepted.` or in Pinned by and the tests "
+        "that hold it (DESIGN.md, the preamble of Known gaps):\n" + "\n".join(untagged)
+    )
 
 
 # ------------------------------------------------------------------------------ citation

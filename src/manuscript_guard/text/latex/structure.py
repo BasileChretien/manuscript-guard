@@ -353,6 +353,33 @@ def read_past_stop(source: Source) -> list[Reading]:
     return readings
 
 
+def past_stops(document: Document, files: Mapping[str, str],
+               entry: str = ENTRY) -> dict[str, tuple[str, Refusal]]:  # fmt: skip
+    """Each file of `files` that the inputs past where a file of `document` stopped reach,
+    through the files they input, by its path, with the file that stopped and the refusal it
+    stopped at: the inputs as the reader records them, a braceless `\\input` and an
+    `\\import` among them, not one in a comment, and each by a path written out in full
+    (`resolve`), not one a command builds. `audit` says each is not followed (round 3 of
+    #637), and BUILD names them in that refusal's finding (Basile, 2026-11-21, "Fold the
+    warnings")."""
+    reached = {source.path for source in document.sources if not source.loose}
+    found: dict[str, tuple[str, Refusal]] = {}
+    for source in document.sources:
+        if source.loose or not source.reading.refusals:
+            continue
+        stop = source.reading.refusals[0]
+        pending = [put for past in read_past_stop(source) for put in past.inputs]
+        while pending:
+            put = pending.pop()
+            target = _target(entry, put, "", files)[0]
+            if target is not None and target not in reached:
+                reached.add(target)
+                found[target] = (source.path, stop)
+                pending += read(files[target], body=put.body,
+                                environments=put.environments).inputs  # fmt: skip
+    return found
+
+
 def _encoded(document: Document) -> Document:
     """`document` with an input encoding other than UTF-8 that a file of its tree sets, which
     the reader accepts since that file is ASCII, refused where another file of the tree is

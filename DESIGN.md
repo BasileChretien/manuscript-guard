@@ -1977,9 +1977,15 @@ The result is compiled and packed by the code above, and checked three times:
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
   distribution's again (2026-10-23).
 - A file input past a refusal in the file that inputs it, from inside a definition, or from
-  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
-  message says no `\input` the reader follows names it, and is read under no heading (round 1
-  of #385).
+  `\AtBeginDocument{\input{x}}` is not followed. It is read under no heading (round 1 of
+  #385). One input from inside a definition or a hook is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it. One input past where the reader
+  stopped in a file, by a path written out in full, there or through a file input there, is
+  named once in that refusal's finding, "the 3 files its inputs past it reach, …, are read
+  as body under no heading", and not warned of again, by the rule `audit` follows to say it
+  was not followed (`structure.past_stops`; Basile, 2026-11-21, "Fold the warnings": a
+  paper refused at its preamble's `[latin1]` had each of its fifteen inputs warned of as
+  named by no `\input`). One whose path a command builds is warned of as before.
 - A file input from the preamble by a path with no folder that `manuscript/` lacks,
   `\input{settings.tex}` or `\input settings` too, is taken for the distribution's and
   passes; the compile finds it missing (step 9) (rounds 1 and 2 of #385). In the body,
@@ -17079,18 +17085,26 @@ been sorted yet.
   is (above). Anything else, a font switch round `\@startsection`, a parameter, another
   section's name, a second command in the body, is refused at its first use, and nothing of
   the file past it is read, nor a file it inputs past there, which `audit` names as not
-  followed rather than as input by no file; `audit` says so.
+  followed rather than as input by no file; `audit` says so, and BUILD names each such file
+  of a project in the refusal's finding rather than warning of it as `tex-not-input`
+  (Basile, 2026-11-21, "Fold the warnings").
   Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
-  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
-  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`,
+  `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`
+  and `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
   - A `\subimport{chapters/}{intro}` past a stop is followed without its folder, so what
     chapters/intro.tex inputs, `\input{methods}`, is looked for at the manuscript's root,
-    and given the advice for a file nothing inputs (check of #637). Accepted.
+    and given the advice for a file nothing inputs, in `audit` and in BUILD's
+    `tex-not-input` (check of #637). Accepted.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left
-    unfollowed, and they are given the advice for a file nothing inputs (check of #637).
-    Accepted.
+    unfollowed, and they are given the advice for a file nothing inputs, in `audit` and in
+    BUILD's `tex-not-input` (check of #637). Accepted.
+  - A file input past a stop by a path a command builds, `\input{\dir/methods}`, is not
+    followed, since the reader cannot read the path exactly, and is warned of as named by
+    no `\input`, as a file nothing inputs is (Basile, 2026-11-21).
+    Pinned by `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
 - **A part placed by `\subfile` that defines a known command again in its own preamble has
   its uses refused.** The part's reading reads its own preamble, so a part that repeats
   main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part

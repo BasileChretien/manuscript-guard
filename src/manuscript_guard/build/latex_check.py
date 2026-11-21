@@ -8,8 +8,12 @@ it prints there; past one the tree makes, an `\\input` it cannot follow or an en
 file is read on, and so it is past a block the reader skips, a `\\makeatletter` in the body to
 its `\\makeatother` or a conditional to its `\\fi`, of which no gate reads anything. A `.tex`
 file that no `\\input` the reader follows names is a warning (`tex-not-input`): it is read as
-loose body under no heading. That is a file nothing inputs, and also one input past a
-refusal or from inside a definition, which LaTeX may still print. A `.tex` file that holds
+loose body under no heading. That is a file nothing inputs, and also one input from inside a
+definition, which LaTeX may still print. One input past where the reader stopped, by a path
+written out in full, there or through another file, is named once in that refusal's finding
+instead, which fails already (`past_stops`; Basile, 2026-11-21, "Fold the warnings": each of
+the files a paper refused at its preamble inputs was warned of as input by nothing). A
+`.tex` file that holds
 a document of its own, its own `\\begin{document}`, beside a document's entry file is
 another document, which is never read as part of that one (`tex-second-document`): it fails
 at every stage, as a file of the other format does, since no gate reads it and no build
@@ -20,7 +24,13 @@ manuscript has none of these.
 from __future__ import annotations
 
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, SUPPLEMENT_ENTRY, read_document
+from manuscript_guard.text.latex.mask import Refusal
+from manuscript_guard.text.latex.structure import (
+    SECOND_DOCUMENT,
+    SUPPLEMENT_ENTRY,
+    past_stops,
+    read_document,
+)
 from manuscript_guard.text.reader import LATEX, manuscript_format
 
 GATE = "BUILD"
@@ -52,6 +62,8 @@ def check_latex(project) -> Report:
         texts = {source.path: source.text for source in document.sources}
         stops = {(source.path, refusal) for source in document.sources
                  for refusal in source.reading.refusals}  # fmt: skip
+        entry = SUPPLEMENT_ENTRY if supplementary else "main.tex"
+        named = _named_past_stops(document, texts, entry)
         for path, refusal in document.refusals:
             # A document of its own is no source of this one, and is read here for its line.
             text = texts.get(path) or (folder / path).read_text(encoding="utf-8",
@@ -60,7 +72,8 @@ def check_latex(project) -> Report:
                 Finding(
                     gate=GATE,
                     code=refusal.code,
-                    message=f"manuscript/{path}: {refusal.message}",
+                    message=f"manuscript/{path}: {refusal.message}"
+                    + _inputs_said(named.get((path, refusal), [])),
                     path=folder / path,
                     line=text.count("\n", 0, refusal.offset) + 1,
                     # One the tree makes, an input it cannot follow, leaves the file read.
@@ -69,8 +82,10 @@ def check_latex(project) -> Report:
                     else _HINTS.get(refusal.code),
                 )
             )
-        entry = SUPPLEMENT_ENTRY if supplementary else "main.tex"
+        folded = {target for targets in named.values() for target in targets}
         for path in document.loose:
+            if path in folded:
+                continue
             findings.append(
                 Finding(
                     gate=GATE,
@@ -84,3 +99,27 @@ def check_latex(project) -> Report:
                 )
             )
     return Report(tuple(findings))
+
+
+def _named_past_stops(document, texts: dict[str, str],
+                      entry: str) -> dict[tuple[str, Refusal], list[str]]:  # fmt: skip
+    """Each refusal a file stopped at, with its path, and the files read as loose body that
+    the inputs past it reach, which its finding names rather than each being warned of."""
+    loose = set(document.loose)
+    tex = {path: text for path, text in texts.items() if path.endswith(".tex")}
+    named: dict[tuple[str, Refusal], list[str]] = {}
+    for target, stop in past_stops(document, tex, entry).items():
+        if target in loose:
+            named.setdefault(stop, []).append(target)
+    return named
+
+
+def _inputs_said(targets: list[str]) -> str:
+    """What a refusal's finding says of the files input past it: none, or which."""
+    if not targets:
+        return ""
+    names = ", ".join(f"manuscript/{target}" for target in sorted(targets))
+    if len(targets) == 1:
+        return f"; the file its inputs past it reach, {names}, is read as body under no heading"
+    return (f"; the {len(targets)} files its inputs past it reach, {names}, are read as body "
+            "under no heading")

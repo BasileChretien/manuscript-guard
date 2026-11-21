@@ -13626,6 +13626,44 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+@pytest.mark.parametrize("stop", ["latin1", "csname"])
+def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
+    project: Path, stop: str
+) -> None:
+    """A file input past where the reader stopped in the file that inputs it, there through
+    another, is named once in that refusal's finding, and not warned of as named by no
+    `\\input`, which it is. One nothing inputs, and one whose path a command builds, which
+    the reader cannot read exactly, are each warned of as before (Basile, 2026-11-21, "Fold
+    the warnings": a paper refused at its preamble's `[latin1]` had each of the fifteen
+    files it inputs warned of)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "parts").mkdir()
+    stops = {"latin1": "\\usepackage[latin1]{inputenc}\n", "csname": "\\csname x\\endcsname\n"}
+    entry.write_text(
+        "\\documentclass{article}\n" + stops[stop] + "\\newcommand{\\where}{parts}\n"
+        "\\begin{document}\nCaf\N{LATIN SMALL LETTER E WITH ACUTE}.\n\\input{intro}\n"
+        "\\input{parts/results}\n\\input{\\where/built}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "intro.tex").write_text("Of 4100.\n", encoding="utf-8")
+    (folder / "parts" / "results.tex").write_text("\\input{parts/nested}\n", encoding="utf-8")
+    for name in ("parts/nested", "parts/built", "notes"):
+        (folder / f"{name}.tex").write_text("Words.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    warned = sorted(f.path.name for f in report.findings if f.code == "tex-not-input")
+    assert warned == ["built.tex", "notes.tex"], report.render(project)
+    (refused,) = [f for f in report.failures
+                  if f.code == "tex-refused" and f.path.name == "main.tex"]  # fmt: skip
+    assert refused.line == 2, refused.message
+    assert "the 3 files its inputs past it reach" in refused.message, refused.message
+    for name in ("intro.tex", "parts/results.tex", "parts/nested.tex"):
+        assert f"manuscript/{name}" in refused.message, refused.message
+    assert "built.tex" not in refused.message and "notes.tex" not in refused.message
+
+
 def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build(
     project: Path,
 ) -> None:

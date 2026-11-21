@@ -443,6 +443,27 @@ def test_dropping_the_subject_of_a_grim_or_a_skewed_mean_is_caught() -> None:
         assert caught and not any(_allowed(*one) for one in caught), (where, caught)
 
 
+#: Where a code of a family keyed is made in a gate the corpus otherwise never reads, by a
+#: name the walk cannot read, with the text that names its subject there.
+KEYED_IN_WHOLE_GATES = {
+    "gates/figure_colours.py:_confused": 'subject=f"{shown}@{way}",',
+    "build/latex_check.py:check_latex": "**_keyed(path, text, refusal, supplementary),",
+}
+
+
+def test_g3s_colours_and_builds_refusals_are_made_with_a_subject() -> None:
+    """G3's confused colours and BUILD's refusals name their subject though their gates are
+    whole (`WHOLE_GATES`), and the walk sees a copy of the source without it as made with
+    none (Basile, 2026-11-21, "Stable key first")."""
+    for site, typed in KEYED_IN_WHOLE_GATES.items():
+        where = site.split(":")[0]
+        text = (SRC / where).read_text(encoding="utf-8")
+        assert text.count(typed) == 1, (where, typed)
+        assert [one for one in unkeyed() if one[2] == site and one[1] == "<?>"] == [], site
+        caught = [one for one in unkeyed({where: text.replace(typed, "")}) if one[2] == site]
+        assert caught, site
+
+
 def test_every_listing_is_of_something_made_and_says_why() -> None:
     sites = {site for _gate, _code, site in unkeyed()}
     assert sorted(set(VARIABLE_SITES) - sites) == []

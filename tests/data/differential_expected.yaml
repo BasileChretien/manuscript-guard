@@ -48,15 +48,17 @@ expected:
       in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
-      the warnings on the short forms used and never defined, one for each form, are one
-      question to the author for the paper, at the first form's first use, a note that never
-      fails and is no warning: it lists every form at its first use, asks whether any needs
-      defining, and is answered by listing those the readers know under `language:
-      known_abbreviations` in paper.yaml and defining the others; the reading gives the forms
-      it asks of. Used before defined, redefined and unused are as they were (Basile,
-      2026-11-16, decision 30: 82% of the undefined forms the judges read in the real-paper
-      corpus were names, designations and everyday forms); the entry it replaces, decision
-      28's, is spent
+      the inputs now hold `APART_PIECES` (tests/generated.py), and on them G14 reads as the
+      real-paper corpus's round of 2026-11-21 asks, each reading exact: another meaning given
+      again in a second table note is reported once, at the first; author-year citations
+      typed after a long form in its bracket, after its first semicolon, are no part of it,
+      so the note that gives the long form again gives no other meaning; a catalogue's
+      designation, "[KX92]30" typed or escaped, is neither a definition nor a use; and a name
+      whose parts underscores join, "QMP_RATE", is no use of a short form, so nothing is used
+      before its definition; and where a bracket defines a short form after its long form, a
+      colon pair the same words could make defines nothing (Basile, 2026-11-21, "Bracket
+      wins"), so "TCSs: timed chair stand series (TCS-S)" leaves TCS used and undefined. The
+      entry it replaces, decision 30's, is spent
   - reading: audit abbreviations
     why: >-
       the audit's one finding of the short forms used and not defined is a question to the

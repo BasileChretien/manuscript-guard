@@ -666,6 +666,82 @@ def test_the_englishes_init_takes_are_the_ones_paper_yaml_may_declare() -> None:
     assert tuple(enum) == ENGLISHES
 
 
+_BOM = chr(0xFEFF)
+#: A paper.yaml that moves the two folders the .gitignore lines are about.
+_MOVED = "paths:\n  build: out\n  literature: refs\n"
+
+
+@pytest.mark.parametrize(("files", "wanted"), [
+    # A broader pattern that leaves the same paths out is asked for again: a false alarm.
+    ({".gitignore": "build/\nliterature/\n"}, {".gitignore": ["literature/sources/*"]}),
+    ({".gitignore": "/build/**\nliterature/sources/*\n"}, {".gitignore": ["build/"]}),
+    ({".gitignore": "**/build/\nliterature/sources/*\n"}, {".gitignore": ["build/"]}),
+    ({".gitignore": "build/\nliterature/sources/**\n"}, {".gitignore": ["literature/sources/*"]}),
+    ({".gitignore": "build/\n", "literature/sources/.gitignore": "*\n"},
+     {".gitignore": ["literature/sources/*"]}),
+    # A line git then undoes counts as present: a false pass.
+    ({".gitignore": "build/\nliterature/sources/*\n!literature/sources/*.pdf\n"}, {}),
+    ({".gitignore": "build/\nliterature/sources/*\n!build/\n"}, {}),
+    # Each line read with strip(): a BOM leaves the first unread, a leading space goes.
+    ({".gitignore": _BOM + "build/\nliterature/sources/*\n"}, {".gitignore": ["build/"]}),
+    ({".gitignore": " build/\nliterature/sources/*\n"}, {}),
+    # Only a `*` line with both `text=auto` and `eol=lf` counts.
+    ({".gitattributes": "* text eol=lf\n"}, {".gitattributes": ["* text=auto eol=lf"]}),
+    ({".gitattributes": "* text=auto\n* eol=lf\n"}, {".gitattributes": ["* text=auto eol=lf"]}),
+    ({".gitattributes": "* text=auto eol=lf\n"}, {}),
+    # The folders are build/ and literature/sources/* whatever `paths:` names.
+    ({".gitignore": "out/\nrefs/sources/*\n", "paper.yaml": _MOVED},
+     {".gitignore": ["build/", "literature/sources/*"]}),
+    ({".gitignore": "build/\nliterature/sources/*\n", "paper.yaml": _MOVED}, {}),
+], ids=["literature/", "/build/**", "**/build/", "literature/sources/**", "nested gitignore",
+        "a later !*.pdf", "a later !build/", "a BOM", "a leading space", "* text eol=lf",
+        "on two lines", "the line itself", "paths moved, their lines", "paths moved, ours"],
+)  # fmt: skip
+def test_init_s_git_advice_reads_spellings_and_not_git_s_rules(
+    tmp_path: Path, files: dict[str, str], wanted: dict[str, list[str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`init`'s advice on an existing `.gitignore` and
+    `.gitattributes` reads spellings, not git's rules"): a line counts where one of a few
+    spellings of it is in the file, each line stripped, whatever git makes of the file. The
+    2026-11-09 triage planned a fix (F06), asking `git check-ignore`, which will change this
+    test."""
+    from manuscript_guard.scaffold import git_lines_to_add
+
+    for name, text in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+    assert git_lines_to_add(tmp_path) == wanted
+
+
+def test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`init`'s advice on an existing `.gitignore` and
+    `.gitattributes` reads spellings, not git's rules"): the reason printed for `.gitignore`
+    is one sentence naming both lines, so it says the file does not leave out `build/` where
+    `/build` does, and warns of publishing paywalled copies where `sources_in_git: true`.
+    The 2026-11-09 triage planned a fix (F06), a reason for each missing line, which will
+    change this test."""
+    from manuscript_guard.cli import main
+
+    reason = (".gitignore was already there and was left as it was, and it does not leave "
+              "out what the build writes (`build/`) or the stored copies of cited works, "
+              "paywalled papers among them, which a public repository would publish "
+              "(`literature/sources/*`). Add these lines to it:\n\n")  # fmt: skip
+    root = tmp_path / "analysis-repo"
+    root.mkdir()
+    (root / ".gitignore").write_text("/build\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    assert reason + "literature/sources/*\n" in capsys.readouterr().out
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "literature: {sources_in_git: true}\n", encoding="utf-8")  # fmt: skip
+    (root / ".gitignore").write_text("*.csv\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    assert reason + "build/\n" in capsys.readouterr().out
+
+
 def test_init_in_a_repository_says_which_git_lines_its_files_lack(tmp_path: Path,
                                                                   capsys) -> None:  # fmt: skip
     """Found taking a real paper through the loop: `init` in a repository with its own

@@ -423,6 +423,29 @@ def test_compare_pair_reads_a_paraphrase_against_its_source_whole() -> None:
     assert claims.compare_pair(source, "") is None
 
 
+def test_a_statement_s_hedge_is_lent_to_a_text_that_drops_it_from_its_sentence(
+    ready: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A claim is compared with its statements read
+    whole, as one stretch"): a statement that hedges one sentence and asserts another lends
+    its "may" to a text that drops it from the sentence that had it and puts it on the
+    other, and the text is told nothing; dropped altogether, the text claims more."""
+
+    def two_sentences(document: dict) -> None:
+        finding = next(one for one in document["findings"] if one["id"] == "findings.2")
+        finding["from"]["quote"] = ("Use may be associated with hepatic injury. Use increased "
+                                    "the reports.")
+
+    edit_brief(ready, two_sentences)
+    claim_codes = {"comm-claim-stronger", "comm-claim-weaker", "comm-claim-moved"}
+    text(ready, "post.md", "Use was associated with hepatic injury, and may have increased "
+         "the reports [](#brief:findings.2).")  # fmt: skip
+    assert codes(ready, "texts") & claim_codes == set()
+    text(ready, "post.md", "Use was associated with hepatic injury, and increased the reports "
+         "[](#brief:findings.2).")  # fmt: skip
+    assert ("comm-claim-stronger", FAIL) in found(ready, "texts")
+
+
 # ------------------------------------------------------------------- the graphical abstract
 
 
@@ -618,6 +641,24 @@ def test_colours_that_one_reader_cannot_tell_apart_are_warned(ready: Path) -> No
              '<rect x="9" y="1" width="5" height="5" fill="#2ca02c" /></svg>')  # fmt: skip
     concept.write_text(drawn.replace("</svg>", added), encoding="utf-8")
     assert "figure-colours-confused" in codes(ready, "graphical-abstract", WARN)
+
+
+def test_the_graphical_abstracts_confused_colours_are_keyed_by_its_path_from_the_root(
+    ready: Path,
+) -> None:
+    """The colour check on the graphical abstract keys its finding as G3 keys a figure's: the
+    file from the project's root and the way of seeing (round 1 of #720)."""
+    concept = _drawn(ready)
+    added = ('<rect x="1" y="1" width="5" height="5" fill="#d62728" />'
+             '<rect x="9" y="1" width="5" height="5" fill="#2ca02c" /></svg>')  # fmt: skip
+    concept.write_text(concept.read_text(encoding="utf-8").replace("</svg>", added),
+                       encoding="utf-8")  # fmt: skip
+    project, _ = load_project(ready)
+    said = [one.key for one in checking.check(project, only="graphical-abstract").findings
+            if one.code == "figure-colours-confused"]  # fmt: skip
+    shown = "communication/graphical-abstract/concept-1.svg@"
+    assert f"COMM|figure-colours-confused|{shown}deuteranopia|-" in said, said
+    assert all(key.split("|")[2].startswith(shown) for key in said), said
 
 
 def test_the_json_lists_failures_apart_from_warnings(

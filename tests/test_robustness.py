@@ -199,6 +199,24 @@ def test_the_software_heading_is_read_in_linear_time(assert_linear) -> None:
                       SOFTWARE_HEADING.search, 200, f"the Software heading, {tail!r}")  # fmt: skip
 
 
+def test_the_artefact_rules_are_read_in_linear_time_over_a_blank_stretch(assert_linear) -> None:
+    """G6 looks for a chat assistant's opener at a paragraph's start. Its rule read from
+    every line's start through the blank lines below it, `^\\s*`, to the end of the blank
+    stretch the line stood in, and failed there: quadratic in the lines of the stretch. The
+    LaTeX reader blanks a file past a construct it refuses, and a paper of 187,000
+    characters refused near its top took 36 s each of the two times G6 read it (arXiv
+    2604.05063, in the robustness sweep of 2026-11-21)."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    rules = load_rules()
+
+    def blanked(count: int) -> str:
+        return "Prose before.\n" + (" " * 99 + "\n") * count + "Prose after.\n"
+
+    assert_linear(blanked, lambda text: list(artefacts_in(rules, text, manuscript=True)),
+                  50, "G6's artefact rules over a blank stretch")  # fmt: skip
+
+
 def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
     """A ratio of microseconds is noise, so a size that never reaches the floor is an error
     in the test, not a pass."""
@@ -210,6 +228,21 @@ def narrowing_openers(openers: int) -> str:
     """Unclosed openers, each narrower than the last, with a long listing's worth of lines
     under each."""
     return "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
+
+
+def test_the_title_page_is_read_in_linear_time_past_a_long_run_of_hyphens(assert_linear) -> None:
+    """G14 reads the paragraphs at a paper's head for a title page's lines, an e-mail
+    address among them. The address was looked for from every character of a run of the
+    characters a name holds, each to the end of the run: quadratic in its length. A rule in
+    a Word paper, converted, is such a run, and one of 100,000 hyphens took 109 s
+    (metaarxiv epgjd, in the robustness sweep of 2026-11-21)."""
+    from manuscript_guard.text.title_page import opening
+
+    def a_rule(count: int) -> str:
+        return "A title of the paper\n\n" + "-" * count + "\n\nThe text goes on.\n"
+
+    assert_linear(a_rule, lambda text: opening(text, []), 1000,
+                  "the title page past a long run of hyphens")  # fmt: skip
 
 
 def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear) -> None:
@@ -291,6 +324,20 @@ def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
         unclear_fence_lines(text)
 
     assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
+
+
+def test_the_captions_of_a_markdown_text_are_found_in_linear_time(assert_linear) -> None:
+    """G14 looks for a table's caption in each paragraph, and for a `:` caption at the line
+    above the paragraph and the line below it. Each was found in a copy of all the text
+    before the paragraph and all after it: quadratic in the paragraphs, 24 s of a book of
+    3,221 paragraphs converted from Word (zenodo 7929786, in the robustness sweep of
+    2026-11-21). Plain paragraphs, and `:` captions with prose about them."""
+    from manuscript_guard.gates.glossary import markdown_captions
+
+    assert_linear(lambda count: "".join(f"Paragraph {i} of the text.\n\n" for i in range(count)),
+                  markdown_captions, 100, "plain paragraphs")  # fmt: skip
+    assert_linear(lambda count: "".join(f"Text {i}.\n\n: Caption {i}\n\n" for i in range(count)),
+                  markdown_captions, 100, "captions with prose about them")  # fmt: skip
 
 
 def test_code_spans_are_found_in_linear_time(assert_linear) -> None:

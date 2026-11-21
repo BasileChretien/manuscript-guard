@@ -529,6 +529,29 @@ def test_another_model_named_in_the_methods_is_neither_typed_nor_unfitted(tmp_pa
     assert [f.code for f in report.findings] == ["typed-model-kind"]
 
 
+@pytest.mark.parametrize(
+    ("link", "sentence", "found"),
+    [
+        ("Probit", "A bivariate probit model was fitted.", ["typed-model-kind"]),
+        ("Probit", "A multinomial probit model was fitted.", []),
+        ("Logit", "Firth's logistic regression was fitted.", ["typed-model-kind"]),
+        ("Logit", "Firth logistic regression was fitted.", []),
+    ],
+)
+def test_a_word_missing_from_the_list_or_a_possessive_leaves_the_fitted_kind_read(
+    tmp_path: Path, link: str, sentence: str, found: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A word that changes the model is known from a
+    list."): "bivariate" is not listed, so "bivariate probit model" fails beside a fitted
+    probit regression where a listed word would not; and "Firth's" is another word than
+    "Firth", so the possessive's name is read as the fitted kind. The 2026-11-09 triage
+    planned a fix (F18), which will change this test."""
+    card = changed(engine={**CARD["engine"], "link": link})
+    report, _ = judged(project_with(tmp_path, card, text=METHODS + f"\n{sentence}\n"))
+    assert [f.code for f in report.findings] == found, report.render(tmp_path)
+    assert [f.code for f in report.failures] == found, "it fails"
+
+
 # ------------------------------------------------------------------- what is made from the card
 
 
@@ -736,6 +759,39 @@ def test_the_reference_is_the_level_no_column_stands_for(
         assert card["events_by_level"] == {"g": dict.fromkeys(record["levels"], 20)}
 
 
+def test_events_by_level_are_counted_for_one_variable_and_not_an_interaction_s_cells(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Events by level are counted for a term of one
+    categorical variable."): in `C(g) * C(h)` the cell of b and v holds no event, and only
+    the levels of g and h are counted, so no level is found empty; a comparison's are
+    counted under the name of the variable it reads."""
+    pd = pytest.importorskip("pandas")
+    rows = [{"y": int(i % 3 == 0), "g": "ab"[i % 2], "h": "uv"[i // 2 % 2]} for i in range(240)]
+    data = pd.DataFrame(rows)
+    data.loc[(data["g"] == "b") & (data["h"] == "v"), "y"] = 0
+    card = _binomial("y ~ C(g) * C(h)", data)
+    assert [term["term"] for term in card["terms"]] == ["C(g)", "C(h)", "C(g):C(h)"]
+    assert card["events_by_level"] == {"g": {"a": 40, "b": 20}, "h": {"u": 40, "v": 20}}
+    variables = {
+        "y": VARIABLES["y"],
+        "g": {"kind": "categorical", "label": "group", "levels": ["a", "b"], "reference": "a"},
+        "h": {"kind": "categorical", "label": "site", "levels": ["u", "v"], "reference": "u"},
+    }
+    report, _ = judged(project_with(tmp_path, {**card, "name": "Adjusted model"}, variables))
+    assert "model-empty-level" not in codes(report), report.render(tmp_path)
+    # The other side: a term of g alone, with no event at b, is found empty.
+    data.loc[data["g"] == "b", "y"] = 0
+    assert _binomial("y ~ C(g)", data)["events_by_level"] == {"g": {"a": 40, "b": 0}}
+    data["score"] = [float(i % 11) for i in range(240)]
+    card = _binomial("y ~ I(score > 5)", data)
+    assert card["terms"][0]["entered"][0]["comparison"] is True
+    events = data[data["y"] == 1]
+    assert card["events_by_level"] == {"score": {
+        "False": int((events["score"] <= 5).sum()), "True": int((events["score"] > 5).sum()),
+    }}  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("code", "compares"),
     [
@@ -822,6 +878,67 @@ def test_a_variable_dichotomised_in_the_formula_is_a_term_of_its_own(
     assert {f.code for f in report.findings} == codes, report.render(tmp_path)
 
 
+def test_a_model_s_terms_are_those_of_its_formula(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A model's terms are those of its formula."): a
+    variable transformed in the formula is recorded as the one it reads, and one derived
+    before it is a variable of its own, reported where it is not declared; two comparisons
+    joined by `&` are held to both variables; and `Q("age group")` records no variable, so
+    nothing is reported undeclared, where a column named plainly is."""
+    data = _staged()
+    data["log_score"] = data["score"] + 1.0
+    card = _binomial("y ~ np.log(score + 1)", data)
+    assert card["terms"][0]["entered"][0]["variables"] == ["score"]
+    card = _binomial("y ~ log_score", data)
+    assert card["terms"][0]["entered"][0]["variables"] == ["log_score"]
+    report, _ = judged(project_with(tmp_path, {**card, "name": "Adjusted model"}, _STAGED))
+    assert [f.message for f in report.findings] == [
+        "model 'adjusted': 'log_score' is read by the model and never declared"
+    ]
+    card = _binomial("y ~ I((score > 5) & (stage == 'IV'))", data)
+    (record,) = card["terms"][0]["entered"]
+    assert record["variables"] == ["score", "stage"] and "comparison" not in record
+    data["age group"] = data["code"]
+    card = _binomial('y ~ Q("age group") + C(stage)', data)
+    assert card["terms"][1]["entered"][0]["variables"] == []
+    report, _ = judged(project_with(tmp_path, {**card, "name": "Adjusted model"}, _STAGED))
+    assert "model-variable-undeclared" not in codes(report), report.render(tmp_path)
+    data["group"] = data["code"]
+    card = _binomial("y ~ group + C(stage)", data)
+    report, _ = judged(project_with(tmp_path, {**card, "name": "Adjusted model"}, _STAGED))
+    assert "model-variable-undeclared" in codes(report)
+
+
+def test_a_linear_model_of_a_comparison_is_not_reported(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A model's terms are those of its formula."): a
+    comparison as the outcome is taken for the binary outcome it is and not held to its
+    model, so a linear model of `I(score > 5)` passes, where a linear model of a declared
+    binary outcome fails."""
+    card = changed(engine={"language": "R", "package": "stats", "class": "lm"},
+                   outcome={"expression": "I(y > 5)", "variables": ["y"], "comparison": True})
+    card.pop("events"), card.pop("events_by_level")
+    variables = copy.deepcopy(VARIABLES)
+    variables["y"] = {"kind": "continuous", "label": "the score"}
+    report, _ = judged(project_with(tmp_path, card, variables))
+    assert not report.findings, report.render(tmp_path)
+    card["outcome"] = {"expression": "y", "variables": ["y"]}
+    report, _ = judged(project_with(tmp_path, card))
+    assert "model-outcome-kind" in {f.code for f in report.failures}
+
+
+def test_a_float32_array_handed_to_values_keeps_its_point_nought(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A model's terms are those of its formula."): a
+    level is written as Python prints it, an integer-valued float as the integer, except a
+    `float32` array handed to `values=`, whose levels keep their `.0`."""
+    np = pytest.importorskip("numpy")
+    (tmp_path / "fit.py").write_text("#\n", encoding="utf-8")
+    em = Emitter(tmp_path / "fit.py", root=tmp_path)
+    for name, values in [("wide", np.array([1.0, 2.0])), ("plain", [1.0, 2.0]),
+                         ("narrow", np.array([1.0, 2.0], dtype="float32"))]:  # fmt: skip
+        em.variable(name, "categorical", label=name, values=values)
+    observed = {name: em._variables[name]["observed"]["levels"] for name in em._variables}
+    assert observed == {"wide": ["1", "2"], "plain": ["1", "2"], "narrow": ["1.0", "2.0"]}
+
+
 def test_what_is_missing_is_not_a_level() -> None:
     """pandas writes a missing value of a nullable column as NA, of a date as NaT, and
     numpy has floats that are not Python's. None is a level, and each is counted missing."""
@@ -886,6 +1003,38 @@ def test_a_proportion_whose_trials_are_weights_has_no_events_recorded() -> None:
     card = _binomial("p ~ x + C(g)", table, var_weights=table["n"])
     assert card["outcome"] == {"expression": "p", "variables": ["p"]}
     assert not {"events", "trials", "events_by_level"} & set(card)
+
+
+def test_grouped_data_are_read_only_in_the_forms_that_say_what_the_trials_are(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Grouped data are read in the forms that say
+    what the trials are."): a proportion with the trials as `freq_weights` has no events
+    recorded either, and its outcome declared continuous fails as one observation a row;
+    a 0/1 outcome is counted by its rows, not by its frequency weights, and a table of
+    proportions all 0 or 1 with the trials as `var_weights` by its rows, with no trials."""
+    pd = pytest.importorskip("pandas")
+    table = pd.DataFrame(_TABLE)
+    table["n"] = table["s"] + table["f"]
+    table["p"] = table["s"] / table["n"]
+    card = _binomial("p ~ x + C(g)", table, freq_weights=table["n"])
+    assert card["outcome"] == {"expression": "p", "variables": ["p"]}
+    assert not {"events", "trials", "events_by_level"} & set(card)
+    variables = {
+        "p": {"kind": "continuous", "label": "the proportion of cases"},
+        "x": {"kind": "binary", "label": "exposure", "levels": ["0", "1"]},
+        "g": {"kind": "categorical", "label": "group", "levels": ["a", "b", "c"]},
+    }
+    report, _ = judged(project_with(tmp_path, {**card, "name": "Adjusted model"}, variables))
+    assert "model-outcome-kind" in {f.code for f in report.failures}, report.render(tmp_path)
+    rows = _staged()
+    rows["w"] = [3 if i % 4 == 0 else 1 for i in range(len(rows))]
+    card = _binomial("y ~ C(stage)", rows, freq_weights=rows["w"])
+    assert card["events"] == int(rows["y"].sum()) != int((rows["y"] * rows["w"]).sum())
+    assert "trials" not in card
+    ones = pd.DataFrame({"p": [0, 1, 1, 0, 1, 0], "x": [0, 1, 0, 1, 0, 1], "n": [5, 7, 3, 9, 2, 4]})
+    card = _binomial("p ~ x", ones, var_weights=ones["n"])
+    assert card["events"] == 3 and "trials" not in card
 
 
 def test_an_outcome_of_two_levels_is_one_variable_and_no_table_of_counts() -> None:

@@ -43,7 +43,8 @@ from pathlib import Path
 #: digest, the part, the splitter or the normal form. The corpus tool, `tools/corpus.py`,
 #: reads it from each run's commit (from #708), and where the base's and the new run's
 #: differ it pairs their findings by message, not by key, until the corpus is tied again.
-SCHEME = 2
+#: 3: G3's confused colours and BUILD's `tex-refused` name their subject (Basile, 2026-11-21).
+SCHEME = 3
 
 #: The parts of a paper a digest is taken in.
 ABSTRACT, MAIN, SUPPLEMENT = "abstract", "main", "supplement"

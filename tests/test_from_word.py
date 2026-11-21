@@ -522,6 +522,25 @@ def test_a_merged_cell_keeps_its_text_once_in_its_first_row_and_column() -> None
     assert table["c"][5][1] == []
 
 
+def test_nothing_written_keeps_a_width_or_a_rule_as_long_as_the_line() -> None:
+    """Every table written, one in a cell of another among them, has its widths left to its
+    cells, and a rule, wherever it stands, is pandoc's own; the blocks given are not changed
+    (the robustness sweep of 2026-11-21: `test_robustness.py` has the paper)."""
+    inner = _table([], [[_ATTR, [_cell(_plain("1")), _cell(_plain("2"))]]], [], columns=2)
+    outer = _table([], [[_ATTR, [_cell([inner]), _cell([{"t": "HorizontalRule"}])]]], [],
+                   columns=2)  # fmt: skip
+    blocks = [{"t": "HorizontalRule"}, outer]
+    before = json.dumps(blocks)
+    written = from_word._unpadded(blocks)
+    assert json.dumps(blocks) == before
+    rule = {"t": "RawBlock", "c": ["markdown", "-" * from_word.RULE_WIDTH]}
+    assert written[0] == rule
+    widths = [spec[1] for table in (written[1], written[1]["c"][4][0][3][0][1][0][4][0])
+              for spec in table["c"][2]]  # fmt: skip
+    assert widths == [{"t": "ColWidthDefault"}] * 4
+    assert written[1]["c"][4][0][3][0][1][1][4] == [rule]
+
+
 def test_a_second_header_row_becomes_the_first_of_the_body() -> None:
     table = _table(
         [[_ATTR, [_cell(_plain("A")), _cell(_plain("B"))]],

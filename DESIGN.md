@@ -11553,7 +11553,12 @@ left empty; a second header row and the footer's rows made rows of the body. No 
 added or left out. Simple and multiline tables are switched off in the writer, so that a
 table of one-line cells is a pipe table and any other a grid table, and the line is made
 long enough that a table of more than nine columns is not written as raw HTML, which
-pandoc's default of 72 columns did. A table with anything else in a cell, a list, a table
+pandoc's default of 72 columns did. Nothing written is padded to that line: every table's
+widths are left to its cells, the text's and one in a cell or in the title page set aside
+too, and a rule is a line of 72 hyphens, pandoc's own. A table that kept its Word columns'
+widths was spread over all 100,000 columns and a rule was 100,000 hyphens, so 22,000
+characters of text came to 5.2 MB of Markdown and the audit timed out (the robustness sweep
+of 2026-11-21). A table with anything else in a cell, a list, a table
 or code, is left a grid table and named in what `init` prints. `check` reads a grid table's
 rows as a table's (a line that starts with a pipe), and the audit does not read its cells.
 The tree, not a Lua filter: the change is a function of pandoc's tree and is tested on trees

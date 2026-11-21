@@ -80,6 +80,9 @@ MEDIA = "manuscript/media"
 #: more than nine columns is too wide for a grid and was written as raw HTML: the widths are
 #: left to the cells, and the line made long enough for any table.
 WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", "--columns=100000"]
+#: How long a rule is written: pandoc's own, its default line of 72 columns. At the writer's
+#: 100,000 a rule was 100,000 hyphens (`_unpadded`).
+RULE_WIDTH = 72
 #: The longest pandoc is given to read or write one paper.
 PANDOC_SECONDS = 300
 
@@ -239,11 +242,33 @@ def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
 
 
 def _write(tree: dict, blocks: list, path: Path) -> str:
-    """The blocks as pandoc writes them in Markdown, a paragraph to a line."""
+    """The blocks as pandoc writes them in Markdown, a paragraph to a line, padded to no
+    line of the writer's (`_unpadded`)."""
     if not blocks:
         return ""
-    document = {"pandoc-api-version": tree["pandoc-api-version"], "meta": {}, "blocks": blocks}
+    document = {"pandoc-api-version": tree["pandoc-api-version"], "meta": {},
+                "blocks": _unpadded(blocks)}  # fmt: skip
     return _pandoc(["-f", "json", *WRITER], json.dumps(document), path)
+
+
+def _unpadded(node: object) -> object:
+    """A copy of `node` with nothing in it that pandoc writes as long as the writer's line
+    of 100,000 columns (`WRITER`): every table's widths left to its cells, at any depth, as
+    `_tables` leaves the text's, and each rule a line of `RULE_WIDTH` hyphens. A table kept
+    its Word columns' widths in the title page set aside, in a cell and in a table left as it
+    came, and pandoc spread them over the whole line: 22,000 characters of text came to
+    5.2 MB of Markdown, every rule of G6 and G14 read it, and the audit timed out (zenodo
+    10010235, in the robustness sweep of 2026-11-21)."""
+    if isinstance(node, list):
+        return [_unpadded(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    if node.get("t") == "HorizontalRule":
+        return {"t": "RawBlock", "c": ["markdown", "-" * RULE_WIDTH]}
+    copied = {key: _unpadded(value) for key, value in node.items()}
+    if copied.get("t") == "Table":
+        copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
+    return copied
 
 
 def _comment(markdown: str) -> str:

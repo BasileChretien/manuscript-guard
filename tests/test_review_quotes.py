@@ -28,6 +28,7 @@ from manuscript_guard import anchoring
 from manuscript_guard.cli import main
 from manuscript_guard.contracts import load_project
 from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.docxtext import paragraphs_of
 from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import INFO
 from manuscript_guard.gates import check_review
@@ -543,14 +544,25 @@ def test_a_quote_of_the_title_or_of_an_abstract_in_the_front_matter_is_unanchore
     assert (quotes["anchored"], quotes["unanchored"]) == (["h3"], ["h1", "h2"])
 
 
+#: The example's sentence across its citation, as the offline build prints it: the work
+#: has two authors and the example names no CSL style.
+ACROSS_THE_CITATION = (
+    "100 000 person-years (Fictional and Fictional 2021), and a disproportionality signal"
+)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_citation_is_searched_as_the_source_writes_it(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A quote found shows that the words are in the
     manuscript"): a citation is sent and searched as `[@key]`, so a quote across it as the
     built document prints it is unanchored, and one that leaves it out with "...", or
     copies it as written, is anchored."""
     assert "person-years\n[@fictionalHepaticCohort2021], and" in printed(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    built = " ".join(p.text for p in paragraphs_of(project / "build" / "manuscript.docx"))
+    assert ACROSS_THE_CITATION in " ".join(built.split())
     path = file_by_hand(project, dumped(quoting_only(
-        "100 000 person-years (Fictional 2021), and a disproportionality signal",
+        ACROSS_THE_CITATION,
         "100 000 person-years ... and a disproportionality signal has been reported",
         "person-years [@fictionalHepaticCohort2021], and a disproportionality signal",
     )))  # fmt: skip

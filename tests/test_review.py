@@ -542,15 +542,28 @@ def test_a_superseded_round_s_own_other_warnings_are_not_lowered(project: Path) 
     lowers only `review-stale` and `review-uncovered`, so a warning of the earlier round's
     own, a file beside a record that the panel does not name, is still a warning. The
     2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.review import file_digests
+
+    # Round 1's records read main.md alone, so a file added later is on nobody's list there.
+    read = {"main.md": file_digests(load_project(project)[0])["main.md"]}
+    for path in sorted((project / "review" / "round-1").glob("*.yaml")):
+        edit_yaml(path, lambda d: d.update(file_sha256=read) if "verdict" in d else None)
     (project / "review" / "round-1" / "biostatistician.old.yaml").write_text(
         "a note\n", encoding="utf-8"
     )
+    split_manuscript(project)
     revise(project)
+    before = [f for f in report_for(project).findings if f.message.startswith("round 1:")]
+    assert {"review-stale", "review-uncovered"} <= {f.code for f in before}
     record_round(project, 3, "fresh-reader")
-    said = {(f.code, f.severity) for f in report_for(project).findings
-            if f.message.startswith("round 1:")}  # fmt: skip
-    # The other side of the same rule: the round's staleness is lowered to history.
+    round_one = [f for f in report_for(project).findings if f.message.startswith("round 1:")]
+    said = {(f.code, f.severity) for f in round_one}
+    # The other side of the same rule: the round's staleness, and the file no reviewer of
+    # it read, are lowered to history.
     assert said == {("review-superseded", INFO), ("reading-unnamed", "warn")}
+    lowered = [f.message for f in round_one if f.code == "review-superseded"]
+    assert any("no reviewer read" in m and "zz-discussion.md" in m for m in lowered)
+    assert any("no reviewer read" not in m for m in lowered)
 
 
 def test_a_record_nobody_filed_in_round_one_still_fails_after_a_complete_later_round(

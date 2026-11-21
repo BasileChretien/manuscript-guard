@@ -477,7 +477,13 @@ def test_what_was_decided_in_word_is_read_from_the_bookmark_and_the_comment(
     elif how == "comment-retyped":
         _comment_retyped(returned, "pharmacoepidemiologist (Claude Code)")
     elif how == "no-extended-part":
+        import zipfile
+
         _without_extended(returned)
+        with zipfile.ZipFile(returned) as archive:
+            assert "word/commentsExtended.xml" not in archive.namelist()
+            # The reply is still in the document, as a comment of its own.
+            assert reason in archive.read("word/comments.xml").decode("utf-8")
     code, said = run("import", str(returned), str(project), "--apply")
     found = {f["id"]: f for f in reading(project)["findings"]}["r8-pe-02"]
     assert "resolution" not in found
@@ -553,6 +559,7 @@ def test_an_accepted_suggestion_that_cannot_be_written_refuses_its_paragraph(
     `import` could not read each reach it. With none of them, both come back
     (`test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back`)."""
     from manuscript_guard import roundtrip
+    from manuscript_guard.emit import write_digest
     from manuscript_guard.gates.review import reading_digest
 
     main = project / "manuscript" / "main.md"
@@ -578,6 +585,7 @@ def test_an_accepted_suggestion_that_cannot_be_written_refuses_its_paragraph(
         data = json.loads(results.read_text(encoding="utf-8"))
         data["values"]["cohort.n_years"].update(value=11, display="11")
         results.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_digest(results)
         force = ["--force"]
     elif how == "record-changed":
         document = reading(project)

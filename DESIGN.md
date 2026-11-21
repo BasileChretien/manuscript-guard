@@ -17213,8 +17213,10 @@ been sorted yet.
   second, with nothing before `#1` but `\texorpdfstring` of spaces, ties, punctuation and
   `\hskip` of a length, and nothing for the bookmarks; that command the same file defined
   above with no parameter as the first form of the heading's own name; the heading itself
-  defined by one of those five definers, not `\edef`; each definition that holds `@`
-  written where `@` is a letter; and none of the three the heading itself. Its helper takes
+  defined again by `\def`, `\gdef`, `\renewcommand` or `\DeclareRobustCommand`, not
+  `\edef` nor `\newcommand`, which stops LaTeX at a command defined; each definition that
+  holds `@` outside its comments written where `@` is a letter; and none of the three the
+  heading itself. Its helper takes
   a short title's bracket as the heading, so a use with one, `\section[Intro]{Introduction}`
   or `\section*[I]{I}`, is refused where it prints, in every file of the tree. A definition
   below of one of the three, by `\def` or `\let`, takes the reading back, and the heading's
@@ -17243,7 +17245,8 @@ been sorted yet.
     where it is used, so helpers defined below it, before any use, print as the kit's do;
     the reader refuses the heading's uses there. JMLR's `\@startsiction` (jmlr2e.sty) and
     dnd.sty's `\@ifnextchar*`, whose appendix heading prints "Appendix" in each title, are
-    no form read as before, and are refused where used.
+    no form read as before: a definition of the heading by either that the reader reads
+    makes its uses refused where they print.
     Pinned by `tests/test_latex_mask.py::test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints`.
   - The tree tells every file of a kit heading whatever file defines the heading after it:
     a file that restyles it again in the first form, `\renewcommand\section{\@startsection

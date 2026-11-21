@@ -2392,16 +2392,18 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
 
     - read as before, in the author's package and in the entry file's preamble past
       `\\makeatletter`, its uses in the entry file and in a file it inputs, and so with a
-      `\\providecommand` of a helper below it, which defines nothing (round 1 of #757);
+      `\\providecommand` below it of each of the three commands it goes through, which
+      defines nothing (rounds 1 and 2 of #757);
     - a use with a short title in brackets, after a star or not, refused where it stands in
       the file input, which the tree tells of the heading, and so with a `\\providecommand`
       of the heading below it;
     - the kit with one thing more or other, each refused where the heading is first used:
       words before the argument, a helper of two parameters, the `\\@startsection` of another
       level, a helper defined below the heading, each of the three commands it goes through
-      defined again below it, by `\\def` or `\\let`, the branches swapped, a helper by
-      `\\providecommand`, a font switch in a helper, the heading by `\\edef`, and the
-      `\\@startsection` command defined before `\\makeatletter`, where `@` is no letter."""
+      defined again below it, by `\\def` and by `\\let`, the branches swapped, a helper by
+      `\\providecommand`, a font switch in a helper, the heading by `\\edef` and by
+      `\\newcommand`, and the `\\@startsection` command defined before `\\makeatletter`,
+      where `@` is no letter."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -2438,16 +2440,12 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
         files = {"main.tex": main, **({} if part is None else {"part.tex": part})}
         return files, {"kit.sty": kit_text} if where == "package" else {}, main
 
-    def again(name: str) -> str:
-        how = draw(st.sampled_from(("\\def\\{0}#1{{\\textbf{{#1}}}}\n", "\\let\\{0}\\relax\n")))
-        return how.format(name)
-
     cases: list[LatexCase] = []
     for where in ("package", "preamble"):
         part = f"{words()}.\n\\{level}{{{words()}}}\n\\{level}*{{{words()}}} {words()}.\n"
-        provided = defined + f"\\providecommand{{\\{draw(st.sampled_from((starred, plain)))}}}" \
-                             "[1]{\\textbf{#1}}\n"
-        for kit_text in (defined, provided):
+        provided = [defined + f"\\providecommand{{\\{name}}}[1]{{\\textbf{{#1}}}}\n"
+                    for name in (starred, plain, to)]  # fmt: skip
+        for kit_text in (defined, *provided):
             files, packages, _main = tree(kit_text, where, part)
             cases.append((files, packages, [], [], []))
         gap = draw(st.sampled_from(("", " ", "\n", "*", " * ")))
@@ -2460,11 +2458,13 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
         (defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"), ""),
         (defined.replace(f"{{\\@startsection {{{level}}}", f"{{\\@startsection {{{other}}}"), ""),
         (defined.replace(starring, "") + starring, ""),
-        *((defined + again(name), "") for name in (starred, plain, to)),
+        *((defined + how.format(name), "") for name in (starred, plain, to)
+          for how in ("\\def\\{0}#1{{\\textbf{{#1}}}}\n", "\\let\\{0}\\relax\n")),
         (defined.replace(branches, swapped), ""),
         (defined.replace(plaining, f"\\providecommand{{\\{plain}}}[1]{{{plain_body}}}\n"), ""),
         (defined.replace(plain_body, "\\bf" + plain_body), ""),
-        (defined.replace(chain, f"\\edef\\{level}{{\\@ifstar{branches}}}\n"), ""),
+        *((defined.replace(chain, f"\\{how}\\{level}{{\\@ifstar{branches}}}\n"), "")
+          for how in ("edef", "newcommand")),
         # The `\@startsection` command in the preamble before `\makeatletter`.
         (defined.replace(restyle, ""), restyle),
     ]

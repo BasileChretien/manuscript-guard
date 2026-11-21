@@ -505,6 +505,9 @@ _HANDED_ON = re.compile(r"\s*\\(?P<to>[A-Za-z@]+)\s*(?P<star>\*)?\s*\{\s*" + _UN
 #: `\\providecommand`, which leaves a command defined as it was, nor `\\edef`, which expands
 #: its body where it stands.
 _ALWAYS_DEFINE = frozenset({"def", "gdef", "newcommand", "renewcommand", "DeclareRobustCommand"})
+#: Those of them that define a command already defined again, as the kit's heading is: not
+#: `\\newcommand`, which stops LaTeX there (round 2 of #757).
+_DEFINE_AGAIN = _ALWAYS_DEFINE - {"newcommand"}
 #: What a use of a heading the kit defines is followed by where it gives a short title: past
 #: spaces and comments, a star or none, then a bracket, which the kit's helper takes as its
 #: argument.
@@ -1498,9 +1501,9 @@ class _Reader:
         if name in LEVELS and self.letters is not _LETTERS_AT:
             return
         head, body = self.text[start:at], self.text[at + 1 : end - 1]
-        # The kit's heading by a definer that always defines, and whose body is the heading's
-        # where it is used, not `\edef`'s (round 1 of #757).
-        kit = name in LEVELS and definer in _ALWAYS_DEFINE
+        # The kit's heading by a definer that defines it again, and whose body is the
+        # heading's where it is used, not `\edef`'s (rounds 1 and 2 of #757).
+        kit = name in LEVELS and definer in _DEFINE_AGAIN
         through = self._through_ifstar(name, head, body) if kit else ()
         if not through and not _read_as_before(name, head, body):
             return
@@ -1521,7 +1524,8 @@ class _Reader:
             return None
         start, at, letter = self.bodies_at[name]
         end = self._group_end(at)
-        if end < 0 or not _as_written(self.text[start:end], letter):
+        written = _DEFINITION_COMMENT.sub("", self.text[start:end]) if end >= 0 else ""
+        if end < 0 or not _as_written(written, letter):
             return None
         return self.text[start:at], self.text[at + 1 : end - 1]
 

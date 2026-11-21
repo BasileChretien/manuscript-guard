@@ -1451,7 +1451,19 @@ def _a_provided_command_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) 
 
 
 def _an_edef_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_mask, "_ALWAYS_DEFINE", latex_mask._ALWAYS_DEFINE | {"edef"})
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._DEFINE_AGAIN | {"edef"})
+
+
+def _a_newcommand_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._ALWAYS_DEFINE)
+
+
+def _a_provided_startsection_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #757: a rule that kept the reading for a provided helper and not for the
+    # `\@startsection` command the helpers hand on to.
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: (
+        self.command in latex_mask.PROVIDERS and (name in latex_mask.COMMANDS or (
+            name in self.bodies_at and name not in [h[2] for h in self.through.values()]))))
 
 
 def _a_kit_body_where_at_is_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
@@ -26166,6 +26178,14 @@ BROKEN = {
     ),
     "in LaTeX, an \\edef heading is read as the author kit's": (
         _an_edef_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\newcommand heading is read as the author kit's": (
+        _a_newcommand_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a provided \\@startsection command takes the author kit's heading back": (
+        _a_provided_startsection_takes_the_kit_s_heading_back,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, a kit body defined where @ is no letter is read": (

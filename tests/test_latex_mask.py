@@ -1195,8 +1195,10 @@ def _spoilt(was: str, now: str) -> str:
         _spoilt("\\def\\iccvsect#1", "\\providecommand\\iccvsect[1]"),
         # A font switch in a helper.
         _spoilt("\\def\\iccvssect#1{", "\\def\\iccvssect#1{\\bf"),
-        # The heading by `\edef`, which expands its body where it stands (round 1 of #757).
+        # The heading by `\edef`, which expands its body where it stands (round 1 of #757),
+        # or by `\newcommand`, which stops LaTeX at a command defined (round 2).
         _spoilt("\\def\\section{", "\\edef\\section{"),
+        _spoilt("\\def\\section{", "\\newcommand\\section{"),
         # JMLR's own `\@startsiction` (jmlr2e.sty), and dnd.sty's appendix heading, which
         # prints "Appendix" in each title.
         "\\def\\section{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
@@ -1207,7 +1209,7 @@ def _spoilt(was: str, now: str) -> str:
         "             {\\large\\bf\\raggedright Appendix\\ }}}\n",
     ],
     ids=["words", "two-parameters", "another-level", "helper-below", "helper-again",
-         "swapped", "providecommand", "font-switch", "edef", "jmlr-startsiction",
+         "swapped", "providecommand", "font-switch", "edef", "newcommand", "jmlr-startsiction",
          "dnd-ifnextchar"],  # fmt: skip
 )
 def test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints(
@@ -1236,6 +1238,12 @@ def test_the_kit_s_heading_defined_where_at_is_no_letter_is_refused_where_it_pri
             "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n")  # fmt: skip
     ((path, refusal),) = read_tree({"main.tex": main, "sec/intro.tex": _KIT_PART}).refusals
     assert (path, refusal.offset) == ("sec/intro.tex", 0)
+    # An `@` in a comment is no part of what TeX reads (round 2 of #757).
+    helper = "\\def\\iccvssect#1{% the kit's, from a@b.org\n\\iccvsection*{#1}}\n"
+    plain = _KIT.replace("\\def\\iccvssect#1{\\iccvsection*{#1}}\n", "")
+    main = (_HEAD + helper + "\\makeatletter\n" + plain + "\\makeatother\n"
+            "\\begin{document}\n\\input{sec/intro}\n\\end{document}\n")  # fmt: skip
+    assert read_tree({"main.tex": main, "sec/intro.tex": _KIT_PART}).refusals == ()
 
 
 def test_a_helper_of_the_author_kit_defined_again_in_another_file_is_not_seen() -> None:

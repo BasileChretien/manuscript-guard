@@ -7662,10 +7662,12 @@ _QUOTE_CODES = ("quoted-text-absent", "quoted-text-not-new", "quoted-text-elsewh
 def test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
     what it claims in prose."): a reply that says the Abstract "now reads" a sentence the
-    paper does not hold, with no `text` entry, draws nothing from G13."""
+    paper does not hold, with no `text` entry, is not checked for that sentence: of point 1.1
+    G13 says only that it names no change."""
     _round_with(project, [_point(response='We revised the Abstract, which now reads "A sentence '
-                                 'the paper does not hold."', rebutted="x")])  # fmt: skip
-    assert _said(_g13(project), *_QUOTE_CODES) == []
+                                 'the paper does not hold."')])  # fmt: skip
+    assert [(f.code, f.severity) for f in _g13(project).findings if "point 1.1" in f.message
+            ] == [("response-claims-nothing", "fail")]  # fmt: skip
 
 
 @pytest.mark.parametrize(("typed", "found"), [
@@ -7724,16 +7726,38 @@ def test_a_place_in_the_sources_is_a_file_s_line_and_a_gate_a_failing_code(
 
 
 @pytest.mark.parametrize(("reply", "typed"), [
-    ("As line 3.2 says.", []), ("Reviewer 2 and 41 cases were excluded.", []),
-    ("Reviewer 2 found 41 cases.", ["41"]), ("The ratio was 3.2.", ["3.2"]),
+    ("As line 3.2 says.", []), ("Reviewer 2 found 41 cases.", ["41"]),
+    ("The ratio was 3.2.", ["3.2"]),
 ])  # fmt: skip
 def test_a_number_after_a_place_word_is_not_read_in_a_reply(
     project: Path, reply: str, typed: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
-    what it claims in prose."): a number right after a word that names a place, or after a
-    list of them, is not read, so "line 3.2" types a number past G2; in "Reviewer 2 found
-    41 cases" the 41 has no place word before it, and is read."""
+    what it claims in prose."): a number right after a word that names a place is not read,
+    so "line 3.2" types a number past G2; in "Reviewer 2 found 41 cases" the 41 has no place
+    word before it, and is read."""
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert _reply_numbers(project) == [
+        f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"
+        for number in typed
+    ]
+
+
+@pytest.mark.parametrize(("reply", "typed"), [
+    ("Reviewer 2 and 41 cases were excluded.", []),
+    ("Reviewer 2 & 41 cases were excluded.", []),
+    ("Reviewer 2 to 41 cases were excluded.", []),
+    ("Reviewer 2 through 41 cases were excluded.", []),
+    ("Reviewer 2 \N{EN DASH} 41 cases were excluded.", []),
+    ("Reviewer 2 and 41 cases were excluded, 12 of them late.", ["12"]),
+])  # fmt: skip
+def test_a_count_joined_by_and_to_a_place_is_read_as_a_place_in_a_reply(
+    project: Path, reply: str, typed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose.", "A count joined to a place by "and""): after a place word,
+    "and" runs a list of places on, so the 41 of "Reviewer 2 and 41 cases were excluded"
+    passes G2 unbound; the 12 after it is read."""
     _round_with(project, [_point(response=reply, rebutted="x")])
     assert _reply_numbers(project) == [
         f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"

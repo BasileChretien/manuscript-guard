@@ -21756,7 +21756,8 @@ Open, recorded as each change landed:
   SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard error": another
   abbreviation of either is not read.
 - **A reply is checked for what it holds, not for what it claims in prose.** A reply that
-  says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
+  says the Abstract "now reads" a sentence without a `text` entry is not checked for that
+  sentence: G13 says only that it names no change (`response-claims-nothing`). A quote
   is compared without Markdown's marks of emphasis and code and without its line breaks,
   but with its punctuation and quotation marks as typed. A section is found by the words of
   its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a
@@ -21777,6 +21778,11 @@ Open, recorded as each change landed:
   `tests/test_corruption.py::test_a_place_in_the_sources_is_a_file_s_line_and_a_gate_a_failing_code`,
   `tests/test_corruption.py::test_what_a_reply_may_say_passes`
   and `tests/test_corruption.py::test_a_number_after_a_place_word_is_not_read_in_a_reply`.
+  - *A count joined to a place by "and"* is read as a place: after a place word, numbers
+    joined by "and", "&", "to", "through" or a dash run a list of places on, as "lines 120
+    and 125" do, so the 41 of "Reviewer 2 and 41 cases were excluded" passes G2 unbound. A
+    number after another word, the 12 of "…, 12 of them late", is read.
+    Pinned by `tests/test_corruption.py::test_a_count_joined_by_and_to_a_place_is_read_as_a_place_in_a_reply`.
 - **A statistic is held to what it declares it belongs to, and only by sentence.** A p
   value or a share emitted without `of` is held to nothing, and nothing guesses that a key
   named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
@@ -22547,9 +22553,12 @@ Open, recorded as each change landed:
     Pandoc writes both.
     Pinned by `tests/test_marked_up.py::test_a_deleted_note_or_list_is_refused_where_the_revision_has_no_part_for_it`.
   - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
-    A deleted part that points at anything but a picture (a chart, an embedded object, an
-    endnote) is refused, and the copy is not made.
-    Pinned by `tests/test_marked_up.py::test_a_deleted_chart_is_refused_and_the_revision_s_comments_are_not_compared`.
+    A deleted part that points at anything but a picture (a chart, an embedded object) is
+    refused, and the copy is not made. A deleted endnote is not: the paragraph is deleted
+    with its reference as it was, though the revision holds no endnote it names.
+    Pinned by `tests/test_marked_up.py::test_a_deleted_chart_is_refused_and_the_revision_s_comments_are_not_compared`,
+    `tests/test_marked_up.py::test_a_header_a_footer_an_endnote_and_a_text_box_are_the_revision_s`
+    and `tests/test_marked_up.py::test_a_deleted_embedded_object_is_refused_and_a_deleted_endnote_is_carried_as_it_was`.
   - *A deleted link is its words*, without its address; an inline equation is compared and
     tracked whole, and the check, which reads text, does not read its text, only a display
     equation's (Word 16 accepted and rejected both as written, above).

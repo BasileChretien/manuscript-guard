@@ -10372,6 +10372,143 @@ def test_a_placeholder_in_an_uncited_reference_says_nothing(project: Path) -> No
     assert _placeholders(_g6(project)) == []
 
 
+#: Each way of ending "fill in later" or "replace later" that G6 does not read as the end of
+#: the phrase, and each that it does.
+_FILLER_UNREAD = ("| Dose | fill in later |\n|------|------|\n| Route | oral |",
+                  "The dose: fill in later?", "The dose: replace later!",
+                  'The dose: "fill in later"', "The dose: replace later - soon",
+                  "The dose: fill in later*")  # fmt: skip
+_FILLER_READ = ("The dose: fill in later.", "The dose: replace later)",
+                "The dose: fill in later: soon", "The dose: replace later; soon",
+                "The dose: fill in later, soon")  # fmt: skip
+
+
+def test_placeholders_are_read_by_the_shapes_their_rules_name(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Placeholders."): "47,XXX reports" is read as a
+    karyotype, and 69,XXX and 92,XXXX as gaps; a bracketed title that opens with an
+    instruction's verb, or holds a to-come word in capitals, fails in a cited entry; "[Your
+    ...]" is read in the manuscript and not in a caption; and "fill in later" or "replace
+    later" is read only before a stop, a bracket, a colon, a semicolon or a comma, not
+    before a pipe table's `|`, "?", "!", a quotation mark, a dash or an asterisk."""
+    from dataclasses import replace
+
+    _with_paragraph(project, "\n\n".join(("The count was 47,XXX reports.", *_FILLER_UNREAD)))
+    assert _placeholders(_g6(project)) == []
+    _with_paragraph(project, "\n\n".join(("The karyotypes were 69,XXX and 92,XXXX.",
+                                          "Approved at [Your hospital].", *_FILLER_READ)))
+    said = sorted(message.split(" — ")[0] for _severity, message in _placeholders(_g6(project)))
+    assert said == sorted(["'XXX'", "'XXXX'", "'[Your hospital]'", *["'fill in later'"] * 3,
+                           *["'replace later'"] * 2]), said  # fmt: skip
+    bib = project / "literature" / "references.bib"
+    entries = bib.read_text(encoding="utf-8")
+    bib.write_text(entries.replace(
+        "{Hepatic injury in a fictional national cohort, 2010--2019}",
+        "{[Describe a case of hepatitis]}").replace(
+        "{A disproportionality signal for a fictional drug class}",
+        "{[MISSING DATA IN PAEDIATRIC HEPATITIS]}"), encoding="utf-8")  # fmt: skip
+    _project, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(_project)
+    baseline = replace(results.tables["baseline"], caption="[Your title] by drug group.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    # Outside the manuscript: the caption's "[Your ...]" is not read, the titles are.
+    said = [message for _severity, message in _placeholders(_g6(project, results))
+            if " in the " in message.split(" — ")[0]]  # fmt: skip
+    assert sorted(message.split(" — ")[0] for message in said) == [
+        "'[Describe a case of hepatitis]' in the title of @fictionalHepaticCohort2021",
+        "'[MISSING DATA IN PAEDIATRIC HEPATITIS]' in the title of @fictionalClassSignal2019",
+    ], said
+
+
+def _png_saying(words: str) -> bytes:
+    """A PNG that draws `words` in its pixels and carries them in a tEXt chunk too, so a
+    reader of either finds them."""
+    import io
+
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    figure = Figure(figsize=(2, 1))
+    FigureCanvasAgg(figure)
+    figure.text(0.1, 0.4, words, fontsize=14)
+    drawn = io.BytesIO()
+    figure.savefig(drawn, format="png", metadata={"Comment": words})
+    return drawn.getvalue()
+
+
+def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A placeholder is found by its kind, and only in
+    the text the gate reads."): in the manuscript a Spanish "todo", or "tbd" in small
+    letters, fails, and "[Name of the hospital]", "[ETHICS COMMITTEE]", a lone "XX" and a
+    single "TK" pass; outside it, a PDF figure's text and every table's caption are read, a
+    table placed or not, and not a raster figure's text, a
+    table's cells, an entry's keywords or an entry nothing cites, under `nocite: '@*'` too;
+    "XXY and XXX girls" in a cited title fails. Of the essay's phrasing, "may possibly" is
+    read as a stacked hedge, and "holds great promise" and "the future looks bright" are
+    not read."""
+    import sys
+    from dataclasses import replace
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    unread = ("The hospital was [Name of the hospital].", "It was approved by [ETHICS "
+              "COMMITTEE].", "The sample was XX patients.", "The fraction was TK units.",
+              "The method holds great promise.", "In short, the future looks bright.")
+    hedge, todo = "The signal may possibly reflect reporting.", "Como dice, todo es posible."
+    tbd = "The dose was tbd at the time."
+    original = main_md(project).read_text(encoding="utf-8")
+    _with_paragraph(project, "\n\n".join((*unread, hedge, todo, tbd)))
+    lines = main_md(project).read_text(encoding="utf-8").splitlines()
+    at = {line: number for number, line in enumerate(lines, 1)
+          if line in (*unread, hedge, todo, tbd)}  # fmt: skip
+    said = [(f.code, f.message.split(":")[0], f.line, f.severity) for f in _g6(project).findings
+            if f.path is not None and f.path.name == "main.md" and f.line in at.values()]
+    assert sorted(said) == [("ai-phrasing", "stacked-hedge", at[hedge], "warn"),
+                            ("model-artefact", "'tbd' — Unfilled placeholder text", at[tbd],
+                             "fail"),
+                            ("model-artefact", "'todo' — Unfilled placeholder text", at[todo],
+                             "fail")], said  # fmt: skip
+    main_md(project).write_text(original, encoding="utf-8")
+    assert _placeholders(_g6(project)) == []
+    # Outside the manuscript: a PDF figure's text, and the caption of a table nothing
+    # places, are read; a raster figure's text and a table's cells are not.
+    (project / "figures" / "notes.pdf").write_bytes(typeset(["Panel TBD"], columns=1))
+    (project / "figures" / "panel.png").write_bytes(_png_saying("Panel TODO"))
+    _project, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(_project)
+    baseline = results.tables["baseline"]
+    cells = replace(baseline, rows=tuple(("TODO", *row[1:]) for row in baseline.rows))
+    unplaced = replace(baseline, key="unplaced", caption="Sensitivity analysis. TODO units.")
+    results = replace(results, tables={**results.tables, "baseline": cells,
+                                       "unplaced": unplaced})  # fmt: skip
+    said = sorted(message.split(" — ")[0] for _severity, message in
+                  _placeholders(_g6(project, results)))  # fmt: skip
+    assert said == ["'TBD' in the text of notes.pdf",
+                    "'TODO' in the caption of table 'unplaced'"], said  # fmt: skip
+    (project / "figures" / "notes.pdf").unlink()
+    (project / "figures" / "panel.png").unlink()
+    # A cited entry's keywords are not read, nor an entry nothing cites under `nocite`, and
+    # a karyotype written otherwise than "47,XXX" in a cited title is read as a gap.
+    _cited_entry_has(project, "keywords = {TODO}")
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "{A disproportionality signal for a fictional drug class}",
+        "{A disproportionality signal in XXY and XXX girls}")
+        + "\n@article{uncitedDraft2024,\n  title = {TODO},\n}\n", encoding="utf-8")  # fmt: skip
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\nnocite: '@*'\n", 1), encoding="utf-8")
+    said = [message.split(" — ")[0] for _severity, message in _placeholders(_g6(project))]
+    assert said == ["'XXX' in the title of @fictionalClassSignal2019"], said
+    # The other side of the entry nothing cites: cited, it is read.
+    _with_paragraph(project, "As drafted [@uncitedDraft2024].")
+    said = sorted(message.split(" — ")[0] for _severity, message in _placeholders(_g6(project)))
+    assert said == ["'TODO' in the title of @uncitedDraft2024",
+                    "'XXX' in the title of @fictionalClassSignal2019"], said  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("rule", "prose"),
     [
@@ -25937,6 +26074,46 @@ def test_a_built_document_the_hidden_text_reader_cannot_read_is_not_to_be_sent(
     assert hides(report) and [f.code for f in report.failures] == [UNREAD]
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_zero_width_character_in_a_word_of_the_source_passes_check_and_fails_the_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Hidden text is read where a command reads a file,
+    or where `screen` is run on one."): a zero-width character inside a word of the
+    manuscript, or of a cited reference's record, is said by no gate of `check`, which
+    reports what it reports of the clean example, and the build fails on each. The
+    2026-11-09 triage planned a fix (F11), which will change this test."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    bib = project / "literature" / "references.bib"
+    entries = bib.read_text(encoding="utf-8")
+    assert "asks whether" in text and "{Hepatic injury in" in entries
+
+    def checked(zero: str) -> tuple[int, list[dict]]:
+        """`check` of the example with a word added to a sentence and to a cited title, and
+        `zero` inside a word of each, so that the edit itself is said alike."""
+        source.write_text(text.replace("asks whether", f"asks also whe{zero}ther", 1),
+                          encoding="utf-8")  # fmt: skip
+        bib.write_text(entries.replace("{Hepatic injury in", f"{{Hepatic liver in{zero}jury in",
+                                       1), encoding="utf-8")  # fmt: skip
+        code = main(["check", str(project), "--json"])
+        return code, json.loads(capsys.readouterr().out)["findings"]
+
+    clean_code, clean = checked("")
+    planted_code, planted = checked(chr(0x200B))
+    assert planted_code == clean_code
+    assert sorted((f["gate"], f["code"], f["severity"]) for f in planted) == sorted(
+        (f["gate"], f["code"], f["severity"]) for f in clean)  # fmt: skip
+    assert not [f for f in planted if chr(0x200B) in json.dumps(f, ensure_ascii=False)
+                or "200B" in f["message"] or "zero-width" in f["message"]]  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    out = capsys.readouterr().out
+    assert "zero-width characters, U+200B inside the word 'whether'" in out, out
+    assert "zero-width characters, U+200B inside the word 'injury'" in out, out
+
+
 # ------------------------------------------------ the marked-up copy is never the manuscript
 
 
@@ -27088,6 +27265,98 @@ def test_a_comment_pandoc_drops_as_the_gates_do_is_not_refused(paper: str) -> No
     from manuscript_guard.text.comments import unclear_comment_lines
 
     assert unclear_comment_lines(paper) == []
+
+
+_FENCE = "`" * 3
+#: Comments pandoc drops, as 3.9.0.2 reads them, that the refusal refuses all the same, by
+#: the point of Known gaps each is held for.
+_REFUSED_THOUGH_DROPPED = {
+    "across a blank line in an item's indented lines": "- item\n\n  text <!-- x\n\n  9.99 -->\n",
+    "across a footnote's paragraphs": "Text.[^1]\n\n[^1]: note <!-- x\n\n    more 9.99 -->\n",
+    "under a blank line after a list, indented less than the item's text":
+        "- item\n\n <!--\nx 9.99\n\n-->\n",
+    "a sub-item commented out under a blank line in its item":
+        "- A\n\n  <!--\n  - A.1 9.99\n  -->\n- B\n",
+    "a sub-item past its item's marker and short of its text":
+        "   - item <!-- x\n    - sub 9.99 -->\n",
+    "across a quotation's paragraphs": "> quote <!-- x\n>\n> more 9.99 -->\n",
+    "across a `>` alone continuing an item": "- item <!-- x\n>\nmore 9.99 -->\n",
+    "across a `|` line continuing an item": "- item <!-- x\n| b\nmore 9.99 -->\n",
+    "after a div's closing `:::` under a list": "::: note\n- item\n:::\n<!-- x\n\n9.99 -->\n",
+    "after a line indented under a table":
+        "| a | b |\n|---|---|\n| 1 | 2 |\n  indented\n<!-- x\n\n9.99 -->\n",
+    **{f"after a listing with a line starting {mark!r}":
+       f"{_FENCE}r\nggplot(d)\n{mark}geom_point()\n{_FENCE}\n<!--\nx 9.99\n\n-->\n"
+       for mark in ("+ ", "- ", "* ", "> ", "| ")},
+    "across a blank line in a caption under a table":
+        "| a |\n|---|\n| 1 |\n\n: Caption <!-- x\n\n9.99 -->\n",
+    "on a paragraph's line that looks like a quotation": "Patients aged\n> 65 years <!-- x\n\n"
+                                                         "9.99 -->\n",
+    "on a paragraph's line that looks like an item": "The score fell by\n- 5 points <!-- x\n\n"
+                                                     "9.99 -->\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", list(_REFUSED_THOUGH_DROPPED))
+def test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."): the blocks are cut short where pandoc's are
+    not worth modelling, so each of these comments, which pandoc drops, is refused on the
+    line of its `<!--`."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    paper = _REFUSED_THOUGH_DROPPED[name]
+    assert unclear_comment_lines(paper) == [paper[: paper.index("<!--")].count("\n") + 1]
+
+
+#: Comments pandoc prints, as 3.9.0.2 reads them, that the gates mask and the refusal lets
+#: be, by the point of Known gaps each is held for.
+_MASKED_THOUGH_PRINTED = {
+    "after `</div>` under an item": "- item\n</div> <!-- x\n\n9.99 -->\n",
+    "after `</span>` under an item": "- item\n</span> <!-- x\n\n9.99 -->\n",
+    "after `:::` under an item": "- item\n::: <!-- x\n\n9.99 -->\n",
+    "after `</div>`, closed in the next item": "- a\n</div> <!-- x\n- b 9.99 -->\n",
+    "after `</span>`, closed in the next item": "- a\n</span> <!-- x\n- b 9.99 -->\n",
+    "after `:::`, closed in the next item": "- a\n::: <!-- x\n- b 9.99 -->\n",
+    "in an item with a ten-digit marker": "1234567890. item\n<!-- x\n\n9.99 -->\n",
+    "behind a byte-order mark": chr(0xFEFF) + "- item\n<!-- x\n\n9.99 -->\n",
+    "over a line of dashes, a table": "Results <!-- x\n-------\nb 9.99 -->\n",
+    "over a line of dashes, a table in an item": "- a <!-- x\n---\nb 9.99 -->\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", list(_MASKED_THOUGH_PRINTED))
+def test_a_comment_pandoc_prints_is_masked_and_not_refused(
+    project: Path, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."): a `<!--` on a line the refusal takes for a
+    block's end under an item, in an item with a ten-digit marker or behind a byte-order
+    mark, or over a line of dashes that pandoc reads, with a line under it, as a table at
+    the margin or in an item, is masked, and `check` neither refuses it nor reads the 9.99
+    pandoc prints."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.text.comments import unclear_comment_lines
+    from manuscript_guard.text.masking import mask
+
+    paper = _MASKED_THOUGH_PRINTED[name]
+    assert "9.99" not in mask(paper) and unclear_comment_lines(paper) == []
+    probe = project / "manuscript" / "supplementary" / "S9_probe.md"
+    probe.write_text(paper, encoding="utf-8")
+    main(["check", str(project), "--json"])
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert [f for f in findings if f["code"] == "unclear-comment" or "9.99" in f["message"]
+            or "9.99" in (f.get("context") or "")] == []  # fmt: skip
+
+
+def test_a_setext_title_in_an_item_over_a_comment_is_refused() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The comment scanner knows code spans, fences and
+    the front matter, and no other Markdown."), the other side of the line of dashes in
+    `_MASKED_THOUGH_PRINTED`: with a blank line under the dashes, pandoc reads a setext
+    title in the item, and the refusal refuses the comment."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines("- a <!-- x\n---\n\n9.99 -->\n") == [1]
 
 
 def test_a_comment_under_a_list_item_is_refused_by_check_and_the_build(
@@ -35020,6 +35289,92 @@ def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, 
         ("spelling-variant", said), ("spelling-variant", said)
     ]  # fmt: skip
     assert ("abbreviation-undefined", said) in language_findings(project)
+
+
+_ENTRY = "1. Doe J. The register. 2019."
+
+#: Text set before the Data availability, `_SAID` once in it, and whether G14 reads it: where
+#: a list's title opens no list, or the list ends before `_SAID`, it does.
+_LIST_SHAPES = {
+    "a second-level heading inside it": (f"**References**\n\n{_ENTRY}\n\n## Books\n\n2. {_SAID}",
+                                         True),
+    "a bold title over a second list": (f"**References**\n\n{_ENTRY}\n\n**Additional "
+                                        f"references**\n\n2. {_SAID}", True),
+    "an entry opening with Table 1": (f"**References**\n\n{_ENTRY}\n\nTable 1 {_SAID}", True),
+    "an entry in French opening with an English caption's word": (
+        f"**References**\n\n{_ENTRY}\n\nFigure 3 : la couleur des tumeurs. Rev Prat. 2019.\n\n"
+        f"2. {_SAID}", True),
+    # The other side: a caption's word of another language, "Tabla", ends no list.
+    "an entry opening with a Spanish caption's word": (
+        f"**References**\n\n{_ENTRY}\n\nTabla 2. La color de los tumores. 2019.\n\n2. {_SAID}",
+        False),
+    "a hard wrap": (f"We read the\nReferences\nof each paper.\n\n1. {_SAID}", True),
+    "an indented line": (f"   **References**\n\n1. {_SAID}", True),
+    "a full stop": (f"**References.**\n\n1. {_SAID}", True),
+    "a number typed by hand": (f"6. References\n\n1. {_SAID}", True),
+    "brackets before braces of no attributes": (f"[References]{{see below}}\n\n1. {_SAID}",
+                                                True),
+    "escaped brackets": (f"\\[References\\]{{.underline}}\n\n1. {_SAID}", True),
+    # The other side of "a number typed by hand": as pandoc writes a numbered title.
+    "a number pandoc escapes": (f"6\\. References\n\n1. {_SAID}", False),
+    # The other side of "a second-level heading inside it": under a heading, the list runs
+    # on through the headings below its own.
+    "a second-level heading under a heading": (f"# References\n\n{_ENTRY}\n\n## Books\n\n2. "
+                                               f"{_SAID}", False),
+    # What follows the list under no title of its own is passed over with it.
+    "an appendix of plain paragraphs": (f"**References**\n\n{_ENTRY}\n\n{_SAID}", False),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", list(_LIST_SHAPES))
+def test_a_reference_list_under_a_line_that_is_no_heading_is_read_by_its_shape(
+    project: Path, shape: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list under a line that is no heading
+    ends where its shape does, and only a paragraph opens one."): a `## Books` inside the
+    list, a bold title over a second list, and an entry that opens with "Table 1", or one in
+    another language that opens with an English caption's word, end it, and what follows is
+    read as prose, where "Tabla 2." ends nothing; a title
+    in a hard wrap, indented, ending in a stop, numbered "6." by hand, or in brackets before
+    braces that are no attributes, or escaped, opens none. `6\\. References` opens one, a
+    list under `# References` runs on through a `## Books`, and plain paragraphs after a
+    list are passed over with it."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    inserted, read = _LIST_SHAPES[shape]
+    listed = text[:end] + inserted + "\n\n" + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    said = line_of(listed, _SAID)
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == (
+        [("spelling-variant", said), ("spelling-variant", said)] if read else []
+    )  # fmt: skip
+
+
+def test_a_reference_list_carried_on_into_the_next_file_is_read_there_as_prose(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference list under a line that is no heading
+    ends where its shape does, and only a paragraph opens one."): a list that ends one file
+    of the main text and goes on in the next is read there as prose, where the same entry
+    in the first file is passed over."""
+    from manuscript_guard.gates import check_language
+
+    source = main_md(project)
+    source.write_text(source.read_text(encoding="utf-8") + "\n# Appendix\n\nText.\n\n"
+                      f"**References**\n\n{_ENTRY}\n", encoding="utf-8")  # fmt: skip
+    following = project / "manuscript" / "main_2.md"
+    following.write_text(f"2. {_SAID}\n", encoding="utf-8")
+
+    def said() -> list[tuple[str, str, int | None]]:
+        report = check_language(load_project(project)[0])
+        return [(f.path.name, f.code, f.line) for f in report.findings
+                if f.code.startswith("spelling-") and f.path is not None]  # fmt: skip
+
+    assert said() == [("main_2.md", "spelling-variant", 1)] * 2
+    # The other side: the same entry in the file the list opens in.
+    following.unlink()
+    source.write_text(source.read_text(encoding="utf-8") + f"\n2. {_SAID}\n", encoding="utf-8")
+    assert said() == []
 
 
 @pytest.mark.parametrize(

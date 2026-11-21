@@ -641,9 +641,10 @@ def test_replaces_names_a_reading_that_cannot_be_read_replaced_already(
     folder = project / "literature" / "currency" / "readings"
     path = project / "again.yaml"
     path.write_text(yaml.safe_dump(case.reading("Ada Example"), sort_keys=False), "utf-8")
-    # The other side: while reading 1 reads, it is no reading replaced already.
-    with pytest.raises(command.Refused, match="has no reading 2 of c1"):
-        command.file_reading(load_project(project)[0], path, replaces=2)
+    # The other side: while reading 1 reads, --replaces 1 is filed, as reading 2.
+    said = command.file_reading(load_project(project)[0], path, replaces=1)
+    assert said.startswith("filed literature/currency/readings/c1.Ada%20Example.2.yaml; ")
+    (folder / "c1.Ada%20Example.2.yaml").unlink()
     (folder / "c1.Ada%20Example.1.yaml").write_text(broken, encoding="utf-8")
     with pytest.raises(command.Refused, match="Ada Example's reading 1 of c1 is replaced "
                        "already: replace the reading that replaced it"):  # fmt: skip
@@ -912,10 +913,15 @@ def test_explain_counts_a_work_only_a_reading_names_and_names_an_earlier_readers
     first = case.reading("Bo Example")
     first["candidates"].append({**first["candidates"][0], "work": other})
     case.file(project, first, "first")
-    (line,) = [one for one in command.explain(load_project(project)[0], "c1").splitlines()
-               if "the works store holds no record" in one]  # fmt: skip
+    said = command.explain(load_project(project)[0], "c1")
+    (line,) = [one for one in said.splitlines() if "the works store holds no record" in one]
     assert line == ("  (the works store holds no record of 1 work a reading names: the rules "
                     "decide nothing until it does)")  # fmt: skip
+    # Nowhere in the whole output is it said how to see the work: the one line naming
+    # `--readings` is the count of the readings filed, and `check` is not named.
+    assert [one for one in said.splitlines() if "--readings" in one or "check" in one] == [
+        "  readings: 1 filed; `references --explain c1 --readings` prints them, which a "
+        "reader still to read the entry does not run"]
     assert other in command.explain(load_project(project)[0], "c1", readings=True)
     # The cited work with no DOI in references.bib: the first reading's choice is named.
     bib = project / "literature" / "references.bib"

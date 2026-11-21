@@ -25199,7 +25199,7 @@ Open, recorded as each change landed:
     what they disagree on only grows with another, so once two readings disagree the entry
     stays `uncertain` whatever a third says. A person's decision with why settles it, and
     so does `--replaces N`, which sets a reading aside (round 1 of #549, finding 1; the hint
-    and step 5 said so before #549). Closed by a hint and a step 5 that name those two.
+    and step 5 said so before #549). A hint and a step 5 that name those two would close it.
     Pinned by `tests/test_currency.py::test_the_hint_sends_a_third_reader_though_a_third_reading_cannot_settle_it`.
   - Without `--readings`, `--explain` counts a missing work that only a reading names ("1
     work a reading names") and does not say how to see it: `--explain ID --readings`, or

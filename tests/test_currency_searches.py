@@ -361,7 +361,10 @@ def test_a_work_pubmed_links_to_by_its_pmid_and_found_by_its_doi_is_two_candidat
     """A known gap (DESIGN.md, Known gaps, "S1 at OpenAlex asks for the reviews that cite
     the work"): a work PubMed's forward links (S1) give by its PMID alone is kept as `pmid:`,
     and the same work found by S3 with its DOI is kept as `doi:`, a second candidate, with a
-    works record of its own."""
+    works record of its own, which a reading reads apart: a reading of the one leaves the
+    other unread."""
+    from manuscript_guard.currency.rules import Fields, Reading, Work, decide
+
     run = _search(marked, _UpdateFoundByItsDoiToo())
     assert run.whole, run.lines
     by = _by(_records(marked))
@@ -372,6 +375,19 @@ def test_a_work_pubmed_links_to_by_its_pmid_and_found_by_its_doi_is_two_candidat
     found = records.read_work(loaded, f"doi:{UPDATE_DOI}").record
     assert (linked["work"], found["work"]) == (f"pmid:{UPDATE}", f"doi:{UPDATE_DOI}")
     assert found["identifiers"] == {"doi": UPDATE_DOI, "pmid": UPDATE}
+    # Read twice: a reading of the work by its DOI alone leaves its PMID's candidate unread,
+    # and the readings disagree on it until each reading reads both.
+    same = Fields(level=1, population="same", exposure="same", outcome="same",
+                  stance="supports")  # fmt: skip
+    held = {one["work"]: records.as_work(one) for one in (linked, found)}
+    both = {f"doi:{UPDATE_DOI}": same, f"pmid:{UPDATE}": same}
+    one = Reading("Ada Example", "ocebm-2011", "benefit", 3, {f"doi:{UPDATE_DOI}": same})
+    other = Reading("Bo Example", "ocebm-2011", "benefit", 3, both)
+    decided = decide(Work("c"), held, [one, other])
+    assert (decided.action, decided.why) == (
+        "uncertain", f"the readings disagree on what decides pmid:{UPDATE}")
+    one = Reading("Ada Example", "ocebm-2011", "benefit", 3, both)
+    assert decide(Work("c"), held, [one, other]).action == "replace"
 
 
 @pytest.mark.parametrize("source", ["crossref", "pubmed", "europepmc", "openalex"])
@@ -455,16 +471,19 @@ def test_the_cutoff_is_a_synthesis_search_end_a_reading_gives_where_later(marked
     assert searching.cutoff(loaded, searching._claim(loaded, "c1"))["date"] == "2021-06"
 
 
+@pytest.mark.parametrize("ends", [("2020-06", "2022-01"), ("2022-01", "2020-06")],
+                         ids=["earlier first", "later first"])  # fmt: skip
 def test_two_readings_that_disagree_on_a_search_end_move_the_cutoff_to_the_later(
-    marked: Path,
+    marked: Path, ends: tuple[str, str],
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The cutoff of S3 reads every filed reading's
     search end date"): of two readings that give a synthesis S2 found two search end dates,
-    both after the cited work's publication, S3 is asked from the later, though the reading
-    filed first gives the earlier."""
+    both after the cited work's publication, S3 is asked from the later, whichever reading
+    was filed first."""
     _search(marked, Registry())
     loaded = load_project(marked)[0]
-    for reader, end in (("Ada Example", "2020-06"), ("Bea Example", "2022-01")):
+    later = "Bea Example" if ends[1] == "2022-01" else "Ada Example"
+    for reader, end in zip(("Ada Example", "Bea Example"), ends, strict=True):
         reading = case.reading(reader, candidate=f"doi:{SR_DOI}")
         reading["candidates"][0]["search_end"] = {"value": end, "quote": "searched to then"}
         records.file_reading(loaded, reading, "2026-11-05")
@@ -473,7 +492,7 @@ def test_two_readings_that_disagree_on_a_search_end_move_the_cutoff_to_the_later
             assert searching.cutoff(loaded, searching._claim(loaded, "c1"))["date"] == end
     assert searching.cutoff(loaded, searching._claim(loaded, "c1")) == {
         "date": "2022-01",
-        "from": f"the search end date of doi:{SR_DOI}, as Bea Example's reading 1 gives it"}
+        "from": f"the search end date of doi:{SR_DOI}, as {later}'s reading 1 gives it"}
 
 
 def test_a_replay_runs_each_recorded_search_as_recorded(marked: Path) -> None:

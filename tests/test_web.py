@@ -334,12 +334,33 @@ def test_a_429_from_a_page_with_no_retry_after_is_not_waited_out() -> None:
         assert found == {"status": "unresolvable",
                          "why": "throttled (HTTP 429): asked too often, or past the allowance"}
         assert len(sent) == asked and waited[:1] == waits
-        # No API key is sent: a page's lookups have none, and OpenAlex is asked without one.
-        sources.openalex("10.5555/x", ask, lookup.Services().openalex, None)
-        assert len(sent) == 2 * asked
-        assert sent[0].startswith("https://api.crossref.org/works/10.5555/x")
-        assert sent[-1].startswith("https://api.openalex.org/works/doi:10.5555/x")
-        assert not [url for url in sent if "key" in url.lower()], sent
+
+
+@pytest.mark.parametrize("key", [None, "secret-openalex-key"])
+def test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch, key: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit page"): `audit --lookup` on a page asks
+    through the page's transport and reads `OPENALEX_API_KEY` from the environment as the
+    command line does, so no key is sent where, as on a page, none is named."""
+    opened: list[str] = []
+    monkeypatch.setattr(sys, "platform", "emscripten")
+    monkeypatch.setattr(web, "_new_xhr", lambda: FakeXHR(404, "", "{}"))
+    monkeypatch.setattr(FakeXHR, "open", lambda self, method, url, sync: opened.append(url))
+    for name in ("OPENALEX_API_KEY", "NCBI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    if key:
+        monkeypatch.setenv("OPENALEX_API_KEY", key)
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\nOf 40, 12 had it [1].\n\n# References\n\n1. Smith J. A "
+                     "cohort. Lancet. 2019;393:100-10. doi:10.5555/fictional.1\n",
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--lookup", "--json"]) == 0
+    capsys.readouterr()
+    asked = "https://api.openalex.org/works/doi:10.5555/fictional.1"
+    assert (asked + (f"?api_key={key}" if key else "")) in opened, opened
+    assert [url for url in opened if "key" in url] == ([] if key is None else
+                                                       [f"{asked}?api_key={key}"])  # fmt: skip
 
 
 def test_a_page_sends_nothing_but_https() -> None:

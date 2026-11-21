@@ -303,6 +303,14 @@ def test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places
         _code, report, _err = audited(capsys, str(pdf.path))
         said = " ".join(f["message"] for f in found(report, "not-audited"))
         assert ("its lines were placed in no section" in said) is not placed, word
+    # The parts end where their order starts again, a Background after Findings, though no
+    # part is named twice (`text.section_names._parts_end`).
+    lines = [PAPER[0], "Abstract", "Methods", "We read 412 records.", "Findings", PAPER[3],
+             "Background", "Drugs cause harm [1].", *PAPER[8:]]  # fmt: skip
+    pdf = reading.read_pdf(write(tmp_path / "order.pdf", lines, per_column=40))
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), ("Methods", 2), ("Findings", 2), ("Background", 1), ("Results", 1),
+        ("Discussion", 1), ("References", 1)]  # fmt: skip
 
 
 @needs_pdftotext

@@ -758,8 +758,9 @@ def test_a_self_citation_is_read_as_text_where_the_list_is_not_cut_out(
     """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a list
     the audit does not find ("Sources") is read as text, its self-citation reported; in a
     .docx a deleted entry is read but in a list styled "Bibliography"; an entry shaped as a
-    title of back matter or a caption ends the cut early, and the self-citation after it is
-    reported, a false alarm; and a list laid out as a Word table is cut at its first row."""
+    title of back matter or a caption, or a Word table between two entries, ends the cut
+    early, and the self-citation after it is reported, a false alarm; and a list laid out as
+    a Word table is cut at its first row."""
     listed = f"\n\n1. {SELF_CITED}\n2. Other, B. (2019). X. J Ex 2:3.\n"
     assert _named(capsys, tmp_path, paper_md(tmp_path, PAPER + "\n# Sources" + listed)) == [
         "'Ada Example'"]

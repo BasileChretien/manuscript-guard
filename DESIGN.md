@@ -27081,8 +27081,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
     `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a
     superscript number in a .docx (its text reads the digits run on to the word) and Word's
-    Zotero or EndNote fields are not listed, but where a field prints a number in brackets,
-    and the file says so; a `\cite` whose list is a
+    Zotero or EndNote fields are not listed, and the file says so, except a field that prints
+    a number in brackets, which is; a `\cite` whose list is a
     `.bib` is listed without its entry. A file's citations are held to its own list only, so a
     supplement that cites the main document's list by number lists none of them. A citation
     typed right after a stop is the sentence before's, even where the author meant the next;
@@ -27133,8 +27133,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading is a line that holds a section's name alone (`HEADINGS`): a section under
     another title is read as the one before, a Results headed "Outcomes" among them, so its
     numbers are the section before's; a structured abstract whose headings stand on lines of
-    their own with no Introduction after them, none of its parts named again and no words
-    under the Abstract's own heading, leaves the PDF's lines unplaced, and so does a
+    their own with no Introduction after them, no part whose place in their order comes at
+    or before the last one's, and no words under the Abstract's own heading, leaves
+    the PDF's lines unplaced, and so does a
     name on two lines. A wrapped line that holds only "Results", with a capital,
     is read as a heading.
     Pinned by `tests/test_audit_pdf.py::test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places_nothing`,
@@ -27640,10 +27641,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *A lookup from a page* sends no User-Agent, which a browser forbids; the browser follows
     a redirect itself, where `default_transport` refuses one, though only to a host the
     policy allows; and Crossref does not expose `Retry-After` to a page, so a 429 from it is
-    not waited out but taken as no answer. No API key is sent.
+    not waited out but taken as no answer. No API key is sent, the page's environment naming
+    none: its lookups read `OPENALEX_API_KEY` from it as the command line's do.
     Pinned by `tests/test_web.py::test_a_page_sends_one_synchronous_get_without_the_user_agent`,
-    `tests/test_lookup.py::test_the_real_transport_follows_no_redirect` and
-    `tests/test_web.py::test_a_429_from_a_page_with_no_retry_after_is_not_waited_out`.
+    `tests/test_lookup.py::test_the_real_transport_follows_no_redirect`,
+    `tests/test_web.py::test_a_429_from_a_page_with_no_retry_after_is_not_waited_out` and
+    `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
   - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),

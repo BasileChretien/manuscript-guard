@@ -23,6 +23,8 @@ from manuscript_guard.cli import main
 from manuscript_guard.gates.journal import FROM_RECORDS
 
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+needs_pdftotext = pytest.mark.skipif(shutil.which("pdftotext") is None,
+                                     reason="pdftotext is not installed")  # fmt: skip
 BS = chr(92)
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
@@ -107,6 +109,36 @@ def test_a_paper_within_the_profile_has_no_g4_finding(tmp_path: Path, capsys) ->
                                   str(tmp_path / "roomy.yaml"))  # fmt: skip
     journal = section(report, "Journal (G4)")
     assert {f["code"] for f in journal} <= {"journal-not-checked", "journal-manual-rule"}, journal
+
+
+def test_a_declaration_set_in_bold_reads_as_missing_with_the_template_s_pattern(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): G4
+    finds a statement by the profile's pattern, and the template's, anchored on a heading,
+    reads a declaration set as a bold paragraph as missing; a pattern for the phrase finds
+    it."""
+    import yaml
+
+    import manuscript_guard
+
+    template = Path(manuscript_guard.__file__).parent / "profiles" / "journals" / "TEMPLATE.yaml"
+    statements = yaml.safe_load(template.read_text(encoding="utf-8"))["required_statements"]
+    [anchored] = [s["pattern"] for s in statements if s["id"] == "funding"]
+    written = profile(tmp_path).read_text(encoding="utf-8")
+    ours = f"'(?im)^#+{BS}s*funding'"
+    for name, pattern, held in (("template.yaml", anchored, True),
+                                ("phrase.yaml", "(?i)funding", False)):  # fmt: skip
+        (tmp_path / name).write_text(written.replace(ours, f"'{pattern}'"), encoding="utf-8")
+        for tail, missing in (("\n# Funding\n\nNone.\n", False),
+                              ("\n**Funding.** None.\n", held),
+                              ("\n**Funding**\n\nNone.\n", held)):  # fmt: skip
+            _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + tail)),
+                                          "--journal", str(tmp_path / name))  # fmt: skip
+            said = [f["message"] for f in report["findings"]
+                    if f["code"] == "missing-required-statement"]  # fmt: skip
+            assert said == (["the journal requires a funding statement"] if missing else []), (
+                name, tail)
 
 
 def test_what_g4_does_not_check_here_is_said_and_the_manual_rules_are_listed(
@@ -232,6 +264,25 @@ def test_the_rest_of_the_submission_is_not_held_to_the_limits(tmp_path: Path, ca
                                   "--journal", str(profile(tmp_path)))  # fmt: skip
     others = [f for f in report["findings"] if f["code"] == "journal-not-main-document"]
     assert [Path(f["path"]).name for f in others] == ["supplement.md"]
+
+
+def test_the_first_paper_named_is_the_main_document_whichever_it_is(tmp_path: Path,
+                                                                    capsys) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): the
+    main document is the first paper named, so a supplement named first is held to the
+    limits and the main document after it is read as the rest of the submission."""
+    supplement = tmp_path / "supplement.md"
+    supplement.write_text("# Supplementary methods\n\n" + "More words. " * 80, encoding="utf-8")
+    paper = paper_md(tmp_path)
+    for named, held, rest in (((supplement, paper), "main text: 162 words, limit 40", "paper.md"),
+                              ((paper, supplement), "main text: 65 words, limit 40",
+                               "supplement.md")):  # fmt: skip
+        _code, report, _err = audited(capsys, *map(str, named), "--journal",
+                                      str(profile(tmp_path)))  # fmt: skip
+        over = [f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"]
+        others = [Path(f["path"]).name for f in report["findings"]
+                  if f["code"] == "journal-not-main-document"]  # fmt: skip
+        assert (over, others) == ([held], [rest])
 
 
 def test_the_notice_is_said_with_a_reader_option_and_not_without(tmp_path: Path, capsys) -> None:
@@ -699,6 +750,92 @@ def test_back_matter_after_a_docx_list_under_a_styled_heading_is_read(
     assert code == 1
 
 
+def _named(capsys, tmp_path: Path, paper: Path) -> list[str]:
+    _code, report, _err = audited(capsys, str(paper), "--journal",
+                                  str(profile(tmp_path, blinding="double")), "--authors",
+                                  str(authors_file(tmp_path)))  # fmt: skip
+    return [f["message"].split(" is in ")[0] for f in report["findings"]
+            if f["code"] == "blind-document-names-author"]  # fmt: skip
+
+
+def test_the_blinding_check_finds_a_name_as_the_build_does(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): the
+    given and family name, or an initial with its stop, is found; a family name alone, an
+    initial with no stop, and a part of the affiliation under three words ("Somewhere") are
+    not looked for, where its parts of three words or more are."""
+    for said, found in (("Ada Example", "'Ada Example'"), ("A. Example", "'Ada Example'"),
+                        ("Example, A.", "'Ada Example'"), ("A Example", None),
+                        ("Example", None), ("Ada", None), ("Somewhere", None),
+                        ("Department of Examples", "'Department of Examples'"),
+                        ("University of Nowhere Hospital", "'University of Nowhere Hospital'")):
+        paper = paper_md(tmp_path, PAPER + f"\nAs {said} wrote, it was so.\n")
+        assert _named(capsys, tmp_path, paper) == ([] if found is None else [found]), said
+
+
+def test_a_self_citation_is_read_as_text_where_the_list_is_not_cut_out(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a list
+    the audit does not find ("Sources") is read as text, its self-citation reported; in a
+    .docx a deleted entry is read but in a list styled "Bibliography"; an entry shaped as a
+    title of back matter or a caption, or a Word table between two entries, ends the cut
+    early, and the self-citation after it is reported, a false alarm; and a list laid out as
+    a Word table is cut at its first row."""
+    listed = f"\n\n1. {SELF_CITED}\n2. Other, B. (2019). X. J Ex 2:3.\n"
+    assert _named(capsys, tmp_path, paper_md(tmp_path, PAPER + "\n# Sources" + listed)) == [
+        "'Ada Example'"]
+    # The other side: the list under "References" is cut out, as `read_paper` finds it.
+    assert _named(capsys, tmp_path, paper_md(tmp_path, PAPER + "\n# References" + listed)) == []
+    for style, leaks in (("Bibliography", False), ("", True), ("Normal", True)):
+        pstyle = f"<w:pPr><w:pStyle w:val='{style}'/></w:pPr>" if style else ""
+        body = ("<w:p><w:r><w:t>Of 40 patients, 12 had dark urine.</w:t></w:r></w:p>"
+                "<w:p><w:r><w:t>References</w:t></w:r></w:p>"
+                f"<w:p>{pstyle}<w:r><w:t>1. Other, B. (2019). X. J Ex 2:3.</w:t></w:r></w:p>"
+                f"<w:p>{pstyle}<w:del w:id='1' w:author='Ed'><w:r><w:delText>2. {SELF_CITED}"
+                "</w:delText></w:r></w:del></w:p>")  # fmt: skip
+        paper = tmp_path / "deleted.docx"
+        with zipfile.ZipFile(paper, "w") as archive:
+            archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME),
+                             f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body>{body}"
+                             "</w:body></w:document>")  # fmt: skip
+        assert _named(capsys, tmp_path, paper) == (["'Ada Example'"] if leaks else []), style
+    for shaped, leaks in (("Funding", True), ("Acknowledgements", True),
+                          ("Figure 1. A chart. Office (2018).", True),
+                          ("Table 1 of the census. Office (2018).", True),
+                          ("Other, C. (2018). Z. J Ex 4:5.", False)):  # fmt: skip
+        paper = docx_of(tmp_path / "cut.docx", [
+            ("", "Of 40 patients, 12 had dark urine."), ("Heading1", "References"),
+            ("", "Other, B. (2019). X. J Ex 2:3."), ("", shaped), ("", SELF_CITED)])  # fmt: skip
+        with zipfile.ZipFile(paper, "a") as archive:
+            archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
+        assert _named(capsys, tmp_path, paper) == (["'Ada Example'"] if leaks else []), shaped
+    # A table between two entries ends the cut there too, and the entry after it is read.
+    for between, leaks in (("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cohort 2019</w:t></w:r></w:p>"
+                            "</w:tc></w:tr></w:tbl>", True), ("", False)):  # fmt: skip
+        paper = tmp_path / "tabled.docx"
+        with zipfile.ZipFile(paper, "w") as archive:
+            archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), (
+                f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body><w:p><w:r><w:t>Of 40 "
+                "patients, 12 had dark urine.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle "
+                "w:val='Heading1'/></w:pPr><w:r><w:t>References</w:t></w:r></w:p><w:p><w:r>"
+                "<w:t>Other, B. (2019). X. J Ex 2:3.</w:t></w:r></w:p>" + between
+                + f"<w:p><w:r><w:t>{SELF_CITED}</w:t></w:r></w:p></w:body></w:document>"))
+            archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
+        assert _named(capsys, tmp_path, paper) == (["'Ada Example'"] if leaks else []), between
+    cell = "<w:tc><w:p><w:r><w:t xml:space='preserve'>{}</w:t></w:r></w:p></w:tc>"
+    rows = "".join(f"<w:tr>{cell.format(n)}{cell.format(text)}</w:tr>"
+                   for n, text in (("1.", "Other, B. (2019). X. J Ex 2:3."), ("2.", SELF_CITED)))
+    paper = tmp_path / "table.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), (
+            f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body><w:p><w:r><w:t>Of 40 "
+            "patients, 12 had dark urine.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle "
+            "w:val='Heading1'/></w:pPr><w:r><w:t>References</w:t></w:r></w:p>"
+            f"<w:tbl>{rows}</w:tbl></w:body></w:document>"))  # fmt: skip
+        archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
+    assert _named(capsys, tmp_path, paper) == ["'Ada Example'"]
+
+
 def test_a_limit_not_checked_is_never_said_to_be_kept(tmp_path: Path, capsys) -> None:
     """Round 2, note 2: with the table limits under "not checked", the section still said
     "Within every limit", under a heading that called every entry a project's record."""
@@ -753,6 +890,56 @@ def test_a_tracked_change_in_a_text_box_counts_once(tmp_path: Path, capsys) -> N
     assert (report["counts"]["tracked_insertions"], report["counts"]["hidden_runs"]) == (1, 1)
 
 
+def test_a_change_of_formatting_and_a_box_written_only_as_a_fallback_are_not_counted(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    change of formatting alone is no tracked change, and a text box Word wrote only as a
+    fallback is not read, its change and its author uncounted; an insertion, in the text or
+    in a box's choice, is counted with its author."""
+    boxed = "<w:p><w:ins w:id='1' w:author='Ben'><w:r><w:t>Boxed 7.</w:t></w:r></w:ins></w:p>"
+    ben = ["the author of a tracked change or a comment (w:author): Ben"]
+    for inner, counted, named in (
+        ("<w:r><w:rPr><w:b/><w:rPrChange w:id='5' w:author='Ben'><w:rPr/></w:rPrChange>"
+         "</w:rPr><w:t> Bold 3.</w:t></w:r>", 0, ben),
+        (f"<w:r><mc:AlternateContent><mc:Fallback>{boxed}</mc:Fallback></mc:AlternateContent>"
+         "</w:r>", 0, []),
+        ("<w:ins w:id='5' w:author='Ben'><w:r><w:t> Added 3.</w:t></w:r></w:ins>", 1, ben),
+        (f"<w:r><mc:AlternateContent><mc:Choice Requires='wps'>{boxed}</mc:Choice>"
+         "</mc:AlternateContent></w:r>", 1, ben),
+    ):  # fmt: skip
+        document = (f"<?xml version='1.0'?><w:document xmlns:w='{W}' xmlns:mc='{MC}'><w:body>"
+                    f"<w:p><w:r><w:t>Of 40 patients, 12 had dark urine.</w:t></w:r>{inner}</w:p>"
+                    "</w:body></w:document>")  # fmt: skip
+        paper = tmp_path / "paper.docx"
+        with zipfile.ZipFile(paper, "w") as archive:
+            archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+        _code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)))
+        counts = report["counts"]
+        assert (counts["tracked_insertions"], counts["tracked_deletions"]) == (counted, 0), inner
+        people = [f["message"] for f in section(report, "Document")
+                  if f["code"] == "document-person"]  # fmt: skip
+        assert people == named, inner
+
+
+def test_a_latex_file_s_metadata_names_no_person_in_the_document_section(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): the
+    Document section reads no LaTeX file's metadata: `pdfauthor` names no person there, and
+    the blinding check finds the name in the preamble as the text it is."""
+    (tmp_path / "main.tex").write_text(
+        f"{BS}documentclass{{article}}\n{BS}usepackage{{hyperref}}\n"
+        f"{BS}hypersetup{{pdfauthor={{Ada Example}}}}\n{BS}begin{{document}}\n"
+        f"{BS}section{{Results}}\nOf 40, 12.\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
+                                  str(profile(tmp_path, blinding="double")), "--authors",
+                                  str(authors_file(tmp_path)))  # fmt: skip
+    assert [(f["code"], f["message"]) for f in section(report, "Document")] == [
+        ("blind-document-names-author", "'Ada Example' is in the text of main.tex, and the "
+         "journal's review is double-blind")]  # fmt: skip
+
+
 def test_a_table_in_a_block_quotation_is_counted(tmp_path: Path, capsys) -> None:
     """Round 2, note 5: a pipe table in a block quotation was not counted."""
     quoted = "".join(f"\n> | Group | n |\n> |---|---|\n> | A | {i} |\n" for i in range(4))
@@ -779,6 +966,166 @@ def test_a_table_indented_in_a_list_item_puts_the_table_limits_under_not_checked
                                   "--journal", str(profile(tmp_path, limits="tables: 3")))
     skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
     assert not any("indented" in said for said in skipped), skipped
+
+
+#: One table of each of the four kinds pandoc's manual shapes: pipe, simple, multiline, grid.
+FOUR_KINDS = ("\n| Group | n |\n|---|---|\n| A | 1 |\n"
+              "\n  Group   n\n  -----   ---\n  A       1\n\n"
+              "\n-------------------\n  Group   n\n  -----   ---\n  A       1\n"
+              "-------------------\n\n"
+              "\n+-------+---+\n| Group | n |\n+=======+===+\n| A     | 1 |\n+-------+---+\n")
+
+
+def _over_and_unchecked(capsys, paper: Path, journal: Path, *more: str) -> tuple[list, list]:
+    _code, report, _err = audited(capsys, str(paper), *more, "--journal", str(journal))
+    over = [f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"]
+    unchecked = [f["message"] for f in report["findings"]
+                 if f["code"] == "journal-not-checked" and "table" in f["message"]]  # fmt: skip
+    return over, unchecked
+
+
+def test_the_tables_and_figures_counted_are_pandoc_s_four_kinds_floats_and_placed_figures(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): each
+    of pandoc's four kinds of table is counted; a simple table in a list item whose columns'
+    dashes run under three is not seen, neither counted nor said unchecked, where one of
+    three is said; a LaTeX `tabular` in no captioned float is not counted; and a figure sent
+    as a file of its own is not counted, where one the paper places is."""
+    tables_3 = profile(tmp_path, limits="tables: 3")
+    paper = paper_md(tmp_path, PAPER + FOUR_KINDS)
+    assert _over_and_unchecked(capsys, paper, tables_3) == (["tables: 4, limit 3"], [])
+    for dashes, unchecked in (("--", False), ("---", True)):
+        listed = f"\n1.  The groups:\n\n    Group  n\n    {dashes}    {dashes}\n    A      1\n\n"
+        over, said = _over_and_unchecked(capsys, paper_md(tmp_path, PAPER + tables(3) + listed),
+                                         tables_3)  # fmt: skip
+        assert over == [] and bool(said) is unchecked, dashes
+    floats = "".join(f"{BS}begin{{table}}{BS}caption{{T{i}}}{BS}begin{{tabular}}{{ll}}A & {i}"
+                     f"{BS}end{{tabular}}{BS}end{{table}}\n" for i in range(3))  # fmt: skip
+    tabular = f"{BS}begin{{tabular}}{{ll}}A & 1{BS}end{{tabular}}"
+    for fourth, counted in ((tabular, False),
+                            (f"{BS}begin{{table}}{tabular}{BS}end{{table}}", False),
+                            (f"{BS}begin{{table}}{BS}caption{{X}}{tabular}{BS}end{{table}}", True)):
+        (tmp_path / "main.tex").write_text(
+            f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}\n{floats}"
+            f"{fourth}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+        over, _said = _over_and_unchecked(capsys, tmp_path / "main.tex", tables_3)
+        assert over == (["tables: 4, limit 3"] if counted else []), fourth
+    figures_1 = profile(tmp_path, limits="figures: 1")
+    for name in ("f1.png", "f2.png"):
+        (tmp_path / name).write_bytes(b"\x89PNG\r\n\x1a\n")
+    placed = paper_md(tmp_path, PAPER + "\n![Figure 1. Flow](f1.png)\n")
+    sent = tmp_path / "figure2.svg"
+    sent.write_text(svg("Figure 2. Patients screened"), encoding="utf-8")
+    assert _over_and_unchecked(capsys, placed, figures_1, "--figures", str(sent)) == ([], [])
+    both = paper_md(tmp_path, PAPER + "\n![Figure 1. Flow](f1.png)\n\n![Figure 2. Flow](f2.png)\n")
+    assert _over_and_unchecked(capsys, both, figures_1)[0] == ["figures: 2, limit 1"]
+
+
+def _png(path: Path) -> Path:
+    """A one-pixel picture pandoc can embed."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))  # fmt: skip
+
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0,
+                                                                        0, 0))
+                     + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff")) + chunk(b"IEND", b""))
+    return path
+
+
+@needs_pandoc
+def test_a_word_layout_table_is_counted_and_a_picture_with_no_caption_is_not(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a .docx's
+    tables are counted as pandoc writes them, a Word table used for layout among them; and
+    its figures as `measure` counts them, so a picture with no caption pandoc reads is not."""
+    paper_md(tmp_path)
+    subprocess.run(["pandoc", "paper.md", "-o", "plain.docx"], cwd=tmp_path, check=True,
+                   timeout=120)  # fmt: skip
+    cell = "<w:tc><w:p><w:r><w:t>{}</w:t></w:r></w:p></w:tc>"
+    layout = f"<w:tbl><w:tr>{cell.format('Left')}{cell.format('Right')}</w:tr></w:tbl><w:p/>"
+    with zipfile.ZipFile(tmp_path / "plain.docx") as source, zipfile.ZipFile(
+            tmp_path / "layout.docx", "w") as out:  # fmt: skip
+        for item in source.infolist():
+            data = source.read(item)
+            if item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                at = text.rindex("<w:sectPr")
+                data = (text[:at] + layout * 4 + text[at:]).encode("utf-8")
+            out.writestr(item, data)
+    over, _said = _over_and_unchecked(capsys, tmp_path / "layout.docx",
+                                      profile(tmp_path, limits="tables: 3"))  # fmt: skip
+    assert over == ["tables: 4, limit 3"]
+    _png(tmp_path / "f.png")
+    for caption, counted in (("", False), ("Figure 1. Flow", True)):
+        paper_md(tmp_path, PAPER + f"\n![{caption}](f.png)\n\n![{caption}](f.png)\n")
+        subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
+                       timeout=120)  # fmt: skip
+        over, _said = _over_and_unchecked(capsys, tmp_path / "paper.docx",
+                                          profile(tmp_path, limits="figures: 1"))  # fmt: skip
+        assert over == (["figures: 2, limit 1"] if counted else []), caption
+
+
+def test_a_latex_picture_is_found_from_the_entry_s_folder_or_its_file_s_and_no_other(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    LaTeX paper's pictures are found from the entry's folder or the placing file's own, by
+    the name as written and with `.svg` after it; `\\graphicspath` is not followed, and a
+    raster picture holds no text to read, an author's name in its bytes among them."""
+    (tmp_path / "figs").mkdir()
+    (tmp_path / "sections").mkdir()
+    (tmp_path / "figs" / "flow.svg").write_text(svg("Drawn by Ada Example"), encoding="utf-8")
+    (tmp_path / "sections" / "chart.svg").write_text(svg("Drawn by Ada Example"),
+                                                     encoding="utf-8")  # fmt: skip
+    (tmp_path / "sections" / "results.tex").write_text(f"{BS}includegraphics{{chart}}\n",
+                                                       encoding="utf-8")  # fmt: skip
+    (tmp_path / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n Drawn by Ada Example")
+    for placed, figure in ((f"{BS}graphicspath{{{{figs/}}}}{BS}includegraphics{{flow}}", None),
+                           (f"{BS}includegraphics{{figs/flow}}", "flow.svg"),
+                           (f"{BS}input{{sections/results}}", "chart.svg"),
+                           (f"{BS}includegraphics{{chart}}", None),
+                           (f"{BS}includegraphics{{photo.png}}", None)):  # fmt: skip
+        (tmp_path / "main.tex").write_text(
+            f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
+            f"{placed}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+        _code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
+                                      str(profile(tmp_path, blinding="double")), "--authors",
+                                      str(authors_file(tmp_path)))  # fmt: skip
+        named = [f["message"] for f in report["findings"]
+                 if f["code"] == "blind-document-names-author"]  # fmt: skip
+        assert named == ([] if figure is None else [
+            f"'Ada Example' is in a figure ({figure}) of main.tex, and the journal's review is "
+            "double-blind"]), placed
+
+
+@needs_pdftotext
+def test_a_latex_picture_is_found_with_pdf_after_its_name(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    LaTeX paper's picture placed by its name alone is found with `.pdf` after it, and the
+    text the PDF draws is read; placed by a name no file has with either ending, nothing
+    is."""
+    monkeypatch.syspath_prepend(str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    (tmp_path / "plot.pdf").write_bytes(typeset(["Drawn by Ada Example"], columns=1))
+    for name, named in (("plot", ["'Ada Example' is in a figure (plot.pdf) of main.tex, and the "
+                                  "journal's review is double-blind"]), ("chart", [])):  # fmt: skip
+        (tmp_path / "main.tex").write_text(
+            f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
+            f"{BS}includegraphics{{{name}}}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+        _code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
+                                      str(profile(tmp_path, blinding="double")), "--authors",
+                                      str(authors_file(tmp_path)))  # fmt: skip
+        assert [f["message"] for f in report["findings"]
+                if f["code"] == "blind-document-names-author"] == named, name
 
 
 @pytest.mark.parametrize("placed", [f"{BS}includesvg{{flow}}", f"{BS}includegraphics{{flow.v2}}",

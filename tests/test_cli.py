@@ -938,6 +938,121 @@ def test_a_stale_document_beside_another_failure_still_refuses(project: Path) ->
     assert run("build", str(project), "--offline", "--stage", "internal-review") == 1
 
 
+def _stale(project: Path) -> set[str]:
+    return {Path(f.path).name for f in _findings(project) if f.code == "document-stale"}
+
+
+@needs_pandoc
+def test_the_supplement_s_staleness_is_set_aside_for_any_file_in_its_folder(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): the build sets aside a stale `supplementary.docx` when the supplement's folder
+    holds a file, a `notes.txt` here, though it builds a supplement from Markdown only, so
+    it builds and the old supplement stays stale. With the folder empty it refuses. The
+    2026-11-09 triage planned a fix (F08), which will change this test."""
+    stage = ("--offline", "--stage", "internal-review")
+    assert run("build", str(project), *stage) == 0
+    folder = project / "manuscript" / "supplementary"
+    path = project / "manuscript" / "main.md"
+    moved = ""
+    for source in sorted(folder.glob("*.md")):
+        moved += "\n\n" + source.read_text(encoding="utf-8")
+        source.unlink()
+    path.write_text(path.read_text(encoding="utf-8") + moved
+                    + "\n\nTable 3 and Table 4 list the rest.\n", encoding="utf-8")  # fmt: skip
+    notes = folder / "notes.txt"
+    notes.write_text("Notes.\n", encoding="utf-8")
+    assert _stale(project) == {"manuscript.docx", "supplementary.docx"}
+    assert run("build", str(project), *stage) == 0
+    assert _stale(project) == {"supplementary.docx"}
+    notes.unlink()
+    capsys.readouterr()
+    assert run("build", str(project), *stage) == 1
+    assert "supplementary.docx was built from a different manuscript" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_docx_unreadable_from_the_live_field_check_says_the_review_is_blind(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): the build takes any `docx-unreadable` for the blind check's, so one from the
+    live-field check makes it say the journal's review is blind and exit 1, where the
+    example's journal does not review blind. The 2026-11-09 triage planned a fix (F08),
+    which will change this test."""
+    from dataclasses import replace
+
+    from manuscript_guard import cli
+    from manuscript_guard.build import document
+    from manuscript_guard.build.blinding import BLIND
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.journal import blinding
+
+    assert blinding(load_project(project)[0]) not in BLIND
+    said = "the journal's review is blind: do not send it."
+    capsys.readouterr()
+    assert run("build", str(project), "--offline") == 0
+    assert said not in capsys.readouterr().out
+    real = cli.build_document
+
+    def unreadable(*args, **kwargs):
+        result = real(*args, **kwargs)
+        if kwargs.get("supplementary"):
+            return result
+        broken = result.output.with_name("broken.docx")
+        broken.write_text("not a zip", encoding="utf-8")
+        found = document._verify_live_fields(broken)
+        assert [f.code for f in found.findings] == ["docx-unreadable"]
+        return replace(result, report=result.report.merge(found))
+
+    monkeypatch.setattr(cli, "build_document", unreadable)
+    assert run("build", str(project), "--offline") == 1
+    assert said in capsys.readouterr().out
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("stage", "kept", "stale"),
+    [
+        ("internal-review", False, ["manuscript.docx"]),
+        ("internal-review", True, ["manuscript.docx", "supplementary.docx"]),
+        # The other side: while drafting `document-stale` does not fail, and the two agree.
+        (None, True, []),
+    ],
+    ids=["manuscript alone", "with the supplement", "while drafting"],
+)
+def test_an_unchecked_build_counts_one_failing_check_fewer_for_each_stale_document(
+    project: Path, capsys, stage: str | None, kept: bool, stale: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): with `--skip-checks`, from internal review on, the build sets aside each stale
+    document it writes over before it counts, and prints one failing check fewer than
+    `check` finds for each: one for `manuscript.docx` alone, two with `supplementary.docx`
+    stale beside it. While drafting it prints `check`'s count. The 2026-11-09 triage
+    planned a fix (F08), which will change this test."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+    from manuscript_guard.cli import _run_gates
+
+    staged = ("--stage", stage) if stage else ()
+    assert run("build", str(project), "--offline", *staged) == 0
+    if not kept:
+        supplement = project / "build" / "supplementary.docx"
+        supplement.unlink()
+        supplement.with_name(supplement.name + SOURCE_STAMP).unlink()
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n99999 loose.\n", encoding="utf-8")
+    report, _p, _s, _d = _run_gates(project, stage=stage)
+    failing = [f.code for f in report.findings if f.severity == "fail"]
+    assert sorted(failing) == sorted(["unclassified-number"] + ["document-stale"] * len(stale))
+    both = {"manuscript.docx", "supplementary.docx"}
+    assert _stale(project) == (both if kept else set(stale))
+    capsys.readouterr()
+    assert run("build", str(project), "--offline", *staged, "--skip-checks") == 0
+    out = capsys.readouterr().out
+    assert "1 check(s) were failing, so this is named UNCHECKED." in out
+
+
 def _findings(project: Path):
     from manuscript_guard.cli import _run_gates
 

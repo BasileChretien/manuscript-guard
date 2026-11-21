@@ -452,6 +452,34 @@ def test_the_toolkit_takes_off_the_attribute_blocks_pandoc_takes_off(name: str) 
     )
 
 
+# Blocks pandoc takes off a heading and the toolkit keeps in its title: an unescaped `{` in
+# a value, and a block or a quoted value carried on to the next line. Each beside the same
+# block written plainly on one line, which both take off.
+KEPT_BLOCKS = {
+    "an opening brace in a quoted value": ('# Results {title="a{b"}', 'Results {title="a{b"}'),
+    "an opening brace in a bare value": ("# Results {k=a{b}", "Results {k=a{b}"),
+    "a quoted value plainly": ('# Results {title="ab"}', "Results"),
+    "a block continued on the next line": (
+        "# Results {#sec-results\n.unnumbered}",
+        "Results {#sec-results",
+    ),
+    "a quoted value broken across two lines": ('# Results {title="a\nb"}', 'Results {title="a'),
+    "a block on one line": ("# Results {#sec-results .unnumbered}", "Results"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(KEPT_BLOCKS))
+def test_some_attribute_blocks_pandoc_takes_off_stay_in_the_title(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading loses its attribute block as pandoc
+    reads it, and nothing else"): pandoc titles each of these "Results", and the toolkit
+    keeps the block in the title where a `{` in a value is taken for the block's opening
+    brace, or the block is looked for on the heading's own line alone."""
+    heading, title = KEPT_BLOCKS[name]
+    markdown = f"{heading}\n\nProse.\n"
+    assert pandoc_headings(markdown) == ["Results"]
+    assert headings(markdown) == [title]
+
+
 def test_a_quoted_heading_is_deliberately_not_a_section() -> None:
     """One divergence from pandoc, chosen rather than overlooked.
 
@@ -518,6 +546,42 @@ def test_a_heading_in_a_list_item_ends_a_section_and_opens_none() -> None:
 
 
 @pytest.mark.parametrize(
+    "inside",
+    [
+        "- An item.\n\n  Results\n  -------\n",
+        "- An item.\n- Results\n  -------\n",
+        "- # Results\n",
+        "Term\n:   # Results\n",
+        "Term\n:   Results\n    -------\n",
+    ],
+    ids=[
+        "indented",
+        "later item underlined",
+        "on the marker's line",
+        "definition",
+        "definition underlined",
+    ],
+)
+def test_a_heading_further_into_a_list_item_is_not_seen(inside: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading nested in a list item is read with its
+    marker, or not at all"): pandoc prints a heading in each of these, and the gates see
+    none, so the Methods above runs on and the p-value under it passes as the alpha. The
+    other side is the setext title on the item's own line, above, read marker and all."""
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import section_chain
+    from manuscript_guard.text.tokens import find_atoms
+
+    markdown = f"## Methods\n\nAlpha.\n\n{inside}\nThe excess was significant (p < 0.001).\n"
+    assert pandoc_headings(markdown) == ["Methods", "Results"]
+    assert headings(markdown) == ["Methods"]
+    atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
+    chain = section_chain(markdown, atom.start)
+    assert chain == ("Methods",)
+    assert Classifier.load().classify(atom, chain).kind != UNCLASSIFIED
+
+
+@pytest.mark.parametrize(
     ("caption", "label"),
     [(None, None), ("Reports by arm.", None), ("Reports by arm.", "Table 1"), (None, "Table 1")],
 )
@@ -547,6 +611,81 @@ def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it(
     source = "## Methods\n\n{{table.t}}\n## Results\n\nProse.\n"
     built = source.replace("{{table.t}}", render_table(table, label))
     assert headings(source) == pandoc_headings(built) == ["Methods", "Results"]
+
+
+# A pipe table's row as pandoc reads it, which the walk takes for no row, each reading
+# naively one of math, a backslash escape, an escaped backtick and a code span; and a row
+# both read as one, the other side.
+PIPE_ROWS = {
+    "dollars around a pipe": ("Results $ | $", False),
+    "an escaped backslash before a pipe": ("Results \\\\| x", False),
+    "an escaped backtick": ("Results \\` | ` x", False),
+    "a code span opened by two backticks": ("Results ``a` | `b x", False),
+    "a plain row": ("Results | x", True),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PIPE_ROWS))
+def test_a_pipe_table_row_is_found_more_simply_than_pandoc_finds_it(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A pipe table's rows are found more simply than
+    pandoc finds them"): pandoc reads each line as a row of the table, and the walk ends the
+    table above it and reads it as a title over the rule under it."""
+    row, agreed = PIPE_ROWS[name]
+    markdown = f"# Methods\n\nAlpha.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n{row}\n===\n\nText.\n"
+    assert pandoc_headings(markdown) == ["Methods"]
+    assert headings(markdown) == (["Methods"] if agreed else ["Methods", row])
+
+
+# Tables written with lines of dashes that the walk reads as paragraphs: a row reading
+# `# Top` and a title over the closing dashes taken for headings, a heading pandoc prints
+# under the table taken for text, and `# Methods` between spaced dashes, a table cell.
+DASH_TABLES = {
+    "a headerless table's row": ("------  -----\n# Top   1\n------  -----\n", ["Top   1"], []),
+    "a multiline table's title over its dashes": (
+        "----------------\nName    Value\n------  --------\na       1\n\nTitle\n"
+        "----------------\n",
+        ["Title"],
+        [],
+    ),
+    "a heading under a headerless table": (
+        "------  -----\na       1\n------  -----\n# Outcomes\n",
+        [],
+        ["Outcomes"],
+    ),
+    "a methods row between spaced dashes": ("- - - - -\n# Methods\n- - - - -\n", ["Methods"], []),
+    # A simple table under a `Table:` caption: its header over the dashes is a heading to
+    # the gates and a table to pandoc. The other side, the same lines with no caption, are
+    # a heading to both.
+    "a captioned table's header over its dashes": (
+        "Table: Counts.\n\n# Name  Value\n------  -----\na       1\n",
+        ["Name  Value"],
+        [],
+    ),
+    "an uncaptioned table's header over its dashes": (
+        "# Name  Value\n------  -----\na       1\n",
+        ["Name  Value"],
+        ["Name Value"],
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(DASH_TABLES))
+def test_a_table_written_with_lines_of_dashes_is_read_as_a_paragraph(name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table written with lines of dashes is read as
+    a paragraph"): the gates' headings and pandoc's differ in these, and the row read as a
+    Methods heading admits the Methods rules: the p-value under the table passes."""
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import section_chain
+    from manuscript_guard.text.tokens import find_atoms
+
+    table, gates, printed = DASH_TABLES[name]
+    markdown = f"# Results\n\nText.\n\n{table}\nThe excess was significant (p < 0.001).\n"
+    assert headings(markdown) == ["Results", *gates]
+    assert pandoc_headings(markdown) == ["Results", *printed]
+    atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
+    passed = Classifier.load().classify(atom, section_chain(markdown, atom.start)).kind
+    assert (passed != UNCLASSIFIED) is (gates == ["Methods"])
 
 
 # ---------------------------------------------------------------- list items

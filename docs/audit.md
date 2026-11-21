@@ -170,7 +170,7 @@ any is asked, and neither is a number that does not fit:
   number of the Abstract not found where the paper reports, that the Introduction or its
   material, the Discussion, a "Limitations" or a conclusion gives, matched as the
   comparison matches one (as printed, as a rounding, an identifier whole, a power whole).
-  It is no `abstract-not-found` warning: the question names each section it stands in by
+  It is no `abstract-not-found` note: the question names each section it stands in by
   its heading and its first line there, and asks whether the paper reports it there or
   gives it as background; where some of the number's parts are found where the paper
   reports, "30" of "30-40%", it names the part that is not. If it reports it there,
@@ -178,7 +178,11 @@ any is asked, and neither is a number that does not fit:
   is found; a section under another that reports nothing, a "Limitations" under the
   Discussion, is named with both, and needs both, one given already among them. Otherwise the number is to be given in the Methods or the Results. A number found
   only on the title page, in a statement, a note, the keywords, a summary of the paper or
-  the reference list is not found, as before.
+  the reference list is not found, as before. A number not found is a note, never a
+  warning: on real papers it was right less than half the time, wrong where the paper gives
+  the number another way, as a word, as a proportion, inside a name
+  ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
+  right").
 - **A Background figure given nowhere** (`question-background-unsourced`): a structured
   Abstract's part titled or run in as Background, Introduction, Context, Rationale or
   Objective ("Background:", "**Objectives.**", a heading "Background" under the Abstract)

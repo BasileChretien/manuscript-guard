@@ -9623,14 +9623,29 @@ where it was measured is set by one rule (the author's decisions of 2026-11-20).
   code that says what the project lacks (`no-results`, `no-review`, `no-journal-chosen`).
 
 The table is `auditing/measured.py`, applied where the two reports take G6's and G14's
-findings (`auditing.gates.run_gates`, which both run) and where the audit says what it read
-of a PDF's reference list; `check` never reads it. Measured on main at d056f71:
+findings (`auditing.gates.run_gates`, which both run), where the audit says what it read of
+a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
+and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
+at d056f71, and the last two rows at 0949b4b, once the two judges had read the findings no
+verdict covered (`docs/corpus.md`, "Judging"):
 
 | Code | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|
 | `code-name-in-prose` (G14) | 50 | 18 | 8 papers | INFO | warns, fails at submission |
 | `model-artefact` (G6), a bare placeholder | 12 | 1 | 4 papers | INFO | fails from drafting |
 | `entries-not-told-apart` (G7) | 13 | 13 | none | warning | not given |
+| `abstract-not-found` (audit) | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
+| `claim-negation` (compare) | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
+
+The Abstract's numbers found nowhere were false where the paper gives the number another
+way: written out as a word, as a proportion where the Abstract gives a share, inside a name
+(a source's designation, an arXiv identifier). Each is a fix of its own, and the code stays a
+note until one measures 0.75. G4's `abstract-not-found`, a journal's Abstract missing, which
+`check` and an audit with `--journal` give, is another finding under the same name, and keeps
+its warning: an entry of the table names the gate it was judged under. A sentence that may
+now say the opposite was false mostly where a section was rewritten, its new negations those
+of new sentences rather than a claim reversed; `reworded`, which reads one edit of a
+project's own text, keeps the warning.
 
 A bare placeholder is a finding of the two rules of `data/ai_writing.yaml` of the kind whose
 findings were judged: `placeholder-slot`, a thing named in brackets ("[url]", "[citation

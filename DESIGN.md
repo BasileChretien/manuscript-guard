@@ -27491,8 +27491,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `emblem-512.png`, `favicon-32.png`) only to their presence and size, since their pixels
   depend on the browser that renders them: after an edit to the emblem the PNGs stay as
   they were and the suite passes (round 1 of #551, finding 4; `brand/README.md` says so).
-  Rendering the PNGs in CI against the committed ones would close it. Pinned by
-  `tests/test_brand.py::test_the_rendered_pictures_are_there_at_their_size`.
+  Rendering the PNGs in CI against the committed ones would close it. Accepted.
 
 - **The AI-use statement is held to names, and to the records that say a model made them.**
   G4's AI-use check (`gates/ai_use.py`, `text/model_names.py`; "The AI-use statement names

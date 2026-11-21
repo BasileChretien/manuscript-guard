@@ -301,24 +301,34 @@ def test_the_g14_test_runs_in_its_file(kept, capsys, project) -> None:
         _run(out, "test_language", project=project)
 
 
+@pytest.mark.parametrize(("direction", "code", "snippet", "said", "in_example"), [
+    # The example declares en-GB: one American spelling is a variant there, and alone it is
+    # the English the snippet's words are in.
+    ("--flagged", "spelling-variant", "The color of each report was recorded.",
+     "`spelling-variant` is not found in the snippet's findings (it gives no finding)", True),
+    # The example lists CI among the abbreviations it leaves undefined, meaning the "95% CI"
+    # of a level: a bare CI goes through there, and alone it is undefined.
+    ("--missed", "abbreviation-undefined", "The CI of the ratio was wide in the exposed group.",
+     "not reproduced: the snippet alone gives `abbreviation-undefined`; the report says so",
+     False),
+], ids=["declared English", "an exemption"])  # fmt: skip
 def test_the_snippet_is_read_with_no_declared_english_and_its_test_in_the_example(
-    kept, capsys, project
+    kept, capsys, project, direction: str, code: str, snippet: str, said: str,
+    in_example: bool
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A report about a gate checks its snippet for
-    `audit`, G6 and G14 only"): the snippet is read with an empty `paper.yaml`. One word in
-    American spelling is a `spelling-variant` in the example, which declares en-GB; alone
-    it is in the English its words are in, so the report says the code is not found in
-    the snippet's findings, and the test it prints, run in the example, disagrees."""
+    `audit`, G6 and G14 only"): the snippet is read with an empty `paper.yaml`, so with no
+    declared English and no exemptions. A fault that turns on one of them gets either
+    verdict the item names: the code not found in the snippet's findings, or "not
+    reproduced" of a defect the example's check lets through. Either way the test the
+    report prints, run in the example, disagrees with the report."""
     from test_language import codes, written
 
-    snippet = "The color of each report was recorded."
-    out = _reported(capsys, "--about", "G14", "--flagged", "spelling-variant", "--snippet",
-                    snippet)  # fmt: skip
-    assert ("**Does the snippet alone show it?** `spelling-variant` is not found in the "
-            "snippet's findings (it gives no finding)") in out  # fmt: skip
+    out = _reported(capsys, "--about", "G14", direction, code, "--snippet", snippet)
+    assert f"**Does the snippet alone show it?** {said}" in out
     with pytest.raises(AssertionError):
         _run(out, "test_language", project=project)
-    assert "spelling-variant" in codes(written(project, snippet))
+    assert (code in codes(written(project, snippet))) == in_example
 
 
 @pytest.mark.parametrize(("direction", "fails"), [("--flagged", True), ("--missed", False)])

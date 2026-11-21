@@ -279,6 +279,46 @@ def test_the_panel_s_comments_are_known_by_what_they_are_not_by_their_words(
     assert [t.text for t in threads_of(returned, **kept, panel=moved)] == ["Agreed."]
 
 
+def _rewritten(document: Path, part: str, change) -> None:
+    """`document` with `part` given by `change` of its text ("" where it is not there)."""
+    with zipfile.ZipFile(document) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    parts[part] = change(parts.get(part, b"").decode("utf-8")).encode("utf-8")
+    with zipfile.ZipFile(document, "w") as out:
+        for name, data in parts.items():
+            out.writestr(name, data)
+
+
+def test_a_panel_comment_with_a_symbol_inserted_is_filed_as_a_co_authors(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What filing a co-author's comments does not do",
+    "A panel's comment with a symbol inserted in it is filed as a co-author's"): `threads_of`
+    reads the `w:sym` in the panel's comment, so its digest is not the panel's and the comment
+    is filed, while the comments `suggestions.decisions` reads, `w:t` alone, still give the
+    panel's words. Without the symbol it is the panel's and is not filed."""
+    from manuscript_guard import tracked
+    from manuscript_guard.docxtext import paragraphs_of
+    from manuscript_guard.filed_comments import threads_of
+    from manuscript_guard.suggestions import short_digest
+
+    finding = "Finding r8-pe-02 is about the wording."
+    returned = commented(FIRST, tmp_path / "panel.docx", [
+        {"on": "This analysis asks whether", "author": "Panel Reader", "text": finding},
+    ])  # fmt: skip
+    names = {n for p in paragraphs_of(returned) for n in p.names}
+    kept = dict(vouched={n: n for n in names}, sources={n: n for n in names})
+    panel = [{"author": "Panel Reader", "comment": short_digest(finding)}]
+    assert threads_of(returned, **kept, panel=panel) == []
+    _rewritten(returned, "word/comments.xml", lambda xml: xml.replace(
+        f"{finding}</w:t></w:r>",
+        f'{finding}</w:t></w:r><w:r><w:sym w:font="Symbol" w:char="F062"/></w:r>', 1))
+    (thread,) = threads_of(returned, **kept, panel=panel)
+    assert (thread.author, thread.text) == ("Panel Reader", finding + "β")
+    (comment,), _parents = tracked.comments_of(returned)
+    assert short_digest(comment.text) == short_digest(finding)
+
+
 @needs_pandoc
 def test_a_comment_with_no_words_is_filed_and_reported(project: Path, tmp_path: Path) -> None:
     """Round 1 of #375: a comment that is a picture alone, with a reply, was filed with an
@@ -368,6 +408,63 @@ def test_an_unanswered_comment_says_the_file_and_line_of_its_paragraph(project: 
         found.message
     ), found.message
     assert "mg-p-" not in found.message
+
+
+def test_a_comment_whose_range_starts_in_a_footnote_is_made_on_text_with_no_place(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What filing a co-author's comments does not do",
+    "A comment whose range starts outside every paragraph of the body"): only
+    `word/document.xml` is read for ranges, so a comment ranged over a footnote is filed as
+    made on `text`, with no identifier and no words; one ranged over a paragraph of the body
+    has both. The footnote is as Word writes one: Word's own `footnotes.xml`, which the
+    document's relationships and content types name, gains it, and the body refers to it."""
+    from manuscript_guard.docxtext import paragraphs_of
+    from manuscript_guard.filed_comments import made_on, threads_of
+
+    with zipfile.ZipFile(FIRST) as archive:
+        assert ('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+                'footnotes" Target="footnotes.xml"') in archive.read(
+            "word/_rels/document.xml.rels").decode("utf-8")
+        assert ('<Override PartName="/word/footnotes.xml" ContentType="application/'
+                'vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>') in (
+            archive.read("[Content_Types].xml").decode("utf-8"))  # fmt: skip
+    footnote_xml = (
+        '<w:footnote w:id="1"><w:p w14:paraId="0A0B0C0D"><w:pPr><w:pStyle w:val="FootnoteText"/>'
+        '</w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>'
+        '<w:r><w:t xml:space="preserve"> </w:t></w:r><w:commentRangeStart w:id="10"/><w:r>'
+        "<w:t>A footnote's words.</w:t></w:r><w:commentRangeEnd w:id=\"10\"/><w:r><w:rPr>"
+        '<w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="10"/></w:r></w:p>'
+        "</w:footnote></w:footnotes>"
+    )
+    reference = ('<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr>'
+                 '<w:footnoteReference w:id="1"/></w:r>')  # fmt: skip
+    asks = '<w:t xml:space="preserve">This analysis asks whether </w:t></w:r>'
+
+    def thread(notes: list[dict], name: str):
+        returned = commented(FIRST, tmp_path / name, notes)
+        if "on" not in notes[0]:
+            _rewritten(returned, "word/footnotes.xml",
+                       lambda xml: xml.replace("</w:footnotes>", footnote_xml, 1))
+            _rewritten(returned, "word/document.xml",
+                       lambda xml: xml.replace(asks, asks + reference, 1))
+            with zipfile.ZipFile(returned) as archive:
+                assert footnote_xml in archive.read("word/footnotes.xml").decode("utf-8")
+                assert asks + reference in archive.read("word/document.xml").decode("utf-8")
+        names = {n for p in paragraphs_of(returned) for n in p.names}
+        (found,) = threads_of(returned, vouched={n: n for n in names},
+                              sources={n: n for n in names})  # fmt: skip
+        return found
+
+    footnote = thread([{"id": 10, "text": "Which source?"}], "footnote.docx")
+    assert (footnote.block, footnote.where, footnote.anchored) == ("text", "", "")
+    assert made_on(footnote.block) == "on text"
+    filed = footnote.finding("c1")
+    assert "where" not in filed and filed["anchored"] == "" and filed["block"] == "text"
+    body = thread([{"id": 10, "on": "This analysis asks whether", "text": "Which source?"}],
+                  "body.docx")  # fmt: skip
+    assert body.block == "paragraph" and body.where.startswith("mg-p-")
+    assert body.anchored.startswith("This analysis asks whether")
 
 
 def test_a_comment_whose_paragraph_moved_is_found_where_it_is_now(project: Path) -> None:
@@ -588,6 +685,24 @@ def test_importing_the_same_document_again_files_nothing_twice(
 
 
 @needs_pandoc
+def test_a_comment_saved_with_no_durable_id_then_with_one_is_filed_twice(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What filing a co-author's comments does not do",
+    "A comment saved by a Word that writes no durable id, then by one that does, is filed
+    twice"): its key goes from `para:` to `durable:`. Each copy imported again files nothing."""
+    build = built(project)
+    note = {"on": "This analysis asks whether", "text": "Which agency?"}
+    plain = commented(build, tmp_path / "plain.docx", [{**note, "durable": False}])
+    lasting = commented(build, tmp_path / "lasting.docx", [{**note, "durable": "AB12CD34"}])
+    for document in (plain, lasting, plain, lasting):
+        run("import", str(document), str(project), "--apply")
+    filed = by_commenter(project)["Ann Coauthor"]
+    assert [(f["id"], f["key"], f["finding"]) for f in filed] == [
+        ("c1", "para:00010000", "Which agency?"), ("c2", "durable:AB12CD34", "Which agency?")]
+
+
+@needs_pandoc
 def test_a_comment_on_a_paragraph_the_import_refused_is_still_filed(
     project: Path, tmp_path: Path
 ) -> None:
@@ -646,6 +761,31 @@ def test_a_reply_is_kept_with_its_comment_and_a_reply_added_later_joins_it(
     (finding,) = by_commenter(project)["Ann Coauthor"]
     assert [r["by"] for r in finding["replies"]] == ["Ben Second", "Ana Author"]
     assert "resolution" not in finding, "a reply in Word was taken for an answer"
+
+
+@needs_pandoc
+def test_a_comment_edited_after_it_was_filed_keeps_its_first_words_and_import_says_so(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What filing a co-author's comments does not do",
+    "A comment edited in Word after it was filed keeps the words first filed"): `import` says
+    it reads differently, and a reply edited since is filed as a further reply."""
+    build = built(project)
+    note = {"on": "This analysis asks whether", "text": "Which agency?", "durable": "AB12CD34"}
+    reply = {"on": "This analysis asks", "author": "Ben Second", "text": "The national one.",
+             "reply_to": 0}  # fmt: skip
+    once = commented(build, tmp_path / "once.docx", [note, reply])
+    run("import", str(once), str(project), "--apply")
+    edited = commented(build, tmp_path / "edited.docx", [
+        {**note, "text": "Which agency, and when?"}, {**reply, "text": "The national one, 2024."},
+    ])  # fmt: skip
+    code, said = run("import", str(edited), str(project), "--apply")
+    assert ("  c1 reads differently in edited.docx; the record keeps the words it was filed "
+            "with.") in said, said
+    (finding,) = by_commenter(project)["Ann Coauthor"]
+    assert finding["finding"] == "Which agency?"
+    assert [r["text"] for r in finding["replies"]] == ["The national one.",
+                                                       "The national one, 2024."]
 
 
 @needs_pandoc

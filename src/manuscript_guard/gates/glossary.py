@@ -409,20 +409,47 @@ def _table_captions(prose: str, start: int, end: int) -> list[tuple[int, int]]:
     end: `Table:` anywhere, and `:` where a table's line is next to it, in the paragraph or
     across the blank line above or below it."""
     lines = [line for _at, line in _lines(prose, start, end)]
-    above = prose[:start].rstrip().rsplit("\n", 1)[-1]
-    below = prose[end:].lstrip("\r\n").split("\n", 1)[0]
     at = start
     for index, line in enumerate(lines):
         caption = _TABLE_CAPTION.match(line)
-        if caption is not None:
-            previous = lines[index - 1] if index else above
-            following = lines[index + 1] if index + 1 < len(lines) else below
-            if caption["table"] != ":" or any(
-                _TABLE_LINE.match(near) for near in (previous, following)
-            ):
-                return [(at, end)]
+        if caption is not None and (
+            caption["table"] != ":" or _beside_a_table(prose, lines, index, start, end)
+        ):
+            return [(at, end)]
         at += len(line) + 1
     return []
+
+
+def _beside_a_table(prose: str, lines: list[str], index: int, start: int, end: int) -> bool:
+    """Whether a table's line is next to the paragraph's line `index`: the line before it or
+    after it, and for the paragraph's first and last lines the line above the paragraph and
+    the line below it (`_line_above`, `_line_below`), looked for only then."""
+    previous = lines[index - 1] if index else _line_above(prose, start)
+    if _TABLE_LINE.match(previous):
+        return True
+    following = lines[index + 1] if index + 1 < len(lines) else _line_below(prose, end)
+    return _TABLE_LINE.match(following) is not None
+
+
+def _line_above(prose: str, start: int) -> str:
+    """The last line of `prose[:start].rstrip()`, found without copying the text before
+    `start`. A copy of all the text before each paragraph, and of all after it, made the
+    captions quadratic in the paragraphs: 24 s of a book of 3,221 paragraphs (the robustness
+    sweep of 2026-11-21)."""
+    stop = start
+    while stop and prose[stop - 1].isspace():
+        stop -= 1
+    return prose[prose.rfind("\n", 0, stop) + 1 : stop]
+
+
+def _line_below(prose: str, end: int) -> str:
+    """The first line of `prose[end:].lstrip("\\r\\n")`, found without copying the text after
+    `end` (`_line_above`)."""
+    begin = end
+    while begin < len(prose) and prose[begin] in "\r\n":
+        begin += 1
+    stop = prose.find("\n", begin)
+    return prose[begin:] if stop < 0 else prose[begin:stop]
 
 
 def latex_captions(source) -> list[tuple[int, int]]:

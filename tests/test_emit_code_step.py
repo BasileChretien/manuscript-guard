@@ -347,6 +347,34 @@ def test_without_a_repository_the_file_is_read_and_the_commit_said_unchecked(
 
 
 @needs_git
+def test_a_git_above_the_ceiling_refuses_the_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A code step's search for a `.git` above its file
+    ignores `GIT_CEILING_DIRECTORIES`"): git does not look past the ceiling and says no
+    repository holds the file, but a `.git` above it keeps the step from being recorded
+    unchecked, and it is refused, failing closed. With no `.git` above, the same step is
+    recorded unchecked."""
+    from manuscript_guard.emit import code_at, definition_code
+
+    if any((place / ".git").exists() for place in (tmp_path, *tmp_path.parents)):
+        pytest.skip("a .git lies above the temporary folder")
+    outer = tmp_path / "outer"
+    root = outer / "project"
+    root.mkdir(parents=True)
+    file = root / "fit.py"
+    file.write_text("def fit(x):\n    return x + 1\n", encoding="utf-8")
+    now = definition_code(file.read_text(encoding="utf-8"), "fit")
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(outer))
+    commit, why = code_at(file, "fit.py", "fit", "results-v1", now)
+    assert commit is None and why.startswith("no git repository holds fit.py here")
+    git(outer, "init", "-q")
+    with pytest.raises(ValueError, match="git could not be asked") as refused:
+        code_at(file, "fit.py", "fit", "results-v1", now)
+    assert "not a git repository" in str(refused.value)
+
+
+@needs_git
 def test_verify_re_runs_an_adapter_with_a_code_step_and_passes(tmp_path: Path) -> None:
     from manuscript_guard.contracts import load_project
     from manuscript_guard.verify import to_report, verify

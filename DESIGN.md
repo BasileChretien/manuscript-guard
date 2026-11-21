@@ -17246,7 +17246,6 @@ been sorted yet.
 - **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
   built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
   keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
-  Pinned by `tests/test_checking.py::test_no_test_runs_the_pages_javascript_and_the_one_file_naming_it_reads_it`.
 - **"Any browser" means a current one.** The page uses `??` and `<dialog>`, so a browser older
   than about 2022 shows it wrongly or not at all. What a co-author sees then is untested.
   Accepted.

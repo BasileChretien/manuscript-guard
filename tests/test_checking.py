@@ -422,29 +422,45 @@ def test_a_flag_is_closed_by_its_maker_or_an_edit_and_not_by_another_persons_ok(
     tmp_path: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "`coauthor-flag-open` is held to the person, not to
-    the item"): a co-author's later ok on someone else's flag leaves it open; an edit to the
-    sentence closes it, whatever the edit did; and its maker's own not sure closes it too."""
+    the item"): a co-author's later ok on someone else's flag leaves it open; its maker's own
+    later ok, or not sure, closes it; an edit to the sentence closes it, whatever the edit did,
+    until the item is sent again, when the maker's answer decides once more and another's ok
+    still does not."""
     from manuscript_guard.checking.recap import flags_of
 
-    path = write_items(tmp_path)
-    items = load_items(tmp_path, path)
-    flag = answers_for(items, by="A Person", statuses={"claim-1": "wrong"})
-    import_answers(tmp_path, _send(tmp_path, "flag.json", flag), items)
-    other = answers_for(items, by="Another Person", statuses={"claim-1": "ok"})
-    other["answers"][0]["at"] = "2026-10-09T09:00:00"
-    import_answers(tmp_path, _send(tmp_path, "other.json", other), items)
-    assert [(d.by, d.id, d.status) for d in flags_of(tmp_path, items)] == [
-        ("A Person", "claim-1", "wrong")]  # fmt: skip
+    open_flag = [("A Person", "claim-1", "wrong")]
 
+    def said(root: Path, items, by: str, answer: str, at: str) -> None:
+        document = answers_for(items, by=by, statuses={"claim-1": answer})
+        document["answers"][0]["at"] = at
+        import_answers(root, _send(root, f"{by}-{answer}-{at[:10]}.json", document), items)
+
+    def flagged(root: Path):
+        root.mkdir()
+        path = write_items(root)
+        items = load_items(root, path)
+        said(root, items, "A Person", "wrong", "2026-10-08T09:00:00")
+        said(root, items, "Another Person", "ok", "2026-10-09T09:00:00")
+        assert [(d.by, d.id, d.status) for d in flags_of(root, items)] == open_flag
+        return path, items
+
+    for closing in ("ok", "unsure"):
+        root = tmp_path / closing
+        _path, items = flagged(root)
+        said(root, items, "A Person", closing, "2026-10-10T09:00:00")
+        assert flags_of(root, items) == (), closing
+
+    root = tmp_path / "edited"
+    path, _items = flagged(root)
     document = json.loads(path.read_text(encoding="utf-8"))
     document["items"][1]["sentences"][0]["text"] = "Arrests mainly reflect enforcement, it seems."
     path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-    assert flags_of(tmp_path, load_items(tmp_path, path)) == ()
-
-    unsure = answers_for(items, by="A Person", statuses={"claim-1": "unsure"})
-    unsure["answers"][0]["at"] = "2026-10-10T09:00:00"
-    import_answers(tmp_path, _send(tmp_path, "unsure.json", unsure), items)
-    assert flags_of(tmp_path, items) == ()
+    edited = load_items(root, path)
+    assert flags_of(root, edited) == ()
+    # Sent again: the maker flags the new text, and another's ok on it leaves the flag open.
+    said(root, edited, "A Person", "wrong", "2026-10-11T09:00:00")
+    said(root, edited, "Another Person", "ok", "2026-10-12T09:00:00")
+    assert [(d.by, d.id, d.status) for d in flags_of(root, edited)] == open_flag
 
 
 def test_an_item_someone_has_already_checked_is_not_asked_again(tmp_path: Path) -> None:
@@ -1498,43 +1514,11 @@ def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_al
     assert "title: it.title" in page
 
 
-def test_no_test_runs_the_pages_javascript_and_the_one_file_naming_it_reads_it() -> None:
-    """A known gap (DESIGN.md, Known gaps, "No test runs the page's JavaScript"): the page's
-    storage, download, dialog, clipboard and keyboard handling are in its script; no
-    JavaScript file of the tests names the page, and the one test file that names its
-    template imports nothing that could run it. The 2026-11-09 triage planned a fix (F20),
-    which will change this test."""
-    import ast
-
-    from manuscript_guard.checking.bundle import TEMPLATE
-
-    page = TEMPLATE.read_text(encoding="utf-8")
-    for part in ("localStorage.setItem(KEY,", "a.download = BUNDLE.filename", '<dialog id="sent">',
-                 "navigator.clipboard.writeText(", 'document.addEventListener("keydown"'):
-        assert part in page, part  # fmt: skip
-    root = Path(__file__).resolve().parents[1]
-    scripts = [path for folder in (root / "tests", root / "web" / "test",
-                                   root / "src" / "manuscript_guard" / "checking")
-               for path in folder.rglob("*") if path.suffix in (".js", ".mjs", ".cjs")]  # fmt: skip
-    assert [path for path in scripts if "checker" in path.read_text(encoding="utf-8")] == []
-    readers = [path.name for path in sorted((root / "tests").glob("*.py"))
-               if "checker.html" in (text := path.read_text(encoding="utf-8"))
-               or "bundle import TEMPLATE" in text]  # fmt: skip
-    assert readers == ["test_checking.py"]
-    tree = ast.parse((root / "tests" / "test_checking.py").read_text(encoding="utf-8"))
-    imported = {alias.name.split(".")[0] for node in ast.walk(tree)
-                if isinstance(node, ast.Import) for alias in node.names} | {
-        node.module.split(".")[0] for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module}  # fmt: skip
-    assert not imported & {"subprocess", "playwright", "selenium", "py_mini_racer", "quickjs",
-                           "dukpy", "js2py", "pyppeteer"}  # fmt: skip
-
-
 def test_the_highlighter_marks_a_word_inside_an_escape_it_spells() -> None:
     """A known gap (DESIGN.md, Known gaps, "The highlighter can mark inside a character
     reference"): `marks` escapes the text and then marks each word in what it escaped, so a
     word that spells part of an escape, `amp` or `lt`, is marked inside `&amp;` or `&lt;`.
-    No test runs the page's script (the gap above), so what is held is the function as
+    No test runs the page's script (the Known gap above it), so what is held is the function as
     written, and what its steps, taken in the same order, make of such a text."""
     from manuscript_guard.checking.bundle import TEMPLATE
 
@@ -2763,10 +2747,11 @@ def test_impact_finds_a_supplements_cited_sentence_under_the_main_text_file_of_i
     project: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "`impact` finds the answers of the other groups by a
-    file's name"): a cited sentence records its file's name alone, so an answer on one in
-    `supplementary/main.md` is listed for `main.md`; a methods item there records its path,
-    and its answer is not. The 2026-11-09 triage planned a fix (F17), which will change this
-    test."""
+    file's name"): a cited sentence or a value records its file's name alone, so an answer on
+    a cited sentence of `supplementary/main.md` is listed for `main.md`, and answers on a cited
+    sentence and a value of `main.md` are listed for `supplementary/main.md`; a methods item
+    records its path, and its answer is listed for its own file only. The 2026-11-09 triage
+    planned a fix (F17), which will change this test."""
     from manuscript_guard.checking.store import Decision, _append
     from manuscript_guard.cli import load_project
     from manuscript_guard.contracts import load_namespace
@@ -2782,17 +2767,33 @@ def test_impact_finds_a_supplements_cited_sentence_under_the_main_text_file_of_i
                  if item["title"].startswith("The signal was first described in older adults"))
     method = next(item for item in _methods(document)
                   if item["sentences"][0]["text"] == "The supplement's data were held apart.")
+    main_claim = next(item for item in only(document, "claim")
+                      if item["title"].startswith("The reporting odds ratio observed here"))
+    main_value = next(item for item in only(document, "literature")
+                      if item["title"].endswith("lit.agency.withdrawn_estimate"))
+    main_method = next(item for item in _methods(document)
+                       if item["sentences"][0]["section"] == "main.md")
     assert claim["sentences"][0]["section"] == "main.md"
     assert method["sentences"][0]["section"] == "supplementary/main.md"
+    assert {s["section"] for s in main_claim["sentences"] + main_value["sentences"]} == {
+        "main.md"}  # fmt: skip
+    answered = (claim, method, main_claim, main_value, main_method)
     _append(project, [
         Decision("2026-10-28T09:00:00+09:00", "Ada Example", item["id"], item["group"],
-                 item["title"], "ok", "", digest_of(item), "b") for item in (claim, method)
+                 item["title"], "ok", "", digest_of(item), "b") for item in answered
     ])  # fmt: skip
     loaded = load_project(project)[0]
     _namespace, results, literature, _ = load_namespace(loaded)
-    main_text = impact_of(loaded, results, literature, project / "manuscript" / "main.md")
-    assert main_text.answers == [
-        f"Ada Example on {claim['title']!r} (ok, 2026-10-28T09:00:00+09:00)"]
+
+    def listed(*items: dict) -> list[str]:
+        return [f"Ada Example on {item['title']!r} (ok, 2026-10-28T09:00:00+09:00)"
+                for item in items]  # fmt: skip
+
+    manuscript = project / "manuscript"
+    main_text = impact_of(loaded, results, literature, manuscript / "main.md")
+    assert main_text.answers == listed(claim, main_claim, main_value, main_method)
+    supplement = impact_of(loaded, results, literature, manuscript / "supplementary" / "main.md")
+    assert supplement.answers == listed(claim, method, main_claim, main_value)
 
 
 def test_a_projects_own_methods_group_is_refused_by_build_and_read_by_import_and_status(

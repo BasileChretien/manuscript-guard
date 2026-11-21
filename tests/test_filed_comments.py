@@ -417,19 +417,40 @@ def test_a_comment_whose_range_starts_in_a_footnote_is_made_on_text_with_no_plac
     "A comment whose range starts outside every paragraph of the body"): only
     `word/document.xml` is read for ranges, so a comment ranged over a footnote is filed as
     made on `text`, with no identifier and no words; one ranged over a paragraph of the body
-    has both."""
+    has both. The footnote is as Word writes one: Word's own `footnotes.xml`, which the
+    document's relationships and content types name, gains it, and the body refers to it."""
     from manuscript_guard.docxtext import paragraphs_of
     from manuscript_guard.filed_comments import made_on, threads_of
+
+    with zipfile.ZipFile(FIRST) as archive:
+        assert ('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+                'footnotes" Target="footnotes.xml"') in archive.read(
+            "word/_rels/document.xml.rels").decode("utf-8")
+        assert ('<Override PartName="/word/footnotes.xml" ContentType="application/'
+                'vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>') in (
+            archive.read("[Content_Types].xml").decode("utf-8"))  # fmt: skip
+    footnote_xml = (
+        '<w:footnote w:id="1"><w:p w14:paraId="0A0B0C0D"><w:pPr><w:pStyle w:val="FootnoteText"/>'
+        '</w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>'
+        '<w:r><w:t xml:space="preserve"> </w:t></w:r><w:commentRangeStart w:id="10"/><w:r>'
+        "<w:t>A footnote's words.</w:t></w:r><w:commentRangeEnd w:id=\"10\"/><w:r><w:rPr>"
+        '<w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="10"/></w:r></w:p>'
+        "</w:footnote></w:footnotes>"
+    )
+    reference = ('<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr>'
+                 '<w:footnoteReference w:id="1"/></w:r>')  # fmt: skip
+    asks = '<w:t xml:space="preserve">This analysis asks whether </w:t></w:r>'
 
     def thread(notes: list[dict], name: str):
         returned = commented(FIRST, tmp_path / name, notes)
         if "on" not in notes[0]:
-            _rewritten(returned, "word/footnotes.xml", lambda _xml: (
-                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes '
-                'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-                '<w:footnote w:id="1"><w:p><w:commentRangeStart w:id="10"/><w:r><w:t>A '
-                "footnote's words.</w:t></w:r><w:commentRangeEnd w:id=\"10\"/><w:r>"
-                '<w:commentReference w:id="10"/></w:r></w:p></w:footnote></w:footnotes>'))
+            _rewritten(returned, "word/footnotes.xml",
+                       lambda xml: xml.replace("</w:footnotes>", footnote_xml, 1))
+            _rewritten(returned, "word/document.xml",
+                       lambda xml: xml.replace(asks, asks + reference, 1))
+            with zipfile.ZipFile(returned) as archive:
+                assert footnote_xml in archive.read("word/footnotes.xml").decode("utf-8")
+                assert asks + reference in archive.read("word/document.xml").decode("utf-8")
         names = {n for p in paragraphs_of(returned) for n in p.names}
         (found,) = threads_of(returned, vouched={n: n for n in names},
                               sources={n: n for n in names})  # fmt: skip

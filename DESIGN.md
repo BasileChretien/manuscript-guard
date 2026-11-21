@@ -860,6 +860,10 @@ a warning and never a failure; `figure-greyscale-confused` for grey, a note, and
 where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
 the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
 already less than 10 apart to normal vision is not said, since no deficiency made it so.
+White, #ffffff, is taken for the page and paired with no colour: on real papers 14 of the 25
+pairs judged false set a pale band, a map's lightest class or a panel's fill against the
+white around it, which tells no two marks apart (Basile, 2026-11-21, item 5 of the corpus
+plan, `docs/corpus.md`).
 
 **A figure that draws a continuous scale is not compared.** A colormap, or points coloured
 by a variable, has neighbours just over 10 apart, and grey, which keeps lightness alone, or a
@@ -18620,10 +18624,12 @@ Added by the adversarial review, verified and **not** fixed:
   figure is not compared. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
-  by coloured labels is not checked. Every colour painted is compared with every other, the
-  background and the grid's among them: the check does not know which colours encode data, so
-  a series and a grid line made one by a deficiency are said, and `allow_colours` is how a
-  figure says that pair does not matter. A colour laid at an opacity is laid over white, not
+  by coloured labels is not checked. Every colour painted is compared with every other but
+  white, #ffffff, which is taken for the page and compared with none (Basile, 2026-11-21): a
+  series drawn in white, white bars with dark outlines, is not compared with the colours
+  beside it. A background of another colour and the grid's are compared: the check does not
+  know which colours encode data, so a series and a grid line made one by a deficiency are
+  said, and `allow_colours` is how a figure says that pair does not matter. A colour laid at an opacity is laid over white, not
   over what is under it. A PDF's CMYK is taken to RGB without its profile, and any colour
   space of three numbers is read as sRGB. The deficiencies are simulated at full severity
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and

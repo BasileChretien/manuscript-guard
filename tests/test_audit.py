@@ -316,6 +316,30 @@ def test_an_emoji_word_inserted_is_read_from_the_choice(
     assert read_docx(make_docx(tmp_path / "e.docx", body)) == f"\n12{shown}34"
 
 
+def test_the_audit_reads_every_choice_and_no_fallback_whatever_the_choice_requires(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit and the import read every `mc:Choice`
+    and no `mc:Fallback`"): a number only in a fallback, behind a choice the audit does not
+    know, is not read, and a second choice is read as well as the first."""
+
+    def behind(choices: str) -> str:
+        return (
+            f"<w:r><mc:AlternateContent {MC}>{choices}"
+            "<mc:Fallback><w:t>99</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+        )
+
+    unknown = behind('<mc:Choice Requires="w99"><w99:mark xmlns:w99="urn:example"/></mc:Choice>')
+    body = f"<w:p><w:r><w:t>12</w:t></w:r>{unknown}<w:r><w:t>34</w:t></w:r></w:p>"
+    assert read_docx(make_docx(tmp_path / "u.docx", body)) == "\n1234"
+    two = behind(
+        '<mc:Choice Requires="w99"><w:t>5</w:t></mc:Choice>'
+        '<mc:Choice Requires="w98"><w:t>6</w:t></mc:Choice>'
+    )
+    body = f"<w:p><w:r><w:t>12 </w:t></w:r>{two}<w:r><w:t> 34</w:t></w:r></w:p>"
+    assert read_docx(make_docx(tmp_path / "t.docx", body)) == "\n12 56 34"
+
+
 GREEK_STYLE = (
     '<w:style w:type="character" w:styleId="Greek"><w:name w:val="Greek"/>'
     '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:style>'
@@ -338,6 +362,24 @@ def test_the_symbol_font_is_read_as_what_it_draws(tmp_path: Path, run: str, styl
     in that font it is an `m`, or the private-use U+F06D, which Word draws as μ."""
     body = f'<w:p><w:r><w:t xml:space="preserve">5 </w:t></w:r>{run}<w:r><w:t>g</w:t></w:r></w:p>'
     assert read_docx(make_docx(tmp_path / "s.docx", body, styles)) == f"\n5 {chr(0x03BC)}g"
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        '<w:r><w:sym w:font="Wingdings" w:char="F0FE"/></w:r>',
+        '<w:r><w:sym w:font="Wingdings" w:char="F04A"/></w:r>',
+        '<w:r><w:rPr><w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/></w:rPr><w:t>J</w:t></w:r>',
+    ],
+    ids=["check-box", "smiley-inserted", "smiley-autocorrected"],
+)
+def test_a_symbol_with_no_text_reads_as_a_space(tmp_path: Path, symbol: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A symbol with no text refuses its paragraph in
+    the import, and reads as a space in the audit"): a Wingdings check box, or the smiley
+    AutoCorrect makes of `:)`, is a space to the audit, which keeps the numbers either side
+    of it apart and refuses nothing (the import refuses the paragraph)."""
+    body = f"<w:p><w:r><w:t>12</w:t></w:r>{symbol}<w:r><w:t>34</w:t></w:r></w:p>"
+    assert read_docx(make_docx(tmp_path / "w.docx", body)) == "\n12 34"
 
 
 def test_a_file_that_is_not_a_docx_says_so(tmp_path: Path) -> None:

@@ -17801,8 +17801,9 @@ been sorted yet.
     superscript is read at its own size, not the smaller one Word prints it at, and the
     size for complex scripts (`w:szCs`) only where the run says it is one (`w:cs`,
     `w:rtl`).
-    Pinned by `tests/test_hidden.py::test_text_kept_from_sight_by_its_place_or_its_drawing_is_not_found`
-    and `tests/test_hidden.py::test_a_superscript_is_read_at_its_own_size_and_a_complex_run_at_its_own`.
+    Pinned by `tests/test_hidden.py::test_text_kept_from_sight_by_its_place_or_its_drawing_is_not_found`,
+    `tests/test_hidden.py::test_a_superscript_is_read_at_its_own_size_and_a_complex_run_at_its_own`
+    and `tests/test_hidden.py::test_text_in_the_colour_of_a_picture_behind_it_is_not_found`.
   - Behind a run is its highlight, its shading, its paragraph's or its table cell's, and
     else the page: white, and the page's background where the document shows it, so white
     text on a dark background is said, since the paper it prints on is white. A pattern of
@@ -17842,7 +17843,9 @@ been sorted yet.
     `vw` or `vh` is not read, the viewport being unknown. The page is read by a scanner of
     this toolkit's own, in time linear in its length, since Python's parser took minutes
     over some broken markup.
-    Pinned by `tests/test_screen.py::test_a_page_is_read_by_its_elements_own_styles_and_as_it_is_written`.
+    Pinned by `tests/test_screen.py::test_a_page_is_read_by_its_elements_own_styles_and_as_it_is_written`,
+    `tests/test_screen.py::test_hidden_text_holding_a_zero_width_character_is_said`
+    and `tests/test_screen.py::test_the_html_in_a_markdown_file_is_read_by_its_own_styles_alone`.
   - A PDF is read for the words of its text, as a stored source is read: what it hides by
     its colour, its size, its drawing mode or its place is found only where its words are
     words to a model, and an image's text is not read. Its text is read as far as 4 MB, from
@@ -17871,8 +17874,9 @@ been sorted yet.
     U+2064) and variation selectors are not said. Words to a model are read with every
     character that prints nothing taken out, and in their compatibility form (NFKC), so
     neither splits them; letters of another script that look alike still do.
-    Pinned by `tests/test_hidden.py::test_only_the_five_zero_width_characters_and_tags_are_said_of_the_invisible_ones`
-    and `tests/test_hidden.py::test_tag_characters_are_reported_with_what_they_spell`.
+    Pinned by `tests/test_hidden.py::test_only_the_five_zero_width_characters_and_tags_are_said_of_the_invisible_ones`,
+    `tests/test_hidden.py::test_tag_characters_are_reported_with_what_they_spell`
+    and `tests/test_hidden.py::test_a_zero_width_character_with_a_use_is_not`.
   - A document in the Strict form of ISO/IEC 29500, which Word opens, is not read: its parts
     are named as not read, and the build does not send it. Parts are found as the packaging
     conventions name them, percent-escapes decoded and in any case; where the main
@@ -21153,8 +21157,9 @@ Open, recorded as each change landed:
   table of any of pandoc's kinds, an image and a binding. So a `## Books` inside it ends
   it, where a list under `# References` runs on through the headings below its own, and so
   does a bold title over a second list, "**Additional references**": the entries after
-  either are read as prose. An entry that opens with "Table 1", or with a caption's word and
-  a number in another language, ends it too. What follows the list under no title of its
+  either are read as prose. An entry that opens with "Table 1", or an entry in another
+  language that opens with an English caption's word and a number, ends it too. What
+  follows the list under no title of its
   own, an appendix of plain paragraphs, is passed over with it. The line has to open a
   paragraph, which the audit does not ask: the word alone on a line inside a paragraph is a
   hard wrap, and an item of a list, beside another item ("3. References" after "2.
@@ -21899,6 +21904,7 @@ Open, recorded as each change landed:
   "could potentially", and the other two are not read.
   Pinned by `tests/test_corruption.py::test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads`,
   `tests/test_corruption.py::test_a_placeholder_drawn_in_a_figure_fails`,
+  `tests/test_corruption.py::test_a_placeholder_in_a_table_caption_fails`,
   `tests/test_corruption.py::test_what_a_cited_reference_holds_and_is_no_placeholder_passes`
   and `tests/test_corruption.py::test_a_placeholder_in_an_uncited_reference_says_nothing`.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
@@ -21915,7 +21921,8 @@ Open, recorded as each change landed:
   letter, `\noindent` or a bold label, is missed, where the rule before #538 caught it
   (round 4, finding 3). Closing these needs the line before read as pandoc parses it, not
   by its last character.
-  Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`.
+  Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`
+  and `tests/test_writing.py::test_an_assistant_s_opener_after_a_command_alone_on_its_line_in_latex_fails`.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
   results already existed is frozen as it stood on the next run, and cannot be told from one
   written first; nor can a plan changed between writing the analysis and running it. Any
@@ -24051,7 +24058,8 @@ Open, recorded as each change landed:
     as before (ROR)" is read as a definition whose long form is "ratio as before". The
     definition is still counted; the long form quoted in a message can be wrong, and two
     definitions of one thing can be reported as two meanings.
-    Pinned by `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_early`.
+    Pinned by `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_early`
+    and `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_late`.
   - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
     and `Hb` are missed, where `iPSC` and `siRNA` are caught. `Hb` and `Tregs` cannot be
     defined either, each being the capital of a word, so "haemoglobin (Hb)" is not tracked.
@@ -24169,8 +24177,10 @@ Open, recorded as each change landed:
     opens with a colon and a space is cut before that word, which is read as a
     definition-list term: "PRR: proportional reporting" / "ratio" / ":   used in ..."
     gives PRR "proportional reporting". Accepted.
-  - A glossary's or a caption's long form is compared with the text's as written: "CI =
-    95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
+  - A glossary's long form is compared with the text's as written: "CI = 95% confidence
+    interval" beside "confidence interval (CI)" is reported as two meanings. A legend's is
+    compared too, "CI = credible interval" there is reported, but its "CI = 95% confidence
+    interval" is not.
     Pinned by `tests/test_language.py::test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written`.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.
   - `no-headings` is said of a Markdown manuscript only; a LaTeX one has its sections.
@@ -24242,7 +24252,8 @@ Open, recorded as each change landed:
   - Tables and figures are not read, since both are generated from results. An abbreviation
     defined in the text for a table's sake is reported as unused, and one used only in a
     caption is not seen. The hint on `abbreviation-unused` says so.
-    Pinned by `tests/test_language.py::test_a_short_form_defined_for_a_table_or_used_in_a_caption_is_unused`.
+    Pinned by `tests/test_language.py::test_a_short_form_defined_for_a_table_or_used_in_a_caption_is_unused`
+    and `tests/test_language.py::test_a_short_form_used_only_in_a_table_s_or_a_figure_s_caption_is_not_seen`.
   - Title-page text comes from `paper.yaml` and `authors.yaml`, which are not read.
     Accepted.
   - The sections where nothing is reported as undefined are found by English words in

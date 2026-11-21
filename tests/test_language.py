@@ -180,6 +180,26 @@ def test_a_short_form_defined_for_a_table_or_used_in_a_caption_is_unused(project
     assert "unless a table or a figure uses it: those are not read here" in finding.hint
 
 
+def test_a_short_form_used_only_in_a_table_s_or_a_figure_s_caption_is_not_seen(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): an undefined `ALT` used only in a table's caption, or
+    only in a figure's, is not reported, where the same `ALT` in the text is."""
+    results = project / "results" / "01_disproportionality.json"
+    caption = "Reports by drug group. Values are n (%) unless stated."
+    data = results.read_text(encoding="utf-8")
+    assert caption in data, "the fixture's caption moved"
+    results.write_text(data.replace(caption, "Reports by drug group, with the ALT."),
+                       encoding="utf-8")  # fmt: skip
+    assert reported(project, "The counts are in the table.\n\n{{table.baseline}}") == []
+    assert reported(project, "The values are drawn.\n\n![ALT by drug group]"
+                    "(figures/forest.svg)") == []  # fmt: skip
+    # The other side: the same short form in the text.
+    assert reported(project, "The values are drawn.\n\n![ALT by drug group]"
+                    "(figures/forest.svg)\n\nThe ALT rose.") == [("undefined", "ALT")]  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("text", "said"),
     [
@@ -1343,24 +1363,47 @@ def test_a_long_form_matched_by_letters_may_start_early(project: Path) -> None:
                               "before' earlier"), message  # fmt: skip
 
 
+def test_a_long_form_matched_by_letters_may_start_late(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): "the relative risk ratio (RR)" is read with the long
+    form "risk ratio", a word late, so beside "the risk ratio (RR)" it is one meaning
+    defined again, where "the rate ratio (RR)" is a second meaning."""
+    late = written(project, "# Methods\n\nWe used the risk ratio (RR). Later the relative risk "
+                   "ratio (RR) was used. The RR rose.\n")  # fmt: skip
+    assert found(late, "abbreviation-redefined") == [
+        "RR is defined again; it was defined earlier on the same line"]  # fmt: skip
+    # The other side: a long form its letters do not shorten is a second meaning.
+    other = written(project, "# Methods\n\nWe used the risk ratio (RR). Later the rate ratio "
+                    "(RR) was used. The RR rose.\n")  # fmt: skip
+    assert [message.split(" on the")[0] for message in found(other, "abbreviation-redefined")] == [
+        "RR is defined as 'rate ratio' here and as 'risk ratio' earlier"]  # fmt: skip
+
+
 @pytest.mark.parametrize(
-    ("glossary", "said"),
-    [("CI = 95% confidence interval", [("redefined", "CI")]),
+    ("after", "said", "long"),
+    [("# Abbreviations\n\nCI = 95% confidence interval", [("redefined", "CI")],
+      "'95% confidence interval'"),
      # The other side: the same long form as the text's.
-     ("CI = confidence interval", [])],
+     ("# Abbreviations\n\nCI = confidence interval", [], ""),
+     # A legend's long form is compared too, and not as written: its "95%" is let be.
+     ("Table 1. Odds by year. CI = credible interval.", [("redefined", "CI")],
+      "'credible interval'"),
+     ("Table 1. Odds by year. CI = 95% confidence interval.", [], "")],
 )  # fmt: skip
 def test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written(
-    project: Path, glossary: str, said: list[tuple[str, str]]
+    project: Path, after: str, said: list[tuple[str, str]], long: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
     abbreviation by its capitals."): "CI = 95% confidence interval" in a glossary beside
-    "confidence interval (CI)" in the text is reported as two meanings."""
+    "confidence interval (CI)" in the text is reported as two meanings; a legend's long
+    form is compared too, so its "CI = credible interval" is reported, but its "CI = 95%
+    confidence interval" is not."""
     report = written(project, "# Methods\n\nThe confidence interval (CI) was computed. The CI "
-                     f"was wide.\n\n# Abbreviations\n\n{glossary}\n")  # fmt: skip
+                     f"was wide.\n\n{after}\n")  # fmt: skip
     assert sorted((f.code.removeprefix("abbreviation-"), f.message.split()[0])
                   for f in report.findings) == said  # fmt: skip
     if said:
-        assert "'95% confidence interval'" in report.findings[0].message
+        assert long in report.findings[0].message
 
 
 def test_what_follows_the_long_form_may_hold_a_bracket(project: Path) -> None:

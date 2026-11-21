@@ -9472,6 +9472,21 @@ def test_placeholders_are_read_by_the_shapes_their_rules_name(project: Path) -> 
     ], said
 
 
+def _png_saying(words: str) -> bytes:
+    """A picture of one white pixel, as a PNG, that carries `words` as its text."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data)))  # fmt: skip
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"tEXt", b"Comment\x00" + words.encode("latin-1"))
+            + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff")) + chunk(b"IEND", b""))  # fmt: skip
+
+
 def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
     project: Path,
 ) -> None:
@@ -9479,7 +9494,7 @@ def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
     the text the gate reads."): in the manuscript a Spanish "todo", or "tbd" in small
     letters, fails, and "[Name of the hospital]", "[ETHICS COMMITTEE]", a lone "XX" and a
     single "TK" pass; outside it, a PDF figure's text and every table's caption are read, a
-    table placed or not, and not a
+    table placed or not, and not a raster figure's text, a
     table's cells, an entry's keywords or an entry nothing cites, under `nocite: '@*'` too;
     "XXY and XXX girls" in a cited title fails. Of the essay's phrasing, "may possibly" is
     read as a stacked hedge, and "holds great promise" and "the future looks bright" are
@@ -9510,8 +9525,9 @@ def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
     main_md(project).write_text(original, encoding="utf-8")
     assert _placeholders(_g6(project)) == []
     # Outside the manuscript: a PDF figure's text, and the caption of a table nothing
-    # places, are read; a table's cells are not.
+    # places, are read; a raster figure's text and a table's cells are not.
     (project / "figures" / "notes.pdf").write_bytes(typeset(["Panel TBD"], columns=1))
+    (project / "figures" / "panel.png").write_bytes(_png_saying("Panel TODO"))
     _project, _ = load_project(project)
     _namespace, results, _literature, _report = load_namespace(_project)
     baseline = results.tables["baseline"]
@@ -9524,6 +9540,7 @@ def test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads(
     assert said == ["'TBD' in the text of notes.pdf",
                     "'TODO' in the caption of table 'unplaced'"], said  # fmt: skip
     (project / "figures" / "notes.pdf").unlink()
+    (project / "figures" / "panel.png").unlink()
     # A cited entry's keywords are not read, nor an entry nothing cites under `nocite`, and
     # a karyotype written otherwise than "47,XXX" in a cited title is read as a gap.
     _cited_entry_has(project, "keywords = {TODO}")
@@ -25192,6 +25209,8 @@ _MASKED_THOUGH_PRINTED = {
     "after `</span>` under an item": "- item\n</span> <!-- x\n\n9.99 -->\n",
     "after `:::` under an item": "- item\n::: <!-- x\n\n9.99 -->\n",
     "after `</div>`, closed in the next item": "- a\n</div> <!-- x\n- b 9.99 -->\n",
+    "after `</span>`, closed in the next item": "- a\n</span> <!-- x\n- b 9.99 -->\n",
+    "after `:::`, closed in the next item": "- a\n::: <!-- x\n- b 9.99 -->\n",
     "in an item with a ten-digit marker": "1234567890. item\n<!-- x\n\n9.99 -->\n",
     "behind a byte-order mark": chr(0xFEFF) + "- item\n<!-- x\n\n9.99 -->\n",
     "over a line of dashes, a table": "Results <!-- x\n-------\nb 9.99 -->\n",
@@ -32703,9 +32722,13 @@ _LIST_SHAPES = {
     "a bold title over a second list": (f"**References**\n\n{_ENTRY}\n\n**Additional "
                                         f"references**\n\n2. {_SAID}", True),
     "an entry opening with Table 1": (f"**References**\n\n{_ENTRY}\n\nTable 1 {_SAID}", True),
-    "an entry opening with a caption's word in French": (
+    "an entry in French opening with an English caption's word": (
         f"**References**\n\n{_ENTRY}\n\nFigure 3 : la couleur des tumeurs. Rev Prat. 2019.\n\n"
         f"2. {_SAID}", True),
+    # The other side: a caption's word of another language, "Tabla", ends no list.
+    "an entry opening with a Spanish caption's word": (
+        f"**References**\n\n{_ENTRY}\n\nTabla 2. La color de los tumores. 2019.\n\n2. {_SAID}",
+        False),
     "a hard wrap": (f"We read the\nReferences\nof each paper.\n\n1. {_SAID}", True),
     "an indented line": (f"   **References**\n\n1. {_SAID}", True),
     "a full stop": (f"**References.**\n\n1. {_SAID}", True),
@@ -32730,8 +32753,9 @@ def test_a_reference_list_under_a_line_that_is_no_heading_is_read_by_its_shape(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reference list under a line that is no heading
     ends where its shape does, and only a paragraph opens one."): a `## Books` inside the
-    list, a bold title over a second list, and an entry that opens with "Table 1" or a
-    caption's word in another language end it, and what follows is read as prose; a title
+    list, a bold title over a second list, and an entry that opens with "Table 1", or one in
+    another language that opens with an English caption's word, end it, and what follows is
+    read as prose, where "Tabla 2." ends nothing; a title
     in a hard wrap, indented, ending in a stop, numbered "6." by hand, or in brackets before
     braces that are no attributes, or escaped, opens none. `6\\. References` opens one, a
     list under `# References` runs on through a `## Books`, and plain paragraphs after a

@@ -199,6 +199,7 @@ def _voiced(project: Path, text: str) -> list[str]:
         ("The ratio was higher.\nOf course, the sample was small.", ["'Of course'"]),
         ("The ratio was higher.\nCertainly the sample was small.", ["'Certainly'"]),
         ("The ratio was higher. Of course, the sample was small.", []),
+        ("The ratio was higher. Certainly the sample was small.", []),
         # A reply in lower case under a letter, `\noindent` or a bold label, and the same
         # reply opening with a capital.
         ("The revised section follows\nsure, here is the revised section.", []),
@@ -219,6 +220,36 @@ def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
     a letter, `\\noindent` or a bold label is missed. The 2026-11-09 triage planned a fix
     (F11), which will change this test."""
     assert _voiced(project, text) == said
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        ("The ratio rose\n\\footnote{See the appendix.}\nof course in the later period.",
+         ["'of course'"]),
+        ("The ratio rose\n\\cite{smith2020}\nof course in the later period.", ["'of course'"]),
+        # The other side: a line ending in a word carries the sentence on.
+        ("The ratio rose\nof course in the later period.", []),
+    ],
+)  # fmt: skip
+def test_an_assistant_s_opener_after_a_command_alone_on_its_line_in_latex_fails(
+    project: Path, body: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An assistant's opener is read where a paragraph
+    opens, and a line's last character decides whether one does."): in a LaTeX paragraph,
+    a `\\footnote{...}` or a `\\cite{...}` alone on its line ends in `}`, so "of course" at
+    the next line's start fails. The 2026-11-09 triage planned a fix (F11), which will
+    change this test."""
+    import shutil
+
+    shutil.rmtree(project / "manuscript")
+    (project / "manuscript").mkdir()
+    (project / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n\n"
+        f"{body}\n\n\\end{{document}}\n", encoding="utf-8")  # fmt: skip
+    report = check_writing(load_project(project)[0])
+    assert [f.message.split(" — ")[0] for f in report.findings
+            if f.code == "model-artefact"] == said  # fmt: skip
 
 
 @pytest.mark.parametrize(

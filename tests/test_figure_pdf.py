@@ -136,6 +136,19 @@ def test_only_the_first_page_of_a_pdf_figure_is_read() -> None:
     assert alone is not None and (alone.texts, alone.lines) == ([("b", 4.0)], [0.1])
 
 
+def test_the_first_page_read_is_the_lowest_numbered_page_object() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): with
+    its page tree listing object 4 before object 3, the PDF's first page is object 4, and
+    object 3 is the one read: its 10 pt text and its font, and nothing of object 4, neither
+    its text nor its line nor its font."""
+    document = _pages(b"BT /F1 10 Tf (a) Tj ET", b"BT /F2 4 Tf (b) Tj ET 0.1 w 0 0 m 1 1 l S")
+    turned = document.replace(b"/Kids [3 0 R 4 0 R]", b"/Kids [4 0 R 3 0 R]")
+    assert turned != document
+    figure = parse_pdf(turned)
+    assert figure is not None and (figure.texts, figure.lines) == ([("a", 10.0)], [])
+    assert [font.name for font in figure.fonts] == ["Helvetica"]
+
+
 def test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read() -> None:
     """A known gap (DESIGN.md, Known gaps, "A PDF figure is read for its first page"): the
     same page, written by pypdf as it is and encrypted, is read as it is and shows nothing

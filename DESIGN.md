@@ -18510,6 +18510,10 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_figure_pdf.py::test_an_encrypted_pdf_figure_s_text_and_lines_are_not_read`,
   `tests/test_figure_pdf.py::test_a_type_3_font_s_matrix_and_the_lines_of_its_glyphs_are_not_read`
   and `tests/test_figure_pdf.py::test_a_font_the_resources_name_is_listed_whether_any_text_uses_it_or_not`.
+  - The first page is the page object with the lowest number, not the first the page
+    tree's `/Kids` lists: a PDF whose tree lists object 4 before object 3 is read for
+    object 3, its text, lines and fonts, and nothing of object 4, the page it opens with.
+    Pinned by `tests/test_figure_pdf.py::test_the_first_page_read_is_the_lowest_numbered_page_object`.
 - **An SVG's text and lines are read from its elements, not drawn.** A `<style>` rule is
   read where its selector is made of types, classes and ids joined as descendants or
   children; one with a pseudo-class, an attribute or a sibling is not, and `!important`

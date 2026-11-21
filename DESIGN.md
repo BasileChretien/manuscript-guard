@@ -27185,10 +27185,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
     an "Abbreviations" or a "Funding" of the paper, is placed under a structured Abstract,
     and its words count toward the abstract's limit in G4.
     Pinned by `tests/test_audit_pdf.py::test_a_heading_after_a_structured_abstract_counts_toward_its_limit`.
-  - A BMC-style paper, an Abstract and then a main text headed Background, Methods and Results
-    with no Introduction, is read as a structured abstract with no Introduction after it and
-    left unplaced: no Abstract against Results, no causal words and no G4 word limits for
-    it; the report says why.
   - Where one version of `compare` is a PDF, a table's numbers on the other side are read as
     prose too: a number moved between a table and the prose reads as the same.
     Pinned by `tests/test_audit_pdf.py::test_a_tables_numbers_are_read_alike_beside_a_pdf`.
@@ -28690,6 +28686,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A BMC-style PDF paper was left unplaced (found fixed while pinning, 2026-11-21).** Under
+  "A PDF manuscript (`audit paper.pdf`, `compare`) is read as `pdftotext` sets out its text":
+  a paper whose Abstract is followed by a main text headed Background, Methods and Results
+  with no Introduction, as BMC's journals set one, was read as a structured abstract with no
+  Introduction after it and left unplaced, so a whole class of real papers had no Abstract
+  against Results, no causal words and no G4 word limits. Since 564a1558f (#598) a
+  structured abstract's parts end where one of their names comes again, and words under the
+  Abstract's own heading make the heading after it the main text's: such a paper is placed,
+  compared, read for causal words and held to the limits. Held by
+  `tests/test_audit_pdf.py::test_a_structured_abstract_ends_where_the_main_text_names_a_part_again`
+  and `tests/test_audit_pdf.py::test_an_abstract_of_words_then_background_methods_and_results_is_placed`.
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

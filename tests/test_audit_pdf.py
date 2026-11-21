@@ -320,6 +320,34 @@ def test_a_structured_abstract_ends_where_the_main_text_names_a_part_again(
 
 
 @needs_pdftotext
+def test_an_abstract_of_words_then_background_methods_and_results_is_placed(
+    tmp_path: Path, capsys
+) -> None:
+    """A BMC-style paper, its Abstract of words and then a main text headed Background,
+    Methods and Results with no Introduction, was read as a structured abstract with nothing
+    after it and left unplaced (DESIGN.md, "Closed since"): the words under the Abstract's
+    heading make the Background the main text's, and the paper is placed, its Abstract
+    compared, its causal words read and its word limits checked."""
+    lines = [*PAPER[:4], "Background", "Drugs cause harm [1].", *PAPER[6:]]
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines, per_column=40))
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), ("Background", 1), ("Methods", 1), ("Results", 1), ("Discussion", 1),
+        ("References", 1)]  # fmt: skip
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  abstract_words: 10\n"), encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(pdf.path), "--journal", str(journal),
+                                  "--design", "observational")  # fmt: skip
+    assert report["abstract_compared"]
+    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+        "The rate was 21.4% in the exposed."]
+    assert [f["message"] for f in found(report, "over-journal-limit")] == [
+        "abstract: 20 words, limit 10"]
+    assert [f["context"] for f in found(report, "causal-word-observational")] == [
+        "Exposure causes the event."]
+
+
+@needs_pdftotext
 def test_a_structured_abstract_before_an_introduction_is_the_abstracts(
     tmp_path: Path, capsys
 ) -> None:

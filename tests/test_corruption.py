@@ -7761,6 +7761,121 @@ def test_what_a_reply_may_say_passes(project: Path, reply: str) -> None:
     assert _said(report, "response-leak", "response-placeholder", "response-artefact") == []
 
 
+_QUOTE_CODES = ("quoted-text-absent", "quoted-text-not-new", "quoted-text-elsewhere",
+           "quoted-text-unchecked")  # fmt: skip
+
+
+@pytest.mark.parametrize(("point", "said"), [
+    ({}, [("response-claims-nothing", "fail")]), ({"rebutted": "x"}, []),
+], ids=["neither changed nor rebutted", "rebutted"])  # fmt: skip
+def test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked(
+    project: Path, point: dict, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a reply that says the Abstract "now reads" a sentence the
+    paper does not hold, with no `text` entry, is not checked for that sentence: of point 1.1
+    G13 says only that it names no change, and with a rebuttal it says nothing."""
+    _round_with(project, [_point(response='We revised the Abstract, which now reads "A sentence '
+                                 'the paper does not hold."', **point)])  # fmt: skip
+    assert [(f.code, f.severity) for f in _g13(project).findings if "point 1.1" in f.message
+            ] == said  # fmt: skip
+
+
+@pytest.mark.parametrize(("typed", "found"), [
+    ('The "adjusted" ratio\nwas `reported`, *again*.', True),
+    ("The \N{LEFT DOUBLE QUOTATION MARK}adjusted\N{RIGHT DOUBLE QUOTATION MARK} ratio was "
+     "reported, again.", False),
+    ('The "adjusted" ratio was reported again.', False),
+])  # fmt: skip
+def test_a_quote_is_compared_without_its_marks_and_breaks_but_with_its_punctuation(
+    project: Path, typed: str, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a quote is found through the paper's emphasis, code marks
+    and line breaks, and not where its quotation marks or its punctuation differ."""
+    _round_with(project, [_point(response="We now say so.", changed=[{
+        "kind": "text", "quote": 'The "adjusted" ratio was reported, again.',
+        "section": "Discussion"}])])  # fmt: skip
+    _in_the_discussion(project, typed)
+    absent = [] if found else [("quoted-text-absent", "fail")]
+    assert _said(_g13(project), *_QUOTE_CODES) == absent
+
+
+@pytest.mark.parametrize(("section", "said"), [
+    ("Discussion", []), ("Results", [("quoted-text-elsewhere", "fail")]),
+])  # fmt: skip
+def test_a_quote_s_section_is_found_by_the_words_of_its_heading(
+    project: Path, section: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): "Discussion" names a section headed "Discussion and
+    conclusions", and a quote in a subsection of it counts as in it."""
+    _round_with(project, [_point(response="We now say so.", changed=[{
+        "kind": "text", "quote": "A new sentence.", "section": section}])])  # fmt: skip
+    _rewrite(project, ("# Discussion", "# Discussion and conclusions"))
+    _in_the_discussion(project, "## Strengths\n\nA new sentence.")
+    assert _said(_g13(project), *_QUOTE_CODES) == said
+
+
+@pytest.mark.parametrize(("reply", "leak"), [
+    ("See main.md line 120 for the new text.", True),
+    ("See main.md, line 120 for it.", True),
+    ("G13: point-unanswered was resolved.", True),
+    ("G6: ai-cadence was resolved.", False),
+])  # fmt: skip
+def test_a_place_in_the_sources_is_a_file_s_line_and_a_gate_a_failing_code(
+    project: Path, reply: str, leak: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a source file's line is caught written "main.md line 120"
+    too, and a gate only with a code that fails after it: a warning's code is not caught."""
+    from manuscript_guard.policy import BINDS_AT
+
+    assert ("point-unanswered" in BINDS_AT, "ai-cadence" in BINDS_AT) == (True, False)
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    assert _said(_g13(project), "response-leak") == ([("response-leak", "fail")] if leak else [])
+
+
+@pytest.mark.parametrize(("reply", "typed"), [
+    ("As line 3.2 says.", []), ("Reviewer 2 found 41 cases.", ["41"]),
+    ("The ratio was 3.2.", ["3.2"]),
+])  # fmt: skip
+def test_a_number_after_a_place_word_is_not_read_in_a_reply(
+    project: Path, reply: str, typed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a number right after a word that names a place is not read,
+    so "line 3.2" types a number past G2; in "Reviewer 2 found 41 cases" the 41 has no place
+    word before it, and is read."""
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert _reply_numbers(project) == [
+        f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"
+        for number in typed
+    ]
+
+
+@pytest.mark.parametrize(("reply", "typed"), [
+    ("Reviewer 2 and 41 cases were excluded.", []),
+    ("Reviewer 2 & 41 cases were excluded.", []),
+    ("Reviewer 2 to 41 cases were excluded.", []),
+    ("Reviewer 2 through 41 cases were excluded.", []),
+    ("Reviewer 2 \N{EN DASH} 41 cases were excluded.", []),
+    ("Reviewer 2 and 41 cases were excluded, 12 of them late.", ["12"]),
+])  # fmt: skip
+def test_a_count_joined_by_and_to_a_place_is_read_as_a_place_in_a_reply(
+    project: Path, reply: str, typed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose.", "A count joined to a place by "and""): after a place word,
+    "and" runs a list of places on, so the 41 of "Reviewer 2 and 41 cases were excluded"
+    passes G2 unbound; the 12 after it is read."""
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert _reply_numbers(project) == [
+        f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"
+        for number in typed
+    ]
+
+
 def test_the_templates_words_left_for_the_reviewers_fail(project: Path) -> None:
     from manuscript_guard.gates.revision import TEMPLATE_COMMENT
 
@@ -10348,6 +10463,35 @@ def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
     assert len(said) == 1 and why in said[0][1], _ref_findings(project)
     drafting, *_ = _run_gates(project, stage="drafting")
     assert "ref-number-unknown" in codes(drafting)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_the_count_cannot_number_passes_in_a_reply_and_prints_as_written(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A ref in a reply to the reviewers is not
+    held."): with a figure sent as a file, a ref to it in a reply draws no finding and the
+    letter prints it as typed; in the Abstract it is `ref-number-unknown`, and the abstract
+    is left out of the pack for the formatting the build does. The 2026-11-09 triage planned
+    a fix (F19), which will change this test."""
+    from manuscript_guard.build.submission import abstract_text, response_letter
+
+    _declare(project, "displays: {figures_as_files: 1}")
+    before = _ref_findings(project)
+    _round_with(project, [_point(response="We now say so, in {{ref.figure.forest}}.",
+                                 rebutted="x")])  # fmt: skip
+    assert _ref_findings(project) == before
+    assert "We now say so, in {{ref.figure.forest}}." in response_letter(load_project(project)[0])
+    _rewrite(project, ("The reporting odds ratio was",
+                       "In {{ref.figure.forest}}, the reporting odds ratio was"))  # fmt: skip
+    assert [m for c, m in _ref_findings(project) if c == "ref-number-unknown"] == [
+        "{{ref.figure.forest}} cannot be numbered: paper.yaml sends 1 of the main text's "
+        "figures as files, and where {{figure.forest}} falls among those is not known"]
+    assert abstract_text(load_project(project)[0]) == (None, (
+        "abstract.txt is not written: the abstract holds what the build formats and plain "
+        "text cannot (a citation, a footnote, maths, code, an image, a table, a figure, a "
+        "link with words of its own, or a block other than a paragraph or a heading); copy "
+        "it from the document"))
 
 
 @pytest.mark.parametrize(

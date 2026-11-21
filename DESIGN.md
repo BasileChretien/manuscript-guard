@@ -19420,6 +19420,8 @@ Open, recorded as each change landed:
   abstract is left out of the pack for such a ref, the reason given names the formatting the
   build does, not a pointer with no number; `check` refuses that ref in the manuscript
   (round 2 of #378).
+  Pinned by `tests/test_corruption.py::test_a_binding_in_a_reply_that_names_nothing_fails`
+  and `tests/test_corruption.py::test_a_ref_the_count_cannot_number_passes_in_a_reply_and_prints_as_written`.
 - **A caption typed "Table 2 Counts" reads as a sentence.** With nothing but a space after
   its number, as Springer sets a caption, a paragraph above a table cannot be told from "Table
   2 shows the counts.", so it is no caption: the build numbers the emitted caption as well,
@@ -21855,7 +21857,9 @@ Open, recorded as each change landed:
   SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard error": another
   abbreviation of either is not read.
 - **A reply is checked for what it holds, not for what it claims in prose.** A reply that
-  says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
+  says the Abstract "now reads" a sentence without a `text` entry is not checked for that
+  sentence: where its point has neither `changed` nor `rebutted`, G13 says only that it
+  names no change (`response-claims-nothing`), and with either says nothing. A quote
   is compared without Markdown's marks of emphasis and code and without its line breaks,
   but with its punctuation and quotation marks as typed. A section is found by the words of
   its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a
@@ -21868,6 +21872,19 @@ Open, recorded as each change landed:
   grade; a warning's code after a gate is not caught. A number after a word that names a
   place is not read, so "line 3.2" or "Reviewer 2 found 41 cases" types its second number
   past G2 only where a place word stands before it.
+  Pinned by `tests/test_corruption.py::test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked`,
+  `tests/test_corruption.py::test_a_quote_is_compared_without_its_marks_and_breaks_but_with_its_punctuation`,
+  `tests/test_corruption.py::test_a_quote_s_section_is_found_by_the_words_of_its_heading`,
+  `tests/test_corruption.py::test_a_quoted_revision_in_a_round_without_a_copy_is_a_note`,
+  `tests/test_corruption.py::test_what_must_not_reach_a_journal_in_a_reply_fails`,
+  `tests/test_corruption.py::test_a_place_in_the_sources_is_a_file_s_line_and_a_gate_a_failing_code`,
+  `tests/test_corruption.py::test_what_a_reply_may_say_passes`
+  and `tests/test_corruption.py::test_a_number_after_a_place_word_is_not_read_in_a_reply`.
+  - *A count joined to a place by "and"* is read as a place: after a place word, numbers
+    joined by "and", "&", "to", "through" or a dash run a list of places on, as "lines 120
+    and 125" do, so the 41 of "Reviewer 2 and 41 cases were excluded" passes G2 unbound. A
+    number after another word, the 12 of "…, 12 of them late", is read.
+    Pinned by `tests/test_corruption.py::test_a_count_joined_by_and_to_a_place_is_read_as_a_place_in_a_reply`.
 - **A statistic is held to what it declares it belongs to, and only by sentence.** A p
   value or a share emitted without `of` is held to nothing, and nothing guesses that a key
   named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
@@ -22592,6 +22609,8 @@ Open, recorded as each change landed:
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
+  Pinned by `tests/test_seed_revision.py::test_a_round_is_seeded_from_the_comments`
+  and `tests/test_revision.py::test_force_is_not_offered_for_a_document_with_no_stamp`.
 - **The marked-up copy compares what the two documents print, and shows a change only as
   the writer knows to write it.** See "The marked-up copy shows every change since the
   document sent". What that leaves: Accepted.
@@ -22608,6 +22627,7 @@ Open, recorded as each change landed:
     reads as replaced. A run of changed blocks is paired in time that grows with the
     product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
     slow to mark up.
+    Pinned by `tests/test_marked_up.py::test_a_paragraph_rewritten_past_half_its_words_reads_as_replaced`.
   - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
     empty paragraph at the end where the last one was deleted, and Reject All where it
     was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
@@ -22634,15 +22654,23 @@ Open, recorded as each change landed:
   - *Formatting inside a whole is the revision's*: a link, a field or an equation the same in
     both is written as the revision has it, so a link's words made bold show no change; a
     table's properties and a picture's size are not compared either.
+    Pinned by `tests/test_marked_up.py::test_formatting_inside_a_link_and_a_picture_s_size_are_the_revision_s`
+    and `tests/test_marked_up.py::test_an_equation_word_saved_unchanged_is_no_change`.
   - *A footnote or a list the revision's document has no part for* cannot be carried: a
     deleted one is refused where the revision has no `footnotes.xml` or `numbering.xml`.
     Pandoc writes both.
+    Pinned by `tests/test_marked_up.py::test_a_deleted_note_or_list_is_refused_where_the_revision_has_no_part_for_it`.
   - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
-    A deleted part that points at anything but a picture (a chart, an embedded object, an
-    endnote) is refused, and the copy is not made.
+    A deleted part that points at anything but a picture (a chart, an embedded object) is
+    refused, and the copy is not made. A deleted endnote is not: the paragraph is deleted
+    with its reference as it was, though the revision holds no endnote it names.
+    Pinned by `tests/test_marked_up.py::test_a_deleted_chart_is_refused_and_the_revision_s_comments_are_not_compared`,
+    `tests/test_marked_up.py::test_a_header_a_footer_an_endnote_and_a_text_box_are_the_revision_s`
+    and `tests/test_marked_up.py::test_a_deleted_embedded_object_is_refused_and_a_deleted_endnote_is_carried_as_it_was`.
   - *A deleted link is its words*, without its address; an inline equation is compared and
     tracked whole, and the check, which reads text, does not read its text, only a display
     equation's (Word 16 accepted and rejected both as written, above).
+    Pinned by `tests/test_marked_up.py::test_a_deleted_link_is_its_words_and_an_inline_equation_is_tracked_whole`.
   - *A round opened once revising had begun keeps no copy*, of the paper or the supplement,
     by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
     reads only the round's.
@@ -22653,6 +22681,8 @@ Open, recorded as each change landed:
     inline in text, takes one shading, the new one's: the two cannot be told apart there
     (round 2 of #396). A change of formatting or style is highlighted as new text is, and
     the highlighted copy is made from a checked tracked one but not checked itself.
+    Pinned by `tests/test_marked_up.py::test_the_highlighted_copy_tracks_nothing_and_strikes_what_was_deleted`
+    and `tests/test_marked_up.py::test_a_picture_redrawn_inline_shades_its_text_once_as_the_new_one`.
   - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
     that Word reads the copy as the check does. Accepted.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
@@ -25088,9 +25118,14 @@ Open, recorded as each change landed:
   minus left at the end of a line, apart from its number, is reported as the sign lost. A
   range's dash a reader spaces on one side only, "0.71 –0.89", reads as a minus,
   and the bound is reported as a sign changed (round 1 of #397).
+  Pinned by `tests/test_proof.py::test_a_number_set_against_a_word_is_told_from_a_citation_by_its_shape`,
+  `tests/test_proof.py::test_an_exponent_that_lost_its_raise_is_typography`,
+  `tests/test_proof.py::test_a_minus_left_at_a_line_s_end_is_the_sign_lost`
+  and `tests/test_proof.py::test_a_range_s_dash_spaced_on_one_side_reads_as_a_minus`.
 - **The document's footnotes are not compared.** The document is read as `docxtext.blocks`
   reads its body, so a note's text is not among the parts, and the proof's notes are shown as
   added text.
+  Pinned by `tests/test_proof.py::test_the_document_s_footnotes_are_not_compared_and_the_proof_s_are_added`.
 - **What a page repeats is found by rule.** A line at the top or bottom of the page that stands
   there once on half the pages or more, its numbers alike but one, is taken out: a table's
   header repeated at the top of half the pages of a short proof is taken out with the running
@@ -25101,11 +25136,25 @@ Open, recorded as each change landed:
   from the page before, by one, five or ten, and on five lines at least; given as a column by
   poppler's layout order they are dropped and the correction is named by its page. A proof
   with no line numbers names each correction by its page and a quotation.
+  Pinned by `tests/test_proof.py::test_a_line_at_the_top_of_half_the_pages_is_taken_out_as_a_running_head`,
+  `tests/test_proof.py::test_a_running_head_off_the_edge_or_on_a_proof_of_one_page_is_added`,
+  `tests/test_proof.py::test_line_numbers_in_the_margin_name_the_line`,
+  `tests/test_proof.py::test_line_numbers_are_read_at_a_line_s_start_from_one_by_one_five_or_ten`,
+  `tests/test_proof.py::test_line_numbers_are_read_on_five_lines_at_least`
+  and `tests/test_proof.py::test_a_correction_where_no_line_number_is_read_is_named_by_its_page`.
+  - *A running head set inside a paragraph* is no added text: a running head a reader puts
+    in the middle of a page is shown as added only where it falls between two parts. Set
+    between two lines of one paragraph, "Example et al. J Imag Pharm 2026" on page 2 of 4,
+    its number is counted as a correction of that paragraph, "the proof prints a number
+    that was not sent".
+    Pinned by `tests/test_proof.py::test_a_running_head_set_inside_a_paragraph_is_read_as_a_correction`.
 - **Numbers stand for any number in the alignment.** A number dropped beside another, "12 15"
   printed "15", may be read as the first changed and the second dropped. Both are corrections,
   and the quotation shows which; but the binding named is the first's. A decimal comma before
   exactly three digits reads as grouping, so "3.845" printed "3,845" is a correction of the
   number and not of its decimal mark.
+  Pinned by `tests/test_proof.py::test_a_number_dropped_beside_another_may_name_the_first_s_binding`
+  and `tests/test_proof.py::test_a_decimal_comma_before_three_digits_is_a_number_changed`.
 - **The title page is held to `authors.yaml` by its words, not its layout.** Which superscript
   ties an author to an affiliation, and which author is marked as the corresponding one, are not
   read. An ORCID iD is compared only where the proof prints one as text: shown as a linked icon,
@@ -25118,6 +25167,11 @@ Open, recorded as each change landed:
   "pierre.example@uni.example" for jeanpierre.example@uni.example, is then read with a
   hyphen it never had, and its e-mail address is reported printed otherwise. The text does
   not tell the two apart (review of 6104326, #397).
+  Pinned by `tests/test_proof.py::test_the_title_page_is_held_by_its_words_and_not_its_layout`,
+  `tests/test_proof.py::test_an_affiliation_the_journal_rewords_is_printed_otherwise`,
+  `tests/test_proof.py::test_a_particle_set_otherwise_is_found_and_one_dropped_is_reported`,
+  `tests/test_proof.py::test_an_address_broken_at_its_hyphen_is_found`
+  and `tests/test_proof.py::test_an_address_with_no_hyphen_broken_at_a_line_s_end_is_read_with_one`.
 - **A supplement is compared in its own run.** The supplement is held to the same rules as the
   paper: `proof --supplementary` compares a supplement the journal typesets as a document of
   its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
@@ -25145,6 +25199,10 @@ Open, recorded as each change landed:
   printed "12 consecutive months", "two weeks" printed "two months", and "day-28" printed
   "month-28" are copy-edits. A stretch that starts after a number and a hyphen is read as a
   unit's change if a unit stands anywhere in it (review of #408).
+  Pinned by `tests/test_proof.py::test_a_case_change_or_a_style_s_synonym_is_seen_only_as_the_units_g14_knows`,
+  `tests/test_proof.py::test_a_unit_of_time_abbreviated_is_a_copy_edit`,
+  `tests/test_proof.py::test_a_unit_of_time_spelt_out_as_another_is_a_correction`
+  and `tests/test_proof.py::test_a_unit_of_time_a_word_away_from_its_number_is_a_copy_edit`.
 - **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
   a part, so a value the proof adds between two cells, or a row it prints twice, is added
   text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a
@@ -25157,9 +25215,13 @@ Open, recorded as each change landed:
   that one. A run the proof sets elsewhere is found by runs of four keys it shares there: a
   short paragraph moved with a word changed every four tokens or fewer reads as missing, and
   its text as added (round 2 of #397).
+  Pinned by `tests/test_proof.py::test_a_paragraph_left_out_beside_one_ending_alike_is_left_out_whole_within_400_tokens`
+  and `tests/test_proof.py::test_a_paragraph_set_elsewhere_is_found_by_runs_of_four_keys`.
 - **Affiliation marks are read as digits and signs.** "Example1,2", "Example1-3,*" and a
   dagger are the name; marks set as letters, "Examplea,b", are not, and the name is reported
   as printed otherwise. Letters are not taken for marks because "Paula" would then be "Paul".
+  Pinned by `tests/test_proof.py::test_a_name_with_letters_for_its_affiliation_marks_is_printed_otherwise`
+  and `tests/test_proof.py::test_a_name_with_its_affiliation_marks_set_against_it_is_found`.
 - **A source is named as it stands now.** The binding a correction names is the one in the
   source paragraph now whose value prints the number sent; where the source has changed since
   the pack the report says so, and the binding may be another. A table's binding is named by

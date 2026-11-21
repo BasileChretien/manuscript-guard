@@ -19823,7 +19823,10 @@ Open, recorded as each change landed:
   Pinned by `tests/test_review.py::test_two_readers_whose_names_make_one_file_name_are_reported`.
 - **A reader's name is compared as it is composed, and not otherwise folded.** A full-width
   letter and its ordinary form, a digit of another script and the same digit in ASCII, or
-  `ß` and `ss`, are different readers.
+  `ß` and `ss`, are different readers. Each reader's record is a file named by the name,
+  so where the file system folds two names to one file, as macOS's does `ß` and `ss`, the
+  second reader's reading is refused as one already filed, and only one of them can file
+  (found in CI's macOS run of #736).
   Pinned by `tests/test_review.py::test_a_readers_name_is_not_folded_beyond_its_composition`
   and `tests/test_review.py::test_a_readers_name_composed_and_decomposed_is_one_reader`.
 - **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is

@@ -18,6 +18,8 @@ import yaml
 from manuscript_guard.contracts import load_project
 from manuscript_guard.findings import INFO
 from manuscript_guard.gates import check_review, manuscript_digest, open_panel, panels
+from manuscript_guard.gates.review import reading_path
+from manuscript_guard.record import RecordError
 
 PANEL_1 = Path("review") / "panel-1.yaml"
 PANEL_2 = Path("review") / "panel-2.yaml"
@@ -1395,11 +1397,18 @@ def test_a_readers_name_is_not_folded_beyond_its_composition(
     """A known gap (DESIGN.md, Known gaps, "A reader's name is compared as it is composed,
     and not otherwise folded"): a full-width letter, a digit of another script and `ß` are
     not their ordinary, ASCII or `ss` forms, so the two names are two readers, each filed
-    apart, and one filed leaves the other missing."""
+    apart, and one filed leaves the other missing. Where the file system folds the two
+    names to one file, as macOS's does `ß` and `ss`, the second reading is refused as one
+    already filed."""
     expect_readers(project, 2, "desk-editor", one, other)
     first = add_reading(project, "desk-editor", one)
     report = report_for(project, submission=True)
     assert [f.code for f in report.failures if "desk-editor" in f.message] == ["reading-missing"]
+    loaded, _ = load_project(project)
+    if reading_path(loaded, 2, "desk-editor", other).exists():
+        with pytest.raises(RecordError, match="already exists"):
+            add_reading(project, "desk-editor", other)
+        return
     second = add_reading(project, "desk-editor", other)
     assert first != second
     assert report_for(project, submission=True).ok

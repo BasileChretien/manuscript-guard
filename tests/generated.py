@@ -18122,8 +18122,15 @@ def _unnumbered(draw: st.DrawFn, how: str) -> tuple[str, dict[str, list]]:
 #: 2026-11-21, "Caption wording" and "Adjacent fallback"): a nationally representative
 #: legend directly above its table, which lets it off; one that says nothing of weights; one
 #: whose words a word before them in their clause negates; a nationally representative one
-#: with a paragraph between it and its table; and one below its table, a paragraph after it.
-SUPPLEMENT_KINDS = ("representative", "plain", "negated", "between", "below")
+#: with a paragraph between it and its table; one below its table, a paragraph after it; one
+#: that says "non-nationally representative"; and a nationally representative one over a
+#: table that another follows with no paragraph between, which lets off the first alone
+#: (round 1 of the review of #718).
+SUPPLEMENT_KINDS = ("representative", "plain", "negated", "between", "below", "non",
+                    "back to back")
+NON_REPRESENTATIVE = ("Non-nationally representative shares, {place}.", "Shares for {place}, "
+                      "non-nationally representative.", "Non nationally representative "
+                      "proportions, {place}.")
 REPRESENTATIVE = ("Nationally representative shares for {place}.", "Shares, nationally "
                   "representative, {place}.", "Nationally-representative proportions, {place}.")
 NOT_REPRESENTATIVE = ("Shares, not nationally representative, {place}.", "Crude proportions "
@@ -18132,35 +18139,49 @@ NOT_REPRESENTATIVE = ("Shares, not nationally representative, {place}.", "Crude 
 SUPPLEMENT_PLACES = ("Region A", "the north", "the coast", "Site 4")
 
 
+def _supplement_table(draw: st.DrawFn) -> tuple[list[str], int, str]:
+    """A table of `_supplement`, a blank line after it: its lines, the line from 1 of its
+    share off its n within them, and that share as printed."""
+    n, k, fits, off = _shares(draw)
+    table = [f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
+             f"| Male sex, n (%) | {k} ({off:.1f}%) |",
+             f"| Smokers, n (%) | {k} ({fits:.1f}%) |", ""]  # fmt: skip
+    return table, 3, f"{k} ({off:.1f}%)"
+
+
 def _supplement(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     """A supplement of a table of each of `SUPPLEMENT_KINDS`, in an order drawn, their
     legends "Table S1a", "Table S1b", "Table S2a" ..., which do not number the tables, plain
-    or in bold italics. Only the nationally representative legend directly above its table
-    lets its share off its n be asked about; every other share is found."""
+    or in bold italics. Only a nationally representative legend directly above its table
+    lets its share off its n be asked about, the first of two back to back too; every other
+    share is found."""
     lines = ["# Supplementary material", ""]
     found: dict[str, list] = {ASKED_ADJUSTED_CODE: [], SHARES_ASKED: [], SHARES_UNFIT: [],
                               UNFIT: [], G8_ASKED: [], G8_WARNED: []}  # fmt: skip
     for at, kind in enumerate(draw(st.permutations(SUPPLEMENT_KINDS))):
         place = draw(st.sampled_from(SUPPLEMENT_PLACES))
         words = {"plain": "Proportions by group for {place}.",
-                 "negated": draw(st.sampled_from(NOT_REPRESENTATIVE))}.get(
+                 "negated": draw(st.sampled_from(NOT_REPRESENTATIVE)),
+                 "non": draw(st.sampled_from(NON_REPRESENTATIVE))}.get(
             kind, draw(st.sampled_from(REPRESENTATIVE))).format(place=place)
         legend = f"Table S{at // 2 + 1}{'ab'[at % 2]}. {words}"
         if draw(st.booleans()):
             legend = f"***{legend}***"
-        n, k, fits, off = _shares(draw)
-        table = [f"| Characteristic | Exposed (n = {n}) |", "|---|---|",
-                 f"| Male sex, n (%) | {k} ({off:.1f}%) |",
-                 f"| Smokers, n (%) | {k} ({fits:.1f}%) |", ""]  # fmt: skip
+        table, row, share = _supplement_table(draw)
         if kind == "below":
+            start = len(lines) + 2
             lines += ["The shares follow.", "", *table, legend, "", "The next part follows.", ""]
-            row = len(lines) - 6
         else:
-            lines += [legend, "", *(["Values are n (%).", ""] if kind == "between" else []),
-                      *table]  # fmt: skip
-            row = len(lines) - 2
-        found[SHARES_ASKED if kind == "representative" else SHARES_UNFIT].append(
-            [row, f"{k} ({off:.1f}%)"])
+            lines += [legend, "", *(["Values are n (%).", ""] if kind == "between" else [])]
+            start = len(lines)
+            lines += table
+        asked = kind in ("representative", "back to back")
+        found[SHARES_ASKED if asked else SHARES_UNFIT].append([start + row, share])
+        if kind == "back to back":
+            # The next table, right under the first with no paragraph between, says nothing.
+            table, row, share = _supplement_table(draw)
+            found[SHARES_UNFIT].append([len(lines) + row, share])
+            lines += table
     lines += ["# Discussion", "", "No more.", ""]
     return "\n".join(lines), {code: sorted(lines_of) for code, lines_of in found.items()}
 

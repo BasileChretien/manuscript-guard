@@ -148,6 +148,8 @@ def test_each_weighting_said_is_read(said: str) -> None:
     # The same clause rule against negation holds for "nationally representative".
     "Shares, not nationally representative.", "Crude counts before weighting to be nationally "
     "representative.", "Unweighted nationally representative sample.",
+    "Non-nationally representative shares.", "Shares, non-nationally representative.",
+    "Non nationally representative sample.",
 ])  # fmt: skip
 def test_an_estimate_weighted_and_unweighted_shares_are_no_weighting(said: str) -> None:
     assert weighting(said) is None, said
@@ -606,6 +608,8 @@ def test_a_nationally_representative_legend_asks_in_a_docx(tmp_path: Path) -> No
     # The weighted legend's words negated in their clause.
     "Table S1a. Shares, not nationally representative.\n\n{table}\n\nTable S1b. Counts.\n\n"
     "{table}\n",
+    "Table S1a. Non-nationally representative shares.\n\n{table}\n\nTable S1b. Counts.\n\n"
+    "{table}\n",
 ])  # fmt: skip
 def test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing(
     tmp_path: Path, legends: str
@@ -616,6 +620,34 @@ def test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing(
     report = audited(tmp_path, "# Results\n\n" + legends.format(table=TABLE))
     assert report.arithmetic_asked == [], report.arithmetic_asked
     assert len(report.disagreements) == 2
+
+
+def test_under_the_fallback_a_legend_reaches_no_table_across_another(tmp_path: Path) -> None:
+    """Round 1 of the review of #718: a legend above a table that another table follows
+    with no paragraph between captions the first alone. The second table's share, under no
+    legend of its own, is a finding, and the third's, under "Table S1b. Counts.", too."""
+    report = audited(tmp_path, f"# Results\n\nTable S1a. Weighted percentages.\n\n{TABLE}\n\n"
+                               f"{TABLE}\n\nTable S1b. Counts.\n\n{TABLE}\n")  # fmt: skip
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (7, "Table S1a")]
+    assert [d.line for d in report.disagreements] == [11, 17]
+
+
+def test_under_the_fallback_a_picture_s_legend_captions_the_table_under_it(
+    tmp_path: Path,
+) -> None:
+    """The limit of the fallback in a .docx (DESIGN.md, Known gaps): a picture's paragraph
+    has no text to read, so a legend over a table given as a picture, then a read table with
+    no legend of its own, captions the read table. Its share is asked about on the picture's
+    words."""
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    picture = "<w:p><w:r><w:drawing/></w:r></w:p>"
+    body = (_para("Results") + _para("Table S1a. Weighted percentages.") + picture + table
+            + _para("Table S1b. Counts.") + table)
+    report = audit([_docx(tmp_path / "paper.docx", body)], None)
+    (asked,), (found,) = report.arithmetic_asked, report.disagreements
+    assert asked.message.startswith("Table S1a says") and asked.line < found.line
 
 
 def test_under_the_fallback_a_legend_below_a_table_captions_the_next(tmp_path: Path) -> None:

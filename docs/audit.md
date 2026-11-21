@@ -225,8 +225,12 @@ any is asked, and neither is a number that does not fit:
   to the number of tables read, each once (Basile, 2026-11-18). Otherwise, as where a table
   is given as a picture, a "Table 2 (continued)" stands under a table, a "Table S1" stands
   beside a "Table 1", or "Table S1a" beside "Table S1b", a legend captions the table directly
-  under it, with no paragraph between, and nothing else: a legend below a table, or over a
-  subtitle, captions none there (Basile, 2026-11-21). In Markdown, pandoc's own
+  under it, with no paragraph and no other table between, and that table alone: a legend
+  over a subtitle captions none there, and so does a legend below a table unless it stands
+  directly above the next table (Basile, 2026-11-21). That is the limit: where such a file's
+  legends stand below their tables, a legend below one table and right above the next is
+  taken for the next one's, and in a .docx a legend over a table given as a picture is taken
+  for the read table under the picture. In Markdown, pandoc's own
   caption, "Table: ...", is its table's too. The
   note is the paragraph after the table where it opens with "Note", "Abbreviations" or a
   footnote's mark (a lowercase letter, or an asterisk, a dagger or a section sign before a

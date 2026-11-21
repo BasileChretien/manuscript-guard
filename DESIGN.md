@@ -10788,9 +10788,10 @@ where a guess at where a file's legends stood gave one table the next one's lege
 N" captions the Nth table read, standing before it or after it with no other table and no
 other legend between (round 3 of #703), where the file's legends number its tables 1 to the
 count read, in one form, each once. Where they do not, a legend directly above a table,
-the last paragraph before it with no table between, captions that table, and no other legend
-captions any: a legend below a table, or one with a paragraph between it and its table,
-captions nothing (Basile, 2026-11-21, "Adjacent fallback", `adjacent_captions`). Where the
+the last paragraph before it with no table between, captions that table, and only that
+table: one with a paragraph between it and its table captions nothing, and so does a legend
+below a table unless it stands directly above the next table, which it then captions (Known
+gaps) (Basile, 2026-11-21, "Adjacent fallback", `adjacent_captions`). Where the
 numbering holds, the fallback is never read. "Nationally representative" says a table's
 shares are weighted as "weighted" does, in the same places and under the same rule against a
 word before it in its clause (Basile, 2026-11-21, "Caption wording"); a sentence of the
@@ -17048,12 +17049,18 @@ been sorted yet.
     weighted shares stay findings, and the next table's are asked about on the first's
     words. Pinned by
     `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_below_a_table_captions_the_next`.
+  - In a .docx whose legends do not number its tables, a picture's paragraph has no text,
+    so a legend over a table given as a picture, then a read table with no legend of its
+    own above it, captions the read table: its shares are asked about on the picture's
+    words. Accepted. Pinned by
+    `tests/test_adjusted_weighted.py::test_under_the_fallback_a_picture_s_legend_captions_the_table_under_it`.
   - "Nationally representative" is read as weighted wherever the table's caption, note,
     row label or header says it, though it may name only how the sample was drawn ("a
     nationally representative sample") over crude shares, and a word after it that says the
     shares are unweighted ("nationally representative sample; unweighted n") does not undo
     it: such a table's shares off their n are asked about rather than found. A word before
-    it in its clause ("not", "before", "unweighted") does. Accepted.
+    it in its clause ("not", "before", "unweighted") does, and so does "non-" glued to it.
+    Accepted.
   - A comment of several lines inside a legend's paragraph ends the legend where the
     comment opens, since legends are read with each line of the file kept, though pandoc
     reads the paragraph whole. "Table 1. Baseline characteristics," over a comment, then

@@ -23959,9 +23959,36 @@ def _nationally_representative_is_no_weighting(patch: pytest.MonkeyPatch) -> Non
     of a table its legend says it of were found."""
     from manuscript_guard.stats import adjusted
 
-    words = r"|(?i:\bnationally[- ]representative\b)"
+    words = r"|(?i:(?<!non-)(?<!non )\bnationally[- ]representative\b)"
     assert words in adjusted.WEIGHTED.pattern
     patch.setattr(adjusted, "WEIGHTED", re.compile(adjusted.WEIGHTED.pattern.replace(words, "")))
+
+
+def _non_nationally_representative_is_weighted(patch: pytest.MonkeyPatch) -> None:
+    """As at 8eb0b8a47: "non-nationally representative" read as "nationally
+    representative", so its table's shares were let off (round 1 of the review of #718)."""
+    from manuscript_guard.stats import adjusted
+
+    guard = "(?<!non-)(?<!non )"
+    assert guard in adjusted.WEIGHTED.pattern
+    patch.setattr(adjusted, "WEIGHTED", re.compile(adjusted.WEIGHTED.pattern.replace(guard, "")))
+
+
+def _the_fallback_reaches_across_a_table(patch: pytest.MonkeyPatch) -> None:
+    """As at 8eb0b8a47 with its guard dropped: the last paragraph before a table, a legend,
+    captioned it with another table between, so a table right under a weighted one took
+    that one's legend (round 1 of the review of #718)."""
+    from manuscript_guard.auditing import adjusted
+
+    def adjacent_captions(paragraphs, tables):
+        found = []
+        for table in tables:
+            first = min(adjusted._cells(table))
+            above = next((p for p in reversed(paragraphs) if p.last < first), None)
+            found.append(above.text if above and adjusted.LEGEND.match(above.text) else "")
+        return found
+
+    patch.setattr(adjusted, "adjacent_captions", adjacent_captions)
 
 
 def _no_word_before_the_weighting_negates_it(patch: pytest.MonkeyPatch) -> None:
@@ -30947,6 +30974,14 @@ BROKEN = {
     ),
     "the fallback takes any legend next to a table": (
         _the_fallback_takes_any_legend_next_to_a_table,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "non-nationally representative reads as weighted": (
+        _non_nationally_representative_is_weighted,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "the fallback reaches across a table": (
+        _the_fallback_reaches_across_a_table,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
     "a key reads the spaces of its sentence": (

@@ -25288,9 +25288,12 @@ Open, recorded as each change landed:
   - A search end date is read only where a review states it, and dates of unequal precision
     compare at the coarser: a review whose search ended in 2020 does not replace a work
     published in 2020, whatever the months.
+    Pinned by `tests/test_currency.py::test_at_the_same_level_a_search_that_ended_after_the_cited_work_replaces_it`
+    and `tests/test_currency.py::test_dates_are_compared_at_the_finest_precision_both_have`.
   - K5 knows a synthesis by its PubMed publication types in its works record (a review, a
     systematic review, a meta-analysis): one whose types are not known is read as a primary
     study, and a number typed in the sentence is known only as the ledger's display of it.
+    Pinned by `tests/test_currency.py::test_k5_knows_a_synthesis_by_its_types_and_a_number_by_the_ledgers_display`.
   - Without the works store, which git leaves out (decision 7), the quotes of candidates and
     a decision the rules wrote are not checked, entry by entry, and a note says so
     (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
@@ -25300,13 +25303,16 @@ Open, recorded as each change landed:
     that other sentence, and `currency-change-unanswered` fails at submission until the author
     places the entry on the new sentence with `manuscript-guard references --mark "<words>"
     @<key> --id <id>`.
+    Pinned by `tests/test_corruption.py::test_a_swap_reworded_beside_another_old_key_sentence_is_a_known_limit`.
   - A value recorded in the literature ledger from the cited work after the rules decided
     turns an earlier `by: rules` `replace` with a synthesis into
     `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again
     from the readings filed, and a further reading is refused once the proposal is answered.
+    Pinned by `tests/test_currency.py::test_a_ledger_value_recorded_after_the_rules_decided_turns_their_replace_into_a_mismatch`.
   - A ledger display that is a bare whole number ("12") is found in any equal number of the
     sentence ("in 12 countries [@cited]"), so K5 can set a synthesis aside where the
     sentence quotes no value of the cited work.
+    Pinned by `tests/test_currency.py::test_a_bare_whole_number_in_the_ledger_is_found_in_any_equal_number_of_the_sentence`.
   - That a reading is of the cited work (`currency-reading-invalid`, "the reading is of")
     is checked only where `references.bib` gives the cited work a DOI or a PMID. Accepted.
   - G7 reads a work's stored source once for each quote of it, with nothing kept between.
@@ -25316,17 +25322,20 @@ Open, recorded as each change landed:
     makes the claim its decision was of; further than that it is unplaced, a note. `--mark`
     finds its sentence by its words folded and taken as one run, and refuses where more than
     one sentence citing the work holds them.
+    Pinned by `tests/test_currency.py::test_an_entry_is_placed_while_half_its_words_stand_and_mark_reads_them_as_one_run`.
   - Scope reads what `lookup` recorded, as of its date: a later version deposited since is
     not in scope until `lookup` asks again. The Introduction and Discussion of the unattended
     run are not yet read. Accepted.
   - `references` writes `literature/currency.yaml` whole, so a comment written in it is not
     kept.
+    Pinned by `tests/test_currency.py::test_references_writes_currency_yaml_whole_and_a_comment_in_it_is_lost`.
   - The digests of the search, works and reading records catch an edit made without care,
     not one made by somebody who computes the digest again; and the hook asks about an
     agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
     command, a patch that deletes the file). Accepted.
   - `currency-record-stale` reads the newest search of an entry that was asked, whatever
     its step: one step run again freshens the entry, though the others are older.
+    Pinned by `tests/test_currency_searches.py::test_one_step_run_again_freshens_an_entry_whose_other_steps_are_old`.
   - The recorded searches find what the registries index under the terms the reader wrote.
     PubMed and Europe PMC are biomedical, and all three lean towards work in English; a
     query can miss the words a study used, and nothing checks the terms against the
@@ -25343,6 +25352,8 @@ Open, recorded as each change landed:
     that cites it is not looked for. A work PubMed links to by its PMID alone (S1) is kept
     as `pmid:`, and the same work found elsewhere by its DOI is a second candidate, read
     twice.
+    Pinned by `tests/test_currency_searches.py::test_s1_asks_openalex_for_reviews_by_the_doi_only`
+    and `tests/test_currency_searches.py::test_a_work_pubmed_links_to_by_its_pmid_and_found_by_its_doi_is_two_candidates`.
   - S4 asks ClinicalTrials.gov only, for the studies its `overallStatus` says are under way;
     other registries' trials, and a trial whose status there is out of date, are not seen.
     Pinned by `tests/test_currency_searches.py::test_clinicaltrials_is_asked_for_ongoing_studies_and_read_to_their_numbers`.
@@ -25353,6 +25364,7 @@ Open, recorded as each change landed:
   - The cutoff of S3 reads every filed reading's search end date for a synthesis an S2
     search of the entry found, and takes the latest, though another reading may give an
     earlier one: two readings that disagree on it move the cutoff to the later.
+    Pinned by `tests/test_currency_searches.py::test_two_readings_that_disagree_on_a_search_end_move_the_cutoff_to_the_later`.
   - A work a source returned with neither a DOI nor a PMID is counted (`unidentified`) and
     not kept, since no record can name it.
     Pinned by `tests/test_currency_searches.py::test_every_step_is_run_at_every_source_and_recorded`.
@@ -25377,6 +25389,8 @@ Open, recorded as each change landed:
     once in their paragraph: two sentences that read alike in one paragraph get none. A
     sentence whose emphasis runs across its edge, or whose words the sentence splitter cuts
     otherwise than pandoc prints them, gets none either, with the reason.
+    Pinned by `tests/test_currency_comments.py::test_a_sentence_twice_in_its_paragraph_gets_no_comment_and_says_why`
+    and `tests/test_currency_comments.py::test_a_sentence_whose_words_the_build_does_not_print_as_cut_gets_no_comment`.
   - A reply is known at import by the `w14:paraId` of its first paragraph. That Word keeps it
     when a copy is saved again has not been checked in Word: where it gives the paragraph
     another id, importing the later copy files the same reply again, as another reply. A
@@ -25390,13 +25404,15 @@ Open, recorded as each change landed:
     what they disagree on only grows with another, so once two readings disagree the entry
     stays `uncertain` whatever a third says. A person's decision with why settles it, and
     so does `--replaces N`, which sets a reading aside (round 1 of #549, finding 1; the hint
-    and step 5 said so before #549). Closed by a hint and a step 5 that name those two.
+    and step 5 said so before #549). A hint and a step 5 that name those two would close it.
+    Pinned by `tests/test_currency.py::test_the_hint_sends_a_third_reader_though_a_third_reading_cannot_settle_it`.
   - Without `--readings`, `--explain` counts a missing work that only a reading names ("1
     work a reading names") and does not say how to see it: `--explain ID --readings`, or
     `check` (round 1 of #549, finding 2). The cited work it names is the first usable
     reading's own identification where `references.bib` gives the work no DOI or PMID
     (`cited_id`), so there the next reader is shown an earlier reader's choice, though
     `_absent`'s docstring calls the cited work no reader's (finding 3).
+    Pinned by `tests/test_currency.py::test_explain_counts_a_work_only_a_reading_names_and_names_an_earlier_readers_cited_work`.
   - `--replaces N`, where N cannot be used: a reading N whose file fails its schema or its
     YAML is not among those `_check_replaces` looks at, so the refusal says reading N "is
     replaced already", which is false, since N cannot be read (round 1 of #547, finding 1).
@@ -25407,6 +25423,8 @@ Open, recorded as each change landed:
     first free one, so with readings 1 and 3 and reading 2 deleted by hand, a new reading is
     filed as 2 and `--replaces 3` is refused as replacing no earlier reading (finding 4;
     contrived).
+    Pinned by `tests/test_currency.py::test_replaces_names_a_reading_that_cannot_be_read_replaced_already`
+    and `tests/test_currency.py::test_replaces_takes_an_edited_reading_silently_and_g7_still_fails_it`.
   - A reading that carries `replaces` fails the schema of an installation older than #547,
     whose `additionalProperties: false` knows no such field, and is reported there as
     `currency-record-edited`: a co-author's older tool, or a CI pinned to an older release,
@@ -25420,12 +25438,14 @@ Open, recorded as each change landed:
     whether" and its kind, or beside "still", "largely", "currently" or "as yet": "the
     denominator is unknown" is said of the data, and "the effect is unknown", said of the
     literature, is not read either.
+    Pinned by `tests/test_novelty.py::test_unknown_and_unclear_are_softer_only_after_remains_whether_or_still`.
   - A paper's own data are kept from the softer list only where it says so: "our data",
     "these data" and "the present data are limited" are not read, but "the data are limited
     by under-reporting" and "a lack of data on exposure" in the Limitations are notes (rounds
     1 to 4 of #583). A hyphenated "first" is no priority ("first-line", "first-in-class",
     "first-in-human") but for "first-ever" and "first-of-its-kind", and those not where they
     name a part of the study ("the first-ever time the patient received it").
+    Pinned by `tests/test_novelty.py::test_own_data_and_a_hyphenated_first_are_read_only_as_they_say`.
   - The record is graded, never the novelty. The terms are the reader's and nothing compares
     them with the claim: a search on another topic covers it. `references --explain` shows
     the terms beside the sentences, for a person to read together. Accepted.
@@ -25441,15 +25461,18 @@ Open, recorded as each change landed:
     that", which a result says of its own analysis as often. But "for the first time" after a
     verb of reporting is read whatever the subject, so "the reaction was described for the
     first time in 1985" warns.
+    Pinned by `tests/test_novelty.py::test_only_the_papers_own_priority_is_read_but_for_the_first_time_after_reporting`.
   - An absence a paper says of its own data is read as one of the literature: "no deaths have
     been reported in the trial" and "its results have not been published" warn until a person
     marks them no claim. The Results and the Methods are read as the rest is, since reading
     only the Introduction and the Discussion would leave a case report's "we report the first
     case" unread.
+    Pinned by `tests/test_novelty.py::test_an_absence_of_the_papers_own_data_warns_in_the_results_and_methods_too`.
   - A claim turned round is known only by a "not" right before it ("is not the first", "not
     for the first time"): "it is wrong to say that no study has examined this" warns, and so
     does a conditional, "if no study has examined it". A question, "whether this is the
-    first", is not read.
+    first", is not told from a claim, and warns.
+    Pinned by `tests/test_novelty.py::test_a_claim_turned_round_is_known_only_by_a_not_right_before_it`.
   - A sentence is what G7's splitter cuts. An abbreviation it does not know can join two
     sentences into one claim, and an entry's words then hold both. Accepted.
   - The title, the covering letter, the response to the reviewers and the communication
@@ -25466,6 +25489,7 @@ Open, recorded as each change landed:
   - N1 counts where any one source answered: a run that only OpenAlex answered covers the
     claim. `--explain` says which sources answered. A source whose first works all lack a DOI
     and a PMID keeps none, though it counted hundreds, and then asks for no N2.
+    Pinned by `tests/test_novelty.py::test_n1_answered_by_one_source_covers_the_claim_and_one_keeping_nothing_asks_no_n2`.
   - Each source keeps its first ten works, or `search_limit`: an earlier study ranked lower is
     in the count and not in the store, and is not read. Accepted.
   - N2 follows one work, by its DOI or PMID, through OpenAlex's list of the works citing it,
@@ -25482,8 +25506,10 @@ Open, recorded as each change landed:
     myopathy was described for the first time in 1988", warn, and a verb seven words before
     it is not seen. "That" ends the window, so "we show that, for the first time, statins
     reduce delirium" is not read.
+    Pinned by `tests/test_novelty.py::test_for_the_first_time_is_read_by_a_window_of_six_words_after_a_reporting_verb`.
   - A search five months old passes at submission, though a study published since is not in
     it.
+    Pinned by `tests/test_novelty.py::test_a_search_five_months_old_passes_at_submission`.
   - An entry is placed by its words exactly, so any rewording takes it off, a word changed or
     a typing error mended: the claim is unsearched, a warning and at submission a failure,
     until it is marked again with `references --novelty ... --id`, which keeps the searches

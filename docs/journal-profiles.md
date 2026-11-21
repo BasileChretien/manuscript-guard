@@ -159,11 +159,15 @@ and `journal-checklist.md` carries it as an item to tick.
 
 | Code | What it says |
 |---|---|
-| `main-document-format` | the last pack's main document, or the one `submit` will pack before there is a pack, is in no format the journal takes |
+| `main-document-format` | the main document of the pack on disk, as its manifest records it, or, where there is none, the one `submit` will pack, is in no format the journal takes |
+| `journal-format-not-in-quote` | a format of `main_document` its quote does not name ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument", "LaTeX"); fails from internal review |
 
-A warning at submission and a note before it, never a failure: `submit --latex`, which makes
-a Markdown paper's PDF, runs the submission check, and a failure would refuse it. What the
-journal asks only at revision, such as the source files, goes under `manual:`.
+`main-document-format` is a warning at submission and a note before it, never a failure:
+`submit --latex`, which makes a Markdown paper's PDF, runs the submission check, and a
+failure would refuse it. G4 runs before `submit` replaces the pack, so the pack on disk is
+the last one made: the next `submit` by the other route (`--latex` or not) packs another,
+and says itself what it holds. What the journal asks only at revision, such as the source
+files, goes under `manual:`.
 
 ## A page of its own
 

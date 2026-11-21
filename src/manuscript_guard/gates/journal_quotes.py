@@ -15,6 +15,8 @@ quote. A rule no gate checks goes under `manual:` with its quote, rather than no
   state, and so each number above 1 of a box and of a graphical abstract's line, a graphical
   abstract's number that is not whole ("2.5") and its aspect ratio ("16:9"). A limit of 0 or
   1 is held to the page only, since its quote may say "no" or "a".
+* `journal-format-not-in-quote` (fails): a format of `submission.main_document` its quote
+  does not name ("PDF", "Word", "LaTeX").
 * `journal-rule-unquoted` (warning): the rules that carry no quote, named together.
 * `journal-quote-names-no-rule` (warning): a quote for a rule the profile does not have.
 * `journal-page-not-stored` (warning): the page is not there to hold the quotes to.
@@ -167,6 +169,7 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
                         "the page says",
                     )
                 )
+    findings += _formats_unnamed(quotes, rules, path)
 
     said = [(str(key), quote) for key, quote in quotes.items()]
     said += [(f"manual: {entry['rule']}", entry["quote"]) for entry in manual]
@@ -174,6 +177,45 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
         held = [(key, quote) for key, quote in said if page.holds(key)]
         findings += _held_to(project, page, held, path, bool(quotes or manual))
     return Report(tuple(findings))
+
+
+#: How a page names each format it takes the main document in, searched in the quote with
+#: its case off: "PDF", "a Word file", ".docx", "Rich Text Format", "OpenDocument", "LaTeX".
+_FORMAT_WORDS = {
+    "pdf": r"\bpdfs?\b",
+    "docx": r"\bword\b|\bdocx\b",
+    "doc": r"\bword\b|\bdoc\b",
+    "rtf": r"\brtf\b|\brich text\b",
+    "odt": r"\bodt\b|\bopen ?document\b",
+    "tex": r"\b(?:la)?tex\b",
+}
+
+
+def _formats_unnamed(quotes: dict, rules: dict, path: Path) -> list[Finding]:
+    """`journal-format-not-in-quote` where the formats the profile says the journal takes the
+    main document in are not each named by their quote. Round 1 of #724: `[docx]` quoted as
+    "Please submit a PDF as your main document" passed, and silenced the warning that the
+    pack's .docx is not what a PDF-only journal takes. This field only: a rule that states
+    neither a number nor a format (`english_variant`) is held to the page alone, as before."""
+    from manuscript_guard.gates.main_document import NAMES, RULE
+
+    quote = quotes.get(RULE)
+    formats = rules.get(RULE)
+    if not quote or not isinstance(formats, list):
+        return []
+    text = normalise(str(quote))
+    unnamed = [str(name) for name in formats
+               if not re.search(_FORMAT_WORDS.get(str(name), re.escape(str(name))), text,
+                                re.IGNORECASE)]  # fmt: skip
+    if not unnamed:
+        return []
+    said = ", ".join(NAMES.get(name, name) for name in unnamed)
+    return [_finding(
+        "journal-format-not-in-quote", FAIL,
+        f"{RULE} names {said}, and its quote does not: \"{quote}\"", path,
+        "quote the words that name each format the journal takes the main document in, or "
+        "correct the list to what the page says",
+    )]  # fmt: skip
 
 
 #: The numbers of a box, each of which its quote has to state where it is above 1.
@@ -390,18 +432,22 @@ def journal_checklist(project: Project, main_document: str | None = None) -> str
     slug, document, _path = found
     source = document.get("source_url") or "the journal's instructions page"
     read_on = document.get("retrieved_on")
+    # The page's title is what is checked by hand before sending, and each part has its own
+    # heading: under "The journal's rules that no check holds", the main document, which G4
+    # checks, was said to be held by none (round 1 of #724).
     lines = [
-        "# The journal's rules that no check holds",
+        "# The journal's rules to check before sending",
         "",
         f"From the {slug} profile, read from {source}"
         + (f" on {read_on}" if read_on else "")
         + ". Each is checked by hand against the paper before it is submitted.",
     ]
     if signable is not None:
-        lines += ["", *_manual_rows(project, document, signable)]
+        lines += ["", "## The rules no check holds", "",
+                  *_manual_rows(project, document, signable)]  # fmt: skip
     # Said here as well as by `submit`: the checklist is what the corresponding author reads
     # before sending, and the pack's output scrolls away (Royal Society Open Science takes a
-    # PDF, and the pack held a .docx).
+    # PDF, and the pack held a .docx). G4 warns of it too (`main-document-format`).
     if main_document is not None:
         lines += ["", "## The main document", "",
                   f"- [ ] {main_document[:1].upper()}{main_document[1:]}"]  # fmt: skip

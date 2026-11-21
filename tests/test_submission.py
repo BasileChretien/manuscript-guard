@@ -233,6 +233,13 @@ def test_a_pack_whose_main_document_the_journal_does_not_take_says_so(project: P
     checklist = (pack.directory / "journal-checklist.md").read_text(encoding="utf-8")
     assert "\n## The main document\n" in checklist
     assert f"- [ ] {said[0].upper()}{said[1:]}" in checklist and _PDF_ONLY in checklist
+    # Round 1 of #724: under "The journal's rules that no check holds", an item G4 checks.
+    # The page is what to check before sending; the rules no check holds have their own
+    # heading, and the main document its own.
+    assert checklist.startswith("# The journal's rules to check before sending\n")
+    assert "\n## The rules no check holds\n" in checklist
+    assert checklist.index("## The rules no check holds") < checklist.index("## The main")
+    assert "no check holds" not in checklist[checklist.index("## The main"):]
     manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
     assert manifest["main_document"] == {"file": "manuscript.docx", "formats": ["docx"],
                                          "journal_takes": ["pdf"],
@@ -285,6 +292,39 @@ def test_the_pack_says_how_to_make_the_main_document_the_journal_takes(
     assert said is not None and advice in said
 
 
+def _advice(takes: list[str], main: str, names: list[str], *, revision: bool = False) -> str:
+    """What the pack says of a Markdown paper's main document `main` for a journal that
+    takes `takes`, at a revision or not."""
+    from manuscript_guard.gates.main_document import gap
+
+    _record, said = gap({"submission": {"main_document": takes}}, Path(main), names,
+                        latex_manuscript=False, revision=revision)  # fmt: skip
+    assert said is not None
+    return said
+
+
+def test_a_journal_that_takes_the_latex_source_alone_is_offered_latex_alone() -> None:
+    """Round 1 of #724: the .docx saved as PDF is no LaTeX source, and a journal taking only
+    the source was told to send it."""
+    said = _advice(["tex"], "manuscript.docx", [])
+    assert "manuscript-guard submit --latex" in said and "save it as PDF" not in said
+
+
+def test_word_s_other_formats_from_a_latex_pack_start_from_the_docx_route() -> None:
+    """Round 1 of #724: a `--latex` pack holds no .docx to open, and the journal taking .doc
+    was told to open one."""
+    said = _advice(["doc"], "manuscript.pdf", ["latex/main.tex"])
+    assert said.index("without `--latex`") < said.index("save it as Word (.doc)")
+
+
+@pytest.mark.parametrize("revision", [False, True])
+def test_the_latex_advice_at_a_revision_says_it_packs_no_marked_up_copy(revision: bool) -> None:
+    """Round 1 of #724: `submit --latex` packs no marked-up copy, which a revision sends, and
+    the advice to take it did not say so."""
+    said = _advice(["pdf"], "manuscript.docx", [], revision=revision)
+    assert ("no marked-up copy" in said) is revision
+
+
 def test_a_profile_silent_on_the_main_document_has_it_recorded_and_judged_by_none(
     project: Path,
 ) -> None:
@@ -305,6 +345,7 @@ def test_a_checklist_with_no_manual_rule_still_carries_the_main_document(project
     checklist = (assemble_pack(projekt, document).directory / "journal-checklist.md")
     text = checklist.read_text(encoding="utf-8")
     assert "\n## The main document\n" in text and "| Checked | Rule |" not in text
+    assert "no check holds" not in text
     assert "signed off" not in text.lower()
 
 

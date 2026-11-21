@@ -8546,21 +8546,31 @@ def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> 
 # ------------------------------------------------------- the main document's format
 
 _MAIN_QUOTE = "Please submit a PDF as your main document."
+_EITHER_QUOTE = "Upload the manuscript as a Word file or as a PDF."
+_WORD_QUOTE = "Upload the manuscript as a Word document."
+#: Each format a quote names, in the forms a journal's page writes it.
+_NAMING = [
+    (["pdf"], "Submit the main document as a pdf file."),
+    (["docx"], "Upload the manuscript as a .docx file."),
+    (["doc", "rtf"], "The manuscript may be sent as a .doc or Rich Text Format file."),
+    (["odt"], "OpenDocument text files are accepted."),
+    (["tex"], "LaTeX submissions are welcome."),
+]
 
 
 def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
                          quoted: bool = True, packed: list[str] | None = None,
-                         ) -> list[tuple[str, str]]:  # fmt: skip
+                         quote: str = _MAIN_QUOTE) -> list[tuple[str, str]]:  # fmt: skip
     """G4's findings on the main document's format, and on the quotes, at `stage`, for the
     example whose journal takes its main document in `formats` (None: the profile says
-    nothing of it), quoted from its stored page or not, with a pack already made whose
-    manifest records its main document in `packed`, or none made."""
+    nothing of it), quoted as `quote` from its stored page or not, with a pack already made
+    whose manifest records its main document in `packed`, or none made."""
     from manuscript_guard.gates import check_journal, check_main_document
     from manuscript_guard.gates.journal_quotes import page_digest
     from manuscript_guard.policy import apply_stage
 
     stored = root / "profiles" / "journals" / "sources" / "demo-journal.txt"
-    text = stored.read_text(encoding="utf-8") + f"\n{_MAIN_QUOTE}\n"
+    text = stored.read_text(encoding="utf-8") + f"\n{quote}\n"
     stored.write_text(text, encoding="utf-8")
     profile = root / "profiles" / "journals" / "demo-journal.yaml"
     document = yaml.safe_load(profile.read_text(encoding="utf-8"))
@@ -8568,7 +8578,7 @@ def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
     if formats is not None:
         document["submission"] = {"main_document": formats}
         if quoted:
-            document["quotes"]["submission.main_document"] = _MAIN_QUOTE
+            document["quotes"]["submission.main_document"] = quote
     profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     if packed is not None:
         pack = root / "build" / "submission"
@@ -8580,7 +8590,8 @@ def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
     report, _ = apply_stage(check_main_document(project, stage).merge(check_journal(project)),
                             stage)  # fmt: skip
     return sorted((f.code, f.severity) for f in report.findings
-                  if f.code == "main-document-format" or f.code == "journal-rule-unquoted")
+                  if f.code in {"main-document-format", "journal-rule-unquoted",
+                                "journal-format-not-in-quote"})  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -8591,7 +8602,7 @@ def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
         (["pdf"], "submission", {}, [("main-document-format", "warn")]),
         (["pdf"], "drafting", {}, [("main-document-format", "info")]),
         # A journal that takes either, and a profile that says nothing of it: nothing.
-        (["docx", "pdf"], "submission", {}, []),
+        (["docx", "pdf"], "submission", {"quote": _EITHER_QUOTE}, []),
         (None, "submission", {}, []),
         # Unquoted, it is a rule like any other with no words of the page behind it.
         (["pdf"], "submission", {"quoted": False},
@@ -8601,13 +8612,51 @@ def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
         (["pdf"], "submission", {"packed": ["pdf", "tex"]}, []),
         (["pdf"], "submission", {"packed": ["docx"]}, [("main-document-format", "warn")]),
         # A journal that takes Word only, and a pack of the PDF and its LaTeX source.
-        (["docx"], "submission", {"packed": ["pdf", "tex"]}, [("main-document-format", "warn")]),
+        (["docx"], "submission", {"packed": ["pdf", "tex"], "quote": _WORD_QUOTE},
+         [("main-document-format", "warn")]),
     ],
 )  # fmt: skip
 def test_a_main_document_in_a_format_the_journal_does_not_take_is_warned_of(
     project: Path, formats, stage: str, kwargs: dict, said: list
 ) -> None:
     assert _main_document_codes(project, formats, stage, **kwargs) == said
+
+
+@pytest.mark.parametrize(
+    ("formats", "quote", "packed", "said"),
+    [
+        # Round 1 of #724: Word typed for a page that asks for a PDF passed, and silenced the
+        # warning a PDF-only journal's paper should get.
+        (["docx"], _MAIN_QUOTE, ["docx"], [("journal-format-not-in-quote", "fail")]),
+        (["docx", "pdf"], _MAIN_QUOTE, ["docx"], [("journal-format-not-in-quote", "fail")]),
+        (["pdf"], _WORD_QUOTE, None, [("journal-format-not-in-quote", "fail"),
+                                      ("main-document-format", "warn")]),
+        # Each format named as a page names it, in capitals or not, with its dot or by name.
+        *[(formats, quote, formats[:1], []) for formats, quote in _NAMING],
+    ],
+)  # fmt: skip
+def test_a_main_document_format_its_quote_does_not_name_fails(
+    project: Path, formats: list[str], quote: str, packed, said: list
+) -> None:
+    """Each format the profile says the journal takes is named by its quote: a format typed
+    wrong is a rule the page does not state, as a limit typed wrong is."""
+    assert _main_document_codes(project, formats, "submission", quote=quote,
+                                packed=packed) == said  # fmt: skip
+
+
+def test_the_warning_of_a_pack_on_disk_says_another_route_may_pack_another(
+    project: Path,
+) -> None:
+    """Round 1 of #724: G4 reads the pack on disk, made before this `submit` replaces it,
+    and said "the pack's" as though it were the one about to be sent."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+
+    _main_document_codes(project, ["pdf"], SUBMISSION, packed=["docx"])
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert said.message == ("the journal takes its main document as PDF, and the pack on "
+                            "disk, manuscript.docx, is Word (.docx)")  # fmt: skip
+    assert "the next `submit` by the other route packs another" in said.hint
 
 
 def test_the_main_document_warning_says_what_the_journal_takes_and_how_to_make_it(

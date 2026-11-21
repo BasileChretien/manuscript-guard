@@ -908,10 +908,12 @@ def _main_document(project: Project, document: Path, packed_names: list[str]
     journal does not take it, where its profile says what it takes (`gates/main_document`)."""
     from manuscript_guard.gates.journal import _profile
     from manuscript_guard.gates.main_document import gap
+    from manuscript_guard.gates.revision import rounds
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     latex = manuscript_format(project.path("manuscript")) == LATEX
-    return gap(_profile(project), document, packed_names, latex_manuscript=latex)
+    return gap(_profile(project), document, packed_names, latex_manuscript=latex,
+               revision=bool(rounds(project)))  # fmt: skip
 
 
 #: The longest `git` is waited for. A repository on a network drive, or one with a file

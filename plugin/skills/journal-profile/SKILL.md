@@ -281,9 +281,10 @@ goes in `notes` or `manual`, quoted.
 Where the page says in what format the main document is submitted ("Please submit a PDF as
 your main document"), give it as `submission: {main_document: [pdf]}`, quoted under
 `quotes.submission.main_document`: every format it takes (`[docx, pdf]`), `tex` for the
-LaTeX source. `submit` then says where the pack's main document is in none of them, and how
-to make one, and G4 warns at submission (`main-document-format`). What it asks only at
-revision, the source files say, goes under `manual:`.
+LaTeX source, each named in the quote ("PDF", "Word", "LaTeX") or it fails
+(`journal-format-not-in-quote`). `submit` then says where the pack's main document is in
+none of them, and how to make one, and G4 warns at submission (`main-document-format`).
+What it asks only at revision, the source files say, goes under `manual:`.
 
 Where the page asks for highlights, key points or another box beside the abstract, or says
 anything of a graphical abstract or of what its authors may share, fill `boxes`,

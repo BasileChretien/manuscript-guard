@@ -9,9 +9,11 @@ page under `quotes.submission.main_document` as every rule is, and
 * `submit` records the main document and its format in MANIFEST.yaml and, where the journal
   does not take it, says so with the pack and in journal-checklist.md, with how to make the
   one it takes (`build/submission.py`);
-* G4 says so (`main-document-format`) of the last pack's main document, as its manifest
-  records it, or, before a pack records one, of the one `submit` will pack: a Markdown
-  manuscript's .docx, a LaTeX manuscript's PDF with its source in latex/.
+* G4 says so (`main-document-format`) of the pack on disk, as its manifest records it, or,
+  where there is none, of the one `submit` will pack: a Markdown manuscript's .docx, a LaTeX
+  manuscript's PDF with its source in latex/. The pack on disk is the last one made, which
+  the next `submit` replaces: by the other route (`--latex` or not), it packs another, and
+  says so itself.
 
 A warning at submission and a note before it, and not a failure, as a figure in a format the
 journal does not take is (`figure-format`): `submit` refuses while the check fails, and
@@ -71,23 +73,35 @@ def names(formats: Sequence[str]) -> str:
     return said[0] if len(said) == 1 else ", ".join(said[:-1]) + " or " + said[-1]
 
 
-def how_to(takes: Sequence[str], formats: Sequence[str], *, latex_manuscript: bool) -> str:
-    """How to make the main document the journal takes from the one the pack holds."""
+def how_to(takes: Sequence[str], formats: Sequence[str], *, latex_manuscript: bool,
+           revision: bool = False) -> str:  # fmt: skip
+    """How to make the main document the journal takes from the one the pack holds; at a
+    `revision`, the LaTeX route says it packs no marked-up copy."""
     if latex_manuscript:
         return (f"manuscript-guard makes no {names(takes)} of a LaTeX source: ask the journal "
                 "whether it takes the PDF, or convert the source in latex/ and read the "
                 "result against the PDF before sending it")
-    if set(takes) & set(LATEX_ROUTE) and "pdf" not in formats:
-        return ("run `manuscript-guard submit --latex`, which packs the PDF LaTeX makes, with "
-                "its source in latex/; or open the .docx, refresh its citations (Zotero: "
-                "Refresh), save it as PDF and send that PDF as the main document, which the "
-                "manifest's checksums do not cover")
+    word = "docx" in formats
+    # At a revision a journal wants the changes shown, and the LaTeX route packs no marked-up
+    # copy (`submit` says so when it takes it): said here, before the author chooses it.
+    latex_route = ("run `manuscript-guard submit --latex`, which packs the PDF LaTeX makes, "
+                   "with its source in latex/"
+                   + ("; at a revision it packs no marked-up copy, which `build --marked-up` "
+                      "makes as Word documents" if revision else ""))  # fmt: skip
+    save_as = ("open the .docx, refresh its citations (Zotero: Refresh), save it as {} and "
+               "send that as the main document, which the manifest's checksums do not cover")
+    if "pdf" in takes and word:
+        return f"{latex_route}; or {save_as.format('PDF')}"
+    # The LaTeX source alone: the .docx saved as PDF is no source (round 1 of #724).
+    if "tex" in takes:
+        return latex_route
     if "docx" in takes:
         return "run `manuscript-guard submit` without `--latex`, which packs the .docx"
-    # .doc, RTF or OpenDocument: Word saves the .docx as each, and no route here makes one.
-    return (f"open the .docx, refresh its citations (Zotero: Refresh), save it as "
-            f"{names(takes)} and send that as the main document, which the manifest's "
-            "checksums do not cover")
+    # .doc, RTF or OpenDocument: Word saves the .docx as each, and no route here makes one. A
+    # `--latex` pack holds no .docx to open, and the route that does comes first (round 1).
+    other = save_as.format(names(takes))
+    return other if word else ("run `manuscript-guard submit` without `--latex`, which packs "
+                               f"the .docx; then {other}")
 
 
 def last_pack(project: Project) -> tuple[str, tuple[str, ...]] | None:
@@ -132,13 +146,20 @@ def check_main_document(project: Project, stage: str) -> Report:
                    f"packs this manuscript as {names(formats[:1])}")
     else:
         file, formats = packed
-        message = (f"the journal takes its main document as {names(takes)}, and the pack's, "
-                   f"{file}, is {names(formats[:1])}")
+        message = (f"the journal takes its main document as {names(takes)}, and the pack on "
+                   f"disk, {file}, is {names(formats[:1])}")
     if set(formats) & set(takes):
         return Report()
     quote = ((document or {}).get("quotes") or {}).get(RULE)
-    hint = how_to(takes, formats, latex_manuscript=latex) + (
-        f". The journal's words: \"{quote}\"" if quote else "")  # fmt: skip
+    from manuscript_guard.gates.revision import rounds
+
+    hint = how_to(takes, formats, latex_manuscript=latex, revision=bool(rounds(project)))
+    # G4 runs before `submit` replaces the pack, so what is on disk may not be what the next
+    # `submit` packs: it said "the pack's" as though it were (round 1 of #724).
+    if packed is not None:
+        hint += (". G4 reads the pack on disk; the next `submit` by the other route packs "
+                 "another, and says so")
+    hint += f". The journal's words: \"{quote}\"" if quote else ""
     return Report((
         Finding(gate=GATE, code=CODE, severity=WARN if stage == SUBMISSION else INFO,
                 message=message, path=profile_path(project, project.target_journal),
@@ -147,10 +168,11 @@ def check_main_document(project: Project, stage: str) -> Report:
 
 
 def gap(document: dict | None, main: Path, packed_names: Iterable[str], *,
-        latex_manuscript: bool) -> tuple[dict, str | None]:  # fmt: skip
+        latex_manuscript: bool, revision: bool = False) -> tuple[dict, str | None]:  # fmt: skip
     """What the manifest records of the pack's main document `main`, and the sentence that
-    says the journal does not take it, with how to make the one it does; None where it does,
-    or the profile says nothing of it."""
+    says the journal does not take it, with how to make the one it does (at a `revision`,
+    that the LaTeX route packs no marked-up copy); None where it does, or the profile says
+    nothing of it."""
     formats = packed_formats(main, packed_names)
     record: dict = {"file": main.name, "formats": list(formats)}
     takes = wanted(document)
@@ -163,6 +185,6 @@ def gap(document: dict | None, main: Path, packed_names: Iterable[str], *,
     quote = ((document or {}).get("quotes") or {}).get(RULE)
     said = (f"the journal takes its main document as {names(takes)}, and this pack's is "
             f"{main.name}, {names(formats[:1])}: "
-            + how_to(takes, formats, latex_manuscript=latex_manuscript)
+            + how_to(takes, formats, latex_manuscript=latex_manuscript, revision=revision)
             + (f". The journal's words: \"{quote}\"" if quote else ""))
     return record, said

@@ -24224,6 +24224,11 @@ Open, recorded as each change landed:
     then writes only inside such names, a table of series named so, is defined and not used
     again.
     Pinned by `tests/test_language.py::test_a_short_form_used_only_in_names_underscores_join_is_unused`.
+  - The name ends where its underscores do, so a word a hyphen joins after it is read on
+    its own: in "LOG_GDP-QMP" QMP is a use, and in "LOG_QMP-IOS" QMP is a part of the name
+    and IOS a use (review round 2 of #717). A word a hyphen joins before the name is not:
+    each part of a hyphenated word is set apart at its own place, "anti-QMP_RATE".
+    Pinned by `tests/test_language.py::test_a_word_a_hyphen_joins_after_a_joined_name_is_read_on_its_own`.
 
 - **A paper that declares no English is held to a count, and is built in no region.**
   (Basile, 2026-10-23.) Accepted.

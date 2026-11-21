@@ -2389,7 +2389,9 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
 def _apart(file: _File, word: int, offset: int) -> bool:
     """Whether the short form at `offset`, in the word that starts at `word`, is a part of a
     designation or of a name underscores join (`_File.apart`): each part of a hyphenated
-    word on its own, so "anti-QMP_RATE", which opens with a word, holds no use of QMP."""
+    word on its own, so "anti-QMP_RATE", which opens with a word, holds no use of QMP. `word`
+    is not read here: it is there for the test that breaks this rule in place, by reading
+    where the word starts instead (`BROKEN` in `tests/test_properties.py`)."""
     return _inside(file.apart, offset)
 
 

@@ -1013,7 +1013,7 @@ JOINED_SHORT = ("quarterly market price", "QMP")
 JOINED_NAMES = ("QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "UK_QMP\\_ALL")
 #: Such a name with a word a hyphen joins before it, which every example holds one of: the
 #: hyphenated word opens before the name, and its short form is a part of the name still.
-HYPHENED_NAMES = ("anti-QMP_RATE", "pre-QMP\\_ALL", "non-IOS_QMP")
+HYPHENED_NAMES = ("anti-QMP_RATE", "pre-QMP\\_ALL", "non-QMP_IOS")
 #: A colon pair or an equals sign's whose long form a bracket after it defines a short form
 #: from, alone or in a list, round or square: the bracket's definition wins (Basile,
 #: 2026-11-21, "Bracket wins"), so the pair's short form is defined by nothing. `{s}` is the

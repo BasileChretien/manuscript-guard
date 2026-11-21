@@ -2702,6 +2702,24 @@ def test_a_short_form_used_only_in_names_underscores_join_is_unused(project: Pat
         "QMP is defined and not used again in the main text as G14 reads it"], found(report)
 
 
+@pytest.mark.parametrize(
+    ("cell", "said"),
+    [("LOG_GDP-QMP", ["QMP is used here, and defined later at manuscript/main.md:7"]),
+     ("LOG_QMP-IOS", ["IOS is used once in the main text as G14 reads it, and not defined "
+                      "there"])],
+)  # fmt: skip
+def test_a_word_a_hyphen_joins_after_a_joined_name_is_read_on_its_own(
+    project: Path, cell: str, said: list[str]
+) -> None:
+    """The limit DESIGN.md's Known gaps write down (review round 2 of #717): the name
+    underscores join ends at a hyphen, so a word a hyphen joins after it is read on its own.
+    QMP after "LOG_GDP-" is a use, before the text defines it; in "LOG_QMP-IOS", QMP is a
+    part of the name and no use, and IOS after the hyphen is read, and never defined."""
+    report = written(project, f"# Results\n\n| Series | Loading |\n|---|---|\n| {cell} | 0.13 "
+                              "|\n\nThe quarterly market price (QMP) rose. The QMP fell.\n")
+    assert found(report) == said, found(report)
+
+
 def test_a_latex_name_underscores_join_is_no_use_of_a_short_form(tmp_path: Path) -> None:
     """In LaTeX, `QMP\\_RATE`, which the reader leaves as an underscore and a NUL."""
     from manuscript_guard.gates.language import _judge, _Known

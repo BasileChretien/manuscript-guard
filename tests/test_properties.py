@@ -1406,6 +1406,97 @@ def _every_heading_and_reference_redefined_is_read_as_before(
     patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: True)
 
 
+def _the_author_kit_s_heading_is_refused_where_used(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_through_ifstar", lambda self, name, head, body: ())
+
+
+def _every_heading_defined_through_ifstar_is_read_as_before(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(latex_mask._Reader, "_through_ifstar", lambda self, name, head, body:
+                  ("ifstar",) if "\\@ifstar" in body else ())  # fmt: skip
+
+
+def _a_kit_helper_may_print_words_before_the_title(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_HANDED_ON", re.compile(
+        r"\s*\\(?P<to>[A-Za-z@]+)\s*(?P<star>\*)?\s*\{\s*(?:\\texorpdfstring\s*\{[^{}]*\}\s*"
+        r"\{\s*\}\s*)?#1\s*\}\s*"))  # fmt: skip
+
+
+def _a_provided_kit_helper_is_defined(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_ALWAYS_DEFINE",
+                  latex_mask._ALWAYS_DEFINE | {"providecommand"})  # fmt: skip
+
+
+def _a_kit_helper_defined_again_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_takes_back",
+                  lambda self, name: self.bodies_at.pop(name, None))  # fmt: skip
+
+
+def _only_the_plain_helper_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    takes_back = latex_mask._Reader._takes_back
+
+    def broken(self, name: str) -> None:
+        # Round 1 of #757: a rule that took the heading back only for its plain helper.
+        if any(name == helpers[0] or name == helpers[2] for helpers in self.through.values()):
+            self.bodies_at.pop(name, None)
+            return
+        takes_back(self, name)
+
+    patch.setattr(latex_mask._Reader, "_takes_back", broken)
+
+
+def _a_provided_command_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: False)
+
+
+def _an_edef_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._DEFINE_AGAIN | {"edef"})
+
+
+def _a_newcommand_heading_is_read_as_the_author_kit_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_DEFINE_AGAIN", latex_mask._ALWAYS_DEFINE)
+
+
+def _a_provided_startsection_takes_the_kit_s_heading_back(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #757: a rule that kept the reading for a provided helper and not for the
+    # `\@startsection` command the helpers hand on to.
+    patch.setattr(latex_mask._Reader, "_provides_nothing", lambda self, name: (
+        self.command in latex_mask.PROVIDERS and (name in latex_mask.COMMANDS or (
+            name in self.bodies_at and name not in [h[2] for h in self.through.values()]))))
+
+
+def _an_at_in_a_kit_comment_counts(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, name: str):
+        if name not in self.bodies_at:
+            return None
+        start, at, letter = self.bodies_at[name]
+        end = self._group_end(at)
+        if end < 0 or not latex_mask._as_written(self.text[start:end], letter):
+            return None
+        return self.text[start:at], self.text[at + 1 : end - 1]
+
+    patch.setattr(latex_mask._Reader, "_defined", broken)
+
+
+def _a_kit_body_where_at_is_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_as_written", lambda definition, letter: True)
+
+
+def _a_short_title_after_the_kit_s_heading_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_SHORT_TITLE", re.compile(r"(?!)"))
+
+
+def _the_kit_s_heading_is_not_told_the_tree(patch: pytest.MonkeyPatch) -> None:
+    restyled = latex_mask._Reader._restyled
+
+    def broken(self, at: int) -> None:
+        restyled(self, at)
+        self.defined_no_short.clear()
+
+    patch.setattr(latex_mask._Reader, "_restyled", broken)
+
+
 def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_before", lambda reading, at: reading)
 
@@ -26169,6 +26260,62 @@ BROKEN = {
     ),
     "in LaTeX, every heading or reference defined again is read as before": (
         _every_heading_and_reference_redefined_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, the author kit's heading is refused where used": (
+        _the_author_kit_s_heading_is_refused_where_used,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every heading defined through \\@ifstar is read as before": (
+        _every_heading_defined_through_ifstar_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit may print words before the title": (
+        _a_kit_helper_may_print_words_before_the_title,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit by \\providecommand is defined": (
+        _a_provided_kit_helper_is_defined,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a helper of the author kit defined again is not seen": (
+        _a_kit_helper_defined_again_is_not_seen,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, only the plain helper takes the author kit's heading back": (
+        _only_the_plain_helper_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\providecommand of a command defined takes the author kit's heading back": (
+        _a_provided_command_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an \\edef heading is read as the author kit's": (
+        _an_edef_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a \\newcommand heading is read as the author kit's": (
+        _a_newcommand_heading_is_read_as_the_author_kit_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a provided \\@startsection command takes the author kit's heading back": (
+        _a_provided_startsection_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an @ in a comment of the author kit's definition counts": (
+        _an_at_in_a_kit_comment_counts,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a kit body defined where @ is no letter is read": (
+        _a_kit_body_where_at_is_no_letter_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a short title after the author kit's heading is read": (
+        _a_short_title_after_the_kit_s_heading_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, the author kit's heading is not told the tree": (
+        _the_kit_s_heading_is_not_told_the_tree,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, what the reader found past a refusal is kept": (

@@ -215,8 +215,10 @@ def load_ties(root: Path) -> dict | None:
 
 def check_batches(made: dict, packets: dict) -> None:
     """Each batch's ties refused where its packet now names another run or scheme than the
-    one they were made from: a batch packed again under its name is never paired by them.
-    `packets` gives each batch's run and scheme as its packet has them."""
+    `judged_run` and `scheme` they were made from; `packets` gives each batch's run and
+    scheme as its packet has them. Only those two are compared: a batch packed again under
+    its name from the same run at the same scheme passes, and the old ties then apply at
+    its indices, so such a batch is tied again before `measure` or `gate` (docs/corpus.md)."""
     for name, said in made.items():
         packet = packets.get(name)
         if packet is not None and packet != (said["judged_run"], said["scheme"]):
@@ -495,20 +497,26 @@ def tie_group(olds: list[dict], new: list[dict], slug: str,
 
 
 def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
-                     kinds: tuple = TO_DECIDE, batches: dict | None = None) -> str:  # fmt: skip
+                     kinds: tuple = TO_DECIDE, batches: dict | None = None,
+                     no_run: dict | None = None) -> str:  # fmt: skip
     """The judged findings of `kinds` not tied, each with its candidates: those the author
     settles by hand (`TO_DECIDE`), or, with the other kinds, the list of those left untied.
     A batch's verdict is listed with its batch's name first, `batches` naming the run each
     batch's verdicts were judged in, and the counts keep the first verdicts and the
-    batches' apart."""
+    batches' apart. The list of those left untied names too each batch not tied because
+    its run is gone (`no_run`, its number of verdicts by its name), counted with the
+    batches'."""
     rows = [row for row in rows if row["kind"] in kinds]
     named = sorted({row["batch"] for row in rows if row.get("batch")})
+    gone = {} if kinds == TO_DECIDE else dict(no_run or {})
 
-    def count(part: list[dict]) -> str:
-        theirs = sum(bool(row.get("batch")) for row in part)
-        if not named:
+    def count(part: list[dict], whole: bool = False) -> str:
+        theirs = sum(bool(row.get("batch")) for row in part) + (
+            sum(gone.values()) if whole else 0)  # fmt: skip
+        if not named and not gone:
             return str(len(part))
-        return f"{len(part)}: {len(part) - theirs} of the first verdicts, {theirs} of batches"
+        total = len(part) + (sum(gone.values()) if whole else 0)
+        return f"{total}: {total - theirs} of the first verdicts, {theirs} of batches"
 
     judged_in = ["A batch's verdicts, its name first, were judged in its batch's run against "
                  "the same keyed run: " + ", ".join(
@@ -524,10 +532,13 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
                  "with more than one candidate, and those whose candidate's key is repeated.",
                  "", *judged_in]  # fmt: skip
     else:
-        lines = [f"# Judged findings left untied: {count(rows)}", "",
+        lines = [f"# Judged findings left untied: {count(rows, whole=True)}", "",
                  f"The judged run {judged_run} against the keyed run {keyed_run}: no rule ties "
                  "these, and #705's matcher pairs them in `measure` and `gate`.", "",
                  *judged_in]  # fmt: skip
+        lines += [f"- Batch {name}, {n} verdicts: not tied, as its run is neither at the "
+                  "folder its packet names nor under runs/; the matcher pairs them."
+                  for name, n in sorted(gone.items())] + ([""] if gone else [])  # fmt: skip
     by_kind = collections.defaultdict(list)
     for row in rows:
         by_kind[row["kind"]].append(row)

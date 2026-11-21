@@ -654,18 +654,18 @@ def _tie_set(judged: list[Judged], run: Run, before: Run) -> tuple[list[dict], l
     return ties, ambiguous
 
 
-def _tie_batches(batches: list[Judged], run: Run) -> tuple[dict, list[dict], list[str]]:
+def _tie_batches(batches: list[Judged], run: Run) -> tuple[dict, list[dict], dict[str, int]]:
     """Each batch's verdicts of another scheme than `run`'s tied to it as the first ones are,
     the batch's own run, where its packet found it, standing for the judged run; and the
     batches whose run is not there, left untied, for the matcher."""
     by_batch: dict[str, list[Judged]] = collections.defaultdict(list)
     for item in batches:
         by_batch[item.batch].append(item)
-    tied, ambiguous, no_run = {}, [], []
+    tied, ambiguous, no_run = {}, [], {}
     for name, items in sorted(by_batch.items()):
         sources = {item.source for item in items}
         if None in sources or len(sources) != 1:
-            no_run.append(name)
+            no_run[name] = len(items)
             continue
         ties, left = _tie_set(items, run, Run(sources.pop()))
         to_decide = sum(row["kind"] in corpus_keys.TO_DECIDE for row in left)
@@ -706,7 +706,8 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
         corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, batches=runs), "utf-8")
     untied = tuple(k for k in corpus_keys.KINDS if k not in corpus_keys.TO_DECIDE)
     (root / corpus_keys.UNTIED).write_text(
-        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, untied, runs), "utf-8")
+        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, untied, runs, no_run),
+        "utf-8")
     return {"judged_run": judged_run, "run": keyed_run, "scheme": run.scheme,
             "tied": len(ties), "by_pass": dict(collections.Counter(row["how"] for row in ties)),
             "ambiguous": len(ambiguous) - len(by_batch),
@@ -715,7 +716,7 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
             "batches": {name: {"judged_run": b["judged_run"], "scheme": b["scheme"],
                                "tied": len(b["ties"]), "ambiguous": b["ambiguous"],
                                "to_decide": b["to_decide"]} for name, b in batches.items()},
-            "own_scheme": own, "no_run": no_run}  # fmt: skip
+            "own_scheme": own, "no_run": list(no_run)}  # fmt: skip
 
 
 # --- the command line -------------------------------------------------------------------

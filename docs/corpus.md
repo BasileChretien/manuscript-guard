@@ -316,7 +316,8 @@ are tied (Basile, 2026-11-21): the same `tie` ties the verdicts of each batch wh
 keys by another scheme than the keyed run, by the same rules, the batch's own run (found as
 `measure` finds it, at the packet's `folder`, else at `runs/<run>`) standing for the judged
 run. A batch whose run is at neither is left untied, its verdicts for the matcher, and `tie`
-says so. A batch of the keyed run's own scheme is not tied: its verdicts are paired by the
+says so, on the console and in `report/ties-untied.md`, its verdicts counted with the
+batches'. A batch of the keyed run's own scheme is not tied: its verdicts are paired by the
 keys they carry, as before.
 
 Each tie goes to `report/ties.yaml`, `{slug, report, index, key, how}` and `family` for a
@@ -325,7 +326,9 @@ the batch's `judged_run` and `scheme`. They are kept in the one file because the
 the one keyed run, of one scheme, by one command: `measure` and `gate` read a batch's ties
 where they read the first ones, only where every run measured keys by the ties' scheme, and
 refuse a batch's ties where its packet now names another run or scheme than the ones they
-were made from. A judged finding no rule settles, with several candidates or a repeated key,
+were made from. Only those two are compared: a batch packed again under its name from the
+same run at the same scheme passes, and its old ties would apply at the new packet's
+indices, so such a batch is tied again before `measure` or `gate`. A judged finding no rule settles, with several candidates or a repeated key,
 goes to `report/ties-ambiguous.md` with its verdict, its message and the candidates' keys and
 messages, a batch's verdict with its batch's name first and the run it was judged in named
 above, the counts of the first verdicts and the batches' apart, for the author to decide by

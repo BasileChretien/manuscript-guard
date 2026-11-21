@@ -627,6 +627,13 @@ def test_a_batch_whose_run_is_gone_is_left_for_the_matcher(corpus: Path) -> None
         tool.corpus_keys.render_tie(said))
     document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
     assert "batches" not in document and len(document["ties"]) == len(FIRST)
+    # The list of those left untied names it, its four verdicts counted with the batches'.
+    untied = (corpus / "report" / "ties-untied.md").read_text("utf-8")
+    assert untied.startswith("# Judged findings left untied: 4: 0 of the first verdicts, "
+                             "4 of batches\n")  # fmt: skip
+    assert ("- Batch b1, 4 verdicts: not tied, as its run is neither at the folder its packet "
+            "names nor under runs/; the matcher pairs them.") in untied
+    assert "Batch b1" not in (corpus / "report" / "ties-ambiguous.md").read_text("utf-8")
     rows = [r for r in tool.measure(corpus, "k3")["findings"] if r["batch"]]
     assert rows and not any(r["by_key"] for r in rows)
 

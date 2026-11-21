@@ -310,10 +310,11 @@ def test_a_power_at_a_word_title_s_end_is_left_out(
 @needs_pandoc
 @pytest.mark.parametrize(("typed", "title", "kept"), [
     ("Outcomes after a fall**^1^**", "Outcomes after a fall1", "Outcomes after a fall**^1^**"),
+    ("Outcomes after a fall*^1^*", "Outcomes after a fall1", "Outcomes after a fall*^1^*"),
     ("Outcomes after a fall^1^[]{#bm}", "Outcomes after a fall1",
      "Outcomes after a fall^1^[]{#bm .anchor}"),
     ("Outcomes after a fall^1^", "Outcomes after a fall", "Outcomes after a fall^1^"),
-], ids=["in bold", "before a bookmark", "alone"])  # fmt: skip
+], ids=["in bold", "in italic", "before a bookmark", "alone"])  # fmt: skip
 def test_a_word_title_s_mark_inside_a_wrapper_stays_in_the_title(
         tmp_path: Path, capsys, typed: str, title: str, kept: str) -> None:  # fmt: skip
     """A known gap (DESIGN.md, Known gaps, "A Word title's mark inside a wrapper stays in the

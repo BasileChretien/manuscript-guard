@@ -26322,14 +26322,19 @@ def test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it(
     that read the same were told apart by position alone"): "None." under "# Funding" in two
     places, a copy of both added above them since the build, and one of the two edited in
     Word. Hashing the text and the block before it, the record took the copy for the
-    paragraph edited and the edit landed in it; nothing is written now."""
+    paragraph edited and the edit landed in it; nothing is written now. The second case also
+    holds the open point "An edit to a repeated paragraph whose copy was added above it since
+    the build can be reported as a join"."""
     blocks = ("# Intro", _ALPHA, "# Funding", "None.", _PAPA, _ROMEO, "# Funding", "None.",
               _BRAVO)
     now = (*blocks[:2], *("# Funding", "None.") * 2, *blocks[2:])
 
+    sent: list[str] = []
+
     def change(xml: str) -> str:
         nones = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
                  if "mg-p-" in p and _shown(p) == "None."]
+        sent.extend(re.findall(r'w:name="(mg-p-[^"]+)"', xml))
         return xml.replace(nones[edited], nones[edited].replace("None.", "None at all."), 1)
 
     after, before, out = _forced_import(project, tmp_path, blocks, now, change)
@@ -26341,12 +26346,15 @@ def test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it(
         assert "- None. + None at all." in refused, out
         assert "a heading or other block beside it is not the one the document was sent" in refused
     else:
-        # The second is read as "None." joined with Bravo, whose identifier is not compared,
-        # and left as it was.
+        # The second is read as "None." joined with an identifier not compared that no
+        # paragraph of the returned document carries, and left as it was; the co-author's
+        # words are printed nowhere.
         [joined] = [b for b in blocks_said if "came back joined into one" in b]
         assert joined.startswith("2 paragraphs came back joined into one"), out
-        assert "None. (mg-p-" in joined and "not compared)" in joined, out
+        [other] = re.findall(r"None\. \((mg-p-[^,)]+), not compared\)", joined)
+        assert other not in sent, (other, sent)
         assert "Not applied" in joined, out
+        assert "None at all" not in out, out
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

@@ -5009,8 +5009,8 @@ def test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written(
     """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
     meets", some edits write their whole stretch plain): in a note style pandoc drops the
     space before the note, so the source's "word " is printed "word"; a word edited beside it
-    in Word refuses the paragraph before any stretch is written, as one whose numbers,
-    citations and markup could not be told apart from its prose."""
+    in Word refuses the paragraph, as one whose numbers, citations and markup could not be
+    told apart from its prose, and `--apply` writes nothing."""
     from manuscript_guard.cli import main
 
     style = tmp_path / "note.csl"
@@ -5025,7 +5025,7 @@ def test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written(
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
     capsys.readouterr()
-    assert main(["import", str(returned), str(project), "--csl", str(style)]) == 1
+    assert main(["import", str(returned), str(project), "--csl", str(style), "--apply"]) == 1
     out = capsys.readouterr().out
     refused = next(b for b in out.split("\n\n") if "+ A big term and more of it here." in b)
     said = " ".join(refused.split())

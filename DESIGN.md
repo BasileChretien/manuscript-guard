@@ -23084,9 +23084,9 @@ Open, recorded as each change landed:
     brace pair split across a value (#90) stand as they were. So too a stretch while a
     straight quote opened before it is still open, and any paragraph whose merge does not
     read back as Word's text. A stretch whose source does not line up with what the build
-    printed of it would be too, but the one such source found, a citation in a note style,
-    for which pandoc drops the space before the note, is refused before any stretch is
-    written: its "numbers, citations and markup could not be told apart from its prose".
+    printed of it refuses its whole paragraph, as one whose "numbers, citations and markup
+    could not be told apart from its prose"; so does a citation in a note style, for which
+    pandoc drops the space before the note.
     Pinned by `tests/test_roundtrip.py::test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain`,
     `tests/test_roundtrip.py::test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain`,
     `tests/test_roundtrip.py::test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain`,
@@ -23307,8 +23307,9 @@ Open, recorded as each change landed:
 - **An edit to a repeated paragraph whose copy was added above it since the build can be
   reported as a join.** "None." under "# Funding" in two places, a copy of both added
   above them in the `.md`, and the second edited in Word: the import says "2 paragraphs
-  came back joined into one", the edited "None." and the paragraph after it, not
-  compared, and prints the co-author's words nowhere. Nothing is written, and the edit is
+  came back joined into one", naming the edited "None." by its text as sent and, beside
+  it, an identifier "not compared" that no paragraph of the returned document carries; the
+  co-author's words are printed nowhere. Nothing is written, and the edit is
   carried over by hand only if the author sees that it was one.
   Pinned by `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`.
 - **A document built before the record held the blocks around each paragraph is read as

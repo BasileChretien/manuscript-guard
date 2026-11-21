@@ -402,6 +402,51 @@ def test_the_latest_answer_by_one_person_is_the_one_that_counts(tmp_path: Path) 
     assert (tmp_path / "checks" / "decisions.csv").read_text(encoding="utf-8").count("lit-1") == 2
 
 
+def test_the_answer_imported_last_counts_whatever_its_time_says(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The latest decision is the latest imported, not the
+    latest given"): of one person's two answers about an item as it is now, the one imported
+    second counts, though its `at` is the earlier; imported the other way, the other does."""
+    given = {"ok": "2026-10-08T09:00:00", "wrong": "2026-10-10T09:00:00"}
+    for order in (("wrong", "ok"), ("ok", "wrong")):
+        root = tmp_path / "-".join(order)
+        root.mkdir()
+        items = load_items(root, write_items(root))
+        for said in order:
+            document = answers_for(items, by="A Person", statuses={"lit-1": said})
+            document["answers"][0]["at"] = given[said]
+            import_answers(root, _send(root, f"{said}.json", document), items)
+        assert status(root, items).by_person["A Person"] == {order[-1]: 1}, order
+
+
+def test_a_flag_is_closed_by_its_maker_or_an_edit_and_not_by_another_persons_ok(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`coauthor-flag-open` is held to the person, not to
+    the item"): a co-author's later ok on someone else's flag leaves it open; an edit to the
+    sentence closes it, whatever the edit did; and its maker's own not sure closes it too."""
+    from manuscript_guard.checking.recap import flags_of
+
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    flag = answers_for(items, by="A Person", statuses={"claim-1": "wrong"})
+    import_answers(tmp_path, _send(tmp_path, "flag.json", flag), items)
+    other = answers_for(items, by="Another Person", statuses={"claim-1": "ok"})
+    other["answers"][0]["at"] = "2026-10-09T09:00:00"
+    import_answers(tmp_path, _send(tmp_path, "other.json", other), items)
+    assert [(d.by, d.id, d.status) for d in flags_of(tmp_path, items)] == [
+        ("A Person", "claim-1", "wrong")]  # fmt: skip
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["items"][1]["sentences"][0]["text"] = "Arrests mainly reflect enforcement, it seems."
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    assert flags_of(tmp_path, load_items(tmp_path, path)) == ()
+
+    unsure = answers_for(items, by="A Person", statuses={"claim-1": "unsure"})
+    unsure["answers"][0]["at"] = "2026-10-10T09:00:00"
+    import_answers(tmp_path, _send(tmp_path, "unsure.json", unsure), items)
+    assert flags_of(tmp_path, items) == ()
+
+
 def test_an_item_someone_has_already_checked_is_not_asked_again(tmp_path: Path) -> None:
     items = load_items(
         tmp_path,
@@ -1062,6 +1107,28 @@ def test_a_commented_out_sentence_is_not_offered_as_a_claim(project: Path) -> No
     assert not any("risk doubles" in title for title in titles), titles
 
 
+def test_a_cited_sentence_in_a_fence_or_the_front_matter_is_offered(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Only comments are left out of the sentences"): a
+    commented-out sentence is not offered, and one in a fenced code block or in the front
+    matter is, if it cites something."""
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert text.startswith("---\ntitle: ") and "\n---\n\n# Abstract" in text
+    main.write_text(
+        text.replace("\n---\n\n# Abstract", "\nsubtitle: \"A signal was first reported by Okada "
+                     "et al. [@fictionalClassSignal2019].\"\n---\n\n# Abstract", 1)
+        + "\n\n```\nThe risk triples in children [@fictionalClassSignal2019].\n```\n"
+        "\n<!-- The risk doubles in adults [@fictionalClassSignal2019]. -->\n",
+        encoding="utf-8",
+    )  # fmt: skip
+    sentences = [item["sentences"][0]["text"] for item in only(produced(project), "claim")]
+    assert any(sentence.startswith("--- title: ") and "subtitle: \"A signal was first "
+               "reported by Okada et al. [@fictionalClassSignal2019].\" ---" in sentence
+               for sentence in sentences), sentences  # fmt: skip
+    assert "``` The risk triples in children [@fictionalClassSignal2019]. ```" in sentences
+    assert not any("risk doubles" in sentence for sentence in sentences), sentences
+
+
 def test_a_ledger_entry_that_cannot_be_read_is_reported(project: Path) -> None:
     """One entry failing its schema takes every literature value out of the round, because the
     contract reads the file as a whole. It used to do that in silence: a page with two items
@@ -1255,6 +1322,36 @@ def test_a_word_with_a_stop_inside_it_never_ends_a_sentence(sentence: str, words
 @pytest.mark.parametrize(
     ("paragraph", "pieces"),
     [
+        pytest.param("Rates were 3% and 5% resp. They rose later [@key].",
+                     ["Rates were 3% and 5% resp.", "They rose later [@key]."],
+                     id="a word the list does not hold"),
+        pytest.param("Rates were 3% vs. They rose later [@key].",
+                     ["Rates were 3% vs. They rose later [@key]."], id="a word in the list"),
+        pytest.param("Described by J. Smith in a trial [@key]. Then more.",
+                     ["Described by J. Smith in a trial [@key].", "Then more."],
+                     id="a single initial"),
+        pytest.param("The effect was small. [@key] A later study agreed.",
+                     ["The effect was small.", "[@key] A later study agreed."],
+                     id="a citation between two sentences"),
+        pytest.param("The effect was small. [@key]", ["The effect was small. [@key]"],
+                     id="a citation ending the paragraph"),
+    ],
+)  # fmt: skip
+def test_a_stop_after_a_word_the_list_does_not_hold_ends_a_sentence(
+    paragraph: str, pieces: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence is split by punctuation, and the list of
+    abbreviations is finite"): "resp." is in no list and has no stop inside it, so it ends a
+    sentence where "vs." and an initial do not; a citation after a stop goes with the sentence
+    after it, and at a paragraph's end is joined to the one before."""
+    from manuscript_guard.checking.produce import _split
+
+    assert _split(paragraph) == pieces
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "pieces"),
+    [
         pytest.param("We scored the answers. {{method.a}} Then we fitted it.",
                      ["We scored the answers. {{method.a}}", "Then we fitted it."],
                      id="after the stop"),
@@ -1399,6 +1496,73 @@ def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_al
     assert "b.onclick = pressed(() => answer(b.dataset.s))" in page
     assert "if (e.ctrlKey || e.metaKey || e.altKey) return;" in page
     assert "title: it.title" in page
+
+
+def test_no_test_runs_the_pages_javascript_and_the_one_file_naming_it_reads_it() -> None:
+    """A known gap (DESIGN.md, Known gaps, "No test runs the page's JavaScript"): the page's
+    storage, download, dialog, clipboard and keyboard handling are in its script; no
+    JavaScript file of the tests names the page, and the one test file that names its
+    template imports nothing that could run it. The 2026-11-09 triage planned a fix (F20),
+    which will change this test."""
+    import ast
+
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    for part in ("localStorage.setItem(KEY,", "a.download = BUNDLE.filename", '<dialog id="sent">',
+                 "navigator.clipboard.writeText(", 'document.addEventListener("keydown"'):
+        assert part in page, part  # fmt: skip
+    root = Path(__file__).resolve().parents[1]
+    scripts = [path for folder in (root / "tests", root / "web" / "test",
+                                   root / "src" / "manuscript_guard" / "checking")
+               for path in folder.rglob("*") if path.suffix in (".js", ".mjs", ".cjs")]  # fmt: skip
+    assert [path for path in scripts if "checker" in path.read_text(encoding="utf-8")] == []
+    readers = [path.name for path in sorted((root / "tests").glob("*.py"))
+               if "checker.html" in (text := path.read_text(encoding="utf-8"))
+               or "bundle import TEMPLATE" in text]  # fmt: skip
+    assert readers == ["test_checking.py"]
+    tree = ast.parse((root / "tests" / "test_checking.py").read_text(encoding="utf-8"))
+    imported = {alias.name.split(".")[0] for node in ast.walk(tree)
+                if isinstance(node, ast.Import) for alias in node.names} | {
+        node.module.split(".")[0] for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module}  # fmt: skip
+    assert not imported & {"subprocess", "playwright", "selenium", "py_mini_racer", "quickjs",
+                           "dukpy", "js2py", "pyppeteer"}  # fmt: skip
+
+
+def test_the_highlighter_marks_a_word_inside_an_escape_it_spells() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The highlighter can mark inside a character
+    reference"): `marks` escapes the text and then marks each word in what it escaped, so a
+    word that spells part of an escape, `amp` or `lt`, is marked inside `&amp;` or `&lt;`.
+    No test runs the page's script (the gap above), so what is held is the function as
+    written, and what its steps, taken in the same order, make of such a text."""
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert ('const esc = (s) => String(s ?? "").replace(/[&<>"\']/g, (c) =>\n'
+            '  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", \'"\': "&quot;", "\'": "&#39;" }[c]));'
+            ) in page  # fmt: skip
+    assert ("const marks = (text, needles) => {\n"
+            "  let out = esc(text);\n"
+            "  (needles || []).filter((n) => String(n).length > 1)\n"
+            "    .sort((a, b) => b.length - a.length)\n"
+            "    .forEach((n) => { out = out.split(esc(n))"
+            '.join("<mark>" + esc(n) + "</mark>"); });\n'
+            "  return out;\n"
+            "};") in page  # fmt: skip
+
+    def esc(text: str) -> str:
+        table = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}
+        return "".join(table.get(character, character) for character in text)
+
+    def marks(text: str, needles: list[str]) -> str:
+        out = esc(text)
+        for needle in sorted((n for n in needles if len(n) > 1), key=len, reverse=True):
+            out = out.replace(esc(needle), "<mark>" + esc(needle) + "</mark>")
+        return out
+
+    assert marks("Q&A < 5", ["amp", "lt"]) == "Q&<mark>amp</mark>;A &<mark>lt</mark>; 5"
+    assert marks("Q&A rose", ["rose"]) == "Q&amp;A <mark>rose</mark>"
 
 
 # ---------------------------------------------------------------- a page for each author
@@ -1873,6 +2037,30 @@ def test_a_file_imported_again_after_a_later_one_changes_nothing(tmp_path: Path)
     assert status(tmp_path, items).wrong == ()
 
 
+def test_a_bare_answer_imported_again_after_a_later_one_is_the_latest_once_more(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A re-import is skipped by its answer, not by its
+    file"): an answer with no `at` of its own is held to the person's latest decision only.
+    Imported, superseded, and imported again, it is written a second time and counts once more;
+    a stamped answer imported again after a later one is passed over."""
+    items = load_items(tmp_path, write_items(tmp_path))
+    bare = answers_for(items, by="A Person", statuses={"lit-1": "ok"})
+    del bare["answers"][0]["at"]
+    later = answers_for(items, by="A Person", statuses={"lit-1": "wrong"})
+    later["answers"][0]["at"] = "2026-10-09T09:00:00"
+    later["answers"][0]["note"] = "it says 17.4"
+    brought = [import_answers(tmp_path, _send(tmp_path, "x.json", document), items)
+               for document in (bare, bare, later, bare)]  # fmt: skip
+    assert [one.skipped for one in brought] == [0, 1, 0, 0]
+    assert len(_rows(tmp_path)) == 3
+    assert status(tmp_path, items).by_person["A Person"] == {"ok": 1}
+    # The stamped one, imported again after the bare one: passed over.
+    assert import_answers(tmp_path, _send(tmp_path, "x.json", later), items).skipped == 1
+    assert len(_rows(tmp_path)) == 3
+    assert status(tmp_path, items).by_person["A Person"] == {"ok": 1}
+
+
 def test_a_rebuilt_page_brings_back_answers_already_recorded_and_adds_nothing(
     tmp_path: Path,
 ) -> None:
@@ -1913,6 +2101,33 @@ def test_a_page_rebuilt_for_one_person_keeps_their_storage_and_no_one_elses(
         pages.append(_page(project / "checks" / f"check-{name.lower().replace(' ', '-')}.html"))
     assert pages[0]["storage"] == pages[1]["storage"] != pages[2]["storage"]
     assert pages[0]["bundle"] != pages[1]["bundle"]
+
+
+def test_a_page_rebuilt_after_an_item_changed_keeps_unsent_answers_under_another_key(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A file rebuilt after the items changed loses a
+    co-author's unsent progress"): the browser keeps answers under the page's `storage`, a
+    digest of the items' digests and the person's name. A rebuild with nothing changed keeps
+    it, though the page's identifier changes; a rebuild after one item changed does not."""
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    path = write_items(tmp_path)
+
+    def built(name: str) -> dict:
+        out, _ = build_bundle(load_items(tmp_path, path), person="A Person", title="A paper",
+                              out=tmp_path / name)  # fmt: skip
+        return _page(out)
+
+    first, again = built("first.html"), built("again.html")
+    assert first["storage"] == again["storage"] and first["bundle"] != again["bundle"]
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["items"][1]["sentences"][0]["text"] = "Arrests mainly reflect enforcement, it seems."
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    assert built("changed.html")["storage"] != first["storage"]
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert 'const KEY = "mg-checks-" + (BUNDLE.storage || BUNDLE.bundle);' in page
+    assert "localStorage.getItem(KEY)" in page and "localStorage.setItem(KEY," in page
 
 
 def test_status_marks_each_claimed_decision_and_tells_a_namesake_from_a_stranger(
@@ -1981,6 +2196,34 @@ def test_decisions_under_a_name_that_became_shared_are_marked(
     capsys.readouterr()
     assert main(["checker", "status", str(project)]) == 0
     assert "recorded before this name became shared" in capsys.readouterr().out
+
+
+def test_two_authors_of_one_name_each_get_a_recap_row_counting_both(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Two authors of one name share their row's
+    counts"): decisions recorded under a name before a second author of that name was added
+    are counted in the row of each author `authors.yaml` gives under it."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    items = _checking_items(load_project(project)[0], None)
+    first, second = items.items[0], items.items[1]
+    for name, item in (("a.json", first), ("b.json", second)):
+        answers = _send(project, name, {
+            "schema": "manuscript-guard/checking-answers/1", "by": "Ada Example",
+            "answers": [{"id": item["id"], "digest": item["digest"], "status": "ok"}]})
+        assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+    _authors(project, [{"given": "Ada", "family": "Example", "email": "a1@invalid.example"},
+                       {"given": "Ada", "family": "Example", "email": "a2@invalid.example"},
+                       {"given": "Blaise", "family": "Sample"}])  # fmt: skip
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project)]) == 0
+    rows = [line for line in _recap(project).splitlines()
+            if line.startswith(("| Ada Example", "| Blaise Sample"))]  # fmt: skip
+    assert len(rows) == 3, rows
+    assert [row.split(" | ")[1:] for row in rows] == [
+        ["2", "0", "0", "0", "0", "2 |"], ["2", "0", "0", "0", "0", "2 |"],
+        ["0", "0", "0", "0", "0", "0 |"]], rows  # fmt: skip
 
 
 def test_all_refuses_before_writing_anything_where_one_file_is_another_person_s(
@@ -2149,6 +2392,40 @@ def test_code_changed_since_its_run_is_said_on_the_page_and_by_build(
             "not be what ran") in said, said
 
 
+def test_an_ok_on_code_edited_and_not_run_again_stands_until_the_run(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An "ok" given on code edited and not yet run again
+    is about the old code"): built after the script was edited and before the run, the page
+    shows the edited lines with the warning, while the item's digest is the old run's. An ok
+    given on it counts until the run is made, and then goes stale, since the code changed."""
+    from manuscript_guard.checking.methods import CHANGED
+    from manuscript_guard.cli import _checking_items, load_project
+
+    def ci():
+        items = _checking_items(load_project(project)[0], None)
+        return items, next(item for item in items.items
+                           if item["group"] == "methods" and item["facts"][0][1] == "ror, ci")
+
+    _, before = ci()
+    _edit(project / "analysis" / "01_disproportionality.py", "+ 1.645 * se)", "+ 1.64 * se)")
+    items, edited = ci()
+    assert edited["id"] == before["id"] and edited["digest"] == before["digest"]
+    assert {block.get("note") for block in edited["evidence"]} == {CHANGED}
+    shown = [text for block in edited["evidence"] for _n, text in block.get("lines") or ()]
+    assert any("+ 1.64 * se)" in text for text in shown), shown
+    sent = {"schema": "manuscript-guard/checking-answers/1", "by": "Ada Example", "bundle": "x",
+            "answers": [{"id": edited["id"], "digest": edited["digest"], "status": "ok",
+                         "at": "2026-10-28T09:00:00+09:00"}]}  # fmt: skip
+    assert [d.id for d in import_answers(project, _send(project, "ok.json", sent), items)
+            .recorded] == [edited["id"]]  # fmt: skip
+    assert status(project, items).answered.get(edited["id"]) == {"Ada Example"}
+    _rerun(project)
+    items, ran = ci()
+    assert ran["id"] == edited["id"] and ran["digest"] != edited["digest"]
+    standing = status(project, items)
+    assert edited["id"] not in standing.answered
+    assert [(d.id, d.status) for d in standing.stale] == [(edited["id"], "ok")]
+
+
 def test_an_unanchored_methods_paragraph_is_an_item_and_one_elsewhere_is_not(
     project: Path,
 ) -> None:
@@ -2170,6 +2447,40 @@ def test_an_unanchored_methods_paragraph_is_an_item_and_one_elsewhere_is_not(
     assert ethics["evidence"][0]["kind"] == "none"
     assert ethics["evidence"][0]["caption"] == NO_CODE
     assert "Nobody wrote code for this sentence." not in said
+
+
+def test_an_open_methods_paragraph_added_above_others_moves_their_ids_and_stales_answers(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An open Methods paragraph is known by its place"):
+    one added above the last open paragraph of a file takes its identifier, so the answer
+    given on it goes stale and does not move onto the new text; the open paragraphs above
+    keep their identifiers and their answers."""
+    from manuscript_guard.checking.methods import NO_CODE
+    from manuscript_guard.cli import _checking_items, load_project
+
+    def opened():
+        items = _checking_items(load_project(project)[0], None)
+        return items, [item for item in items.items if item["group"] == "methods"
+                       and item["facts"][0][1] == f"none: {NO_CODE}"]  # fmt: skip
+
+    items, before = opened()
+    last = "Reporting follows the checklist declared in `paper.yaml`."
+    assert before[-1]["sentences"][0]["text"] == last and len(before) == 4
+    sent = {"schema": "manuscript-guard/checking-answers/1", "by": "Ada Example", "bundle": "x",
+            "answers": [{"id": item["id"], "digest": item["digest"], "status": "ok",
+                         "at": "2026-10-28T09:00:00+09:00"} for item in before]}  # fmt: skip
+    import_answers(project, _send(project, "ok.json", sent), items)
+    _edit(project / "manuscript" / "main.md", last,
+          f"Ethics approval was not needed for synthetic data.\n\n{last}")  # fmt: skip
+    items, after = opened()
+    assert [item["id"] for item in after[:4]] == [item["id"] for item in before]
+    assert after[3]["sentences"][0]["text"] == "Ethics approval was not needed for synthetic data."
+    assert after[4]["sentences"][0]["text"] == last and after[4]["id"] not in {
+        item["id"] for item in before}  # fmt: skip
+    standing = status(project, items)
+    assert [d.id for d in standing.stale] == [before[3]["id"]]
+    assert {d.id for d in standing.counting} == {item["id"] for item in before[:3]}
 
 
 def test_a_claim_naming_a_step_that_never_ran_is_not_sent_and_build_says_so(
@@ -2353,6 +2664,31 @@ def test_a_cross_reference_in_a_methods_claim_prints_its_number(project: Path) -
     assert "and Figure 1 shows it." in adjusted["sentences"][0]["text"]
 
 
+def test_a_cross_reference_in_a_methods_claim_is_shown_by_name_where_the_count_is_not_exact(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A cross-reference in a Methods item prints only
+    where the count is exact"): with a figure sent as a file, or one placed by hand, G2's
+    count of the main text's figures is not exact, and the binding is shown by its name."""
+    main_md = project / "manuscript" / "main.md"
+    paper = project / "paper.yaml"
+    _edit(main_md, "S2 describes the model as it was fitted.",
+          "S2 describes the model as fitted, and {{ref.figure.forest}} shows it.")  # fmt: skip
+
+    def adjusted() -> str:
+        return next(item for item in _methods(produced(project))
+                    if item["facts"][0][1] == "adjusted")["sentences"][0]["text"]  # fmt: skip
+
+    assert "and Figure 1 shows it." in adjusted()
+    declared = paper.read_text(encoding="utf-8")
+    paper.write_text(declared + "\ndisplays: {figures_as_files: 1}\n", encoding="utf-8")
+    assert "and [ref.figure.forest] shows it." in adjusted()
+    paper.write_text(declared, encoding="utf-8")
+    main_md.write_text(main_md.read_text(encoding="utf-8") + "\n![A flow chart](flow.png)\n",
+                       encoding="utf-8")  # fmt: skip
+    assert "and [ref.figure.forest] shows it." in adjusted()
+
+
 def test_methods_items_stand_in_the_order_the_documents_print_their_files(project: Path) -> None:
     """A file of the main text holding only an open paragraph stands before a file of the
     supplement holding a claim, as the documents print them."""
@@ -2421,6 +2757,42 @@ def test_impact_tells_a_main_text_methods_file_from_the_supplements(project: Pat
     main_text = impact_of(loaded, results, literature, project / "manuscript" / "methods.md")
     title = items["The main text's data were held apart."]["title"]
     assert main_text.answers == [f"Ada Example on {title!r} (ok, 2026-10-28T09:00:00+09:00)"]
+
+
+def test_impact_finds_a_supplements_cited_sentence_under_the_main_text_file_of_its_name(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`impact` finds the answers of the other groups by a
+    file's name"): a cited sentence records its file's name alone, so an answer on one in
+    `supplementary/main.md` is listed for `main.md`; a methods item there records its path,
+    and its answer is not. The 2026-11-09 triage planned a fix (F17), which will change this
+    test."""
+    from manuscript_guard.checking.store import Decision, _append
+    from manuscript_guard.cli import load_project
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.impact import impact_of
+
+    (project / "manuscript" / "supplementary" / "main.md").write_text(
+        "# Supplementary methods\n\nThe supplement's data were held apart.\n\n"
+        "# Supplementary notes\n\n"
+        "The signal was first described in older adults [@fictionalClassSignal2019].\n",
+        encoding="utf-8")  # fmt: skip
+    document = produced(project)
+    claim = next(item for item in only(document, "claim")
+                 if item["title"].startswith("The signal was first described in older adults"))
+    method = next(item for item in _methods(document)
+                  if item["sentences"][0]["text"] == "The supplement's data were held apart.")
+    assert claim["sentences"][0]["section"] == "main.md"
+    assert method["sentences"][0]["section"] == "supplementary/main.md"
+    _append(project, [
+        Decision("2026-10-28T09:00:00+09:00", "Ada Example", item["id"], item["group"],
+                 item["title"], "ok", "", digest_of(item), "b") for item in (claim, method)
+    ])  # fmt: skip
+    loaded = load_project(project)[0]
+    _namespace, results, literature, _ = load_namespace(loaded)
+    main_text = impact_of(loaded, results, literature, project / "manuscript" / "main.md")
+    assert main_text.answers == [
+        f"Ada Example on {claim['title']!r} (ok, 2026-10-28T09:00:00+09:00)"]
 
 
 def test_a_projects_own_methods_group_is_refused_by_build_and_read_by_import_and_status(
@@ -2952,6 +3324,32 @@ def test_a_note_s_line_endings_are_chained_as_lf(project: Path, capsys) -> None:
     path.write_bytes(lf.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     capsys.readouterr()
     assert main(["checker", "recap", str(project), "--check"]) == 0, capsys.readouterr().out
+
+
+def test_a_header_naming_a_column_twice_hides_the_first_cell_from_the_chain(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A header that repeats a column hides its first cell
+    from the chain"): the chain reads a row as the CSV reader maps it to the header, so of two
+    `note` columns the last cell is kept; an edit to the first leaves the head as it was, an
+    edit to the last does not, and the file is read, not refused. The 2026-11-09 triage
+    planned a fix (F17), which will change this test."""
+    from manuscript_guard.checking.recap import chain, record_rows
+
+    path = tmp_path / "checks" / "decisions.csv"
+    path.parent.mkdir()
+
+    def head(first: str, last: str) -> str:
+        path.write_text("when,by,id,group,title,status,note,digest,bundle,note\n"
+                        f"2026-10-08T09:00:00,A Person,lit-1,literature,t,wrong,{first},"
+                        f"0123456789abcdef,b1,{last}\n", encoding="utf-8")  # fmt: skip
+        rows = record_rows(tmp_path)
+        assert [row["note"] for row in rows] == [last]
+        return chain(rows)[-1]
+
+    made = head("it says 17.4", "kept")
+    assert head("edited by hand", "kept") == made
+    assert head("it says 17.4", "edited by hand") != made
 
 
 def test_a_recap_names_no_absolute_path(project: Path) -> None:

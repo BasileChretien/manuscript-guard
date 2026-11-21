@@ -346,8 +346,8 @@ jobs:
         shell: bash -el {0}
         run: Rscript -e 'for (p in c("jsonlite", "digest", "yaml")) library(p, character.only = TRUE); cat(R.version.string, "\n")'
       # test_r_emitter.py calls no pandoc, but every pytest run here runs under the same
-      # requirement, and setup-r-dependencies leaves apt's older pandoc on PATH, which the
-      # requirement refuses. One rule for every job, rather than an exception to remember.
+      # requirement, which refuses any pandoc but the pinned one. One rule for every job,
+      # rather than an exception to remember.
       - uses: r-lib/actions/setup-pandoc@v2
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}

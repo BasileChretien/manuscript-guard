@@ -19719,6 +19719,30 @@ def test_a_second_latex_document_in_an_audited_folder_is_read_as_a_paper(
     assert main(["audit", str(tmp_path), "--strict"]) == strict
 
 
+@pytest.mark.parametrize("where", ["data.txt", "anc/data.txt", "anc/readme.md",
+                                   "anc/deeper/notes.markdown"])  # fmt: skip
+def test_a_text_file_in_a_latex_paper_s_folder_is_not_audited_as_a_paper(
+    tmp_path: Path, where: str
+) -> None:
+    """The robustness sweep of 2026-11-21: in an arXiv bundle `audit` read the data
+    transcript under `anc/` as a paper beside the LaTeX one, its numbers were in no output,
+    and `--strict` failed on numbers the paper never printed. A `.txt` or a Markdown file in
+    a LaTeX paper's folder, or under it, is passed over (Basile, 2026-11-22)."""
+    from manuscript_guard.cli import main
+
+    slash = chr(92)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "main.tex").write_text(
+        f"{slash}documentclass{{article}}\n{slash}begin{{document}}\nOf 412.\n"
+        f"{slash}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    data = bundle / where
+    data.parent.mkdir(parents=True, exist_ok=True)
+    data.write_text("0.125 0.250 999\n", encoding="utf-8")
+    (tmp_path / "out.csv").write_text("n\n412\n", encoding="utf-8")
+    assert main(["audit", str(bundle), "--against", str(tmp_path / "out.csv"), "--strict"]) == 0
+
+
 @pytest.mark.parametrize(
     "defined",
     ["!let!toprule!hline", "!def!toprule{!hline}", "!newcommand{!midrule}{!hline}",

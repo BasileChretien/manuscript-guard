@@ -15,7 +15,12 @@ numbers where they print, at the `.tex` line they stand on, and its tables cell 
 a folder, every `.tex` with `\documentclass` starts a paper, and is audited as one: so is an
 old draft, a cover letter or a template written in LaTeX, so name the paper's own file to
 audit it alone. A file no paper inputs is named under "Passed over" and not read, and so is
-a file a class or a package inputs. A `thebibliography` is cut as a reference list is. Where
+a file a class or a package inputs. So is a `.txt`, `.md` or `.markdown` file in the folder
+of such a paper or in any folder under it, as an arXiv bundle's readme and the data under its
+`anc/` are: name one to audit it. A pandoc template, a `.tex` that prints `$body$`, passes
+over nothing, so the Markdown paper beside it is read, but a standalone figure's `.tex` with
+`\documentclass` does pass over the Markdown paper in its folder. A `thebibliography` is cut
+as a reference list is. Where
 the LaTeX reader refuses a construct in a file the paper reads, nothing of that file past it
 is read by any check: the file is named under "Could not read", which `--strict` counts, and
 the summary's line for the words says it was not read past that line. A `\makeatletter` in

@@ -2767,7 +2767,7 @@ def _audit(args: argparse.Namespace, package) -> int:
     from manuscript_guard.auditing.abstract import Answers
     from manuscript_guard.auditing.by_title import look_up_all
     from manuscript_guard.auditing.gates import run_gates
-    from manuscript_guard.auditing.latex import is_entry
+    from manuscript_guard.auditing.latex import is_entry, set_aside
     from manuscript_guard.auditing.pdf import NO_PDFTOTEXT, is_pdf
     from manuscript_guard.auditing.pdf import can_read as can_read_pdf
     from manuscript_guard.keys import Notice
@@ -2779,8 +2779,10 @@ def _audit(args: argparse.Namespace, package) -> int:
         return _audit_refused(args, "manuscript-guard audit: --minimum-cell-count is a whole "
                               "number from 1")  # fmt: skip
     # A `.tex` in a folder is a paper only where it starts a document; the others are read
-    # where one inputs them, and named where none does.
+    # where one inputs them, and named where none does. `in_folder` gives each file found in
+    # a folder the innermost folder given that holds it.
     found_tex: list[Path] = []
+    in_folder: dict[Path, Path] = {}
 
     def expand(given: list[Path], suffixes: set[str]) -> list[Path]:
         found: list[Path] = []
@@ -2790,6 +2792,8 @@ def _audit(args: argparse.Namespace, package) -> int:
                     # Word's lock file beside an open document, "~$x.docx", is no paper.
                     if not p.is_file() or p.suffix.lower() not in suffixes or is_lock_file(p):
                         continue
+                    if p not in in_folder or len(path.parts) > len(in_folder[p].parts):
+                        in_folder[p] = path
                     if p.suffix.lower() == ".tex" and not is_entry(p):
                         found_tex.append(p)
                     else:
@@ -2842,6 +2846,9 @@ def _audit(args: argparse.Namespace, package) -> int:
     known = tuple(args.known or ())
 
     papers = expand(args.paper, FOLDER_SUFFIXES)
+    # A LaTeX paper's folder keeps its data and its readme as text: not papers (2026-11-22).
+    aside = set_aside(papers, in_folder, [path for path in args.paper if path.is_file()])
+    papers = [path for path in papers if path not in aside]
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
     # A PDF is read where it is named: in a folder it is a figure, or a copy of the paper
     # beside its source, as often as it is the paper (`auditing.pdf`).
@@ -2874,7 +2881,7 @@ def _audit(args: argparse.Namespace, package) -> int:
                    design=args.design, cited=args.cited is not None,
                    answers=Answers(args.no_abstract, args.no_results,
                                    tuple(args.results)))  # fmt: skip
-    report.passed_over += pdfs_said
+    report.passed_over += [*aside.values(), *pdfs_said]
     report.package = package
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",

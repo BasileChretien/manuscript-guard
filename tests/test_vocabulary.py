@@ -293,13 +293,14 @@ def test_a_capital_inside_a_word_with_no_two_together_cannot_be_declared(
     ]
     _, found = written(
         project,
-        "# Methods\n\nSars-CoV-2, IGG and HBA1C were tested.\n",
+        "# Methods\n\nSars-CoV-2, SARS-COV-2, IGG and HBA1C were tested.\n",
         [{"use": "the virus", "avoid": ["SARS-CoV-2"]}, {"use": "antibody", "avoid": ["IgG"]},
          {"use": "glycated haemoglobin", "avoid": ["HbA1c"]}],
     )  # fmt: skip
     assert sorted(messages(found)) == [
         "'HbA1c' is used once; this paper's term is 'glycated haemoglobin'",
         "'IgG' is used once; this paper's term is 'antibody'",
+        "'SARS-CoV-2' is used once; this paper's term is 'the virus'",
     ], "SARS is held to its capitals, and the others are found in any case"
 
 
@@ -638,7 +639,7 @@ def test_a_term_written_in_the_plural_is_not_its_singular(project: Path) -> None
 def test_only_a_plural_in_s_is_folded_onto_a_term(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): only the
     plural in `s` is folded, and only onto a term written without one: "study" does not
-    find "studies", nor "analysis" "analyses", nor "trials" "trial"."""
+    find "studies", nor "analysis" "analyses", nor "persons" "person"."""
     vocabulary = [
         {"use": "trial", "avoid": ["study"]},
         {"use": "test", "avoid": ["analysis"]},

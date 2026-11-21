@@ -24409,7 +24409,8 @@ Open, recorded as each change landed:
     1, which a binding hides: `P~plat~ < {{results.limit}}` is counted. So is a pressure
     whose figures are followed by a power of ten, "P = 2.5 x 10^5^ Pa". A threshold whose
     caret was lost and whose minus sign is a hyphen, "P < 10-8", is not counted.
-    Pinned by `tests/test_notation.py::test_a_p_is_told_from_a_p_value_only_by_a_typed_value_above_one`.
+    Pinned by `tests/test_notation.py::test_a_p_is_told_from_a_p_value_only_by_a_typed_value_above_one`
+    and `tests/test_notation.py::test_a_binding_hides_the_value_above_one_that_tells_a_pressure`.
   - Words between the symbol and its sign hide the sign: "P for trend = 0.03" counts
     neither the symbol nor the spacing. A subscript written as pandoc's, `P~trend~`, is
     read.
@@ -24425,7 +24426,8 @@ Open, recorded as each change landed:
     between the letters and the first bound, "95% CI 1.2" against "95% CI: 1.2". An
     interval printed by one binding is not read. "CI" for a cardiac index followed by two
     numbers is counted as an interval.
-    Pinned by `tests/test_notation.py::test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound`.
+    Pinned by `tests/test_notation.py::test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound`
+    and `tests/test_notation.py::test_an_interval_one_binding_prints_is_not_read`.
   - An interval joined by "to" is left out of the count where a typed bound is
     negative, as a house that joins with a dash writes it. Where both bounds are
     bindings their sign is not seen, and that "to" is counted as a second form. And a
@@ -26229,8 +26231,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
-  - G7 takes "(Spring and Summer 2019)" for a citation, and one season name in a group of
-    citations leaves the whole group as words.
+  - G7 and G6, and the audit, take "(Spring and Summer 2019)" for a citation, and one
+    season name in a group of citations leaves the whole group as words.
     Pinned by `tests/test_recycling.py::test_a_season_in_parentheses_is_read_wrong_both_ways`.
   - `build` sets aside `supplementary.docx`'s staleness when the supplement's folder holds any
     file, though it builds one only from Markdown there.

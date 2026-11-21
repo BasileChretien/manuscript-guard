@@ -542,20 +542,29 @@ def test_a_parenthesis_that_reads_as_a_citation_and_is_none_is_blanked(
 
 
 @pytest.mark.parametrize(
-    ("earlier", "first"),
+    ("earlier", "first", "kept", "cited"),
     [
-        ("(Spring and Summer 2019)", CUT),  # two seasons are two authors: blanked
-        ("(Smith, 2019; Spring 2020)", CUT),  # one season leaves the group as words
-        ("(Spring 2019; Roe, 2020)", CUT),
-        ("(Smith, 2019; Roe, 2020)", WHOLE),  # the other side: a group of citations
+        # two seasons are two authors: blanked, and a citation to G6
+        ("(Spring and Summer 2019)", CUT, [], True),
+        # one season leaves the group as words, its real citation's name among them
+        ("(Smith, 2019; Spring 2020)", CUT, ["smith", "spring"], False),
+        ("(Spring 2019; Roe, 2020)", CUT, ["spring", "roe"], False),
+        # the other side: a group of citations is blanked whole
+        ("(Smith, 2019; Roe, 2020)", WHOLE, [], True),
     ],
-)
-def test_a_season_in_parentheses_is_read_wrong_both_ways(earlier: str, first: str) -> None:
+)  # fmt: skip
+def test_a_season_in_parentheses_is_read_wrong_both_ways(
+    earlier: str, first: str, kept: list[str], cited: bool
+) -> None:
     """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
     later"): G7 takes "(Spring and Summer 2019)" for a citation and blanks it, so the
     manuscript's same words cut the passage; and one season name in a group of citations
-    leaves the whole group as words, which cut it where the manuscript cites by key. The
-    2026-11-09 triage planned a fix (F11), which will change this test."""
+    leaves the whole group as words, the real citation's names with it, which cut it where
+    the manuscript cites by key. G6 and the audit read citations typed as text the same way.
+    The 2026-11-09 triage planned a fix (F11), which will change this test."""
+    from manuscript_guard.auditing.sentences import author_year
+    from manuscript_guard.gates.writing import typed_citations
+
     if earlier.startswith("(Spring and"):
         text = CITING.format(earlier)
     else:
@@ -563,6 +572,10 @@ def test_a_season_in_parentheses_is_read_wrong_both_ways(earlier: str, first: st
     shared, excerpt = _passage(text, CITING.format(earlier))
     assert excerpt.startswith(first), excerpt
     assert shared == (20 if first == WHOLE else 18)
+    assert [word.text for word in recycling_gate.source_words(earlier)] == kept
+    said = f"Some say so {earlier}."
+    assert typed_citations(said) == ([said.index("(")] if cited else [])
+    assert [cite.start for cite in author_year(said, said)] == typed_citations(said)
 
 
 @pytest.mark.parametrize(

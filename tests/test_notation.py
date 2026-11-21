@@ -10,12 +10,13 @@ runs into its unit is reported wherever it stands.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
 import pytest
 
-from manuscript_guard.contracts import load_project
+from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.findings import Report
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _file
@@ -231,12 +232,12 @@ def test_an_interval_is_found_however_it_is_introduced(interval: str) -> None:
 
 
 def test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound() -> None:
-    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a range, "IQR 3 to
-    7" or "aged 18 to 65", is not read; nor is what stands between the letters and the first
-    bound, "95% CI 1.2" against "95% CI: 1.2", nor an interval one binding prints. "CI" for
-    a cardiac index followed by two numbers is counted as an interval."""
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a range, "IQR 3-7"
+    or "aged 18 to 65", is not read; nor is what stands between the letters and the first
+    bound, "95% CI 1.2" against "95% CI: 1.2". "CI" for a cardiac index followed by two
+    numbers is counted as an interval."""
     hyphens = "# Results\n\nFirst (95% CI 1-2), second (95% CI 3-4)"
-    report = read(f"{hyphens}, an IQR 3 to 7 and ages 18 to 65.\n")
+    report = read(f"{hyphens}, an IQR 3-7, an IQR 3 to 7 and ages 18 to 65.\n")
     assert not report.findings, told(report)
     assert report.counts["notation_intervals"] == 2
     report = read(
@@ -245,12 +246,7 @@ def test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound() -
     )
     assert not report.findings, told(report)
     assert report.counts["notation_intervals"] == 3
-    report = read(f"{hyphens}, third (95% CI {{{{results.ror.ci}}}}).\n")
-    assert not report.findings, told(report)
-    assert report.counts["notation_intervals"] == 2
-    # The other side: two bindings are two bounds, and two numbers after "CI" are an interval.
-    report = read(f"{hyphens}, third (95% CI {LOW} to {HIGH}).\n")
-    assert codes(report) == ["notation-interval"]
+    # The other side: two numbers after "CI" are an interval.
     report = read(f"{hyphens}, and the cardiac index, CI 2.1 to 3.4 L/min/m2.\n")
     assert told(report) == [
         (
@@ -259,6 +255,26 @@ def test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound() -
             "the manuscript joins them by a hyphen 2 times",
         )
     ]
+
+
+def test_an_interval_one_binding_prints_is_not_read(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): an interval printed
+    by one binding is not read. The example's analysis is given a label `ror.ci` that prints
+    its interval whole, "2.89 to 5.12"; after the letters it is no interval, where the
+    example's own bounds, `ror.ci_low` and `ror.ci_high`, bound apart are one."""
+    path = project / "results" / "01_disproportionality.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["values"]["ror.ci"] = {"value": "2.89 to 5.12", "display": "2.89 to 5.12",
+                                    "label": True}  # fmt: skip
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    namespace = load_namespace(load_project(project)[0])[0]
+    assert namespace["results.ror.ci"].display == "2.89 to 5.12"
+    hyphens = "# Results\n\nFirst (95% CI 1-2), second (95% CI 3-4)"
+    report, found = written(project, f"{hyphens}, third (95% CI {{{{results.ror.ci}}}}).\n")
+    assert not found, [f.message for f in found]
+    assert report.counts["notation_intervals"] == 2
+    _, found = written(project, f"{hyphens}, third (95% CI {LOW} to {HIGH}).\n")
+    assert [f.code for f in found] == ["notation-interval"]
 
 
 @pytest.mark.parametrize(
@@ -754,8 +770,7 @@ def test_a_p_value_of_one_or_less_is_one(stated: str) -> None:
     ("stated", "counted"),
     [
         ("where p = 0.5 is the expected share", True),  # a proportion
-        ("P~plat~ < {{results.limit}}", True),  # a binding hides the value above 1
-        ("P~plat~ < 30", False),  # the other side: typed, the value tells a pressure
+        ("P~plat~ < 30", False),  # typed, the value above 1 tells a pressure
         ("P = 2.5 x 10^5^ Pa", True),  # figures followed by a power of ten
         ("P = 2.5 Pa", False),
         ("P < 10-8", False),  # the caret lost and the minus a hyphen
@@ -767,10 +782,23 @@ def test_a_p_is_told_from_a_p_value_only_by_a_typed_value_above_one(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a `p` that is a
     proportion is counted as a P value, and a pressure is told from one only by a typed
-    value above 1, which a binding hides and a power of ten after its figures does too. A
-    threshold written "P < 10-8" is not counted."""
+    value above 1, which a power of ten after its figures hides. A threshold written "P <
+    10-8" is not counted."""
     report = read(f"# Results\n\nIt held (P = 0.03) and again (P = 0.04), {stated}.\n")
     assert report.counts["notation_p_values"] == (3 if counted else 2), told(report)
+
+
+def test_a_binding_hides_the_value_above_one_that_tells_a_pressure(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): the example's
+    `results.param.signal.min_cases` prints 3, and `P~plat~ <` that binding is counted as a
+    P value; the same 3 typed is told for a pressure and is not."""
+    key = "results.param.signal.min_cases"
+    assert load_namespace(load_project(project)[0])[0][key].display == "3"
+    before = "# Results\n\nIt held (P = 0.03) and again (P = 0.04), and P~plat~ <"
+    report, _ = written(project, f"{before} {{{{{key}}}}}.\n")
+    assert report.counts["notation_p_values"] == 3
+    report, _ = written(project, f"{before} 3.\n")
+    assert report.counts["notation_p_values"] == 2
 
 
 @pytest.mark.parametrize(

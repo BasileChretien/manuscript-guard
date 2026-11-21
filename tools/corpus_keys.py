@@ -199,16 +199,30 @@ def load_ties(root: Path) -> dict | None:
     batches = document.get("batches") or {}
     if not isinstance(batches, dict):
         raise CorpusError(f"{path}: `batches` maps each batch's name to its ties")
+    made = {}
     for name, batch in batches.items():
         if not isinstance(batch, dict) or not isinstance(batch.get("ties"), list) \
-                or set(batch) - {"judged_run", "scheme", "ties"}:  # fmt: skip
-            raise CorpusError(f"{path}: a batch's ties are a list under `ties`, with nothing "
-                              "but `judged_run` and `scheme` beside them")  # fmt: skip
+                or set(batch) != {"judged_run", "scheme", "ties"}:  # fmt: skip
+            raise CorpusError(f"{path}: a batch's ties are a list under `ties`, with its "
+                              "`judged_run` and `scheme` beside them and nothing else")
         out.update(_ties(batch["ties"], path, (str(name),)))
+        made[str(name)] = {"judged_run": batch["judged_run"], "scheme": batch["scheme"]}
     scheme = document.get("scheme", 1)
     if not isinstance(scheme, int):
         raise CorpusError(f"{path}: the scheme of the ties' keys is a number, not {scheme!r}")
-    return {"run": document["run"], "ties": out, "scheme": scheme}
+    return {"run": document["run"], "ties": out, "scheme": scheme, "batches": made}
+
+
+def check_batches(made: dict, packets: dict) -> None:
+    """Each batch's ties refused where its packet now names another run or scheme than the
+    one they were made from: a batch packed again under its name is never paired by them.
+    `packets` gives each batch's run and scheme as its packet has them."""
+    for name, said in made.items():
+        packet = packets.get(name)
+        if packet is not None and packet != (said["judged_run"], said["scheme"]):
+            raise CorpusError(f"{TIES.as_posix()}: batch {name}'s ties were made from run "
+                              f"{said['judged_run']} at scheme {said['scheme']}, and its packet "
+                              f"names run {packet[0]} at scheme {packet[1]}: tie again")
 
 
 def _ties(entries: list, path: Path, batch: tuple) -> dict:
@@ -481,23 +495,39 @@ def tie_group(olds: list[dict], new: list[dict], slug: str,
 
 
 def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
-                     kinds: tuple = TO_DECIDE) -> str:  # fmt: skip
+                     kinds: tuple = TO_DECIDE, batches: dict | None = None) -> str:  # fmt: skip
     """The judged findings of `kinds` not tied, each with its candidates: those the author
-    settles by hand (`TO_DECIDE`), or, with the other kinds, the list of those left untied."""
+    settles by hand (`TO_DECIDE`), or, with the other kinds, the list of those left untied.
+    A batch's verdict is listed with its batch's name first, `batches` naming the run each
+    batch's verdicts were judged in, and the counts keep the first verdicts and the
+    batches' apart."""
     rows = [row for row in rows if row["kind"] in kinds]
+    named = sorted({row["batch"] for row in rows if row.get("batch")})
+
+    def count(part: list[dict]) -> str:
+        theirs = sum(bool(row.get("batch")) for row in part)
+        if not named:
+            return str(len(part))
+        return f"{len(part)}: {len(part) - theirs} of the first verdicts, {theirs} of batches"
+
+    judged_in = ["A batch's verdicts, its name first, were judged in its batch's run against "
+                 "the same keyed run: " + ", ".join(
+                     f"{name} in {(batches or {}).get(name, 'its run')}" for name in named)
+                 + ".", ""] if named else []  # fmt: skip
     if kinds == TO_DECIDE:
-        lines = [f"# Judged findings for the author to tie: {len(rows)}", "",
+        lines = [f"# Judged findings for the author to tie: {count(rows)}", "",
                  f"To record a decision, add a line to `{DECIDED.as_posix()}`: `- {{slug: S, "
                  "report: R, index: N, key: 'K', by: NAME, date: YYYY-MM-DD}`, where K is the "
                  "key it is, or `key: null` where none is; a batch's verdict, listed with its "
                  "batch's name first, names its batch too, `batch: B`.", "",
                  f"The judged run {judged_run} against the keyed run {keyed_run}: the findings "
                  "with more than one candidate, and those whose candidate's key is repeated.",
-                 ""]  # fmt: skip
+                 "", *judged_in]  # fmt: skip
     else:
-        lines = [f"# Judged findings left untied: {len(rows)}", "",
+        lines = [f"# Judged findings left untied: {count(rows)}", "",
                  f"The judged run {judged_run} against the keyed run {keyed_run}: no rule ties "
-                 "these, and #705's matcher pairs them in `measure` and `gate`.", ""]
+                 "these, and #705's matcher pairs them in `measure` and `gate`.", "",
+                 *judged_in]  # fmt: skip
     by_kind = collections.defaultdict(list)
     for row in rows:
         by_kind[row["kind"]].append(row)
@@ -505,7 +535,7 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
         if kind not in kinds:
             continue
         part = by_kind.get(kind, [])
-        lines += [f"## {title} ({len(part)})", ""]
+        lines += [f"## {title} ({count(part)})", ""]
         for row in part:
             by = f", paired by {row['how']}" if row.get("how") else ""
             batch = f"{row['batch']} " if row.get("batch") else ""
@@ -518,14 +548,21 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
     return "\n".join(lines)
 
 
-def check_decided(found: dict, judged: set, tied: str, keys_of) -> dict:
+def check_decided(found: dict, judged: set, tied: str, keys_of,
+                  own: frozenset = frozenset()) -> dict:  # fmt: skip
     """The author's decisions, each refused unless its judged finding is one of the judged
-    set and its key is in the run of the ties (a family's where it says `family`), or null."""
+    set and its key is in the run of the ties (a family's where it says `family`), or null;
+    and refused where it names a batch of the ties' own scheme (`own`), whose verdicts are
+    paired by the keys they carry, so that it would be read nowhere."""
     for where, tie in found.items():
         slug, report = where[:2]
         if where not in judged:
             raise CorpusError(f"{DECIDED.as_posix()}: {' '.join(map(str, where))} is no judged "
                               "finding")  # fmt: skip
+        if len(where) > 3 and where[3] in own:
+            raise CorpusError(f"{DECIDED.as_posix()}: {' '.join(map(str, where))} names batch "
+                              f"{where[3]}, which keys by the ties' own scheme: its verdicts "
+                              "are paired by the keys they carry, never by a decision")
         if tie.key is not None and not keys_of(slug, report).count(tie.key, tie.family):
             raise CorpusError(f"{DECIDED.as_posix()}: {tie.key} is not in {tied}'s {slug} "
                               f"{report}")  # fmt: skip
@@ -546,6 +583,8 @@ def render_tie(result: dict) -> str:
             for name, b in result.get("batches", {}).items()]  # fmt: skip
     told += [f"- {name} keys by the keyed run's scheme {result['scheme']}: paired by its own "
              "keys" for name in result.get("own_scheme", [])]  # fmt: skip
+    told += [f"- {name} not tied: its run is neither at the folder its packet names nor under "
+             "runs/, and the matcher pairs its verdicts" for name in result.get("no_run", [])]
     if told:
         lines += ["", "Batches, in the same files:", "", *told]
     return "\n".join(lines) + "\n"

@@ -5318,6 +5318,77 @@ def test_an_elided_quotation_reads_points_as_a_reader_does(  # and a dash, as pi
     assert not quoted_in("rose with age, cost-effective, and differed", dashed)
 
 
+_MISQUOTED = "incidence fell with age and differed by sex"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param(f"The cohort found that “{_MISQUOTED}” [@fictionalHepaticCohort2021].",
+                     [("quotation-not-in-source", "warn")], id="double marks"),
+        pytest.param(f"The cohort found that ‘{_MISQUOTED}’ [@fictionalHepaticCohort2021].",
+                     [], id="single marks"),
+        pytest.param(f"The cohort found that «{_MISQUOTED}» [@fictionalHepaticCohort2021].",
+                     [], id="guillemets"),
+        pytest.param(f"The cohort found that „{_MISQUOTED}“ [@fictionalHepaticCohort2021].",
+                     [], id="german marks"),
+        pytest.param(f"> {_MISQUOTED} [@fictionalHepaticCohort2021].", [],
+                     id="a block quotation"),
+        pytest.param("Patients rated “I feel tired most of the day” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="a questionnaire's item"),
+        pytest.param("The cohort found that “incidence *rose* with age and did not differ” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="emphasis inside"),
+        pytest.param("The cohort found that “crude incidence […] confirmed by an alanine "
+                     "aminotransferase” [@fictionalHepaticCohort2021].", [],
+                     id="pieces far apart"),
+        pytest.param("The cohort found “crude … hepatic … age … sex” "
+                     "[@fictionalHepaticCohort2021].", [], id="four one-word pieces"),
+        pytest.param("The cohort found “crude … hepatic … age … cats” "
+                     "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+                     id="four one-word pieces, one not there"),
+    ],
+)  # fmt: skip
+def test_a_quotation_in_the_prose_is_found_by_its_marks_and_its_pieces(
+    project: Path, sentence: str, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quotation in the prose is found by its marks"):
+    single marks, a block quotation and other languages' marks are not read; a quotation of
+    something other than the cited work is looked for in it and warned of; emphasis marks
+    are compared as written; and the pieces of an elided quotation are found however far
+    apart, four one-word pieces counting as four words."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == said
+
+
+def test_an_elided_piece_is_held_to_its_word_s_edges_and_a_key_s_abstract_is_shared(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A quotation in the prose is found by its
+    marks"): a piece after an elision is held to its word's edges by letters, digits, a
+    hyphen, an apostrophe and a decimal point, so a decimal comma and a minus sign are not
+    seen; a piece inside a range is not found; and a key ending in `.abstract` files its
+    source under the name of another key's abstract, each read as the other's."""
+    from manuscript_guard.gates.quotations import quoted_in
+    from manuscript_guard.literature.sources import is_abstract, normalise, stored_files
+
+    assert quoted_in(normalise("a change of \N{MINUS SIGN}0.5 mg daily"), "… 0.5 mg daily")
+    assert quoted_in(normalise("a dose of 2,5 mg daily"), "… 5 mg daily")
+    assert not quoted_in(normalise("a dose of 2.5 mg daily"), "… 5 mg daily")
+    assert not quoted_in(normalise("doses of 10–20 mg were safe"), "… 20 mg were safe")
+    (tmp_path / "smith.abstract.txt").write_text("An abstract.\n", encoding="utf-8")
+    assert stored_files(tmp_path, "smith") == [tmp_path / "smith.abstract.txt"]
+    assert stored_files(tmp_path, "smith.abstract") == [tmp_path / "smith.abstract.txt"]
+    assert is_abstract(tmp_path / "smith.abstract.txt")
+
+
 def test_a_quotation_is_looked_for_in_every_stored_file_of_its_work(project: Path) -> None:
     """Round 1 of #282: the first file of a work in the order of their suffixes was read
     alone, so a quotation of the full text beside an HTML abstract was said to be absent,
@@ -15627,6 +15698,85 @@ def test_g7_reads_the_types_of_the_pmid_pubmed_gives_a_doi(project: Path) -> Non
     assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
 
 
+def _weak_words(root: Path, paragraph: str, pubtypes: tuple[str, ...] = ("Case Reports",)):
+    """The words G7 names in its notes of `paragraph`, citing the example's first reference
+    and written before the Introduction's last paragraph, with that work typed `pubtypes`."""
+    main = root / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{paragraph}\n\n{_BEFORE_WHETHER}")
+    _looked_up(root, pmid="31000001", pubmed={**_CASE_REPORT, "pubtypes": list(pubtypes)})
+    return [re.findall(r"'([^']+)' \((?:effect|causation)\)", note.message)
+            for note in _weak_notes(root)]
+
+
+@pytest.mark.parametrize(
+    ("claim", "named"),
+    [
+        ("Hepatic injury was seen in patients with reduced renal function", [["reduced"]]),
+        ("Example-drug is responsible for hepatic injury", []),
+        ("Hepatic injury was due to example-drug", []),
+        ("Example-drug raised hepatic enzymes", []),
+    ],
+    ids=["an-effect-word-that-claims-nothing", "is-responsible-for", "due-to", "raised"],
+)
+def test_the_weak_source_note_reads_the_ladder_s_words_not_the_claim(
+    project: Path, claim: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "The word ladder is not an exact reading of a
+    claim"): a word of the effect rung that claims nothing sets the note off, and a claim in
+    words the list lacks does not."""
+    assert _weak_words(project, f"{claim} [@fictionalHepaticCohort2021].") == named
+
+
+def test_a_statement_that_evidence_is_lacking_is_noted_on_an_editorial(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A negation does not silence the note"): "There is
+    no evidence that X causes Y", cited to an editorial, gets the note."""
+    sentence = ("There is no evidence that example-drug causes hepatic injury "
+                "[@fictionalHepaticCohort2021].")  # fmt: skip
+    assert _weak_words(project, sentence, ("Editorial",)) == [["causes"]]
+
+
+@pytest.mark.parametrize(
+    ("before", "named"),
+    [
+        ("## Causes of liver injury\n", [["causes"]]),
+        ("## Causes of liver injury\n\n", []),
+        ("| Causes of liver injury |\n|---|\n| ", [["causes"]]),
+    ],
+    ids=["heading-with-no-blank-line", "heading-with-a-blank-line", "pipe-table-cells"],
+)
+def test_a_heading_or_a_table_cell_is_read_into_the_sentence_after_it(
+    project: Path, before: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A heading with no blank line after it"): a heading
+    with no blank line after it, or a pipe table's cell, is read as part of the sentence it
+    runs into, so a capitalised causation word opening it sets the note off. The 2026-11-09
+    triage planned a fix (F02), which will change this test."""
+    sentence = "Hepatic injury was seen after example-drug [@fictionalHepaticCohort2021]."
+    closing = " |" if before.startswith("|") else ""
+    assert _weak_words(project, f"{before}{sentence}{closing}") == named
+
+
+@pytest.mark.parametrize(
+    ("claim", "named"),
+    [
+        ("Example-drug caused hepatic injury, which may explain its withdrawal", []),
+        ("Example-drug has been reported to cause hepatic injury", [["cause"]]),
+    ],
+    ids=["a-hedge-on-another-clause", "a-hedge-the-list-lacks"],
+)
+def test_any_hedge_of_the_list_silences_the_weak_source_note(
+    project: Path, claim: str, named: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An effect claimed on a weak source is read from
+    words and PubMed's types", its point "A hedge silences the note, whatever it hedges"):
+    "may" on another clause passes the sentence over, and "has been reported to cause",
+    which holds no hedge of `data/claim_strength.yaml`, is noted."""
+    assert _weak_words(project, f"{claim} [@fictionalHepaticCohort2021].") == named
+
+
 def test_g7_notes_an_effect_claimed_on_a_letter_beside_a_work_never_looked_up_not_at_all(
     project: Path,
 ) -> None:
@@ -16764,6 +16914,65 @@ def test_an_isbn_10_opening_978_before_another_word_is_pinned() -> None:
     assert [code for code, _said in found] == ["identifier-malformed"]
 
 
+def test_a_reference_s_identifiers_are_held_to_their_form_alone() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name"): a DOI of the right shape and a PMID of digits pass,
+    registered or not; BibLaTeX's `@online`, `@report`, `@thesis` and `@misc` need no field;
+    an ISBN-13 whose check digit adds up passes with no ISBN prefix; an ISBN-10 opening 978
+    and parted by a space only from another ISBN is read as an ISBN-13; and in an ISBN field
+    ten or thirteen digits in brackets are checked as an ISBN, an LCCN as well, while one in
+    brackets with its label is not read at all."""
+    from manuscript_guard.gates.identifiers import problems
+
+    def said(**fields: str) -> list[str]:
+        return [message for _code, message in problems("k", {"type": "misc", **fields})]
+
+    assert said(doi="10.99999/never.registered", pmid="1") == []
+    for kind in ("online", "report", "thesis", "misc"):
+        assert problems("k", {"type": kind}) == [], kind
+    assert [code for code, _ in problems("k", {"type": "techreport"})] == [
+        "reference-field-missing"] * 4  # fmt: skip
+    assert said(isbn="1234567890128") == []
+    assert said(isbn="9781234563 0-306-40615-2") == [
+        "@k: the ISBN '9781234563 0-306-40615-2' has a check digit that does not add up"]
+    assert said(isbn="9781234563; 0-306-40615-2") == []
+    assert said(isbn="0-306-40615-2 (2001012345)") == [
+        "@k: the ISBN '2001012345' has a check digit that does not add up"]
+    assert said(isbn="0-306-40615-2 (978-0-306-40615-8)") == [
+        "@k: the ISBN '9780306406158' has a check digit that does not add up"]
+    assert said(isbn="0-306-40615-2 (eISBN 978-0-306-40615-8)") == []
+    assert said(isbn="(eISBN 978-0-306-40615-7)") == [
+        "@k: the ISBN '(eISBN 978-0-306-40615-7)' holds no ISBN, only what is written beside "
+        "one"]  # fmt: skip
+
+
+def test_g7_reads_the_entry_s_own_type_and_a_book_s_title_for_its_chapter(tmp_path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name"): a field named `type` leaves the entry's type as G7 reads
+    it, so a `@thesis` with `type = {phdthesis}` is held to nothing; and a parent's title
+    goes where biber puts it by the parent's type alone, so an `@incollection` whose
+    `crossref` names a `@book` takes the book's title for its booktitle, and one whose
+    parent is an `@mvbook` does not."""
+    from manuscript_guard.gates.identifiers import problems
+    from manuscript_guard.literature.bibfile import read_entries
+
+    bib = tmp_path / "references.bib"
+    bib.write_text("@thesis{t,\n  type = {phdthesis},\n  title = {T},\n}\n\n"
+                   "@phdthesis{p,\n  title = {T},\n}\n", encoding="utf-8")  # fmt: skip
+    entries = read_entries(bib)
+    assert problems("t", entries["t"]) == []
+    assert [said for _code, said in problems("p", entries["p"])] == [
+        "@p: an @phdthesis entry needs its author, and has none",
+        "@p: an @phdthesis entry needs its school or institution, and has none",
+        "@p: an @phdthesis entry needs its year or date, and has none",
+    ]
+    chapter = {"type": "incollection", "author": "A", "title": "T", "year": "2000",
+               "crossref": "b"}  # fmt: skip
+    assert problems("a", chapter, {"type": "book", "title": "The book"}) == []
+    assert [said for _code, said in problems("a", chapter, {"type": "mvbook", "title": "B"})] == [
+        "@a: an @incollection entry needs its booktitle, and has none"]
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -16986,6 +17195,56 @@ def test_parts_of_one_book_are_two_works(
     assert _duplicate_findings(project) == []
 
 
+_FAIL = [("reference-duplicate", "fail")]
+_WARN = [("reference-title-duplicate", "warn")]
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second", "title", "said"),
+    [
+        # A preprint and its article: no identifier in common, titles that differ.
+        (("", ""), {"doi": "10.5555/pre.1"}, {"doi": "10.5555/art.1"}, None, []),
+        # A title of fewer than four words is not compared; one of four is.
+        (("", ""), {}, {}, "Hepatic injury reported", []),
+        (("", ""), {}, {}, "Hepatic injury in cohorts", _WARN),
+        # A chapter cited twice, by its DOI: found by its title only, and a warning.
+        (("incollection", "incollection"), {"doi": "10.5555/ch.1"}, {"doi": "10.5555/ch.1"},
+         None, []),
+        (("incollection", "incollection"), {"doi": "10.5555/ch.1"}, {"doi": "10.5555/ch.1"},
+         "A chapter on hepatic injury", _WARN),
+        # A book cited twice with a volume in one entry only, or "I" and "1".
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN}, None, []),
+        (("book", "book"), {"isbn": _ISBN, "volume": "I"}, {"isbn": _ISBN, "volume": "1"},
+         None, []),
+        (("book", "book"), {"isbn": _ISBN, "volume": "Vol. 1"}, {"isbn": _ISBN, "volume": "1"},
+         None, _FAIL),
+        # A `%` and two hex digits of a printable character are read as that character.
+        (("", ""), {"doi": "10.5555/x%2Ey"}, {"doi": "10.5555/x.y"}, None, _FAIL),
+    ],
+    ids=["preprint-and-article", "title-of-three-words", "title-of-four-words",
+         "chapter-by-doi", "chapter-by-title", "volume-in-one", "volume-i-and-1",
+         "volume-with-its-word", "percent-escape"],
+)  # fmt: skip
+def test_two_keys_for_one_work_are_found_by_an_identifier_or_a_title_alone(
+    project: Path, types: tuple[str, str], first: dict, second: dict, title: str | None,
+    said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Two keys for one work are found by an identifier
+    or a title, and only among what is cited"): two entries of one work with no identifier
+    in common and titles that differ are not found, nor a title of fewer than four words;
+    a part of a book is found by its title alone, a warning; a volume is compared without
+    its word and otherwise as written; and a DOI's `%2E` is read as a full stop."""
+    _both_have(project, first, second, types)
+    if title is not None:
+        bib = project / "literature" / "references.bib"
+        text = bib.read_text(encoding="utf-8")
+        for written in ("Hepatic injury in a fictional national cohort, 2010--2019",
+                        "A disproportionality signal for a fictional drug class"):  # fmt: skip
+            text = text.replace(written, title, 1)
+        bib.write_text(text, encoding="utf-8")
+    assert [(code, severity) for code, severity, _ in _duplicate_findings(project)] == said
+
+
 def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
     _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
     assert _duplicate_findings(project) == []
@@ -17145,6 +17404,37 @@ def test_a_literature_value_with_a_blank_field_fails(
         f.code == "schema-violation" and f"entries/0/{field}" in f.message
         for f in report.failures
     ), report.render(project)
+
+
+@pytest.mark.parametrize(
+    ("signature", "refused"),
+    [(chr(0x200B), False), (chr(0xFEFF), False), (" ", True)],
+    ids=["zero-width-space", "byte-order-mark", "a-space"],
+)
+def test_an_attestation_signed_with_an_invisible_character_passes(
+    project: Path, signature: str, refused: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A field the literature schemas call blank is one
+    of white space only"): the schemas' `\\S` takes a zero-width space or a byte-order mark
+    for a character, so `attested_by` made of either passes the schema and G7 as a
+    signature that shows nothing, where one of white space fails."""
+    from manuscript_guard.cli import _run_gates
+
+    path = project / "literature" / "attested.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["attested_by"] = signature
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    about = [(f.code, f.message) for f in report.failures
+             if "attested" in f.message or "agency.withdrawn_estimate" in f.message]  # fmt: skip
+    if refused:
+        # Refused, the value is not loaded, and the sentence binding it is unresolved too.
+        assert [code for code, _message in about][0] == "schema-violation", about
+        assert "entries/0/attested_by" in about[0][1]
+    else:
+        assert about == []
+        assert _literature_report(project).ok
 
 
 def _literature_report(root: Path, change=None):

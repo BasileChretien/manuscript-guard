@@ -19199,11 +19199,15 @@ Open, recorded as each change landed:
   space (U+200B) or a byte-order mark is one:
   `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
   accident, and a name that is there but wrong passes as well.
+  Pinned by `tests/test_corruption.py::test_an_attestation_signed_with_an_invisible_character_passes`.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
   the dashes, the hyphens U+2010 and U+2011, the ellipsis and the ligatures fi, fl, ff, ffi
   and ffl are folded before a quote is looked for. Anything else one reader spells out and
   another does not is compared as it comes: a quote typed with "oe" is not found in a source
   read as "œ". A quote copied from the source, which is what the hint asks for, is.
+  Pinned by `tests/test_literature.py::test_a_letter_one_reader_spells_out_and_another_does_not_is_compared_as_it_comes`,
+  `tests/test_literature.py::test_typographic_differences_do_not_break_a_true_quote`
+  and `tests/test_literature.py::test_what_a_pdf_reader_may_or_may_not_fold_is_folded_here`.
 - **What a failed quote is said to nearly be is read by words, not by meaning.** A word is a
   run of letters and digits, so "2.6" is the words 2 and 6, and a quote whose number differs
   in one digit is a quote with one word retyped. Words more than twelve apart are not read
@@ -19212,10 +19216,15 @@ Open, recorded as each change landed:
   them, then the fewest interruptions, then the fewest words in them, which need not be
   where the author copied from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
   it. Only the first two interruptions are named, and the rest counted.
+  Pinned by `tests/test_placement.py::test_a_failed_quote_is_placed_by_its_words_and_not_by_its_meaning`,
+  `tests/test_placement.py::test_words_further_apart_than_the_gap_are_not_read_as_the_quote`,
+  `tests/test_placement.py::test_a_quote_its_source_does_not_hold_is_placed`
+  and `tests/test_placement.py::test_more_than_two_interruptions_are_counted_not_listed`.
 - **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
   it does.
+  Pinned by `tests/test_literature.py::test_an_ellipsis_set_against_a_value_hides_it`.
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy. Accepted.
@@ -19404,6 +19413,12 @@ Open, recorded as each change landed:
   check digit is not checked, and a field of it alone is said to hold no ISBN. A parent's
   title goes where biber puts it by the parent's type alone, so an `@incollection` whose
   `crossref` names a `@book` takes the book's title for a booktitle biber does not give it.
+  Pinned by `tests/test_corruption.py::test_a_reference_s_identifiers_are_held_to_their_form_alone`,
+  `tests/test_corruption.py::test_an_isbn_10_opening_978_before_another_word_is_pinned`,
+  `tests/test_corruption.py::test_g7_reads_the_entry_s_own_type_and_a_book_s_title_for_its_chapter`,
+  `tests/test_corruption.py::test_a_field_named_type_leaves_the_entry_s_type`,
+  `tests/test_corruption.py::test_a_dataset_written_as_misc_with_its_type_field_is_named_by_its_doi`
+  and `tests/test_checking.py::test_a_co_author_is_shown_a_reference_s_type_field_before_its_entry_type`.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four
@@ -19413,6 +19428,8 @@ Open, recorded as each change landed:
   written: "I" and "1" are two. A DOI's `%` followed by two hex digits of a printable ASCII
   character is read as that character, so a DOI registered with such a sequence in it,
   which the DOI Handbook allows and no registry we know issues, is compared as another.
+  Pinned by `tests/test_corruption.py::test_two_keys_for_one_work_are_found_by_an_identifier_or_a_title_alone`
+  and `tests/test_corruption.py::test_different_works_and_an_uncited_duplicate_say_nothing`.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8, G8r, G9, G12, G15 or G13 to read, and each passes with
@@ -19475,6 +19492,9 @@ Open, recorded as each change landed:
   one DOI (a work and a notice filed under its DOI, or two records of one work), or one whose
   record holds another DOI or none, keep no PMID: the work's types and links are then unknown,
   as for a work PubMed does not have. A DOI holding a quotation mark is not searched for.
+  Pinned by `tests/test_lookup.py::test_pubmed_s_pmid_for_a_doi_is_refused_rather_than_guessed`,
+  `tests/test_lookup.py::test_a_doi_with_a_quotation_mark_is_not_searched_for`
+  and `tests/test_corruption.py::test_a_work_of_no_known_type_says_nothing_of_its_numbers`.
 - **A later version or a correction is as current as the record.** Crossref's notices are
   those the publisher deposits, and PubMed's links those its indexers make; a correction
   deposited after the lookup is not in the record until `lookup` asks again (`lookup-stale`
@@ -21497,6 +21517,9 @@ Open, recorded as each change landed:
   them, and a piece that ends or starts at a closed-up dash or inside a range, "safe" in
   "safe—at least" or "20 mg" in "10–20 mg", is warned of
   (`test_an_elided_quotation_reads_points_as_a_reader_does`).
+  Pinned by `tests/test_corruption.py::test_a_quotation_in_the_prose_is_found_by_its_marks_and_its_pieces`,
+  `tests/test_corruption.py::test_an_elided_piece_is_held_to_its_word_s_edges_and_a_key_s_abstract_is_shared`
+  and `tests/test_corruption.py::test_an_elided_quotation_reads_points_as_a_reader_does`.
 - **`impact` follows the edges the gates record, as loosely as they record them.** A figure
   script counts as reading the results when G3's heuristic says so, and then depends on
   every results file, not on the keys it reads. A sentence is named by its line, not its
@@ -24754,8 +24777,18 @@ Open, recorded as each change landed:
   works are left to the browser. PubMed's abstract is not asked for (`lookup` reaches only its
   summaries, which hold none), nor a cited web page with no DOI. Zotero not running still
   stops the run before the web is asked, as it did. Round 1 of #565 left these, each not done:
+  Pinned by `tests/test_fetch_sources.py::test_a_version_openalex_did_not_label_is_kept_by_its_title`,
+  `tests/test_fetch_sources.py::test_a_preprint_printing_its_own_doi_is_not_taken_by_the_title`,
+  `tests/test_fetch_sources.py::test_a_title_is_no_evidence_where_the_first_page_gives_another_doi`,
+  `tests/test_fetch_sources.py::test_a_paper_that_names_a_cited_work_s_doi_alone_is_filed_as_that_work`,
+  `tests/test_fetch_sources.py::test_a_title_set_beside_a_running_head_is_not_found_and_an_unlisted_head_is_not_known`,
+  `tests/test_fetch_sources.py::test_a_paywall_page_is_not_kept_and_the_abstract_is_written`,
+  `tests/test_fetch_sources.py::test_a_work_known_by_its_pmid_or_a_web_page_alone_is_not_asked_for`
+  and `tests/test_fetch_sources.py::test_zotero_not_running_stops_the_run_before_the_web_is_asked`.
   - The preview test needs a page range in `references.bib`: an entry with an article number
     (`pages = {e0245}`) or none keeps a publisher's first-page preview.
+    Pinned by `tests/test_fetch_sources.py::test_a_first_page_preview_of_a_work_with_no_page_range_is_kept`
+    and `tests/test_fetch_sources.py::test_a_first_page_preview_is_not_kept`.
   - No bound on a run's whole time: the 60 s timeout is per socket operation, so a host that
     is down costs a minute for each place and work, and publisher hosts are paced at about
     five requests a second, which an institution's licence may count as systematic
@@ -24793,6 +24826,8 @@ Open, recorded as each change landed:
   - Round 3 left: `_literal` does not decode octal escapes (`\050`); every `/doi(` in the whole
     file is scanned; a letter glued to the work's DOI makes it the work's whatever the word;
     and some round 1 and 2 tests pass on a6f8e058 too, so do not show those fixes.
+    Pinned by `tests/test_fetch_sources.py::test_what_round_3_left_of_reading_a_pdf_s_doi_is_as_known_gaps_says`
+    and `tests/test_fetch_sources.py::test_the_works_doi_with_a_word_glued_on_is_still_the_works`.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or
@@ -24808,6 +24843,11 @@ Open, recorded as each change landed:
   PDF of an uncited `10.1000/a;b` in a shared folder is taken for a cited `10.1000/a:b`,
   since both are `10.1000_a_b`, and the name is all there is to tell them by (round 1;
   contrived).
+  Pinned by `tests/test_sync_sources.py::test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more`,
+  `tests/test_sync_sources.py::test_a_file_both_sources_hold_and_a_name_two_dois_spell_are_read_by_the_record`,
+  `tests/test_sync_sources.py::test_the_works_the_folder_has_nothing_for_are_listed`,
+  `tests/test_sync_sources.py::test_a_folder_with_no_pdf_where_a_doi_names_one_says_so`
+  and `tests/test_sync_sources.py::test_each_name_and_place_a_downloader_gives_a_doi_is_read`.
 - **A design record declared as an input in other capitals is not known for it on macOS.**
   Declared paths are compared in the case the system compares names in, which Python
   folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
@@ -25042,16 +25082,20 @@ Open, recorded as each change landed:
     nothing, "in patients with reduced renal function", sets the note off; a claim in words
     the list lacks, "is responsible for", "due to", "raised", does not. The limits of
     `reworded`'s reading of the list, above, hold here too.
+    Pinned by `tests/test_corruption.py::test_the_weak_source_note_reads_the_ladder_s_words_not_the_claim`.
   - A negation does not silence the note, so a statement that evidence is lacking is noted
     too: "There is no evidence that X causes Y", cited to an editorial, gets the note,
     though an editorial can say that much.
+    Pinned by `tests/test_corruption.py::test_a_statement_that_evidence_is_lacking_is_noted_on_an_editorial`.
   - A heading with no blank line after it is read as part of the sentence it runs into, and
     so is the text of a pipe table's cells: `## Causes of liver injury` over a sentence
     citing a case report gives the note, a capitalised effect or causation word opening the
     heading or the cell being read as the first word of that sentence.
+    Pinned by `tests/test_corruption.py::test_a_heading_or_a_table_cell_is_read_into_the_sentence_after_it`.
   - A hedge silences the note, whatever it hedges: "X caused Y, which may explain Z" holds
     "may" and is passed over. Only the hedges of `data/claim_strength.yaml` count: "has been
     reported to cause" holds none and is noted.
+    Pinned by `tests/test_corruption.py::test_any_hedge_of_the_list_silences_the_weak_source_note`.
   - A cited work whose publication types are not known silences the note for its whole
     sentence: a reference with no PMID (until the registry-facts pull request reads a PMID
     from its DOI), one never looked up, a record changed by hand, a record of a DOI or PMID
@@ -25097,6 +25141,7 @@ Open, recorded as each change landed:
     recorded as "[...] reduce", is no word of the passage, and the sentence's "reduces" is
     told nothing. A passage of several sentences is read whole, and so is the sentence: a
     hedge, a limit or a negation on another clause counts for the whole claim.
+    Pinned by `tests/test_passages.py::test_a_passage_is_read_as_it_is_recorded_and_a_sentence_whole`.
   - A sentence that claims less can be told moved. `compare_pair` reads a sentence by its
     lowest rung, so one that drops a word of a higher rung and keeps the lowest ("associated
     with lower mortality and reduced admissions" cited as "associated with lower mortality")
@@ -25114,6 +25159,7 @@ Open, recorded as each change landed:
     association in one and an effect in the other, warns for the first. A sentence that sets
     itself against the work, "unlike @a, we found no association", reads as saying the
     opposite, and warns.
+    Pinned by `tests/test_passages.py::test_each_passage_is_compared_with_its_sentence_alone`.
   - A person's judgement that the passage supports the sentence changes nothing (D2.2 of
     2026-11-06): the warning stays, with nothing to acknowledge, as every claim-strength
     finding does.
@@ -25570,6 +25616,8 @@ Open, recorded as each change landed:
   full stops that are not whole ellipses is an e-mail address's to both, in a group or out
   of one (`test_the_toolkit_reads_the_citations_pandoc_reads`); a run of more than fourteen
   dots is read as ellipses whatever its length.
+  Pinned by `tests/test_pandoc_agreement.py::test_a_narrative_key_after_an_underscore_or_a_backquote_is_not_read`
+  and `tests/test_pandoc_agreement.py::test_the_toolkit_reads_the_citations_pandoc_reads`.
 - **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
   1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
   as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and
@@ -26047,6 +26095,8 @@ Open, recorded as each change landed:
   Closed by an export that names the group's library, if `item.export` takes one, or
   another way to read the preferences; by the fallback taking its key from the user's
   library; and by naming Better BibTeX in the hint.
+  Pinned by `tests/test_zotero.py::test_keys_of_a_group_library_alone_are_held_to_extra_under_better_bibtex_8`
+  and `tests/test_zotero.py::test_g7_fails_every_key_of_a_group_library_under_better_bibtex_8`.
 - **In LaTeX, a straight `"` after an open ``` `` ``` closes it, whatever the font.** In
   `\texttt` a typewriter font prints both as typed, but the reader reads ``` `` ``` there as an
   opening mark already, and a `"` after it as the closing one. Babel's German shorthands other

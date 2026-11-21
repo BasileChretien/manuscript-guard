@@ -97,6 +97,43 @@ def test_more_than_two_interruptions_are_counted_not_listed() -> None:
     assert said(placement).endswith("; and 2 more")
 
 
+def test_a_failed_quote_is_placed_by_its_words_and_not_by_its_meaning() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a failed quote is said to nearly be is read
+    by words, not by meaning"): a word is a run of letters and digits, so a number that
+    differs in one digit is one word retyped; a footnote of more than twelve words leaves
+    the quote partly there; and of two places holding all the quote's words, the one with
+    the fewer interruptions, then the fewer words in them, is named, wherever it was
+    copied from."""
+    source = OPENING + "A signal was found (ROR 2.6, 95% CI 2.1-3.2) for the class.\n"
+    placement = place(source, "A signal was found (ROR 2.7, 95% CI 2.1-3.2) for the class.")
+    assert placement is not None and said(placement) == (
+        "6 of its 16 words are there in order (line 2): 'A signal was found (ROR 2'; after "
+        "'2' the quote has '7', where the source has '6 95 CI'"
+    )
+    quote = "the risk of liver disease was low"
+    for notes, expected in (
+        (GAP, "its words are all there in order; the source has '" + " ".join(["note"] * GAP)
+         + "' between 'liver' and 'disease' (line 2): words the quote leaves out, or a "
+         "column, a footnote or a running header"),
+        (GAP + 1, "4 of its 7 words are there in order (line 1): 'the risk of liver'; after "
+         "'liver' the quote has 'disease', where the source has 'note note note'"),
+    ):  # fmt: skip
+        footnoted = "the risk of liver\n" + " ".join(["note"] * notes) + "\ndisease was low\n"
+        placement = place(footnoted, quote)
+        assert placement is not None and said(placement) == expected
+    # Where the author copied from, two interruptions; further on, one of four words.
+    two_places = ("the risk 1 of the 2 disease was low\n"
+                  "the risk of the long footnote words here disease was low\n")  # fmt: skip
+    placement = place(two_places, "the risk of the disease was low")
+    assert placement is not None and placement.lines == (2, 2)
+    assert "'long footnote words here' between 'the' and 'disease'" in said(placement)
+    # One interruption each: the one of fewer words.
+    fewer = "the risk of the a b c disease was low\nthe risk of the d disease was low\n"
+    placement = place(fewer, "the risk of the disease was low")
+    assert placement is not None and placement.lines == (2, 2)
+    assert "the source has 'd' between 'the' and 'disease'" in said(placement)
+
+
 def test_the_lines_of_a_page_are_its_own_and_a_pdf_s_are_not_given(tmp_path: Path) -> None:
     """An HTML page's tags are blanked where they stand, so a line is the file's line; the
     text read from a PDF has lines of its reader's making, and none are given."""

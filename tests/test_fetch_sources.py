@@ -339,6 +339,32 @@ def test_a_copy_with_no_doi_is_taken_by_its_title(paper: Path) -> None:
     assert "doi" not in record(paper)["nodoi2020.pdf"]
 
 
+@pytest.mark.parametrize(("printed", "kept"), [("A. Fictional and B. Fictional", True),
+                                               ("doi: 10.1101/2020.01.01.123", False)])
+def test_a_version_openalex_did_not_label_is_kept_by_its_title(
+    paper: Path, printed: str, kept: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through"): a reprint with other page numbers, which
+    OpenAlex calls the published version, is kept by its title while it prints no DOI of its
+    own, and recorded as the published version; one that prints its own DOI is refused."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    reprint = article("Reprinted in Examples Reprinted 3 (2023) 1-9",
+                      "Hepatic injury in a fictional", "national cohort", printed)
+    table = Table({
+        PLACES.openalex + DOI: openalex(pdf_url="https://repository.test/reprint.pdf"),
+        "https://repository.test/reprint.pdf": pdf_answer(reprint),
+        PLACES.crossref + DOI: crossref(None),
+    })  # fmt: skip
+    (outcome,), _ = sync(paper, table)
+    assert (outcome.status == copies.COPIED) is kept, outcome.said
+    if kept:
+        entry = record(paper)["hepatic2021.pdf"]
+        assert (entry["matched"], entry["version"]) == ("title", "published")
+    else:
+        assert not (sources(paper) / "hepatic2021.pdf").exists()
+
+
 def test_an_arxiv_copy_is_taken_by_its_identifier(paper: Path) -> None:
     cite(paper, preprint2021={"title": TITLE, "eprint": "2101.01234", "archiveprefix": "arXiv"})
     table = Table({PLACES.arxiv + "2101.01234": pdf_answer(TITLE_ONLY)})
@@ -415,6 +441,26 @@ def test_a_first_page_preview_is_not_kept(paper: Path) -> None:
     assert outcome.status == copies.NO_COPY and "a preview, most likely" in outcome.said
 
 
+@pytest.mark.parametrize("pages", ["e0245", None], ids=["article-number", "no-pages"])
+def test_a_first_page_preview_of_a_work_with_no_page_range_is_kept(
+    paper: Path, pages: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through", its point "The preview test needs a page
+    range"): with an article number for its pages, or none, a work's one-page preview is
+    kept as its copy, where a range of nine pages refuses it
+    (`test_a_first_page_preview_is_not_kept`)."""
+    fields = {"title": TITLE, "doi": DOI, **({"pages": pages} if pages else {})}
+    cite(paper, hepatic2021=fields)
+    table = Table({
+        PLACES.openalex + DOI: openalex(is_oa=False),
+        PLACES.resolver + DOI: pdf_answer(THE_WORK),
+    })  # fmt: skip
+    (outcome,), _ = sync(paper, table)
+    assert outcome.status == copies.COPIED, outcome.said
+    assert (sources(paper) / "hepatic2021.pdf").read_bytes() == THE_WORK
+
+
 def test_openalex_s_abstract_stands_in_where_crossref_has_none(paper: Path) -> None:
     cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
     index = {"Liver": [0], "injury": [1], "was": [2], "rare.": [3]}
@@ -470,6 +516,20 @@ def test_with_no_network_allowed_nothing_more_is_asked(paper: Path) -> None:
     assert [one.key for one in wanted] == ["one2021", "two2019"]
 
 
+def test_a_work_known_by_its_pmid_or_a_web_page_alone_is_not_asked_for(paper: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through"): PubMed's abstract is not asked for, nor
+    a cited web page with no DOI. The work is left wanted, with why."""
+    cite(paper, page2020={"title": TITLE, "url": "https://agency.test/report.html",
+                          "pmid": "31000001"})  # fmt: skip
+    table = Table({})
+    (outcome,), wanted = sync(paper, table)
+    assert table.asked == []
+    assert outcome.status == copies.NO_COPY
+    assert [(one.key, one.why) for one in wanted] == [
+        ("page2020", ("no DOI, PMCID or arXiv identifier to look for a copy by",))]
+
+
 def test_a_dry_run_asks_the_web_nothing(paper: Path, monkeypatch, capsys) -> None:
     cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
     table = Table({})
@@ -479,6 +539,31 @@ def test_a_dry_run_asks_the_web_nothing(paper: Path, monkeypatch, capsys) -> Non
     assert "Nothing was looked for on the web (--dry-run)" in capsys.readouterr().out
     assert main(["sync-sources", str(paper), "--no-fetch"]) == 0
     assert table.sent == []
+
+
+def test_zotero_not_running_stops_the_run_before_the_web_is_asked(
+    paper: Path, monkeypatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through"): Zotero not running stops the run, and
+    nothing is asked of the web, where an open copy was there to fetch."""
+    from manuscript_guard.zotero import ZoteroUnavailable
+
+    def down(method: str, params, timeout: int = 20):
+        raise ZoteroUnavailable("could not reach Better BibTeX. Is Zotero running?")
+
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    table = Table({
+        "https://api.openalex.org/works/doi:" + DOI:
+            openalex(pdf_url="https://repository.test/hepatic.pdf"),
+        "https://repository.test/hepatic.pdf": pdf_answer(THE_WORK),
+    })  # fmt: skip
+    monkeypatch.setattr(download, "session", lambda: table)
+    monkeypatch.setattr(client, "rpc", down)
+    assert main(["sync-sources", str(paper)]) == 2
+    assert "Is Zotero running?" in capsys.readouterr().err
+    assert table.sent == []
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
 
 
 def test_sync_sources_fetches_by_default_and_sends_no_address(paper, monkeypatch, capsys):
@@ -536,6 +621,35 @@ def test_a_saved_pdf_that_shows_two_cited_works_is_filed_for_neither(paper, tmp_
     assert not list(sources(paper).glob("*.pdf"))
     assert all("another DOI" in one.said or "several cited works" in one.said
                for one in outcomes), outcomes
+
+
+@pytest.mark.parametrize(
+    "pages",
+    [
+        [[Piece(56, 780, "Imaginary Letters 3 (2022) 1-2"),
+          Piece(56, 768, "A letter on something else entirely")],
+         [Piece(56, 780, f"[1] Fictional C. A signal. https://doi.org/{OTHER}")]],
+        [[Piece(56, 780, "Imaginary Letters 3 (2022) 1-2"),
+          Piece(56, 768, f"As Fictional reported (https://doi.org/{OTHER}), we wrote.")]],
+    ],
+    ids=["second-page-only", "first-page-no-metadata"],
+)  # fmt: skip
+def test_a_paper_that_names_a_cited_work_s_doi_alone_is_filed_as_that_work(
+    paper: Path, tmp_path: Path, pages: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through"): another paper, which names a cited
+    work's DOI on its second page only, or on its first with no DOI in its metadata, and no
+    other DOI, is filed by `--inbox` as that work."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI}, signal2019={"title": "x", "doi": OTHER})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "letter.pdf").write_bytes(pdf(pages))
+    inbox_sync(paper, downloads)
+    assert (sources(paper) / "signal2019.pdf").read_bytes() == pdf(pages)
+    entry = record(paper)["signal2019.pdf"]
+    assert (entry["from"], entry["matched"]) == ("inbox", "doi")
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
 
 
 def test_the_inbox_flag_needs_a_folder(paper: Path, capsys) -> None:
@@ -650,6 +764,26 @@ def test_a_title_in_the_running_text_is_not_the_title() -> None:
     assert matching.judged(b"%PDF-1.4", text, None, TITLE).by is None
 
 
+def test_a_title_set_beside_a_running_head_is_not_found_and_an_unlisted_head_is_not_known(
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through"): a title on one line with a running head
+    beside it is not found, where on lines of its own it is; and a head other than those
+    listed, "Online Appendix", or "Data Supplement" further down, is not known, so the
+    document is taken for the work where "Supplementary Appendix" refuses it."""
+    beside = "Hepatic injury in a fictional national cohort        J Examples 12:101\nA. Fictional"
+    assert matching.judged(b"%PDF-1.4", beside, None, TITLE).by is None
+    alone = "J Examples 12:101\nHepatic injury in a fictional national cohort\nA. Fictional"
+    assert matching.judged(b"%PDF-1.4", alone, None, TITLE).by == "title"
+    title = "Hepatic injury in a fictional\nnational cohort\n"
+    for document in (f"Online Appendix\n{title}doi: {DOI}",
+                     f"{title}Data Supplement\ndoi: {DOI}"):  # fmt: skip
+        assert matching.judged(b"%PDF-1.4", document, DOI, TITLE).by == "doi", document
+    listed = matching.judged(b"%PDF-1.4", f"Supplementary Appendix\n{title}doi: {DOI}", DOI,
+                             TITLE)  # fmt: skip
+    assert listed.by is None and "a supplement" in listed.why
+
+
 def test_a_title_is_no_evidence_where_the_metadata_names_another_doi() -> None:
     raw = b"%PDF-1.7\n<prism:doi>10.5555/someone.else</prism:doi>"
     text = "Hepatic injury in a fictional\nnational cohort\nA. Fictional"
@@ -760,6 +894,24 @@ def test_the_works_doi_with_a_word_glued_on_is_still_the_works() -> None:
     doi = "10.1177/25152459221106366"
     text = f"Advances in Examples\nhttps://doi.org/{doi}deffner et al.\nA study\n"
     assert matching.judged(b"%PDF-1.4", text, doi, None).by == "doi"
+
+
+def test_what_round_3_left_of_reading_a_pdf_s_doi_is_as_known_gaps_says() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read through", its point "Round 3 left"): `_literal`
+    takes an octal escape for its digits, `\\050` for "050" and not "("; every `/doi(` of
+    the whole file is read as the metadata's, so one deep in a page's content refuses the
+    work; and a letter glued to the work's DOI makes the DOI printed the work's, whatever
+    the word, though it may be another DOI."""
+    escape = bytes([92])  # a backslash: `\050` and `\051` are PDF's octal for the brackets
+    octal = (b"%PDF-1.7\n<</doi(10.1016/S0140-6736" + escape + b"05020" + escape
+             + b"05130183-5)>>")  # fmt: skip
+    assert matching.metadata_dois(octal) == {"10.1016/s0140-67360502005130183-5"}
+    deep = b"%PDF-1.7\n" + b"x" * 200_000 + b"\n<</doi(10.5555/someone.else)>>"
+    shown = matching.judged(deep, f"Hepatic injury\nhttps://doi.org/{DOI}", DOI, TITLE)
+    assert shown.by is None and "10.5555/someone.else" in shown.why
+    another = f"Journal of Examples\nhttps://doi.org/{DOI}b\nA study\n"
+    assert matching.judged(b"%PDF-1.4", another, DOI, None).by == "doi"
 
 
 def test_a_preprint_printing_its_own_doi_is_not_taken_by_the_title() -> None:

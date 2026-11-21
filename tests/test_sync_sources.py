@@ -796,6 +796,57 @@ def test_a_page_saved_as_a_pdf_is_refused_and_said(paper, tmp_path, capsys):
     assert set(record(paper)["files"]) == {"beside2021.pdf"}
 
 
+def test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more(paper, tmp_path, capsys):
+    """A known gap (DESIGN.md, Known gaps, "`sync-sources --from` matches only a name a DOI
+    spells, at the places the harvester puts it"): a PDF named by its PMID or its citation
+    key is counted as named for no cited DOI and not copied; a PDF with bytes before its
+    `%PDF-` is refused; and any file that begins with it, the wrong paper, is copied."""
+    cite(paper, "smith2020", "late2021", "wrong2019")
+    bib(paper, smith2020="10.1000/smith", late2021="10.1000/late", wrong2019="10.1000/wrong")
+    papers = tmp_path / "papers"
+    put(papers, "31000001.pdf")
+    put(papers, "smith2020.pdf")
+    put(papers, "10.1000_late.pdf", b"\r\n" + PDF)
+    another = b"%PDF-1.4\nanother paper entirely, cut short"
+    put(papers, "10.1000_wrong.pdf", another)
+    assert harvest(paper, papers) == 0
+
+    out = capsys.readouterr().out
+    assert "2 PDFs in the folder are named for no DOI the manuscript cites" in out
+    assert not (sources(paper) / "smith2020.pdf").exists()
+    assert not (sources(paper) / "late2021.pdf").exists()
+    listed = out.split("No copy for 2 cited works:")[1]
+    assert "@late2021" in listed and "does not begin with %PDF-" in listed
+    assert (sources(paper) / "wrong2019.pdf").read_bytes() == another
+
+
+def test_a_file_both_sources_hold_and_a_name_two_dois_spell_are_read_by_the_record(
+    paper, tmp_path, monkeypatch
+):
+    """A known gap (DESIGN.md, Known gaps, "`sync-sources --from` matches only a name a DOI
+    spells, at the places the harvester puts it"): a file Zotero copied that the folder
+    holds in the same bytes stays recorded as Zotero's; and a name is weighed against the
+    cited DOIs alone, so the PDF of an uncited `10.1000/a;b` is taken for a cited
+    `10.1000/a:b`."""
+    zotero = Storage(tmp_path)
+    cite(paper, "zot2020", "colon2020")
+    bib(paper, zot2020="10.1000/zot", colon2020="10.1000/a:b")
+    papers = tmp_path / "papers"
+    put(papers, "10.1000_zot.pdf")
+    semicolon = b"%PDF-1.4\nthe uncited 10.1000/a;b\n"
+    put(papers, "10.1000_a_b.pdf", semicolon)
+    sync(paper, monkeypatch, FakeBBT({1: {"zot2020": [zotero.file("z.pdf", PDF)],
+                                          "colon2020": None}}))  # fmt: skip
+    project = load_project(paper)[0]
+    found = by_key(copies.sync(project, offered=downloads.offer(project, papers)))
+
+    (same,) = found["zot2020"]
+    assert same.status == copies.UNCHANGED, same.said
+    assert record(paper)["files"]["zot2020.pdf"]["from"] == "zotero"
+    assert (sources(paper) / "colon2020.pdf").read_bytes() == semicolon
+    assert record(paper)["files"]["colon2020.pdf"]["doi"] == "10.1000/a:b"
+
+
 def test_two_pdfs_of_one_doi_that_differ_are_neither_copied(paper, tmp_path):
     cite(paper, "twice2019", "same2018")
     bib(paper, twice2019="10.1000/twice", same2018="10.1000/same")

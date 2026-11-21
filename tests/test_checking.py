@@ -583,6 +583,27 @@ def test_a_reference_carries_its_journal_and_date_in_either_bib_dialect(project:
         assert rows["Date"] == date
 
 
+def test_a_co_author_is_shown_a_reference_s_type_field_before_its_entry_type(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
+    form, not for what they name"): a field named `type` is kept beside the entry's own
+    type, and the co-author is shown the field where there is one."""
+    from manuscript_guard.checking.produce import REFERENCE_FIELDS, _bib_records, _rows_for
+    from manuscript_guard.cli import load_project
+
+    (project / "literature" / "references.bib").write_text(
+        "@thesis{typed2019,\n  type = {phdthesis},\n  author = {A, B},\n  title = {T},\n"
+        "  year = {2019},\n}\n\n@thesis{plain2019,\n  author = {A, B},\n  title = {T},\n"
+        "  year = {2019},\n}\n",
+        encoding="utf-8",
+    )
+    records = _bib_records(load_project(project)[0])
+    kinds = [dict(_rows_for(records[key], REFERENCE_FIELDS)).get("Kind of record")
+             for key in ("typed2019", "plain2019")]  # fmt: skip
+    assert kinds == ["phdthesis", "thesis"]
+
+
 def test_an_item_keeps_its_identifier_across_runs(project: Path) -> None:
     """An answer is recorded against an id. If the id moved between builds, a co-author's "yes"
     would attach to nothing, so nothing here may depend on a clock or on a hash seed."""

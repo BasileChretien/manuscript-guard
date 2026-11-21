@@ -48,25 +48,22 @@ expected:
       in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
-      the inputs now hold `APART_PIECES` (tests/generated.py), and on them G14 reads as the
-      real-paper corpus's round of 2026-11-21 asks, each reading exact: another meaning given
-      again in a second table note is reported once, at the first; author-year citations
-      typed after a long form in its bracket, after its first semicolon, are no part of it,
-      so the note that gives the long form again gives no other meaning; a catalogue's
-      designation, "[KX92]30" typed or escaped, is neither a definition nor a use; and a name
-      whose parts underscores join, "QMP_RATE", is no use of a short form, so nothing is used
-      before its definition; and where a bracket defines a short form after its long form, a
-      colon pair the same words could make defines nothing (Basile, 2026-11-21, "Bracket
-      wins"), so "TCSs: timed chair stand series (TCS-S)" leaves TCS used and undefined. The
-      entry it replaces, decision 30's, is spent
+      a table or a figure stands alone (Basile, 2026-11-21, "Table stands alone"): a
+      definition in a table's caption, a legend or a note under a table is compared with
+      nothing outside its display, so another meaning or a second definition there is not
+      reported against the text's or another display's; a use in a display that defines the
+      form is no use before the definition, wherever it stands in it; and a use in the text
+      is held to the text's definitions where the text gives one, so one between a legend's
+      definition and the text's later one is used before it is defined. The inputs now hold
+      `DISPLAY_PIECES`, `DISPLAYS_TEXT` and `DISPLAYS_AFTER` (tests/generated.py). The entry
+      it replaces, for the corpus round of 2026-11-21 (#717), is spent
   - reading: audit abbreviations
     why: >-
-      the audit's one finding of the short forms used and not defined is a question to the
-      author, made again from the warnings G14's question holds: "never defined", then
-      whether any needs defining and how to answer, with `--known`; at INFO, with no hint,
-      never counted (decision 30, the entry for `abbreviations`); the reading takes G14's
-      question back to its warnings as `auditing.undefined.unasked` does, and gives each finding's severity
-      and whether it is a question; the entry it replaces, decision 28's, is spent
+      the audit gives G14's findings, so a table or a figure stands alone there too (Basile,
+      2026-11-21, "Table stands alone", the entry for `abbreviations`): a header or a cell
+      that its own table's note defines, below it, is no use before the definition, and a
+      note's other meaning is compared with nothing in the text. The entry it replaces,
+      decision 30's, is spent
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its

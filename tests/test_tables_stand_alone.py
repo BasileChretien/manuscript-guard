@@ -1,0 +1,187 @@
+"""A table or a figure stands alone (Basile, 2026-11-21, "Table stands alone").
+
+"A caption, legend or note defines for its own table or figure only: its definitions cover
+the uses in that table, and are never compared with the text's." A display's own text is its
+table's cells, header and caption, a legend that opens with its number, and the notes after
+it (`gates.displays`); in LaTeX, the table's float, or a `tabular` that stands in none.
+
+* A definition there is never compared with the text's, nor with another display's: no
+  `abbreviation-redefined` between them, whatever the long form.
+* A use there that the same display defines is no `abbreviation-used-before-defined`,
+  wherever the definition stands in it: a header above the note that defines it.
+* A definition there used only in its own display is not `abbreviation-unused`.
+
+What the text does is unchanged: a second definition there, a use before its definition
+there, and a form defined nowhere are each still said, a table's form among them.
+"""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+import pytest
+
+from manuscript_guard.auditing.undefined import unasked
+from manuscript_guard.contracts import load_project
+from manuscript_guard.gates import check_language
+from manuscript_guard.gates.language import _file, _judge, _Known, _latex_read
+
+NOTHING = _Known(frozenset(), frozenset())
+
+METHODS = ("# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette "
+           "Dependence Scale (CDS), and the BDI and the CDS were read.\n\n"
+           "# Results\n\n")  # fmt: skip
+TABLE = "| Score | BDI | CDS |\n|---|---|---|\n| one | 12 | 40 |\n"
+
+
+def _found(text: str) -> list[tuple[str, str]]:
+    """G14's findings on a Markdown text, its question given back as a warning for each
+    form: each code and short form."""
+    report = _judge([_file(0, Path("main.md"), text, [], False)], NOTHING, Path("."))
+    return sorted((f.code, f.message.split()[0]) for f in unasked(list(report.findings)))
+
+
+def _latex_found(tmp_path: Path, body: str) -> list[tuple[str, str]]:
+    (tmp_path / "main.tex").write_text(
+        f"\\documentclass{{article}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n",
+        encoding="utf-8")  # fmt: skip
+    report = _judge(_latex_read(tmp_path, None), NOTHING, tmp_path)
+    return sorted((f.code, f.message.split()[0]) for f in unasked(list(report.findings)))
+
+
+@pytest.mark.parametrize("after", [
+    # A note that opens with its mark.
+    "*Note.* BDI = Beck Depression Inventory; CDS = Cigarette Dependence Score.",
+    # A note with no mark, after pandoc's caption under the table.
+    ": **Table 1.** Scores by group.\n\nData are means. BDI: Beck depression score; CDS: "
+    "Cigarette Dependence Score.",
+    # A note in italics, its opening star glued to the word.
+    "*BDI = Beck Depression Index; CDS = Cigarette Dependence Score*",
+    # A footnote's mark.
+    "^a^ Cigarette Dependence Score (CDS); Beck Depression Index (BDI).",
+])  # fmt: skip
+def test_a_table_s_note_is_never_compared_with_the_text(after: str) -> None:
+    text = f"{METHODS}{TABLE}\n{after}\n\nThe BDI and the CDS were low.\n"
+    assert _found(text) == []
+
+
+@pytest.mark.parametrize("legend", [
+    # A figure's legend restating a form with another long form.
+    "***Fig 1. The design.** The dose was low dose (LD) or high dose (HD).",
+    "Figure 2: The dose was low dose (LD) or high dose (HD) in each session.",
+    "**Table 3.** The dose was low dose (LD) or high dose (HD).",
+])  # fmt: skip
+def test_a_legend_is_never_compared_with_the_text(legend: str) -> None:
+    text = ("# Methods\n\nThe dose was the low daily dose (LD) or the high daily dose (HD), "
+            f"and LD and HD were kept.\n\n# Results\n\n{legend}\n\nThe LD and the HD "
+            "sessions differed.\n")  # fmt: skip
+    assert _found(text) == []
+
+
+def test_two_tables_notes_are_never_compared() -> None:
+    """The notes of two tables each define one form, one way and another."""
+    text = ("# Results\n\n| RoS | n |\n|---|---|\n| 3 | 4 |\n\n*Note.* RoS: rating of sleep.\n\n"
+            "Table 3. The second.\n\n| RoS | n |\n|---|---|\n| 3 | 4 |\n\n*Note.* RoS: ratings "
+            "of sleep scale.\n")  # fmt: skip
+    assert _found(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    # The rows use ICC, the note under pandoc's caption defines it.
+    "# Results\n\n| Effect | Value |\n|---|---|\n| ICC | 0.73 |\n\n: **Table 2.** Effects.\n\n"
+    "Values are estimates. ICC: intraclass correlation coefficient.\n",
+    # APA's number, then the title, then the table and its note.
+    "# Tables\n\nTable 1.\n\n*Means by group.*\n\n| Variable | Mean |\n|---|---|\n| KQS | 62 |"
+    "\n| IQ | 100 |\n\n*Note.* KQS: Kids Quiet Scale; IQ: intelligence quotient.\n",
+    # A header defined in the note right under it, two forms a slash joins.
+    "# Results\n\n**Table 1. Arms.**\n\n| Site | TA/CA |\n|---|---|\n| one | 3/4 |\n\n"
+    "*TA/CA = treated/control arm.*\n",
+])  # fmt: skip
+def test_a_use_in_a_table_its_own_note_defines_is_not_used_before_it(text: str) -> None:
+    assert _found(text) == []
+
+
+def test_a_note_s_definition_used_only_in_its_table_is_used() -> None:
+    text = ("# Results\n\n| Group | ICC |\n|---|---|\n| one | 0.7 |\n\n*Note.* ICC: intraclass "
+            "correlation coefficient.\n\nThe groups were alike.\n")  # fmt: skip
+    assert _found(text) == []
+
+
+def test_a_latex_table_s_header_above_its_caption_is_not_used_before_it(tmp_path: Path) -> None:
+    """The header uses KD, the caption under the table defines it; and a definition the
+    float gives in another long form than the text's."""
+    body = ("\\section{Methods}\nWe used the Anderson test (AT), and the AT held.\n"
+            "\\begin{table}\n\\begin{tabular}{ll}\nKD & AT \\\\\n1 & 2 \\\\\n\\end{tabular}\n"
+            "\\caption{The Kolmogorov distance (KD) and the Anderson test statistic (AT).}\n"
+            "\\end{table}\n")  # fmt: skip
+    assert _latex_found(tmp_path, body) == []
+
+
+# ----------------------------------------------------------- what the text does is unchanged
+
+
+def test_a_second_definition_in_the_text_is_still_said_beside_a_table() -> None:
+    text = (f"{METHODS}{TABLE}\n*Note.* CDS = Cigarette Dependence Score.\n\n# Discussion\n\n"
+            "The Cigarette Dependence Score (CDS) was low, and the CDS fell.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "CDS")]
+
+
+def test_a_use_before_the_text_s_definition_is_still_said_beside_a_table() -> None:
+    """A table that does not define the form leaves its use to the text: DMB in the note,
+    before the text defines it, is used before it is defined."""
+    text = ("# Results\n\n| Class | n |\n|---|---|\n| one | 4 |\n\n*Note.* Each DMB read it "
+            "twice.\n\n# Discussion\n\nThe data monitoring boards (DMB) were many, and the DMB "
+            "met.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-used-before-defined", "DMB")]
+
+
+def test_a_table_s_form_defined_nowhere_is_still_asked() -> None:
+    """A form in a table's body that nothing defines; one in its header in capitals is a
+    label, and not asked about, as before."""
+    text = ("# Results\n\n| Group | n |\n|---|---|\n| QXR | 4 |\n\n*Note.* Means.\n\nThe groups "
+            "were alike.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-undefined", "QXR")]
+
+
+def test_a_paragraph_after_a_table_that_is_no_note_is_the_text_s() -> None:
+    """A paragraph after a table that opens with no note's mark and pairs no form is the
+    text's own, and a definition there is compared with the text's."""
+    text = (f"{METHODS}{TABLE}\nThe Cigarette Dependence Score (CDS) was low, and the CDS "
+            "fell.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "CDS")]
+
+
+def test_one_display_s_own_definitions_are_compared() -> None:
+    """A table is read alone, not unread: its caption and its note giving one form two
+    meanings is still two meanings."""
+    text = ("# Results\n\n**Table 1.** The relative odds ratio (ROR) by drug.\n\n| Drug | ROR |\n"
+            "|---|---|\n| one | 3 |\n\n*Note.* ROR: reporting odds ratio.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "ROR")]
+
+
+def test_check_reads_a_table_alone_in_a_project(project: Path) -> None:
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
+    (project / "manuscript" / "main.md").write_text(
+        f"{METHODS}{TABLE}\n*Note.* BDI = Beck Depression Index; CDS = Cigarette Dependence "
+        "Score.\n\nThe BDI and the CDS were low.\n", encoding="utf-8")  # fmt: skip
+    report = check_language(load_project(project)[0])
+    said = [(f.code, f.message) for f in unasked(list(report.findings))
+            if f.code.startswith("abbreviation-")]  # fmt: skip
+    assert said == [], said
+
+
+# -------------------------------------------- open: a use in the text only a table defines
+
+
+def test_a_use_in_the_text_only_a_table_defines_is_held_to_the_table_s_definition() -> None:
+    """Where the text defines a form nowhere, a table's definition still counts for the
+    text, as before "Table stands alone": a use after it is defined, and one before it is
+    used before it is defined. Whether the
+    table's definition should cover its table alone, the text's use then asked about, is
+    the author's to choose (`language._DISPLAYS_DEFINE_FOR_THE_TEXT`)."""
+    table = ("| Group | PSR |\n|---|---|\n| one | 0.7 |\n\n*Note.* PSR: pooled signal ratio.\n"
+             "\n")  # fmt: skip
+    assert _found(f"# Results\n\n{table}The PSR was high.\n") == []
+    assert _found(f"# Methods\n\nThe PSR was high.\n\n# Results\n\n{table}") == [
+        ("abbreviation-used-before-defined", "PSR")]

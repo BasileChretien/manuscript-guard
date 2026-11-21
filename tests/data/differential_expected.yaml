@@ -35,18 +35,17 @@ expected:
       warning it came before. `check` is unchanged
   - reading: numbers asked
     why: >-
-      a new reading of the audit's Arithmetic, its items by code, line, severity, whether
-      counted and whether a question: where the paper says once that its P values are adjusted
-      for multiple comparisons (Bonferroni, Holm, the false discovery rate and the rest of a
-      closed list; "adjusted for age and sex" is none), a P larger than its statistic gives is
-      asked about, `question-p-adjusted`, and where a table's caption, cells or note says its
-      shares are weighted, a share off its column's n is, `question-share-weighted`; each is a
-      question at INFO, never counted, where the base gives a number that does not fit. A
-      smaller P, an interval's P, a share of a table that says nothing, and a share of a
-      file whose legends do not number its tables (a legend captions the table its number
-      names, Basile, 2026-11-18) stay numbers that do not fit, so the inputs of such a file
-      read alike (Basile, 2026-11-16, decision 31: docx-sport-A3 and docx-psych-A3 of the
-      real-paper corpus)
+      where a file's legends do not number its tables (a table given as a picture, a "Table 2
+      (continued)", "Table S1" beside "Table 1", "Table S1a" beside "Table S1b"), a legend
+      directly above a table, with no paragraph between, captions it, so a weighted table's
+      share off its column's n under such a legend is asked about,
+      `question-share-weighted`, where the base gives a number that does not fit; a legend
+      below a table or over a subtitle captions nothing, and where the legends do number the
+      tables nothing changes (Basile, 2026-11-21, "Adjacent fallback"). And "nationally
+      representative" in a table's caption, note, row label or header says its shares are
+      weighted, as "weighted" does, unless a word before it in its clause says not (Basile,
+      2026-11-21, "Caption wording": the 31 shares of docx-psych-B2's supplementary tables
+      in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
       the inputs now hold `APART_PIECES` (tests/generated.py), and on them G14 reads as the
@@ -155,11 +154,6 @@ expected:
       a number after a link on its line, "[the code](https://...). Data (n = 1213)", is read
       and judged, where the link's target hid it up to the next `)`; the inputs now hold a
       link of each kind of target
-  - reading: notation
-    why: >-
-      the hint of a form written two ways ends "The place given is the first use of the
-      other form", where it said "This is the first place the other form stands", which the
-      author did not understand (the author's audit, 2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -381,3 +375,13 @@ expected:
       two sections and inside one; a citation beyond the reference list after one is said at
       its own line, where the base said it as many lines too early as the comment is high
       (the bug found building #691)
+  - reading: notation
+    why: >-
+      `notation-space-missing` reads no number inside a piece raised or lowered as pandoc
+      writes one, "u~0school~", nor inside a word joined by underscores, "12mth\_rate", a name
+      from code as `code-name-in-prose` reads one; the inputs now hold both, which the base
+      reports as spaces left out; the entry it replaces, for the hint of a form written two
+      ways (2026-11-10), is spent
+  - reading: notation edits
+    why: >-
+      the same: no space is put inside "u~0school~" or "12mth\_rate", where the base put one

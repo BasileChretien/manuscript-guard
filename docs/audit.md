@@ -170,7 +170,7 @@ any is asked, and neither is a number that does not fit:
   number of the Abstract not found where the paper reports, that the Introduction or its
   material, the Discussion, a "Limitations" or a conclusion gives, matched as the
   comparison matches one (as printed, as a rounding, an identifier whole, a power whole).
-  It is no `abstract-not-found` warning: the question names each section it stands in by
+  It is no `abstract-not-found` note: the question names each section it stands in by
   its heading and its first line there, and asks whether the paper reports it there or
   gives it as background; where some of the number's parts are found where the paper
   reports, "30" of "30-40%", it names the part that is not. If it reports it there,
@@ -178,7 +178,11 @@ any is asked, and neither is a number that does not fit:
   is found; a section under another that reports nothing, a "Limitations" under the
   Discussion, is named with both, and needs both, one given already among them. Otherwise the number is to be given in the Methods or the Results. A number found
   only on the title page, in a statement, a note, the keywords, a summary of the paper or
-  the reference list is not found, as before.
+  the reference list is not found, as before. A number not found is a note, never a
+  warning: on real papers it was right less than half the time, wrong where the paper gives
+  the number another way, as a word, as a proportion, inside a name
+  ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
+  right").
 - **A Background figure given nowhere** (`question-background-unsourced`): a structured
   Abstract's part titled or run in as Background, Introduction, Context, Rationale or
   Objective ("Background:", "**Objectives.**", a heading "Background" under the Abstract)
@@ -213,7 +217,8 @@ any is asked, and neither is a number that does not fit:
   column's n in a table whose caption or note says its shares are weighted, in a row whose
   label does, or under a column whose header does ("weighted %", "weighted percentages",
   "weighted n", "weighted statistics", "survey-weighted", "inverse probability weighted",
-  "IPW", "After IPTW"; not "unweighted", "Before IPTW" or "weighted mean"). A row's label lets
+  "IPW", "After IPTW", "nationally representative"; not "unweighted", "Before IPTW", "not
+  nationally representative" or "weighted mean"). A row's label lets
   off its row alone, and a header its column. A table's caption is the legend that numbers
   it: "Table N" (in any case) captions the Nth table of the file, standing before it or after
   it, with other paragraphs between but no other table and no other legend; one that cannot
@@ -221,9 +226,15 @@ any is asked, and neither is a number that does not fit:
   sentence that opens on "Table 1 (" is no legend, unless the bracket says "(continued". This
   holds only where the file's
   legends number its tables: all in one form ("Table N", or all "Table SN", ...), numbered 1
-  to the number of tables read, each once. Otherwise no legend captions any table there, as
-  where a table is given as a picture, a "Table 2 (continued)" stands under a table, or a
-  "Table S1" stands beside a "Table 1" (Basile, 2026-11-18). In Markdown, pandoc's own
+  to the number of tables read, each once (Basile, 2026-11-18). Otherwise, as where a table
+  is given as a picture, a "Table 2 (continued)" stands under a table, a "Table S1" stands
+  beside a "Table 1", or "Table S1a" beside "Table S1b", a legend captions the table directly
+  under it, with no paragraph and no other table between, and that table alone: a legend
+  over a subtitle captions none there, and so does a legend below a table unless it stands
+  directly above the next table (Basile, 2026-11-21). That is the limit: where such a file's
+  legends stand below their tables, a legend below one table and right above the next is
+  taken for the next one's, and in a .docx a legend over a table given as a picture is taken
+  for the read table under the picture. In Markdown, pandoc's own
   caption, "Table: ...", is its table's too. The
   note is the paragraph after the table where it opens with "Note", "Abbreviations" or a
   footnote's mark (a lowercase letter, or an asterisk, a dagger or a section sign before a

@@ -33,6 +33,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 
 from manuscript_guard import claims
+from manuscript_guard.auditing.measured import measured
 from manuscript_guard.auditing.report import Item, about
 from manuscript_guard.comparing.versions import Display, Heading, Version
 from manuscript_guard.findings import INFO, WARN
@@ -563,11 +564,13 @@ def _alone(read: _Read, left: Counter, taken: set[int], counts: tuple[Counter, C
 
 
 def claim_moves(old: Version, new: Version) -> list[Item]:
-    """Each changed sentence of v2 that claims more, less or the opposite of what it did."""
+    """Each changed sentence of v2 that claims more, less or the opposite of what it did: a
+    warning, but a sentence that may now say the opposite is a note, by how often it was
+    right on real papers (`auditing.measured`)."""
     tables = _pdf_of(old, new) is None
     (was, _line), (now, line) = prose(old, tables=tables), prose(new, tables=tables)
     return [
-        _item(CLAIMS, finding.code, finding.message.replace("before the edit", "in v1"), new,
-              line(finding.line), WARN)
+        measured(_item(CLAIMS, finding.code, finding.message.replace("before the edit", "in v1"),
+                       new, line(finding.line), WARN))
         for finding in claims.moved(was, now)
     ]  # fmt: skip

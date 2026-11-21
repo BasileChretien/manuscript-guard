@@ -548,6 +548,7 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
         asked_only_in,
         referee_only_in,
     )
+    from manuscript_guard.auditing.measured import measured
 
     show = _Show(None, placers)
     # Each said once of the run, keyed by its code alone.
@@ -576,9 +577,10 @@ def _abstract_items(read, pdf: str = "", placers: dict | None = None) -> list[It
           for c in getattr(read, "unsourced", [])),
         *(of_number(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True,
                          d.source, d.line, d.context), d) for d in read.conflicts),
-        *(of_number(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract "
-                         f"is not found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line,
-                         c.context), c)
+        # A note, by how often it was right on real papers (`auditing.measured`).
+        *(measured(of_number(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the "
+                                  f"Abstract is not found in {ABSTRACT_SEARCHED}", WARN, False,
+                                  c.source, c.line, c.context), c))
           for c in read.not_found),
         *(of_number(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is "
                          "found only as a rounding of a number the paper reports", INFO, False,

@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -2321,6 +2321,16 @@ def _running_at(
         return ()
 
 
+def _staged_as(names: Collection[str], root: Path, path: Path) -> bool:
+    """Whether the file at `path` is one of `names`, paths under `root` as `running`'s are."""
+    if not names:
+        return False
+    try:
+        return path.relative_to(root).as_posix() in names
+    except ValueError:
+        return False
+
+
 def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
     scopes = {name: _Scope(name) for name in (ABSTRACT, BODY, SUPPLEMENT)}
     defined: set[str] = set()
@@ -2764,6 +2774,7 @@ def check_language(
     stage: str | None = None,
     results: Results | None = None,
     running: Mapping[str, Iterable[int]] | None = None,
+    pdf: Collection[str] = (),
 ) -> Report:
     """The five readings of the manuscript: its abbreviations, the terms it keeps to, its
     spelling, its notation and the names from its code; and where its prose is in a script
@@ -2771,9 +2782,13 @@ def check_language(
     `no-headings` is said and whether a name from the code fails. `results` are the
     analysis's, read from the project where they are not given. `running` gives, by a file's
     path under `manuscript/`, the lines from 1 that a PDF the audit staged it from repeats at
-    the top or the foot of its pages, where no use of a short form is owed its definition."""
+    the top or the foot of its pages, where no use of a short form is owed its definition;
+    `pdf` names, by the same paths, the files the audit staged from a PDF, whose notation is
+    read as pdftotext prints it."""
     files = _read(project, running)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    root = project.path("manuscript")
+    from_pdf = frozenset(file.path for file in files if _staged_as(pdf, root, file.path))
     prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
              for file in files]  # fmt: skip
     # A contributions statement names its roles as CRediT spells them and a funding
@@ -2788,7 +2803,7 @@ def check_language(
             judge_spelling(spelt, project.english_variant, project.accepted_spellings, paper)
         )
         # A P value in an acknowledgement is the author's, so this one reads them all.
-        .merge(judge_notation(passages))
+        .merge(judge_notation(passages, from_pdf))
         .merge(judge_code_names(prose, _code_names(project, results), stage))
         # And where the prose is in a script none of the readings is written for, said once
         # for each file, which a LaTeX file read in stretches is again here.

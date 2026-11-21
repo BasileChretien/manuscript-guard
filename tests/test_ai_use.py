@@ -198,6 +198,25 @@ def test_every_kind_of_record_a_model_s_work_is_filed_in_is_read(project: Path) 
     ])  # fmt: skip
 
 
+def test_a_wording_taken_by_hand_is_not_counted_as_taken_and_the_reading_still_counts(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The AI-use statement is held to names, and to
+    the records that say a model made them"): a resolution that took the model's wording by
+    hand, or accepted it in Word and answered in the author's own words, is not counted as
+    taken; one `import --apply` wrote is; the reading counts either way."""
+    _reading(project, "stats", "openai/gpt-5.1", number=11, findings=[
+        {"id": "f1", "severity": "minor", "finding": "x",
+         "resolution": "Took the reviewer's wording by hand."},
+        {"id": "f2", "severity": "minor", "finding": "y",
+         "resolution": "Accepted in Word; we explain the change in our own words."},
+        {"id": "f3", "severity": "minor", "finding": "z",
+         "resolution": "Edited in Word as stats (openai/gpt-5.1) suggested: …"},
+    ])  # fmt: skip
+    [work] = model_work(load_project(project)[0])
+    assert (work.model, work.did, work.taken) == ("gpt-5.1", "read the manuscript", 1)
+
+
 def test_the_example_shows_no_model_s_work(project: Path) -> None:
     """Its readers are named "Claude Code" and "claude-opus-5", which read as a person's
     (a limit, written down), so it has nothing to report."""
@@ -379,6 +398,24 @@ def test_a_heading_s_own_words_name_the_model(project: Path) -> None:
     assert _found(project, "submission") == []
 
 
+def test_a_phrase_match_over_a_list_leaves_the_list_out_and_a_heading_match_takes_it_in(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The AI-use statement is held to names, and to
+    the records that say a model made them"): a phrase match takes only its paragraph, so
+    the tools listed under "The following AI tools were used:" are outside the statement; a
+    pattern matching the statement's heading takes the list in."""
+    listed = "The following AI tools were used:\n\n- GPT-5.1, to read the draft."
+    _require(project, r"following AI tools were used")
+    _declare(project, [])
+    _reading(project, "stats", "openai/gpt-5.1", number=11)
+    _say(project, f"## Use of AI\n\n{listed}")
+    assert _found(project, "drafting") == [
+        (UNNAMED, WARN, "the AI-use statement does not name gpt-5.1 (openai)")]
+    _require(project)
+    assert _found(project, "drafting") == []
+
+
 def test_a_statement_split_between_two_places_is_read_as_one(project: Path) -> None:
     _require(project, r"(?im)^#+\s*acknowledg|analysis code was written")
     _declare(project, [])
@@ -453,6 +490,23 @@ def test_a_default_heading_s_words_may_be_singular_or_plural(project: Path,
     _reading(project, "stats", "openai/gpt-5.1", number=11)
     _say(project, f"## {heading}\n\nWords.")
     assert [c for c, _s, _m in _found(project)] == [UNNAMED]
+
+
+def test_with_no_ai_use_entry_a_default_heading_in_the_methods_is_the_statement(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The AI-use statement is held to names, and to
+    the records that say a model made them"): with no `kind: ai_use` entry, "Use of large
+    language models for annotation" in the Methods of a paper about language models is
+    read as the statement, where a Methods heading without the statement's words is not."""
+    _reading(project, "stats", "openai/gpt-5.1", number=11)
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    for heading, said in (("Use of large language models for annotation", UNNAMED),
+                          ("Annotation by a language model", NOT_STATED)):  # fmt: skip
+        main.write_text(text.replace("# Results\n", f"## {heading}\n\nA model labelled each "
+                                     "report.\n\n# Results\n", 1), encoding="utf-8")  # fmt: skip
+        assert [code for code, _s, _m in _found(project, "submission")] == [said], heading
 
 
 def test_the_authors_list_is_asked_for_where_the_journal_asks(project: Path) -> None:

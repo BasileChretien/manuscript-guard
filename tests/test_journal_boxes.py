@@ -201,6 +201,43 @@ def test_a_box_heading_that_is_no_pattern_fails_and_the_rest_are_read(project: P
     assert _codes(project) == {"box-heading-invalid": FAIL}
 
 
+def test_a_box_s_words_count_towards_the_main_text_s_word_limit(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a box's words are counted in the main text, as
+    any section's are, and can put it over the journal's limit."""
+    _asks(project, boxes=[HIGHLIGHTS])
+    before = check_journal(load_project(project)[0]).counts["main_text_words"]
+    profile = yaml.safe_load((project / PROFILE).read_text(encoding="utf-8"))
+    _asks(project, limits={**profile["limits"], "main_text_words": before})
+    assert "over-journal-limit" not in {
+        f.code for f in check_journal(load_project(project)[0]).failures}
+    _write(project, "# Highlights\n\n- One two three.\n- Four.\n- Five.\n\n")
+    report = check_journal(load_project(project)[0])
+    # The heading's word and the items' five.
+    assert report.counts["main_text_words"] == before + 6
+    assert "over-journal-limit" in {f.code for f in report.failures}
+
+
+def test_a_box_whose_heading_and_items_are_in_two_files_is_a_box_of_no_items(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a box is read in one file, so a heading at the
+    end of one file over its items in the next is a box of no items; in one file it is read
+    whole."""
+    _asks(project, boxes=[HIGHLIGHTS])
+    main = project / MAIN
+    text = main.read_text(encoding="utf-8")
+    items = "- One.\n- Two.\n- Three.\n"
+    main.write_text(text + "\n# Highlights\n", encoding="utf-8")
+    (project / "manuscript" / "zz_highlights.md").write_text(items, encoding="utf-8")
+    assert [(code, message) for code, _severity, message in _found(project, SUBMISSION)] == [
+        ("box-items", "the box highlights has 0 item(s); the journal asks for 3 to 5")]
+    (project / "manuscript" / "zz_highlights.md").unlink()
+    main.write_text(text + "\n# Highlights\n\n" + items, encoding="utf-8")
+    assert _found(project, SUBMISSION) == []
+
+
 def test_without_boxes_or_a_profile_nothing_is_said(project: Path) -> None:
     _write(project, WRITTEN)
     assert _found(project, SUBMISSION) == []
@@ -261,6 +298,52 @@ def test_a_latex_box_is_read_in_its_environment_or_under_its_heading(
     assert _codes(project, SUBMISSION) == codes
 
 
+def test_a_latex_box_s_heading_over_an_input_that_holds_its_list_has_no_items(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a LaTeX box is read in its own file, so its
+    heading over an `\\input` that holds its list is a box of no items."""
+    _asks(project, boxes=[HIGHLIGHTS])
+    _latex(project, "\\section*{Highlights}\n\\input{highlights}\n")
+    (project / "manuscript" / "highlights.tex").write_text(
+        "\\begin{itemize}\n\\item One.\n\\item Two.\n\\item Three.\n\\end{itemize}\n",
+        encoding="utf-8",
+    )
+    assert [(code, message) for code, _severity, message in _found(project, SUBMISSION)] == [
+        ("box-items", "the box highlights has 0 item(s); the journal asks for 3 to 5")]
+
+
+def test_a_box_set_apart_in_a_file_of_its_own_is_built_into_the_manuscript_all_the_same(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): `file: separate` is recorded and not acted on,
+    so the build prints the box in the manuscript and the submission pack writes no file of
+    it. The 2026-11-09 triage planned a fix (F12), which will change this test."""
+    import shutil
+    import zipfile
+
+    from manuscript_guard.build import assemble_pack
+    from manuscript_guard.cli import main
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed")
+    _asks(project, boxes=[{**HIGHLIGHTS, "file": "separate"}])
+    from manuscript_guard.contracts._schema import read_structured
+
+    assert validate(read_structured(project / PROFILE), "journal", project / PROFILE).ok
+    _write(project, WRITTEN)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    document = project / "build" / "manuscript.docx"
+    with zipfile.ZipFile(document) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+    assert "Reports of hepatic injury were disproportionate." in xml
+    pack = assemble_pack(load_project(project)[0], document, checked=False)
+    packed = [path.name.lower() for path in pack.directory.rglob("*")]
+    assert packed and not [name for name in packed if "highlight" in name], packed
+
+
 # --------------------------------------------------------------------------------- G8
 
 
@@ -316,6 +399,64 @@ def test_a_box_s_heading_is_read_as_printed_and_front_matter_is_none() -> None:
     assert (found.title, found.line, found.items) == ("1. **Highlights**", 6, ("One.",))
 
 
+def test_a_citation_or_a_footnote_in_an_item_is_measured_as_written() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a Markdown item keeps `[@key]`, `[^1]` and
+    `^[...]` as written, which the style prints otherwise, and a LaTeX item a footnote's
+    words; a LaTeX command the mask prints nothing of joins the words beside it."""
+    from manuscript_guard.text.boxes import latex_boxes
+    from manuscript_guard.text.latex.structure import read_tree
+
+    rules, _ = box_rules({"boxes": [HIGHLIGHTS]})
+    text = "# Highlights\n\n- See [@key].\n- A note.[^1]\n- Inline.^[A note.]\n"
+    [found] = markdown_boxes(text, rules, {})
+    assert found.items == ("See [@key].", "A note.[^1]", "Inline.^[A note.]")
+    body = ("\\begin{highlights}\n\\item A dose\\footnote{A note.}.\n"
+            "\\item Two\\hspace{1em}words.\n\\item Five\\,mg.\n\\end{highlights}\n")  # fmt: skip
+    document = "\\documentclass{article}\n\\begin{document}\n" + body + "\\end{document}\n"
+    [source] = [s for s in read_tree({"main.tex": document}).sources if not s.loose]
+    [found] = latex_boxes(source, rules, {})
+    # The other side of the rule on commands: a thin space the mask prints as a space.
+    assert found.items == ("A doseA note..", "Twowords.", "Five mg.")
+
+
+def test_an_underlined_sub_heading_of_a_box_with_no_list_is_one_of_its_items() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): an underlined sub-heading is read as a paragraph
+    of the box, and so as an item where the box has no list; a `##` one is not."""
+    rules, _ = box_rules({"boxes": [HIGHLIGHTS]})
+    for heading, items in (("Sub heading\n-----------", ("Sub heading", "One.", "Two.")),
+                           ("## Sub heading", ("One.", "Two."))):  # fmt: skip
+        [found] = markdown_boxes(f"# Highlights\n\n{heading}\n\nOne.\n\nTwo.\n", rules, {})
+        assert found.items == items, heading
+    listed = "# Highlights\n\nSub heading\n-----------\n\n- One.\n- Two.\n"
+    assert markdown_boxes(listed, rules, {})[0].items == ("One.", "Two.")
+
+
+@pytest.mark.parametrize(
+    ("inner", "items"),
+    [("compactitem", ("One", "inner", "Two.")), ("inparaenum", ("One", "inner", "Two.")),
+     ("itemize", ("One inner", "Two."))],
+)  # fmt: skip
+def test_an_item_of_a_list_the_box_does_not_read_nested_in_an_item_is_the_box_s(
+    inner: str, items: tuple
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a LaTeX box's list is read by `itemize`,
+    `enumerate` and `description`, so an `\\item` of `compactitem` or `inparaenum` nested in
+    an item is counted as an item of the box, where one of a nested `itemize` is not."""
+    from manuscript_guard.text.boxes import latex_boxes
+    from manuscript_guard.text.latex.structure import read_tree
+
+    rules, _ = box_rules({"boxes": [HIGHLIGHTS]})
+    body = (f"\\begin{{highlights}}\n\\item One\n\\begin{{{inner}}}\n\\item inner\n"
+            f"\\end{{{inner}}}\n\\item Two.\n\\end{{highlights}}\n")  # fmt: skip
+    document = "\\documentclass{article}\n\\begin{document}\n" + body + "\\end{document}\n"
+    [source] = [s for s in read_tree({"main.tex": document}).sources if not s.loose]
+    [found] = latex_boxes(source, rules, {})
+    assert found.items == items
+
+
 def test_the_box_codes_bind_at_submission() -> None:
     assert {code: BINDS_AT[code] for code in CODES} == dict.fromkeys(CODES, SUBMISSION)
 
@@ -369,6 +510,23 @@ def test_each_number_of_a_box_is_held_to_its_quote(project: Path) -> None:
     assert not any("items_min" in m or "items_max" in m for _c, m in said)
     said = _quoted(project, boxes=[HIGHLIGHTS])
     assert not [m for c, m in said if c == "journal-limit-not-in-quote"]
+
+
+def test_each_number_of_a_box_is_looked_for_anywhere_in_its_one_quote(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The boxes a journal prints beside the abstract
+    (2026-10-28), what G4 does not read"): a box has one quote, and each of its numbers is
+    looked for anywhere in it, so `items_max: 3` passes against "3 to 5 highlights, 85
+    characters"; a number the quote does not hold fails."""
+    quote = "Include 3 to 5 highlights, each of no more than 85 characters."
+    page = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    page.write_text(page.read_text(encoding="utf-8") + "\n" + quote + "\n", encoding="utf-8")
+    said = _quoted(project, boxes=[{**HIGHLIGHTS, "items_max": 3}],
+                   quotes={"boxes.highlights": quote})  # fmt: skip
+    limits = "journal-limit-not-in-quote"
+    assert [message for code, message in said if code == limits] == []
+    said = _quoted(project, boxes=[{**HIGHLIGHTS, "items_max": 4}])
+    assert [message for code, message in said if code == limits] == [
+        f"boxes.highlights items_max is 4, and its quote does not say 4: \"{quote}\""]
 
 
 def test_a_graphical_abstract_s_size_is_held_to_its_quote(project: Path) -> None:

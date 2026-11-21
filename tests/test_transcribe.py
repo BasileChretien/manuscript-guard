@@ -704,6 +704,34 @@ def test_an_accented_letter_on_the_page_is_read_from_the_pdftotext_of_xpdf(
     assert "including naïve animals" in haystack
 
 
+def test_an_item_set_with_one_space_after_its_number_is_no_item_and_says_no_pdftotext(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "ARRIVE's items are found only as poppler's
+    `pdftotext` sets them"): Xpdf's one space between an item's number and its text is no
+    item line, which asks for two or more as poppler sets them, and the transcription stops
+    at "no items found" without a word about which `pdftotext` it wants. The 2026-11-09
+    triage planned a fix (F12), which will change this test."""
+    from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns
+
+    path = tmp_path / "ARRIVE.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    recipe = ColumnRecipe(document=path.name, pages=(2,), column_split=90, min_text_words=3)
+    xpdf = "Study design   1 Describe the groups being compared in the study."
+    pdftotext_runs(monkeypatch, f"import sys; sys.stdout.write({xpdf!r})")
+    with pytest.raises(RecipeError) as raised:
+        transcribe_columns(path, recipe)
+    assert str(raised.value) == "ARRIVE.pdf: no items found on pages (2,)"
+    # The other side: the same line as poppler sets it, several spaces after the number.
+    poppler = xpdf.replace("1 Describe", "1   Describe")
+    monkeypatch.undo()
+    pdftotext_runs(monkeypatch, f"import sys; sys.stdout.write({poppler!r})")
+    items, _haystack = transcribe_columns(path, recipe)
+    assert [(item.id, item.text) for item in items] == [
+        ("1", "Describe the groups being compared in the study.")
+    ]
+
+
 @pytest.mark.parametrize(
     ("script", "said"),
     [

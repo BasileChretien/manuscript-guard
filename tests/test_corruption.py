@@ -1730,10 +1730,120 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
     assert len(found) == 1, report.render(project)
     hint = " ".join(found[0].hint.split())
     assert said in hint and "holds no work" not in hint, hint
-    if "[@" in said:
-        # Said as what may be, never as fact, and the hint G2 gave before stays after it.
+    if "a date" not in said:
+        # Said as what may be, never as fact, and the hint G2 gave before stays after it,
+        # whether the hint names a key, an entry it cannot read, or none (Known gaps F04).
         assert "typed as text" in hint and "Otherwise, bind it with {{results" in hint, hint
         assert "holds the work" not in hint, hint
+    if "adding the work there" in said:
+        # Where no entry is the work, none is named as one the author may mean.
+        assert "[@" not in hint.split("Otherwise,")[0].replace("[@key]", ""), hint
+
+
+#: Works of `references.bib` for the limits of G2's hint: one a citation names, beside one a
+#: citation just past the limit does not; a name in Chinese or Japanese, folded, in TeX the
+#: hint does not read, and an author written as a `@string` macro.
+_TYPED_YEAR_BIB = r"""
+@string{smithname = "Smith, Ann"}
+@article{fictional2018, author = {Fictional, Anne}, year = {2018}}
+@article{fictional2014, author = {Fictional, Anne}, year = {2014}}
+@article{yamada2015, author = {Yamada, Taro}, year = {2015}}
+@article{kanji2015, author = {山田, 太郎}, year = {2015}}
+@article{zhang2019, author = {Zhang, Wei}, year = {2019}}
+@article{hanzi2019, author = {张, 伟}, year = {2019}}
+@article{vanberg2017, author = {van Berg, Jan}, year = {2017}}
+@article{muller2016, author = {M{\"u}ller, Hans}, year = {2016}}
+@article{ijssel2014, author = {{\IJ}ssel, Jan}, year = {2014}}
+@article{macro2013, author = smithname, year = {2013}}
+@article{smith2012, author = {Smith, Ann}, year = {2012}}
+@article{japan2011, author = {Japan, Ken}, year = {2011}}
+"""
+#: What G2 says where it reads no citation: the hint it gave before, and nothing more.
+_NOT_READ = "generic"
+#: What it says of a citation it reads and finds no entry for.
+_NO_ENTRY = "adding the work there first if it is not yet in it"
+
+
+@pytest.mark.parametrize(
+    ("typed", "said"),
+    [
+        ("(Fictional, 2018)", "[@fictional2018]"),
+        ("(Fictional, 2018, p. 4)", _NOT_READ),
+        ("(see Fictional, 2018)", "[@fictional2018]"),
+        ("(e.g., Fictional, 2018)", _NOT_READ),
+        ("(fictional, 2018)", _NOT_READ),
+        ("(Yamada, 2015)", "[@yamada2015]"),
+        ("(山田, 2015)", _NOT_READ),
+        ("(Zhang, 2019)", "[@zhang2019]"),
+        ("(张, 2019)", _NOT_READ),
+        ("Fictional (2018)", "[@fictional2018]"),
+        ("Fictional's (2018)", _NO_ENTRY),
+        ("Japan (2011)", "[@japan2011]"),
+        ("Japan (2018)", _NO_ENTRY),
+        ("in japan (2011)", _NOT_READ),
+        ("(van Berg, 2017)", "[@vanberg2017]"),
+        ("(Berg, 2017)", "[@vanberg2017]"),
+        ("(Bergen, 2017)", _NO_ENTRY),
+        ("(Müller, 2016)", "[@muller2016]"),
+        ("(Muller, 2016)", "[@muller2016]"),
+        ("(Mueller, 2016)", "[@muller2016]"),
+        ("(Moller, 2016)", _NO_ENTRY),
+        ("(IJssel, 2014)", "the name of [@ijssel2014], from 2014, holds TeX"),
+        ("(Other, 2014)", "the name of [@ijssel2014], from 2014, holds TeX"),
+        ("(Fictional, 2014)", "[@fictional2014]"),
+        ("(Smith, 2012)", "[@smith2012]"),
+        ("(Smith, 2013)", _NO_ENTRY),
+    ],
+)
+def test_the_hint_for_a_typed_year_reads_the_author_year_forms_and_no_more(
+    tmp_path: Path, typed: str, said: str
+) -> None:
+    """Known gaps, "The year of a citation typed as text is read in the author-year forms
+    only", each limit beside the case just inside it: a page after the year, a part opening
+    with a lower-case word and a comma, a name that opens with no capital or is written in
+    Chinese or Japanese are read as no citation, though the work is there; a possessive is
+    read with its "'s" and matches nothing; a capitalised word is a name, "Japan"; a family
+    name is compared by its last word, "Müller" as "Muller" and "Mueller" are, and not as
+    another letter; a name in TeX the hint
+    does not read is named for every citation of its year that matches no other entry; and
+    an author written as a `@string` macro is not found."""
+    from manuscript_guard.gates.numbers import _GENERIC_HINT, _hint_for
+    from manuscript_guard.gates.typed_citations import works_by
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    bib = tmp_path / "references.bib"
+    bib.write_text(_TYPED_YEAR_BIB, encoding="utf-8")
+    works = works_by(bib)
+    text = f"The counts were as reported {typed}."
+    years = [a for a in find_atoms(text, mask(text)) if re.fullmatch(r"(18|19|20)\d\d", a.text)]
+    assert len(years) == 1, years
+    hint = " ".join(_hint_for(years[0], works).split())
+    if said == _NOT_READ:
+        assert hint == _GENERIC_HINT, hint
+        return
+    assert said in hint and "Otherwise, bind it with {{results" in hint, hint
+    if said == _NO_ENTRY:
+        assert "[@" not in hint.replace("[@key]", ""), hint
+    elif "holds TeX" not in said:
+        assert "holds TeX" not in hint, hint
+
+
+@pytest.mark.parametrize(
+    ("typed", "read"),
+    [("Fictional (2018)", True), ("Fictional~(2018)", False),
+     ("Fictional et al. (2018)", True), ("Fictional et~al. (2018)", False)],
+)  # fmt: skip
+def test_a_latex_tie_before_a_typed_year_is_not_read_as_a_space(typed: str, read: bool) -> None:
+    """Known gaps, "The year of a citation typed as text is read in the author-year forms
+    only": a LaTeX citation that ties the name to its year, `Name~(2018)`, is read as no
+    citation, and gets the generic hint."""
+    from manuscript_guard.gates.typed_citations import typed_citation
+
+    found = typed_citation(typed, len(typed) - 5, len(typed) - 1)
+    assert (found is not None) is read, found
+    if read:
+        assert (found.name, found.year) == ("Fictional", "2018")
 
 
 @pytest.mark.parametrize(
@@ -21279,6 +21389,30 @@ def test_a_quote_in_a_script_written_without_spaces_is_counted_by_its_letters(
     said = [f for f in report.findings if f.code == "quote-too-short"]
     assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
     assert report.counts["literature_verified"] == 2
+
+
+@pytest.mark.parametrize(
+    ("quote", "value", "beside"),
+    [
+        # A number quoted twice, or inside a word that holds it, counts as it should.
+        ("ROR 2.6 rose to 2.6", "2.6", ["ROR", "rose", "to"]),
+        ("CYP3A14 rose 14 times", "14", ["CYP3A", "rose", "times"]),
+        # A value with letters is taken out once: quoted again, its letters are a word.
+        ("IgG4 rose and IgG4 fell", "IgG4", ["rose", "and", "IgG4", "fell"]),
+        ("1 in 4 rose, 1 in 4 fell", "1 in 4", ["rose,", "in", "fell"]),
+        # Found first inside a longer word, that word is cut and the value itself counts.
+        ("anti-IgG4 rose with IgG4", "IgG4", ["anti-", "rose", "with", "IgG4"]),
+    ],
+)
+def test_a_ledger_value_is_taken_out_of_its_quote_once(
+    quote: str, value: str, beside: list[str]
+) -> None:
+    """Known gaps, "A ledger value is taken out of its quote once": the words beside a value
+    are counted with its first match alone taken out, so a value with letters quoted again,
+    or first matched inside a word, has its letters counted as a word beside it."""
+    from manuscript_guard.literature.sources import words_beside
+
+    assert words_beside(quote, value) == beside
 
 
 # ------------------------------------------------- what the audit reads of a LaTeX paper

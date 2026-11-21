@@ -1428,6 +1428,8 @@ def test_a_pipe_is_made_utf8_unless_the_user_chose(environment: dict, monkeypatc
 
     for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
         monkeypatch.delenv(name, raising=False)
+    # `python -X utf8` is the user's choice too, and not this case's (Known gaps F04).
+    monkeypatch.setattr(sys, "_xoptions", {})
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
     pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
@@ -1467,6 +1469,7 @@ def test_the_hook_writes_utf8_to_a_pipe(monkeypatch) -> None:
 
     for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "_xoptions", {})
     pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", pipe)
     monkeypatch.setattr(sys, "stderr", pipe)

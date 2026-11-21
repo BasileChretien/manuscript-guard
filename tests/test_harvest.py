@@ -146,9 +146,11 @@ def test_what_cannot_be_read_without_a_guess_is_refused(
 
 
 def test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested(project: Path) -> None:
-    """A known gap (DESIGN.md, Known gaps, "A year as a header is refused"): a wide table by
-    year, a column named "2020", cannot be harvested; the same table written long, a row a
-    year, can."""
+    """A known gap (DESIGN.md, Known gaps, "A year as a header is refused"): `harvest`
+    refuses a column named "2020" as a number written as text, so a wide table by year cannot
+    be harvested, and the same table written long, a row a year, can. Reading the output and
+    a site's receipt take the header, so the site writes a receipt for an output the centre's
+    harvest refuses."""
     _write_script(project)
     (project / "output").mkdir()
     output = project / "output" / "est.csv"
@@ -159,9 +161,20 @@ def test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested(project: Pa
     assert str(refused.value).startswith(
         "output/est.csv: table 'est' column 1 header: '2020' is a number written as text"
     )
+    read = read_output(output.read_bytes(), ".csv", entry)
+    assert sorted(read.values("est")) == ["est.drug.2020", "est.drug.2021", "est.drug.group"]
     output.write_bytes(b"group,year,n\nDrug 2020,2020,40\nDrug 2021,2021,41\n")
     document = json.loads(harvest_entry(project, entry).read_text(encoding="utf-8"))
     assert document["values"]["est.drug_2020.n"]["display"] == "40"
+
+    # At a site, the receipt of the wide table is written.
+    (project / "harvest.yaml").unlink(missing_ok=True)
+    _minimum(project, 5)
+    _site_output(project, ["group,2020,2021", "Drug,40,41"])
+    path, _written, warned = make_receipt(load_project(project)[0], "site-a")
+    assert path.is_file() and warned == []
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    assert [run["outputs"][0]["path"] for run in receipt["runs"]] == ["output/site.csv"]
 
 
 def test_a_results_file_an_analysis_wrote_is_not_written_over(project: Path) -> None:

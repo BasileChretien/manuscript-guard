@@ -426,7 +426,8 @@ def test_a_sign_of_comparison_is_held_only_as_a_sign() -> None:
     """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
     numbers, and nothing else"): a sign spelt out or typed in TeX is words; a ">" after a
     tag opened on its line is the tag's; a quotation mark under a heading or a closing fence
-    with no blank line, and the ">" of a folded abstract, are signs; a quoted paragraph
+    with no blank line, and the ">" of a folded abstract before a number that opens it, are
+    signs; a quoted paragraph
     rewrapped before its sign loses it; and "=>" is an arrow, typed plainly or full width.
     ("P < 0.05" made "P less than 0.05" failing as a sign gone is
     `test_a_sign_of_comparison_gone_new_or_turned_round_fails`.)"""
@@ -454,8 +455,10 @@ def test_a_sign_of_comparison_is_held_only_as_a_sign() -> None:
     # A quoted paragraph rewrapped before its sign loses it.
     assert numbers("> It was significant (P > 0.05) here.\n") == [">0.05"]
     assert numbers("> It was significant (P\n> > 0.05) here.\n") == ["0.05"]
-    # A folded abstract's ">" is the first number's sign; a literal block's "|" is not.
+    # A folded abstract's ">" is the sign of a number that opens the value, and of no other;
+    # a literal block's "|" is no sign.
     assert numbers("---\nabstract: >\n  12 reports.\n---\n\nText.\n") == [">12"]
+    assert numbers("---\nabstract: >\n  Of 12 reports.\n---\n\nText.\n") == ["12"]
     assert numbers("---\nabstract: |\n  12 reports.\n---\n\nText.\n") == ["12"]
     for arrow in ("=>", "\N{FULLWIDTH EQUALS SIGN}\N{FULLWIDTH GREATER-THAN SIGN}",
                   "=\N{FULLWIDTH GREATER-THAN SIGN}"):  # fmt: skip
@@ -876,6 +879,10 @@ def test_the_front_matter_holds_a_number_only_under_a_key_the_build_prints(
                            (BINDING, "results.when")]  # fmt: skip
     dropped = compare(held, held.replace("nocite: '@gone2001'\n", ""), PATH)
     assert told(dropped) == [("fact-lost", FAIL)], said(dropped)
+    renamed = compare(held, held.replace("'@handle'", "'@other'"), PATH)
+    assert sorted(told(renamed)) == [("fact-lost", FAIL), ("fact-new", FAIL)], said(renamed)
+    by_code = {finding.code: finding.message for finding in renamed.findings}
+    assert "handle" in by_code["fact-lost"] and "other" in by_code["fact-new"], said(renamed)
 
 
 def test_a_change_inside_a_listing_is_one() -> None:

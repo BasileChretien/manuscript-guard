@@ -22651,10 +22651,11 @@ Open, recorded as each change landed:
 - **An atom cut at a bracket keeps what the trimming leaves.** `@key [p. 3]/9.99` is read as
   the locator 3 and the atom `/9.99`, reported with its slash; a `-4.2` cut the same way
   keeps its sign, which may have been a dash, while `+1.5` and `<0.05` lose theirs as any
-  atom does. The value is caught either way. A `]` closing a bracket opened earlier cuts the
-  run wherever it stands, so an identifier written across one, `x]y2`, would be read as
-  `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
-  its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
+  atom does. The value is caught either way. A `]` that closes no bracket the run opened
+  cuts the run wherever it stands, so an identifier written across one, `x]y2`, would be
+  read as `y2`; none has been met. A locator with no space inside its bracket,
+  `@key [p.3]/…`, opens its own run, so it is not cut and still fails G2 as `p.3]/`;
+  `[p. 3]` passes.
   Pinned by `tests/test_corruption.py::test_an_atom_cut_at_a_locator_s_bracket_keeps_what_the_trimming_leaves`
   and `tests/test_text.py::test_a_bracket_closed_from_outside_cuts_the_run_wherever_it_stands`.
 - **The audit tells a Vancouver marker from a value by shape and position.** The
@@ -23852,10 +23853,10 @@ Open, recorded as each change landed:
     the end of the tag and is no sign there, escaped `\>` or not. A block quotation
     directly under a heading or a closing fence, with no blank line between, has its ">"
     read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
-    of a folded value in the front matter, `abstract: >`, is read as the sign of the first
-    number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
-    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes, and
-    so do the full-width "＝＞" and "=＞".
+    of a folded value in the front matter, `abstract: >`, is read as the sign of a number
+    that opens the value; G2 asks for the abstract under a heading instead. "=>" is the
+    head of an arrow, though some authors type it for "≥": "age => 18" made "age 18"
+    passes, and so do the full-width "＝＞" and "=＞".
     Pinned by `tests/test_reworded.py::test_a_sign_of_comparison_is_held_only_as_a_sign`
     and `tests/test_reworded.py::test_a_sign_of_comparison_gone_new_or_turned_round_fails`.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
@@ -26145,7 +26146,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   to a first that itself opened a word or at a capital changes nothing for it, "mesh"
   opening its word; and "MESHD2" is `d2` after a capital in any case, as "CCR2" is `r2`.
   Pinned by `tests/test_script_signs.py::test_a_term_counts_directly_after_one_with_no_digit`.
-- **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
+- **An e-mail address is one whose domain ends in letters.** "name2@host" with no dot, or an
   address at a bare IP number, is read as a number.
   Pinned by `tests/test_corruption.py::test_an_e_mail_address_whose_domain_ends_in_no_letters_is_a_number`.
 - **`set` writes five settings, and only as values.** It cannot take a key out, so a stage,
@@ -26731,8 +26732,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   and fails `input-changed`, which nothing at the centre can put right; only an input that is
   not there is `input-at-site`.
   Pinned by `tests/test_harvest.py::test_a_centre_s_copy_at_an_input_s_path_is_compared_with_the_site_s_data`.
-- **A year as a header is refused.** A column named "2020" makes no key part a binding can
-  start with, so a wide table by year cannot be harvested; write it long, a row a year.
+- **A year as a header is refused.** `harvest` refuses a column named "2020" as a number
+  written as text, the emitter's check on a header, so a wide table by year cannot be
+  harvested; write it long, a row a year. Reading the output and a site's receipt take the
+  header, so a site writes a receipt for an output the centre's harvest refuses.
   Pinned by `tests/test_harvest.py::test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested`.
 - **An output's digest leaves its line endings out.** As an input's does: a carriage return
   inside a quoted cell that becomes a line feed is not seen as a change.

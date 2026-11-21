@@ -989,6 +989,103 @@ NOTED = ("hand grip strength", "HGS")
 ONLY_HEADED = ("## Knee extension torque (KET)", "KET")
 
 
+#: What `apart_forms` plants, each kind with its own short form (the real-paper corpus, round
+#: of 2026-11-21). A short form the text defines, then gives other meanings in table notes,
+#: each meaning in one note or several: each other meaning is one finding, at its first note.
+REPEATED_SHORT = ("brisk walking test", "BWT")
+REPEATED_MEANINGS = ("brisk walking time", "brief walking trial", "brisk walk task")
+#: A long form with author-year citations typed after it in its bracket, which are no part
+#: of it, and a note that gives the same long form again.
+CITED_SHORT = ("quiet play scale", "QPS")
+TYPED_AFTER = ("Fictional, 2014", "Fictional et al., 2014", "Fictional & Made, 2015; Other, 2016",
+               "Fictional, 2015a")  # fmt: skip
+#: A catalogue's designations, as typed and as pandoc escapes them from Word: neither a
+#: definition nor a use of the catalogue's name.
+DESIGNATED = ("[KX92]{}", "\\[KX92\\]{}")
+DESIGNATION_SENTENCES = (
+    "The protostar {} drives a faint outflow.",
+    "Jets from {} and the ridge are seen.",
+    "The source {} lies outside the mosaic area.",
+)
+#: Names whose parts underscores join, in a table's cell before the text defines the short
+#: form one of their parts is: no use of it.
+JOINED_SHORT = ("quarterly market price", "QMP")
+JOINED_NAMES = ("QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "UK_QMP\\_ALL")
+#: Such a name with a word a hyphen joins before it, which every example holds one of: the
+#: hyphenated word opens before the name, and its short form is a part of the name still.
+HYPHENED_NAMES = ("anti-QMP_RATE", "pre-QMP\\_ALL", "non-QMP_IOS")
+#: A colon pair or an equals sign's whose long form a bracket after it defines a short form
+#: from, alone or in a list, round or square: the bracket's definition wins (Basile,
+#: 2026-11-21, "Bracket wins"), so the pair's short form is defined by nothing. `{s}` is the
+#: pair's short form, `{l}` the long form and `{b}` the bracket.
+BRACKET_WINS = ("timed chair stand series", "TCS")
+BRACKET_PAIRS = ("The latest of the {s}s: {l} {b} was run.", "Here {s} = {l} {b} held.",
+                 "Of the {s}: {l} {b} came first.")  # fmt: skip
+BRACKET_DEFINING = (("({s}-S)", ("{s}-S",)), ("[{s}-S]", ("{s}-S",)),
+                    ("({s}-S, {s}-R)", ("{s}-S", "{s}-R")))  # fmt: skip
+
+
+#: One piece of each kind `apart_forms` draws, as the readings' inputs hold them
+#: (`ABBREVIATION_BLOCKS`): another meaning given in two notes, a citation after a long form
+#: in its bracket, designations typed and escaped, names underscores join, and a colon pair
+#: before a bracket's definition.
+APART_PIECES = (
+    "The brisk walking test (BWT) was run. The BWT held.\n\n*Note.* BWT = brisk walking "
+    "time.\n\n*Note.* BWT = brisk walking time.",
+    "The QPS (quiet play scale; Fictional, 2014) was read. The QPS held.\n\n*Note.* QPS = "
+    "quiet play scale.",
+    "The protostar [KX92]30 drives a faint outflow, and \\[KX92\\]21 too.",
+    "| Series | Loading |\n|---|---|\n| QMP_RATE | 0.1 |\n| IOS\\_QMP | 0.2 |\n\nThe quarterly "
+    "market price (QMP) rose. The QMP fell.",
+    "The latest of the TCSs: timed chair stand series (TCS-S) was run. The TCS-S held.",
+)
+
+
+@st.composite
+def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
+    """A Methods section with one piece of each kind of `REPEATED_SHORT`, `CITED_SHORT`,
+    `DESIGNATED`, `JOINED_SHORT` and `BRACKET_WINS`, in an order drawn, among words; and
+    what G14 owes it:
+    for each other meaning of the repeated short form, its code, the short form and the long
+    form that finding quotes as given here, and the pair's short form before the winning
+    bracket as used and never defined. Nothing else."""
+    long, short = REPEATED_SHORT
+    meanings = draw(st.lists(st.sampled_from(REPEATED_MEANINGS), min_size=1, max_size=3,
+                             unique=True))  # fmt: skip
+    again = draw(st.lists(st.sampled_from(meanings), min_size=1, max_size=3))
+    notes = draw(st.permutations([*meanings, *again]))
+    repeated = f"The {long} ({short}) was run. The {short} held.\n\n" + "\n\n".join(
+        f"| Walk | n |\n|---|---|\n| one | {at + 3} |\n\n*Note.* {short} = {meaning}."
+        for at, meaning in enumerate(notes))
+    told = list(dict.fromkeys(notes))
+    cited_long, cited = CITED_SHORT
+    citing = (f"The {cited} ({cited_long}; {draw(st.sampled_from(TYPED_AFTER))}) was read. The "
+              f"{cited} held.\n\n| Play | n |\n|---|---|\n| {cited} | 4 |\n\n*Note.* {cited} = "
+              f"{cited_long}.")  # fmt: skip
+    form = draw(st.sampled_from(DESIGNATED))
+    numbers = draw(st.lists(st.integers(1, 99), min_size=2, max_size=3))
+    sentences = draw(st.permutations(DESIGNATION_SENTENCES))
+    pairs = zip(sentences, numbers, strict=False)
+    designated = " ".join(sentence.format(form.format(number)) for sentence, number in pairs)
+    joined_long, joined = JOINED_SHORT
+    names = draw(st.permutations([
+        *draw(st.lists(st.sampled_from(JOINED_NAMES), min_size=1, max_size=3, unique=True)),
+        draw(st.sampled_from(HYPHENED_NAMES))]))  # fmt: skip
+    rows = "\n".join(f"| {name} | 0.{at + 1} |" for at, name in enumerate(names))
+    joining = (f"| Series | Loading |\n|---|---|\n{rows}\n\nThe {joined_long} ({joined}) rose. "
+               f"The {joined} fell.")  # fmt: skip
+    wins_long, wins = BRACKET_WINS
+    bracket, defined = draw(st.sampled_from(BRACKET_DEFINING))
+    winning = draw(st.sampled_from(BRACKET_PAIRS)).format(
+        s=wins, l=wins_long, b=bracket.format(s=wins))
+    winning += "".join(f" The {each.format(s=wins)} held." for each in defined)
+    pieces = draw(st.permutations([repeated, citing, designated, joining, winning]))
+    text, _starts = _paragraphs(draw, pieces)
+    # The pair's short form is defined by nothing, so it is used and never defined.
+    return "# Methods\n\n" + text, [*(("abbreviation-redefined", short, each) for each in told),
+                                    ("abbreviation-undefined", wins, "")]  # fmt: skip
+
+
 @st.composite
 def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
@@ -1646,6 +1743,7 @@ ABBREVIATION_BLOCKS = tuple(
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
         GLOSSARY_OPENED,
+        *APART_PIECES,
     )
 )
 

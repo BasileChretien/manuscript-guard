@@ -338,6 +338,44 @@ def test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothin
         "binding-in-table"]
 
 
+def test_a_latex_project_reports_nothing_of_a_latex_binding_in_an_emitted_table(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A binding in emitted table text is found in its
+    Markdown form only"): in the LaTeX twin, a table emitted with a cell holding
+    `\\mg{results.x}` is named by no finding of `check`; the same cell holding
+    `{{results.x}}` is `binding-in-table`."""
+    import shutil
+
+    from manuscript_guard.cli import _run_gates
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    entry = project / "manuscript" / "main.tex"
+    placed = ("Table~\\ref{tab:notes} gives the notes.\n\n\\begin{table}\\caption{Notes.}"
+              "\\label{tab:notes}\\mg{table.exposure_notes}\\end{table}\n\n\\section{Discussion}")
+    entry.write_text(entry.read_text(encoding="utf-8").replace("\\section{Discussion}", placed),
+                     encoding="utf-8")  # fmt: skip
+    (project / "analysis" / "notes.py").write_text("# notes\n", encoding="utf-8")
+    em = Emitter(project / "analysis" / "notes.py", root=project)
+    em.table("exposure_notes", ["Group", "Note"], [["Exposed \\mg{results.x}", "none"]])
+    fragment = em.write()
+
+    def naming() -> list[tuple[str, str]]:
+        report = _run_gates(project)[0]
+        return [(f.code, f.message) for f in report.findings
+                if "exposure_notes" in f.message or "results.x" in f.message]  # fmt: skip
+
+    assert naming() == []
+    fragment.write_text(fragment.read_text(encoding="utf-8").replace(
+        "\\\\mg{results.x}", "{{results.x}}"), encoding="utf-8")  # fmt: skip
+    from manuscript_guard.emit import write_digest
+
+    write_digest(fragment)
+    assert [code for code, _message in naming()] == ["binding-in-table"]
+
+
 def test_a_p_value_typed_into_a_cell_is_not_a_threshold(scratch: Path) -> None:
     """Cells were classified with no section, so every methods_only rule applied —
     in the one place a *reported* p-value is most likely to be written."""

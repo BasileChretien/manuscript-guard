@@ -78,11 +78,11 @@ _OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION M
     ("text", "expected"),
     [
         # In `\texttt`, where a typewriter font prints both as typed, the two are read as an
-        # opening and a closing mark, as they are in `\verb` not.
+        # opening and a closing mark; in `\verb` they are not read as marks.
         ('\\texttt{``a"} b', f"········{_OPENS}·a{_CLOSES}· b"),
         ('\\verb|``a"| b', '······``a"· b'),
-        # Babel's German shorthands `"-` and `"=` close an open quotation; its accent `"a`
-        # does not.
+        # Babel's German shorthands `"-` and `"=` close an open quotation; a straight `"`
+        # before a letter never closes one, as in ``` ``Gr"une ```.
         ('``a "-b c', f"{_OPENS}·a {_CLOSES}-b c"),
         ('``a "=b c', f"{_OPENS}·a {_CLOSES}=b c"),
         ('``a "a c', f'{_OPENS}·a "a c'),

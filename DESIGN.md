@@ -22510,7 +22510,8 @@ Open, recorded as each change landed:
   - *A LaTeX binding is not read.* A cell holding `\mg{results.x}`, a LaTeX project's
     binding, is escaped by the LaTeX build and printed as typed, and nothing reports it
     (finding 5; the reviewer found no real input of the kind).
-    Pinned by `tests/test_emit.py::test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothing`.
+    Pinned by `tests/test_emit.py::test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothing`
+    and `tests/test_emit.py::test_a_latex_project_reports_nothing_of_a_latex_binding_in_an_emitted_table`.
   - *No generated input holds the rule.* `binding-in-table` reads text, and no generator,
     reading or property draws it (`{{}}`, `{{ }}`, `{{{x}}}`, an unclosed `{{a`, a line
     break inside, each place a table has text): a broken pattern passes everything but the

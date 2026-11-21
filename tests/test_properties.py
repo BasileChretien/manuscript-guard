@@ -1466,6 +1466,19 @@ def _a_provided_startsection_takes_the_kit_s_heading_back(patch: pytest.MonkeyPa
             name in self.bodies_at and name not in [h[2] for h in self.through.values()]))))
 
 
+def _an_at_in_a_kit_comment_counts(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, name: str):
+        if name not in self.bodies_at:
+            return None
+        start, at, letter = self.bodies_at[name]
+        end = self._group_end(at)
+        if end < 0 or not latex_mask._as_written(self.text[start:end], letter):
+            return None
+        return self.text[start:at], self.text[at + 1 : end - 1]
+
+    patch.setattr(latex_mask._Reader, "_defined", broken)
+
+
 def _a_kit_body_where_at_is_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_as_written", lambda definition, letter: True)
 
@@ -26186,6 +26199,10 @@ BROKEN = {
     ),
     "in LaTeX, a provided \\@startsection command takes the author kit's heading back": (
         _a_provided_startsection_takes_the_kit_s_heading_back,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an @ in a comment of the author kit's definition counts": (
+        _an_at_in_a_kit_comment_counts,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, a kit body defined where @ is no letter is read": (

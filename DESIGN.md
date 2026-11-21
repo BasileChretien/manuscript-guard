@@ -17253,6 +17253,11 @@ been sorted yet.
     {section}...}` in the entry file's preamble after `\usepackage{iccv}`, makes the heading
     take a short title again, and the reader still refuses a use with one, in every file, a
     refusal TeX would not need (round 1 of #757). Accepted.
+  - A helper or the `\@startsection` command defined a second time by `\newcommand`, an
+    error after which LaTeX keeps the first body, is read as the second; a heading the class
+    does not define, `\chapter` under article, defined by `\newcommand` is refused where used;
+    and an `@` after `\\%` counts, though TeX reads a comment there (round 3 of #757).
+    Accepted.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left

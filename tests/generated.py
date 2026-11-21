@@ -2453,6 +2453,10 @@ def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
         for kit_text in (defined, defined + f"\\providecommand\\{level}{{x}}\n"):
             files, packages, _main = tree(kit_text, where, short)
             cases.append((files, packages, [("part.tex", short.index("\\" + level))], [], []))
+    # A helper before `\makeatletter` with an `@` only in a comment, read (round 3 of #757).
+    commented = starring.replace("{" + starred_body, "{% from a@b.org\n" + starred_body)
+    files, packages, _main = tree(defined.replace(starring, ""), "preamble", None, commented)
+    cases.append((files, packages, [], [], []))
     spoilt = [
         (defined.replace(plain_body, f"\\{to}{{\\texorpdfstring{{Part~}}{{}}#1}}"), ""),
         (defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"), ""),

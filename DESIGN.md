@@ -22787,17 +22787,12 @@ Open, recorded as each change landed:
 - **No formatting override in bindings.** An abstract wanting a coarser rounding than the
   Results section must emit a second key. Deliberate for now: it makes the second rounding
   a visible decision. Revisit if it proves too rigid in practice. Accepted.
-- **A display without its leading zero is held by examples, not by generated inputs.** From
-  #537 both emitters take ".661" as a display of 0.661 and "< .001" of a value under 0.001,
-  and `harvest` reads a cell ".661" as 0.661 and rounds it to ".66" (2026-11-06: APA 7
-  prints p and r without the leading zero, and both emitters refused them). The forms are
-  held by cases in `tests/test_emit.py`, `tests/test_r_emitter.py` and
-  `tests/test_harvest.py`; no generator draws a leading-point display or harvested cell
-  (`HARVEST_KINDS` draws none, and no property reads `derive_display`), so a change to the
-  display grammar that broke a form the cases leave out would pass (round 1 of #537, finding
-  5). The owner held the grammar to be a contract on what an analysis emits rather than a
-  reading of prose, and left it; a property over displays and harvested cells would close
-  it.
+- **The R emitter's displays are held by cases, not by generated inputs.** Its grammar
+  mirrors Python's, ".661" and "< .001" among its forms (#537), and the property over
+  Python's `derive_display` cannot call R: what holds the two alike is the list of cases
+  both are given, so a change to the R grammar that broke a form the list leaves out would
+  pass.
+  Pinned by `tests/test_r_emitter.py::test_r_and_python_agree_on_what_a_display_may_be`.
 - **`em.cell()` launders whatever its parts are.** The emitter checks that each part is a
   number it formatted and that the template's literal text carries no claim; it cannot
   check that the numbers are the right ones. `em.cell("{} ({})", low, high)` with the
@@ -22932,12 +22927,6 @@ Open, recorded as each change landed:
     (finding 5; the reviewer found no real input of the kind).
     Pinned by `tests/test_emit.py::test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothing`
     and `tests/test_emit.py::test_a_latex_project_reports_nothing_of_a_latex_binding_in_an_emitted_table`.
-  - *No generated input holds the rule.* `binding-in-table` reads text, and no generator,
-    reading or property draws it (`{{}}`, `{{ }}`, `{{{x}}}`, an unclosed `{{a`, a line
-    break inside, each place a table has text): a broken pattern passes everything but the
-    fixed cases in `tests/test_corruption.py`, `tests/test_emit.py` and
-    `tests/test_r_emitter.py` (finding 6). CLAUDE.md asks for one; this is the part to close
-    first.
   - *A literal brace.* `Composed.render` fills its template with `str.format`, which turns
     `{{` into `{`, while `tables.rebuilt` and the R emitter split the template on `{}` and
     keep `{{` as written. So in Python a template with a doubled brace never rebuilds to its
@@ -25175,8 +25164,6 @@ Open, recorded as each change landed:
     is down costs a minute for each place and work, and publisher hosts are paced at about
     five requests a second, which an institution's licence may count as systematic
     downloading. Accepted.
-  - `matching.py` reads text with no property in `tests/test_properties.py` and no BROKEN
-    twin.
   Round 2 of #565 left these, each not done:
   - Where a name does not resolve here and an https proxy is set, it is not checked: the
     proxy resolves it on its own network, so a GET can reach the proxy's LAN. Accepted.
@@ -29151,6 +29138,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **Three rules that read text were held by examples, not by generated inputs (Known gaps
+  F05, 2026-11-21).** A rule no property holds passes a change that breaks a form its cases
+  leave out, and CLAUDE.md asks for a generator, a property and a broken twin for each:
+  - "A display without its leading zero is held by examples, not by generated inputs"
+    (round 1 of #537, finding 5): no generator drew ".661" or "< .001", and no property
+    read `derive_display`. `point_displays` draws each beside a value within half a unit
+    of its last place, one further off, one more by a whole, one of the other sign and one
+    on either side of a comparator, and `HARVEST_KINDS` a cell written without its zero,
+    signed or not. A grammar that wants a digit before the point, in the emitter or in
+    `harvest`, a point read past, and a rounding that puts the zero back each fail a
+    property. The R emitter is held by its cases still, an open point of its own above.
+  - Under "A binding in emitted table text is found in its Markdown form only": no
+    generated input held `binding-in-table` (round 1 of #557, finding 6). `table_braces`
+    puts every text of `TABLE_BRACES`, an empty binding, one of a space, one inside a third
+    pair of braces, one never closed, one broken over a line, one a brace short, in a
+    table's caption, headers and cells, with a binding in each of the three every time. A
+    pattern that wants a character inside, one that runs over a line break, one that takes
+    in a brace before it, and a reading of the cells alone each fail the property.
+  - Under "What `sync-sources` fetches from the web is held to the work's DOI or title":
+    `matching.py` had a property for the head over a title (#595) and none for the
+    evidence. `pdf_evidence` draws a PDF for each way the work's DOI or title shows it and
+    each way a page near them does not; a DOI read by its letters anywhere, a printed DOI
+    taken for the work's where it begins with it, a title found inside a line, and no
+    metadata read each fail the property.
+  The readings `point displays`, `table bindings` and `pdf evidence` put the same inputs
+  to the base's source (`tests/readings.py`).
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

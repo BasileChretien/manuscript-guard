@@ -4891,6 +4891,65 @@ def test_a_journal_s_label_over_the_title_is_the_work_s_and_a_head_about_it_is_n
             assert shown.by is None and "not the work itself" in shown.why, (text, shown)
 
 
+from generated import pdf_evidence  # noqa: E402
+
+
+@holds(60, pdf_evidence())
+def test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them(
+    drawn: list[tuple[str, str, str | None]],
+) -> None:
+    """A PDF fetched for a work is kept by the work's DOI, printed however a page sets it,
+    broken over a line or run into a word, on its second page or in its metadata alone; or
+    by the work's title, making up whole lines near the top of a page, a footnote's mark
+    after it. Not by a DOI the work's begins, a supplement's, nor where its metadata names
+    another and not the work's; nor by the title in a sentence, with more after it, or
+    below the lines a title is looked for in. A reference's DOI on the second page refuses
+    nothing (`literature/matching.py`, round 1 of #565)."""
+    from manuscript_guard.literature.matching import judged
+
+    doi, title = PDF_WORK
+    for meta, text, by in drawn:
+        shown = judged(meta.encode("latin-1"), text, doi, title)
+        assert shown.by == by, (meta, text, shown)
+
+
+def _a_doi_is_its_letters_anywhere(patch: pytest.MonkeyPatch) -> None:
+    """The DOI's letters anywhere on the page, line breaks taken out: the start of a longer
+    DOI, or of a supplement's, is the work's."""
+    from manuscript_guard.literature import matching
+
+    patch.setattr(matching, "doi_in",
+                  lambda text, doi: doi.lower() in "".join(text.lower().split()))  # fmt: skip
+
+
+def _a_printed_doi_is_the_work_s_where_it_begins_so(patch: pytest.MonkeyPatch) -> None:
+    """A DOI read on a page is the work's wherever it begins with it, whatever comes next."""
+    from manuscript_guard.literature import matching
+
+    patch.setattr(matching, "_own", lambda printed, doi: bool(doi) and printed.startswith(doi))
+
+
+def _a_title_is_found_inside_a_line(patch: pytest.MonkeyPatch) -> None:
+    """The title's letters anywhere in a few lines near the top, a sentence's among them."""
+    from manuscript_guard.literature import matching
+
+    def title_at(pages: list[str], wanted: str) -> tuple[int, int] | None:
+        for number, page in enumerate(pages):
+            lines = [matching.key_of(line) for line in matching._lines(page)]
+            for first in range(len(lines)):
+                if wanted in "".join(lines[first : first + matching.TITLE_SPAN]):
+                    return number, first
+        return None
+
+    patch.setattr(matching, "title_at", title_at)
+
+
+def _a_pdf_s_metadata_names_no_doi(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import matching
+
+    patch.setattr(matching, "metadata_dois", lambda raw: set())
+
+
 # ------------------------------------------------------------- the vault a command names
 
 
@@ -5398,7 +5457,7 @@ def test_a_cell_of_an_output_reads_as_the_value_its_text_shows(
     with the number and are its unit, a comparator holds the number back and its value is
     none, a word is text, and nothing is nothing. Its display is its own text, stripped,
     unless digits are given; then the number to that many places, with its sign, its commas
-    and its unit."""
+    and its unit, and without the leading zero where the output wrote it without (#537)."""
     from manuscript_guard.harvest.read import cell
 
     for text, digits, read in drawn:
@@ -5406,6 +5465,126 @@ def test_a_cell_of_an_output_reads_as_the_value_its_text_shows(
         said = None if found is None else [
             type(found.value).__name__, found.value, found.display, found.unit]  # fmt: skip
         assert said == read, (text, digits)
+
+
+def _a_harvested_cell_needs_a_digit_before_its_point(patch: pytest.MonkeyPatch) -> None:
+    """The grammar as it stood before #537: ".661" is text."""
+    from manuscript_guard.harvest import read as harvest_read
+
+    patch.setattr(harvest_read, "_NUMERIC_DISPLAY", _no_leading_point())
+
+
+def _a_rounded_cell_gets_back_its_leading_zero(patch: pytest.MonkeyPatch) -> None:
+    """".661" to two places shown as "0.66", the zero the output left out put back."""
+    from manuscript_guard.harvest import read as harvest_read
+
+    real = harvest_read._rounded
+    patch.setattr(harvest_read, "_rounded", lambda match, shown, value, digits: re.sub(
+        r"^([-\N{MINUS SIGN}]?)\.", r"\g<1>0.", real(match, shown, value, digits)))  # fmt: skip
+
+
+# ------------------------------------------------- a display without its leading zero
+
+from generated import point_displays  # noqa: E402
+
+
+@holds(100, point_displays())
+def test_a_display_without_its_leading_zero_is_taken_for_its_value_and_no_other(
+    drawn: list[tuple[float, str, bool]],
+) -> None:
+    """The emitter takes ".661" for a value within half a unit of its last place, with or
+    without its zero, and "< .001" for a value on the side it says, as APA prints a p or an
+    r (#537); and refuses each for a value further off, one more by a whole, one of the
+    other sign, one on the other side, and a point that begins no number."""
+    from manuscript_guard.contracts.values import DisplayError, derive_display
+
+    for value, display, taken in drawn:
+        try:
+            shown = derive_display("p", value, display, None)
+        except DisplayError:
+            assert not taken, (value, display)
+        else:
+            assert taken and shown == display, (value, display)
+
+
+def _no_leading_point() -> re.Pattern[str]:
+    """The display grammar with no number begun by its point."""
+    from manuscript_guard.contracts import values
+
+    pattern = values._NUMERIC_DISPLAY.pattern
+    assert pattern.count(r"|\.\d+)") == 1
+    return re.compile(pattern.replace(r"|\.\d+)", ")"), values._NUMERIC_DISPLAY.flags)
+
+
+def _a_display_needs_a_digit_before_its_point(patch: pytest.MonkeyPatch) -> None:
+    """The grammar as it stood before #537: ".661" is no rendering of 0.661."""
+    from manuscript_guard.contracts import values
+
+    patch.setattr(values, "_NUMERIC_DISPLAY", _no_leading_point())
+
+
+def _a_leading_point_is_read_past(patch: pytest.MonkeyPatch) -> None:
+    """A number begun by its point read without it, as `audit` once read "p = .661" as 661."""
+    from manuscript_guard.contracts import values
+
+    real = values._number_of
+
+    def number_of(match: re.Match) -> tuple[str, str]:
+        text, exponent = real(match)
+        return re.sub(r"^(-?)\.", r"\g<1>", text), exponent
+
+    patch.setattr(values, "_number_of", number_of)
+
+
+# ------------------------------------------------ a binding left in emitted table text
+
+from generated import table_braces  # noqa: E402
+
+
+@holds(60, table_braces())
+def test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text(
+    drawn: tuple[dict[str, Any], dict[str, str]],
+) -> None:
+    """A binding in an emitted table's caption, a header or a cell is `binding-in-table`
+    there and named in the message: an empty one, one of a space, one inside a third pair
+    of braces; and nothing else that has braces is, one never closed, one broken over a
+    line, one a brace short, braces apart (#557, finding 6)."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.tables import problems_in
+
+    spec, expected = drawn
+    found = {one.where: one for one in problems_in("t", spec, set(), Classifier.load())
+             if one.code == "binding-in-table"}  # fmt: skip
+    assert sorted(found) == sorted(expected), spec
+    for where, binding in expected.items():
+        assert f"holds the binding {binding}, " in found[where].message, found[where]
+
+
+def _an_empty_binding_is_no_binding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import tables
+
+    patch.setattr(tables, "_BINDING", re.compile(r"\{\{[^{}\n]+\}\}"))
+
+
+def _a_binding_runs_on_over_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import tables
+
+    patch.setattr(tables, "_BINDING", re.compile(r"\{\{[^{}]*\}\}"))
+
+
+def _a_binding_takes_in_a_brace_before_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import tables
+
+    patch.setattr(tables, "_BINDING", re.compile(r"\{\{.*?\}\}"))
+
+
+def _a_binding_is_looked_for_in_the_cells_only(patch: pytest.MonkeyPatch) -> None:
+    """The cells read and not the caption or the headers, as `places_in` once read them."""
+    from manuscript_guard import tables
+
+    real = tables.places_in
+    patch.setattr(tables, "places_in", lambda key, spec: [
+        place for place in real(key, spec) if place[2] >= 0])  # fmt: skip
 
 
 @holds(60, harvest_tables())
@@ -25258,6 +25437,38 @@ BROKEN = {
         _digits_drop_what_follows_the_number,
         test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
     ),
+    "a harvested cell needs a digit before its point": (
+        _a_harvested_cell_needs_a_digit_before_its_point,
+        test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
+    ),
+    "a rounded cell gets back the leading zero its output left out": (
+        _a_rounded_cell_gets_back_its_leading_zero,
+        test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
+    ),
+    "a display needs a digit before its point": (
+        _a_display_needs_a_digit_before_its_point,
+        test_a_display_without_its_leading_zero_is_taken_for_its_value_and_no_other,
+    ),
+    "a display's leading point is read past": (
+        _a_leading_point_is_read_past,
+        test_a_display_without_its_leading_zero_is_taken_for_its_value_and_no_other,
+    ),
+    "an empty binding in a table is no binding": (
+        _an_empty_binding_is_no_binding,
+        test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text,
+    ),
+    "a binding in a table runs on over a line break": (
+        _a_binding_runs_on_over_a_line_break,
+        test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text,
+    ),
+    "a binding in a table takes in a brace before it": (
+        _a_binding_takes_in_a_brace_before_it,
+        test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text,
+    ),
+    "a binding is looked for in a table's cells only": (
+        _a_binding_is_looked_for_in_the_cells_only,
+        test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text,
+    ),
     "a JSON number in an output is shown as Python writes it": (
         _a_json_number_is_shown_as_python_writes_it,
         test_an_output_is_read_alike_in_each_form_and_refused_in_a_form_it_cannot_be,
@@ -28058,6 +28269,22 @@ BROKEN = {
     "no head over a PDF's title is read": (
         _no_head_is_read,
         test_a_journal_s_label_over_the_title_is_the_work_s_and_a_head_about_it_is_not,
+    ),
+    "a DOI is on a PDF's page wherever its letters are": (
+        _a_doi_is_its_letters_anywhere,
+        test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
+    ),
+    "a DOI printed on a PDF's page is the work's wherever it begins with it": (
+        _a_printed_doi_is_the_work_s_where_it_begins_so,
+        test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
+    ),
+    "a PDF's title is found inside a line": (
+        _a_title_is_found_inside_a_line,
+        test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
+    ),
+    "a PDF's metadata names no DOI": (
+        _a_pdf_s_metadata_names_no_doi,
+        test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
     ),
     "a cell counts by the digits it begins with": (
         _a_cell_counts_by_its_first_digits,

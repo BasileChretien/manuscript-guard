@@ -57,7 +57,7 @@ MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 `tests/test_generated_sessions.py` holds the twelve sessions its seed `PINNED` draws. A change
 to `sessions()` in `tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the
 Hypothesis pin draws twelve others, and it may fail with nothing wrong: its message says which
-numbers to try. Under the first two variables above, its two tests are skipped.
+numbers to try. Under the first two variables, the two tests of the pinned twelve are skipped.
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job compares
 with the first parent of the pull request's merge, and fails on any difference in what a
@@ -104,12 +104,12 @@ The subcommands and what each does are in `docs/commands.md`, and their flags in
   back, takes a guideline away or replaces the journal.
 
 The README is the front page, and long sections go under `docs/`. `tests/test_docs.py` holds
-both to the tool: `docs/commands.md` lists the subcommands (all but `hook`) in the groups of
-`--help`, `docs/gates.md` the gates, the README sums up both as `--help` and `check` group
-them, every link resolves, and the pictures are what `python tools/readme_figures.py` draws
-and what `check` prints. So a new command or gate needs its row there, a new skill its row in
-`docs/agent-tools.md` (`tests/test_plugin.py`), and a change to what `check` says of a typed
-number a new `CARD` and the pictures redrawn.
+both to the tool: `docs/commands.md` lists exactly the subcommands (all but `hook`) in the
+groups of `--help`, `docs/gates.md` exactly the gates, the README sums up both as `--help`
+and `check` group them, every link resolves, and the pictures are what `python
+tools/readme_figures.py` draws and what `check` prints. So a new command or gate needs its
+row there, a new skill its row in `docs/agent-tools.md` (`tests/test_plugin.py`), and a
+change to what `check` says of a typed number a new `CARD` and the pictures redrawn.
 `docs/features.yaml` lists what the package promises, with its tests: read a feature's entry
 before changing it, change the entry with it, and redraw with `python tools/feature_map.py`
 (`tests/test_features.py` holds every command, gate, skill and hook to an entry).

@@ -96,18 +96,27 @@ def unknown(source: dict, there: dict[str, set[str]]) -> list[str]:
             if name not in there[kind]]  # fmt: skip
 
 
-def defined_tests() -> dict[str, set[str]]:
-    """Each test file, with the names of the tests it defines at its top level."""
+def _is_test(node: ast.AST) -> bool:
+    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+        "test"
+    )
+
+
+def defined_tests(folder: Path = REPO / "tests") -> dict[str, set[str]]:
+    """Each test file, with the tests pytest collects from it: a function whose name opens
+    with `test`, and `Class::test...` for one in a class whose name opens with `Test`. A
+    fixture or a helper is no test, whatever it is named after."""
     found = {}
-    for path in (REPO / "tests").glob("test_*.py"):
+    for path in folder.glob("test_*.py"):
         with warnings.catch_warnings():
             # A test file may hold a string Python warns of; its names are all this reads.
             warnings.simplefilter("ignore", SyntaxWarning)
             tree = ast.parse(path.read_text(encoding="utf-8"))
-        found[f"tests/{path.name}"] = {
-            node.name for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }  # fmt: skip
+        names = {node.name for node in tree.body if _is_test(node)}
+        names |= {f"{node.name}::{method.name}" for node in tree.body
+                  if isinstance(node, ast.ClassDef) and node.name.startswith("Test")
+                  for method in node.body if _is_test(method)}  # fmt: skip
+        found[f"tests/{path.name}"] = names
     return found
 
 
@@ -146,22 +155,37 @@ def missing_pages(source: dict, anchor) -> list[str]:
 # ---------------------------------------------------------------------------------- tests
 
 
-def test_each_entry_reads_as_the_map_says(source: dict, tool) -> None:
+def misread(source: dict, tool) -> list[str]:
+    """Each way the map does not read as its own header says it should."""
     stages = [stage["id"] for stage in source["stages"]]
-    assert len(stages) == len(set(stages)), "a stage is listed twice"
-    ids = [entry["id"] for entry in source["features"]]
-    assert len(ids) == len(set(ids)), "an entry's id is used twice"
+    said = ["a stage is listed twice"] if len(stages) != len(set(stages)) else []
+    ids = [entry.get("id") for entry in source["features"]]
+    twice = sorted({name for name in ids if ids.count(name) > 1})
+    said += [f"{name}: the id is used twice" for name in twice]
     for entry in source["features"]:
-        where = entry.get("id", entry)
-        assert set(entry) <= KEYS, f"{where}: no key {sorted(set(entry) - KEYS)}"
-        assert set(entry) >= REQUIRED, f"{where}: lacks {sorted(REQUIRED - set(entry))}"
-        assert entry["stage"] in stages, f"{where}: no stage {entry['stage']!r}"
-        assert entry["status"] in tool.STATUS_WORDS, f"{where}: no status {entry['status']!r}"
-        assert len(entry["title"]) <= tool.TITLE_ROOM, f"{where}: the picture has no room"
-        assert entry["says"].rstrip().endswith("."), f"{where}: says one sentence, with its stop"
-        if entry["status"] != "works":
-            assert entry.get("limits"), f"{where}: a {entry['status']} entry says what is missing"
-    assert all(any(e["stage"] == stage for e in source["features"]) for stage in stages)
+        where = entry.get("id", "an entry with no id")
+        if set(entry) - KEYS:
+            said.append(f"{where}: no key {sorted(set(entry) - KEYS)}")
+        if REQUIRED - set(entry):
+            said.append(f"{where}: lacks {sorted(REQUIRED - set(entry))}")
+            continue
+        if entry["stage"] not in stages:
+            said.append(f"{where}: no stage {entry['stage']}")
+        if entry["status"] not in tool.STATUS_WORDS:
+            said.append(f"{where}: no status {entry['status']}")
+        elif entry["status"] != "works" and not entry.get("limits"):
+            said.append(f"{where}: does not say what is missing")
+        if len(entry["title"]) > tool.TITLE_ROOM:
+            said.append(f"{where}: the picture has no room for its title")
+        if not entry["says"].rstrip().endswith("."):
+            said.append(f"{where}: says no sentence with its stop")
+    said += [f"{stage}: no entry" for stage in stages
+             if not any(entry.get("stage") == stage for entry in source["features"])]  # fmt: skip
+    return said
+
+
+def test_each_entry_reads_as_the_map_says(source: dict, tool) -> None:
+    assert misread(source, tool) == []
 
 
 def test_everything_the_package_has_is_in_an_entry(source: dict) -> None:
@@ -221,17 +245,57 @@ def test_a_name_the_package_does_not_have_is_said(source: dict) -> None:
     assert unknown(changed, there_are()) == [f"{first}: commands unpack", f"{first}: gates G99"]
 
 
+def test_a_map_that_does_not_read_is_said(source: dict, tool) -> None:
+    changed = copy.deepcopy(source)
+    first, second, third, fourth, fifth = changed["features"][:5]
+    first["status"] = "done"
+    second["owner"] = "someone"
+    third["title"] = "A title far too long for the picture to hold"
+    fourth["status"] = "partial"
+    fifth["says"] = "Says no sentence"
+    del fifth["stage"]
+    changed["features"].append(copy.deepcopy(first))
+    assert misread(changed, tool) == [
+        f"{first['id']}: the id is used twice",
+        f"{first['id']}: no status done",
+        f"{second['id']}: no key ['owner']",
+        f"{third['id']}: the picture has no room for its title",
+        f"{fourth['id']}: does not say what is missing",
+        f"{fifth['id']}: lacks ['stage']",
+        f"{first['id']}: no status done",
+    ]
+
+
 def test_a_test_that_is_not_there_is_said(source: dict) -> None:
     files = defined_tests()
     changed = copy.deepcopy(source)
     first, second = changed["features"][:2]
-    first["tests"] = ["tests/test_scaffold.py::test_no_such_test", "tests/test_nowhere.py"]
+    first["tests"] = ["tests/test_scaffold.py::test_no_such_test", "tests/test_nowhere.py",
+                      "tests/test_checking.py::project"]  # a fixture, not a test
     del second["tests"]
     assert missing_tests(changed, files) == [
         f"{first['id']}: tests/test_scaffold.py::test_no_such_test",
         f"{first['id']}: tests/test_nowhere.py",
+        f"{first['id']}: tests/test_checking.py::project",
         f"{second['id']}: names no test",
     ]
+
+
+def test_a_test_is_what_pytest_collects(tmp_path: Path) -> None:
+    (tmp_path / "test_kinds.py").write_text(
+        "import pytest\n\n"
+        "@pytest.fixture\ndef project():\n    pass\n\n"
+        "def helper_for_tests():\n    pass\n\n"
+        "def test_alone():\n    pass\n\n"
+        "async def test_awaited():\n    pass\n\n"
+        "class TestGroup:\n    def test_inside(self):\n        pass\n\n"
+        "    def helper(self):\n        pass\n\n"
+        "class Group:\n    def test_not_collected(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    assert defined_tests(tmp_path) == {
+        "tests/test_kinds.py": {"test_alone", "test_awaited", "TestGroup::test_inside"},
+    }
 
 
 def test_a_page_or_heading_that_is_not_there_is_said(source: dict, tool) -> None:

@@ -474,14 +474,20 @@ features:
       page in the project.
     status: works
     commands: [sync-bib, sync-sources]
-    tests: [tests/test_sync_sources.py, tests/test_fetch_sources.py]
+    tests:
+      - tests/test_zotero.py::test_lookup_asks_about_the_cited_keys_only
+      - tests/test_zotero.py::test_an_export_given_as_a_list_is_read
+      - tests/test_latex_cite.py::test_sync_bib_refuses_a_manuscript_its_reader_refuses
+      - tests/test_sync_sources.py
+      - tests/test_fetch_sources.py
 
   - id: lookups
     stage: cite
     title: Registries asked
     says: >-
-      Asks PubMed, Crossref and OpenAlex once about each cited work, and flags a retraction,
-      a later version or authors who do not match.
+      Looks up each cited DOI and PMID once, searches PubMed, Crossref and OpenAlex by title
+      for a reference with neither, and flags a retraction, a later version or authors who
+      do not match.
     status: works
     commands: [lookup]
     gates: [G7]
@@ -584,8 +590,8 @@ features:
       Runs the searches, the two readings and the rules for up to 30 claims without an
       author, as a weekly job.
     status: planned
-    docs: DESIGN.md#beside-currencys-unattended-run
-    limits: Step 6 of the reference-currency design; not started.
+    docs: DESIGN.md#a-cited-work-is-held-to-newer-evidence-by-fixed-rules
+    limits: PR 6 of the reference-currency design; not started.
 
   # ------------------------------------------------------------------------------ check
   - id: check
@@ -673,7 +679,10 @@ features:
       a file that changed.
     status: works
     commands: [impact]
-    tests: [tests/test_checking.py::test_impact_tells_a_main_text_methods_file_from_the_supplements]
+    tests:
+      - tests/test_corruption.py::test_impact_lists_what_an_analysis_script_makes_stale
+      - tests/test_corruption.py::test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings
+      - tests/test_checking.py::test_impact_tells_a_main_text_methods_file_from_the_supplements
 
   # ----------------------------------------------------------------------------- review
   - id: review-panel
@@ -819,8 +828,9 @@ features:
     stage: submit
     title: Posts and summaries
     says: >-
-      Fills a post, a press release or a lay summary from the paper's own sentences, with
-      no number or claim the paper does not make.
+      Prepares posts, a press release and lay summaries from the paper's own sentences, for
+      a person or the skill to finish, and checks that none makes a number or claim the
+      paper does not.
     status: works
     commands: [communicate]
     skills: [research-communication]
@@ -844,7 +854,8 @@ features:
     stage: others
     title: Audit in a web browser
     says: >-
-      Runs the audit on a .docx in a web browser, and the paper is not uploaded anywhere.
+      Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
+      uploaded anywhere.
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md

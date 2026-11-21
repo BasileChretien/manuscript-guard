@@ -649,6 +649,40 @@ def test_a_time_is_kept_within_the_dictionary_s_range() -> None:
     assert all("20:00" <= one <= "23:59" for one in drawn), sorted(drawn)[:5]
 
 
+def test_a_time_kept_within_its_range_is_kept_to_the_minute_and_piles_at_its_end() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The profile and the synthetic copy (Task F, part
+    3)", "A time kept within its range is kept to the minute"): a minimum with seconds
+    (`08:30:45`) is written as its minute, `08:30`, a little below it, and a datetime written
+    with no seconds the same; a time about one centile with one end of a range declared, or
+    with no centile and both ends, is clamped to the range and piles at its end."""
+    from collections import Counter
+    from types import SimpleNamespace
+
+    from manuscript_guard.vault.synthesize import _Column, _date, _time
+
+    def column(kind: str, centiles: dict, minimum, maximum, **spec) -> _Column:
+        bounds = SimpleNamespace(minimum=minimum, maximum=maximum)
+        return _Column({"name": "t", "kind": kind, "type": kind, "centiles": centiles,
+                        "missing": 0, "unread": 0, "n": 100, **spec}, bounds, 5, 100, 100)
+
+    early = column("time", {"10": "01:00", "90": "02:00"}, "08:30:45", None)
+    assert {_time(early, at / 100).text for at in range(100)} == {"08:30"}
+    stamped = column("datetime", {"10": "2020-01", "90": "2020-01"}, "2020-02-01T08:30:45",
+                     None, format="%Y-%m-%d %H:%M")  # fmt: skip
+    assert {_date(stamped, at / 100, 0.0).text for at in range(100)} == {"2020-02-01 08:30"}
+    # One centile and one end: carried round midnight, the early hours pile at the end.
+    one = column("time", {"50": "23:00"}, "20:00", None)
+    drawn = Counter(_time(one, at / 1000).text for at in range(1000))
+    assert drawn["20:00"] > 100, drawn.most_common(3)
+    both = column("time", {}, "20:00", "21:00")
+    drawn = Counter(_time(both, at / 1000).text for at in range(1000))
+    assert drawn["20:00"] > 500 and drawn["21:00"] > 50, drawn.most_common(3)
+    # The other side: two centiles, released to the hour, are drawn within the range.
+    within = column("time", {"10": "20:00", "90": "21:00"}, "19:00", "22:00")
+    drawn = Counter(_time(within, at / 1000).text for at in range(1000))
+    assert max(drawn.values()) < 50, drawn.most_common(3)
+
+
 @pytest.mark.parametrize(("kind", "bounds", "values", "read_as"), [
     ("count", ", range: {min: 40}", ["40"] * 150 + ["41"] * 47 + ["unknown"] * 3, None),
     ("date", ', range: {min: "2019-03-01"}', [f"2019-03-{day:02d}" for day in range(1, 9)],

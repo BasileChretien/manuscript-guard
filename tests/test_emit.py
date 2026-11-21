@@ -12,6 +12,7 @@ Every test here names the escape it closes.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -542,6 +543,68 @@ def test_provenance_records_the_inputs_it_read(scratch: Path) -> None:
     # than over line endings. Asserting the raw byte digest here was asserting that a
     # declared input breaks on checkout, which is what it did. See test_input_digests.py.
     assert inputs[0]["sha256"] == input_digest(data)
+
+
+def _inputs_of(em: Emitter) -> list[tuple[str, str]]:
+    return [(i["path"], i["sha256"]) for i in em.document()["provenance"]["inputs"]]
+
+
+def test_a_path_through_a_link_is_collapsed_as_text(scratch: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): `data/linked/../x.csv`, where
+    `data/linked` is a link, is recorded as `data/x.csv`, while on Linux and macOS the file
+    read and digested is the one beside the link's target. Windows collapses the path as
+    text too, and reads `data/x.csv`. The 2026-11-09 triage planned a fix (F07), which will
+    change this test."""
+    from test_review_plan import link_directory
+
+    (scratch / "data").mkdir()
+    (scratch / "data" / "x.csv").write_text("here\n1\n", encoding="utf-8")
+    (scratch / "elsewhere" / "inner").mkdir(parents=True)
+    (scratch / "elsewhere" / "x.csv").write_text("beside the target\n2\n", encoding="utf-8")
+    link_directory(scratch / "data" / "linked", scratch / "elsewhere" / "inner")
+    em = emitter(scratch)
+    em.add_input("data/linked/../x.csv")
+    read = scratch / ("data" if os.name == "nt" else "elsewhere") / "x.csv"
+    assert _inputs_of(em) == [("data/x.csv", input_digest(read))]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the home folder as Windows names it")
+def test_python_expands_a_tilde_and_a_name_where_r_reads_its_own_home(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): Python expands `~name` as well
+    as `~`, so an input in a project folder named `~raw` is read from beside the user's
+    folder; `~` alone is the user's folder. The 2026-11-09 triage planned a fix (F07), which
+    will change this test."""
+    home = scratch.parent / "users" / "me"
+    (home.parent / "raw").mkdir(parents=True)
+    home.mkdir()
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("USERNAME", "me")
+    (home.parent / "raw" / "x.csv").write_text("beside the user's folder\n", encoding="utf-8")
+    (home / "x.csv").write_text("in the user's folder\n", encoding="utf-8")
+    (scratch / "~raw").mkdir()
+    (scratch / "~raw" / "x.csv").write_text("in the project\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.add_input("~raw/x.csv")
+    em.add_input("~/x.csv")
+    assert [digest for _path, digest in _inputs_of(em)] == [
+        input_digest(home.parent / "raw" / "x.csv"), input_digest(home / "x.csv")
+    ]  # fmt: skip
+
+
+@pytest.mark.skipif(os.name != "nt", reason="a file system that ignores case")
+def test_one_file_spelt_in_two_cases_is_two_inputs_on_windows(scratch: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): on Windows a path is recorded in
+    the case it was written in, so one file spelt in two cases is two inputs; spelt two ways
+    in one case, it is one. The 2026-11-09 triage planned a fix (F07), which will change this
+    test."""
+    (scratch / "data").mkdir()
+    (scratch / "data" / "x.csv").write_text("a\n1\n", encoding="utf-8")
+    em = emitter(scratch)
+    for spelt in ("data/x.csv", "DATA/X.csv", "data/./x.csv"):
+        em.add_input(spelt)
+    assert [path for path, _digest in _inputs_of(em)] == ["data/x.csv", "DATA/X.csv"]
 
 
 # ------------------------------------------------- what an ordinary clinical table needs
@@ -1417,3 +1480,32 @@ def test_a_paper_yaml_that_cannot_be_read_is_named_when_a_cell_is_refused(
     em.value("n", 1)
     em.write()
     assert "paper.yaml" not in capsys.readouterr().err
+
+
+def test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml(
+    scratch: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Python emitter blames `paper.yaml` for any
+    project it cannot load"): with a sound paper.yaml holding `terms: [E2a]` and an
+    authors.yaml that does not parse, a refused cell says paper.yaml could not be read, and
+    the parse error after it names authors.yaml. The analysis runs on with the shipped
+    classifier, and the project's terms are lost. The 2026-11-09 triage planned a fix (F07),
+    which will change this test."""
+    paper = scratch / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "terms:\n  - E2a\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    write(em)  # the other side: with authors.yaml sound, the term is the project's
+    (scratch / "authors.yaml").write_text("authors: [unclosed\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    with pytest.raises(DisplayError) as refused:
+        em.write()
+    said = str(refused.value)
+    assert "paper.yaml could not be read, so its terms and conventions were not applied" in said
+    assert "authors.yaml" in said.split("paper.yaml could not be read", 1)[1], said
+    assert "paper.yaml could not be read" in capsys.readouterr().err
+    # The analysis runs on: a fragment with no cell the project's terms decide is written.
+    em = emitter(scratch)
+    em.value("n", 1)
+    assert em.write().is_file()

@@ -110,6 +110,9 @@ def rules_of(document: dict) -> dict[str, object]:
     for name, value in (document.get("sharing") or {}).items():
         if name not in PAGE_KEYS:
             rules[f"sharing.{name}"] = value
+    # The files the journal takes at submission: the main document's format among them.
+    for name, value in (document.get("submission") or {}).items():
+        rules[f"submission.{name}"] = value
     return rules
 
 
@@ -375,12 +378,14 @@ def manual_signables(project: Project) -> list[Signable]:
     return [signable] if signable else []
 
 
-def journal_checklist(project: Project) -> str | None:
+def journal_checklist(project: Project, main_document: str | None = None) -> str | None:
     """The pack's checklist of the journal's rules no gate checks, each with the words of
-    the page it was read from, and who signed them off; None where the profile has none."""
+    the page it was read from, and who signed them off; and `main_document`, where the pack
+    says the journal does not take its main document, as an item to tick. None where there
+    is neither."""
     found = _target_profile(project)
     signable = manual_signable(*found) if found else None
-    if found is None or signable is None:
+    if found is None or (signable is None and main_document is None):
         return None
     slug, document, _path = found
     source = document.get("source_url") or "the journal's instructions page"
@@ -391,7 +396,21 @@ def journal_checklist(project: Project) -> str | None:
         f"From the {slug} profile, read from {source}"
         + (f" on {read_on}" if read_on else "")
         + ". Each is checked by hand against the paper before it is submitted.",
-        "",
+    ]
+    if signable is not None:
+        lines += ["", *_manual_rows(project, document, signable)]
+    # Said here as well as by `submit`: the checklist is what the corresponding author reads
+    # before sending, and the pack's output scrolls away (Royal Society Open Science takes a
+    # PDF, and the pack held a .docx).
+    if main_document is not None:
+        lines += ["", "## The main document", "",
+                  f"- [ ] {main_document[:1].upper()}{main_document[1:]}"]  # fmt: skip
+    return "\n".join(lines) + "\n"
+
+
+def _manual_rows(project: Project, document: dict, signable: Signable) -> list[str]:
+    """The `manual:` rules as rows to tick, and who signed them off."""
+    lines = [
         "| Checked | Rule | The journal's words |",
         "|---|---|---|",
     ]
@@ -409,7 +428,7 @@ def journal_checklist(project: Project) -> str | None:
         f"Signed off by {signed}." if said.severity == INFO and _marker
         else "Not signed off yet by the corresponding author.",
     ]  # fmt: skip
-    return "\n".join(lines) + "\n"
+    return lines
 
 
 #: How many lines of the difference `journal --reread` prints at the most.

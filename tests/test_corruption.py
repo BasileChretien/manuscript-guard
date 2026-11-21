@@ -8543,6 +8543,91 @@ def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> 
     assert warned()
 
 
+# ------------------------------------------------------- the main document's format
+
+_MAIN_QUOTE = "Please submit a PDF as your main document."
+
+
+def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
+                         quoted: bool = True, packed: list[str] | None = None,
+                         ) -> list[tuple[str, str]]:  # fmt: skip
+    """G4's findings on the main document's format, and on the quotes, at `stage`, for the
+    example whose journal takes its main document in `formats` (None: the profile says
+    nothing of it), quoted from its stored page or not, with a pack already made whose
+    manifest records its main document in `packed`, or none made."""
+    from manuscript_guard.gates import check_journal, check_main_document
+    from manuscript_guard.gates.journal_quotes import page_digest
+    from manuscript_guard.policy import apply_stage
+
+    stored = root / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    text = stored.read_text(encoding="utf-8") + f"\n{_MAIN_QUOTE}\n"
+    stored.write_text(text, encoding="utf-8")
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["page_sha256"] = page_digest(text)
+    if formats is not None:
+        document["submission"] = {"main_document": formats}
+        if quoted:
+            document["quotes"]["submission.main_document"] = _MAIN_QUOTE
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if packed is not None:
+        pack = root / "build" / "submission"
+        pack.mkdir(parents=True, exist_ok=True)
+        main = {"docx": "manuscript.docx"}.get(packed[0], "manuscript.pdf")
+        (pack / "MANIFEST.yaml").write_text(yaml.safe_dump(
+            {"main_document": {"file": main, "formats": packed}}), encoding="utf-8")  # fmt: skip
+    project, _ = load_project(root)
+    report, _ = apply_stage(check_main_document(project, stage).merge(check_journal(project)),
+                            stage)  # fmt: skip
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.code == "main-document-format" or f.code == "journal-rule-unquoted")
+
+
+@pytest.mark.parametrize(
+    ("formats", "stage", "kwargs", "said"),
+    [
+        # Royal Society Open Science's rule, and the .docx `submit` packs a Markdown paper as:
+        # a warning at submission, a note before.
+        (["pdf"], "submission", {}, [("main-document-format", "warn")]),
+        (["pdf"], "drafting", {}, [("main-document-format", "info")]),
+        # A journal that takes either, and a profile that says nothing of it: nothing.
+        (["docx", "pdf"], "submission", {}, []),
+        (None, "submission", {}, []),
+        # Unquoted, it is a rule like any other with no words of the page behind it.
+        (["pdf"], "submission", {"quoted": False},
+         [("journal-rule-unquoted", "warn"), ("main-document-format", "warn")]),
+        # Once a pack is made, its manifest says what it holds: the PDF `submit --latex`
+        # packed, and the warning is gone; the .docx a plain `submit` packed, and it stays.
+        (["pdf"], "submission", {"packed": ["pdf", "tex"]}, []),
+        (["pdf"], "submission", {"packed": ["docx"]}, [("main-document-format", "warn")]),
+        # A journal that takes Word only, and a pack of the PDF and its LaTeX source.
+        (["docx"], "submission", {"packed": ["pdf", "tex"]}, [("main-document-format", "warn")]),
+    ],
+)  # fmt: skip
+def test_a_main_document_in_a_format_the_journal_does_not_take_is_warned_of(
+    project: Path, formats, stage: str, kwargs: dict, said: list
+) -> None:
+    assert _main_document_codes(project, formats, stage, **kwargs) == said
+
+
+def test_the_main_document_warning_says_what_the_journal_takes_and_how_to_make_it(
+    project: Path,
+) -> None:
+    """The finding names the format the journal takes, in its own words, and the two ways
+    to it a Markdown paper has: `submit --latex`, or the .docx saved as PDF once its
+    citations are refreshed."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+
+    _main_document_codes(project, ["pdf"], SUBMISSION)
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert said.gate == "G4"
+    assert said.message == ("the journal takes its main document as PDF, and `submit` packs "
+                            "this manuscript as Word (.docx)")  # fmt: skip
+    assert "manuscript-guard submit --latex" in said.hint
+    assert "refresh" in said.hint and _MAIN_QUOTE in said.hint
+
+
 _BOX_QUOTE = "Include 3 to 4 highlights of no more than 60 characters each."
 _POLICY_QUOTE = "The accepted manuscript may be deposited after 12 months."
 

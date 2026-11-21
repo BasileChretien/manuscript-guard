@@ -7798,6 +7798,26 @@ below it.
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
 
+The main document goes in a format the journal takes. Royal Society Open Science says
+"Please submit a PDF as your main document", and the pack offered the .docx the build makes:
+a profile had no field to say it, and the paper that found it could only list the rule under
+`manual:`. A profile now says it as `submission: {main_document: [pdf]}`, the formats the
+journal takes (pdf, docx, doc, rtf, odt, and tex for the LaTeX source), quoted under
+`quotes.submission.main_document` and held to the stored page as every rule is. The manifest
+records the main document, its formats (a .docx; or a PDF and, where latex/ holds the
+source, tex), and, where the profile says, what the journal takes and whether the pack meets
+it. Where it does not, `submit` says so with the pack and `journal-checklist.md` carries it
+as an item to tick, written even where the profile has no `manual:` rule, each with how to
+make the one the journal takes: `submit --latex` for a Markdown paper's PDF, or the .docx
+saved as PDF from Word once its citations are refreshed. `submit` does not take the LaTeX
+route by itself: it needs a TeX installation, packs no marked-up Word copy at a revision, and
+is the author's choice of document. G4 says it too, `main-document-format`, of the last
+pack's main document as its manifest records it, a pack for another journal set aside, or,
+before one does, of what `submit` will pack: a warning at submission, a note before. A
+warning, as a figure in a format the journal does not take is (`figure-format`), and not a
+failure: the pack refuses while the check fails, and `submit --latex`, which makes the PDF,
+runs the same check, so a failure would refuse the remedy with the fault.
+
 The covering letter is deliberately not generated. It is the one part addressed to a
 particular editor about a particular paper at a particular moment, and a generated one reads
 exactly like a generated one.

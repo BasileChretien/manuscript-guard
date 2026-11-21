@@ -218,6 +218,9 @@ references:
 
 reporting_guidelines: [STROBE]
 
+submission:
+  main_document: [pdf]          # the formats it takes the main document in, where it says
+
 figures:                        # from the journal's artwork guide, not its general page
   source_url: "https://www.journal-of-examples.org/artwork"
   read_on: 2026-08-03
@@ -274,6 +277,13 @@ Acknowledgements, the Methods) and its quote under `quotes`. G4 then holds what 
 finds to the models the project's records show at work and the tools `authors.yaml`
 declares, and the submission-pack skill drafts it. Anything else the page says of AI use
 goes in `notes` or `manual`, quoted.
+
+Where the page says in what format the main document is submitted ("Please submit a PDF as
+your main document"), give it as `submission: {main_document: [pdf]}`, quoted under
+`quotes.submission.main_document`: every format it takes (`[docx, pdf]`), `tex` for the
+LaTeX source. `submit` then says where the pack's main document is in none of them, and how
+to make one, and G4 warns at submission (`main-document-format`). What it asks only at
+revision, the source files say, goes under `manual:`.
 
 Where the page asks for highlights, key points or another box beside the abstract, or says
 anything of a graphical abstract or of what its authors may share, fill `boxes`,

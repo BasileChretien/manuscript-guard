@@ -20,6 +20,7 @@ from manuscript_guard.gates.interpretation import check_interpretation
 from manuscript_guard.gates.journal import check_journal
 from manuscript_guard.gates.journal_boxes import check_boxes
 from manuscript_guard.gates.language import check_language
+from manuscript_guard.gates.main_document import check_main_document
 from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
 from manuscript_guard.gates.models import check_models
@@ -94,6 +95,7 @@ __all__ = [
     "check_freshness",
     "check_journal",
     "check_boxes",
+    "check_main_document",
     "check_language",
     "check_literature_chain",
     "check_methods",

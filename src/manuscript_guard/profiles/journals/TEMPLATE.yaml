@@ -389,6 +389,20 @@ reporting_guidelines:
 #   supplementary_table: "eTable {n}"        # default "Table S{n}"
 #   supplementary_figure: "eFigure {n}"      # default "Figure S{n}"
 
+# ── The main document ────────────────────────────────────────────────────────────────────
+#
+# The formats the journal takes the main document in at submission, where its page says:
+# pdf, docx, doc, rtf, odt, or tex for the LaTeX source. Look for "submit a PDF as your main
+# document", "upload the manuscript as a Word file", "LaTeX submissions". Quote it under
+# `quotes.submission.main_document`. A Markdown manuscript is packed as a .docx, or as a PDF
+# with its LaTeX source by `submit --latex`; a LaTeX one as its PDF and source. Where the
+# journal takes none of what the pack holds, `submit` says so and how to make it, in
+# journal-checklist.md as well, and G4 warns at submission (`main-document-format`). Delete
+# the block where the page says nothing; what it asks only at revision goes under `manual:`.
+#
+# submission:
+#   main_document: [pdf]
+
 # ── Quotes ───────────────────────────────────────────────────────────────────────────────
 #
 # For every rule above, the words of the stored page it was read from, as the page writes
@@ -396,8 +410,9 @@ reporting_guidelines:
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
 # required_statements.<id>, references, english_variant, blinding, text_recycling,
 # abbreviations.<key>, reporting_guidelines, pointers.<kind>, boxes.<id>,
-# graphical_abstract.<name>, sharing.<version>. A box, the graphical abstract or the
-# sharing policy read from a page of its own names that page in its block (`page_file`, and
+# graphical_abstract.<name>, sharing.<version>, submission.<name>. A box, the graphical
+# abstract or the sharing policy read from a page of its own names that page in its block
+# (`page_file`, and
 # `page_sha256`), and its quotes are held to it; `journal --reread <file> --page <page_file>`
 # reads it again. G4 names every rule that has none. A limit's number must be in its quote,
 # as digits ("3500", "3,500") or as a word up to twenty ("four"), and so must each number

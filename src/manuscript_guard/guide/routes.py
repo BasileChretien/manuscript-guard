@@ -216,6 +216,9 @@ ROUTES: dict[str, Route] = {
     # again, which `package-` would offer.
     **_all("submission-pack", None, "package-doi-test-prefix", "deposit-doi-differs"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
+    # The pack's main document in a format the journal does not take: the skill says which
+    # route makes the one it does (`submit --latex`, or the .docx saved as PDF from Word).
+    **_all("submission-pack", None, "main-document-format"),
     # Taken out of the source, its raw Word markup or the reference document, and built again.
     **_all("submission-pack", ("build",), "document-hides-text", "document-addresses-a-model",
            "document-unread-for-hidden-text"),

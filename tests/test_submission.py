@@ -204,6 +204,110 @@ def test_the_manifest_records_what_was_sent(project: Path) -> None:
     assert len(manifest["manuscript_sha256"]) == 64
 
 
+_PDF_ONLY = "Please submit a PDF as your main document."
+
+
+def _takes_pdf(root: Path) -> None:
+    """The example's journal takes its main document as PDF only, as Royal Society Open
+    Science does."""
+    edit_yaml(root / "profiles" / "journals" / "demo-journal.yaml", lambda d: (
+        d.update(submission={"main_document": ["pdf"]}),
+        d["quotes"].update({"submission.main_document": _PDF_ONLY})))  # fmt: skip
+
+
+def test_a_pack_whose_main_document_the_journal_does_not_take_says_so(project: Path) -> None:
+    """The pack offered a .docx to a journal that asks for a PDF, and said nothing: the
+    profile had no field for it. Now the pack says it, the checklist carries it as an item to
+    tick, and the manifest records what the main document is and what the journal takes."""
+    _takes_pdf(project)
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    pack = assemble_pack(projekt, document)
+    [said] = [note for note in pack.notes if "main document" in note]
+    assert said.startswith("the journal takes its main document as PDF, and this pack's is "
+                           "manuscript.docx, Word (.docx): ")  # fmt: skip
+    assert "manuscript-guard submit --latex" in said and "refresh" in said
+    checklist = (pack.directory / "journal-checklist.md").read_text(encoding="utf-8")
+    assert "\n## The main document\n" in checklist
+    assert f"- [ ] {said[0].upper()}{said[1:]}" in checklist and _PDF_ONLY in checklist
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert manifest["main_document"] == {"file": "manuscript.docx", "formats": ["docx"],
+                                         "journal_takes": ["pdf"],
+                                         "as_the_journal_asks": False}  # fmt: skip
+
+
+def test_a_pack_of_the_pdf_the_journal_asks_for_says_nothing_of_it(project: Path) -> None:
+    """A LaTeX pack (`submit --latex`): the PDF, its source in latex/. The journal's format,
+    so no note and no item; the manifest records it all the same."""
+    _takes_pdf(project)
+    projekt, _ = load_project(project)
+    build = project / "build"
+    build.mkdir(exist_ok=True)
+    (build / "manuscript.pdf").write_bytes(b"%PDF-1.5 placeholder")
+    (build / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
+
+    pack = assemble_pack(projekt, build / "manuscript.pdf", extra=[(build / "main.tex",
+                                                                   "latex/main.tex")])
+    assert not [note for note in pack.notes if "main document" in note]
+    checklist = (pack.directory / "journal-checklist.md").read_text(encoding="utf-8")
+    assert "The main document" not in checklist
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert manifest["main_document"] == {"file": "manuscript.pdf", "formats": ["pdf", "tex"],
+                                         "journal_takes": ["pdf"],
+                                         "as_the_journal_asks": True}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("takes", "main", "names", "latex", "advice"),
+    [
+        # A Markdown paper's .docx, to a journal that takes the LaTeX source.
+        (["tex"], "manuscript.docx", [], False, "manuscript-guard submit --latex"),
+        # A Markdown paper packed by `submit --latex`, to a journal that takes Word.
+        (["docx"], "manuscript.pdf", ["latex/main.tex"], False, "without `--latex`"),
+        # Word's older format: saved from Word, since no route here makes one.
+        (["doc"], "manuscript.docx", [], False, "save it as Word (.doc)"),
+        # A LaTeX paper, to a journal that takes Word: no route here makes one.
+        (["docx", "rtf"], "manuscript.pdf", ["latex/main.tex"], True,
+         "makes no Word (.docx) or RTF of a LaTeX source"),
+    ],
+)  # fmt: skip
+def test_the_pack_says_how_to_make_the_main_document_the_journal_takes(
+    takes, main, names, latex: bool, advice: str
+) -> None:
+    from manuscript_guard.gates.main_document import gap
+
+    record, said = gap({"submission": {"main_document": takes}}, Path(main), names,
+                       latex_manuscript=latex)  # fmt: skip
+    assert record["as_the_journal_asks"] is False
+    assert said is not None and advice in said
+
+
+def test_a_profile_silent_on_the_main_document_has_it_recorded_and_judged_by_none(
+    project: Path,
+) -> None:
+    manifest = _pack_manifest(project)
+    assert manifest["main_document"] == {"file": "manuscript.docx", "formats": ["docx"]}
+
+
+def test_a_checklist_with_no_manual_rule_still_carries_the_main_document(project: Path) -> None:
+    """journal-checklist.md was written only for the `manual:` rules: a profile with none,
+    whose journal takes no .docx, would have packed no item to tick."""
+    _takes_pdf(project)
+    edit_yaml(project / "profiles" / "journals" / "demo-journal.yaml",
+              lambda d: d.pop("manual"))  # fmt: skip
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    checklist = (assemble_pack(projekt, document).directory / "journal-checklist.md")
+    text = checklist.read_text(encoding="utf-8")
+    assert "\n## The main document\n" in text and "| Checked | Rule |" not in text
+    assert "signed off" not in text.lower()
+
+
 def _pack_manifest(root: Path) -> dict:
     projekt, _ = load_project(root)
     document = root / "build" / "manuscript.docx"

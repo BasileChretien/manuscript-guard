@@ -148,10 +148,10 @@ def test_a_number_a_statement_or_a_summary_alone_gives_stays_not_found(
     tmp_path: Path, capsys, where: str
 ) -> None:
     """The statements, a summary of the paper and the keywords are no section a paper reports
-    in: a number found only there stays not found, a warning."""
+    in: a number found only there stays not found, a note (`auditing.measured`)."""
     text = POPULATION.replace("## Introduction", where)
     said = _of(_found(capsys, _write(tmp_path, text)))
-    assert [(one["code"], one["severity"]) for one in said] == [("abstract-not-found", "warn")]
+    assert [(one["code"], one["severity"]) for one in said] == [("abstract-not-found", "info")]
 
 
 def test_a_number_a_reference_entry_alone_gives_stays_not_found(tmp_path: Path, capsys) -> None:

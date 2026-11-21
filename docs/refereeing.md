@@ -242,7 +242,10 @@ PDF), and each line of the report is a fact with its place, never a verdict:
 - **Numbers, citations and bindings** of the prose, gone, new or changed, each at its line in
   the new version. The reference list's and the tables' numbers are left to those.
 - **Claims**: each changed sentence that now claims more, less or the opposite, as `reworded`
-  reads one ("may" gone, "associated" made "increased", a "not" gone or new).
+  reads one ("may" gone, "associated" made "increased", a "not" gone or new). One that may
+  now say the opposite is a note, not a warning: on real papers it was right once in 17,
+  most often where a section was rewritten ([DESIGN.md](../DESIGN.md), "In an audit, a
+  code's severity follows how often it was right").
 - **v2 audited**: the audit above, run on both versions, each finding of the new one marked
   "stood in v1" where the first version's audit gave the same finding, word for word, and
   "new in v2" otherwise.

@@ -13158,6 +13158,9 @@ _PARAGRAPH_ENDS = (
     "\nResults\n-------\n", "\n```\n", "\n:::\n", "\n",
     # Round 3 of #538: what ends in a letter and is no running prose.
     "\n\\noindent\n", "\n**Results**\n", "[12]\n",
+    # A stretch of lines of spaces, as the LaTeX reader blanks what it does not read: the
+    # rule reads from the words' own line, not through the stretch (the robustness sweep).
+    "\n" + (" " * 40 + "\n") * 30,
 )  # fmt: skip
 
 

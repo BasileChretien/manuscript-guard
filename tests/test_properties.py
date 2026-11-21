@@ -23849,7 +23849,10 @@ def test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_e
     that says its shares are weighted, in its caption, a row's label or its note, and in a
     header's column alone; and is a number that does not fit in a table that says nothing,
     one followed by a sentence on weighting, and one followed by the next table's legend in
-    capitals."""
+    capitals. Where a file's legends do not number its tables, a legend directly above a
+    table captions it, and no other legend does; "nationally representative" says the
+    shares are weighted, unless a word before it in its clause says not (Basile,
+    2026-11-21, "Adjacent fallback" and "Caption wording")."""
     papers, expected = drawn
     for name, text in papers.items():
         assert _asked_and_unfit(text) == expected[name], (name, text)
@@ -23949,6 +23952,53 @@ def _a_capitalised_next_legend_leaks(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import adjusted
 
     patch.setattr(adjusted, "LEGEND", re.compile(adjusted.LEGEND.pattern.replace("(?i:", "(?:")))
+
+
+def _nationally_representative_is_no_weighting(patch: pytest.MonkeyPatch) -> None:
+    """As at ca6329ae2: "nationally representative" said nothing of weights, so the shares
+    of a table its legend says it of were found."""
+    from manuscript_guard.stats import adjusted
+
+    words = r"|(?i:\bnationally[- ]representative\b)"
+    assert words in adjusted.WEIGHTED.pattern
+    patch.setattr(adjusted, "WEIGHTED", re.compile(adjusted.WEIGHTED.pattern.replace(words, "")))
+
+
+def _no_word_before_the_weighting_negates_it(patch: pytest.MonkeyPatch) -> None:
+    """A word before the words of weighting in their clause read as nothing: "Shares, not
+    nationally representative", "Before IPTW" let their shares off."""
+    from manuscript_guard.stats import adjusted
+
+    patch.setattr(adjusted, "NOT_WEIGHTED", re.compile(r"(?!)"))
+
+
+def _no_caption_where_legends_do_not_number_the_tables(patch: pytest.MonkeyPatch) -> None:
+    """As at ca6329ae2: where a file's legends did not number its tables, no legend
+    captioned any, so a weighted table right under its legend had its shares found."""
+    from manuscript_guard.auditing import adjusted
+
+    patch.setattr(adjusted, "adjacent_captions", lambda paragraphs, tables: [""] * len(tables))
+
+
+def _the_fallback_takes_any_legend_next_to_a_table(patch: pytest.MonkeyPatch) -> None:
+    """The fallback reads the nearest legend before a table with no table between, a
+    paragraph between them or not, else the first after it: a legend with a subtitle under
+    it, and one below its table, let their tables off."""
+    from manuscript_guard.auditing import adjusted
+
+    def adjacent_captions(paragraphs, tables):
+        spans = [(min(adjusted._cells(t)), max(adjusted._cells(t))) for t in tables]
+        legends = [p for p in paragraphs if adjusted.LEGEND.match(p.text)]
+        found = []
+        for at, (first, last) in enumerate(spans):
+            low = spans[at - 1][1] if at else 0
+            high = spans[at + 1][0] if at + 1 < len(spans) else 10**9
+            before = [p for p in legends if low < p.first and p.last < first]
+            after = [p for p in legends if last < p.first and p.last < high]
+            found.append(before[-1].text if before else after[0].text if after else "")
+        return found
+
+    patch.setattr(adjusted, "adjacent_captions", adjacent_captions)
 
 
 def _one_weighted_table_lets_off_all(patch: pytest.MonkeyPatch) -> None:
@@ -30881,6 +30931,22 @@ BROKEN = {
     ),
     "a legend reaches its table across another legend": (
         _a_legend_reaches_across_another,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "nationally representative says nothing of weights": (
+        _nationally_representative_is_no_weighting,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "no word before the weighting negates it": (
+        _no_word_before_the_weighting_negates_it,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "no caption where the legends do not number the tables": (
+        _no_caption_where_legends_do_not_number_the_tables,
+        test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
+    ),
+    "the fallback takes any legend next to a table": (
+        _the_fallback_takes_any_legend_next_to_a_table,
         test_a_p_an_adjustment_explains_and_a_weighted_share_are_asked_and_nothing_else,
     ),
     "a key reads the spaces of its sentence": (

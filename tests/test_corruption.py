@@ -3231,6 +3231,27 @@ def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
     assert [d.line for d in report.disagreements] == [13]
 
 
+def test_a_share_off_under_a_legend_not_right_above_its_table_is_still_found(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-11-21, "Adjacent fallback": in a file whose legends do not number its
+    tables, a legend right above a table captions it, and no other legend does. A
+    nationally representative legend with a paragraph between it and its table, one below
+    the last table, and one whose words are negated let off nothing: each share off its
+    column's n is still a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable S1a. Nationally representative shares.\n\nValues are "
+                     f"n (%).\n\n{table}\n\nTable S1b. Shares, not nationally representative.\n"
+                     f"\n{table}\n\nThe last table follows.\n\n{table}\n\nTable S2a. Nationally "
+                     "representative shares.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == []
+    assert [d.line for d in report.disagreements] == [9, 15, 21]
+
+
 def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:
     """Round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, 75.0%, not 12,
     under every heading, as were the phases, stages and types of a clinical paper. A range

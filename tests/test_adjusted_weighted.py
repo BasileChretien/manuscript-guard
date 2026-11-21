@@ -17,8 +17,9 @@ gives 0.0041, and P > 0.999 beside one that gives 0.096; docx-psych-A3 says it c
 multiple comparisons with the false discovery rate and gives P = .61 beside an F that gives
 0.54; docx-educ-B1 gives P < .001 beside a t that gives 0.0055, smaller, and says nothing of
 an adjustment; docx-psych-B2's Table 1 has the note "Weighted statistics computed using the
-tbl_svysummary function", and its supplementary tables, whose shares are weighted, say so
-only in a sentence of the Methods.
+tbl_svysummary function", and its supplementary tables, whose shares are weighted, say so in
+legends "Table S1a", "Table S1b", ... that do not number them, as "nationally
+representative" (Basile, 2026-11-21, "Caption wording" and "Adjacent fallback").
 """
 
 from __future__ import annotations
@@ -132,6 +133,9 @@ def test_the_search_goes_on_past_a_negated_or_cited_match() -> None:
     "Data are IPW estimates.", "1Weighted statistics computed using the survey package.",
     "Percentages are weighted to the census.", "Weighted \\% of each category.",
     "After IPTW (n = 1200)", "No. (weighted %)",
+    # Basile, 2026-11-21, "Caption wording": "nationally representative" reads as weighted.
+    "Table S1a. Nationally representative shares, Region A.", "Exposed, nationally "
+    "representative", "Proportions are nationally-representative.",
 ])  # fmt: skip
 def test_each_weighting_said_is_read(said: str) -> None:
     assert weighting(said) is not None, said
@@ -141,6 +145,9 @@ def test_each_weighting_said_is_read(said: str) -> None:
     "Unweighted n (%).", "unweighted", "Weighted mean (SD).", "Weighted median.",
     "Population-weighted meta-analysis.", "Inverse-variance weighting.", "Before IPTW (n = 1200)",
     "Prior to weighting, n (%)", "Crude, not weighted %",
+    # The same clause rule against negation holds for "nationally representative".
+    "Shares, not nationally representative.", "Crude counts before weighting to be nationally "
+    "representative.", "Unweighted nationally representative sample.",
 ])  # fmt: skip
 def test_an_estimate_weighted_and_unweighted_shares_are_no_weighting(said: str) -> None:
     assert weighting(said) is None, said
@@ -280,9 +287,9 @@ def test_the_same_table_without_the_word_is_a_finding(tmp_path: Path) -> None:
 
 
 def test_a_paper_s_weighted_sentence_alone_lets_off_no_table(tmp_path: Path) -> None:
-    """docx-psych-B2's supplementary tables: their shares are weighted, and only a sentence of
-    the Methods says so ("weighted to be nationally representative"). No exact rule names a
-    table from it, so each share off its n stays a finding (DESIGN.md, Known gaps)."""
+    """A sentence of the Methods that says the shares are weighted ("weighted to be
+    nationally representative"): no exact rule names a table from it, so each share off its
+    n stays a finding (DESIGN.md, Known gaps)."""
     text = ("# Methods\n\nDescriptive statistics were weighted to be nationally representative, "
             "and weighted percentages are shown.\n\n") + TABLES.format(**PLAIN)  # fmt: skip
     report = audited(tmp_path, text)
@@ -479,12 +486,14 @@ def test_a_legend_after_its_table_is_its_own_in_a_docx(tmp_path: Path) -> None:
     assert report.arithmetic_asked[0].message.startswith("Table 1 says")
 
 
-def test_one_legend_for_two_tables_captions_neither(tmp_path: Path) -> None:
-    """One legend for two tables does not number them: it captions neither, and both
-    shares are findings."""
+def test_one_legend_for_two_tables_captions_only_the_table_under_it(tmp_path: Path) -> None:
+    """One legend for two tables does not number them: it captions the table directly under
+    it alone (Basile, 2026-11-21, "Adjacent fallback"), and the table above it, which it
+    stands right after, keeps its share a finding."""
     text = f"# Results\n\n{TABLE}\n\nTable 2. Weighted percentages.\n\n{TABLE}\n"
     report = audited(tmp_path, text)
-    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+    assert [d.line for d in report.arithmetic_asked] == [11]
+    assert [d.line for d in report.disagreements] == [5]
 
 
 #: Legends before their tables, a subtitle between each and its table: the scoped check of
@@ -528,28 +537,96 @@ def test_a_legend_captions_the_table_its_number_names_in_a_docx(tmp_path: Path) 
         assert (asked.line > found.line) == (weighted == 2)
 
 
-@pytest.mark.parametrize("legends", [
-    # Three legends and two tables read: the third table given as a picture.
-    "Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 3. "
-    "Weighted n.\n",
+@pytest.mark.parametrize(("legends", "asked"), [
+    # Three legends and two tables read: the third table given as a picture, its legend
+    # below the last table.
+    ("Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 3. "
+     "Weighted n.\n", [7]),
     # A table that runs on under its legend again.
-    "Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 2 "
-    "(continued)\n\n{table}\n",
+    ("Table 1. Weighted percentages.\n\n{table}\n\nTable 2. Counts.\n\n{table}\n\nTable 2 "
+     "(continued)\n\n{table}\n", [7]),
     # Two forms of legend in one file.
-    "Table 1. Weighted percentages.\n\n{table}\n\nTable S1. Counts.\n\n{table}\n",
-    # A legend whose number names no table it can reach.
-    "Table 2. Weighted percentages.\n\n{table}\n\nTable 1. Counts.\n\n{table}\n",
+    ("Table 1. Counts.\n\n{table}\n\nTable S1. Weighted percentages.\n\n{table}\n", [13]),
+    # Legends that number the tables, one of which names no table it can reach.
+    ("Table 2. Weighted percentages.\n\n{table}\n\nTable 1. Counts.\n\n{table}\n", []),
 ])  # fmt: skip
-def test_legends_that_do_not_number_the_tables_caption_none(tmp_path: Path,
-                                                           legends: str) -> None:  # fmt: skip
-    """The rule holds only where the file's legends number its tables 1 to the count read,
-    in one form, each once: else no legend captions any table, and each share off its n is a
-    finding, as on main. Where they do, a legend that cannot reach the table its number
-    names, another table between them, captions nothing; the file's other legends still
-    caption theirs ("Table 1. Counts." its table, in the last case)."""
+def test_legends_that_do_not_number_the_tables_caption_the_table_under_them(
+    tmp_path: Path, legends: str, asked: list[int]
+) -> None:
+    """Where the file's legends do not number its tables 1 to the count read, in one form,
+    each once, a legend directly above a table, with no paragraph between, captions it
+    (Basile, 2026-11-21, "Adjacent fallback"): the weighted one's share is asked about, and a
+    weighted legend below the last table captions nothing. Where they do, the numbering rule
+    holds as it was: a legend that cannot reach the table its number names, another table
+    between them, captions nothing, though it stands right above a table; the file's other
+    legends still caption theirs ("Table 1. Counts." its table, in the last case)."""
+    report = audited(tmp_path, "# Results\n\n" + legends.format(table=TABLE))
+    assert [d.line for d in report.arithmetic_asked] == asked, report.arithmetic_asked
+    assert len(report.disagreements) == legends.count("{table}") - len(asked)
+
+
+#: A supplement whose legends do not number its tables, "a" and "b" of each number, each
+#: right above its table.
+SUPPLEMENT = ("# Supplementary material\n\nTable S1a. Nationally representative shares, Region "
+              "A.\n\n{table}\n\nTable S1b. Proportions by group, Region A.\n\n{table}\n\nTable "
+              "S2a. Nationally representative shares, Region B.\n\n{table}\n")  # fmt: skip
+
+
+def test_a_nationally_representative_legend_right_above_its_table_asks_of_its_shares(
+    tmp_path: Path,
+) -> None:
+    """docx-psych-B2's shape (Basile, 2026-11-21, "Caption wording" and "Adjacent
+    fallback"): supplementary legends "Table S1a", "Table S1b", ... do not number the tables,
+    and each stands right above its own. The "a" tables, nationally representative, have
+    their shares asked about, named by their legends; the "b" table's share is a finding."""
+    report = audited(tmp_path, SUPPLEMENT.format(table=TABLE))
+    assert [(d.line, d.message.split(" says")[0]) for d in report.arithmetic_asked] == [
+        (7, "Table S1a"), (19, "Table S2a")]
+    assert [d.line for d in report.disagreements] == [13]
+
+
+def test_a_nationally_representative_legend_asks_in_a_docx(tmp_path: Path) -> None:
+    table = (f"<w:tbl>{_row('Characteristic', 'All (n = 1200)')}"
+             f"{_row('Male sex, n (%)', '640 (58.0%)')}</w:tbl>")  # fmt: skip
+    body = (_para("Supplementary material")
+            + _para("***Table S1a. Nationally representative shares, Region A.***") + table
+            + _para("***Table S1b. Proportions by group, Region A.***") + table)
+    report = audit([_docx(tmp_path / "paper.docx", body)], None)
+    (asked,), (found,) = report.arithmetic_asked, report.disagreements
+    assert asked.message.startswith("Table S1a says") and asked.line < found.line
+
+
+@pytest.mark.parametrize("legends", [
+    # A paragraph between the weighted legend and its table.
+    "Table S1a. Nationally representative shares.\n\nValues are n (%).\n\n{table}\n\n"
+    "Table S1b. Counts.\n\n{table}\n",
+    # The weighted legend below the last table.
+    "Table S1b. Counts.\n\n{table}\n\nThe next table follows.\n\n{table}\n\nTable S1a. "
+    "Nationally representative shares.\n",
+    # The weighted legend's words negated in their clause.
+    "Table S1a. Shares, not nationally representative.\n\n{table}\n\nTable S1b. Counts.\n\n"
+    "{table}\n",
+])  # fmt: skip
+def test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing(
+    tmp_path: Path, legends: str
+) -> None:
+    """The fallback reads only a legend directly above a table: one with a paragraph between,
+    or one below a table, captions nothing, and a negated legend says nothing; each share is
+    a finding."""
     report = audited(tmp_path, "# Results\n\n" + legends.format(table=TABLE))
     assert report.arithmetic_asked == [], report.arithmetic_asked
-    assert len(report.disagreements) == legends.count("{table}")
+    assert len(report.disagreements) == 2
+
+
+def test_under_the_fallback_a_legend_below_a_table_captions_the_next(tmp_path: Path) -> None:
+    """The limit of the fallback (DESIGN.md, Known gaps): in a file whose legends stand below
+    their tables and do not number them, a legend below one table and directly above the
+    next is read as the next table's, so the first table's weighted share stays a finding
+    and the second's, which nothing says is weighted, is asked about."""
+    report = audited(tmp_path, f"# Results\n\nThe tables follow.\n\n{TABLE}\n\nTable S1a. "
+                               f"Weighted percentages.\n\n{TABLE}\n\nTable S1b. Counts.\n")
+    assert [d.line for d in report.arithmetic_asked] == [13]
+    assert [d.line for d in report.disagreements] == [7]
 
 
 def test_a_legend_reaches_its_table_across_no_other_legend(tmp_path: Path) -> None:

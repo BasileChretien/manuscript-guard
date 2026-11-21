@@ -27621,6 +27621,39 @@ def test_a_paragraph_deleted_before_a_block_reading_mostly_like_it_is_not_that_b
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_deleted_in_front_of_a_reworded_div_is_refused_in_the_whole_sentence(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A deletion that leaves its bookmark is counted
+    from the session as drawn"): #121's case, a paragraph deleted in Word in front of a
+    plain div that reads like it, one word of the div reworded, as the generated sessions
+    type them. What the import says of it is held from the block it quotes to the
+    sentence's closing words, which no other test held: that nothing tells which it is,
+    that nothing is written, and what to do in the .md either way."""
+    from test_roundtrip import _word_delete
+
+    lead = "The zulu reports of hepatic injury were counted once in each group."
+    div = "::: {.plain}\nThe yankee reports of hepatic injury were counted once in each group.\n:::"
+    blocks = ("# Intro", _ALPHA, lead, div, _BRAVO)
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, "The zulu reports"))
+        assert "yankee reports of hepatic" in xml
+        return xml.replace("yankee reports of hepatic", "yankee reports of liver", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    said = " ".join(out.split())
+    assert (
+        "or the text that stood under it when the document was sent ('The yankee reports "
+        "of hepatic injury were counted once in ea'), edited in Word with this paragraph "
+        "deleted. "
+        "Nothing in the document says which, so nothing is written. If the paragraph was "
+        "deleted, delete it in the .md; if it was reworded, make the edit there."
+    ) in said, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_sentence_deleted_above_the_example_s_table_is_not_its_caption(
     project: Path, tmp_path: Path
 ) -> None:

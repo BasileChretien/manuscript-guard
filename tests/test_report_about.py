@@ -301,6 +301,26 @@ def test_the_g14_test_runs_in_its_file(kept, capsys, project) -> None:
         _run(out, "test_language", project=project)
 
 
+def test_the_snippet_is_read_with_no_declared_english_and_its_test_in_the_example(
+    kept, capsys, project
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A report about a gate checks its snippet for
+    `audit`, G6 and G14 only"): the snippet is read with an empty `paper.yaml`. One word in
+    American spelling is a `spelling-variant` in the example, which declares en-GB; alone
+    it is in the English its words are in, so the report says the code is not found in
+    the snippet's findings, and the test it prints, run in the example, disagrees."""
+    from test_language import codes, written
+
+    snippet = "The color of each report was recorded."
+    out = _reported(capsys, "--about", "G14", "--flagged", "spelling-variant", "--snippet",
+                    snippet)  # fmt: skip
+    assert ("**Does the snippet alone show it?** `spelling-variant` is not found in the "
+            "snippet's findings (it gives no finding)") in out  # fmt: skip
+    with pytest.raises(AssertionError):
+        _run(out, "test_language", project=project)
+    assert "spelling-variant" in codes(written(project, snippet))
+
+
 @pytest.mark.parametrize(("direction", "fails"), [("--flagged", True), ("--missed", False)])
 def test_another_gates_test_appends_to_the_example(kept, capsys, project, direction,
                                                     fails) -> None:

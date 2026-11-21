@@ -24660,10 +24660,13 @@ Open, recorded as each change landed:
     session, the tenth of seed 34, a paragraph deleted in front of a reworded div. The
     sentence is matched from "or the text that stood under it" to the block it quotes,
     so rewording that in `merge.py` fails the test; `tests/test_corruption.py` holds the
-    sentence's opening on sessions written by hand, and that nothing is written; no test
-    holds its closing words. The import says the same with nothing deleted, as "stood
+    sentence's opening on sessions written by hand, that nothing is written, and its
+    closing words. The import says the same with nothing deleted, as "stood
     above it", which is not counted. That a bookmark left on a reworded paragraph is read
     as two paragraphs joined was read once and is held by no test of this file.
+    Pinned by `tests/test_generated_sessions.py::test_the_twelve_sessions_are_the_ones_the_property_is_for`,
+    `tests/test_corruption.py::test_a_paragraph_deleted_before_a_block_reading_mostly_like_it_is_not_that_block`
+    and `tests/test_corruption.py::test_a_paragraph_deleted_in_front_of_a_reworded_div_is_refused_in_the_whole_sentence`.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project
@@ -26660,6 +26663,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   of publishing paywalled copies in a project that set `sources_in_git: true` (finding 1).
   Closed by asking `git check-ignore`, as `literature/away.py`'s `ignored_by_git` does, by
   `project.path` for the folders, and by a reason for each missing line.
+  Pinned by `tests/test_scaffold.py::test_init_s_git_advice_reads_spellings_and_not_git_s_rules`,
+  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`
+  and `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`.
 - **The status line's "Next:" is the first action's title and no more.** Its options, its
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not
@@ -27169,6 +27175,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command lets one through), is recorded as a fault. It is one: such a sentence should reach
     the author without the words "an error in manuscript-guard itself", and the record is how
     it is found.
+    Pinned by `tests/test_crash_records.py::test_an_authors_error_main_does_not_catch_is_said_and_recorded_as_a_fault`
+    and `tests/test_crash_records.py::test_an_error_raised_on_purpose_is_said_and_never_recorded`.
   - The hook's question before an agent's `report-issue --open` reads each invocation's
     words, as the other shell guards do: an `--open` that reaches the tool from another
     invocation, a variable or a splat (`echo --open | xargs manuscript-guard report-issue`,
@@ -27248,6 +27256,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     reproduced", or that the code is not found in the snippet's findings, of a fault that is
     real. The test for G6 and G14 runs in the example's project, whose `paper.yaml` does
     declare them, so it can disagree with the check.
+    Pinned by `tests/test_report_about.py::test_the_snippet_is_read_with_no_declared_english_and_its_test_in_the_example`.
   - No list of the codes each gate can give is kept, so a code the snippet does not give gets
     no verdict: it is said to be not found in the snippet's findings, which a misspelt code
     and a defect the gate let through both are.

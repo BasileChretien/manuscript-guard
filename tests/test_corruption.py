@@ -3186,9 +3186,11 @@ def test_a_share_is_found_under_a_sentence_that_opens_on_table_n_and_a_bracket(
 
 
 def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: Path) -> None:
-    """Three legends for two tables read: the legends do not number the file's tables, so no
-    caption counts, and the share under "Table 1. Weighted percentages." is a number that does
-    not fit."""
+    """Three legends for two tables read: the legends do not number the file's tables, so a
+    table takes only the legend directly above it (Basile, 2026-11-21, "Adjacent fallback").
+    The share under "Table 1. Weighted percentages." is asked about; the second table's,
+    under "Table 2. Counts." with "Table 3. Weighted n." below it, is still a number that
+    does not fit."""
     from manuscript_guard.audit import audit
 
     table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
@@ -3196,7 +3198,8 @@ def test_a_share_is_found_where_the_legends_do_not_number_the_tables(tmp_path: P
     paper.write_text(f"# Results\n\nTable 1. Weighted percentages.\n\n{table}\n\nTable 2. "
                      f"Counts.\n\n{table}\n\nTable 3. Weighted n.\n", encoding="utf-8")
     report = audit([paper], None)
-    assert report.arithmetic_asked == [] and len(report.disagreements) == 2
+    assert [d.line for d in report.arithmetic_asked] == [7]
+    assert [d.line for d in report.disagreements] == [13]
 
 
 def test_a_share_is_found_where_the_next_legend_in_capitals_says_weighted(
@@ -3230,6 +3233,27 @@ def test_a_share_off_in_an_unweighted_table_is_found_beside_a_weighted_one(
     report = audit([paper], None)
     assert [d.line for d in report.arithmetic_asked] == [7]
     assert [d.line for d in report.disagreements] == [13]
+
+
+def test_a_share_off_under_a_legend_not_right_above_its_table_is_still_found(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-11-21, "Adjacent fallback": in a file whose legends do not number its
+    tables, a legend right above a table captions it, and no other legend does. A
+    nationally representative legend with a paragraph between it and its table, one below
+    the last table, and one whose words are negated let off nothing: each share off its
+    column's n is still a number that does not fit."""
+    from manuscript_guard.audit import audit
+
+    table = "| Characteristic | Exposed (n = 1200) |\n|---|---|\n| Male sex, n (%) | 640 (58.0%) |"
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nTable S1a. Nationally representative shares.\n\nValues are "
+                     f"n (%).\n\n{table}\n\nTable S1b. Shares, not nationally representative.\n"
+                     f"\n{table}\n\nThe last table follows.\n\n{table}\n\nTable S2a. Nationally "
+                     "representative shares.\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], None)
+    assert report.arithmetic_asked == []
+    assert [d.line for d in report.disagreements] == [9, 15, 21]
 
 
 def test_a_grade_or_a_phase_range_beside_a_percentage_is_no_share(tmp_path: Path) -> None:

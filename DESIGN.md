@@ -10802,7 +10802,15 @@ the table its number names (Basile, 2026-11-18, after the scoped check of round 
 where a guess at where a file's legends stood gave one table the next one's legend): "Table
 N" captions the Nth table read, standing before it or after it with no other table and no
 other legend between (round 3 of #703), where the file's legends number its tables 1 to the
-count read, in one form, each once; else no legend captions any. Legends are read on the
+count read, in one form, each once. Where they do not, a legend directly above a table,
+the last paragraph before it with no table between, captions that table, and only that
+table: one with a paragraph between it and its table captions nothing, and so does a legend
+below a table unless it stands directly above the next table, which it then captions (Known
+gaps) (Basile, 2026-11-21, "Adjacent fallback", `adjacent_captions`). Where the
+numbering holds, the fallback is never read. "Nationally representative" says a table's
+shares are weighted as "weighted" does, in the same places and under the same rule against a
+word before it in its clause (Basile, 2026-11-21, "Caption wording"); a sentence of the
+Methods still lets off no table. Legends are read on the
 masked text with every line break of the text kept (`audit._legend_mask`), so a comment of
 several lines leaves them on their lines, and "(" after "Table N" opens a legend only as
 "(continued". pandoc's own caption syntax, "Table: ...", is its
@@ -10816,8 +10824,10 @@ counted in `--json` as `asked_p_adjusted` and `asked_share_weighted`, and make t
 Arithmetic's tile say "N QUESTIONS" where it has nothing else to say. In the corpus run on
 0223ca005 seven P values became questions, six of docx-sport-A3 ("Bonferroni corrections
 were applied where necessary") and one of docx-psych-A3 (the false discovery rate), the
-latter in `check` too; no share did, since docx-psych-B2's weighted supplementary tables say
-so only in its Methods (Known gaps).
+latter in `check` too; no share did, since docx-psych-B2's weighted supplementary tables
+were captioned by legends that do not number them ("Table S1a", "Table S1b", ...), and their
+words were none of the list. The two decisions of 2026-11-21 were made for those 31 shares,
+each judged false on the corpus.
 
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
@@ -17026,24 +17036,47 @@ been sorted yet.
   "Note", "Abbreviations" or a footnote's mark and is no table's caption; in LaTeX, the
   float's text outside the table) or, for one column alone, the header over it, must hold
   words of the closed list with no word such as "before", "prior" or "unweighted" before
-  them in their clause (round 1 of #703). A sentence elsewhere, "Descriptive statistics were
-  weighted to be nationally representative", names no table by an exact rule, so it lets
-  off none, and docx-psych-B2's 31 supplementary shares off their column's n stay findings
-  though its Methods says they are weighted. Words outside the list ("%, weighted"), a note
-  that opens on no mark, and a .docx's paragraph before a table that is no legend say
-  nothing. A legend captions the table its number names, before it or after it with no
-  table between, and only where the file's legends number its tables 1 to the count read,
-  in one form, each once (`auditing.adjusted.numbered_captions`). `check` holds
-  no share to a denominator, so there is nothing to let off there.
+  them in their clause (round 1 of #703). A sentence elsewhere, such as a Methods sentence
+  saying the statistics were weighted, names no table by an exact rule, so it lets off none.
+  Words outside the list ("%, weighted"), a note that opens on no mark, and a .docx's
+  paragraph before a table that is no legend say nothing. A legend captions the table its
+  number names, before it or after it with no table between, where the file's legends
+  number its tables 1 to the count read, in one form, each once
+  (`auditing.adjusted.numbered_captions`); else the table directly under it
+  (`adjacent_captions`). `check` holds no share to a denominator, so there is nothing to
+  let off there.
   Pinned by
   `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`
   and `tests/test_adjusted_weighted.py::test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note`.
   - A file whose legends do not number its tables (a table given as a picture, a "Table 2
-    (continued)", a "Table S1" beside a "Table 1") lets off no table by its caption, so a
-    weighted table's shares are findings there, as on main. Where they do, a legend that
-    cannot reach the table its number names, another table or another legend between them,
-    captions nothing, and the file's other legends caption their tables still. Pinned by
-    `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_none`.
+    (continued)", a "Table S1" beside a "Table 1", "Table S1a" beside "Table S1b") has a
+    table captioned only by the legend directly above it, with no paragraph between (Basile,
+    2026-11-21, "Adjacent fallback"): a weighted legend below a table, or over a subtitle,
+    lets off nothing there, unless it stands directly above the next table (the point
+    below), and a table whose legend is typed in its own first row has none. Where the
+    legends do number the tables, a legend that cannot reach the table its number names,
+    another table or another legend between them, captions nothing, though it stands right
+    above a table, and the file's other legends caption their tables still.
+    Pinned by
+    `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_the_table_under_them`
+    and `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing`.
+  - Where legends stand below their tables and do not number them, a legend below one table
+    and directly above the next is read as the next table's caption: the first table's
+    weighted shares stay findings, and the next table's are asked about on the first's
+    words. Pinned by
+    `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_below_a_table_captions_the_next`.
+  - In a .docx whose legends do not number its tables, a picture's paragraph has no text,
+    so a legend over a table given as a picture, then a read table with no legend of its
+    own above it, captions the read table: its shares are asked about on the picture's
+    words. Accepted. Pinned by
+    `tests/test_adjusted_weighted.py::test_under_the_fallback_a_picture_s_legend_captions_the_table_under_it`.
+  - "Nationally representative" is read as weighted wherever the table's caption, note,
+    row label or header says it, though it may name only how the sample was drawn ("a
+    nationally representative sample") over crude shares, and a word after it that says the
+    shares are unweighted ("nationally representative sample; unweighted n") does not undo
+    it: such a table's shares off their n are asked about rather than found. A word before
+    it in its clause ("not", "before", "unweighted") does, and so does "non-" glued to it.
+    Accepted.
   - A comment of several lines inside a legend's paragraph ends the legend where the
     comment opens, since legends are read with each line of the file kept, though pandoc
     reads the paragraph whole. "Table 1. Baseline characteristics," over a comment, then

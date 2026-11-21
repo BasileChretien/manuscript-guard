@@ -19125,6 +19125,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   Results`. Accepted.
 - **Hooks.** An `attested.yaml` that cannot be read gives no prompt, and an Edit whose
   `old_string` uses curly quotes may pass unasked (not confirmed live).
+  Pinned by `tests/test_hooks.py::test_an_unreadable_or_curly_quoted_attester_is_not_asked`.
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
   seen); an empty lockfile's digest has not been compared between R and Python, nor R's
   `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
@@ -20017,6 +20018,9 @@ Open, recorded as each change landed:
   matcher is part of what a user trusted (`hook_hash` in
   `codex-rs/hooks/src/engine/discovery.rs`, read 2026-10-02), so after this change of
   matcher the guard is skipped there until the user reviews it again with `/hooks`.
+  Pinned by `tests/test_plugin.py::test_the_submission_guard_is_registered_for_every_tool_that_runs_a_shell_command`,
+  `tests/test_hooks.py::test_a_file_named_for_an_mri_is_not_a_request_to_a_server` and
+  `tests/test_hooks.py::test_what_the_markers_miss_and_mistake_in_powershell`.
 - **A submission build that names no stage is one the submission guard does not hold.**
   `--stage submission` gives the same verdict as `--submission`. After `check` it is no
   marker, which is why a refusal can name `check --stage submission`; after `build` it is
@@ -20030,15 +20034,19 @@ Open, recorded as each change landed:
   - A project that declares `stage: submission` in `paper.yaml`: there `build
     --skip-checks` is an unchecked submission build, and the command holds no word for
     a marker to match. So is a stage held in a variable, `--stage $STAGE`.
+    Pinned by `tests/test_hooks.py::test_a_stage_in_paper_yaml_or_a_variable_is_not_held`.
   - A `;`, `&` or `|` ends the command for the guard inside quotes too: `manuscript-guard
     build "R&D/paper" --stage submission --skip-checks` goes through.
+    Pinned by `tests/test_hooks.py::test_a_quoted_separator_ends_the_build_for_the_guard`.
   - The guard does not know which shell runs the command. It reads on past the end of a
     line that ends in `\` or a backtick, which is how bash and PowerShell continue
     one, so a PowerShell line that ends in a folder's backslash is read with the next,
     and a stage on that next line is taken for the build's unless an invocation stands
     before it.
+    Pinned by `tests/test_hooks.py::test_a_folder_s_last_backslash_continues_the_line`.
   - A stage that is only mentioned on a build's line is read as the build's: `build
     --offline  # not --stage submission yet` is refused in a project that fails.
+    Pinned by `tests/test_hooks.py::test_a_stage_in_a_comment_is_taken_for_the_build_s`.
   - The reading stops at a name of the command followed by white space and a letter,
     which a path in quotes can hold: `mguard build "mguard papers/p1" --stage submission
     --skip-checks` goes through.
@@ -20583,7 +20591,8 @@ Open, recorded as each change landed:
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
-  it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
+  it, but G11 reads bytes for the digest and reports "PermissionError" on Windows
+  ("IsADirectoryError" elsewhere), and `review` ends
   in a traceback on it, as before, with or without the dry run of a panel. (A results
   fragment with the mark of UTF-8 in front is read now: see "Closed since".) Two more are of
   the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
@@ -20594,6 +20603,9 @@ Open, recorded as each change landed:
   exits 2 until the entry is put right, and G1 reports the edit after that. And the note
   after an edit says nothing in such a project, where it named the unbound number. Both
   were known when #134 merged, and neither is closed.
+  Pinned by `tests/test_hooks.py::test_a_gate_s_own_file_keeps_the_older_wording`,
+  `tests/test_hooks.py::test_a_folder_named_like_a_source_fails_g11_and_review`
+  and `tests/test_hooks.py::test_a_paths_entry_in_the_wrong_shape_blinds_the_hooks`.
 - **Where the hooks run, an agent cannot run `check --submission` in a project that fails
   it.** The submission guard matches `--submission` anywhere in a shell command, so it holds
   `manuscript-guard check --submission`, `review --submission` and `respond --submission` to
@@ -20653,6 +20665,9 @@ Open, recorded as each change landed:
     `Copy-Item .\example\ sent/submission -Recurse`: a backslash and a space are read as a
     space in a name. Without the backslash at the end it is found, on Windows. These go
     through as before.
+    Pinned by `tests/test_hooks.py::test_a_project_the_command_does_not_spell_out_is_not_found`,
+    `tests/test_hooks.py::test_more_that_is_not_spelt_out_is_not_found`
+    and `tests/test_hooks.py::test_a_powershell_path_with_no_last_backslash_is_found`.
   - *Not looked at, or looked at in the wrong place.* A folder on another machine written
     `//host/share/...` is not looked at: asking whether it exists waits for the host, and
     the hook fires on a shell command. The same share under a drive letter is looked at,
@@ -20667,6 +20682,8 @@ Open, recorded as each change landed:
     submit` is refused for the first, though `second` passes and is the one sent. And a
     copy out of a second project that fails, `cp ../second/notes.docx .`, is refused for
     that one, as the same copy is from the folder above.
+    Pinned by `tests/test_hooks.py::test_a_failing_project_is_held_for_a_passing_one_sent`
+    and `tests/test_hooks.py::test_inside_a_project_a_second_one_the_command_names_is_held_too`.
   - *A message that is not git's, or not in quotes, is read as a command.* Until
     2026-10-08 so was git's: `git add paper/manuscript/main.md && git commit -m "copy-edit
     the abstract before submission"` was refused in a project that fails, from inside it
@@ -20696,6 +20713,7 @@ Open, recorded as each change landed:
       `.docx` after it, on one line and within 120 characters, reads as a submission as
       it did before.
     Found in the review of #137.
+    Pinned by `tests/test_hooks.py::test_a_message_not_blanked_is_read_as_a_command`.
   - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
     `git push origin paper  # submission` from the folder above is held to it, though the
     word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
@@ -20720,6 +20738,13 @@ Open, recorded as each change landed:
     submission.zip` is one shell's word and names nothing.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
+    Pinned by `tests/test_hooks.py::test_a_word_that_is_the_folders_name_is_taken_for_the_folder`,
+    `tests/test_hooks.py::test_a_word_ending_in_the_folder_s_name_is_the_folder`,
+    `tests/test_hooks.py::test_on_windows_a_word_the_system_reads_so_is_the_folder`,
+    `tests/test_hooks.py::test_a_name_that_is_the_folders_and_an_escaped_bracket_is_not_the_folder`,
+    `tests/test_hooks.py::test_a_folder_that_begins_with_a_character_a_shell_escapes_is_not_told_apart`,
+    `tests/test_hooks.py::test_each_shell_escape_in_front_of_a_folder_loses_it`
+    and `tests/test_hooks.py::test_a_list_or_subfolder_closed_by_backslash_names_nothing`.
   - *The check a refusal names can be refused in two shapes.* Written with the folder last
     it is let through whatever the folders are called, unless the path itself reads as a
     submission, a verb and then the word: `copy/my submission/paper`. And an agent that
@@ -20728,8 +20753,12 @@ Open, recorded as each change landed:
     and is refused, where it used to go through unchecked. The folder is written in double
     quotes, where a shell expands `$`: for a project in `big$money/` the check named finds
     no project.
+    Pinned by `tests/test_hooks.py::test_the_check_a_refusal_names_passes_whatever_the_folders_are_called`,
+    `tests/test_hooks.py::test_a_path_that_reads_as_a_submission_by_itself_is_refused_again`
+    and `tests/test_hooks.py::test_the_check_named_quotes_the_folder_in_double_quotes`.
   - *The session start says nothing from the folder above*, in a project that fails or in
     one that cannot be read.
+    Pinned by `tests/test_hooks.py::test_the_session_start_is_silent_from_the_folder_above`.
   - *A long command costs a look on disk for each different word.* 2000 of them took 1.3 s
     and 20,000 took 12 s on a busy machine. It is paid only by a submission-shaped command
     sent from a folder with no project, such as a long script written into a file through
@@ -20738,6 +20767,8 @@ Open, recorded as each change landed:
     example push` is not submission-shaped: `git push` is matched as two words side by
     side. And a `.docx` more than 120 characters after its verb is not matched, which a
     whole path can exceed.
+    Pinned by `tests/test_hooks.py::test_git_told_where_to_push_from_is_not_a_command_the_markers_know`
+    and `tests/test_hooks.py::test_a_document_past_120_characters_is_not_matched`.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -20849,6 +20880,9 @@ Open, recorded as each change landed:
   ("the LibreOffice plugin"). Where a skill describes
   a hook it says "where the hooks run", since an agent tool may have none. Read under Claude
   Code only so far: no skill has been followed in a session of another tool.
+  Pinned by `tests/test_plugin.py::test_the_wording_check_catches_what_only_one_agent_tool_understands`,
+  `tests/test_plugin.py::test_the_wording_check_passes_what_is_true_under_any_agent_tool`
+  and `tests/test_plugin.py::test_the_wording_check_errs_both_ways_by_spelling`.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a
@@ -20883,6 +20917,9 @@ Open, recorded as each change landed:
   and exits 1; `--project` copies into the project, where nothing else is. A Codex user who
   installs the plugin and also has a copy has every skill in two places Codex reads; what
   Codex then shows was not watched.
+  Pinned by `tests/test_skillcopy.py::test_a_folder_of_the_same_name_that_is_someone_elses_is_left`,
+  `tests/test_skillcopy.py::test_the_command_fails_and_names_what_it_left`
+  and `tests/test_skillcopy.py::test_the_command_copies_into_a_project`.
 - **Gemini CLI, Mistral Vibe and Kimi Code CLI get the skills and no hooks.** Each has a hook
   system of its own, with other event names and another way to refuse (read from their
   documentation on 2026-10-02), and none is wired here. Under those tools nothing is caught
@@ -26532,6 +26569,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   that renames the key the `doi:` line stands under, into `package`, changes no such line, and
   moves a DOI under `package` unasked (round 1 of #467, finding 11). Contrived, and G4 then
   holds the DOI to a published release's receipt where there is one.
+  Pinned by `tests/test_hooks.py::test_a_patch_renaming_the_key_above_a_doi_asks_nothing`.
 
 - **A later version's DOI is not a receipt's.** A Zenodo record's new version, made on its
   page, has a DOI of its own, which no receipt records; `package.doi` set to it fails
@@ -26605,6 +26643,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   long paper; there is no cache, by choice (see "`next` says what to do now"). Accepted.
 - **`next` shows no co-author checker for a LaTeX manuscript**, nor offers a page or the
   proof check, since neither command reads LaTeX yet.
+  Pinned by `tests/test_guide.py::test_latex_shows_no_round_of_checks_nor_page_nor_proof`
+  and `tests/test_guide.py::test_the_optional_steps_are_those_the_tool_has`.
 - **The journals offered are only those the project knows.** `set target_journal` takes a
   journal with a stored profile or a shortlist candidate's `profile`; another one is offered
   as a profile to start, and how current the offer is depends on the shortlist and the
@@ -26621,27 +26661,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
   codes read elsewhere, a whole f-string) is seen only where a gate reports it on the
   fixtures the test runs, and otherwise goes to its gate's skill with `check`. Accepted.
 - **Tier 10 lists only the commands there are.** Depositing the package and communicating
-  the paper join it as their commands are added, and the co-author checker's fields in
-  `next --json` are those `checker status` reports now.
+  the paper are not among its steps, though `deposit` and `communicate` are commands now,
+  and the co-author checker's fields in `next --json` are those `checker status` reports
+  now. Pinned by `tests/test_guide.py::test_tier_10_offers_no_deposit_and_no_communication`.
 - **`next` quotes a command for `cmd.exe`, not PowerShell, and leaves `%` as it is.** A word
   holding a space or one of `& | < > ^ ( )` is put in double quotes, but `cmd.exe` still
   expands `%NAME%` inside them, so a path holding two `%` can be shown as another path. A
   word holding `"` beside one of those is refused, and only `argv` is said. In PowerShell a
   bare word holding `,` is an array and one starting with `@` splats, and the command shown
   is not written for it. `argv` is what an agent runs, and is right on both.
+  Pinned by `tests/test_guide.py::test_a_word_cmd_exe_would_split_is_quoted_and_one_it_cannot_take_is_refused`
+  and `tests/test_guide.py::test_a_command_is_shown_for_cmd_exe_not_powershell`.
 - **A G15 warning only a sign-off closes is offered as `models`.** `model-few-events` is
   closed by the statistician's `manuscript-guard sign`, and `next` sends it to methods-writer
   with `models`, the agent's; `sign` is never offered, since the person who signs is the
   statistician the hint names and not an option `next` can fill.
+  Pinned by `tests/test_guide.py::test_a_sign_off_warning_is_offered_models_never_sign`.
 - **`binding-in-table` is routed to `bind`, which cannot touch emitted text.** It sits in
   `guide/routes.py`'s group of codes put right by binding the prose, though a binding left
   in a caption, header or cell is put right in the script that emitted it, and the comment
   beside the groups sends such codes to `check` (round 1 of #557, finding 1). So `next`
   offers `bind` for it, which changes the manuscript and not the fragment. Closed by moving
   the code to the group routed to `check`.
+  Pinned by `tests/test_guide.py::test_a_binding_in_a_table_is_sent_to_bind_not_check`.
 - **One person-only warning makes its skill's group the author's.** Warnings go one action
   to a skill, so a person-only code among them (an attestation that is thin, say) makes
   every warning of that skill `who: author`, those an agent may put right among them.
+  Pinned by `tests/test_guide.py::test_one_person_only_warning_makes_its_group_the_authors`.
 
 - **That the guide asks before it runs is the skill's guidance, not a check.** The skill
   and `AGENTS.md` tell an agent to show a command, to put a choice to the author and to wait
@@ -26685,6 +26731,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   at submission the status line names it at every session start, after the last round as
   before the first. It is `next`'s rule, which offers the optional steps without asking what
   is already done, and not the status line's.
+  Pinned by `tests/test_guide.py::test_at_submission_the_panel_comes_first_after_any_round`.
 
 - **That a script writes the output it is declared to is declared, until `verify` runs
   it.** `harvest` runs nothing; `harvest-declared` says so at every stage, and only a run of

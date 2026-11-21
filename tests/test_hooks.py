@@ -579,6 +579,65 @@ def test_a_file_named_for_an_mri_is_not_a_request_to_a_server(
     assert run("guard-submission", event, capsys) is None
 
 
+#: The words that hold the verb before the document: `-From`, `-To`, `-Subject` and `-Body`
+#: written out fill the 120 characters the markers read after the verb.
+_MAIL_WRITTEN_OUT = (
+    "Send-MailMessage -From author@university.example -To editor@journal.example "
+    "-Subject 'Our manuscript for the journal' -Body 'Please find it attached, with thanks' "
+)
+
+#: What the submission guard lets through in PowerShell, in a project that fails: an alias
+#: it leaves out, a .NET call, a pipeline that names the document first, a path put in a
+#: variable, a command continued before the path, and a verb whose arguments fill the 120
+#: characters.
+NOT_HELD_IN_POWERSHELL = [
+    "cpi build" + chr(92) + "manuscript.docx D:" + chr(92) + "out",
+    "mi build" + chr(92) + "manuscript.docx D:" + chr(92) + "out",
+    "irm https://journal.example/upload -Method Post -InFile build" + chr(92) + "manuscript.docx",
+    "[IO.Compression.ZipFile]::CreateFromDirectory('build', 'D:" + chr(92) + "submission.zip')",
+    "Get-ChildItem build" + chr(92) + "*.docx | Copy-Item -Destination D:" + chr(92) + "out",
+    "$doc = 'build" + chr(92) + "manuscript.docx'; Copy-Item $doc D:" + chr(92) + "out",
+    "Copy-Item `\n  build" + chr(92) + "manuscript.docx D:" + chr(92) + "out",
+    _MAIL_WRITTEN_OUT + "-Attachments build" + chr(92) + "manuscript.docx",
+]
+
+#: And what it refuses there that sends nothing: a journal's template saved as a `.docx`, a
+#: folder whose name has the word in it, a journal's guidelines page, and the commands seen
+#: refused live, the same text echoed under each tool. With the other side of the 120
+#: characters: the same mail with its arguments left out.
+FALSE_ALARMS_IN_EITHER_SHELL = [
+    ("PowerShell", "Invoke-WebRequest https://journal.example/template.docx "
+                   "-OutFile template.docx"),
+    ("Bash", "curl -o template.docx https://journal.example/template.docx"),
+    ("PowerShell", "robocopy D:" + chr(92) + "submission-drafts D:" + chr(92) + "backup /E"),
+    ("PowerShell", "iwr https://journal.example/submission-guidelines -OutFile guidelines.html"),
+    ("PowerShell", "Write-Output 'Copy-Item build" + chr(92) + "manuscript.docx elsewhere'"),
+    ("Bash", "echo 'cp build/manuscript.docx elsewhere'"),
+    ("PowerShell", "Send-MailMessage -To editor@journal.example -Attachments build"
+                   + chr(92) + "manuscript.docx"),
+]  # fmt: skip
+
+
+def test_what_the_markers_miss_and_mistake_in_powershell(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The submission guard sees a command only through
+    the tools it is registered for, and only the verbs it knows"): the document has to be
+    named after a verb the guard knows, on its line and within 120 characters of it, and a
+    verb before a document that is sent nowhere is refused all the same."""
+    shutil.rmtree(project / "review")
+    for command in NOT_HELD_IN_POWERSHELL:
+        event = {"tool_name": "PowerShell", "tool_input": {"command": command},
+                 "cwd": str(project)}  # fmt: skip
+        assert SUBMISSION_MARKERS.search(command) is None, command
+        assert run("guard-submission", event, capsys) is None, command
+    for tool, command in FALSE_ALARMS_IN_EITHER_SHELL:
+        event = {"tool_name": tool, "tool_input": {"command": command}, "cwd": str(project)}
+        result = run("guard-submission", event, capsys)
+        assert decision(result) == "deny", command
+        assert "submission check" in reason(result), command
+
+
 @pytest.mark.parametrize("tool", ["Bash", "PowerShell", "Monitor"])
 def test_a_failing_submission_is_held_whichever_tool_runs_the_command(
     tool: str, project: Path, capsys
@@ -713,6 +772,77 @@ def test_a_quoted_path_named_for_the_command_hides_the_stage_after_it(
         event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
         assert SUBMISSION_MARKERS.search(command) is None, command
         assert run("guard-submission", event, capsys) is None, command
+
+
+def _decided(project: Path, command: str, capsys, tool: str = "Bash") -> str | None:
+    """What the submission guard decides of `command`, sent from the project's folder."""
+    event = {"tool_name": tool, "tool_input": {"command": command}, "cwd": str(project)}
+    return decision(run("guard-submission", event, capsys))
+
+
+def test_a_stage_in_paper_yaml_or_a_variable_is_not_held(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A submission build that names no stage is one the
+    submission guard does not hold."): in a project that declares `stage: submission` and
+    fails, `build --skip-checks` and `--stage $STAGE` are unchecked submission builds that
+    go through."""
+    _without_a_review(project)
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    paper.write_text(text.replace("schema: manuscript-guard/paper/1\n",
+                                  "schema: manuscript-guard/paper/1\nstage: submission\n", 1),
+                     encoding="utf-8")  # fmt: skip
+    for command in ("manuscript-guard build --skip-checks",
+                    "manuscript-guard build --stage $STAGE --skip-checks"):  # fmt: skip
+        assert _decided(project, command, capsys) is None, command
+    # The other side: the stage written out is refused.
+    assert _decided(project, "manuscript-guard build --stage submission --skip-checks",
+                    capsys) == "deny"  # fmt: skip
+
+
+def test_a_quoted_separator_ends_the_build_for_the_guard(project: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A submission build that names no stage is one the
+    submission guard does not hold."): a `;`, `&` or `|` inside quotes ends the command
+    before its stage, as one outside them does."""
+    _without_a_review(project)
+    for separator in (";", "&", "|"):
+        command = f'manuscript-guard build "R{separator}D/paper" --stage submission --skip-checks'
+        assert _decided(project, command, capsys) is None, command
+    # The other side: the same folder with no separator in its name.
+    assert _decided(project, 'manuscript-guard build "RD/paper" --stage submission '
+                    "--skip-checks", capsys) == "deny"  # fmt: skip
+
+
+def test_a_folder_s_last_backslash_continues_the_line(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A submission build that names no stage is one the
+    submission guard does not hold."): the guard reads on past a line that ends in a
+    backslash, as bash continues one, so a PowerShell build whose last word is a folder
+    takes the stage that the next line only mentions."""
+    _without_a_review(project)
+    after = "\nWrite-Output '--stage submission'"
+    command = "manuscript-guard build --offline ." + chr(92) + after
+    assert _decided(project, command, capsys, "PowerShell") == "deny"
+    # The other side: the same two lines with no backslash at the end of the first, and with
+    # an invocation before the stage on the second.
+    assert _decided(project, "manuscript-guard build --offline ." + after, capsys,
+                    "PowerShell") is None  # fmt: skip
+    assert _decided(project, "manuscript-guard build --offline ." + chr(92)
+                    + "\nmanuscript-guard check --stage submission", capsys,
+                    "PowerShell") is None  # fmt: skip
+
+
+def test_a_stage_in_a_comment_is_taken_for_the_build_s(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A submission build that names no stage is one the
+    submission guard does not hold."): a false alarm, a stage in a comment after a build."""
+    _without_a_review(project)
+    command = "manuscript-guard build --offline  # not --stage submission yet"
+    assert _decided(project, command, capsys) == "deny"
+    assert _decided(project, "manuscript-guard build --offline", capsys) is None
 
 
 def test_a_line_that_names_the_command_often_is_read_in_linear_time(assert_linear) -> None:
@@ -1549,6 +1679,31 @@ def test_an_edit_of_the_package_doi_is_put_to_the_author(in_claude_code: Path, c
     assert decision(run("guard-write", payload, capsys)) == "deny"
 
 
+def test_a_patch_renaming_the_key_above_a_doi_asks_nothing(
+    in_claude_code: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A patch that renames a key above an unchanged
+    `doi:` line is not put to the person"): a patch is read by the lines it removes and adds,
+    and neither names `doi:`, so the DOI moves under `package` unasked."""
+    path = in_claude_code / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    moved = text.replace("package:\n", "archive:\n  doi: 10.5281/zenodo.42\n", 1)
+    assert moved != text
+    path.write_text(moved, encoding="utf-8")
+    renamed = patch_of("*** Update File: paper.yaml", "@@", "-archive:", "+package:")
+    assert run("guard-write", codex_edit(in_claude_code, renamed), capsys) is None
+    # The other side: a patch whose lines name `doi:` is refused, and the same rename as an
+    # Edit, read whole, is asked.
+    retyped = patch_of("*** Update File: paper.yaml", "@@", "-  doi: 10.5281/zenodo.42",
+                       "+  doi: 10.5281/zenodo.43")  # fmt: skip
+    assert decision(run("guard-write", codex_edit(in_claude_code, retyped), capsys)) == "deny"
+    edit = _writes(in_claude_code, "Edit", file_path=str(path), old_string="archive:",
+                   new_string="package:")  # fmt: skip
+    result = run("guard-write", edit, capsys)
+    assert decision(result) == "ask"
+    assert "package.doi (not set to 10.5281/zenodo.42)" in reason(result)
+
+
 def test_naming_an_attester_is_put_to_the_author(in_claude_code: Path, capsys) -> None:
     path = _attested(in_claude_code)
     content = path.read_text(encoding="utf-8").replace('"Ada Example"', '"Bo Example"')
@@ -1595,6 +1750,40 @@ def test_an_attester_named_in_a_codex_patch_is_refused(project: Path, capsys) ->
     result = run("guard-write", codex_edit(project, patch), capsys)
     assert decision(result) == "deny"
     assert "Bo Example" in reason(result) and "makes it themselves" in reason(result)
+
+
+def test_an_unreadable_or_curly_quoted_attester_is_not_asked(
+    in_claude_code: Path, monkeypatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Hooks."): an `attested.yaml` that cannot be read
+    gives no prompt, and an Edit whose `old_string` is the name in curly quotes, which is not
+    in the file, is read as two stretches that name no attester, and is not asked."""
+    path = _attested(in_claude_code)
+    content = path.read_text(encoding="utf-8").replace('"Ada Example"', '"Bo Example"')
+    write = _writes(in_claude_code, file_path=str(path), content=content)
+    assert decision(run("guard-write", write, capsys)) == "ask", "readable, it is asked"
+    reading = Path.read_text
+
+    def refused(self: Path, *args, **kwargs) -> str:
+        if self.name == "attested.yaml":
+            raise PermissionError(13, "Permission denied", str(self))
+        return reading(self, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "read_text", refused)
+        assert run("guard-write", write, capsys) is None
+
+    left, right = chr(0x201C), chr(0x201D)
+
+    def renamed(quote: str, end: str) -> dict:
+        return _writes(in_claude_code, "Edit", file_path=str(path),
+                       old_string=f"{quote}Ada Example{end}",
+                       new_string=f"{quote}Bo Example{end}")  # fmt: skip
+
+    assert run("guard-write", renamed(left, right), capsys) is None
+    # The other side of the same rule: in the quotes the file holds, the edit is applied to
+    # the file as it is, and the name it changes is asked.
+    assert decision(run("guard-write", renamed('"', '"'), capsys)) == "ask"
 
 
 def _passages(project: Path) -> Path:
@@ -2617,6 +2806,59 @@ def test_a_manuscript_file_that_is_not_utf8_is_a_failing_check_that_names_it(
     assert "1 failing" in context(run_installed("session-start", as_sent(started), {}))
 
 
+def _gate_errors(project: Path) -> dict[str, str]:
+    """The message of each `gate-errored` finding a check of the project gives, by gate."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _stage, _deferred = _run_gates(project)
+    return {f.gate: f.message for f in report.findings if f.code == "gate-errored"}
+
+
+def test_a_gate_s_own_file_keeps_the_older_wording(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The submission guard said nothing about a project
+    it could not read."): a figure's `.guard.yaml` and `methods.lock` not in UTF-8 are a
+    `gate-errored` finding worded as a fault of the tool, with the class name in front, where
+    a review record in UTF-16 is said in the project's sentence that names it. The 2026-11-09
+    triage planned a fix (F16), which will change this test."""
+    figure = project / "figures" / "forest.guard.yaml"
+    lock = project / "methods.lock"
+    review = project / "review" / "panel-1.yaml"
+    for path in (figure, lock, review):
+        path.write_bytes(path.read_text(encoding="utf-8").encode("utf-16"))
+    said = _gate_errors(project)
+    older = "could not run: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff"
+    assert said["G3"].startswith(f"G3 {older}"), said["G3"]
+    assert said["G9"].startswith(f"G9 {older}"), said["G9"]
+    # The other side: a review record, which the reader of the project's files reads.
+    assert "UnicodeDecodeError" not in said["G11"] and "panel-1.yaml" in said["G11"], said
+
+
+def test_a_folder_named_like_a_source_fails_g11_and_review(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The submission guard said nothing about a project
+    it could not read."): a folder `manuscript/notes.md` is named by the gates that read text,
+    and G11, which reads bytes for the digest, reports the error the system raises; `review`
+    ends on it in that error, with or without the dry run of a panel. The 2026-11-09 triage
+    planned a fix (F16), which will change this test."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.cli import main as cli
+
+    (project / "manuscript" / "notes.md").mkdir()
+    findings = _run_gates(project, stage="submission")[0].findings
+    unreadable = [f for f in findings if f.code == "manuscript-unreadable"]
+    assert [Path(f.path).name for f in unreadable] == ["notes.md"]
+    raised = PermissionError if sys.platform == "win32" else IsADirectoryError
+    (g11,) = [f for f in findings if f.code == "gate-errored" and f.gate == "G11"]
+    assert g11.message.startswith(f"G11 could not run: {raised.__name__}:"), g11.message
+    _with_models(project)
+    shutil.rmtree(project / "review")
+    for argv in (["review", str(project)], ["review", str(project), "--run", "--dry-run"]):
+        with pytest.raises(raised):
+            cli(argv)
+    capsys.readouterr()
+
+
 def test_a_pattern_the_compiler_refuses_is_a_failing_check_and_not_silence(
     project: Path,
 ) -> None:
@@ -2700,6 +2942,45 @@ def test_a_results_file_is_still_guarded_in_a_project_that_cannot_be_read(
     result = run("guard-write", edit, capsys)
     assert decision(result) == "deny"
     assert "results/x.json is generated, not written" in reason(result)
+
+
+def test_a_paths_entry_in_the_wrong_shape_blinds_the_hooks(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The submission guard said nothing about a project
+    it could not read."): with `results: output` beside a `figures:` left empty, `check`
+    exits 2, the write guard keeps to the usual names and lets an edit under `output/`
+    through, and the note after an edit says nothing of an unbound number. The 2026-11-09
+    triage planned a fix (F16), which will change this test."""
+    from manuscript_guard.cli import main as cli
+
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text(encoding="utf-8") + "\nWe saw 4321 reports.\n",
+                       encoding="utf-8")  # fmt: skip
+    edited = {"tool_name": "Edit", "cwd": str(project),
+              "tool_input": {"file_path": str(main_md), "old_string": "x",
+                             "new_string": "We saw 4321 reports."}}  # fmt: skip
+    # The other side: in the project as it was, the note names the number.
+    assert "'4321'" in context(run("after-edit", edited, capsys))
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "schema: manuscript-guard/paper/1\n",
+        "schema: manuscript-guard/paper/1\npaths:\n  results: output\n  figures:\n", 1),
+        encoding="utf-8")  # fmt: skip
+    (project / "results").rename(project / "output")
+    assert cli(["check", str(project)]) == 2
+    assert "`paths.figures` holds nothing" in capsys.readouterr().err
+
+    def written(relative: str) -> dict | None:
+        target = project / relative / "x.json"
+        event = {"tool_name": "Write", "cwd": str(project),
+                 "tool_input": {"file_path": str(target), "content": "{}"}}  # fmt: skip
+        return run("guard-write", event, capsys)
+
+    assert written("output") is None
+    assert "results/x.json is generated, not written" in reason(written("results"))
+    assert run("after-edit", edited, capsys) is None
 
 
 def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(
@@ -2804,6 +3085,23 @@ def test_a_named_project_that_passes_is_not_refused(command: str, project: Path,
     assert sent(command, project.parent, capsys) is None
 
 
+@pytest.mark.parametrize("spoilt", ["failing", "unreadable"])
+def test_the_session_start_is_silent_from_the_folder_above(
+    spoilt: str, project: Path, monkeypatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): from the folder above a project
+    that fails, or one that cannot be read, the session start says nothing."""
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)  # no notice of the plugin either
+    _without_a_review(project)
+    if spoilt == "unreadable":
+        (project / "results" / "hand.json").write_bytes(b"")
+    assert run("session-start", {"cwd": str(project.parent)}, capsys) is None
+    # The other side: from the project's own folder it says where the paper stands.
+    said = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert said.startswith(f"manuscript-guard: {project.name} "), said
+
+
 NAMING_NONE = [
     "cp notes.docx /backup",
     "manuscript-guard submit",
@@ -2859,6 +3157,53 @@ def test_a_project_the_command_does_not_spell_out_is_not_found(
     assert sent(command, above, capsys) is None, command
 
 
+#: More of what is not spelt out, each beside a command that spells the same path out and is
+#: held: an option with its value joined on, and three ways curl names a file.
+NOT_SPELT_OUT_BESIDE_SPELT_OUT = [
+    ("Copy-Item -Path:paper/build/manuscript.docx sent",
+     "Copy-Item -Path paper/build/manuscript.docx sent"),
+    ("curl -F 'file=@\"paper/build/manuscript.docx\"' https://journal.example/submit",
+     "curl -F 'file=@paper/build/manuscript.docx' https://journal.example/submit"),
+    ('curl -T "{paper/build/manuscript.docx,paper/build/supplementary.docx}" '
+     "https://journal.example/submission",
+     "curl -T paper/build/manuscript.docx https://journal.example/submission"),
+    ('curl -F "file=<paper/manuscript/main.md" https://journal.example/submission',
+     'curl -F "file=@paper/manuscript/main.md" https://journal.example/submission'),
+]  # fmt: skip
+
+
+def test_more_that_is_not_spelt_out_is_not_found(above: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): an option with its value joined
+    on, curl's file in quotes inside quotes, in a list in braces or after `<`, a folder
+    partly in quotes, and one with a comma or a brace in its name written without quotes,
+    are not found, and each goes through."""
+    for hidden, spelt in NOT_SPELT_OUT_BESIDE_SPELT_OUT:
+        assert SUBMISSION_MARKERS.search(hidden) and SUBMISSION_MARKERS.search(spelt), hidden
+        assert sent(hidden, above, capsys) is None, hidden
+        assert decision(sent(spelt, above, capsys)) == "deny", spelt
+    for name, unquoted in (("my paper", 'my" "paper'), ("Smith, Jones", "Smith," + SPACE + "Jones"),
+                           ("Smith{1}", "Smith{1}")):  # fmt: skip
+        folder = (above / "paper").rename(above / name)
+        assert sent(f"cd {unquoted} && manuscript-guard submit", above, capsys) is None, name
+        # The other side: the same folder in quotes is found.
+        result = sent(f'cd "{name}" && manuscript-guard submit', above, capsys)
+        assert decision(result) == "deny", name
+        assert f"failing in {name}, which this command names" in reason(result)
+        folder.rename(above / "paper")
+
+
+@ON_WINDOWS
+def test_a_powershell_path_with_no_last_backslash_is_found(above: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): the other side of the backslash
+    and the space read as a space in a name (`NOT_SPELT_OUT`), on Windows."""
+    command = "Copy-Item ." + chr(92) + "paper sent/submission -Recurse"
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny"
+    assert "failing in paper, which this command names" in reason(result)
+
+
 def test_a_word_that_is_the_folders_name_is_taken_for_the_folder(above: Path, capsys) -> None:
     """A known false alarm, held here. The word is a branch, and the guard reads words."""
     result = sent("git push origin paper  # submission", above, capsys)
@@ -2866,6 +3211,74 @@ def test_a_word_that_is_the_folders_name_is_taken_for_the_folder(above: Path, ca
     # A copy into the project is held to it as well, as it always was from inside.
     assert decision(sent("cp docs/edited.docx paper/", above, capsys)) == "deny"
     assert decision(sent("cp ../docs/edited.docx .", above / "paper", capsys)) == "deny"
+
+
+#: A word that ends in the folder's name, where a word ends at `=`, a comma or a brace, and
+#: what follows the last `@` of a word or the last `=` of a quoted one.
+ENDS_IN_THE_FOLDER = [
+    "curl -O https://example.org/dl?f=paper  # submission",
+    "cp a.docx b,paper",
+    "cp a.docx {paper}",
+    'mail -s "submission" editor@paper',
+    'curl -F "x=paper" https://journal.example/submission',
+]
+
+
+@pytest.mark.parametrize("command", ENDS_IN_THE_FOLDER)
+def test_a_word_ending_in_the_folder_s_name_is_the_folder(
+    command: str, above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): a known false alarm, the end of a
+    word read as the folder."""
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny", command
+    assert "failing in paper, which this command names" in reason(result)
+    # The other side: the word whole, which names no folder.
+    assert sent("cp a.docx paperback", above, capsys) is None
+
+
+@ON_WINDOWS
+def test_on_windows_a_word_the_system_reads_so_is_the_folder(
+    above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): Windows ignores case and drops a
+    dot at the end of a name, and a word ends at a bracket, escaped or not, so each of these
+    names `paper/`. With a space before the bracket the name is read whole, unless the line
+    is continued straight after the folder's name; in quotes it names nothing."""
+    escaped = chr(92)
+    for command in ("git push origin Paper  # submission", "git push origin paper.  # submission",
+                    f"cp paper{escaped}(1{escaped}).docx /backup",
+                    f"cp /backup/a.docx paper{escaped}\n{escaped} {escaped}(1{escaped}).docx"):
+        result = sent(command, above, capsys)
+        assert decision(result) == "deny", command
+        assert "failing in paper, which this command names" in reason(result), command
+    for command in (f"cp paper{escaped} {escaped}(1{escaped}).docx /backup",
+                    f"cp /backup/a.docx paper{escaped} {escaped}(1{escaped}).docx",
+                    'cp "paper(1).docx" /backup'):  # fmt: skip
+        assert sent(command, above, capsys) is None, command
+
+
+@ON_WINDOWS
+def test_a_list_or_subfolder_closed_by_backslash_names_nothing(
+    above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): a subfolder that begins with a
+    character a shell escapes, and folders listed with no space after the comma, each closed
+    by a backslash, are read as a shell's word and name no project."""
+    escaped = chr(92)
+    (above / "paper" / "~old").mkdir()
+    for hidden, found in (
+        (f'Copy-Item paper{escaped}~old{escaped} "D:/sent/submission" -Recurse',
+         f'Copy-Item paper{escaped}old{escaped} "D:/sent/submission" -Recurse'),
+        (f"Compress-Archive -Path paper{escaped},docs{escaped} -DestinationPath submission.zip",
+         f"Compress-Archive -Path paper{escaped}, docs{escaped} -DestinationPath submission.zip"),
+    ):  # fmt: skip
+        assert sent(hidden, above, capsys) is None, hidden
+        # The other side: with no escaped character, or a space after the comma, it is found.
+        assert decision(sent(found, above, capsys)) == "deny", found
 
 
 def test_the_check_a_refusal_names_passes_whatever_the_folders_are_called(
@@ -2905,6 +3318,22 @@ def test_a_path_that_reads_as_a_submission_by_itself_is_refused_again(
     (command,) = _named_commands(reason(result))
     assert decision(sent(command, elsewhere, capsys)) == "deny"
     assert sent(f'{hooks.FULL_CHECK} "paper"', home, capsys) is None
+
+
+def test_the_check_named_quotes_the_folder_in_double_quotes(
+    above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): the folder is written in double
+    quotes, where a shell expands `$`, so for a project in `big$money/` the check named is
+    sent to `big/`, which holds no project."""
+    (above / "paper").rename(above / "big$money")
+    result = sent('manuscript-guard submit "big$money"', above, capsys)
+    assert decision(result) == "deny"
+    (command,) = _named_commands(reason(result))
+    assert command == f'{hooks.FULL_CHECK} "big$money"'
+    # What a shell hands the tool for that word: the folder without the variable's name.
+    assert not (above / "big").exists()
 
 
 #: A long message as an agent writes one, through a heredoc, with a quotation in it.
@@ -3016,6 +3445,42 @@ def test_what_stands_beside_a_message_is_still_read(command: str, above: Path, c
     assert decision(result) == "deny", command
 
 
+#: A message the guard does not blank, each read as a command and refused in a project that
+#: fails: text given any other way, a quote escaped inside, a `git` that is not the first
+#: word or that a quoted separator parts from its option, and what the line goes on to do.
+NOT_BLANKED = {
+    "a title handed to gh": 'gh pr create --title "copy edits before submission" --body x',
+    "an echo": 'echo "copy edits before submission"',
+    "another version control tool": 'hg commit -m "copy edits before submission"',
+    "no quotes": "git commit -m copy-edits-before-submission",
+    "a here-string": "git commit -m @'\ncopy edits before submission\n'@",
+    "written $'...'": "git commit -m $'copy edits before submission'",
+    "after a continued -m": "git commit -m " + chr(92) + '\n  "copy edits before submission"',
+    "a heredoc read by -F -": "git commit -F - <<'EOF'\ncopy edits before submission\nEOF",
+    "a quote escaped inside": 'git commit -m "say ' + chr(92) + '"copy' + chr(92)
+                              + '" before submission"',
+    "a path to git": '/usr/bin/git commit -m "copy edits before submission"',
+    "sudo": 'sudo git commit -m "copy edits before submission"',
+    "a bracket": '(git commit -m "copy edits before submission")',
+    "a quoted &": 'git commit --author="A & B <a@b.example>" -m "copy edits before submission"',
+    "a push after": 'git commit -m "tables" && git push origin submission-v2',
+    "a verb before": 'cp notes.md backup.md && git commit -m "tables" && git tag submission',
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("command", NOT_BLANKED.values(), ids=NOT_BLANKED.keys())
+def test_a_message_not_blanked_is_read_as_a_command(
+    command: str, above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): only the quoted value of `-m` or
+    `--message`, or its heredoc, where `git` is the first word of its command, is blanked."""
+    result = sent(command, above / "paper", capsys)
+    assert decision(result) == "deny", command
+    # The other side: git's own message, in quotes, is blanked and let through.
+    assert sent('git commit -m "copy edits before submission"', above / "paper", capsys) is None
+
+
 def test_a_command_with_many_values_is_read_in_linear_time(assert_linear) -> None:
     """The messages are looked for in every command that holds the letters `git`, a long
     script written through the shell among them. Each value found used to split all that
@@ -3053,6 +3518,22 @@ def test_a_switch_is_not_read_as_a_drive(above: Path) -> None:
 def test_git_told_where_to_push_from_is_not_a_command_the_markers_know() -> None:
     """A limit of the markers and not of the search: `git push` is two words side by side."""
     assert SUBMISSION_MARKERS.search("git -C paper push  # submission") is None
+
+
+def test_a_document_past_120_characters_is_not_matched(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): the markers read 120 characters
+    after a verb for the document, and a longer path goes through."""
+    _without_a_review(project)
+    far = "scp " + "a" * 120 + ".docx host:"
+    near = "scp " + "a" * 119 + ".docx host:"
+    assert SUBMISSION_MARKERS.search(far) is None
+    assert sent(far, project, capsys) is None
+    # The other side: one character nearer, it is matched and refused.
+    assert SUBMISSION_MARKERS.search(near)
+    assert decision(sent(near, project, capsys)) == "deny"
 
 
 def test_the_refusal_names_a_check_that_finds_the_project_from_there(
@@ -3305,6 +3786,26 @@ def test_a_folder_that_begins_with_a_character_a_shell_escapes_is_not_told_apart
         assert decision(sent(found, above, capsys)) == "deny", found
 
 
+@ON_WINDOWS
+@pytest.mark.parametrize("folder", ["!paper", "$paper", "^paper", "]paper", "(old)paper"])
+def test_each_shell_escape_in_front_of_a_folder_loses_it(
+    folder: str, above: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): the rest of the characters named,
+    `!`, `$`, `^` and the closing square bracket, lose the folder before a backslash and a
+    space, and a round bracket ends the word, with no space after the backslash as well."""
+    (above / "paper").rename(above / folder)
+    command = f'Copy-Item .{ESCAPE}{folder}{ESCAPE} "D:/sent/submission" -Recurse'
+    assert sent(command, above, capsys) is None, command
+    inside = f"Copy-Item .{ESCAPE}{folder}{ESCAPE}build{ESCAPE}manuscript.docx sent"
+    if folder.startswith("("):
+        assert sent(inside, above, capsys) is None, inside
+    else:
+        # The other side: with no space after the backslash, the folder is found.
+        assert decision(sent(inside, above, capsys)) == "deny", inside
+
+
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(
     above: Path, tmp_path_factory, capsys
 ) -> None:
@@ -3391,6 +3892,25 @@ def test_inside_a_project_that_fails_a_second_one_that_fails_is_named_beside_it(
     assert "submission check(s) failing in paper:" in said
     assert "failing in second, which this command names" in said
     assert said.index("failing in paper:") < said.index("failing in second,")
+
+
+def test_a_failing_project_is_held_for_a_passing_one_sent(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
+    guard finds only a project the command spells out."): the project the agent's folder is
+    in is held whatever the command submits, so a submission of a second project that
+    passes is refused for the first."""
+    passing = project.parent / "second"
+    shutil.copytree(project, passing)
+    _without_a_review(project)
+
+    result = sent("cd ../second && manuscript-guard submit", project, capsys)
+    assert decision(result) == "deny"
+    assert "submission check(s) failing in paper:" in reason(result)
+    assert "second" not in reason(result)
+    # The other side: the same submission sent from the second project goes through.
+    assert sent("manuscript-guard submit", passing, capsys) is None
 
 
 def test_inside_a_project_a_path_into_that_project_names_no_second_one(

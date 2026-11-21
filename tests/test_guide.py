@@ -339,6 +339,21 @@ def test_a_word_cmd_exe_would_split_is_quoted_and_one_it_cannot_take_is_refused(
     VALIDATOR.validate(say.to_dict(state, actions))
 
 
+def test_a_command_is_shown_for_cmd_exe_not_powershell() -> None:
+    """A known gap (DESIGN.md, Known gaps, "`next` quotes a command for `cmd.exe`, not
+    PowerShell, and leaves `%` as it is."): two `%` are left as they are, bare and inside the
+    double quotes a space calls for, and a word PowerShell reads as an array or a splat is
+    shown bare."""
+    assert shown(("check", "C:/%USERPROFILE%/p"), windows=True) == (
+        "manuscript-guard check C:/%USERPROFILE%/p")
+    assert shown(("check", "C:/My %TEMP%/p"), windows=True) == (
+        'manuscript-guard check "C:/My %TEMP%/p"')
+    assert shown(("check", "a,b"), windows=True) == "manuscript-guard check a,b"
+    assert shown(("set", "x", "@notes"), windows=True) == "manuscript-guard set x @notes"
+    # The other side: a metacharacter of cmd.exe's is quoted, `,` and `@` are not among them.
+    assert shown(("check", "a&b"), windows=True) == 'manuscript-guard check "a&b"'
+
+
 def test_the_text_says_which_actions_are_the_authors(tmp_path: Path) -> None:
     """Round 2: an author's action printed its title, reason and skill, and only options
     said who runs them."""
@@ -376,6 +391,53 @@ def test_the_optional_steps_are_those_the_tool_has(tmp_path: Path) -> None:
     # A LaTeX manuscript: the checker and proof read only Markdown.
     ids = {a.id for a in decide(settled(tmp_path, stage="submission", format="latex"))}
     assert "optional:checker" not in ids and "optional:proof" not in ids
+
+
+def test_tier_10_offers_no_deposit_and_no_communication(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Tier 10 lists only the commands there are."):
+    `deposit` and `communicate` are commands, and neither is among the optional steps at
+    submission; the checker's fields in `next --json` are the four numbers of `checker
+    status`. The 2026-11-09 triage planned a fix (F16), which will change this test."""
+    import argparse
+
+    (commands,) = [action.choices for action in build_parser()._actions
+                   if isinstance(action, argparse._SubParsersAction)]  # fmt: skip
+    assert {"deposit", "communicate"} <= set(commands)
+    actions = decide(settled(tmp_path, stage="submission"))
+    assert {a.id for a in actions} == {
+        "optional:review", "optional:checker", "optional:build", "optional:package",
+        "optional:approve", "optional:submit", "optional:proof"}  # fmt: skip
+    assert not [w for w in every_argv(actions) if w[:1] in (("deposit",), ("communicate",))]
+    state = settled(tmp_path, stage="internal-review", checker=Checker(10, 2, 1, 0))
+    assert to_dict(state, decide(state))["checker"] == {
+        "items": 10, "outstanding": 2, "stale": 1, "disagreements": 0}
+
+
+def test_at_submission_the_panel_comes_first_after_any_round(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "At `submission` the line says \"Next: Have the
+    review panel read the paper\" every time."): the example, whose thirteen rounds are read,
+    with nothing failing at submission, is first offered the review panel, as a state with
+    no round at all is. The 2026-11-09 triage planned a fix (F16), which will change this
+    test."""
+    import dataclasses
+
+    assert len(list((project / "review").glob("panel-*.yaml"))) == 13
+    _paper(project, "schema: manuscript-guard/paper/1\n",
+           "schema: manuscript-guard/paper/1\nstage: submission\n")  # fmt: skip
+    read = guide.inspect(project)
+    assert read.stage == "submission" and read.declared_stage in (None, "submission")
+    clean = dataclasses.replace(read, findings=(), study_type="disproportionality")
+    for state in (clean, settled(project, stage="submission")):
+        first = decide(state)[0]
+        assert (first.id, first.tier) == ("optional:review", 10)
+        assert first.title == "Have the review panel read the paper"
+    # From internal-review the panel is the first of the optional steps, after moving on.
+    earlier = [a.id for a in decide(settled(project, stage="internal-review"))]
+    assert earlier[:2] == ["advance", "optional:review"]
 
 
 # ------------------------------------------------------------------------- properties
@@ -682,6 +744,51 @@ def test_a_person_only_failure_and_warning_are_the_authors(tmp_path: Path) -> No
     assert by_rule["warnings"].who == "author"
 
 
+def test_one_person_only_warning_makes_its_group_the_authors(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "One person-only warning makes its skill's group the
+    author's."): warnings go one action to a skill, so a thin attestation beside a quote an
+    agent may put right makes the one action `who: author`."""
+    quote = at(tmp_path, "G7", "quote-not-in-source", WARN)
+    (alone,) = of(settled(tmp_path, findings=(quote,)), "warnings")
+    assert alone.skill == "literature-verify" and alone.who == "agent"
+    thin = at(tmp_path, "G7", "attestation-thin", WARN, line=4)
+    (grouped,) = of(settled(tmp_path, findings=(quote, thin)), "warnings")
+    assert grouped.skill == "literature-verify" and grouped.who == "author"
+    assert grouped.codes == ("attestation-thin", "quote-not-in-source")
+
+
+def test_a_sign_off_warning_is_offered_models_never_sign(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A G15 warning only a sign-off closes is offered as
+    `models`."): `model-few-events` goes to methods-writer with `models`, the agent's, and no
+    action or option `next` gives runs `sign`."""
+    state = settled(tmp_path, findings=(at(tmp_path, "G15", "model-few-events", WARN),))
+    actions = decide(state)
+    (warned,) = of(state, "warnings")
+    assert (warned.skill, warned.argv, warned.who) == ("methods-writer", ("models",), "agent")
+    assert not [words for words in every_argv(actions) if words[:1] == ("sign",)]
+    # The other side: `sign` is a command `next` could name.
+    build_parser().parse_args(["sign", "--as", "A", "--finding", "x"])
+
+
+def test_a_binding_in_a_table_is_sent_to_bind_not_check(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`binding-in-table` is routed to `bind`, which
+    cannot touch emitted text."): `next` offers `bind` for it, where a code the results'
+    contract refuses, put right in the script, is offered `check`. The 2026-11-09 triage
+    planned a fix (F16), which will change this test."""
+    state = settled(tmp_path, findings=(
+        at(tmp_path, "G2", "binding-in-table", file="results/a.json", line=None),
+        at(tmp_path, "G0", "duplicate-table", file="results/a.json", line=None)))
+    found = {(a.id, a.skill, a.argv) for a in decide(state) if a.rule != "advance"}
+    assert found == {
+        ("provenance:binding-in-table", "results-binding", ("bind",)),
+        ("failures:duplicate-table", "results-binding", ("check",)),
+    }
+
+
 def test_a_code_a_skill_says_it_answers_goes_to_that_skill() -> None:
     wrong = {
         (name, code): getattr(route_of(code), "skill", None)
@@ -894,6 +1001,33 @@ def test_an_open_round_of_checks_is_read_and_left_as_it_was(
     assert sorted(VALIDATOR.iter_errors(said), key=str) == []
     assert said["checker"]["outstanding"] == state.checker.items
     assert "co-author-checks" in [action["rule"] for action in said["actions"]]
+
+
+def test_latex_shows_no_round_of_checks_nor_page_nor_proof(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`next` shows no co-author checker for a LaTeX
+    manuscript"): a round begun is not read and a note says why, and with nothing failing at
+    submission neither the page nor the proof check is offered."""
+    from manuscript_guard.guide.model import LATEX_CHECKER
+
+    root = tmp_path / "tex"
+    assert main(["init", str(root), "--latex"]) == 0
+    capsys.readouterr()
+    for folder in (root, project):
+        (folder / "checks").mkdir()
+        (folder / "checks" / "decisions.csv").write_text(
+            "when,by,id,group,title,status,note,digest,bundle\n"
+            "2026-10-28,Ada,gone,values,Gone,ok,,,\n", encoding="utf-8")  # fmt: skip
+    latex = guide.inspect(root, stage="internal-review")
+    assert latex.format == "latex" and latex.checker is None
+    assert LATEX_CHECKER in latex.notes
+    # The other side: the same round begun on a Markdown manuscript is read.
+    markdown = guide.inspect(project, stage="internal-review")
+    assert markdown.checker is not None and LATEX_CHECKER not in markdown.notes
+    for fmt, offered in (("latex", False), ("markdown", True)):
+        ids = {a.id for a in decide(settled(tmp_path, stage="submission", format=fmt))}
+        assert ("optional:checker" in ids) is offered and ("optional:proof" in ids) is offered
 
 
 def test_a_path_that_is_not_there_is_said_and_nothing_offered(

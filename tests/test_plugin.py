@@ -1279,6 +1279,32 @@ def test_the_wording_check_passes_what_is_true_under_any_agent_tool():
     assert wording_problems(text) == []
 
 
+def test_the_wording_check_errs_both_ways_by_spelling():
+    """A known gap (DESIGN.md, Known gaps, "The skills are worded for any agent tool, and the
+    test that keeps them so knows a list."): a tool not on the list, a command typed as
+    `/project-setup`, a step only one tool can carry out, other model families however
+    written, the phrases taken out and a reader one of them addresses all pass; Claude named
+    in prose any other way, and another product's plugin not listed, fail."""
+    passes = (
+        "Aider and OpenCode read the skills too. Type /project-setup to begin, or press\n"
+        "Shift+Tab twice to plan first. Gemini 2.5 Pro, gpt-5, Llama 3 and Mistral Large may\n"
+        "sit on a panel beside Claude Sonnet and Claude Haiku. The bootstrap rests on the\n"
+        "plug-in principle. If you are Claude Opus, say so.\n"
+    )
+    assert wording_problems(passes) == []
+    fails = (
+        "A panel of GPT-5, Claude and Gemini 2.5 Pro. Claude 4.5 Sonnet is one of the Claude\n"
+        "family. Gemini CLI reads them. Refresh in the LibreOffice plugin.\n"
+    )
+    assert wording_problems(fails) == [
+        "'Claude' names one agent tool",
+        "'Claude' names one agent tool",
+        "'Claude' names one agent tool",
+        "'Gemini CLI' names one agent tool",
+        "'plugin' describes how one agent packages or invokes the skills",
+    ]
+
+
 def test_the_rules_init_writes_speak_to_no_one_agent_tool():
     """`AGENTS.md` is the file every agent tool reads, so it is held to what the skills are."""
     from manuscript_guard.scaffold import AGENTS

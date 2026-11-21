@@ -1136,3 +1136,156 @@ def test_a_folder_with_only_an_unreadable_tex_says_it_could_not_be_read(
     assert main(["audit", str(tmp_path)]) == 2
     err = capsys.readouterr().err
     assert "old.tex could not be read" in err and "documentclass" not in err
+
+
+# ------------------------------------------- text files in a LaTeX paper's folder (2026-11-22)
+
+
+def _bundle(folder: Path) -> Path:
+    """A LaTeX paper's folder as arXiv bundles one: the paper, a readme beside it, and under
+    `anc/` a data transcript and a note."""
+    (folder / "anc").mkdir(parents=True)
+    (folder / "paper.tex").write_text(_document("Of 412 reports."), encoding="utf-8")
+    (folder / "README.md").write_text("# Notes\n\nBuilt in 3 passes.\n", encoding="utf-8")
+    (folder / "anc" / "data.txt").write_text("0.125 0.250 999\n" * 50, encoding="utf-8")
+    (folder / "anc" / "notes.markdown").write_text("Run 7 of 9.\n", encoding="utf-8")
+    return folder
+
+
+def _audited(capsys, *args: str) -> dict:
+    assert main(["audit", *args, "--json"]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def _passed_over(report: dict) -> dict[str, str]:
+    return {f["key"]: f["message"] for f in report["findings"] if f["code"] == "passed-over"}
+
+
+def test_a_text_file_in_a_latex_paper_s_folder_is_passed_over_and_named(
+    tmp_path: Path, capsys
+) -> None:
+    """The robustness sweep of 2026-11-21: in arXiv 1709.01713's bundle `audit` read
+    `anc/featex-tran.txt`, 908 KB of numbers, as a paper beside the LaTeX one, and spent most
+    of 120 s classifying 141,923 of them. In a LaTeX paper's folder and in each folder under
+    it, a `.txt`, `.md` or `.markdown` file is not read as a paper, and each is named under
+    "Passed over", a line to a file (Basile, 2026-11-22)."""
+    report = _audited(capsys, str(_bundle(tmp_path / "bundle")))
+    assert report["counts"]["files"] == 1
+    notes = _passed_over(report)
+    for shown in ("README.md", "anc/data.txt", "anc/notes.markdown"):
+        assert notes[f"audit|passed-over|{shown}|-"].endswith(
+            f"{shown}: it is in the folder of the LaTeX paper paper.tex, so it was not read as "
+            "a paper; name it to audit it"
+        ), notes
+    assert not [f for f in report["findings"] if "data.txt:" in f.get("file", "")]
+
+
+def test_a_text_file_of_a_latex_paper_s_folder_is_read_where_it_is_named(
+    tmp_path: Path, capsys
+) -> None:
+    bundle = _bundle(tmp_path / "bundle")
+    assert _audited(capsys, str(bundle / "anc" / "data.txt"))["counts"]["files"] == 1
+    notes = _passed_over(_audited(capsys, str(bundle), str(bundle / "anc" / "notes.markdown")))
+    assert "audit|passed-over|anc/notes.markdown|-" not in notes
+    assert "audit|passed-over|anc/data.txt|-" in notes
+
+
+def test_a_markdown_paper_outside_a_latex_paper_s_folder_is_read(tmp_path: Path, capsys) -> None:
+    """Only the LaTeX paper's own folder and those under it: a Markdown paper in the folder
+    given, beside the LaTeX paper's folder, is a paper."""
+    given = tmp_path / "given"
+    _bundle(given / "bundle")
+    (given / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(given))
+    assert report["counts"]["files"] == 2
+    assert "audit|passed-over|paper.md|-" not in _passed_over(report)
+    assert "audit|passed-over|bundle/anc/data.txt|-" in _passed_over(report)
+
+
+@pytest.mark.parametrize("body", ["$body$", "${body}", "Of 50!% $body$"])
+def test_a_pandoc_template_sets_no_text_file_aside(tmp_path: Path, capsys, body: str) -> None:
+    """A pandoc template has a document class and prints the Markdown paper beside it, where
+    `$body$` stands: it is read as a paper, as it was (Known gaps), and sets nothing aside
+    (Basile, 2026-11-22)."""
+    (tmp_path / "template.tex").write_text(
+        tex(f"!documentclass{{$documentclass$}}\n!begin{{document}}\n{body}\n!end{{document}}\n"),
+        encoding="utf-8",
+    )  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(tmp_path))
+    assert report["counts"]["files"] == 2
+    assert not [said for said in _passed_over(report).values() if "paper.md" in said]
+
+
+def test_a_markdown_paper_beside_a_standalone_figure_is_passed_over(
+    tmp_path: Path, capsys
+) -> None:
+    """Known gaps, "What `audit` reads of a LaTeX paper": a standalone figure's `.tex` is an
+    entry, so the Markdown paper in its folder is passed over, and named; named itself, it is
+    read."""
+    (tmp_path / "figure.tex").write_text(
+        tex("!documentclass{standalone}\n!begin{document}\nA\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    assert "audit|passed-over|paper.md|-" in _passed_over(_audited(capsys, str(tmp_path)))
+    assert _audited(capsys, str(tmp_path / "paper.md"))["counts"]["files"] == 1
+
+
+@pytest.mark.parametrize("named", [
+    "!documentclass{article}\n!begin{document}\nOf 412.\n!end{document}\n",
+    "Of 412 reports.\n",
+], ids=["paper", "chapter"])  # fmt: skip
+def test_a_tex_named_above_a_folder_given_sets_none_of_it_aside(
+    tmp_path: Path, capsys, named: str
+) -> None:
+    """Round 1 of #753: `audit proj/main.tex proj/supplement` passed over the supplement's
+    Markdown, which the paper given above it sets aside only where a folder given holds the
+    paper, and a named `.tex` with no document class sets nothing aside."""
+    proj = tmp_path / "proj"
+    (proj / "supplement").mkdir(parents=True)
+    (proj / "main.tex").write_text(tex(named), encoding="utf-8")
+    (proj / "supplement" / "supp.md").write_text("# Results\n\nOf 40 cases.\n",
+                                                 encoding="utf-8")  # fmt: skip
+    report = _audited(capsys, str(proj / "main.tex"), str(proj / "supplement"))
+    assert report["counts"]["files"] == 2
+    assert _passed_over(report) == {}
+
+
+def test_a_named_tex_with_no_document_class_sets_nothing_aside_in_its_folder(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "chapter.tex").write_text("Of 412 reports.\n", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(tmp_path / "chapter.tex"), str(tmp_path))
+    assert "audit|passed-over|notes.md|-" not in _passed_over(report)
+
+
+@pytest.mark.parametrize("line", ["% built from a $body$ template", "Of 50 % from $body$"])
+def test_a_body_in_a_comment_makes_no_paper_a_template(
+    tmp_path: Path, capsys, line: str
+) -> None:
+    """Round 1 of #753: a `$body$` in a comment of a LaTeX paper took it for a pandoc
+    template, and the data under its `anc/` was read as a paper again."""
+    bundle = _bundle(tmp_path / "bundle")
+    paper = bundle / "paper.tex"
+    paper.write_text(f"{line}\n" + paper.read_text(encoding="utf-8"),
+                     encoding="utf-8")  # fmt: skip
+    assert "audit|passed-over|anc/data.txt|-" in _passed_over(_audited(capsys, str(bundle)))
+
+
+def test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #753: the template sets nothing aside of itself; a document beside it,
+    a letter, still sets aside the Markdown paper in their folder."""
+    (tmp_path / "template.tex").write_text(
+        tex("!documentclass{$documentclass$}\n!begin{document}\n$body$\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "cover.tex").write_text(
+        tex("!documentclass{letter}\n!begin{document}\nDear editor.\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    notes = _passed_over(_audited(capsys, str(tmp_path)))
+    assert notes["audit|passed-over|paper.md|-"].endswith(
+        "it is in the folder of the LaTeX paper cover.tex, so it was not read as a paper; "
+        "name it to audit it")

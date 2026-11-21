@@ -10554,6 +10554,19 @@ its own, and a file no entry inputs, or that a class or a package inputs, is nam
 tables are rows of cells (`text/latex/tables.py`), split where LaTeX splits them, so an n (%)
 and a mean of whole numbers are held in a LaTeX table as in a Word one.
 
+A `.txt`, `.md` or `.markdown` file in an entry's folder, or in a folder under it, is passed
+over too, and named there a line to a file, unless it is also named on its own
+(`auditing.latex.set_aside`; Basile, 2026-11-22). An arXiv bundle keeps a readme and its
+ancillary data as text beside the source: the robustness sweep of 2026-11-21 found
+`anc/featex-tran.txt` of arXiv 1709.01713, a 908 KB transcript, audited as a paper, and
+classifying its 141,923 numbers took most of a 120 s budget. Passing over only `anc/` would
+have read the next bundle's data kept anywhere else. An entry that prints `$body$` or
+`${body}` outside a comment, a pandoc template, sets no text file aside itself, since the
+Markdown paper beside it is the paper it prints; another entry's folder that holds that paper
+still does. Only an entry a folder given holds sets aside what is under it, and only one with
+`\documentclass`: `audit main.tex supplement/` reads the supplement's Markdown (round 1 of
+#753).
+
 `--against` is optional. A paper often reaches an auditor without its outputs, and the
 checks that need none, the P worked out from its statistic among them, were out of reach
 behind a required flag. Without it nothing is compared, and the report's first line says so:
@@ -26899,6 +26912,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     counts as an entry. Name the paper's own file, not its folder, to audit it alone (round 1
     of #463).
     Pinned by `tests/test_corruption.py::test_a_second_latex_document_in_an_audited_folder_is_read_as_a_paper`.
+  - In a folder given, a `.txt`, `.md` or `.markdown` file in the folder of an entry, or in
+    any folder under it, is passed over and named, not read, where the innermost folder given
+    that holds the file holds the entry too, unless the entry prints `$body$` or `${body}`
+    outside a comment as a pandoc template does
+    (2026-11-22). So a Markdown paper beside a standalone figure's `.tex`, beside a letter
+    that stands beside a template, or beside a template that prints its body by another name,
+    is not audited unless it is named.
+    Pinned by `tests/test_audit_sections.py::test_a_markdown_paper_beside_a_standalone_figure_is_passed_over`
+    and `tests/test_audit_sections.py::test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside`.
+  - A LaTeX paper that prints `$body$` in a `verbatim` or a `\verb`, or writes it in a comment
+    that opens just after a line break, `\\%`, which is read as an escaped `%` (as
+    `\documentclass` is), is taken for a pandoc template, so the text files of its folder
+    are read as papers (round 2 of #753). Accepted.
   - A table whose rows a tabular `\input`s from another file, as xtable and esttab write
     them, is read nowhere as cells: its numbers are read where they stand, as text, and no
     n (%) or mean in it is held to its denominator (round 1 of #463).

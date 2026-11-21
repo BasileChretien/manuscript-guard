@@ -274,6 +274,10 @@ class Reading:
     #: `\\makeatother` and a conditional to its `\\fi`, nothing in it read (Basile,
     #: 2026-11-13): a refusal with its `end`, which the tree adds to its refusals.
     skipped: tuple[Refusal, ...] = ()
+    #: Each heading the file defines as the CVPR and ICCV author kit does, read as before,
+    #: which takes no short title in brackets: a use that gives one is refused where it
+    #: prints, in this file and in the others of its tree (Basile, 2026-11-22).
+    no_short: tuple[str, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -401,6 +405,7 @@ def read(
     own: frozenset[str] = frozenset(),
     literal: tuple[tuple[str, str], ...] = (),
     loaded: frozenset[str] = frozenset(),
+    no_short: frozenset[str] = frozenset(),
 ) -> Reading:
     """The masked text, the first refusal, and what the file inputs, heads and loads. With
     `body` None, a file with a `\\begin{document}` outside a comment opens in the preamble,
@@ -410,11 +415,11 @@ def read(
     2). A file input from another opens inside the `environments` its `\\input` stood in. A
     `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
     `package` of the author's is read as LaTeX reads a package, with `@` a letter. The tree
-    tells each file of what the others define, `delimited`, `own` and `literal`, and of the
-    packages they load, `loaded`. A file that opens in its preamble, as a part the paper
-    places by `\\subfile` does, opens the `environments` at its `\\begin{document}`."""
+    tells each file of what the others define, `delimited`, `own`, `literal` and `no_short`,
+    and of the packages they load, `loaded`. A file that opens in its preamble, as a part the
+    paper places by `\\subfile` does, opens the `environments` at its `\\begin{document}`."""
     opens_in_body = not _has_document(text) if body is None else body
-    told = (delimited, own, literal, loaded)
+    told = (delimited, own, literal, loaded, no_short)
     opening = environments if opens_in_body else ()
     reader = _Reader(text, opens_in_body, opening, loose, package, *told,
                      later=() if opens_in_body else environments)  # fmt: skip
@@ -482,6 +487,28 @@ _REFERENCE_AGAIN = re.compile(r"[A-Za-z.,:; ~]*(?P<open>\()?\s*\\(?P<inner>ref|e
                               r"\{#1\}\s*(?(open)\))[A-Za-z.,:; ~]*")  # fmt: skip
 #: A comment in a definition, to its line's end and the line break with it.
 _DEFINITION_COMMENT = re.compile(r"(?<!\\)%[^\n]*\n?")
+#: A sectioning command defined as the CVPR and ICCV author kit defines it, its whole body
+#: `\\@ifstar` between two commands, each a name alone or braced (Basile, 2026-11-22:
+#: iccv.sty's `\\def\\section{\\@ifstar\\iccvssect\\iccvsect}`).
+_IFSTAR = re.compile(r"\s*\\@ifstar\s*(?:\\(?P<starred>[A-Za-z@]+)"
+                     r"|\{\s*\\(?P<starred_>[A-Za-z@]+)\s*\})"
+                     r"\s*(?:\\(?P<plain>[A-Za-z@]+)|\{\s*\\(?P<plain_>[A-Za-z@]+)\s*\})\s*")
+#: What may stand before the argument a helper of the kit hands on: `\\texorpdfstring` of
+#: spacing and punctuation for the page and nothing for the PDF's bookmarks, the kit's
+#: `\\texorpdfstring{\\hskip -1em.~}{}`, which prints a full stop after the number.
+_UNWORDED = (r"(?:\\texorpdfstring\s*\{(?:\s|[.,:;~]|\\hskip\s*-?(?:\d+(?:\.\d*)?|\.\d+)\s*"
+             r"(?:em|ex|pt))*\}\s*\{\s*\}\s*)?")
+#: A helper's whole body: one command given the helper's argument, starred or not.
+_HANDED_ON = re.compile(r"\s*\\(?P<to>[A-Za-z@]+)\s*(?P<star>\*)?\s*\{\s*" + _UNWORDED
+                        + r"#1\s*\}\s*")  # fmt: skip
+#: The definers whose definition always defines, and whose body is the command's: not
+#: `\\providecommand`, which leaves a command defined as it was, nor `\\edef`, which expands
+#: its body where it stands.
+_ALWAYS_DEFINE = frozenset({"def", "gdef", "newcommand", "renewcommand", "DeclareRobustCommand"})
+#: What a use of a heading the kit defines is followed by where it gives a short title: past
+#: spaces and comments, a star or none, then a bracket, which the kit's helper takes as its
+#: argument.
+_SHORT_TITLE = re.compile(r"(?:\s|%[^\n]*)*\*?(?:\s|%[^\n]*)*\[")
 
 
 def _read_as_before(name: str, head: str, body: str) -> bool:
@@ -506,6 +533,29 @@ def _read_as_before(name: str, head: str, body: str) -> bool:
         return (re.fullmatch(r"\{?\\" + named + r"\}?(?:\[1\]|#1)", head) is not None
                 and again is not None and again["inner"] != name)  # fmt: skip
     return False
+
+
+def _ifstar_branches(name: str, head: str, body: str) -> tuple[str, str] | None:
+    """The two commands a heading's definition chooses between, starred first, where it is
+    defined as the CVPR and ICCV author kit defines it: no parameter, and its whole body
+    `\\@ifstar` between two names (`_IFSTAR`)."""
+    head = re.sub(r"\s+", "", _DEFINITION_COMMENT.sub("", head))
+    branches = _IFSTAR.fullmatch(_DEFINITION_COMMENT.sub("", body))
+    if branches is None or re.fullmatch(r"\{?\\" + re.escape(name) + r"\}?", head) is None:
+        return None
+    return (branches["starred"] or branches["starred_"], branches["plain"] or branches["plain_"])
+
+
+def _hands_on(name: str, head: str, body: str, star: bool) -> str:
+    """The command a helper of the kit's heading hands its argument to, or "": defined with
+    one parameter and no other, its whole body that command given `#1`, starred where `star`
+    says, with nothing before `#1` that prints a word (`_UNWORDED`)."""
+    head = re.sub(r"\s+", "", _DEFINITION_COMMENT.sub("", head))
+    handed = _HANDED_ON.fullmatch(_DEFINITION_COMMENT.sub("", body))
+    one = re.fullmatch(r"\{?\\" + re.escape(name) + r"\}?(?:\[1\]|#1)", head)
+    if one is None or handed is None or (handed["star"] is not None) != star:
+        return ""
+    return handed["to"]
 
 
 def _redefined_said(name: str) -> str:
@@ -752,6 +802,7 @@ class _Reader:
         own: frozenset[str] = frozenset(),
         literal: tuple[tuple[str, str], ...] = (),
         loaded: frozenset[str] = frozenset(),
+        no_short: frozenset[str] = frozenset(),
         *,
         later: tuple[str, ...] = (),
     ) -> None:
@@ -812,6 +863,20 @@ class _Reader:
         #: A known command the preamble defines again, and where its name stands, until its
         #: body opens and is read for the forms read as before (`_read_as_before`).
         self.restyling: tuple[str, int] | None = None
+        #: Where the name of the command being defined stands, and the command defining it.
+        self.defining_at, self.definer = -1, ""
+        #: Each command this file defined outside any definition's body by a definer that
+        #: always defines (`_ALWAYS_DEFINE`): where its name stands and where its body opens,
+        #: read for the author kit's form where a heading is defined through it.
+        self.bodies_at: dict[str, tuple[int, int]] = {}
+        #: The headings read as before through the kit's form, with the commands each goes
+        #: through; a definition of one of these takes the heading back (`_takes_back`).
+        self.through: dict[str, tuple[str, ...]] = {}
+        #: The headings that take no short title, here and in the files `no_short` names, a
+        #: use with one refused where it prints; and those defined here.
+        self.told_no_short = frozenset(no_short)
+        self.no_short = set(no_short)
+        self.defined_no_short: list[str] = []
         #: The front matter's commands the author defines, here and in the files `own` names,
         #: read as unknown commands are; and those defined here (round 1, part 2).
         self.own = set(own)
@@ -877,7 +942,8 @@ class _Reader:
                  tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
                  tuple(self.graphics), tuple(self.defined_delimited),
                  tuple(self.defined_own), tuple(self.defined_literal),
-                 tuple(self.encodings), tuple(self.skipped))  # fmt: skip
+                 tuple(self.encodings), tuple(self.skipped),
+                 tuple(self.defined_no_short))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         # Past the refusal nothing is read, its line breaks kept (`_unread`), and nothing the
@@ -1034,6 +1100,8 @@ class _Reader:
         # set, it blanked the next body that defined nothing, `\AtBeginDocument`'s).
         parameter = spec == "d" and self.defining in PARAMETERS
         if spec == "d":
+            if self.defining and self.definer in _ALWAYS_DEFINE and not self.definitions:
+                self.bodies_at[self.defining] = (self.defining_at, at)
             self.defining = ""
             self._restyled(at)
         if role == BLANK or spec in "bc":
@@ -1312,6 +1380,11 @@ class _Reader:
             # prints what the author wrote, not what the reader takes it to print.
             self._refuse("tex-refused", at, f"\\{name} is not read: {_redefined_said(name)}",
                          "redefined")  # fmt: skip
+        elif name in self.no_short and self._prints() and _SHORT_TITLE.match(self.text, end):
+            # The kit's helper takes the bracket as the heading, and prints the rest as text.
+            said = ("the preamble defines it again with no short title in brackets, and what "
+                    "it prints with one is not what the reader reads it as")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}", "redefined")
         elif name in ("makeatletter", "makeatother"):
             header = self._list_header()
             if name == "makeatletter" and self.body and not self.loose and not header:
@@ -1400,8 +1473,10 @@ class _Reader:
 
     def _restyled(self, at: int) -> None:
         """Read the body that opens at `at` of a known command the preamble defines again:
-        where it is one of the two forms read as before (`_read_as_before`), its uses are
-        not refused, unless another file of the tree defines it otherwise."""
+        where it is one of the three forms read as before (`_read_as_before`, and the author
+        kit's, `_through_ifstar`), its uses are not refused, unless another file of the tree
+        defines it otherwise. The kit's heading takes no short title, and a use that gives
+        one is refused where it prints, in every file of the tree."""
         if self.restyling is None:
             return
         (name, start), self.restyling = self.restyling, None
@@ -1409,13 +1484,74 @@ class _Reader:
         if end < 0 or name in self.told_delimited:
             return
         # `\@startsection` is one command only where `@` is a letter: in a package, or past
-        # `\makeatletter`.
+        # `\makeatletter`; and so is `\@ifstar`.
         if name in LEVELS and self.letters is not _LETTERS_AT:
             return
-        if _read_as_before(name, self.text[start:at], self.text[at + 1 : end - 1]):
-            self.delimited.discard(name)
-            if name in self.defined_delimited:
-                self.defined_delimited.remove(name)
+        head, body = self.text[start:at], self.text[at + 1 : end - 1]
+        through = () if name not in LEVELS else self._through_ifstar(name, head, body)
+        if not through and not _read_as_before(name, head, body):
+            return
+        self.delimited.discard(name)
+        if name in self.defined_delimited:
+            self.defined_delimited.remove(name)
+        if through:
+            self.through[name] = through
+            self.no_short.add(name)
+            self.defined_no_short.append(name)
+
+    def _defined(self, name: str) -> tuple[str, str] | None:
+        """What this file's last definition of `name` holds from the name to its body's
+        brace, and in that brace, where the definition always defines (`bodies_at`)."""
+        if name not in self.bodies_at:
+            return None
+        start, at = self.bodies_at[name]
+        end = self._group_end(at)
+        return None if end < 0 else (self.text[start:at], self.text[at + 1 : end - 1])
+
+    def _through_ifstar(self, name: str, head: str, body: str) -> tuple[str, ...]:
+        """The commands a heading defined as the CVPR and ICCV author kit defines it goes
+        through, or () (Basile, 2026-11-22, a third form read as before): its body `\\@ifstar`
+        between two commands this file defined above it, the first handing its one argument
+        on starred and the second plain to one command (`_hands_on`), which this file defined
+        above it with no parameter as the `\\@startsection` of the heading's own name
+        (`_read_as_before`). None of the three is the heading itself."""
+        branches = _ifstar_branches(name, head, body)
+        if branches is None:
+            return ()
+        handed = set()
+        for helper, star in zip(branches, (True, False), strict=True):
+            defined = self._defined(helper)
+            handed.add(_hands_on(helper, *defined, star) if defined else "")
+        if len(handed) != 1 or "" in handed:
+            return ()
+        (to,) = handed
+        level = self._defined(to)
+        if level is None or name in (*branches, to):
+            return ()
+        written, restyle = (_DEFINITION_COMMENT.sub("", part) for part in level)
+        restyled = _RESTYLED_HEADING.fullmatch(restyle)
+        named = re.fullmatch(r"\{?\\" + re.escape(to) + r"\}?", re.sub(r"\s+", "", written))
+        if restyled is None or restyled["name"] != name or named is None:
+            return ()
+        return (*branches, to)
+
+    def _takes_back(self, name: str) -> None:
+        """A definition of `name` takes back what was read of its last one: its body, and a
+        heading read as before through the kit's form that it is, or that goes through it,
+        whose uses are refused again where they print, as any heading's the preamble defines
+        again (Basile, 2026-11-11)."""
+        self.bodies_at.pop(name, None)
+        for level, helpers in list(self.through.items()):
+            if name != level and name not in helpers:
+                continue
+            del self.through[level]
+            self.defined_no_short.remove(level)
+            if level not in self.told_no_short:
+                self.no_short.discard(level)
+            if name != level:
+                self.delimited.add(level)
+                if level not in self.defined_delimited:
+                    self.defined_delimited.append(level)
 
     def _expands_a_definition(self, name: str, end: int) -> bool:
         """Whether an `\\expandafter` only redefines a command in the preamble, outside any
@@ -1776,6 +1912,8 @@ class _Reader:
 
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
+        self.defining_at, self.definer = at, self.command
+        self._takes_back(name)
         unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
         if name in FRONT_MATTER_COMMANDS or unloaded:
             # Told of it by the tree or not, the file that defines it says so (round 2). A

@@ -2382,6 +2382,85 @@ LATEX_PACKAGE_COMMANDS = {"unit": ("siunitx", "units"), "qty": ("siunitx", "phys
 
 
 @st.composite
+def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
+    """Small LaTeX manuscripts whose heading is defined as the CVPR and ICCV author kit
+    defines it (Basile, 2026-11-22), every kind in every example: `\\@ifstar` between two
+    helpers defined above it, each handing its one argument on, starred or not, to a command
+    defined above as the `\\@startsection` of the heading's own name, written with `\\def` or
+    LaTeX's definers, the branches braced or not, with the kit's `\\texorpdfstring` of
+    spacing and punctuation before the argument or nothing.
+
+    - read as before, in the author's package and in the entry file's preamble past
+      `\\makeatletter`, its uses in the entry file and in a file it inputs;
+    - a use with a short title in brackets, after a star or not, refused where it stands in
+      the file input, which the tree tells of the heading;
+    - the kit with one thing more or other, each refused where the heading is first used:
+      words before the argument, a helper of two parameters, the `\\@startsection` of another
+      level, a helper defined below the heading or again below it, the branches swapped, a
+      helper by `\\providecommand`, and a font switch in a helper."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    def helper(name: str, body: str) -> str:
+        how = draw(st.sampled_from(("\\def\\{0}#1", "\\newcommand{{\\{0}}}[1]",
+                                    "\\newcommand*\\{0}[1]")))  # fmt: skip
+        return how.format(name) + "{" + body + "}\n"
+
+    head, begin, end = "\\documentclass{article}\n", "\\begin{document}\n", "\\end{document}\n"
+    level, other = draw(st.permutations(("section", "subsection", "subsubsection")))[:2]
+    kit = draw(st.sampled_from(("iccv", "cvpr", "wacv")))
+    to, starred, plain = kit + level, kit + "s" + level, kit + "p" + level
+    restyle = draw(st.sampled_from(("\\def\\{0}", "\\newcommand{{\\{0}}}"))).format(to)
+    restyle += f"{{\\@startsection {{{level}}}{{1}}{{\\z@}}{{-10pt}}{{7pt}}{{\\bf}}}}\n"
+    before = draw(st.sampled_from(("", "\\texorpdfstring{\\hskip -1em.~}{}",
+                                   "\\texorpdfstring{ . ~}{ }")))  # fmt: skip
+    starred_body, plain_body = f"\\{to}*{{#1}}", f"\\{to}{{{before}#1}}"
+    starring, plaining = helper(starred, starred_body), helper(plain, plain_body)
+    braced = draw(st.booleans())
+    branches = f"{{\\{starred}}}{{\\{plain}}}" if braced else f"\\{starred}\\{plain}"
+    swapped = f"{{\\{plain}}}{{\\{starred}}}" if braced else f"\\{plain}\\{starred}"
+    chain = draw(st.sampled_from(("\\def\\{0}", "\\renewcommand{{\\{0}}}",
+                                  "\\renewcommand\\{0}"))).format(level)  # fmt: skip
+    chain += f"{{\\@ifstar{branches}}}\n"
+    defined = restyle + starring + plaining + chain
+
+    def tree(kit_text: str, where: str, part: str | None) -> tuple[dict, dict, str]:
+        preamble = ("\\usepackage{kit}\n" if where == "package"
+                    else "\\makeatletter\n" + kit_text + "\\makeatother\n")  # fmt: skip
+        uses = f"\\{level}{{{words()}}}\n{words()}.\n\\{level}*{{{words()}}}\n{words()}.\n"
+        main = head + preamble + begin + uses + ("" if part is None else "\\input{part}\n") + end
+        files = {"main.tex": main, **({} if part is None else {"part.tex": part})}
+        return files, {"kit.sty": kit_text} if where == "package" else {}, main
+
+    cases: list[LatexCase] = []
+    for where in ("package", "preamble"):
+        part = f"{words()}.\n\\{level}{{{words()}}}\n\\{level}*{{{words()}}} {words()}.\n"
+        files, packages, _main = tree(defined, where, part)
+        cases.append((files, packages, [], [], []))
+        gap = draw(st.sampled_from(("", " ", "\n", "*", " * ")))
+        short = f"{words()}.\n\\{level}{gap}[{words()}]{{{words()}}} {words()}.\n"
+        files, packages, _main = tree(defined, where, short)
+        cases.append((files, packages, [("part.tex", short.index("\\" + level))], [], []))
+    spoilt = (
+        defined.replace(plain_body, f"\\{to}{{\\texorpdfstring{{Part~}}{{}}#1}}"),
+        defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"),
+        defined.replace(f"{{\\@startsection {{{level}}}", f"{{\\@startsection {{{other}}}"),
+        defined.replace(starring, "") + starring,
+        defined + f"\\def\\{plain}#1{{\\textbf{{#1}}}}\n",
+        defined.replace(branches, swapped),
+        defined.replace(plaining, f"\\providecommand{{\\{plain}}}[1]{{{plain_body}}}\n"),
+        defined.replace(plain_body, "\\bf" + plain_body),
+    )
+    for kit_text in spoilt:
+        files, packages, main = tree(kit_text, draw(st.sampled_from(("package", "preamble"))),
+                                     None)  # fmt: skip
+        first = main.index("\\" + level, main.index(begin))
+        cases.append((files, packages, [("main.tex", first)], [], []))
+    return cases
+
+
+@st.composite
 def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     """Small LaTeX manuscripts, each holding one thing the reader refuses or reads that 17
     papers from arXiv showed (2026-10-23), every kind in every example, among words drawn:
@@ -2396,6 +2475,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       in the preamble, a file input from it or the author's package, read, and each use
       refused where it prints, in the entry file and in a file it inputs; in the body,
       refused at the command (Basile, 2026-11-11);
+    - a heading defined as the CVPR and ICCV author kit defines it, read as before, and its
+      short title and the kit with one thing more or other refused (`latex_author_kits`);
     - an article's own command named as a package's, read as an unknown one where no file of
       the tree loads the package, and refused where it prints where the same file, the
       author's package or a file input from the preamble loads it;
@@ -2511,6 +2592,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     main = head + "\\input{refs}\n" + begin + words() + " \\autoref{e1}.\n" + end
     cases.append(({"main.tex": main, "refs.tex": worse}, {},
                   [("main.tex", main.index("\\autoref"))], [], []))  # fmt: skip
+    # The third form read as before, the CVPR and ICCV author kit's heading (2026-11-22).
+    cases.extend(draw(latex_author_kits()))
 
     main = head + begin + words() + "\n"
     # Refused where the command's name stands, or at its braces, `{\url}`.
@@ -18425,8 +18508,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         latex_skipped_blocks().flatmap(lambda cases: st.sampled_from([c[0] for c in cases])),
     ),
     "latex sections": latex_texts(),
-    "latex documents": st.one_of(latex_trees().map(lambda drawn: drawn[0]),
-                                 latex_folders().map(lambda drawn: drawn[0])),  # fmt: skip
+    "latex documents": st.one_of(
+        latex_trees().map(lambda drawn: drawn[0]),
+        latex_folders().map(lambda drawn: drawn[0]),
+        # A folder of the author kit's heading, its package beside the paper (2026-11-22).
+        latex_author_kits().flatmap(
+            lambda cases: st.sampled_from([{**case[0], **case[1]} for case in cases])),
+    ),
     "latex bindings": latex_texts(),
     "latex citations": latex_texts(),
     "latex printed": latex_texts(),

@@ -1590,7 +1590,17 @@ heading it was (arxiv.sty, style.sty); and a cross-reference of the reader's, bu
 defined with one parameter as plain words, a tie or a space and one `\ref{#1}` or
 `\eqref{#1}` of another name, in parentheses or not, read as the cross-reference it is
 (ICLR's `math_commands.tex`). The words it prints beside the number are read once, at the
-definition (Known gaps).
+definition (Known gaps). A third is read as before (Basile, 2026-11-22, "A third exact
+form", after the robustness sweep of 2026-11-21 found every section file of two CVPR and
+ICCV papers refused from its first line): a sectioning command defined as the CVPR and ICCV
+author kit defines it, iccv.sty's `\def\section{\@ifstar\iccvssect\iccvsect}`, its two
+helpers defined above it in the same file, each of one parameter handing it on, starred or
+not, to a command defined above as the first form of the heading's own name, with only the
+kit's `\texorpdfstring{\hskip -1em.~}{}` or none before the argument (Known gaps has the
+form in full). Its helpers take no short title, so a use with one, `\section[Intro]{...}`,
+is refused where it prints, in every file of the tree, which is told of the heading as it
+is of a command defined again. Trusting any `.sty` beside the paper was declined: an
+author's own `macros.sty` is one too.
 
 Refused:
 - a definition in the body, of any command the reader reads, `\mg` among them, but
@@ -17184,7 +17194,7 @@ been sorted yet.
     `\include{...}`, by the same rule, and warns of the others as `tex-not-input` (rounds 1
     and 2 of #716). Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
-  but in two exact forms.** The reader accepts a known command's redefinition in the
+  but in three exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it
   prints (Basile, 2026-11-11). Two forms are read as before (Basile, 2026-11-12, "Yes, read
   them"): a sectioning command whose whole body is LaTeX's own
@@ -17192,7 +17202,21 @@ been sorted yet.
   where it is written, arxiv.sty's and style.sty's `\renewcommand\section`; and a
   cross-reference of one parameter, `\eqref` or another the reader reads as one, whose body
   is plain words, a tie or a space, and one `\ref{#1}` or `\eqref{#1}` of another name,
-  in parentheses or not, ICLR's `\def\eqref#1{equation~\ref{#1}}`. The words such a body
+  in parentheses or not, ICLR's `\def\eqref#1{equation~\ref{#1}}`. A third is the CVPR and
+  ICCV author kit's heading (Basile, 2026-11-22, after the robustness sweep of 2026-11-21:
+  iccv.sty's `\def\section{\@ifstar\iccvssect\iccvsect}` refused every section file of 2 of
+  130 bundles from its first line): a sectioning command with no parameter whose whole body
+  is `\@ifstar` between two commands, each written alone or braced, that the same file
+  defined above it with `\def`, `\gdef`, `\newcommand`, `\renewcommand` or
+  `\DeclareRobustCommand`, not inside another definition, each with one parameter and a
+  whole body of one command given `#1`, starred for the first branch and not for the
+  second, with nothing before `#1` but `\texorpdfstring` of spaces, ties, punctuation and
+  `\hskip` of a length, and nothing for the bookmarks; that command the same file defined
+  above with no parameter as the first form of the heading's own name; and none of the three
+  the heading itself. Its helper takes a short title's bracket as the heading, so a use with
+  one, `\section[Intro]{Introduction}` or `\section*[I]{I}`, is refused where it prints, in
+  every file of the tree. A definition of the heading or of one of the three that follows
+  takes it back, and its uses are refused again. The words such a body
   prints beside the number, "equation", are not read where it is used, as no macro's body
   is (above). Anything else, a font switch round `\@startsection`, a parameter, another
   section's name, a second command in the body, is refused at its first use, and nothing of
@@ -17202,8 +17226,20 @@ been sorted yet.
   (Basile, 2026-11-21, "Fold the warnings").
   Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
   `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`,
+  `tests/test_latex_mask.py::test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints`,
   `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`
   and `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
+  - A helper of the kit's heading, or the `\@startsection` command it hands on to, defined
+    again in another file of the tree is not seen, and the heading is read as before, though
+    LaTeX prints what the new definition does: the tree tells each file of the known
+    commands the others define again, and the kit's helpers are the author's.
+    Pinned by `tests/test_latex_mask.py::test_a_helper_of_the_author_kit_defined_again_in_another_file_is_not_seen`.
+  - The kit's helpers must stand above the heading in its file. TeX expands the heading
+    where it is used, so helpers defined below it, before any use, print as the kit's do;
+    the reader refuses the heading's uses there. JMLR's `\@startsiction` (jmlr2e.sty) and
+    dnd.sty's `\@ifnextchar*` are no form read as before, and are refused where used once
+    their files are read that far; today an earlier `\csname` stops each file before them.
+    Pinned by `tests/test_latex_mask.py::test_a_heading_defined_through_ifstar_otherwise_is_refused_where_it_prints`.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left

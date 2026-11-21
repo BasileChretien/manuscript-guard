@@ -79,7 +79,16 @@ MEDIA = "manuscript/media"
 #: table and any other as a grid table. With pandoc's default line of 72 columns, a table of
 #: more than nine columns is too wide for a grid and was written as raw HTML: the widths are
 #: left to the cells, and the line made long enough for any table.
-WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", "--columns=100000"]
+COLUMNS = 100_000
+WRITER = ["-t", "markdown-simple_tables-multiline_tables", "--wrap=none", f"--columns={COLUMNS}"]
+#: How long a rule is written: pandoc's own, its default line of 72 columns. At the writer's
+#: line a rule was `COLUMNS` hyphens (`_short_rules`).
+RULE_WIDTH = 72
+#: A rule as pandoc writes it at that line, on a line of its own after any indentation or
+#: quotation marks: exactly `COLUMNS` hyphens. A paragraph's own are escaped (`\-\-`) and a
+#: table's border holds `+` or `|`; a code block's line is written as it is, so a rule is
+#: cut only where no text of the paper holds a run as long (`_write`).
+_LONG_RULE = re.compile(rf"^([ \t>]*)-{{{COLUMNS}}}(?=\r?$)", re.MULTILINE)
 #: The longest pandoc is given to read or write one paper.
 PANDOC_SECONDS = 300
 
@@ -239,11 +248,42 @@ def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
 
 
 def _write(tree: dict, blocks: list, path: Path) -> str:
-    """The blocks as pandoc writes them in Markdown, a paragraph to a line."""
+    """The blocks as pandoc writes them in Markdown, a paragraph to a line, padded to no
+    line of the writer's (`_unpadded`, `_short_rules`)."""
     if not blocks:
         return ""
-    document = {"pandoc-api-version": tree["pandoc-api-version"], "meta": {}, "blocks": blocks}
-    return _pandoc(["-f", "json", *WRITER], json.dumps(document), path)
+    given = json.dumps({"pandoc-api-version": tree["pandoc-api-version"], "meta": {},
+                        "blocks": _unpadded(blocks)})  # fmt: skip
+    written = _pandoc(["-f", "json", *WRITER], given, path)
+    return written if "-" * COLUMNS in given else _short_rules(written)
+
+
+def _unpadded(node: object) -> object:
+    """A copy of `node` with every table's widths left to its cells, at any depth, as
+    `_tables` leaves the text's. A table kept its Word columns' widths in the title page set
+    aside, in a cell and in a table left as it came, and pandoc spread them over the
+    writer's whole line of 100,000 columns (`WRITER`): 22,000 characters of text came to
+    5.2 MB of Markdown, every rule of G6 and G14 read it, and the audit timed out (zenodo
+    10010235, in the robustness sweep of 2026-11-21)."""
+    if isinstance(node, list):
+        return [_unpadded(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    copied = {key: _unpadded(value) for key, value in node.items()}
+    if copied.get("t") == "Table":
+        copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
+    return copied
+
+
+def _short_rules(markdown: str) -> str:
+    """`markdown` with each rule `RULE_WIDTH` hyphens long, where pandoc wrote it as long as
+    the writer's line, 100,000 hyphens (`_LONG_RULE`). The rule is pandoc's own, so it stands
+    apart from the blocks about it as pandoc puts it, and reads back as it did: written as
+    raw Markdown instead, it stood on the line under a plain paragraph, under another rule
+    and over a plain paragraph, and read back as a heading or a table (rounds 1 to 3 of
+    #732). A rule in a table's cell is no line of its own and keeps the line's length, and so
+    does every rule of a paper whose text holds a run as long (DESIGN.md, Known gaps)."""
+    return _LONG_RULE.sub(lambda found: found[1] + "-" * RULE_WIDTH, markdown)
 
 
 def _comment(markdown: str) -> str:

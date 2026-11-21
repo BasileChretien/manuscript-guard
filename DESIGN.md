@@ -16905,8 +16905,12 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   (Basile, 2026-11-21, "Stable key first"; scheme 3): G3's `figure-colours-confused` and
   `figure-greyscale-confused`, one finding per figure per way of seeing whose message lists
   the pairs, are the figure's file from the project's root and the way,
-  `figures/forest.svg@deuteranopia` (one figure is one sidecar and one file, so no two
-  share it); BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
+  `figures/forest.svg@deuteranopia`, one outside the project by the path that climbs out to
+  it, `../shared/a/fig.svg@deuteranopia`, never an absolute one (one figure is one sidecar
+  and one file, so no two share it). The same colour check on the graphical abstract,
+  `communicate check`'s COMM findings of those two codes, keys its file from the root the
+  same way, `communication/graphical-abstract/concept-1.svg@deuteranopia`, and so changed
+  key with them. BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
   the reader gives each place it refuses (`Refusal.kind`: `command`, `redefined`,
   `encoding`, `input-not-followed`, `makeatletter`, `conditional` and the rest),
   `manuscript/main.tex@encoding`, with the line it stands on for its sentence, so that two
@@ -28451,6 +28455,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
+  - G3's confused colours name a figure on another drive than the project by its file name
+    alone, since no path from the root reaches it: two such figures of one name share a
+    key. A refusal's key is moved by an edit of the line it stands on. Accepted.
   - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
     Abstract is read as structured where its first line after the heading is shaped as a
     heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its

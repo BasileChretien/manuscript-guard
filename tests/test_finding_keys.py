@@ -766,6 +766,34 @@ def test_each_way_of_seeing_a_figure_is_its_own_key_in_any_folder(
     assert sorted(_colour_keys(moved).values()) == sorted(found.values())
 
 
+def test_two_figures_of_one_name_outside_the_project_are_two_keys(project: Path) -> None:
+    """Figures placed from outside the project, `../shared/a/fig.svg` and `../shared/b/fig.svg`,
+    each with its sidecar, are keyed by the path that climbs out to them, never an absolute
+    one: two keys, not one of the file's name (round 1 of #720)."""
+    from test_corruption import _GREEN, _RED
+
+    lines = "".join(f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {colour}"/>'
+                    for n, colour in enumerate((_RED, _GREEN)))  # fmt: skip
+    for folder in ("a", "b"):
+        shared = project.parent / "shared" / folder
+        shared.mkdir(parents=True)
+        (shared / "fig.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+            f'viewBox="0 0 100 80">{lines}</svg>', encoding="utf-8")
+        (shared / "fig.guard.yaml").write_text("schema: manuscript-guard/figure-guard/1\n",
+                                               encoding="utf-8")  # fmt: skip
+    main = project / MAIN
+    main.write_text(main.read_text(encoding="utf-8") + "\n![One](../shared/a/fig.svg)\n\n"
+                    "![Two](../shared/b/fig.svg)\n", encoding="utf-8")  # fmt: skip
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    found = check_figure_colours(load_project(project)[0]).findings
+    subjects = sorted(one.key.split("|")[2] for one in found if "fig.svg" in one.key)
+    assert subjects == ["../shared/a/fig.svg@deuteranopia",
+                        "../shared/b/fig.svg@deuteranopia"], subjects  # fmt: skip
+
+
 def _refusals(root: Path) -> dict[str, str]:
     """The message of each `tex-refused` BUILD gives a project, by its key as `--json` says
     it, numbered where two share one."""
@@ -803,16 +831,62 @@ def test_a_latex_refusal_keeps_its_key_when_its_message_changes(
         before[key] for key in before if "@command" in key]
 
 
+_PREAMBLE, _BODY, _END = "\\documentclass{article}\n", "\\begin{document}\n", "\n\\end{document}\n"
+#: For each kind of `tex-refused`, a manuscript's `main.tex` the reader refuses with it, and
+#: the other files of the manuscript.
+REFUSED_KINDS = {
+    "command": (_PREAMBLE + _BODY + "\\includepdf{x.pdf}" + _END, {}),
+    "redefined": (_PREAMBLE + "\\renewcommand{\\section}[1]{\\textbf{#1}}\n" + _BODY
+                  + "\\section{Results}" + _END, {}),
+    "defined-again": (_PREAMBLE + _BODY + "\\renewcommand{\\section}[1]{x}" + _END, {}),
+    "unknown-citation": (_PREAMBLE + _BODY + "As shown \\mycitep{key}." + _END, {}),
+    "citation-note": (_PREAMBLE + "\\usepackage{biblatex}\n" + _BODY + "\\cites(" + "a" * 400
+                      + _END, {}),
+    "delimiter-missing": (_PREAMBLE + "\\def\\eg/{e.g.}\n" + _BODY + "We \\eg here." + _END, {}),
+    "definition-body": (_PREAMBLE + "\\def\\foo#1" + "a" * 400 + "\n" + _BODY + "x" + _END, {}),
+    "binding-in-siunitx": (_PREAMBLE + "\\usepackage{siunitx}\n" + _BODY
+                           + "\\qty{\\mg{results.x}}{kg}" + _END, {}),
+    "binding-as-typed": (_PREAMBLE + _BODY + "\\verb|\\mg{results.x}|" + _END, {}),
+    "starred-import": (_PREAMBLE + "\\usepackage{import}\n" + _BODY + "\\import*{a/}{b}" + _END,
+                       {}),
+    "environment": (_PREAMBLE + _BODY + "\\begin{minted}{python}\nx\n\\end{minted}" + _END, {}),
+    "encoding": (_PREAMBLE + "\\usepackage[latin1]{inputenc}\n" + _BODY + "Caf\u00e9." + _END, {}),
+    # Declared in a file of ASCII, refused by the tree where another file is not.
+    "encoding/tree": (_PREAMBLE + "\\usepackage[latin1]{inputenc}\n" + _BODY + "\\input{a}"
+                      + _END, {"a.tex": "Caf\u00e9.\n"}),
+    "makeatletter": (_PREAMBLE + _BODY + "\\makeatletter\nx\n\\makeatother\nOne." + _END, {}),
+    "conditional": (_PREAMBLE + _BODY + "\\ifx a b\nx\n\\fi\nOne." + _END, {}),
+    "input-not-followed": (_PREAMBLE + _BODY + "\\input{gone}" + _END, {}),
+    "input-cycle": (_PREAMBLE + _BODY + "\\input{main}" + _END, {}),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("kind", sorted(REFUSED_KINDS))
+def test_each_kind_of_refusal_is_its_own_subject(tmp_path: Path, kind: str) -> None:
+    """Each place the reader refuses with `tex-refused` gives its finding the subject of its
+    own kind, `manuscript/main.tex@<kind>`: a kind named wrong, or two swapped, fails here."""
+    root = tmp_path / "paper"
+    init_project(root, "A study of reports")
+    for path in (root / "manuscript").rglob("*.md"):
+        path.unlink()
+    main_tex, others = REFUSED_KINDS[kind]
+    (root / "manuscript" / "main.tex").write_text(main_tex, encoding="utf-8")
+    for name, text in others.items():
+        (root / "manuscript" / name).write_text(text, encoding="utf-8")
+    subjects = {key.split("|")[2] for key in _refusals(root)}
+    assert subjects == {f"manuscript/main.tex@{kind.split('/')[0]}"}, subjects
+
+
 def test_every_tex_refused_the_reader_makes_names_its_kind() -> None:
     """Each place the LaTeX reader refuses with `tex-refused` names the kind its key takes:
     one with none would key on the code, and two kinds of refusal on one line would share a
-    key."""
+    key. Each kind named is one `REFUSED_KINDS` gives an input for."""
     import ast
 
     from manuscript_guard.text.latex import mask
 
     folder = Path(mask.__file__).parent
-    unnamed = []
+    unnamed, named = [], set()
     for name in ("mask.py", "structure.py"):
         tree = ast.parse((folder / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -829,7 +903,10 @@ def test_every_tex_refused_the_reader_makes_names_its_kind() -> None:
                 unnamed.append(f"{name}:{node.lineno}")
             if called == "_skip_block" and not any(one.arg == "kind" for one in node.keywords):
                 unnamed.append(f"{name}:{node.lineno}")
+            if called in ("_refuse", "Refusal", "_skip_block") and isinstance(kind, ast.Constant):
+                named.add(kind.value)
     assert unnamed == [], unnamed
+    assert named == {kind.split("/")[0] for kind in REFUSED_KINDS}, named
 
 
 # --------------------------------------------------------------------- what moves a key

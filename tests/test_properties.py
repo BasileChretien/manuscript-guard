@@ -3546,11 +3546,13 @@ def _a_caption_is_held_only_to_the_lines_about_its_paragraph(
     patch: pytest.MonkeyPatch,
 ) -> None:
     """As round 1 of #734 put it: the line below the paragraph, never the paragraph's own
-    next line, so a caption over its table in one paragraph is none."""
+    next line, so a caption over its table in one paragraph is none; the line before it as
+    the rule reads it (round 2)."""
     from manuscript_guard.gates import glossary
 
     def outside(prose: str, lines: list[str], index: int, start: int, end: int) -> bool:
-        about = (glossary._line_above(prose, start), glossary._line_below(prose, end))
+        previous = lines[index - 1] if index else glossary._line_above(prose, start)
+        about = (previous, glossary._line_below(prose, end))
         return any(glossary._TABLE_LINE.match(line) for line in about)
 
     patch.setattr(glossary, "_beside_a_table", outside)
@@ -3572,10 +3574,12 @@ def _the_line_above_is_read_past_one_blank_line_only(patch: pytest.MonkeyPatch) 
     from manuscript_guard.gates import glossary
 
     def one_gap(prose: str, start: int) -> str:
-        stop = start
-        for _ in range(2):
-            if stop and prose[stop - 1].isspace():
-                stop -= 1
+        """Back over the whitespace to the second line feed, a blank line's, and no further
+        (round 2 of #734): as the rule reads a blank line of spaces, a tab or a return."""
+        stop, ends = start, 0
+        while stop and prose[stop - 1].isspace() and ends < 2:
+            ends += prose[stop - 1] == "\n"
+            stop -= 1
         return prose[prose.rfind("\n", 0, stop) + 1 : stop]
 
     patch.setattr(glossary, "_line_above", one_gap)

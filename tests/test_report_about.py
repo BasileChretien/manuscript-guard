@@ -301,6 +301,36 @@ def test_the_g14_test_runs_in_its_file(kept, capsys, project) -> None:
         _run(out, "test_language", project=project)
 
 
+@pytest.mark.parametrize(("direction", "code", "snippet", "said", "in_example"), [
+    # The example declares en-GB: one American spelling is a variant there, and alone it is
+    # the English the snippet's words are in.
+    ("--flagged", "spelling-variant", "The color of each report was recorded.",
+     "`spelling-variant` is not found in the snippet's findings (it gives no finding)", True),
+    # The example lists CI among the abbreviations it leaves undefined, meaning the "95% CI"
+    # of a level: a bare CI goes through there, and alone it is undefined.
+    ("--missed", "abbreviation-undefined", "The CI of the ratio was wide in the exposed group.",
+     "not reproduced: the snippet alone gives `abbreviation-undefined`; the report says so",
+     False),
+], ids=["declared English", "an exemption"])  # fmt: skip
+def test_the_snippet_is_read_with_no_declared_english_and_its_test_in_the_example(
+    kept, capsys, project, direction: str, code: str, snippet: str, said: str,
+    in_example: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A report about a gate checks its snippet for
+    `audit`, G6 and G14 only"): the snippet is read with an empty `paper.yaml`, so with no
+    declared English and no exemptions. A fault that turns on one of them gets either
+    verdict the item names: the code not found in the snippet's findings, or "not
+    reproduced" of a defect the example's check lets through. Either way the test the
+    report prints, run in the example, disagrees with the report."""
+    from test_language import codes, written
+
+    out = _reported(capsys, "--about", "G14", direction, code, "--snippet", snippet)
+    assert f"**Does the snippet alone show it?** {said}" in out
+    with pytest.raises(AssertionError):
+        _run(out, "test_language", project=project)
+    assert (code in codes(written(project, snippet))) == in_example
+
+
 @pytest.mark.parametrize(("direction", "fails"), [("--flagged", True), ("--missed", False)])
 def test_another_gates_test_appends_to_the_example(kept, capsys, project, direction,
                                                     fails) -> None:

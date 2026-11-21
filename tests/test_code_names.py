@@ -79,6 +79,36 @@ def test_a_results_key_is_found_bare_and_as_its_binding_names_it() -> None:
     assert "`{{results.case.n_cases}}`" in findings[1].hint
 
 
+def test_a_name_spelt_otherwise_loses_its_hint(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a name from the code by its shape, and
+    a key or a variable by its spelling", its fourth point): a key is matched whole, bare or
+    after `results.`, so one with a part changed or a table's key is read only as a word
+    with underscores, without the key's hint, and a variable only in the dictionary's case,
+    so `Age_group` opening a sentence goes without its label."""
+    underscored = "is written with underscores, the way a name in code is written"
+    keys = {"case.n_cases", "ror.point"}
+    (whole,) = read("The case.n_cases rose.\n", keys=keys)
+    assert whole.message.startswith("'case.n_cases' is a key of the results")
+    for text in ("The case.n_case rose.\n", "The results.case.n_case rose.\n"):
+        (changed,) = read(text, keys=keys)
+        assert changed.message.startswith(f"'n_case' {underscored}"), text
+        assert "{{results." not in changed.hint, text
+    assert named("The ror.points rose.\n", keys=keys) == []
+    labels = {"age_group": "Age group"}
+    (variable,) = read("The age_group was recorded.\n", labels=labels)
+    assert "which labels it 'Age group'" in variable.message
+    (opening,) = read("Age_group was recorded.\n", labels=labels)
+    assert opening.message.startswith(f"'Age_group' {underscored}")
+    assert "Age group" not in opening.message + opening.hint
+    report = written(project, "# Results\n\nThe two_by_two and the baseline were drawn.\n")
+    assert coded(report) == [
+        ("main.md", f"'two_by_two' {underscored}, and the reader has never seen it: it is "
+                    "used once, first in the prose"),
+    ]  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("name", "shaped"),
     [("age_group", True), ("age.group", True), ("ckdFlag", True), ("hrAdjMain", True),
@@ -116,6 +146,17 @@ def test_italics_and_double_underscores() -> None:
         "hr_adj", "g__Bacteroides"
     ]  # fmt: skip
     assert named("The __init__ method and __bold__ text.\n") == []
+
+
+def test_emphasis_inside_a_name_or_a_tag_hides_it() -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a name from the code by its shape, and
+    a key or a variable by its spelling", its seventh point): `*ckd*_flag` is not read, and
+    an HTML tag is read as one where `<` stands against a letter, so "a <b and c_d> e" hides
+    `c_d`, which a space after the `<` leaves in the prose."""
+    assert named("The *ckd*_flag was recorded.\n") == []
+    assert named("The ckd_flag was recorded.\n") == ["ckd_flag"]
+    assert named("a <b and c_d> e\n") == []
+    assert named("a < b and c_d > e\n") == ["c_d"]
 
 
 def test_a_word_with_no_letter_is_no_name() -> None:
@@ -304,6 +345,20 @@ def test_a_latex_manuscript_is_read(project: Path) -> None:
     ]  # fmt: skip
     (variable,) = (f for f in report.findings if "age_group" in f.message)
     assert variable.line == 4 and variable.message.endswith("first in a code span")
+
+
+def test_an_unknown_latex_command_s_argument_is_prose(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a name from the code by its shape, and
+    a key or a variable by its spelling", its ninth point): a `glossaries` or `acronym` key
+    with an underscore, `\\gls{ckd_flag}` or `\\ac{hr_adj}`, is reported though the document
+    prints the entry's text, while the key of a command the reader knows, `\\cite`, is not.
+    The 2026-11-09 triage planned a fix (F19), which will change this test."""
+    report = _latex(project, OPEN + (
+        "The \\gls{ckd_flag} and \\ac{hr_adj} groups differed \\cite{smith_2019}.\n"
+    ) + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == ["ckd_flag", "hr_adj"]
 
 
 def test_a_latex_figure_s_caption_and_reference_list_are_not_read_in_code(project: Path) -> None:

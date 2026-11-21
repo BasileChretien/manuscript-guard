@@ -91,6 +91,29 @@ def test_a_sentence_written_twice_is_two_places() -> None:
         "Abstract", "Results"]
 
 
+def test_two_sentences_that_open_alike_for_400_characters_are_one_place() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "Two places are one when their file, their section and the first 400 characters"):
+    two sentences of one section that agree, whatever the case, for 400 characters and
+    differ after are one place; differing before, or in another section or file, two."""
+    opening = "Word " + "word " * 85
+    alike = f"# Results\n\n{opening}alpha ends here. {opening.upper()}bravo ends there.\n"
+    found = placed("word word word word", {"main.md": alike})
+    assert [(one["section"], one["sentence"]) for one in found] == [
+        ("Results", opening[:400])]
+    # The other side of each: differing within the 400, or in another section or file.
+    short = "Word " + "word " * 70
+    apart = f"# Results\n\n{short}alpha ends here. {short}bravo ends there.\n"
+    assert [one["sentence"][-17:] for one in placed("word word word word", {"main.md": apart})] == [
+        " alpha ends here.", "bravo ends there."]
+    sections = f"# Results\n\n{opening}alpha ends here.\n\n# Methods\n\n{opening}bravo ends.\n"
+    assert [one["section"] for one in placed("word word word word", {"main.md": sections})] == [
+        "Results", "Methods"]
+    files = {"main.md": f"# Results\n\n{opening}alpha ends here.\n",
+             "other.md": f"# Results\n\n{opening}bravo ends there.\n"}  # fmt: skip
+    assert [one["file"] for one in placed("word word word word", files)] == ["main.md", "other.md"]
+
+
 def test_a_heading_s_title_is_at_the_heading_under_its_section() -> None:
     assert where(placed("Data source", {"main.md": PAPER})) == [
         ("main.md", "Methods", "Data source", True)]
@@ -104,6 +127,34 @@ def test_a_paper_s_title_typed_as_its_one_top_heading_is_no_section() -> None:
         "Results"]
 
 
+def test_a_section_is_read_at_the_first_level_its_file_has_two_headings_of() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "A section is the heading over a sentence of the first level its file has two
+    headings of"): a file with one section and subsections under it names the subsections,
+    so the example's supplement is read at its tables' level, and an abstract typed under
+    a paper's title with no heading of its own is in the title's section."""
+    single = "# Methods\n\n## Data\n\nWe counted the reports.\n\n## Analysis\n\nIt was modelled.\n"
+    assert [one["section"] for one in placed("We counted the reports", {"main.md": single})] == [
+        "Data"]
+    # The other side: with two headings at the top level, a subsection's sentence is its
+    # section's.
+    two = single + "\n# Results\n\nThe rate rose in men.\n"
+    assert [one["section"] for one in placed("We counted the reports", {"main.md": two})] == [
+        "Methods"]
+    supplement = Path(__file__).parents[1] / "example" / "manuscript" / "supplementary"
+    text = (supplement / "S1_code_lists.md").read_text(encoding="utf-8")
+    assert text.startswith("# Supplementary methods\n")
+    assert [one["section"] for one in placed(SUPPLEMENT, {"S1.md": text})] == [
+        "Table S1. Code lists used to identify the outcome"]
+    titled = ("# A study of the rate\n\nAn abstract under the title alone.\n\n"
+              "## Methods\n\nWe counted the reports.\n\n"
+              "## Results\n\nThe rate rose.\n")  # fmt: skip
+    assert [one["section"] for one in placed("abstract under the title", {"main.md": titled})] == [
+        "A study of the rate"]
+    assert [one["section"] for one in placed("We counted the reports", {"main.md": titled})] == [
+        "Methods"]
+
+
 def test_a_heading_and_the_line_under_it_are_not_one_sentence() -> None:
     text = "# Methods\nIndia one two three four.\n"
     assert where(placed("India one two three", {"main.md": text})) == [
@@ -112,6 +163,23 @@ def test_a_heading_and_the_line_under_it_are_not_one_sentence() -> None:
 
 def test_a_quote_across_three_sentences_is_placed_nowhere() -> None:
     assert placed("twenty. Foxtrot twenty one twenty two. Golf twenty", {"main.md": PAPER}) == []
+
+
+def test_two_sentences_in_a_row_are_looked_at_only_where_no_one_sentence_holds_the_quote() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "Two sentences in a row are looked at only where no one sentence holds the
+    quote"): words whole in the Results, a stop with a small letter after it cutting
+    nothing there, and across a cut in the abstract, are placed in the Results only."""
+    text = ("# Abstract\n\nAlpha one two. Three four five six.\n\n"
+            "# Results\n\nWe saw one two. three four in all.\n")  # fmt: skip
+    assert where(placed("one two. Three four", {"main.md": text})) == [
+        ("main.md", "Results", "We saw one two. three four in all.", False)]
+    # The other side: with no one sentence holding it, the abstract's two are its places.
+    alone = text.replace("We saw one two. three four in all.", "Nothing like it.")
+    assert where(placed("one two. Three four", {"main.md": alone})) == [
+        ("main.md", "Abstract", "Alpha one two.", False),
+        ("main.md", "Abstract", "Three four five six.", False),
+    ]
 
 
 def test_a_sentence_above_every_heading_has_no_section() -> None:
@@ -188,6 +256,44 @@ def test_a_citation_s_locator_does_not_cut_a_sentence() -> None:
          False)]
 
 
+def test_a_sentence_is_cut_where_g8_cuts_one() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "A sentence is cut as G8 cuts one"): "Fig. 2" and "Dr. Smith" each cut a sentence,
+    a quote across one cut is at both halves and across two is placed nowhere; LaTeX's
+    `\\citep[p. 12]{a}` ends a sentence at "p." where Markdown's group does not; `\\item`
+    and `\\\\` cut nothing; and an address or a key after "e.g." is cut from it."""
+    text = "# Results\n\nThe rate rose as Fig. 2 shows in men. We thank Dr. Smith for the data.\n"
+    assert [one["sentence"] for one in placed("as Fig. 2 shows in", {"main.md": text})] == [
+        "The rate rose as Fig.", "2 shows in men."]
+    assert [one["sentence"] for one in placed("thank Dr. Smith for the", {"main.md": text})] == [
+        "We thank Dr.", "Smith for the data."]
+    twice = "# Results\n\nWe thank Dr. Smith as Fig. 2 shows here.\n"
+    assert placed("thank Dr. Smith as Fig. 2 shows", {"main.md": twice}) == []
+    # The other side of the LaTeX locator's cut: a tie, or Markdown's group, ends nothing.
+    for spaced, whole in (("[p. 12]", False), ("[p.~12]", True)):
+        latex = f"\\section{{Results}}\nThe rate rose \\citep{spaced}{{a}} in every year of it.\n"
+        assert [one["sentence"] for one in placed("in every year of", {"main.tex": latex},
+                                                  latex=True)] == [  # fmt: skip
+            f"The rate rose \\citep{spaced}{{a}} in every year of it." if whole
+            else "12]{a} in every year of it."]
+    markdown = "# Results\n\nThe rate rose [@a, p. 12] in every year of it.\n"
+    assert [one["sentence"] for one in placed("in every year of", {"main.md": markdown})] == [
+        "The rate rose [@a, p. 12] in every year of it."]
+    items = ("\\section{Methods}\n\\begin{itemize}\n\\item The rate rose in men\n"
+             "\\item it fell in women \\\\ and in children.\n\\end{itemize}\n")  # fmt: skip
+    assert [one["sentence"] for one in placed("rate rose in men", {"main.tex": items},
+                                              latex=True)] == [  # fmt: skip
+        "\\item The rate rose in men \\item it fell in women \\\\ and in children."]
+    for after in ("https://a.org", "@smith2020"):
+        code = f"# Code\n\nSee e.g. {after} for the code of the study.\n"
+        assert [one["sentence"] for one in placed("for the code of", {"main.md": code})] == [
+            f"{after} for the code of the study."]
+    # The other side: a small word after "e.g." does not cut it.
+    plainly = "# Code\n\nSee e.g. the archive for the code of the study.\n"
+    assert [one["sentence"] for one in placed("for the code of", {"main.md": plainly})] == [
+        "See e.g. the archive for the code of the study."]
+
+
 @pytest.mark.parametrize("ending", [
     "[the repository](https://github.com/a/b).", "<https://github.com/a/b>.",
     "https://github.com/a/b.", "@smith2020.", "(https://github.com/a/b).",
@@ -224,6 +330,21 @@ def test_a_bracket_with_an_at_sign_joins_no_paragraphs() -> None:
     text = "# Results\n\nAged [18 to 65 as @a found.\n\nThe rate rose in men] overall.\n"
     assert [one["sentence"] for one in placed("The rate rose in", {"main.md": text})] == [
         "The rate rose in men] overall."]
+
+
+def test_a_stray_bracket_pair_round_an_at_sign_is_one_sentence() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "A citation group is any bracket pair with an `@` inside it"): "[18, 65) as @a
+    found. ... (65, 100]" within one paragraph is read as one sentence from one to the
+    other."""
+    text = ("# Results\n\nAged [18, 65) as @a found. The rate rose in men. Over (65, 100] it "
+            "fell. Then more came.\n")  # fmt: skip
+    assert [one["sentence"] for one in placed("The rate rose in men", {"main.md": text})] == [
+        "Aged [18, 65) as @a found. The rate rose in men. Over (65, 100] it fell."]
+    # The other side: with no bracket pair round the `@`, the sentences are cut at each stop.
+    text = text.replace("[18", "(18").replace("100]", "100)")
+    assert [one["sentence"] for one in placed("The rate rose in men", {"main.md": text})] == [
+        "The rate rose in men."]
 
 
 def test_an_unanchored_finding_or_one_that_quotes_nothing_is_not_placed() -> None:
@@ -435,6 +556,41 @@ def test_two_people_reading_one_remit_are_two_readers(project: Path, capsys) -> 
     assert "    John Doe: h1 (fresh-reader)\n" in said
 
 
+@pytest.mark.parametrize("names, readers", [
+    (("Jane Roe", "J. Roe"), ["Jane Roe", "J. Roe"]),
+    ((None, None), ["methods-reader", "statistics-reader"]),
+    (("Jane Roe", "Jane Roe"), None),
+])  # fmt: skip
+def test_readers_are_counted_by_their_names_as_typed(
+    project: Path, names: tuple[str | None, str | None], readers: list[str] | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "Readers are counted by name"): one person filing two plain records, under two
+    spellings of a name or with no `--by`, which writes each remit's id, is two readers of
+    the sentence both quote; under one name typed alike, one (the other side)."""
+    finding = yaml.safe_dump([{"id": "h1", "severity": "minor", "finding": "Say so.",
+                               "quote": contained(project)}], sort_keys=False, width=10**6)
+    for reviewer, by in zip(("methods-reader", "statistics-reader"), names, strict=True):
+        assert main(["review", str(project), "--record", reviewer, "--round", "20",
+                     "--remit", f"the {reviewer}'s remit", "--verdict", "minor-revision",
+                     *(["--by", by] if by else [])]) == 0  # fmt: skip
+        path = project / "review" / "round-20" / f"{reviewer}.yaml"
+        text = path.read_text(encoding="utf-8")
+        path.write_bytes(text.replace("findings: []\n", "findings:\n" + finding).encode("utf-8"))
+        assert main(["review", str(project), "--seal", reviewer, "--round", "20"]) == 0
+    summary = next(one for one in round_summaries(loaded(project)) if one.number == 20)
+    lines = round_lines(summary.readings)
+    if readers is None:
+        assert [reading.who for reading in summary.readings] == ["Jane Roe", "Jane Roe"]
+        assert lines == ["1 place quoted by one reader"]
+        return
+    assert [reading.who for reading in summary.readings] == readers
+    assert lines[:2] == ["quoted by two readers or more:", lines[1]]
+    assert lines[1].startswith('  2 readers, Results: "The database contained')
+    assert lines[2:] == [f"    {readers[0]}: h1 (methods-reader)",
+                         f"    {readers[1]}: h1 (statistics-reader)"]  # fmt: skip
+
+
 # --------------------------------------------------------------------------------- LaTeX
 
 
@@ -443,6 +599,38 @@ def twin(project: Path) -> Path:
     shutil.rmtree(project / "manuscript")
     shutil.copytree(TWIN, project / "manuscript")
     return project
+
+
+def test_a_latex_reading_by_hand_is_placed_as_printed_or_in_the_file_it_is_typed_in(
+    twin: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Readers at one sentence are readers who quoted
+    it", "A LaTeX reading filed by hand that carries every file"): a quote of the printed
+    words is placed in the document as printed, under its Results; one standing only as
+    written is placed in the `\\input` file it is typed in, which has no `\\section`, so
+    before any heading."""
+    manuscript = twin / "manuscript"
+    (manuscript / "extra.tex").write_text(
+        "Extra counts were drawn from \\mg{results.cohort.n_reports} reports in all.\n", "utf-8")
+    entry = manuscript / "main.tex"
+    text = entry.read_text(encoding="utf-8")
+    assert "\\section{Results}\n" in text
+    entry.write_text(text.replace("\\section{Results}\n", "\\section{Results}\n\\input{extra}\n",
+                                  1), "utf-8")  # fmt: skip
+    shown = re.search(r"Extra counts were drawn from \S+ reports", printed(twin, "main.tex"))
+    assert shown and "\\mg" not in shown.group()
+    findings = yaml.safe_dump([
+        {"id": "h1", "severity": "minor", "finding": "Bare.", "quote": shown.group()},
+        {"id": "h2", "severity": "minor", "finding": "Bare.",
+         "quote": "Extra counts were drawn from \\mg{results.cohort.n_reports} reports"},
+    ], sort_keys=False, allow_unicode=True, width=10**6)  # fmt: skip
+    path = file_by_hand(twin, findings)
+    assert seal(twin) == 0
+    places = read_structured(path)["quotes"]["places"]
+    assert [(p["file"], p["section"]) for p in places["h1"]] == [("main.tex", "Results")]
+    assert places["h2"] == [{"file": "extra.tex", "section": None, "sentence":
+                             "Extra counts were drawn from \\mg{results.cohort.n_reports} "
+                             "reports in all."}]  # fmt: skip
 
 
 def test_a_latex_reading_keeps_the_sentence_and_section_of_each_quote(

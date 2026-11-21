@@ -325,6 +325,140 @@ def test_what_is_not_prose_is_not_read(tmp_path: Path) -> None:
     assert novelty.claims_in(text) == []
 
 
+#: What G7 makes of one sentence with no entry: a warning, a note, or nothing.
+WARNED, NOTED, UNREAD = [("novelty-unsearched", WARN)], [("novelty-softer", INFO)], []
+
+
+def _graded(root: Path, sentence: str, heading: str = "Introduction") -> list[tuple[str, str]]:
+    """G7's findings of a manuscript holding `sentence` alone under `heading`."""
+    _project(root, f"---\ntitle: A test\n---\n\n# {heading}\n\n{sentence}\n")
+    return _codes(_g7(root))
+
+
+@pytest.mark.parametrize(("sentence", "said"), [
+    ("The mechanism remains unknown.", NOTED),
+    ("It is unclear whether the drug works.", NOTED),
+    ("It is unclear how the drug works.", NOTED),
+    ("The mechanism is still unclear.", NOTED),
+    ("The mechanism is largely unknown.", NOTED),
+    ("The mechanism is currently unknown.", NOTED),
+    ("The mechanism is as yet unclear.", NOTED),
+    # The other side: "unknown" said of the data, or of the literature, alone.
+    ("The denominator is unknown.", UNREAD),
+    ("The effect is unknown.", UNREAD),
+])  # fmt: skip
+def test_unknown_and_unclear_are_softer_only_after_remains_whether_or_still(
+    tmp_path: Path, sentence: str, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "\"Unknown\" and \"unclear\" are a softer claim
+    only after"): "unknown" and "unclear" are a note after "remains", in "it is unclear
+    whether" and its kind, and beside "still", "largely", "currently" or "as yet"; "the
+    denominator is unknown" and "the effect is unknown" are not read by G7."""
+    assert _graded(tmp_path, sentence) == said
+
+
+@pytest.mark.parametrize(("sentence", "said"), [
+    ("Our data are limited.", UNREAD),
+    ("These data are limited.", UNREAD),
+    ("The present data are limited.", UNREAD),
+    # The other side of "our data": data not said to be the paper's own are a note.
+    ("The data are limited by under-reporting.", NOTED),
+    ("There is a lack of data on exposure.", NOTED),
+    ("This is the first-line treatment for gout.", UNREAD),
+    ("This represents the first-in-class inhibitor.", UNREAD),
+    ("This is the first-in-human study of the drug.", UNREAD),
+    # The other side of the hyphen: "first-ever" and "first-of-its-kind" say first ...
+    ("This is the first-ever study of statins in delirium.", WARNED),
+    ("We report the first-of-its-kind case of pancreatitis.", WARNED),
+    # ... but for where they name a part of the study.
+    ("This is the first-ever time the patient received it.", UNREAD),
+])  # fmt: skip
+def test_own_data_and_a_hyphenated_first_are_read_only_as_they_say(
+    tmp_path: Path, sentence: str, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper's own data are kept from the softer list
+    only where it says so"): "our data", "these data" and "the present data are limited" are
+    not read, and data not so named, in the Limitations, are notes; a hyphenated "first" is
+    no priority but for "first-ever" and "first-of-its-kind", and those not where they name
+    a part of the study."""
+    assert _graded(tmp_path, sentence, "Limitations") == said
+
+
+@pytest.mark.parametrize(("sentence", "said"), [
+    ("Smith et al. were the first to describe it [@smith].", UNREAD),
+    ("The interaction had not been reported by 2015.", UNREAD),
+    ("There is no evidence that the effect differed by sex.", UNREAD),
+    # The other side: the paper's own priority is read ...
+    ("We are the first to describe it.", WARNED),
+    # ... and "for the first time" after a verb of reporting, whatever its subject.
+    ("The reaction was described for the first time in 1985.", WARNED),
+])  # fmt: skip
+def test_only_the_papers_own_priority_is_read_but_for_the_first_time_after_reporting(
+    tmp_path: Path, sentence: str, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Only the paper's own priority is read"): a cited
+    work's priority, an absence in the past tense and an absence of evidence are not read;
+    "for the first time" after a verb of reporting is, so another's priority in 1985 warns."""
+    assert _graded(tmp_path, sentence) == said
+
+
+@pytest.mark.parametrize(("heading", "sentence", "absence"), [
+    ("Results", "No deaths have been reported in the trial.", True),
+    ("Methods", "Its results have not been published.", True),
+    ("Results", "We report the first case of pancreatitis with dupilumab.", False),
+    ("Methods", "We report the first case of pancreatitis with dupilumab.", False),
+])  # fmt: skip
+def test_an_absence_of_the_papers_own_data_warns_in_the_results_and_methods_too(
+    tmp_path: Path, heading: str, sentence: str, absence: bool,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An absence a paper says of its own data is read
+    as one of the literature"): "no deaths have been reported in the trial" and "its results
+    have not been published" warn until a person marks them no claim, and the Results and
+    the Methods are read as the rest is, a case report's "we report the first case" too."""
+    assert _graded(tmp_path, sentence, heading) == WARNED
+    if absence:
+        _entries(tmp_path, {"id": "c1", "kind": "novelty", "sentence": sentence,
+                            "not_a_claim": {"by": "Ada Example", "why": "said of this trial",
+                                            "decided_on": "2026-11-07"}})  # fmt: skip
+        assert _codes(_g7(tmp_path)) == UNREAD
+
+
+@pytest.mark.parametrize(("sentence", "said"), [
+    ("This is not the first study to report it.", UNREAD),
+    ("The drug was given, not for the first time, to the patient.", UNREAD),
+    # The other side: turned round any other way, or made conditional, it is read.
+    ("It is wrong to say that no study has examined this.", WARNED),
+    ("If no study has examined it, the question is open.", WARNED),
+    ("We ask whether this is the first study of its kind.", WARNED),
+])  # fmt: skip
+def test_a_claim_turned_round_is_known_only_by_a_not_right_before_it(
+    tmp_path: Path, sentence: str, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A claim turned round is known only by a \"not\"
+    right before it"): "is not the first" and "not for the first time" are not read; "it is
+    wrong to say that no study has examined this", a conditional and a question warn."""
+    assert _graded(tmp_path, sentence) == said
+
+
+@pytest.mark.parametrize(("sentence", "said"), [
+    ("Patients reported for the first time a loss of taste.", WARNED),
+    ("Cases described in Japan were treated for the first time.", WARNED),
+    ("Statin myopathy was described for the first time in 1988.", WARNED),
+    # Six words between the verb and the phrase are in the window, and seven are not.
+    ("Cases described in a Japanese cohort were treated for the first time.", WARNED),
+    ("Cases described in a large Japanese cohort were treated for the first time.", UNREAD),
+    # "That" ends the window.
+    ("We show that, for the first time, statins reduce delirium.", UNREAD),
+])  # fmt: skip
+def test_for_the_first_time_is_read_by_a_window_of_six_words_after_a_reporting_verb(
+    tmp_path: Path, sentence: str, said: list,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "\"For the first time\" is read by a window of six
+    words"): whatever the verb is said of, "for the first time" up to six words after a verb
+    of reporting warns, and seven words after it is not seen; "that" ends the window."""
+    assert _graded(tmp_path, sentence) == said
+
+
 def test_a_search_for_the_earlier_study_that_found_nothing_answers_the_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -363,6 +497,23 @@ def test_a_search_more_than_six_months_old_is_stale_by_its_older_step(
     # Six calendar months, not 180 days: on 2026-11-07 a search of 2026-05-07 is not stale.
     _search(root, 3, "N2", on="2026-05-07")
     assert _g7(root, monkeypatch=monkeypatch) == []
+
+
+def test_a_search_five_months_old_passes_at_submission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A search five months old passes at
+    submission"): on 2026-11-07 an N1 of 2026-06-07, which found nothing, answers the claim
+    at submission; one of 2026-05-06, past six months, fails there."""
+    root = _project(tmp_path / "five", _text(ABSENT))
+    _entries(root, NOVEL)
+    _search(root, 1, on="2026-06-07")
+    assert _g7(root, SUBMISSION, monkeypatch=monkeypatch) == []
+    older = _project(tmp_path / "seven", _text(ABSENT))
+    _entries(older, NOVEL)
+    _search(older, 1, on="2026-05-06")
+    assert _codes(_g7(older, SUBMISSION, monkeypatch=monkeypatch)) == [
+        ("novelty-search-stale", FAIL)]
 
 
 @pytest.mark.parametrize(("status", "said"), [("by hand", "searched by hand only"),
@@ -590,6 +741,53 @@ def test_n1_asks_every_registry_with_no_limit_and_records_what_it_left_out(
     assert citing and "type:review" not in citing[-1].params["filter"]
     assert citing[-1].params["sort"] == "publication_date:desc"
     assert _g7(root, monkeypatch=monkeypatch) == []
+
+
+class _OpenAlexAlone(Registry):
+    """The registries with PubMed and Europe PMC down; OpenAlex's search counting 300 works
+    and giving its first ten with no DOI and no PMID, unless `identified`."""
+
+    def __init__(self, identified: bool = False) -> None:
+        super().__init__()
+        self.down = {"esearch", "esummary", "europepmc"}
+        self.identified = identified
+
+    def _openalex(self, request, params: dict):
+        from test_currency_searches import _json
+
+        if self.identified or params.get("filter", "").startswith(("doi:", "cites:")):
+            return super()._openalex(request, params)
+        items = [{"id": f"https://openalex.org/W{n}", "type": "article", "title": "Untitled"}
+                 for n in range(400, 410)]  # fmt: skip
+        return _json(200, {"meta": {"count": 300}, "results": items})
+
+
+def test_n1_answered_by_one_source_covers_the_claim_and_one_keeping_nothing_asks_no_n2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "N1 counts where any one source answered"): a run
+    only OpenAlex answered covers the claim, and `--explain` shows that source's search
+    alone. OpenAlex's first works all lacking a DOI and a PMID, it keeps none, though it
+    counted 300, and G7 asks for no N2; where it keeps one, it asks for N2."""
+    root = _project(tmp_path / "alone", _text(ABSENT))
+    novelty_command.mark(load_project(root)[0], "no study has examined", "Ada Example")
+    run = _run(root, _OpenAlexAlone(), terms="statins delirium children")
+    assert not run.whole
+    (held,) = _held(root)
+    assert (held["step"], held["source"], held["hits"], held["candidates"],
+            held["unidentified"]) == ("N1", "openalex", 300, [], 10)  # fmt: skip
+    assert _g7(root, SUBMISSION, monkeypatch=monkeypatch) == []
+    said = command.explain(load_project(root)[0], "c1")
+    searches = [line for line in said.splitlines() if line.startswith("  search ")]
+    assert searches == ["  search 1 (N1, openalex, 2026-11-07): 'statins delirium children' "
+                        "by Ada Example, 300 hit(s), candidates: none"]  # fmt: skip
+    # The other side: OpenAlex alone keeping a work, N2 is asked for.
+    kept = _project(tmp_path / "kept", _text(ABSENT))
+    novelty_command.mark(load_project(kept)[0], "no study has examined", "Ada Example")
+    _run(kept, _OpenAlexAlone(identified=True), terms="statins delirium children")
+    assert [one["candidates"] for one in _held(kept)] == [[f"doi:{TRIAL_DOI}"]]
+    found = _g7(kept, monkeypatch=monkeypatch)
+    assert _codes(found) == WARNED and "none was followed forward" in found[0].message
 
 
 def test_a_novelty_search_is_refused_without_what_it_left_out(tmp_path: Path) -> None:

@@ -366,7 +366,6 @@ def _g1_of(project: Path) -> list[tuple[str, str, str]]:
                   if f.gate == "G1" and f.severity != "info")  # fmt: skip
 
 
-@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize("declared", [False, True], ids=["imported only", "declared an input"])
 def test_a_helper_the_script_imports_is_not_followed(project: Path, declared: bool) -> None:
     """A known gap (DESIGN.md, Known gaps, "G1 fails only on the script that wrote a results
@@ -393,14 +392,16 @@ def test_a_helper_the_script_imports_is_not_followed(project: Path, declared: bo
                "were written")  # fmt: skip
     assert _g1_of(project) == ([newer, changed] if declared else [newer])
     assert load_namespace(load_project(project)[0])[0]["results.ror.ci_low"].display == before
+    assert "rerun-differs" in {f.code for f in to_report(run(project)).failures}
     if not declared:
         # `build` passes the check and writes the old interval.
         from manuscript_guard.cli import main
 
+        if shutil.which("pandoc") is None:
+            pytest.skip("pandoc is not installed, so the build is not run")
         assert main(["build", str(project), "--offline"]) == 0
         built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
         assert f"(95% CI {before} to" in built
-    assert "rerun-differs" in {f.code for f in to_report(run(project)).failures}
 
 
 def test_an_older_fragment_without_the_digest_still_uses_mtime(project: Path) -> None:

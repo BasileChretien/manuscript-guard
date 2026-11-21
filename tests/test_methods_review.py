@@ -194,6 +194,26 @@ def test_a_passage_of_a_study_with_no_stored_copy_is_unchecked(project: Path) ->
     assert said(project)[0] == ("similar-passage-unchecked", WARN)
 
 
+def test_an_abstract_alone_is_no_stored_copy(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
+    to the work's DOI or title, not read", the point on the methods review): of a work whose
+    only copy is its abstract, the review says "no stored copy of @key", and the passage is
+    not said to be absent from it, as it is from a full copy that lacks it. The 2026-11-09
+    triage planned a fix (F19), which will change this test."""
+    sources = project / "literature" / "sources"
+    (sources / f"{COHORT}.txt").write_text("A full text that says something else.\n", "utf-8")
+    assert said(project)[0][0] == "similar-passage-not-in-source"
+    (sources / f"{COHORT}.txt").unlink()
+    (sources / f"{COHORT}.abstract.txt").write_text("An abstract that says little.\n", "utf-8")
+    findings = check_method_passages(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in findings] == [("similar-passage-unchecked", WARN)]
+    assert findings[0].message.endswith(
+        f"the passage could not be checked: no stored copy of @{COHORT}"
+    )
+
+
 def test_a_passage_of_a_study_whose_copy_is_kept_out_of_git_is_noted(project: Path) -> None:
     from kept_away import keep_away
 

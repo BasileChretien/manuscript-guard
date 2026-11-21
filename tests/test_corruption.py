@@ -11215,6 +11215,61 @@ def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_soft
         assert ("plan-variable-undefined", "warn") not in _plan_said(project), heading
 
 
+def _software_of(items: str, scripts: dict[str, str]) -> list[tuple[str, str, int | None]]:
+    """What G12 says of a plan whose Software section holds `items`, against `scripts`."""
+    from manuscript_guard.gates.software import judge_software
+
+    plan = f"# Analysis plan\n\n## Population\n\nAll reports.\n\n## Software\n\n{items}"
+    report = judge_software(Path("."), plan, scripts, [], frozenset(), "drafting")
+    return [(f.code, f.message.split(",")[0], f.line) for f in report.findings]
+
+
+def test_an_item_is_loaded_when_any_of_its_names_is() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its second point): "`dplyr`, `tidyr`" is never said
+    where only dplyr is loaded, in either order, and a variable written in backticks in an
+    item stands down the note for a package of that name."""
+    dplyr = {"analysis/a.R": "library(dplyr)\n"}
+    assert _software_of("- `dplyr`, `tidyr`: reshape the data\n", dplyr) == []
+    assert _software_of("- `tidyr`, `dplyr`: reshape the data\n", dplyr) == []
+    assert _software_of("- `dplyr`: select\n- `tidyr`: reshape the data\n", dplyr) == [
+        ("planned-package-unloaded", "the plan's Software section names tidyr", 10)
+    ]
+    both = {"analysis/a.R": "library(lme4)\nlibrary(survey)\n"}
+    assert _software_of("- `lme4`: `glmer()`, `survey` as its group\n", both) == []
+    assert _software_of("- `lme4`: `glmer()`, survey as its group\n", both) == [
+        ("plan-package-unnamed", "analysis/a.R loads survey", 2)
+    ]
+
+
+def test_a_base_package_r_leaves_unattached_is_loaded() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its fifth point): `splines` or `parallel` as an
+    item's first name counts as loaded wherever an R script is read, though none loads it;
+    with no R script, or as a later name, it does not."""
+    for item in ("- `splines`: `ns()` for the curve\n", "- `parallel`: `mclapply()`\n"):
+        assert _software_of(item, {"analysis/a.R": "x <- 1\n"}) == [], item
+    assert _software_of("- `splines`: `ns()` for the curve\n", {"analysis/a.py": "x = 1\n"}) == [
+        ("planned-package-unloaded", "the plan's Software section names splines", 9)
+    ]
+    assert _software_of("- `brms`, `splines`: `ns()`\n", {"analysis/a.R": "x <- 1\n"}) == [
+        ("planned-package-unloaded", "the plan's Software section names brms", 9)
+    ]
+
+
+def test_a_heading_with_no_blank_line_is_in_the_item() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its tenth point): a heading needs a blank line before
+    it, so "Considered and not used" typed on the line after an item is part of that item,
+    and the packages under it are held to the scripts."""
+    dplyr = {"analysis/a.R": "library(dplyr)\n"}
+    apart = "- `dplyr`: select\n\n### Considered and not used\n\n- `tidyr`: not needed\n"
+    assert _software_of(apart, dplyr) == []
+    assert _software_of(apart.replace("\n\n###", "\n###", 1), dplyr) == [
+        ("planned-package-unloaded", "the plan's Software section names tidyr", 12)
+    ]
+
+
 def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> None:
     """Round 1 of #592: a notebook or a Python file nested deeper than the parser goes made
     G12 raise, and a gate that raises fails the whole check. A file that does not parse is
@@ -20437,6 +20492,76 @@ def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
         "methods-not-found"
     ], report.render(project)
     assert "missing-required-section" in codes(_journal(project))
+
+
+def test_g2_and_g15_read_fewer_headings_than_g4_and_g9(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Methods are a heading that holds the word,
+    and two gates read fewer headings than G4 counts"): G4 and G9 take a heading that holds
+    "methods" for the Methods, and the singular as a whole title; G2 and G15 read only the
+    names of `METHODS_SECTIONS`, so "Overview of methods" is the Methods to the first two and
+    not to the other two, and "Method" is no Methods to G2 and G15."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.gates import check_methods
+    from manuscript_guard.gates.methods import methods_in
+    from manuscript_guard.gates.models import named_in_methods
+    from manuscript_guard.text.section_names import names_methods
+
+    # What G4 and G9 can take for the Methods, and what G2 and G15 read as them.
+    read = {
+        "Overview of methods": (True, False), "Limitations of existing methods": (True, False),
+        "Methods used": (True, False), "Method": (True, False), "3. Method": (True, False),
+        "Materials and method": (True, False), "Methodology": (True, True),
+        "A method for signal detection": (False, False),
+        "Performance of the proposed method": (False, False),
+        "Methodological notes": (False, False), "Methods": (True, True),
+        "2. Methods": (True, True), "Patients and methods": (True, True),
+        "Methods and analysis": (True, True), "Methods: data sources": (True, True),
+        "Methods. Study design": (True, True), "Methods \N{EN DASH} design": (True, True),
+        "Methods of the study": (True, True), "Statistical analysis": (False, True),
+    }  # fmt: skip
+    assert {title: (names_methods(title), is_methods((title,))) for title in read} == read
+    # G9 reads the first such heading where none is named, and a named one first.
+    assert methods_in("## Overview of methods\n\nA.\n\n## Results\n\nB.\n") == "\n\nA.\n\n"
+    other = "## Limitations of existing methods\n\nL.\n\n## {}\n\nM.\n"
+    assert methods_in(other.format("Method")) == "\n\nL.\n\n"
+    assert methods_in(other.format("Methodology")) == "\n\nM.\n"
+    assert methods_in(other.format("Methods")) == "\n\nM.\n"
+    # A Methods with a subsection that names another part of the paper is not read.
+    for sub in ("Results", "Limitations", "Background"):
+        assert methods_in(f"## Methods\n\nA.\n\n### {sub}\n\nB.\n") is None, sub
+    assert methods_in("## Methods\n\nA.\n\n### Statistical analysis\n\nB.\n") is not None
+    # G15 reads a model's name under "Methods" and not under "Overview of methods".
+    fitted = "\n\nA logistic regression was fitted.\n"
+    assert [kind for _s, _e, kind in named_in_methods("## Methods" + fitted)] != []
+    assert named_in_methods("## Overview of methods" + fitted) == []
+    # G4 counts "Overview of methods" a Methods present, and G2 holds a number there that
+    # it lets through under "Methods".
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Methods\n", "# Methods\n\nA difference was significant at p < 0.001.\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+    def unbound() -> list[str]:
+        return [f.message for f in gate_report(project).failures
+                if f.code == "unclassified-number" and "0.001" in f.message]  # fmt: skip
+
+    assert unbound() == []
+    _methods_retitled(project, "Overview of methods")
+    assert "missing-required-section" not in codes(_journal(project))
+    assert len(unbound()) == 1
+    # `methods-not-found` is said only where the project has analysis code.
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Overview of methods\n", "# Approach\n", 1),
+        encoding="utf-8",
+    )
+    report = check_methods(load_project(project)[0])
+    assert "methods-not-found" in {f.code for f in report.warnings}
+    shutil.rmtree(project / "analysis")
+    report = check_methods(load_project(project)[0])
+    assert "methods-not-found" not in {f.code for f in report.findings}
 
 
 # ------------------------------------------------ the supplement's Methods, held to the code

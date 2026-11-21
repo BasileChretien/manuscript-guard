@@ -19300,6 +19300,7 @@ Open, recorded as each change landed:
   reports a number written in the Methods where it could have let it through, and G15
   reads no model's name. `methods-not-found` is said only where the project has analysis
   code, since a case report or a narrative review has no Methods.
+  Pinned by `tests/test_corruption.py::test_g2_and_g15_read_fewer_headings_than_g4_and_g9`.
   - A subsection titled "Method", "Methodology" or "Materials and method" alone under
     "Results and discussion" is still a Methods to `methods_sections`, so to G4, G7, G8, G9
     and the audit: `NOT_METHODS_SECTIONS` rules out only a title that is a Results-type
@@ -21898,6 +21899,8 @@ Open, recorded as each change landed:
   list (`h$half(x)`) or named by a string (`do.call("half", ...)`). The file's own digest
   changes with each of these, so `methods-drift` still says that the file changed. The R
   digest is R's `deparse`, which can write the same code differently in another version of R.
+  Pinned by `tests/test_steps.py::test_a_step_follows_its_script_s_functions_by_name`
+  and `tests/test_r_emitter.py::test_r_follows_a_step_s_functions_by_name_only`.
 - **A Python step is marked in a script.** `with em.step("ci"):` in a notebook cell or under
   `python -c` is refused: the block is read from the file that calls it, and there is none.
   Pinned by `tests/test_steps.py::test_a_step_marked_where_there_is_no_script_says_that_is_why`.
@@ -21908,11 +21911,13 @@ Open, recorded as each change landed:
 - **An anchor on a heading's line is not judged.** `## Statistical analysis {{method.typo}}`
   is in no paragraph, so it makes no claim, `methods --explain` does not list it, and it gives
   no `method-step-unknown` though no step of that name ran. It prints nothing there either.
+  Pinned by `tests/test_steps.py::test_an_anchor_on_a_heading_s_line_is_not_judged`.
 - **G9 takes any line that opens with `#` and a space for a heading.** Pandoc reads one
   with no blank line above it as text of the paragraph. For "The first line", then "# of
   reports was counted", then "and the second. {{method.a}}", the claim is "and the second."
   and not the three lines. `check` passes it. The build does not: it asks pandoc, and stops
   with "pandoc reads as text ... the level-1 heading".
+  Pinned by `tests/test_steps.py::test_a_hash_line_is_a_heading_to_g9_and_text_to_pandoc`.
 - **An anchor's own line inside a paragraph ends it in the document.** "One.", then
   `{{method.a}}`, then "Two." is one paragraph to G9, which claims "One." for `a`, and two in
   the document, since the anchor's line prints as an empty line. `check` warns of it,
@@ -21933,6 +21938,8 @@ Open, recorded as each change landed:
   `A.\n{{method.a}}\n{{method.b}} <!-- checked -->\n\nB.` is warned of at line 2. In the
   last two nothing splits in the document, and the message that the paragraph ends there
   is false.
+  Pinned by `tests/test_steps.py::test_the_anchor_line_warning_reads_lines_and_not_blocks`
+  and `tests/test_steps.py::test_an_anchors_own_line_inside_a_paragraph_is_found`.
 - **Behind a mark, an anchor's line is left, and not warned of.** `> {{method.a}}` between
   two lines of a quotation prints as `> `, which ends the paragraph inside the quotation, and
   `- {{method.a}}` prints as an empty list item. Put the anchor at the end of the line above.
@@ -21941,6 +21948,7 @@ Open, recorded as each change landed:
   {{method.a}} {{method.b}}" with "Two." on the next line prints "One." followed by two
   spaces, which pandoc reads as a line break inside the paragraph. At the end of a paragraph
   the spaces print nothing, which is where the example has its two.
+  Pinned by `tests/test_steps.py::test_two_anchors_at_a_line_s_end_break_the_line`.
 - **Taking the anchor off a pair that fails leaves a warning.** A pair whose step changed
   fails as `method-step-changed`. With its anchor deleted there is no pair: the step is one
   no text points at, `method-step-undescribed`, a warning. Whether the text still describes
@@ -21960,9 +21968,11 @@ Open, recorded as each change landed:
 - **A code step's search for a `.git` above its file ignores `GIT_CEILING_DIRECTORIES`.** A
   `.git` above the ceiling, which git does not look past, still keeps the step from being
   recorded unchecked: it is refused, failing closed.
+  Pinned by `tests/test_emit_code_step.py::test_a_git_above_the_ceiling_refuses_the_step`.
 - **A pair whose text and code both changed is one never read.** A text is a changed one
   only while the step's code is as the lock has it. With both changed since the pair was
   read, the finding is `method-pair-unread` and does not say what the text was.
+  Pinned by `tests/test_steps.py::test_a_pair_whose_text_and_code_changed_is_unread`.
 - **`methods --reconcile <project>` is read as a step's name.** Before steps had names it
   reconciled that project. A folder that holds a `paper.yaml` is refused with the command
   to type, `methods <project> --reconcile`. A folder inside a project is not known for one:
@@ -24415,6 +24425,7 @@ Open, recorded as each change landed:
     table's key, is read only as a word with underscores, where it has one, and without the
     key's hint. A variable is matched in the case the dictionary writes it, so `Age_group`
     opening a sentence is a word with underscores, without its label.
+    Pinned by `tests/test_code_names.py::test_a_name_spelt_otherwise_loses_its_hint`.
   - A word in a run of characters that holds a slash, an `@` or a backslash before a letter or
     a digit is taken for a path or an address: `n_cases/n_total` typed as a ratio is not read.
     The path is looked for once what Markdown does not print is out, as pandoc prints it: a
@@ -24433,6 +24444,7 @@ Open, recorded as each change landed:
     and `tests/test_code_names.py::test_what_is_not_prose_is_not_read`.
   - A name with a mark of emphasis inside it, `*ckd*_flag`, is not read. An HTML tag is read
     as one where `<` stands against a letter, so "a <b and c_d> e" hides `c_d`.
+    Pinned by `tests/test_code_names.py::test_emphasis_inside_a_name_or_a_tag_hides_it`.
   - What G14 does not read is not read here either, in a sentence or in code: a figure's
     caption, the title and the abstract when they are in the front matter or the preamble,
     and the reference list. A quotation set as a block is read, since a name in it is still
@@ -24442,6 +24454,7 @@ Open, recorded as each change landed:
   - In LaTeX, the argument of a command the reader does not know is read as prose, so a key
     of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
     reported though the document prints the entry's text and not the key.
+    Pinned by `tests/test_code_names.py::test_an_unknown_latex_command_s_argument_is_prose`.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14's vocabulary is a list of words, and reads them as words.** Accepted.
@@ -24702,6 +24715,7 @@ Open, recorded as each change landed:
     fetched either way. Accepted.
   - The methods review says "no stored copy of @key" of a work whose only copy is its
     abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
+    Pinned by `tests/test_methods_review.py::test_an_abstract_alone_is_no_stored_copy`.
   - A passage mistyped from an abstract that is the work's only copy, the author's own saved
     one included, failed on main and now warns; a near match could keep it failing.
     Accepted.
@@ -27632,6 +27646,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An item counts as loaded when any of its names is: "`dplyr`, `tidyr`" is never said
     where only dplyr is loaded. Every bare name in backticks in an item is one of its names,
     so a variable written there stands down the note for a package of that name.
+    Pinned by `tests/test_corruption.py::test_an_item_is_loaded_when_any_of_its_names_is`.
   - Only list items are read. A Software section written as a table, or as sentences,
     names nothing, and every package loaded is then said not to be named.
     Pinned by `tests/test_properties.py::test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else`.
@@ -27644,22 +27659,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
     and `tests/test_corruption.py::test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_software`.
   - A base package R does not attach (`splines`, `parallel`) named as an item's first name
     counts as loaded wherever an R script is read, whether or not one loads it.
+    Pinned by `tests/test_corruption.py::test_a_base_package_r_leaves_unattached_is_loaded`.
   - A variable named in backticks in the Software section is not held to the data
     dictionary, since its names are read as packages.
     Pinned by `tests/test_properties.py::test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else`.
   - The Python standard library is the list of the Python running `check`, so a module
     taken out of it (`distutils` in 3.12) is noted under a newer Python and not an older.
+    Accepted.
   - A Python file this Python cannot parse, or nested deeper than its parser goes, is read
     line by line, for lines that open with `import` or `from`: an import in a triple-quoted
     string is then read, and one after a semicolon is not. A notebook nested too deep is not
     read. A notebook's loads carry no line, since its lines are its JSON's.
     Pinned by `tests/test_corruption.py::test_a_script_no_parser_can_read_does_not_stop_the_check`.
   - The version an item gives and the functions it names are not compared with anything.
+    Accepted.
   - A heading needs a blank line before it, as pandoc reads one: a "Considered and not used"
     typed on the line after an item is part of that item, and its packages are held.
+    Pinned by `tests/test_corruption.py::test_a_heading_with_no_blank_line_is_in_the_item`.
   - Whether the package chosen is the right one for the data is not judged, and no list of
     the packages written for a source is kept: Basile, 2026-11-05, since such a list goes
-    stale and favours the fields its authors know.
+    stale and favours the fields its authors know. Accepted.
 
 - **A package is held to the Methods by its name and a citation in its sentence, not by
   what is cited.** (`gates/software_methods.py`, "Each package used is named in the Methods,

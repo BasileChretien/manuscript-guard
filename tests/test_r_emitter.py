@@ -2345,6 +2345,65 @@ def test_r_reads_a_step_as_code(tmp_path: Path) -> None:
     assert helper["ci"]["digest"] != before["ci"]["digest"], "a function it calls is its code"
 
 
+STEP_READS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+half <- function(x) x / 2
+fifth <- function(x) x / 5
+h <- list(sixth = function(x) x / 6)
+K <- 2
+root <- sqrt(4)
+values <- c(1, 2)
+em <- mg_emitter("%(script)s")
+em$step("ci", {
+  se <- root / K + sum(sapply(values, half)) + h$sixth(1) + do.call("fifth", list(1))
+})
+run <- function() {
+  inner <- function(x) x / 7
+  em$step("inner", {
+    v <- inner(1)
+  })
+  v
+}
+v <- run()
+em$value("se", se, digits = 3)
+em$value("v", v, digits = 2)
+em$write()
+"""
+
+
+@pytest.mark.parametrize(
+    ("was", "now", "changed"),
+    [
+        ("K <- 2", "K <- 3", set()),
+        ("root <- sqrt(4)", "root <- sqrt(9)", set()),
+        ("function(x) x / 6", "function(x) x / 8", set()),
+        ("fifth <- function(x) x / 5", "fifth <- function(x) x / 8", set()),
+        ("half <- function(x) x / 2", "half <- function(x) x / 3", {"ci"}),
+        ("inner <- function(x) x / 7", "inner <- function(x) x / 9", {"inner"}),
+    ],
+    ids=["a constant", "a variable computed before the block", "a function kept in a list",
+         "a function named by a string", "a function handed on by its name",
+         "a function defined inside the function the step runs in"],
+)  # fmt: skip
+def test_r_follows_a_step_s_functions_by_name_only(
+    tmp_path: Path, was: str, now: str, changed: set[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A step follows only the analysis's own
+    functions, in its own script"): in R a constant, a variable computed before the block, a
+    function kept in a list (`h$sixth(1)`) and one named by a string (`do.call("fifth",
+    ...)`) can change with the step's digest as it was. A function handed on by its name,
+    `sapply(values, half)`, and one defined inside the function the step runs in are
+    followed."""
+    assert was in STEP_READS_R
+    root = _parameter_project(tmp_path)
+    before = _steps_from_r(root, STEP_READS_R)
+    after = _steps_from_r(root, STEP_READS_R.replace(was, now, 1))
+    assert {name for name in before if after[name]["digest"] != before[name]["digest"]} == changed
+
+
 @pytest.mark.parametrize(
     ("call", "refusal"),
     [

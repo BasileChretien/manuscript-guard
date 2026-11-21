@@ -1013,38 +1013,44 @@ def test_a_docx_unreadable_from_the_live_field_check_says_the_review_is_blind(
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    ("kept", "stale", "said"),
-    [(False, ["manuscript.docx"], 1), (True, ["manuscript.docx", "supplementary.docx"], 1)],
-    ids=["manuscript alone", "with the supplement"],
+    ("stage", "kept", "stale"),
+    [
+        ("internal-review", False, ["manuscript.docx"]),
+        ("internal-review", True, ["manuscript.docx", "supplementary.docx"]),
+        # The other side: while drafting `document-stale` does not fail, and the two agree.
+        (None, True, []),
+    ],
+    ids=["manuscript alone", "with the supplement", "while drafting"],
 )
-def test_an_unchecked_build_counts_one_failing_check_fewer_when_the_document_is_stale(
-    project: Path, capsys, kept: bool, stale: list[str], said: int
+def test_an_unchecked_build_counts_one_failing_check_fewer_for_each_stale_document(
+    project: Path, capsys, stage: str | None, kept: bool, stale: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
-    later"): with `--skip-checks`, the build sets aside each stale document it writes over
-    before it counts, and prints one failing check fewer than `check` finds for each: one
-    for `manuscript.docx` alone, two with `supplementary.docx` stale beside it. The
-    2026-11-09 triage planned a fix (F08), which will change this test."""
+    later"): with `--skip-checks`, from internal review on, the build sets aside each stale
+    document it writes over before it counts, and prints one failing check fewer than
+    `check` finds for each: one for `manuscript.docx` alone, two with `supplementary.docx`
+    stale beside it. While drafting it prints `check`'s count. The 2026-11-09 triage
+    planned a fix (F08), which will change this test."""
     from manuscript_guard.build.document import SOURCE_STAMP
+    from manuscript_guard.cli import _run_gates
 
-    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    staged = ("--stage", stage) if stage else ()
+    assert run("build", str(project), "--offline", *staged) == 0
     if not kept:
         supplement = project / "build" / "supplementary.docx"
         supplement.unlink()
         supplement.with_name(supplement.name + SOURCE_STAMP).unlink()
     path = project / "manuscript" / "main.md"
     path.write_text(path.read_text(encoding="utf-8") + "\n\n99999 loose.\n", encoding="utf-8")
-    failing = [f for f in _findings(project) if f.severity == "fail"]
-    assert sorted(f.code for f in failing) == sorted(
-        ["unclassified-number"] + ["document-stale"] * len(stale)
-    )
-    assert _stale(project) == set(stale)
+    report, _p, _s, _d = _run_gates(project, stage=stage)
+    failing = [f.code for f in report.findings if f.severity == "fail"]
+    assert sorted(failing) == sorted(["unclassified-number"] + ["document-stale"] * len(stale))
+    both = {"manuscript.docx", "supplementary.docx"}
+    assert _stale(project) == (both if kept else set(stale))
     capsys.readouterr()
-    args = ("build", str(project), "--offline", "--stage", "internal-review", "--skip-checks")
-    assert run(*args) == 0
+    assert run("build", str(project), "--offline", *staged, "--skip-checks") == 0
     out = capsys.readouterr().out
-    assert len(failing) - len(stale) == said
-    assert f"{said} check(s) were failing, so this is named UNCHECKED." in out
+    assert "1 check(s) were failing, so this is named UNCHECKED." in out
 
 
 def _findings(project: Path):

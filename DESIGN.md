@@ -26229,9 +26229,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `docx-unreadable` from the live-field check says the journal's review is blind.
     Pinned by `tests/test_cli.py::test_a_docx_unreadable_from_the_live_field_check_says_the_review_is_blind`.
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
-    for each stale document the build writes over: one when `manuscript.docx` is stale,
-    two when `supplementary.docx` is stale with it.
-    Pinned by `tests/test_cli.py::test_an_unchecked_build_counts_one_failing_check_fewer_when_the_document_is_stale`.
+    for each stale document the build writes over, from internal review on, where
+    `document-stale` fails: one when `manuscript.docx` is stale, two when
+    `supplementary.docx` is stale with it. While drafting the two counts agree.
+    Pinned by `tests/test_cli.py::test_an_unchecked_build_counts_one_failing_check_fewer_for_each_stale_document`.
 
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
   Accepted.
@@ -28627,7 +28628,8 @@ Closed since, and why each mattered (an open gap goes above this line):
   was a heading as written and none to the gates on the built line, while pandoc printed
   it, and the build refused the document. The heading walk of #38 (13b7ea371) reads the
   built line as a heading too, and the document builds; found while pinning the entry.
-  Held by `tests/test_corruption.py::test_a_setext_title_whose_value_starts_with_a_hash_is_built`.
+  Held by `tests/test_corruption.py::test_a_setext_title_whose_value_starts_with_a_hash_is_built`
+  and `tests/test_corruption.py::test_a_setext_title_whose_bound_value_starts_with_a_hash_builds_as_a_heading`.
 
 - **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
   A sentence that says more or less than the tool does is believed by the author who reads

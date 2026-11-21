@@ -23050,6 +23050,33 @@ def test_a_setext_title_whose_value_starts_with_a_hash_is_built() -> None:
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
+def test_a_setext_title_whose_bound_value_starts_with_a_hash_builds_as_a_heading(
+    project: Path,
+) -> None:
+    """Closed (DESIGN.md, Closed since, "A setext title whose value starts with `#` was
+    refused, though it printed as the gates read it"): a results value "#1", emitted with
+    `label=True` and bound at the start of a `===` title, passes the checks and builds, and
+    the document prints the title as a heading."""
+    from manuscript_guard.cli import main
+
+    _publish_text(project, "rank", "#1", quoted=False, label=True)
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = "{{results.rank}} ranked drugs\n=====================\n\nText.\n\n"
+    path.write_text(text.replace("\n# Discussion", f"\n{title}# Discussion", 1), "utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    xml = zipfile.ZipFile(project / "build" / "manuscript.docx").read("word/document.xml")
+    paragraph = next(
+        p for p in re.findall(r"<w:p\b.*?</w:p>", xml.decode("utf-8"), re.DOTALL)
+        if "ranked drugs" in p
+    )
+    assert re.findall(r'w:pStyle w:val="([^"]+)"', paragraph) == ["Heading1"]
+    assert "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", paragraph)) == "#1 ranked drugs"
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
 @pytest.mark.parametrize(
     ("written", "built"),
     [
@@ -24416,11 +24443,12 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
 def test_dashes_after_a_tex_command_that_opens_nothing_are_refused(command: str) -> None:
     """A known gap (DESIGN.md, Known gaps, "Some lines of dashes after a TeX command are
     refused that open nothing"): pandoc reads each line as the command, then text, and the
-    refusal takes the dashes for a block's; the command on a line of its own clears it."""
+    refusal takes the dashes for a block's; the command put on a line of its own, the rest
+    of the text as it was, clears it."""
     from manuscript_guard.text.sections import rules_opening_blocks
 
     head = "---\ntitle: A study\n---\n\n# Introduction\n\n"
-    assert rules_opening_blocks(f"{head}{command} ---\nnext.\n") == [7]
+    assert rules_opening_blocks(f"{head}{command} ---\n\nnext.\n") == [7]
     assert rules_opening_blocks(f"{head}{command}\n\n---\n\nnext.\n") == []
 
 

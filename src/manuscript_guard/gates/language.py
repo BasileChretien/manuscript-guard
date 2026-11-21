@@ -331,6 +331,18 @@ _RRID = re.compile(
     r"|[A-Za-z]+\d[A-Za-z0-9]*)"
 )
 _ARTICLES = ("the ", "a ", "an ")
+# A catalogue's designation: a form in square brackets with a digit straight after the
+# closing one, "[KX92]30", the thirtieth source of a catalogue KX92 (an astronomy preprint of
+# the real-paper corpus). Neither a definition nor a use of a short form. As typed: a bracket
+# escaped as pandoc writes one from Word, `\[KX92\]30`, and one typed in LaTeX's mathematics,
+# `$[$KX92$]$30`, which prints the same.
+_DESIGNATION = re.compile(
+    rf"(?:\\?\[|\$\[\$)(?P<form>{_PARTS})(?:\\?\]|\$\]\$)(?=[0-9])"
+)
+# A name whose parts underscores join, a series' or a variable's, "QMP_RATE", "IOS_QMP": no
+# part of it is a use of a short form. As typed, each underscore bare or escaped, `\_`, as
+# Markdown and LaTeX write it; two parts at least, each of letters and digits.
+_JOINED_BY_UNDERSCORES = re.compile(r"(?<![^\W_])[^\W_]+(?:(?:\\?_)+[^\W_]+)+")
 
 # Sections where capitals are people and institutions, not abbreviations a reader needs
 # defined: initials in a contributions statement, a funder's name, a society's. Found by a
@@ -1236,23 +1248,30 @@ def _before_a_typed_citation(prose: str, bracket: re.Match[str]) -> re.Match[str
     author-year citations typed as text, each part a year the typed-citation reading reads as
     one (`typed_citation`): "(SDSS DR15; York et al., 2000)", which a .docx or a PDF prints
     where pandoc's `[SDSS DR15; @york2000]` stands (round 1 of #698). None otherwise."""
-    from manuscript_guard.gates.typed_citations import typed_citation
-
     opening = _BEFORE_A_CITATION.match(bracket.group(1))
     if opening is None:
         return None
-    at = bracket.start(1) + opening.end()
+    return opening if _typed_citations(prose, bracket.start(1) + opening.end(),
+                                       bracket.end(1)) else None  # fmt: skip
+
+
+def _typed_citations(prose: str, at: int, end: int) -> bool:
+    """Whether the text from `at` to `end` is author-year citations typed as text and nothing
+    else, a semicolon between two: each part ends on a year, and each of its numbers is a
+    year the typed-citation reading reads as a citation's (`typed_citation`), "York et al.,
+    2000; Lee, 2001"."""
+    from manuscript_guard.gates.typed_citations import typed_citation
+
     parts, start = [], at
-    for stop in [*(at + found.start() for found in re.finditer(";", prose[at : bracket.end(1)])),
-                 bracket.end(1)]:  # fmt: skip
+    for stop in [*(at + found.start() for found in re.finditer(";", prose[at:end])), end]:
         parts.append((start, stop))
         start = stop + 1
     for low, high in parts:
         years = list(_A_NUMBER.finditer(prose, low, high))
         if not years or prose[years[-1].end() : high].strip() or not all(
                 typed_citation(prose, year.start(), year.end()) for year in years):  # fmt: skip
-            return None
-    return opening
+            return False
+    return True
 
 
 def _short_closing(bracket: re.Match[str]) -> tuple[int, str, str] | None:
@@ -1396,10 +1415,22 @@ def _long_after(
     # The search starts a short form's length back, so it can start inside a word.
     if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
         return None
-    long = _spelt_after(short, bracket.group(1).split())
+    long = _spelt_after(short, _before_citations(prose, bracket).split())
     if long is None:
         return None
     return head, _stem(short, long), long
+
+
+def _before_citations(prose: str, bracket: re.Match[str]) -> str:
+    """What a bracket holds before the author-year citations typed after its first
+    semicolon, where all that follows it is such citations (`_typed_citations`): "QP2
+    (Quiet Profile 2; Fictional, 2014)" spells out "Quiet Profile 2", and the citation is
+    no part of the long form. The whole bracket otherwise."""
+    inside = bracket.group(1)
+    cut = inside.find(";")
+    if cut < 0 or not _typed_citations(prose, bracket.start(1) + cut + 1, bracket.end(1)):
+        return inside
+    return inside[:cut]
 
 
 def _spelt_after(short: str, words: list[str]) -> str | None:
@@ -1435,26 +1466,37 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
     (`_cited_as`), read in `typed`."""
     found: list[tuple[int, str, str]] = []
     listed: list[tuple[int, str, str]] = []
+    # Where a bracket opens that defines its short forms after their long form, "(CAP-PD)"
+    # or "(CAP, CAP-T)", which a colon pair the same words could make gives way to.
+    after_long: set[int] = set()
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = (_short_inside(prose, bracket) or _long_inside(prose, bracket)
-                      or _short_closing(bracket))  # fmt: skip
+        inside = _short_inside(prose, bracket)
+        definition = inside or _long_inside(prose, bracket) or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
-        listed += _listed_inside(prose, bracket)
+        items = _listed_inside(prose, bracket)
+        listed += items
+        if inside is not None or items:
+            after_long.add(bracket.start())
     for bracket in _SQUARE.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = _short_inside(prose, bracket) or _short_closing(bracket)
+        inside = _short_inside(prose, bracket)
+        definition = inside or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
-        listed += _listed_inside(prose, bracket)
+        items = _listed_inside(prose, bracket)
+        listed += items
+        if inside is not None or items:
+            after_long.add(bracket.start())
     # A short form a bracket already defines where it stands is not defined there again.
     bracketed = {at for at, _short, _long in found}
     found += [each for each in _dashed(prose, typed) if each[0] not in bracketed]
     taken = {at for at, _short, _long in found}
-    for each in (*listed, *_paired(prose, typed), *_named_as(prose), *_cited_as(prose, typed)):
+    paired = _paired(prose, typed, frozenset(after_long))
+    for each in (*listed, *paired, *_named_as(prose), *_cited_as(prose, typed)):
         if each[0] not in taken:
             taken.add(each[0])
             found.append(each)
@@ -1481,15 +1523,24 @@ def _listed_inside(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, s
     return found
 
 
-def _paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+def _paired(
+    prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+) -> list[tuple[int, str, str]]:
     """The definitions "X = long form" and "X: long form" (`_PAIRED`), one for each pair of
     a list: the long form after the sign is matched as one in brackets after its short form
     is (`_spelt_after`). Short forms a slash joins, "EA/NEA = effect/non-effect allele",
     are each paired with the part of the long form's one word a slash joins in as many
     parts, the rest of its words shared: "effect allele" and "non-effect allele". Where no
-    word, or more than one, has as many parts, none of them is read."""
+    word, or more than one, has as many parts, none of them is read.
+
+    A pair whose long form runs up to a bracket of `after_long`, one that defines its short
+    forms after their long form, is none: the bracket's definition wins, so "the latest of
+    the CAPs: Content Acquisition Podcasts Plus (CAP-P)" defines CAP-P and not CAP (Basile,
+    2026-11-21, "Bracket wins"; `_bracket_wins`)."""
     found = []
     for pair in _PAIRED.finditer(prose):
+        if _bracket_wins(prose, pair.end("long"), after_long):
+            continue
         shorts = pair.group("shorts").split("/")
         # A section's name before a colon is a label, a structured abstract's "RESULT:", and
         # never a short form (round 1 of #698).
@@ -1518,6 +1569,16 @@ def _paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
             if long is not None:
                 found.append((pair.start("shorts") + start, _stem(short, long), long))
     return found
+
+
+def _bracket_wins(prose: str, end: int, after_long: frozenset[int]) -> bool:
+    """Whether the long form of a colon pair or an equals sign's, ending at `end`, runs up to
+    a bracket that defines its short forms after their long form, spaces between them
+    allowed: the same words are then the bracket's long form."""
+    opened = end
+    while opened < len(prose) and prose[opened] in " \t\N{NO-BREAK SPACE}":
+        opened += 1
+    return opened in after_long
 
 
 def _named_as(prose: str) -> list[tuple[int, str, str]]:
@@ -1736,6 +1797,9 @@ class _File:
     #: statements: a keywords line or section, a LaTeX statement, a PDF's running line; in
     #: order, none inside another (`_undue`).
     undue: tuple[tuple[int, int], ...] = ()
+    #: Where a word stands whose letters are no short form, a catalogue's designation's and a
+    #: name's that underscores join, in order (`_no_short_forms`): no use and no definition.
+    apart: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1918,6 +1982,15 @@ def _initials(prose: str, spans: Iterable[tuple[int, int]]) -> frozenset[str]:
     return frozenset(found)
 
 
+def _no_short_forms(raw: str) -> tuple[tuple[int, int], ...]:
+    """Where a word stands, in the text as typed, that is no short form, though its letters
+    read as one: a catalogue's designation, the form of "[KX92]30" (`_DESIGNATION`), and a
+    name whose parts underscores join, "QMP_RATE" (`_JOINED_BY_UNDERSCORES`). In order."""
+    spans = [*(found.span("form") for found in _DESIGNATION.finditer(raw)),
+             *(found.span() for found in _JOINED_BY_UNDERSCORES.finditer(raw))]  # fmt: skip
+    return _united(spans)
+
+
 def _assembled(
     order: int,
     path: Path,
@@ -1947,7 +2020,10 @@ def _assembled(
     entries = {at for at, _short, _long in listed}
     headed = _in_titles(titles)
     sentences = [*_definitions(prose, raw), *headed]
-    definitions = [*(each for each in sentences if each[0] not in entries), *listed]
+    # A designation and a name underscores join define nothing, whatever stands beside them.
+    apart = _no_short_forms(raw)
+    definitions = [each for each in (*(each for each in sentences if each[0] not in entries),
+                                     *listed) if not _inside(apart, each[0])]  # fmt: skip
     # A heading's definition and a note's, "X = long form", may restate the text's, as a
     # caption's may (Basile, 2026-11-16, "As a restatement"; round 1 of #698).
     restated = {at for at, _short, _long in (*headed, *_paired(prose, raw))}
@@ -1962,6 +2038,7 @@ def _assembled(
         regions=regions,
         definitions=definitions,
         restating=restating,
+        apart=apart,
         prose=prose,
         printed=_hide(hidden, references),
         spelt=_hide(hidden, quiet),
@@ -2300,7 +2377,7 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             undue = _undue(file, word.start(), region, front)
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
-                if (file.order, offset) in defining:
+                if (file.order, offset) in defining or _apart(file, word.start(), offset):
                     continue
                 if not is_defined and offset in people:
                     continue
@@ -2317,6 +2394,15 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     _Use(file.order, offset, region.quiet, undue)
                 )
     return scopes
+
+
+def _apart(file: _File, word: int, offset: int) -> bool:
+    """Whether the short form at `offset`, in the word that starts at `word`, is a part of a
+    designation or of a name underscores join (`_File.apart`): each part of a hyphenated
+    word on its own, so "anti-QMP_RATE", which opens with a word, holds no use of QMP. `word`
+    is not read here: it is there for the test that breaks this rule in place, by reading
+    where the word starts instead (`BROKEN` in `tests/test_properties.py`)."""
+    return _inside(file.apart, offset)
 
 
 def _undue(file: _File, offset: int, region: _Region, front: int) -> bool:
@@ -2358,6 +2444,12 @@ def _same_meaning(one: str, other: str) -> bool:
     return plain(one) == plain(other)
 
 
+def _told_before(long: str, told: Iterable[str]) -> bool:
+    """Whether a meaning `long` gives is one of `told`, the meanings already reported as
+    another than the first."""
+    return any(_same_meaning(long, each) for each in told)
+
+
 def _given_again(
     short: str, definitions: list[_Definition], said
 ) -> list[tuple[_Definition, str, str]]:
@@ -2365,20 +2457,27 @@ def _given_again(
     hint: one that gives another meaning than the first, wherever it stands; and one that
     gives the same meaning again, unless a caption or a glossary gives it, which may restate
     what the text defines, or none of the text's own came before it. `definitions` are in
-    the order they stand; `said(mark, here)` names where `mark` stands, seen from `here`."""
+    the order they stand; `said(mark, here)` names where `mark` stands, seen from `here`.
+
+    Each other meaning is reported once, where it is first given: a later definition with a
+    meaning already reported is not reported again, so one long form a paper gives in each
+    of six table notes is one finding and not six (`_told_before`)."""
     first = definitions[0]
     given: _Definition | None = None
+    told: list[str] = []
     found = []
     for again in definitions:
         if again is not first and not _same_meaning(first.long, again.long):
-            found.append((
-                again,
-                # The long forms quoted as typed: `repr` doubled a backslash an escape had,
-                # "d\'Intérêt" (the author's audit, 2026-11-11).
-                f"{short} is defined as '{again.long}' here and as '{first.long}' "
-                f"{said(first, again)}",
-                "one short form, one meaning: a reader keeps the first",
-            ))  # fmt: skip
+            if not _told_before(again.long, told):
+                told.append(again.long)
+                found.append((
+                    again,
+                    # The long forms quoted as typed: `repr` doubled a backslash an escape
+                    # had, "d\'Intérêt" (the author's audit, 2026-11-11).
+                    f"{short} is defined as '{again.long}' here and as '{first.long}' "
+                    f"{said(first, again)}",
+                    "one short form, one meaning: a reader keeps the first",
+                ))  # fmt: skip
         elif again is not first and not again.restates and given is not None:
             found.append((
                 again,

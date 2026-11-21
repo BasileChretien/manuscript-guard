@@ -2168,6 +2168,57 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
             assert at not in defined, (short, text)
 
 
+from generated import apart_forms  # noqa: E402
+
+
+@holds(60, apart_forms())
+def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
+    drawn: tuple[str, list[tuple[str, str, str]]],
+) -> None:
+    """The real-paper corpus's round of 2026-11-21: a short form given another meaning in
+    several table notes is reported once for each other meaning, at the first note to give
+    it; author-year citations typed after a long form in its bracket are no part of it, so a
+    note that gives the long form again gives no other meaning; a catalogue's designation,
+    "[KX92]30", typed or escaped, defines nothing and is no use; and a name whose parts
+    underscores join, bare or escaped, a word a hyphen joins before it or not, is no use of
+    a short form that one of its parts is,
+    in a table above the definition; and where a bracket defines a short form after its long
+    form, alone or in a list, round or square, a colon pair or an equals sign's the same
+    words could make defines nothing (Basile, 2026-11-21, "Bracket wins")."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = [(f.code, f.message.split()[0],
+              (re.findall(r"defined as '([^']*)' here", f.message) or [""])[0])
+             for f in report.findings]  # fmt: skip
+    assert found == expected, (found, text)
+
+
+def _a_meaning_reported_is_reported_again(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_told_before", lambda long, told: False)
+
+
+def _a_citation_after_a_long_form_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_citations", lambda prose, bracket: bracket.group(1))
+
+
+def _a_designation_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_DESIGNATION", re.compile(r"(?!)(?P<form>)"))
+
+
+def _a_name_underscores_join_is_short_forms(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_JOINED_BY_UNDERSCORES", re.compile(r"(?!)"))
+
+
+def _a_hyphenated_word_is_apart_by_its_start_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_apart",
+                  lambda file, word, offset: language_gate._inside(file.apart, word))  # fmt: skip
+
+
+def _a_colon_pair_defines_beside_a_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bracket_wins", lambda prose, end, after_long: False)
+
+
 def _g14_warned(files: list, known, root: Path, stage: str | None = None):
     """G14's report on files read, its question on the short forms never defined given back
     as the warnings it holds, one for each form, in its place (`auditing.undefined.unasked`):
@@ -2712,7 +2763,7 @@ def _a_bracket_s_list_defines_whatever_its_words(patch: pytest.MonkeyPatch) -> N
 
 
 def _a_sign_after_a_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_paired", lambda prose, typed=None: [])
+    patch.setattr(language_gate, "_paired", lambda prose, typed=None, after_long=frozenset(): [])
 
 
 def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -> None:
@@ -2754,10 +2805,12 @@ def _a_wrapped_note_defines_from_its_first_line(patch: pytest.MonkeyPatch) -> No
 def _a_section_s_name_before_a_colon_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
     real = language_gate._paired
 
-    def unlabelled(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+    def unlabelled(
+        prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+    ) -> list[tuple[int, str, str]]:
         with pytest.MonkeyPatch.context() as inner:
             inner.setattr(language_gate, "section_name_alone", lambda text: None)
-            return real(prose, typed)
+            return real(prose, typed, after_long)
 
     patch.setattr(language_gate, "_paired", unlabelled)
 
@@ -2826,7 +2879,9 @@ def _a_slash_pairs_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_slash_pairs_the_whole_long_form_with_each_part(patch: pytest.MonkeyPatch) -> None:
-    def paired(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
+    def paired(
+        prose: str, typed: str | None = None, after_long: frozenset[int] = frozenset()
+    ) -> list[tuple[int, str, str]]:
         found = []
         for pair in language_gate._PAIRED.finditer(prose):
             at = pair.start("shorts")
@@ -3482,6 +3537,107 @@ def _a_caption_is_text(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import glossary
 
     patch.setattr(glossary, "markdown_captions", lambda prose: [])
+
+
+from generated import caption_paragraphs  # noqa: E402
+
+
+def _captions_by_copies(prose: str) -> list[tuple[int, int]]:
+    """`glossary.markdown_captions` as it read until the robustness sweep of 2026-11-21: the
+    line above each paragraph and the line below it taken from a copy of all the text before
+    it and of all after it, which was quadratic in the paragraphs."""
+    from manuscript_guard.gates import glossary
+    from manuscript_guard.gates.pointers import opening_pointer
+
+    spans, start = [], 0
+    for gap in (*glossary._BLANK.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        if glossary._legend(prose[start:end], opening_pointer):
+            spans.append((start, end))
+        else:
+            lines = [line for _at, line in glossary._lines(prose, start, end)]
+            above = prose[:start].rstrip().rsplit("\n", 1)[-1]
+            below = prose[end:].lstrip("\r\n").split("\n", 1)[0]
+            at = start
+            for index, line in enumerate(lines):
+                caption = glossary._TABLE_CAPTION.match(line)
+                near = (lines[index - 1] if index else above,
+                        lines[index + 1] if index + 1 < len(lines) else below)  # fmt: skip
+                if caption is not None and (caption["table"] != ":" or any(
+                        glossary._TABLE_LINE.match(other) for other in near)):  # fmt: skip
+                    spans.append((at, end))
+                    break
+                at += len(line) + 1
+        if gap is not None:
+            start = gap.end()
+    return spans
+
+
+@holds(100, caption_paragraphs())
+def test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it(text: str) -> None:
+    """A table's caption is found where it was found while the lines above and below each
+    paragraph were read from copies of the whole text: `Table:` anywhere, and a colon beside
+    a table's line in the paragraph, above it across a blank line of any kind, or below it
+    across one of nothing but line ends; a legend typed as one; and nothing else."""
+    from manuscript_guard.gates.glossary import markdown_captions
+
+    assert markdown_captions(text) == _captions_by_copies(text), text
+
+
+def _the_line_above_a_paragraph_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_line_above", lambda prose, start: "")
+
+
+def _the_line_below_is_read_past_a_blank_line_of_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_line_below",
+                  lambda prose, end: prose[end:].lstrip().split("\n", 1)[0])  # fmt: skip
+
+
+def _a_caption_is_held_only_to_the_lines_about_its_paragraph(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """As round 1 of #734 put it: the line below the paragraph, never the paragraph's own
+    next line, so a caption over its table in one paragraph is none; the line before it as
+    the rule reads it (round 2)."""
+    from manuscript_guard.gates import glossary
+
+    def outside(prose: str, lines: list[str], index: int, start: int, end: int) -> bool:
+        previous = lines[index - 1] if index else glossary._line_above(prose, start)
+        about = (previous, glossary._line_below(prose, end))
+        return any(glossary._TABLE_LINE.match(line) for line in about)
+
+    patch.setattr(glossary, "_beside_a_table", outside)
+
+
+def _the_line_above_stops_at_a_no_break_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def narrow(prose: str, start: int) -> str:
+        stop = start
+        while stop and prose[stop - 1] in " \t\r\n":
+            stop -= 1
+        return prose[prose.rfind("\n", 0, stop) + 1 : stop]
+
+    patch.setattr(glossary, "_line_above", narrow)
+
+
+def _the_line_above_is_read_past_one_blank_line_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def one_gap(prose: str, start: int) -> str:
+        """Back over the whitespace to the second line feed, a blank line's, and no further
+        (round 2 of #734): as the rule reads a blank line of spaces, a tab or a return."""
+        stop, ends = start, 0
+        while stop and prose[stop - 1].isspace() and ends < 2:
+            ends += prose[stop - 1] == "\n"
+            stop -= 1
+        return prose[prose.rfind("\n", 0, stop) + 1 : stop]
+
+    patch.setattr(glossary, "_line_above", one_gap)
 
 
 def _a_headless_paper_is_read_as_one_with_headings(patch: pytest.MonkeyPatch) -> None:
@@ -13212,6 +13368,9 @@ _PARAGRAPH_ENDS = (
     "\nResults\n-------\n", "\n```\n", "\n:::\n", "\n",
     # Round 3 of #538: what ends in a letter and is no running prose.
     "\n\\noindent\n", "\n**Results**\n", "[12]\n",
+    # A stretch of lines of spaces, as the LaTeX reader blanks what it does not read: the
+    # rule reads from the words' own line, not through the stretch (the robustness sweep).
+    "\n" + (" " * 40 + "\n") * 30,
 )  # fmt: skip
 
 
@@ -27108,6 +27267,30 @@ BROKEN = {
         _a_no_break_space_is_no_space_before_a_dash,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "another meaning already reported is reported again": (
+        _a_meaning_reported_is_reported_again,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "author-year citations after a long form in its bracket are part of it": (
+        _a_citation_after_a_long_form_is_part_of_it,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a catalogue's designation is read as a short form": (
+        _a_designation_is_a_short_form,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a name underscores join is read as short forms": (
+        _a_name_underscores_join_is_short_forms,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a hyphenated word is set apart by where it starts alone": (
+        _a_hyphenated_word_is_apart_by_its_start_alone,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a colon pair defines beside the bracket that defines from its words": (
+        _a_colon_pair_defines_beside_a_bracket,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
     "a time of day is read as words": (
         _a_time_of_day_is_words,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
@@ -27571,6 +27754,26 @@ BROKEN = {
     "a caption is read as text": (
         _a_caption_is_text,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "the line above a paragraph is not read for a table's line": (
+        _the_line_above_a_paragraph_is_not_read,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line below a paragraph is read past a blank line of spaces": (
+        _the_line_below_is_read_past_a_blank_line_of_spaces,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "a colon's caption is held only to the lines about its paragraph": (
+        _a_caption_is_held_only_to_the_lines_about_its_paragraph,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line above a paragraph stops at a no-break space": (
+        _the_line_above_stops_at_a_no_break_space,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
+    ),
+    "the line above a paragraph is read past one blank line only": (
+        _the_line_above_is_read_past_one_blank_line_only,
+        test_a_table_s_caption_is_found_where_the_reading_by_copies_found_it,
     ),
     "a paper with no heading is read as one with headings": (
         _a_headless_paper_is_read_as_one_with_headings,

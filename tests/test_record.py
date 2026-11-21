@@ -144,6 +144,41 @@ def test_a_second_reviewer_joins_the_panel_rather_than_replacing_it(unreviewed: 
     assert panel["reviewers"][0]["remit"] == "the clinical read"
 
 
+def test_a_comment_typed_into_a_panel_is_lost_when_a_record_adds_to_it(
+    unreviewed: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A panel that gains a reviewer or a reader is
+    written again from its data"): a reader or a reviewer added rewrites the panel from its
+    fields, which are kept, and the comment typed into it goes; a reading by a reader the
+    panel names already adds nothing, and leaves the panel byte for byte."""
+    write_review(loaded(unreviewed), "first-reader", verdict="pass", remit="the clinical read")
+    path = unreviewed / "review" / "panel-1.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["Dr Ito"]
+    commented = "# Chosen with the editor on the phone.\n" + yaml.safe_dump(
+        document, sort_keys=False
+    )
+    path.write_text(commented, encoding="utf-8", newline="\n")
+
+    write_review(loaded(unreviewed), "first-reader", verdict="pass", reading="Dr Ito")
+    assert path.read_text(encoding="utf-8") == commented
+
+    write_review(loaded(unreviewed), "first-reader", verdict="pass", reading="Dr Tanaka")
+    assert "#" not in path.read_text(encoding="utf-8")
+    assert read_structured(path) == {
+        **document,
+        "reviewers": [{**document["reviewers"][0], "readers": ["Dr Ito", "Dr Tanaka"]}],
+    }
+
+    path.write_text(commented, encoding="utf-8", newline="\n")
+    write_review(loaded(unreviewed), "second-reader", verdict="pass", remit="the statistics")
+    assert "#" not in path.read_text(encoding="utf-8")
+    assert read_structured(path)["reviewers"] == [
+        document["reviewers"][0],
+        {"id": "second-reader", "remit": "the statistics"},
+    ]
+
+
 def test_a_reviewer_keeps_their_remit_into_the_next_round(unreviewed: Path) -> None:
     """"Same reviewer, next round" is what a revision produces. Asking for the remit again
     every time is friction that teaches people to type anything into the field."""

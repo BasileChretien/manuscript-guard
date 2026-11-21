@@ -364,12 +364,37 @@ def test_a_line_break_in_a_bracket_is_a_space() -> None:
 
 def test_a_colon_that_introduces_words_with_the_letters_defines() -> None:
     """Known gaps, held where it stands (docx-educ-B1): a colon before words that begin with
-    the short form's letters is read as a definition, though it introduces them; so is a
-    label in capitals before a sentence that holds its letters in order."""
-    for text, short in (("the latest of the TVMs: Teacher Video Modules Plus (TVM-P)", "TVM"),
+    the short form's letters is read as a definition, though it introduces them, where no
+    bracket after them defines a short form of its own; so is a label in capitals before a
+    sentence that holds its letters in order."""
+    for text, short in (("the latest of the TVMs: Teacher Video Modules Plus (see below)", "TVM"),
                         ("NOTE: Never Omit The End", "NOTE")):  # fmt: skip
         read = _file(0, Path("main.md"), f"{text}\n", [], False)
         assert short in [found for _at, found, _long in read.definitions], (text, read.definitions)
+
+
+@pytest.mark.parametrize(
+    ("text", "defined"),
+    [("the latest of the TVMs: Teacher Video Modules Plus (TVM-P)",
+      [("TVM-P", "Teacher Video Modules Plus")]),
+     ("the latest of the TVMs: Teacher Video Modules (TVM, TVM-S)",
+      [("TVM", "Teacher Video Modules"), ("TVM-S", "Teacher Video Modules")]),
+     ("Note. GDS = Geriatric Depression Scale (GDS) and more",
+      [("GDS", "Geriatric Depression Scale")]),
+     ("the latest of the TVMs: Teacher Video Modules Plus [TVM-P]",
+      [("TVM-P", "Teacher Video Modules Plus")]),
+     # A bracket after the words that defines nothing leaves the pair as it was.
+     ("the TVMs: Teacher Video Modules (2019)", [("TVM", "Teacher Video Modules")])],
+)  # fmt: skip
+def test_a_bracket_after_a_colon_pair_s_long_form_wins(
+    text: str, defined: list[tuple[str, str]]
+) -> None:
+    """docx-educ-B1, closed (Basile, 2026-11-21, "Bracket wins"): where a bracket defines a
+    short form right after its long form, alone or in a list, round or square, that
+    definition wins over a colon pair or an equals sign's the same words could make, which
+    defined CAP a second time beside CAP-PD."""
+    read = _file(0, Path("main.md"), f"{text}\n", [], False)
+    assert sorted((short, long) for _at, short, long in read.definitions) == sorted(defined)
 
 
 def test_a_slash_in_a_bracket_pairs_nothing() -> None:

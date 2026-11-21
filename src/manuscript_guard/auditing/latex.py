@@ -30,7 +30,7 @@ from manuscript_guard.text.latex.structure import (
     SECOND_DOCUMENT,
     Document,
     Source,
-    _target,
+    inside_blocks,
     past_stops,
     read_tree,
 )
@@ -233,34 +233,15 @@ def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> di
             for target, (path, stop) in past_stops(document, files, entry).items()}  # fmt: skip
 
 
-#: An `\\input` or an `\\include` with its path in braces, as a skipped block holds one.
-_BLOCK_INPUT = re.compile(r"\\(?:input|include)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
-#: A comment, to its line's end, which inputs nothing.
-_BLOCK_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
-
-
 def _inside_blocks(document: Document, files: dict, entry: str,
                    folder: Path) -> dict[Path, list[str]]:  # fmt: skip
     """Each file an `\\input` or an `\\include` inside a block the reader skipped names, by
     its path, with the block, as `file, lines A-B`: no check read the block, so the reader
-    followed none of them (round 1 of #674)."""
-    from manuscript_guard.text.latex.mask import Input
-
-    said: dict[Path, list[str]] = {}
-    for source in document.sources:
-        if source.loose:
-            continue
-        for block in source.reading.skipped:
-            held = _BLOCK_COMMENT.sub(lambda found: " " * len(found.group(0)),
-                                      source.text[block.offset : block.end])  # fmt: skip
-            for put in _BLOCK_INPUT.finditer(held):
-                at = block.offset + put.start()
-                target = _target(entry, Input(at, at + len(put.group(0)), put.group(1).strip(),
-                                              True, ()), "", files)[0]  # fmt: skip
-                if target is not None:
-                    said.setdefault(folder / target, []).append(
-                        f"{source.path}, {_lines(source.text, block)}")
-    return said
+    followed none of them (round 1 of #674). BUILD reads them by the same rule
+    (`inside_blocks`)."""
+    texts = {source.path: source.text for source in document.sources}
+    return {folder / target: [f"{path}, {_lines(texts[path], block)}" for path, block in named]
+            for target, named in inside_blocks(document, files, entry).items()}  # fmt: skip
 
 
 def _stops(document: Document) -> set[tuple[str, Refusal]]:

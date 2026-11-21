@@ -343,6 +343,33 @@ def test_an_input_on_the_line_of_a_stop_is_said_not_followed(tmp_path: Path) -> 
     assert any("paper.tex was not read past line 3" in one for one in said), said
 
 
+@pytest.mark.parametrize("stops", ["paper", "intro"])
+def test_an_input_past_a_stop_is_looked_for_where_its_file_was_imported(
+    tmp_path: Path, stops: str
+) -> None:
+    """Round 1 of #716 (and the check of #637, in Known gaps): an input past a stop was
+    looked for beside the entry, so `\\input{methods}` in chapters/intro.tex, reached by a
+    `\\subimport{chapters/}{intro}` past the paper's stop or read before intro's own stop,
+    had chapters/methods.tex given the advice for a file nothing inputs. It is looked for
+    in the folder intro was imported from, as the tree looks for it."""
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    stop = "\\csname x\\endcsname\n"
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     + (stop if stops == "paper" else "")
+                     + "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n" + (stop if stops == "intro" else "")
+                                        + "\\input{methods}\n", encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    found = [chapters / "intro.tex", chapters / "methods.tex"]
+    said = audit([paper], None, found_tex=found).passed_over
+    (note,) = [one for one in said if one.split(": ")[0].endswith("chapters/methods.tex")]
+    where = "paper.tex was not read past line 4" if stops == "paper" else (
+        "chapters/intro.tex was not read past line 2")
+    assert where in note and "no entry inputs it" not in note, note
+
+
 def test_a_declaration_past_a_stop_still_decodes_the_file(tmp_path: Path) -> None:
     """Final check of round 2 of #637, finding 3: a declaration past where the reader
     stopped did not count, so the title of a Latin-1 file before it read "?tude". TeX applies

@@ -34,7 +34,7 @@ import posixpath
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from pathlib import Path
 
@@ -245,11 +245,14 @@ def _target(
 class Document:
     """The files in the order the build prints them, loose ones after, and every refusal with
     the file it is in; and the files a class or a package inputs, which are not read
-    (`_classes`)."""
+    (`_classes`); and every `.tex` file it was read from, by path, a second document and a
+    class's among them, which `past_stops` and `inside_blocks` resolve an input among, as
+    `audit` gives them the folder's."""
 
     sources: tuple[Source, ...]
     refusals: tuple[tuple[str, Refusal], ...]
     classes: tuple[str, ...] = ()
+    files: Mapping[str, str] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def loose(self) -> tuple[str, ...]:
@@ -299,7 +302,7 @@ def read_tree(
     own = frozenset(name for source in tree for name in source.reading.own)
     literal = tuple(pair for source in tree for pair in source.reading.literal)
     if not delimited and not own and not literal:
-        return _encoded(document)
+        return replace(_encoded(document), files=files)
     # A package's command a file defines is the author's only where no file loads the
     # package: one loaded in another file makes it defined again (2026-10-23).
     loaded = frozenset(name for source in tree for _at, name in source.reading.packages)
@@ -315,7 +318,7 @@ def read_tree(
     if again:
         told = _Told(delimited | again, own, literal, loaded)
         document = _read_tree(files, entry, styles, unreadable, told)
-    return _encoded(document)
+    return replace(_encoded(document), files=files)
 
 
 @dataclass(frozen=True)
@@ -359,25 +362,57 @@ def past_stops(document: Document, files: Mapping[str, str],
     through the files they input, by its path, with the file that stopped and the refusal it
     stopped at: the inputs as the reader records them, a braceless `\\input` and an
     `\\import` among them, not one in a comment, and each by a path written out in full
-    (`resolve`), not one a command builds. `audit` says each is not followed (round 3 of
-    #637), and BUILD names them in that refusal's finding (Basile, 2026-11-21, "Fold the
-    warnings")."""
+    (`resolve`), not one a command builds, looked for as the tree looks for it, from the
+    folder its file was imported from (`_target`; round 1 of #716: from the root, so that
+    what `\\subimport{chapters/}{intro}` reached was looked for beside the entry). `audit`
+    says each is not followed (round 3 of #637), and BUILD names them in that refusal's
+    finding (Basile, 2026-11-21, "Fold the warnings")."""
     reached = {source.path for source in document.sources if not source.loose}
     found: dict[str, tuple[str, Refusal]] = {}
     for source in document.sources:
         if source.loose or not source.reading.refusals:
             continue
         stop = source.reading.refusals[0]
-        pending = [put for past in read_past_stop(source) for put in past.inputs]
+        pending = [(put, source.imported) for past in read_past_stop(source)
+                   for put in past.inputs]  # fmt: skip
         while pending:
-            put = pending.pop()
-            target = _target(entry, put, "", files)[0]
+            put, imported = pending.pop()
+            target, _why, folder = _target(entry, put, imported, files)
             if target is not None and target not in reached:
                 reached.add(target)
                 found[target] = (source.path, stop)
-                pending += read(files[target], body=put.body,
-                                environments=put.environments).inputs  # fmt: skip
+                pending += [(inner, folder) for inner in read(
+                    files[target], body=put.body, environments=put.environments).inputs]
     return found
+
+
+#: An `\\input` or an `\\include` with its path in braces, as a skipped block holds one.
+_BLOCK_INPUT = re.compile(r"\\(?:input|include)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
+#: A comment, to its line's end, which inputs nothing.
+_BLOCK_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+
+
+def inside_blocks(document: Document, files: Mapping[str, str],
+                  entry: str = ENTRY) -> dict[str, list[tuple[str, Refusal]]]:  # fmt: skip
+    """Each file of `files` that an `\\input` or an `\\include` inside a block the reader
+    skipped names, by a path in braces written out in full, by its path, with each file and
+    block that names it: no check reads the block, so the reader followed none of them.
+    `audit` names the block for each (round 1 of #674), and BUILD names them in that block's
+    finding (round 1 of #716)."""
+    said: dict[str, list[tuple[str, Refusal]]] = {}
+    for source in document.sources:
+        if source.loose:
+            continue
+        for block in source.reading.skipped:
+            held = _BLOCK_COMMENT.sub(lambda found: " " * len(found.group(0)),
+                                      source.text[block.offset : block.end])  # fmt: skip
+            for put in _BLOCK_INPUT.finditer(held):
+                at = block.offset + put.start()
+                written = Input(at, at + len(put.group(0)), put.group(1).strip(), True, ())
+                target = _target(entry, written, source.imported, files)[0]
+                if target is not None:
+                    said.setdefault(target, []).append((source.path, block))
+    return said
 
 
 def _encoded(document: Document) -> Document:

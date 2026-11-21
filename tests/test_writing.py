@@ -176,6 +176,51 @@ def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragr
     assert "model-artefact" not in codes(report), messages(report)
 
 
+def _voiced(project: Path, text: str) -> list[str]:
+    """What G6 reports of `text` as an assistant's opener, by its words."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    return [f.message.split(" — ")[0] for f in report.findings if f.code == "model-artefact"]
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # A wrapped line ending in `}`, `\%`, `$` or an abbreviation's stop.
+        ("As shown in Table~\\ref{t1}\nof course the ratio was higher.", ["'of course'"]),
+        ("The ratio rose\n\\footnote{See the appendix.}\nof course in the later period.",
+         ["'of course'"]),
+        ("The ratio rose\n\\cite{smith2020}\nof course in the later period.", ["'of course'"]),
+        ("The share was 5\\%\nof course in the later period.", ["'of course'"]),
+        ("The value was $x$\nof course in the later period.", ["'of course'"]),
+        ("As reported by Smith et al.\nof course in the later period.", ["'of course'"]),
+        # The other side: a line ending in a word carries the sentence on.
+        ("As shown in the table\nof course the ratio was higher.", []),
+        # A sentence after a wrap at a full stop, and the same sentence on one line.
+        ("The ratio was higher.\nOf course, the sample was small.", ["'Of course'"]),
+        ("The ratio was higher.\nCertainly the sample was small.", ["'Certainly'"]),
+        ("The ratio was higher. Of course, the sample was small.", []),
+        # A reply in lower case under a letter, `\noindent` or a bold label, and the same
+        # reply opening with a capital.
+        ("The revised section follows\nsure, here is the revised section.", []),
+        ("\\noindent\nsure, here is the revised abstract.", []),
+        ("**Methods**\nsure, here is the revised Methods section.", []),
+        ("\\noindent\nSure, here is the revised abstract.", ["'Sure'"]),
+        ("**Methods**\nSure, here is the revised Methods section.", ["'Sure'"]),
+    ],
+)  # fmt: skip
+def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
+    project: Path, text: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An assistant's opener is read where a paragraph
+    opens, and a line's last character decides whether one does."): a wrapped line ending in
+    `}`, `\\%`, `$` or "et al." is read as ending its paragraph, so "of course" at the next
+    line's start fails; "Of course" or "Certainly" after a wrap at a full stop fails where
+    the same sentence on one line passes; and a reply in lower case under a line ending in
+    a letter, `\\noindent` or a bold label is missed. The 2026-11-09 triage planned a fix
+    (F11), which will change this test."""
+    assert _voiced(project, text) == said
+
+
 @pytest.mark.parametrize(
     "text",
     [

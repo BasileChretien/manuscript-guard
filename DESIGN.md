@@ -17794,12 +17794,15 @@ been sorted yet.
   (`hidden.read_hidden`), with these limits: Accepted.
   - A table style's properties, and the formats of its first row or banded columns, are
     not read: text a table style hides, colours or shrinks is not found.
+    Pinned by `tests/test_hidden.py::test_text_a_table_style_hides_colours_or_shrinks_is_not_found`.
   - Text kept from sight otherwise is not found: placed off the page or behind a shape or
     a picture, raised or lowered out of its line (`w:position`), squeezed (`w:w`,
     `w:spacing`), in a frame of no size, or in the colour of a picture behind it. A
     superscript is read at its own size, not the smaller one Word prints it at, and the
     size for complex scripts (`w:szCs`) only where the run says it is one (`w:cs`,
     `w:rtl`).
+    Pinned by `tests/test_hidden.py::test_text_kept_from_sight_by_its_place_or_its_drawing_is_not_found`
+    and `tests/test_hidden.py::test_a_superscript_is_read_at_its_own_size_and_a_complex_run_at_its_own`.
   - Behind a run is its highlight, its shading, its paragraph's or its table cell's, and
     else the page: white, and the page's background where the document shows it, so white
     text on a dark background is said, since the paper it prints on is white. A pattern of
@@ -17814,12 +17817,16 @@ been sorted yet.
     taken as not shown, so words to a model there fail where Word prints them; and a header
     named only by a section's old properties (`w:sectPrChange`), or a note cited only from
     a tracked deletion, is taken as shown, so words there only warn.
+    Pinned by `tests/test_hidden.py::test_each_section_is_read_alone_for_the_headers_it_shows`.
   - An equation's text, and a chart's or a diagram's, is read one element at a time as
     text no reader sees: words to a model there fail although they are printed, and an
     equation's formatting is not read. Pandoc writes an empty group, `{}`, as a zero-width
     space alone in an equation's run, which is inside no word.
+    Pinned by `tests/test_hidden.py::test_an_equation_s_and_a_chart_s_text_is_read_an_element_at_a_time_as_unseen`
+    and `tests/test_hidden.py::test_pandoc_s_equations_raise_nothing`.
   - A zero-width character inside a word of the source is said by no gate of `check`, and
     the build fails on it, one in a reference's record in Zotero among them.
+    Pinned by `tests/test_corruption.py::test_a_zero_width_character_in_a_word_of_the_source_passes_check_and_fails_the_build`.
   - A page of HTML, and the HTML in a Markdown file, is read by its elements' own styles
     and the old `color`, `bgcolor` and `hidden` attributes (`hidden.html`): a stylesheet's
     rules, an element's class and what a script would change are not read. Text a page's
@@ -17835,6 +17842,7 @@ been sorted yet.
     `vw` or `vh` is not read, the viewport being unknown. The page is read by a scanner of
     this toolkit's own, in time linear in its length, since Python's parser took minutes
     over some broken markup.
+    Pinned by `tests/test_screen.py::test_a_page_is_read_by_its_elements_own_styles_and_as_it_is_written`.
   - A PDF is read for the words of its text, as a stored source is read: what it hides by
     its colour, its size, its drawing mode or its place is found only where its words are
     words to a model, and an image's text is not read. Its text is read as far as 4 MB, from
@@ -17856,12 +17864,15 @@ been sorted yet.
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a
     Cyrillic і).
+    Pinned by `tests/test_hidden.py::test_words_to_a_model_are_read_in_english_and_a_paragraph_at_a_time`.
   - Of the invisible characters, the five zero-width ones are said inside a Latin, Greek or
     Cyrillic word, and tag characters anywhere: the marks that turn the direction of text
     (U+202A to U+202E, U+2066 to U+2069), the invisible operators of mathematics (U+2061 to
     U+2064) and variation selectors are not said. Words to a model are read with every
     character that prints nothing taken out, and in their compatibility form (NFKC), so
     neither splits them; letters of another script that look alike still do.
+    Pinned by `tests/test_hidden.py::test_only_the_five_zero_width_characters_and_tags_are_said_of_the_invisible_ones`
+    and `tests/test_hidden.py::test_tag_characters_are_reported_with_what_they_spell`.
   - A document in the Strict form of ISO/IEC 29500, which Word opens, is not read: its parts
     are named as not read, and the build does not send it. Parts are found as the packaging
     conventions name them, percent-escapes decoded and in any case; where the main
@@ -19108,6 +19119,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   entry; "[Your ...]" is not read in a caption, nor "fill in later" or "replace later"
   followed on its line by anything but a stop, a bracket, a colon, a semicolon or a comma: a
   pipe table's `|`, "?", "!", a quotation mark, a dash or an asterisk.
+  Pinned by `tests/test_corruption.py::test_placeholders_are_read_by_the_shapes_their_rules_name`.
 - **Scripts the gates do not read.** Front matter and image captions are not counted; a
   citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
   G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul
@@ -21151,6 +21163,13 @@ Open, recorded as each change landed:
   written by hand over entries numbered "1." opens none either, as pandoc prints it as the
   list's sixth item; `6\. References`, as pandoc writes a numbered title from Word, opens
   one. A list carried on into the next file of the manuscript is read there as prose.
+  Pinned by `tests/test_corruption.py::test_a_reference_list_under_a_line_that_is_no_heading_is_read_by_its_shape`,
+  `tests/test_corruption.py::test_a_reference_list_carried_on_into_the_next_file_is_read_there_as_prose`,
+  `tests/test_corruption.py::test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading`,
+  `tests/test_corruption.py::test_what_follows_a_reference_list_under_a_bold_line_is_read`,
+  `tests/test_corruption.py::test_references_as_an_item_of_a_list_opens_no_reference_list`,
+  `tests/test_language.py::test_a_reference_list_under_each_title_word_writes_is_not_read`
+  and `tests/test_language.py::test_a_link_or_a_quote_in_a_sentence_opens_no_reference_list`.
 - **The audit cuts a Markdown paper at a link to the references a hard wrap left alone on
   a line.** The audit takes a bibliography's title on any line, not only on a paragraph's
   first, and in Markdown a link is read by its words, as pandoc prints it. So "listed in
@@ -21211,28 +21230,39 @@ Open, recorded as each change landed:
   comments pandoc drops are refused too: Accepted.
   - one across a blank line in an item's indented lines or a footnote's paragraphs, and a
     `<!--` under a blank line after a list, indented less than the item's text;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - a sub-item commented out under a blank line in its item, or indented past its item's
     marker and short of its text, as `    - sub` under `   - item`, which pandoc reads as
     the item's because a marker four spaces in starts no item;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - one across a quotation's paragraphs, a `>` line between them, and one across a `>`
     alone or a `|` line that pandoc reads as text continuing an item;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - one on the line after a div's closing `:::` under a list, or after a line indented
     under a table;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - a multi-line one straight after a listing whose code has a line starting `+ `, `- `,
     `* `, `> ` or `| `, since the blocks are read inside listings: ggplot's `+ geom_point()`;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - one across a blank line in a `: Caption` under a table;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
   - one opened on a line of a paragraph that only looks like a marker, `> 65 years` or `- 5`.
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_drops_past_where_a_block_is_read_is_refused`.
 
   And it does not close the gap whole. Some comments pandoc prints are still masked and not
   refused:
   - a `<!--` on a line the refusal takes for the end of a block, under an item:
     `</div> <!-- x`, `</span> <!-- x`, or `::: <!-- x`, with the `-->` past a blank line or
     in the next item;
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_prints_is_masked_and_not_refused`.
   - one in an item whose ordered marker has ten digits or more, or on a first line behind a
     byte-order mark, which the refusal does not take for an item;
-  - one on a line with a line of dashes under it, which pandoc reads as a setext title or,
-    under an item's line, a table in the item: `Results <!-- x` over `-------`, or
-    `- a <!-- x` over `---`, as on main.
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_prints_is_masked_and_not_refused`.
+  - one on a line with a line of dashes and a line of text under it, which pandoc reads as
+    a table, at the margin or under an item's line: `Results <!-- x` over `-------` and
+    `b 9.99 -->`, or `- a <!-- x` over `---` and `b 9.99 -->`, as on main.
+    Pinned by `tests/test_corruption.py::test_a_comment_pandoc_prints_is_masked_and_not_refused`
+    and `tests/test_corruption.py::test_a_setext_title_in_an_item_over_a_comment_is_refused`.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they
@@ -21867,6 +21897,10 @@ Open, recorded as each change landed:
   read as a placeholder. The essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
   bright" or "may possibly"; the hedge rule takes "may possibly" as a form of the essay's
   "could potentially", and the other two are not read.
+  Pinned by `tests/test_corruption.py::test_a_placeholder_is_found_by_its_kind_and_only_in_the_text_the_gate_reads`,
+  `tests/test_corruption.py::test_a_placeholder_drawn_in_a_figure_fails`,
+  `tests/test_corruption.py::test_what_a_cited_reference_holds_and_is_no_placeholder_passes`
+  and `tests/test_corruption.py::test_a_placeholder_in_an_uncited_reference_says_nothing`.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a
@@ -21881,6 +21915,7 @@ Open, recorded as each change landed:
   letter, `\noindent` or a bold label, is missed, where the rule before #538 caught it
   (round 4, finding 3). Closing these needs the line before read as pandoc parses it, not
   by its last character.
+  Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
   results already existed is frozen as it stood on the next run, and cannot be told from one
   written first; nor can a plan changed between writing the analysis and running it. Any
@@ -23979,8 +24014,10 @@ Open, recorded as each change landed:
     call the ROR", "ROR stands for", "programmes, or ROR". Its short form is then reported
     as undefined. "Known as", "referred to as", "called" and "hereafter" before it are read
     (decision 29).
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
   - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
     a definition; `(ROR; ...)` and `(ROR, ...)` are.
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
   - A short form followed by an equals sign or a number defines nothing, so "the reporting
     odds ratio (ROR 3.84)" leaves ROR undefined; but one followed by a whole number and
     nothing else does, as "(ESM 1)" is a definition (decision 29), so "the reporting odds
@@ -24000,6 +24037,7 @@ Open, recorded as each change landed:
   - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
     bracket is read and the outer is not, and a definition whose long form is in the
     bracket and holds a bracket of its own is missed.
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
   - A long form before its short form takes no letter from inside a bracket it opens: the
     bracket is passed over and the letter looked for before it. A definition whose letter
     is only in such a bracket is missed, as one whose long form is an aside would be. One
@@ -24013,12 +24051,15 @@ Open, recorded as each change landed:
     as before (ROR)" is read as a definition whose long form is "ratio as before". The
     definition is still counted; the long form quoted in a message can be wrong, and two
     definitions of one thing can be reported as two meanings.
+    Pinned by `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_early`.
   - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
     and `Hb` are missed, where `iPSC` and `siRNA` are caught. `Hb` and `Tregs` cannot be
     defined either, each being the capital of a word, so "haemoglobin (Hb)" is not tracked.
+    Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - Every entry of `data/terms.yaml` is exempt, in any case: it lists `egfr`, `mtor`,
     `ecog`, `nyha`, `meddra` and some 170 more as names, so `eGFR` used and never
     defined is not reported.
+    Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - `II` to `XXXIX` are read as numerals wherever they stand, so `IV` for intravenous and
     `VI` are never reported.
     Pinned by `tests/test_language.py::test_a_realistic_manuscript_is_reported_as_design_md_says`
@@ -24051,6 +24092,7 @@ Open, recorded as each change landed:
     brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in
     element symbols with a count from two to twelve is taken for a formula and not
     reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
+    Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
     Pinned by `tests/test_language.py::test_a_hyphenated_abbreviation_is_reported_whole`.
   - So are two joined by a stop, as when a sentence ending in one runs on into one with
@@ -24069,6 +24111,7 @@ Open, recorded as each change landed:
     defined, a defined `RNA-seq` is not counted as used, and with `ChIP-seq` defined,
     `10x-ChIP-seq` is also reported as an undefined `10x-ChIP`. A name with no such word,
     `HDL-C`, is read after any part: `10x-HDL-C` is a use of it.
+    Pinned by `tests/test_language.py::test_a_name_with_a_word_after_its_first_part_is_read_whole_only_after_a_word`.
   - The capital a name takes at the start of a sentence is read one way only, only for an
     opening word of two letters or more, and only in a hyphenated name: `LncRNAs` opening
     a sentence is reported as an undefined `LncRNA` beside a defined `lncRNA`. A name
@@ -24076,18 +24119,22 @@ Open, recorded as each change landed:
     (non-high-density lipoprotein cholesterol) was ...", is not found by its lower-case
     uses: they are reported as an undefined `HDL-C`, and `Non-HDL-C` as unused. And `T-PA`
     opening a sentence is not a defined `t-PA`, where `Hs-CRP` is `hs-CRP`.
+    Pinned by `tests/test_language.py::test_the_capital_a_name_takes_opening_a_sentence_is_read_one_way_only`.
   - A short form in square brackets is read as a definition wherever the words before it
     spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
     `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since
     its bracket is masked with its target.
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
   - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
     `HU` are reported: several have a second meaning, and the list is the project's to
     extend.
+    Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - Only a section titled "Abstract" is read apart. A `Summary` and a `Key points` box are
     main text, so a definition repeated in the Introduction after one of them is reported
     as `abbreviation-redefined`. A legend is a caption only where it opens with the display
     and a stop, a colon or a dash: "Figure 1 The odds by year" is text, and a definition it
     repeats is reported.
+    Pinned by `tests/test_language.py::test_only_an_abstract_is_read_apart_and_a_legend_only_by_its_stop`.
   - A glossary is found under a heading, or after a paragraph that opens with its name
     and has an entry after it: a bold line, "**Abbreviations**", in a manuscript with no
     heading, is read as such a paragraph. In a LaTeX file only a heading opens one. A
@@ -24124,6 +24171,7 @@ Open, recorded as each change landed:
     gives PRR "proportional reporting". Accepted.
   - A glossary's or a caption's long form is compared with the text's as written: "CI =
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
+    Pinned by `tests/test_language.py::test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written`.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.
   - `no-headings` is said of a Markdown manuscript only; a LaTeX one has its sections.
     It is said at the drafting stage only, as decided: a paper declared past drafting with
@@ -24131,6 +24179,7 @@ Open, recorded as each change landed:
     says so. Pinned by `tests/test_language.py::test_no_headings_is_said_at_drafting_only`.
   - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
     its paragraph is set entirely in bold and has no small letter in it.
+    Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a
     table's body, "TOTAL", are reported as undefined abbreviations.
     Pinned by `tests/test_language.py::test_what_is_not_a_heading_in_capitals_is_still_read`.
@@ -24193,6 +24242,7 @@ Open, recorded as each change landed:
   - Tables and figures are not read, since both are generated from results. An abbreviation
     defined in the text for a table's sake is reported as unused, and one used only in a
     caption is not seen. The hint on `abbreviation-unused` says so.
+    Pinned by `tests/test_language.py::test_a_short_form_defined_for_a_table_or_used_in_a_caption_is_unused`.
   - Title-page text comes from `paper.yaml` and `authors.yaml`, which are not read.
     Accepted.
   - The sections where nothing is reported as undefined are found by English words in
@@ -24293,6 +24343,7 @@ Open, recorded as each change landed:
     English the paper's words are mostly in: a journal that insists on British English and
     a paper that declares nothing and is written in American pass G4 and G14, with that note
     alone.
+    Pinned by `tests/test_compliance.py::test_an_american_paper_that_declares_no_english_passes_a_british_journal`.
   - The build writes `lang: en`, and Word and citeproc each take American English for it
     (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
     Zotero build names `en-US`. A paper written in British spelling that declares nothing

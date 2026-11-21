@@ -352,6 +352,35 @@ def test_the_note_of_an_undeclared_english_fails_no_stage(project: Path) -> None
         assert said == [("english-variant-undeclared", "info")], stage
 
 
+@pytest.mark.parametrize("declared", [None, "en-GB"])
+def test_an_american_paper_that_declares_no_english_passes_a_british_journal(
+    project: Path, declared: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper that declares no English is held to a
+    count, and is built in no region."): nothing compares the journal's English with the
+    English the paper's words are in, so a paper in American spelling that declares none,
+    under a journal that asks for British English, passes G4 and G14 with G4's note alone.
+    The other side: declared British, G14 reports its American words."""
+    from manuscript_guard.gates import check_language
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert text.count("analysed") == 1, "the fixture's one British word moved"
+    main.write_text(text.replace("analysed", "analyzed") + "\n# Appendix\n\nThe color of "
+                    "the tumor and the behavior of the center were noted.\n",
+                    encoding="utf-8")  # fmt: skip
+    said = _english_said(project, "en-GB", declared)
+    spelling = [f.code for f in check_language(load_project(project)[0]).findings
+                if f.code.startswith("spelling-")]  # fmt: skip
+    if declared is None:
+        assert [(code, severity) for code, severity, _m, _h in said] == [
+            ("english-variant-undeclared", "info")]  # fmt: skip
+        assert spelling == []
+    else:
+        assert said == []
+        assert spelling == ["spelling-not-as-declared"]
+
+
 def test_an_old_profile_warns(project: Path) -> None:
     edit_yaml(project / JOURNAL, lambda d: d.update(retrieved_on="2020-01-01"))
     report = journal_report(project)

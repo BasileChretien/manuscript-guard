@@ -338,3 +338,21 @@ def test_a_claim_published_as_a_value_is_not_painted_green(project: Path) -> Non
     assert "nothing checked the words" in by_label["results.spin.conclusion"].detail
     # A name really is traced to the analysis, and stays green.
     assert by_label["results.study.drug"].tier == TRACED
+
+
+def test_the_annotated_copy_gives_a_typed_citation_s_year_the_generic_hint(
+    project: Path,
+) -> None:
+    """Known gaps, "The year of a citation typed as text is read in the author-year forms
+    only": the hint that names the key is G2's alone. The annotated copy marks the year of
+    "(Fictional, 2021)" red with the hint it gave before, though `references.bib` holds the
+    work, where `check` names its key (`tests/test_corruption.py`)."""
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8")
+                    + "\n\nThe counts were as reported (Fictional, 2021).\n",
+                    encoding="utf-8")  # fmt: skip
+    _text, marks = marked(project)
+    years = [mark for mark in marks if mark.shown == "2021" and mark.tier == DEFECT]
+    assert len(years) == 1, years
+    assert years[0].detail.startswith("bind it with {{results.<key>}}"), years[0].detail
+    assert "typed as text" not in years[0].detail and "[@" not in years[0].detail

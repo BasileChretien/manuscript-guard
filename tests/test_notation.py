@@ -10,12 +10,13 @@ runs into its unit is reported wherever it stands.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
 import pytest
 
-from manuscript_guard.contracts import load_project
+from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.findings import Report
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _file
@@ -99,6 +100,20 @@ def test_a_p_value_is_found_however_it_is_stated(sentence: str) -> None:
     report = read(f"# Results\n\nFirst P = {X}; second P = {X}.\n\n{sentence}\n")
     assert codes(report) == ["notation-p-symbol"], told(report)
     assert report.counts["notation_p_values"] == 3
+
+
+@pytest.mark.parametrize("stated", ["p for trend = 0.03", "P for trend=0.03"])
+def test_words_between_the_symbol_and_its_sign_hide_the_sign(stated: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): "P for trend =
+    0.03" counts neither the symbol nor the spacing, where a subscript written as pandoc's,
+    `P~trend~`, is read for both."""
+    report = read(f"# Results\n\nFirst P = 0.01; second P = 0.02; and {stated}.\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_p_values"] == report.counts["notation_signs"] == 2
+    report = read("# Results\n\nFirst P = 0.01; second P = 0.02; and p~trend~ = 0.03.\n")
+    assert codes(report) == ["notation-p-symbol"]
+    report = read("# Results\n\nFirst P = 0.01; second P = 0.02; and P~trend~=0.03.\n")
+    assert codes(report) == ["notation-sign-spacing"]
 
 
 def test_the_sign_written_closed_among_spaced_ones_is_reported() -> None:
@@ -216,6 +231,52 @@ def test_an_interval_is_found_however_it_is_introduced(interval: str) -> None:
     assert report.counts["notation_intervals"] == 3
 
 
+def test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound() -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a range, "IQR 3-7"
+    or "aged 18 to 65", is not read; nor is what stands between the letters and the first
+    bound, "95% CI 1.2" against "95% CI: 1.2". "CI" for a cardiac index followed by two
+    numbers is counted as an interval."""
+    hyphens = "# Results\n\nFirst (95% CI 1-2), second (95% CI 3-4)"
+    report = read(f"{hyphens}, an IQR 3-7, an IQR 3 to 7 and ages 18 to 65.\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 2
+    report = read(
+        "# Results\n\nFirst (95% CI 1.2 to 2), second (95% CI 3 to 4), third (95% CI: 1.2 "
+        "to 3).\n"
+    )
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 3
+    # The other side: two numbers after "CI" are an interval.
+    report = read(f"{hyphens}, and the cardiac index, CI 2.1 to 3.4 L/min/m2.\n")
+    assert told(report) == [
+        (
+            "notation-interval",
+            "the two bounds of an interval are joined by 'to' once, as in 'CI 2.1 to 3.4'; "
+            "the manuscript joins them by a hyphen 2 times",
+        )
+    ]
+
+
+def test_an_interval_one_binding_prints_is_not_read(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): an interval printed
+    by one binding is not read. The example's analysis is given a label `ror.ci` that prints
+    its interval whole, "2.89 to 5.12"; after the letters it is no interval, where the
+    example's own bounds, `ror.ci_low` and `ror.ci_high`, bound apart are one."""
+    path = project / "results" / "01_disproportionality.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["values"]["ror.ci"] = {"value": "2.89 to 5.12", "display": "2.89 to 5.12",
+                                    "label": True}  # fmt: skip
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    namespace = load_namespace(load_project(project)[0])[0]
+    assert namespace["results.ror.ci"].display == "2.89 to 5.12"
+    hyphens = "# Results\n\nFirst (95% CI 1-2), second (95% CI 3-4)"
+    report, found = written(project, f"{hyphens}, third (95% CI {{{{results.ror.ci}}}}).\n")
+    assert not found, [f.message for f in found]
+    assert report.counts["notation_intervals"] == 2
+    _, found = written(project, f"{hyphens}, third (95% CI {LOW} to {HIGH}).\n")
+    assert [f.code for f in found] == ["notation-interval"]
+
+
 @pytest.mark.parametrize(
     "interval",
     [
@@ -266,6 +327,25 @@ def test_a_level_of_confidence_is_no_bound(sentence: str) -> None:
     report = read(f"# Methods\n\n{sentence}\n\n# Results\n\nIt was 2 (95% CI 1 to 3).\n")
     assert not report.findings, told(report)
     assert report.counts["notation_intervals"] == 1
+
+
+@pytest.mark.parametrize("level", ["80", "90", "95", "99", "99.9"])
+@pytest.mark.parametrize("join", [",", ";"])
+def test_two_percents_after_the_letters_are_a_level_and_a_margin(level: str, join: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): after the letters,
+    with no level before them, "95%, 5%" is taken for a level and a margin where the first
+    number is 80, 90, 95, 99 or 99.9 and a comma or a semicolon follows it, so an interval
+    written "CI 95%, 99%" is not counted; another first number is a bound."""
+    to = "# Results\n\nFirst (95% CI 1 to 2), second (95% CI 3 to 4)"
+    report = read(f"{to}, third (CI {level}%{join} 99%).\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 2
+    report = read(f"{to}, third (CI 85%{join} 99%).\n")
+    assert codes(report) == ["notation-interval"]
+    assert report.counts["notation_intervals"] == 3
+    report = read(f"{to}, third (95% CI {level}%{join} 99%).\n")  # a level before them
+    assert codes(report) == ["notation-interval"]
+    assert report.counts["notation_intervals"] == 3
 
 
 def test_a_percent_sign_set_another_way_is_reported() -> None:
@@ -320,6 +400,16 @@ def test_every_unit_listed_is_read() -> None:
     for unit in UNITS:
         report = read(f"# Methods\n\nIt was set at 5{unit} throughout.\n")
         assert codes(report) == ["notation-unit"], unit
+
+
+def test_a_space_where_the_si_has_none_is_not_reported() -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): "30 °" for an
+    angle is not reported, though the SI sets no space there; a number run into its unit
+    in the same sentence is."""
+    report = read("# Methods\n\nThe arm was raised 30 \N{DEGREE SIGN} at 37\N{DEGREE SIGN}C.\n")
+    assert told(report) == [
+        ("notation-unit", "a number runs into its unit once: '37\N{DEGREE SIGN}C'")
+    ]
 
 
 def test_a_space_left_out_around_a_number_is_reported_where_it_first_stands() -> None:
@@ -573,6 +663,32 @@ def test_what_is_not_the_paper_s_prose_is_not_read(block: str) -> None:
     assert report.counts["notation_p_values"] == 2
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        "| Group (n=12) | Group (n=40) |\n|---|---|\n| 1 | 2 |",  # a table typed in
+        "    n=12 and n=40",  # a block set off by four spaces
+    ],
+)
+def test_a_typed_table_and_an_indented_block_are_read_with_the_prose(block: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a table typed into
+    the manuscript is read with the prose, so its compact "n=12" in a header counts against
+    the text's, and so does a block set off by four spaces; a fenced one is not read."""
+    prose = "# Results\n\nSome (n = 12) and more (n = 40), and (n = 3).\n\n"
+    report = read(f"{prose}{block}\n\nDone.\n")
+    assert told(report) == [
+        (
+            "notation-sign-spacing",
+            "the sign after P or n has no space around it 2 times, as in 'n=12'; the "
+            "manuscript writes it with a space on each side of it 3 times, as in 'n = 12'",
+        )
+    ]
+    assert report.findings[0].line == 5
+    report = read(f"{prose}```\nn=12 and n=40\n```\n\nDone.\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_signs"] == 3
+
+
 def test_the_front_matter_and_the_reference_list_are_not_read() -> None:
     report = read(
         f"---\ntitle: A study with p=0.05 and 5mg\n---\n\n# Results\n\nIt held (P = {X}).\n\n"
@@ -651,6 +767,41 @@ def test_a_p_value_of_one_or_less_is_one(stated: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("stated", "counted"),
+    [
+        ("where p = 0.5 is the expected share", True),  # a proportion
+        ("P~plat~ < 30", False),  # typed, the value above 1 tells a pressure
+        ("P = 2.5 x 10^5^ Pa", True),  # figures followed by a power of ten
+        ("P = 2.5 Pa", False),
+        ("P < 10-8", False),  # the caret lost and the minus a hyphen
+        ("P < 10^-8^", True),
+    ],
+)
+def test_a_p_is_told_from_a_p_value_only_by_a_typed_value_above_one(
+    stated: str, counted: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a `p` that is a
+    proportion is counted as a P value, and a pressure is told from one only by a typed
+    value above 1, which a power of ten after its figures hides. A threshold written "P <
+    10-8" is not counted."""
+    report = read(f"# Results\n\nIt held (P = 0.03) and again (P = 0.04), {stated}.\n")
+    assert report.counts["notation_p_values"] == (3 if counted else 2), told(report)
+
+
+def test_a_binding_hides_the_value_above_one_that_tells_a_pressure(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): the example's
+    `results.param.signal.min_cases` prints 3, and `P~plat~ <` that binding is counted as a
+    P value; the same 3 typed is told for a pressure and is not."""
+    key = "results.param.signal.min_cases"
+    assert load_namespace(load_project(project)[0])[0][key].display == "3"
+    before = "# Results\n\nIt held (P = 0.03) and again (P = 0.04), and P~plat~ <"
+    report, _ = written(project, f"{before} {{{{{key}}}}}.\n")
+    assert report.counts["notation_p_values"] == 3
+    report, _ = written(project, f"{before} 3.\n")
+    assert report.counts["notation_p_values"] == 2
+
+
+@pytest.mark.parametrize(
     "sentence",
     [
         "Expression of p53 and of P2Y12 was measured.",
@@ -678,6 +829,21 @@ def test_a_comparison_that_is_not_a_statistic_s_is_not_read(sentence: str) -> No
     report = read(f"# Results\n\nIt held (n = 12, P = {X}).\n\n{sentence}\n")
     assert not report.findings, told(report)
     assert report.counts["notation_signs"] == 2
+
+
+def test_the_sign_is_read_only_after_p_and_n(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): "r = 0.31",
+    "OR=2.1", "t(58)=2.41" and "aged <65 years" are not read, so a manuscript that mixes
+    "r = 0.31" with "r=0.42" passes the gate; after `P` the same mix is told."""
+    report, found = written(
+        project,
+        "# Results\n\nIt was r = 0.31 and r=0.42, OR=2.1 and OR = 2.2, t(58)=2.41 and t(58) = "
+        "2.4, in those aged <65 and aged < 70 years.\n",
+    )
+    assert not found, [f.message for f in found]
+    assert report.counts["notation_signs"] == report.counts["notation_p_values"] == 0
+    _, found = written(project, "# Results\n\nIt was P = 0.31 and P=0.42.\n")
+    assert [f.code for f in found] == ["notation-sign-spacing"]
 
 
 @pytest.mark.parametrize(
@@ -766,6 +932,25 @@ def test_a_binding_alone_says_nothing() -> None:
     report = read(f"# Results\n\n{X}\n\n{{{{tables.baseline}}}}\n\nThe ratio was {X}.\n")
     assert not report.findings
     assert not any(report.counts.values())
+
+
+def test_a_binding_in_a_sentence_is_a_number_whatever_it_holds(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): the example's
+    `results.dataset.reports.extracted` prints a date, "3 August 2026", and in a sentence it
+    is read as a number: against a percent sign after a space, and run into a unit."""
+    date = "{{results.dataset.reports.extracted}}"
+    _, found = written(
+        project,
+        f"# Results\n\nThe date was {date} % and 5% and 6% and 7%; the dose {date}mg.\n",
+    )
+    assert [(f.code, f.message) for f in found] == [
+        (
+            "notation-percent",
+            "'%' stands after a space once, as in '{{\N{HORIZONTAL ELLIPSIS}}} %'; the "
+            "manuscript sets it against its number 3 times",
+        ),
+        ("notation-unit", "a number runs into its unit once: '{{\N{HORIZONTAL ELLIPSIS}}}mg'"),
+    ]
 
 
 # ---------------------------------------------------------------- through the gate

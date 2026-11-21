@@ -127,6 +127,45 @@ def test_a_table_with_a_width_reads_its_rows_after_its_column_specification() ->
     assert [[c.text for c in row] for row in table] == [["A", "1"]]
 
 
+def test_a_longtable_s_caption_is_a_row_and_its_repeated_head_is_read_once() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on macros and tables drawn from files): a `longtable`'s caption is read as a row of it,
+    and the head `!endhead` repeats on every page is read once, where it is typed."""
+    text = tex("!documentclass{article}\n!usepackage{longtable}\n!begin{document}\n"
+               "!begin{longtable}{lr}\n!caption{Reports in 2019, 333 of them}!!\n"
+               "Name & Count !!\n!endhead\nMale & 12 !!\nFemale & 28 !!\n!end{longtable}\n"
+               "!end{document}\n")  # fmt: skip
+    [table] = latex_tables(_source(text))
+    assert [[(c.text, c.line) for c in row] for row in table] == [
+        [("Reports in 2019, 333 of them", 5)], [("Name", 6), ("Count", 6)],
+        [("Male", 8), ("12", 8)], [("Female", 9), ("28", 9)]]  # fmt: skip
+
+
+def test_a_number_a_macro_prints_or_a_table_drawn_from_a_file_is_not_read_there(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on macros and tables drawn from files): the 999 an author's macro prints is read where
+    the macro is defined, not where it is used; the 555 of a file `!csvautotabular` or
+    `!pgfplotstabletypeset` draws is not read, and the reader refuses the command."""
+    (tmp_path / "out.csv").write_text("n\n7\n", encoding="utf-8")
+    (tmp_path / "data.csv").write_text("a,b\nx,555\n", encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(tex("!documentclass{article}\n!newcommand{!nrep}{999}\n!begin{document}\n"
+                         "!section{Results}\nOf !nrep{} reports, 7 were serious, 12 not.\n"
+                         "!end{document}\n"), encoding="utf-8")  # fmt: skip
+    report = audit([paper], [tmp_path / "out.csv"])
+    assert [(c.text, c.line) for c in report.unmatched] == [("999", 2), ("12", 5)]
+    for command in ("csvautotabular", "pgfplotstabletypeset"):
+        paper.write_text(tex("!documentclass{article}\n!begin{document}\n!section{Results}\n"
+                             f"Of 7, 12 were not.\n!{command}{{data.csv}}\n!end{{document}}\n"),
+                         encoding="utf-8")  # fmt: skip
+        report = audit([paper], [tmp_path / "out.csv"])
+        assert [(c.text, c.line) for c in report.unmatched] == [("12", 4)], command
+        assert any(command in said and "prints a file no gate reads" in said
+                   for said in report.unreadable), report.unreadable  # fmt: skip
+
+
 # ---------------------------------------------------------------------------- a LaTeX paper
 
 
@@ -179,12 +218,58 @@ def test_a_share_in_a_latex_table_is_held_to_its_denominator(latex_paper: Path) 
     assert off == [("tables.tex", 3)], report.disagreements
 
 
+def test_rows_a_tabular_inputs_are_read_as_text_and_held_to_no_denominator(
+    latex_paper: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on rows a tabular `!input`s): the rows xtable or esttab write to a file of their own are
+    read where they stand, as text, and the 35.0% of 12 out of 40 is held to nothing, where
+    the same rows typed in the tabular are (the test above)."""
+    (latex_paper / "tables.tex").write_text(tex("!begin{tabular}{lr}\n& Cases (n = 40) !!\n"
+                                                "!input{rows}\n!end{tabular}\n"),
+                                            encoding="utf-8")  # fmt: skip
+    (latex_paper / "rows.tex").write_text(tex("Male & 12 (35.0!%) !!\nFemale & 28 (70.0!%) !!\n"),
+                                          encoding="utf-8")  # fmt: skip
+    report = audit([latex_paper / "paper.tex"], [latex_paper.parent / "out.csv"])
+    assert report.disagreements == []
+    assert [(c.source.name, c.line, c.text) for c in report.unmatched] == [
+        ("tables.tex", 2, "40"), ("rows.tex", 1, "12"), ("rows.tex", 1, "35.0%"),
+        ("rows.tex", 2, "28"), ("rows.tex", 2, "70.0%")]  # fmt: skip
+
+
 def test_in_a_folder_only_a_file_with_a_document_class_starts_a_paper(
     latex_paper: Path, capsys
 ) -> None:
     assert main(["audit", str(latex_paper), "--against", str(latex_paper.parent / "out.csv")]) == 0
     out = capsys.readouterr().out
     assert "Audited 2 file(s)" in out and "old-draft.tex" in out
+
+
+def test_a_tex_with_a_document_class_anywhere_in_it_is_a_paper_of_its_own(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on a folder's entries): a standalone figure's file, and files whose `!documentclass`
+    stands in a `!verb` or a `comment` environment, are each audited as a paper; a `.tex`
+    with none is passed over."""
+    (tmp_path / "main.tex").write_text(_document("Of 412."), encoding="utf-8")
+    (tmp_path / "figure.tex").write_text(tex(
+        "!documentclass{standalone}\n!usepackage{tikz}\n!begin{document}\n"
+        "!begin{tikzpicture}!node{n = 999};!end{tikzpicture}\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "notes.tex").write_text(
+        tex("Start each paper with !verb|!documentclass{article}|; we had 888.\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "commented.tex").write_text(
+        tex("!begin{comment}\n!documentclass{article}\n!end{comment}\nWe had 777.\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "plain.tex").write_text("We had 666.\n", encoding="utf-8")
+    assert main(["audit", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Audited 4 file(s).")
+    for name in ("commented.tex", "figure.tex", "main.tex", "notes.tex"):
+        assert f"  {name}: no reference list was found" in out, name
+    assert "plain.tex: no entry inputs it, so it was not read" in out
 
 
 def test_a_folder_of_latex_with_no_document_class_has_nothing_to_audit(tmp_path: Path, capsys):
@@ -467,6 +552,28 @@ def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
     assert pdf("defined at manuscript/main.md:5") == "defined at page 1, line 7"
 
 
+def test_a_place_in_a_docx_is_its_paragraph_and_one_outside_a_pdf_s_map_is_line_none() -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on places put back in the paper): a line of a converted .docx is said as its section and
+    paragraph; the words a finding quotes are rewritten with the rest, "TODO: see
+    manuscript/main.md" becoming "see paper.md"; and a staged line of a PDF outside the map
+    reads "line None", where one inside it reads as its page and line."""
+    from manuscript_guard.auditing.gates import _relocated
+    from manuscript_guard.auditing.paragraphs import Paragraph, Paragraphs
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    placed = Paragraphs((None, Paragraph("Methods", 3)))
+    docx = _relocated({"main.md": Path("/x/paper.docx")}, (), placed.said)
+    assert docx("defined at manuscript/main.md:2") == "defined at Methods, paragraph 3"
+    assert docx("defined at manuscript/main.md:1") == "defined at line 1"
+    quoted = _relocated({"main.md": Path("/x/paper.md")})
+    assert quoted('it says "TODO: see manuscript/main.md"') == 'it says "TODO: see paper.md"'
+    read = PdfText(Path("/x/paper.pdf"), "pdftotext", 1, "a\nb\n", (Place(1, 1), Place(1, 2)))
+    pdf = _relocated({"main.md": Path("/x/paper.pdf")}, (1, 2), read.said)
+    assert pdf("at manuscript/main.md:2") == "at page 1, line 2"
+    assert pdf("at manuscript/main.md:9") == "at line None"
+
+
 def test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree(tmp_path: Path,
                                                                     capsys) -> None:
     """End to end, as round 1 of #545 asked (finding 4): G14 says where an abbreviation was
@@ -592,6 +699,91 @@ def test_a_setext_heading_s_underline_ends_no_list_it_opens() -> None:
     assert bibliography_spans("# References\n\n" + entry + "\n    ---\n\n" + entry) == [(0, 7)]
 
 
+_ENTRIES = ("1. Smith J. A cohort. Lancet. 2019;393:100-10.",
+            "2. Jones K. A trial. BMJ 2020;370:m1.", "3. Brown L. A note. Drug Saf. 2021;44:1-2.",
+            "4. Green M. A review. Pharmacoepidemiol Drug Saf. 2018;27:3-4.")  # fmt: skip
+_ONE, _REST = _ENTRIES[0], "\n".join(_ENTRIES[1:])
+
+
+@pytest.mark.parametrize(
+    ("listed", "span", "numbers"),
+    [
+        ("# References\n***\n" + "\n".join(_ENTRIES), (0, 1), []),
+        (f"# References\n\n{_ONE}\n{_ENTRIES[1]}\n\n---\n\n" + "\n".join(_ENTRIES[2:]), (0, 5),
+         [1, 2]),
+        (f"# References\n\n{_ONE}\n- - -\n{_REST}", (0, 8), [1, 2, 3, 4]),
+        ("# References\n---\n" + "\n".join(_ENTRIES), (0, 7), [None, 1, 2, 3, 4]),
+        (f"# References\n\n{_ONE}\n{_ENTRIES[1]}\n---\n" + "\n".join(_ENTRIES[2:]), (0, 3), [1]),
+        ("# References\n\n-----  -----\n\n" + "\n".join(_ENTRIES), (0, 2), []),
+    ],
+    ids=["a rule right under the heading", "a rule between two groups",
+         "a spaced rule directly under an entry", "a rule directly under the heading",
+         "a plain rule directly under entry 2", "a simple table's rule"],
+)
+def test_where_a_dashed_or_starred_line_ends_a_markdown_reference_list(
+    tmp_path: Path, listed: str, span: tuple[int, int], numbers: list[int | None]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
+    as a thematic break"): `***` right under the heading leaves the list empty; a rule
+    between two groups ends it at the first, and a citation of an entry after it is beyond
+    the list; a dash line directly under a line of text ends nothing, a spaced `- - -` under
+    an entry or `---` under the heading, and the list runs on to the next heading, the
+    `---` read as an entry with no number, as before #553; a plain `---` under entry 2 makes
+    it a setext heading, and entries 2 to 4 are prose; a simple table's rule after a blank
+    line ends the list there."""
+    from manuscript_guard.audit import bibliography_spans
+
+    text = f"{listed}\n\n# Appendix\n\nText.\n"
+    assert bibliography_spans(text) == [span]
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nThe rate rose [1, 2, 3, 4].\n\n{text}", encoding="utf-8")
+    [census] = audit([paper], None).references
+    assert [entry.number for entry in census.entries] == numbers
+    beyond = [p.line for p in census.problems if p.code == "citation-beyond-list"]
+    assert beyond == ([3] if numbers in ([1], [1, 2]) else [])
+
+
+def test_the_entries_under_a_simple_table_s_rule_are_read_as_the_paper_s_text(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
+    as a thematic break"): a simple table's dashed rule under the heading, after a blank
+    line, ends the list there, and the years, volumes and pages of the entries below it are
+    compared as the paper's numbers: a false alarm. Pandoc 3.9.0.2 reads this as a Table."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\nWe saw 77.\n\n# References\n\n-----  -----\n"
+                     + "\n".join(_ENTRIES[:2]) + "\n-----  -----\n\n# Appendix\n\nText.\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert report.not_audited == ["paper.md: lines 5-6, read as the reference list"]
+    assert [(c.text, c.line) for c in report.unmatched] == [("2019;393:100-10", 8),
+                                                           ("2020;370:m1", 9)]  # fmt: skip
+    assert report.reference_like == []
+
+
+def test_a_horizontal_line_word_draws_ends_no_reference_list(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
+    as a thematic break"): a .docx has no thematic break in the text the audit reads, and a
+    paragraph's bottom border, the line Word draws for `---`, ends nothing."""
+    ruled = ("<w:p><w:pPr><w:pBdr><w:bottom w:val='single' w:sz='6' w:space='1' w:color='auto'/>"
+             "</w:pBdr></w:pPr></w:p>")  # fmt: skip
+    entries = [e.split(". ", 1)[1] for e in _ENTRIES]
+    paper = make_docx(tmp_path / "paper.docx", ["The rate rose [1, 2, 3, 4].", "References",
+                                                *entries], heading="References")  # fmt: skip
+    with zipfile.ZipFile(paper) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    second = f"<w:t xml:space='preserve'>{entries[1]}</w:t></w:r></w:p>".encode()
+    assert parts["word/document.xml"].count(second) == 1
+    parts["word/document.xml"] = parts["word/document.xml"].replace(second, second + ruled.encode())
+    with zipfile.ZipFile(paper, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    [census] = audit([paper], None).references
+    assert len(census.entries) == 4
+
+
 SMITH, JONES = "Smith J. A cohort. Lancet. 2019;393:100-10.", "Jones K. A trial. BMJ 2020;370:m1."
 
 
@@ -623,6 +815,208 @@ def test_a_bracket_in_the_text_numbers_no_list_word_does_not_count(tmp_path: Pat
                       heading="References", numbered=numbered)  # fmt: skip
     [census] = audit([paper], None).references
     assert (census.style, census.problems) == ("not numbered", [])
+
+
+def _numbering(level: str, linked: str = "", lower: str = "") -> str:
+    """One numbering of one abstract numbering: its level 0 as `level` says, a link to a
+    numbering style, and a level 1 below it."""
+    return (f"<w:numbering {NS}><w:abstractNum w:abstractNumId='0'>{linked}<w:lvl w:ilvl='0'>"
+            f"{level}</w:lvl>{lower}</w:abstractNum><w:num w:numId='1'><w:abstractNumId "
+            "w:val='0'/></w:num></w:numbering>")  # fmt: skip
+
+
+_DECIMAL = "<w:start w:val='1'/><w:numFmt w:val='decimal'/><w:lvlText w:val='%1.'/>"
+_LEVEL_1 = ("<w:lvl w:ilvl='1'><w:start w:val='1'/><w:numFmt w:val='decimal'/>"
+            "<w:lvlText w:val='%2)'/></w:lvl>")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("numberings", "methods", "style"),
+    [
+        (_numbering(_DECIMAL), None, "numbered by place"),
+        (_numbering(_DECIMAL.replace("decimal", "lowerLetter")), None, "not numbered"),
+        (_numbering(_DECIMAL.replace("'1'", "'2'")), None, "not numbered"),
+        (_numbering(_DECIMAL, "<w:numStyleLink w:val='RefList'/>"), None, "not numbered"),
+    ],
+    ids=["decimal from 1", "letters", "from 2", "linked to a numbering style"],
+)
+def test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one(
+    tmp_path: Path, numberings: str, methods: str | None, style: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): a numbering in another format, from another start, or linked to a
+    numbering style is taken for none, and the list is counted and not held to the text's
+    numbers."""
+    numbered = {SMITH: "1", JONES: "1", **({"Methods.": methods} if methods else {})}
+    paper = make_docx(tmp_path / "paper.docx", ["Methods.", "The rate rose [1, 3].",
+                                                "References", SMITH, JONES],
+                      heading="References", numbered=numbered, numberings=numberings)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == style
+    held = [("citation-beyond-list", 3), ("entry-never-cited", 6)]
+    assert [(p.code, p.line) for p in census.problems] == (held if style != "not numbered" else [])
+
+
+@pytest.mark.parametrize(("above", "style"), [("restarted", "not numbered"),
+                                              ("not restarted", "not numbered"),
+                                              ("", "numbered by place")])  # fmt: skip
+def test_a_level_a_paragraph_above_restarts_is_not_looked_at(
+    tmp_path: Path, above: str, style: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): the entries are numbered at level 1, and so is a paragraph with words
+    higher up. A paragraph at level 0 between them restarts level 1, so Word prints the
+    entries 1 and 2, but only the count is compared: the paragraph above is in it, and the
+    list is taken for not numbered. With no "Step." between, Word prints 2) and 3), and "not
+    numbered" is right. With nothing above, the list is numbered by place."""
+    level_1 = "<w:numPr><w:ilvl w:val='1'/><w:numId w:val='1'/></w:numPr>"
+    level_0 = "<w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr>"
+    numbered = {SMITH: level_1, JONES: level_1}
+    if above:
+        numbered |= {"Methods.": level_1}
+    if above == "restarted":
+        numbered |= {"Step.": level_0}
+    paper = make_docx(tmp_path / "paper.docx", ["Methods.", "Step.", "The rate rose [1, 3].",
+                                                "References", SMITH, JONES],
+                      heading="References", numbered=numbered,
+                      numberings=_numbering(_DECIMAL, lower=_LEVEL_1))  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == style
+    held = [("citation-beyond-list", 4), ("entry-never-cited", 7)]
+    assert [(p.code, p.line) for p in census.problems] == ([] if above else held)
+
+
+#: Two numberings of one abstract numbering, the second restarting its level at 1.
+_RESTARTED = (f"<w:numbering {NS}><w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'>"
+              f"{_DECIMAL}</w:lvl></w:abstractNum><w:num w:numId='1'><w:abstractNumId "
+              "w:val='0'/></w:num><w:num w:numId='2'><w:abstractNumId w:val='0'/><w:lvlOverride "
+              "w:ilvl='0'><w:startOverride w:val='1'/></w:lvlOverride></w:num></w:numbering>")
+
+
+@pytest.mark.parametrize(("methods", "style"), [("2", "not numbered"),
+                                                ("1", "numbered by place")])  # fmt: skip
+def test_a_paragraph_above_in_the_numbering_that_restarts_the_list_s_level_begins_its_count(
+    tmp_path: Path, methods: str, style: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): a paragraph with words above the list, numbered in the same numbering
+    where it restarts the level, begins the count, and the list is not held to the text's
+    numbers; numbered in the other numbering of that abstract numbering, it does not."""
+    paper = make_docx(tmp_path / "paper.docx", ["Methods.", "The rate rose [1, 3].",
+                                                "References", SMITH, JONES],
+                      heading="References", numbered={"Methods.": methods, SMITH: "2",
+                                                      JONES: "2"},
+                      numberings=_RESTARTED)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == style
+    held = [("citation-beyond-list", 3), ("entry-never-cited", 6)]
+    assert [(p.code, p.line) for p in census.problems] == (held if style != "not numbered" else [])
+
+
+_LIST = ("# References\n\n1. Smith J. A cohort. Lancet. 2019;393:100-10.\n"
+         "2. Jones K. A trial. BMJ 2020;370:m1.\n3. Brown L. A note. Drug Saf. 2021;44:1-2.\n")
+_FIRST = "1. Smith J. A cohort. Lancet. 2019;393:100-10.\n2. Jones K. A trial. BMJ 2020;370:m1.\n"
+_SECOND = "1. Brown L. A note. Drug Saf. 2021;44:1-2.\n2. Green M. A review. J Ex. 2018;27:3-4.\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "markers", "numbers", "problems"),
+    [
+        ("It rose^1^ and fell^2^, as before [3].\n\n" + _LIST, 1, [1, 2, 3],
+         [("entry-never-cited", 7), ("entry-never-cited", 8)]),
+        ("It rose (1) and fell (2), as before [3].\n\n" + _LIST, 1, [1, 2, 3],
+         [("entry-never-cited", 7), ("entry-never-cited", 8)]),
+        ("It rose [1, 2, 3], by equation [4].\n\n" + _LIST, 2, [1, 2, 3],
+         [("citation-beyond-list", 3)]),
+        (f"It rose [1, 2, 3, 4].\n\n# References\n\n{_FIRST}\n{_SECOND}", 1, [1, 2, 3, 4], []),
+        (f"It rose [1, 2, 3, 4].\n\n# References\n\n{_FIRST}\nFurther reading:\n\n{_SECOND}", 1,
+         [1, 2, None, 1, 2], []),
+        ("It rose [1, 2].\n\n# References\n\n1. Smith J. A cohort.\nLancet. 2019;393:100-10.\n"
+         "2. Jones K. A trial.\nBMJ 2020;370:m1.\n", 1, [1, 2], []),
+        ("It rose [1, 2].\n\n# References\n\nSmith J. A cohort.\nLancet. 2019;393:100-10.\n"
+         "Jones K. A trial.\nBMJ 2020;370:m1.\n", 1, [None], []),
+    ],
+    ids=["superscript", "in parentheses", "an equation's number", "two lists apart",
+         "two lists with a line between", "wrapped, each numbered", "wrapped, not numbered"],
+)
+def test_what_the_census_reads_as_a_citation_and_an_entry(
+    tmp_path: Path, text: str, markers: int, numbers: list[int | None], problems: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): a citation in superscript or in parentheses is not read, and an
+    equation's `[4]` is; two lists each numbered from 1 are read as one, renumbered on, or
+    with the line between them an entry, so not numbered; an entry wrapped over lines is one
+    only where each starts with its number."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\n{text}", encoding="utf-8")
+    [census] = audit([paper], None).references
+    assert (census.markers, [entry.number for entry in census.entries]) == (markers, numbers)
+    assert [(p.code, p.line) for p in census.problems] == problems
+
+
+def test_a_list_found_by_its_entries_shape_alone_is_not_counted(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on the census): with no heading over it, a list is not counted, and `[3]` beyond it is
+    not said."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("It rose [1, 3].\n\n" + _FIRST, encoding="utf-8")
+    [census] = audit([paper], None).references
+    assert (census.entries, census.problems) == ((), [])
+    assert census.note == "no reference list was found under a heading, so none was counted"
+
+
+def _numbered_cell(text: str) -> str:
+    props = "<w:pPr><w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr></w:pPr>"
+    return (f"<w:tbl><w:tr><w:tc><w:p>{props}<w:r><w:t>{text}</w:t></w:r></w:p></w:tc></w:tr>"
+            "</w:tbl>")  # fmt: skip
+
+
+@pytest.mark.parametrize(("in_a_cell", "style"), [(True, "numbered by place"),
+                                                  (False, "not numbered")])  # fmt: skip
+def test_a_paragraph_word_numbers_in_a_table_s_cell_is_given_no_count(
+    tmp_path: Path, in_a_cell: bool, style: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on a paragraph in a table's cell): one numbered in the list's count above the list does
+    not stop the list being numbered by place, and its entries are 1 and 2, where the same
+    paragraph outside a table begins the count above the list."""
+    paper = make_docx(tmp_path / "paper.docx", ["The rate rose [1, 3].", "Step one.",
+                                                "References", SMITH, JONES],
+                      heading="References", numbered={"Step one.": "1", SMITH: "1",
+                                                      JONES: "1"})  # fmt: skip
+    if in_a_cell:
+        with zipfile.ZipFile(paper) as archive:
+            parts = {name: archive.read(name) for name in archive.namelist()}
+        step = ("<w:p><w:pPr><w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr></w:pPr>"
+                "<w:r><w:t xml:space='preserve'>Step one.</w:t></w:r></w:p>")  # fmt: skip
+        document = parts["word/document.xml"].decode("utf-8")
+        assert step in document
+        parts["word/document.xml"] = document.replace(step, _numbered_cell("Step one.")).encode()
+        with zipfile.ZipFile(paper, "w") as archive:
+            for name, data in parts.items():
+                archive.writestr(name, data)
+    [census] = audit([paper], None).references
+    assert census.style == style
+    if in_a_cell:
+        assert [entry.number for entry in census.entries] == [1, 2]
+        assert [p.code for p in census.problems] == ["citation-beyond-list", "entry-never-cited"]
+
+
+@pytest.mark.parametrize(("cited", "never"), [("We found 2 [1,3], as did another [2].", [7, 9]),
+                                              ("We found 2 studies [1,3], as did another [2].",
+                                               [])])  # fmt: skip
+def test_a_citation_enclosing_the_number_before_it_is_read_as_an_interval(
+    tmp_path: Path, cited: str, never: list[int]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on a citation that encloses the number before it): `found 2 [1,3]` is read as an interval
+    after its value and no citation, so entries 1 and 3 are reported as cited nowhere; with a
+    word between, `2 studies [1,3]`, it is a citation. The 2026-11-09 triage planned a fix
+    (F10), which will change this test."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\n{cited}\n\n{_LIST}", encoding="utf-8")
+    [census] = audit([paper], None).references
+    assert [(p.code, p.line) for p in census.problems] == [("entry-never-cited", n) for n in never]
 
 
 def test_a_docx_whose_last_heading_is_the_reference_list_is_counted(tmp_path: Path) -> None:
@@ -921,6 +1315,54 @@ def test_a_retracted_work_is_said_and_kept_only_where_asked(tmp_path: Path, regi
     assert "entry 1 is retracted" in capsys.readouterr().out
 
 
+def test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old(
+    tmp_path: Path, registries, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
+    on `--lookup`): of an entry's two DOIs and two PMIDs only the first of each is asked
+    about, and Crossref is asked for the title of an article with neither, not of a web
+    page; a record kept with `--lookup-cache` is read however old it is, by its file and by
+    the date it says it was looked up on, and asked for again only once the DOI it was asked
+    for changes."""
+    import os
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED.replace("doi:10.5555/fictional.1", "doi:10.5555/fictional.1 "
+                                      "doi:10.5555/second.2")
+                     .replace("PMID: 31000001", "PMID: 31000001 PMID: 31000002")
+                     .replace("Brown L. A note.", "Brown L. Hepatic injury in a national "
+                              "cohort of older adults.")
+                     .replace("Green M. A review. Pharmacoepidemiol Drug Saf. 2018;27:3-4.",
+                              "Example Agency. Hepatic injury in older adults [Internet]. "
+                              "Geneva: Example Agency; 2020 [cited 2021 Mar 5]. Available "
+                              "from: https://example.org/injury"), encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--lookup", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert f"for doi:{DOI} (entry 1)" in out and "second.2" not in out
+    assert "would ask PubMed for PMID 31000001 (entry 2)" in out and "31000002" not in out
+    assert ('an article: would ask Crossref for the title "Hepatic injury in a national cohort '
+            'of older adults", first author Brown, 2021') in out  # fmt: skip
+    # The other side: a web page with neither is not searched for by its title.
+    assert out.count("would ask Crossref for the title") == 1
+    assert "no DOI expected: a web page (it says when it was accessed)" in out
+    paper.write_text(NUMBERED, encoding="utf-8")
+    cache = tmp_path / "kept"
+    assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(cache)]) == 0
+    for kept in cache.iterdir():
+        record = json.loads(kept.read_text(encoding="utf-8"))
+        assert "looked_up_on" in record, record
+        record["looked_up_on"] = "2000-01-01"
+        kept.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        os.utime(kept, (0, 0))
+    registries.seen.clear()
+    assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(cache)]) == 0
+    assert registries.seen == []
+    paper.write_text(NUMBERED.replace(DOI, "10.5555/fictional.9"), encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(cache)]) == 0
+    assert any("fictional.9" in path for path in registries.seen), registries.seen
+    capsys.readouterr()
+
+
 def test_lookup_options_go_with_lookup(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "paper.md"
     paper.write_text(NUMBERED, encoding="utf-8")
@@ -1136,3 +1578,156 @@ def test_a_folder_with_only_an_unreadable_tex_says_it_could_not_be_read(
     assert main(["audit", str(tmp_path)]) == 2
     err = capsys.readouterr().err
     assert "old.tex could not be read" in err and "documentclass" not in err
+
+
+# ------------------------------------------- text files in a LaTeX paper's folder (2026-11-22)
+
+
+def _bundle(folder: Path) -> Path:
+    """A LaTeX paper's folder as arXiv bundles one: the paper, a readme beside it, and under
+    `anc/` a data transcript and a note."""
+    (folder / "anc").mkdir(parents=True)
+    (folder / "paper.tex").write_text(_document("Of 412 reports."), encoding="utf-8")
+    (folder / "README.md").write_text("# Notes\n\nBuilt in 3 passes.\n", encoding="utf-8")
+    (folder / "anc" / "data.txt").write_text("0.125 0.250 999\n" * 50, encoding="utf-8")
+    (folder / "anc" / "notes.markdown").write_text("Run 7 of 9.\n", encoding="utf-8")
+    return folder
+
+
+def _audited(capsys, *args: str) -> dict:
+    assert main(["audit", *args, "--json"]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def _passed_over(report: dict) -> dict[str, str]:
+    return {f["key"]: f["message"] for f in report["findings"] if f["code"] == "passed-over"}
+
+
+def test_a_text_file_in_a_latex_paper_s_folder_is_passed_over_and_named(
+    tmp_path: Path, capsys
+) -> None:
+    """The robustness sweep of 2026-11-21: in arXiv 1709.01713's bundle `audit` read
+    `anc/featex-tran.txt`, 908 KB of numbers, as a paper beside the LaTeX one, and spent most
+    of 120 s classifying 141,923 of them. In a LaTeX paper's folder and in each folder under
+    it, a `.txt`, `.md` or `.markdown` file is not read as a paper, and each is named under
+    "Passed over", a line to a file (Basile, 2026-11-22)."""
+    report = _audited(capsys, str(_bundle(tmp_path / "bundle")))
+    assert report["counts"]["files"] == 1
+    notes = _passed_over(report)
+    for shown in ("README.md", "anc/data.txt", "anc/notes.markdown"):
+        assert notes[f"audit|passed-over|{shown}|-"].endswith(
+            f"{shown}: it is in the folder of the LaTeX paper paper.tex, so it was not read as "
+            "a paper; name it to audit it"
+        ), notes
+    assert not [f for f in report["findings"] if "data.txt:" in f.get("file", "")]
+
+
+def test_a_text_file_of_a_latex_paper_s_folder_is_read_where_it_is_named(
+    tmp_path: Path, capsys
+) -> None:
+    bundle = _bundle(tmp_path / "bundle")
+    assert _audited(capsys, str(bundle / "anc" / "data.txt"))["counts"]["files"] == 1
+    notes = _passed_over(_audited(capsys, str(bundle), str(bundle / "anc" / "notes.markdown")))
+    assert "audit|passed-over|anc/notes.markdown|-" not in notes
+    assert "audit|passed-over|anc/data.txt|-" in notes
+
+
+def test_a_markdown_paper_outside_a_latex_paper_s_folder_is_read(tmp_path: Path, capsys) -> None:
+    """Only the LaTeX paper's own folder and those under it: a Markdown paper in the folder
+    given, beside the LaTeX paper's folder, is a paper."""
+    given = tmp_path / "given"
+    _bundle(given / "bundle")
+    (given / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(given))
+    assert report["counts"]["files"] == 2
+    assert "audit|passed-over|paper.md|-" not in _passed_over(report)
+    assert "audit|passed-over|bundle/anc/data.txt|-" in _passed_over(report)
+
+
+@pytest.mark.parametrize("body", ["$body$", "${body}", "Of 50!% $body$"])
+def test_a_pandoc_template_sets_no_text_file_aside(tmp_path: Path, capsys, body: str) -> None:
+    """A pandoc template has a document class and prints the Markdown paper beside it, where
+    `$body$` stands: it is read as a paper, as it was (Known gaps), and sets nothing aside
+    (Basile, 2026-11-22)."""
+    (tmp_path / "template.tex").write_text(
+        tex(f"!documentclass{{$documentclass$}}\n!begin{{document}}\n{body}\n!end{{document}}\n"),
+        encoding="utf-8",
+    )  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(tmp_path))
+    assert report["counts"]["files"] == 2
+    assert not [said for said in _passed_over(report).values() if "paper.md" in said]
+
+
+def test_a_markdown_paper_beside_a_standalone_figure_is_passed_over(
+    tmp_path: Path, capsys
+) -> None:
+    """Known gaps, "What `audit` reads of a LaTeX paper": a standalone figure's `.tex` is an
+    entry, so the Markdown paper in its folder is passed over, and named; named itself, it is
+    read."""
+    (tmp_path / "figure.tex").write_text(
+        tex("!documentclass{standalone}\n!begin{document}\nA\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    assert "audit|passed-over|paper.md|-" in _passed_over(_audited(capsys, str(tmp_path)))
+    assert _audited(capsys, str(tmp_path / "paper.md"))["counts"]["files"] == 1
+
+
+@pytest.mark.parametrize("named", [
+    "!documentclass{article}\n!begin{document}\nOf 412.\n!end{document}\n",
+    "Of 412 reports.\n",
+], ids=["paper", "chapter"])  # fmt: skip
+def test_a_tex_named_above_a_folder_given_sets_none_of_it_aside(
+    tmp_path: Path, capsys, named: str
+) -> None:
+    """Round 1 of #753: `audit proj/main.tex proj/supplement` passed over the supplement's
+    Markdown, which the paper given above it sets aside only where a folder given holds the
+    paper, and a named `.tex` with no document class sets nothing aside."""
+    proj = tmp_path / "proj"
+    (proj / "supplement").mkdir(parents=True)
+    (proj / "main.tex").write_text(tex(named), encoding="utf-8")
+    (proj / "supplement" / "supp.md").write_text("# Results\n\nOf 40 cases.\n",
+                                                 encoding="utf-8")  # fmt: skip
+    report = _audited(capsys, str(proj / "main.tex"), str(proj / "supplement"))
+    assert report["counts"]["files"] == 2
+    assert _passed_over(report) == {}
+
+
+def test_a_named_tex_with_no_document_class_sets_nothing_aside_in_its_folder(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "chapter.tex").write_text("Of 412 reports.\n", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(tmp_path / "chapter.tex"), str(tmp_path))
+    assert "audit|passed-over|notes.md|-" not in _passed_over(report)
+
+
+@pytest.mark.parametrize("line", ["% built from a $body$ template", "Of 50 % from $body$"])
+def test_a_body_in_a_comment_makes_no_paper_a_template(
+    tmp_path: Path, capsys, line: str
+) -> None:
+    """Round 1 of #753: a `$body$` in a comment of a LaTeX paper took it for a pandoc
+    template, and the data under its `anc/` was read as a paper again."""
+    bundle = _bundle(tmp_path / "bundle")
+    paper = bundle / "paper.tex"
+    paper.write_text(f"{line}\n" + paper.read_text(encoding="utf-8"),
+                     encoding="utf-8")  # fmt: skip
+    assert "audit|passed-over|anc/data.txt|-" in _passed_over(_audited(capsys, str(bundle)))
+
+
+def test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #753: the template sets nothing aside of itself; a document beside it,
+    a letter, still sets aside the Markdown paper in their folder."""
+    (tmp_path / "template.tex").write_text(
+        tex("!documentclass{$documentclass$}\n!begin{document}\n$body$\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "cover.tex").write_text(
+        tex("!documentclass{letter}\n!begin{document}\nDear editor.\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    notes = _passed_over(_audited(capsys, str(tmp_path)))
+    assert notes["audit|passed-over|paper.md|-"].endswith(
+        "it is in the folder of the LaTeX paper cover.tex, so it was not read as a paper; "
+        "name it to audit it")

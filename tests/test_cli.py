@@ -1139,6 +1139,23 @@ def test_the_supplement_is_its_own_document(project: Path) -> None:
 
 
 @needs_pandoc
+def test_the_supplementary_files_are_joined_into_one_document(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The supplementary files are joined into one
+    document"): the example's two supplementary sources come out as one
+    `supplementary.docx`, holding both, and no document of either's own."""
+    from manuscript_guard.text.docx import read_docx
+
+    sources = sorted(p.name for p in (project / "manuscript" / "supplementary").glob("*.md"))
+    assert sources == ["S1_code_lists.md", "S2_controls.md"]
+    assert run("build", str(project), "--offline") == 0
+    built = sorted(p.name for p in (project / "build").glob("*.docx"))
+    assert built == ["manuscript.docx", "supplementary.docx"], built
+    joined = read_docx(project / "build" / "supplementary.docx")
+    assert "Code lists used to identify the outcome" in joined
+    assert "How the controls were run" in joined
+
+
+@needs_pandoc
 def test_the_supplement_carries_its_own_title(project: Path) -> None:
     """A supplement under the paper's own title and running head reads, in a journal's
     submission system, as a second copy of the paper."""
@@ -1526,6 +1543,8 @@ def test_a_pipe_is_made_utf8_unless_the_user_chose(environment: dict, monkeypatc
 
     for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
         monkeypatch.delenv(name, raising=False)
+    # `python -X utf8` is the user's choice too, and not this case's (Known gaps F04).
+    monkeypatch.setattr(sys, "_xoptions", {})
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
     pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
@@ -1565,6 +1584,7 @@ def test_the_hook_writes_utf8_to_a_pipe(monkeypatch) -> None:
 
     for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "_xoptions", {})
     pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", pipe)
     monkeypatch.setattr(sys, "stderr", pipe)

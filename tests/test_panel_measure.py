@@ -172,6 +172,24 @@ def test_the_dry_run_s_output_is_read_as_the_utf8_it_is_written_in(
     assert seen.get("encoding") == "utf-8"
 
 
+def test_the_dry_run_s_output_in_another_encoding_is_said_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The child inherits the environment, and with `PYTHONIOENCODING=cp1252` exported it
+    writes cp1252: `Á` is the byte C1, which UTF-8 never opens a character with. The strict
+    read raised UnicodeDecodeError at it; the failure is said, the byte replaced (Known gaps
+    F04)."""
+    real = subprocess.run
+    child = "import sys; sys.stdout.buffer.write(b'\\xc1 stopped here'); sys.exit(1)"
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        return real([sys.executable, "-c", child], **kwargs)
+
+    monkeypatch.setattr(tool.subprocess, "run", run)
+    with pytest.raises(SystemExit, match="\N{REPLACEMENT CHARACTER} stopped here"):
+        tool.requests_of(tmp_path)
+
+
 def test_the_blank_copy_is_its_title_and_abstract_and_the_minor_one_is_planted(
     prepared: tuple[Path, dict],
 ) -> None:

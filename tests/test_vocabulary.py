@@ -127,6 +127,34 @@ def test_the_supplement_and_every_file_are_read(project: Path) -> None:
     assert finding.path.name == "2_results.md", "the paper is read before its supplement"
 
 
+def test_a_finding_counts_the_whole_manuscript_and_stands_at_the_first_printed_use(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): the count
+    is of the whole manuscript, and the place is the first use in the order the files are
+    printed: `main.md` first and the rest by name, then the supplement. Read by path,
+    `0_intro.md` would come before `main.md`, and the supplement before `z_results.md`."""
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here.\n\nThe subjects came.\n",
+        supplement="# Supplementary methods\n\nThe subjects stayed.\n",
+        **{"0_intro": "# Introduction\n\nSubjects were asked.\n"},
+    )
+    (finding,) = found
+    assert finding.message == "'subjects' is used 3 times; this paper's term is 'participants'"
+    assert (finding.path.name, finding.line) == ("main.md", 5)
+    (project / "manuscript" / "0_intro.md").unlink()
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here.\n",
+        supplement="# Supplementary methods\n\nThe subjects stayed.\n",
+        z_results="# Results\n\nOne.\n\nThe subjects came.\n",
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
+    assert (finding.path.name, finding.line) == ("z_results.md", 5)
+
+
 # ---------------------------------------------------------------- what must stay quiet
 
 
@@ -250,6 +278,32 @@ def test_two_capitalisations_of_an_abbreviation_are_two_terms(project: Path) -> 
 
 
 @pytest.mark.parametrize(
+    ("use", "avoid"), [("SARS-CoV-2", "SARS-Cov-2"), ("HbA1c", "Hba1c"), ("IgG", "igg")]
+)
+def test_a_capital_inside_a_word_with_no_two_together_cannot_be_declared(
+    project: Path, use: str, avoid: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): `CoV`,
+    `IgG` and `HbA1c` are found in any case, so `SARS-Cov-2` given up for `SARS-CoV-2` is a
+    conflict, as `Hba1c` for `HbA1c` is; only `SARS` is held to its capitals."""
+    _, found = written(project, "# Methods\n\nNone.\n", [{"use": use, "avoid": [avoid]}])
+    assert messages(found) == [
+        f"{use!r} is a term to use and {avoid!r} a term to avoid, and the two are read as one "
+        "term"
+    ]
+    _, found = written(
+        project,
+        "# Methods\n\nSars-CoV-2, IGG and HBA1C were tested.\n",
+        [{"use": "the virus", "avoid": ["SARS-CoV-2"]}, {"use": "antibody", "avoid": ["IgG"]},
+         {"use": "glycated haemoglobin", "avoid": ["HbA1c"]}],
+    )  # fmt: skip
+    assert sorted(messages(found)) == [
+        "'HbA1c' is used once; this paper's term is 'glycated haemoglobin'",
+        "'IgG' is used once; this paper's term is 'antibody'",
+    ], "SARS is held to its capitals, and the others are found in any case"
+
+
+@pytest.mark.parametrize(
     ("term", "sentence"),
     [
         ("CYP2D6*4", "The CYP2D6*4 allele was typed."),
@@ -267,6 +321,35 @@ def test_a_term_with_a_mark_inside_it_is_found_as_written(
         project, f"# Results\n\n{sentence}\n", [{"use": "the plain name", "avoid": [term]}]
     )
     assert messages(found) == [f"{term!r} is used once; this paper's term is 'the plain name'"]
+
+
+def test_a_term_is_found_in_a_name_with_an_underscore_not_set_as_code(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): the
+    underscore is taken for a mark of emphasis, so "subjects" is found in `n_subjects`
+    written in the prose; set as code, the name is not read."""
+    _, found = written(project, "# Methods\n\nThe variable n_subjects was kept.\n")
+    assert messages(found) == ["'subjects' is used once; this paper's term is 'participants'"]
+    _, found = written(project, "# Methods\n\nThe variable `n_subjects` was kept.\n")
+    assert not found, messages(found)
+
+
+def test_a_mark_is_found_as_the_entry_writes_it_and_taken_off_its_end(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): a
+    manuscript writes `CYP2D6\\*4` with a backslash, so pandoc does not read emphasis there,
+    and only an entry with the backslash too finds it. A mark at the end of an entry's word
+    is taken off it: `n_` is read as "n", and `_id` as "id"."""
+    text = "# Methods\n\nCarriers of CYP2D6\\*4 were few.\n"
+    _, found = written(project, text, [{"use": "poor metaboliser", "avoid": ["CYP2D6*4"]}])
+    assert not found, messages(found)
+    _, found = written(project, text, [{"use": "poor metaboliser", "avoid": ["CYP2D6\\*4"]}])
+    assert messages(found) == [
+        "'CYP2D6\\\\*4' is used once; this paper's term is 'poor metaboliser'"
+    ]
+    for entry, word in (("n_", "n"), ("_id", "id")):
+        _, found = written(
+            project, f"# Methods\n\nThe {word} was kept.\n", [{"use": "it", "avoid": [entry]}]
+        )
+        assert messages(found) == [f"{entry!r} is used once; this paper's term is 'it'"]
 
 
 # ---------------------------------------------------------------- what joins a term's words
@@ -299,6 +382,19 @@ def test_a_heading_does_not_run_on_into_its_paragraph(project: Path) -> None:
     _, found = written(
         project, "# The other side\n\nEffect sizes were small.\n", SIDE_EFFECT
     )
+    assert not found, messages(found)
+
+
+def test_a_heading_with_no_blank_line_under_it_runs_into_its_paragraph(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"):
+    `# The other side` over `Effect sizes were small.` on the next line reports "side
+    effect"; with the blank line between them it does not."""
+    _, found = written(project, "# The other side\nEffect sizes were small.\n", SIDE_EFFECT)
+    assert messages(found) == [
+        "'side effect' is used once; this paper's term is 'adverse reaction'"
+    ]
+    assert found[0].line == 1
+    _, found = written(project, "# The other side\n\nEffect sizes were small.\n", SIDE_EFFECT)
     assert not found, messages(found)
 
 
@@ -422,6 +518,39 @@ def test_a_fenced_listing_and_a_reference_list_are_not_read(project: Path) -> No
     assert not found, messages(found)
 
 
+def test_paper_yaml_s_titles_and_generated_displays_are_not_read(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): the
+    title, the short title and the keywords come from `paper.yaml` and are not read, so the
+    example's "liver damage" given up could be a keyword; nor are the tables and figures
+    generated from results, here the baseline table's "Female" and its caption's "drug
+    group", and the forest plot. A table typed into the manuscript is read, with its
+    caption."""
+    path = project / "paper.yaml"
+    paper = yaml.safe_load(path.read_text(encoding="utf-8"))
+    paper.update(title="Liver damage in drug group females", short_title="Liver damage",
+                 keywords=["liver damage", "Female"])  # fmt: skip
+    path.write_text(yaml.safe_dump(paper, sort_keys=False), encoding="utf-8")
+    vocabulary = [
+        {"use": "hepatic injury", "avoid": ["liver damage"]},
+        {"use": "women", "avoid": ["Female"]},
+        {"use": "exposure group", "avoid": ["drug group"]},
+        {"use": "forest chart", "avoid": ["forest plot"]},
+    ]
+    _, found = written(
+        project, "# Results\n\n{{table.baseline}}\n\n{{figure.forest}}\n", vocabulary
+    )
+    assert not found, messages(found)
+    _, found = written(
+        project,
+        "# Results\n\n| Group | n |\n|---|---|\n| Female | 2 |\n\nTable: Reports by drug group.\n",
+        vocabulary,
+    )
+    assert [(f.message, f.line) for f in found] == [
+        ("'Female' is used once; this paper's term is 'women'", 5),
+        ("'drug group' is used once; this paper's term is 'exposure group'", 7),
+    ]
+
+
 def test_a_term_to_avoid_inside_the_term_to_use_is_not_found_there(project: Path) -> None:
     """The longer term is read first, so the shorter inside it is not a finding; alone,
     it is."""
@@ -450,6 +579,25 @@ def test_a_term_to_avoid_that_opens_the_term_to_use_is_not_found_there(project: 
     assert not found, messages(found)
     _, found = written(project, "# Results\n\nLiver injury was common.\n", vocabulary)
     assert [f.code for f in found] == ["term-avoided"]
+
+
+def test_a_term_to_avoid_that_overlaps_a_term_to_use_before_it_is_not_found(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): with
+    "drug reaction" kept, "reaction time" given up is not found in "drug reaction time";
+    alone, or with no term to use over it, it is."""
+    reaction_time = {"use": "latency", "avoid": ["reaction time"]}
+    vocabulary = [{"use": "drug reaction", "avoid": ["adverse thing"]}, reaction_time]
+    said = ["'reaction time' is used once; this paper's term is 'latency'"]
+    _, found = written(project, "# Results\n\nThe drug reaction time was long.\n", vocabulary)
+    assert not found, messages(found)
+    _, found = written(project, "# Results\n\nThe reaction time was long.\n", vocabulary)
+    assert messages(found) == said
+    _, found = written(
+        project, "# Results\n\nThe drug reaction time was long.\n", [reaction_time]
+    )
+    assert messages(found) == said
 
 
 def test_reading_resumes_after_the_reference_list(project: Path) -> None:
@@ -485,6 +633,25 @@ def test_a_term_written_in_the_plural_is_not_its_singular(project: Path) -> None
         [{"use": "participant", "avoid": ["subject"]}],
     )
     assert [f.code for f in singular] == ["term-avoided"]
+
+
+def test_only_a_plural_in_s_is_folded_onto_a_term(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): only the
+    plural in `s` is folded, and only onto a term written without one: "study" does not
+    find "studies", nor "analysis" "analyses", nor "trials" "trial"."""
+    vocabulary = [
+        {"use": "trial", "avoid": ["study"]},
+        {"use": "test", "avoid": ["analysis"]},
+        {"use": "people", "avoid": ["persons"]},
+    ]
+    report, found = written(
+        project, "# Methods\n\nThe studies were read, the analyses run and a person seen.\n",
+        vocabulary,
+    )
+    assert not found, messages(found)
+    assert report.counts["vocabulary_found"] == 0
+    _, found = written(project, "# Methods\n\nThe studys were read.\n", vocabulary)
+    assert messages(found) == ["'study' is used once; this paper's term is 'trial'"]
 
 
 # ---------------------------------------------------------------- entries that disagree
@@ -628,6 +795,29 @@ def test_a_match_no_term_claims_is_passed_over(project: Path) -> None:
     assert "is used once" in finding.message, "the one typed as the entry types it"
 
 
+@pytest.mark.parametrize(
+    ("entry", "typed"),
+    [
+        ("caf\N{LATIN SMALL LETTER E WITH ACUTE}", "cafe\N{COMBINING ACUTE ACCENT}"),
+        ("cafe\N{COMBINING ACUTE ACCENT}", "caf\N{LATIN SMALL LETTER E WITH ACUTE}"),
+        ("\N{MICRO SIGN}g", "\N{GREEK SMALL LETTER MU}g"),
+        ("\N{GREEK SMALL LETTER MU}g", "\N{MICRO SIGN}g"),
+    ],
+)
+def test_a_letter_typed_another_way_is_not_the_term(
+    project: Path, entry: str, typed: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): a term
+    typed with an accent as one character does not find the word typed as a letter and a
+    combining accent, nor the micro sign the Greek mu, either way round; typed as the entry
+    types it, it is found."""
+    vocabulary = [{"use": "the word", "avoid": [entry]}]
+    _, found = written(project, f"# Methods\n\nThe {typed} was open.\n", vocabulary)
+    assert not found, messages(found)
+    _, found = written(project, f"# Methods\n\nThe {entry} was open.\n", vocabulary)
+    assert messages(found) == [f"{entry!r} is used once; this paper's term is 'the word'"]
+
+
 def test_the_schema_reports_a_term_with_no_letter_in_it(project: Path) -> None:
     path = project / "paper.yaml"
     paper = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -665,6 +855,22 @@ def test_two_spellings_of_one_term_are_a_conflict_that_says_so(project: Path) ->
     )
     assert "a hyphen, a space" in by_code["vocabulary-conflict"].hint
     assert "'followup'" in by_code["term-avoided"].message, "one word is another term"
+
+
+def test_an_en_dash_or_a_non_breaking_hyphen_does_not_join_a_term_s_words(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's vocabulary is a list of words"): a hyphen
+    and a space between a term's words are read as one, and an en dash or a non-breaking
+    hyphen between two words is not read as joining them."""
+    for joined in ("side\N{EN DASH}effect", "side\N{NON-BREAKING HYPHEN}effect"):
+        _, found = written(project, f"# Methods\n\nThe {joined} was mild.\n", SIDE_EFFECT)
+        assert not found, (joined, messages(found))
+    _, found = written(
+        project, "# Methods\n\nThe side-effect was mild; the side effect was not.\n", SIDE_EFFECT
+    )
+    assert messages(found) == ["'side effect' is used 2 times; this paper's term is "
+                               "'adverse reaction'"]  # fmt: skip
 
 
 def test_the_plural_of_a_term_to_use_cannot_be_given_up(project: Path) -> None:

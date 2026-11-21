@@ -193,6 +193,63 @@ def test_the_supplement_is_held_to_the_norms_the_main_text_is(
     assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
 
 
+#: What a passage under a heading that names no part is told.
+UNNAMED_ADVICE = "whether background may be reused is the journal's to say"
+
+
+@pytest.mark.parametrize(
+    ("written_as", "said_of_it"),
+    [
+        pytest.param(f"# eAppendix 1. Data source\n\n{DESCRIPTION}",
+                     ("recycled-text", WARN, "no heading names"), id="eAppendix"),
+        pytest.param(f"# eAppendix 1. Data source\n\n{DESCRIPTION} As before [@{KEY}].",
+                     ("recycled-text", WARN, "no heading names"), id="eAppendix, cited"),
+        pytest.param(f"# Appendix S1: Definitions\n\n{DESCRIPTION} As before [@{KEY}].",
+                     ("recycled-text", WARN, "no heading names"), id="Appendix S1, cited"),
+        pytest.param(f"# Supplementary methods and results\n\n{COUNTED} As before [@{KEY}].",
+                     ("recycled-methods-cited", INFO, "in the Methods"),
+                     id="methods and results"),
+        pytest.param(f"# Supplementary results of the sensitivity analyses\n\n{COUNTED}",
+                     ("recycled-text", WARN, "no heading names"), id="a title that says more"),
+        # the other side: a title that is a supplement's name for a part and nothing more
+        pytest.param(f"# Supplementary methods\n\n{DESCRIPTION} As before [@{KEY}].",
+                     ("recycled-methods-cited", INFO, "in the Methods"), id="the Methods"),
+        pytest.param(f"# Supplementary results\n\n{COUNTED}",
+                     ("recycled-text", WARN, "in the Results"), id="the Results"),
+    ],
+)  # fmt: skip
+def test_the_methods_are_the_sections_whose_title_holds_methods(
+    project: Path, written_as: str, said_of_it: tuple[str, str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Methods are the sections whose title holds
+    "methods""): a supplement's "eAppendix 1. Data source" or "Appendix S1: Definitions"
+    names no part, so a description reused there warns from internal-review, cited or not,
+    as under no heading; "Supplementary methods and results" is the Methods throughout, so
+    Results reused there with the earlier paper cited are noted; and "Supplementary results
+    of the sensitivity analyses" says more than a part's name and names none."""
+    stored(project)
+    path = project / "manuscript" / "supplementary" / "S2_recycled.md"
+    path.write_text(written_as + "\n", encoding="utf-8")
+    (finding,) = found(project, "internal-review")
+    code, severity, part = said_of_it
+    assert (finding.code, finding.severity, finding.line) == (code, severity, 3)
+    assert part in finding.message
+    assert (UNNAMED_ADVICE in finding.hint) is (part == "no heading names")
+
+
+def test_a_section_titled_methods_and_results_is_the_methods_throughout(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Methods are the sections whose title holds
+    "methods""): in the main text too, Results reused under "Methods and results" with the
+    earlier paper cited in the paragraph are noted where a warning is due."""
+    stored(project)
+    (project / "manuscript" / "main.md").write_text(
+        f"# Introduction\n\nWords.\n\n# Methods and results\n\n{COUNTED} As before [@{KEY}]."
+        "\n\n# Discussion\n\nWords.\n",
+        encoding="utf-8",
+    )
+    assert said(project, "internal-review") == [("recycled-methods-cited", INFO, 7)]
+
+
 def _as_latex(root: Path) -> Path:
     """The example's manuscript as its LaTeX twin; the entry file."""
     shutil.rmtree(root / "manuscript")
@@ -360,6 +417,31 @@ def test_a_citation_in_another_paragraph_does_not_cite_the_passage(project: Path
     assert said(project, "submission") == [("recycled-text", WARN, line + 2)]
 
 
+def test_a_citation_heading_a_subsection_does_not_cite_its_description(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Methods passage counts as cited only where its
+    own paragraph cites the earlier paper"): "As described previously [@key]" opening a
+    subsection, with the description two paragraphs on, is reported as uncited, a warning
+    from internal-review; in the description's own paragraph the citation makes it a note."""
+    stored(project)
+    line = written(
+        project,
+        f"## Data source\n\nAs described previously [@{KEY}].\n\nThe data came in "
+        f"monthly.\n\n{DESCRIPTION}",
+        before="Results",
+    )
+    assert said(project, "drafting") == [("recycled-text", INFO, line + 6)]
+    assert said(project, "internal-review") == [("recycled-text", WARN, line + 6)]
+    assert "in the Methods" in found(project, "internal-review")[0].message
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            f"\n\nThe data came in monthly.\n\n{DESCRIPTION}", f" {DESCRIPTION}"
+        ),
+        encoding="utf-8",
+    )
+    assert said(project, "internal-review") == [("recycled-methods-cited", INFO, line + 2)]
+
+
 def test_a_sentence_of_the_discussion_warns_whether_it_cites_its_paper_or_not(
     project: Path,
 ) -> None:
@@ -394,6 +476,119 @@ def test_a_word_changed_does_not_hide_the_sentence_it_is_in(project: Path) -> No
     assert finding.code == "recycled-text" and "repeat 24 words" in finding.message
 
 
+#: A sentence of 20 words, and a place for a citation after its first two, where a
+#: citation's words cut "Reports came" off the passage.
+CITING = ("Reports came {} from the database and were coded by two readers each apart from each "
+          "other in the study period.")  # fmt: skip
+#: The passage whole, and the passage cut at the citation.
+WHOLE, CUT = "Reports came", "from the database"
+
+
+def _passage(text: str, source: str) -> tuple[int, str]:
+    """How many words the one passage of `text` that `source` shares has, and its first."""
+    (passage,) = recycled_in_methods(text, source)
+    return passage.shared, passage.excerpt
+
+
+def recycled_in_methods(sentence: str, source: str) -> list:
+    return recycling_gate.recycled_in(f"# Methods\n\n{sentence}\n", source, KEY)
+
+
+@pytest.mark.parametrize(
+    ("earlier", "first"),
+    [
+        ("[Smith 2019]", CUT),  # in square brackets: read as words
+        ("(Winter, 2019)", CUT),  # one author named as a season is: read as words
+        ("(Smith et al., 2019)", WHOLE),  # the other side: in parentheses, blanked
+        ("(Winter et al., 2019)", WHOLE),  # with "et al." or a second author, a citation
+        ("(Winter and Roe, 2019)", WHOLE),
+    ],
+)
+def test_a_citation_by_author_and_year_is_known_in_parentheses_only(
+    earlier: str, first: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A citation by author and year is known in
+    parentheses only"): where the manuscript cites by key, the earlier paper's "(Smith et
+    al., 2019)" is blanked and cuts nothing, its "[Smith 2019]" is read as words and cuts
+    the passage there, and so is "(Winter, 2019)", since a season standing alone before the
+    year names no author; with "et al." or a second author it is a citation."""
+    shared, excerpt = _passage(CITING.format(f"[@{KEY}]"), CITING.format(earlier))
+    assert excerpt.startswith(first), excerpt
+    assert shared == (20 if first == WHOLE else 18)
+
+
+@pytest.mark.parametrize(
+    ("both", "first"),
+    [
+        ("(England and Wales, 2019)", CUT),  # two authors in shape: blanked
+        ("(Brexit 2019)", CUT),  # one word that opens no date: blanked
+        ("(Since 2019)", WHOLE),  # the other side: a preposition, a season or a word of a
+        ("(Spring 2019)", WHOLE),  # period standing alone before the year is no citation
+        ("(Early 2020)", WHOLE),
+    ],
+)
+def test_a_parenthesis_that_reads_as_a_citation_and_is_none_is_blanked(
+    both: str, first: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A citation by author and year is known in
+    parentheses only"): a parenthesis whose words are names in shape, "(England and Wales,
+    2019)" or "(Brexit 2019)", is blanked in the earlier paper though it cites no one, so the
+    words the manuscript has there too cut the passage; "(Since 2019)", "(Spring 2019)" and
+    "(Early 2020)" are read as words in both."""
+    sentence = CITING.format(both)
+    shared, excerpt = _passage(sentence, sentence)
+    assert excerpt.startswith(first), excerpt
+    assert shared == (21 if first == WHOLE else 18)
+
+
+@pytest.mark.parametrize(
+    ("earlier", "first"),
+    [
+        ("(Spring and Summer 2019)", CUT),  # two seasons are two authors: blanked
+        ("(Smith, 2019; Spring 2020)", CUT),  # one season leaves the group as words
+        ("(Spring 2019; Roe, 2020)", CUT),
+        ("(Smith, 2019; Roe, 2020)", WHOLE),  # the other side: a group of citations
+    ],
+)
+def test_a_season_in_parentheses_is_read_wrong_both_ways(earlier: str, first: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): G7 takes "(Spring and Summer 2019)" for a citation and blanks it, so the
+    manuscript's same words cut the passage; and one season name in a group of citations
+    leaves the whole group as words, which cut it where the manuscript cites by key. The
+    2026-11-09 triage planned a fix (F11), which will change this test."""
+    if earlier.startswith("(Spring and"):
+        text = CITING.format(earlier)
+    else:
+        text = CITING.format(f"[@{KEY}; @roe2020]")
+    shared, excerpt = _passage(text, CITING.format(earlier))
+    assert excerpt.startswith(first), excerpt
+    assert shared == (20 if first == WHOLE else 18)
+
+
+@pytest.mark.parametrize(
+    ("earlier", "shared", "first"),
+    [
+        ("Inhibitors of CYP3A5 were excluded in phase3 of the trial", 20, "Inhibitors"),
+        ("Inhibitors of CYP3A4 were excluded in phase2 of the trial", 20, "Inhibitors"),
+        # the other side: "CYP2D6" differs before its digits, and cuts the passage there
+        ("Inhibitors of CYP2D6 were excluded in phase2 of the trial", 17, "were excluded"),
+    ],
+)
+def test_digits_at_a_word_s_end_are_dropped_on_both_sides(
+    earlier: str, shared: int, first: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Digits at a word's end are dropped on both
+    sides"): "CYP3A4" and "CYP3A5", "phase2" and "phase3", are one word to this check, so a
+    passage that differs only there is reported whole; a difference before the digits is
+    one."""
+    tail = ", and every report was read by two pharmacists working apart."
+    (passage,) = recycled_in_methods(
+        f"Inhibitors of CYP3A4 were excluded in phase2 of the trial{tail}", earlier + tail
+    )
+    assert passage.shared == shared
+    assert passage.excerpt.startswith(first), passage.excerpt
+
+
 def test_a_quotation_of_the_earlier_paper_is_shown_apart(project: Path) -> None:
     stored(project)
     quoted = f'We wrote then that "{CAVEAT[:-1]}" [@{KEY}].'
@@ -410,6 +605,41 @@ def test_a_quotation_and_a_recycled_sentence_on_one_line_are_two_passages(projec
     assert said(project, "submission") == [
         ("recycled-quotation", INFO, line), ("recycled-text", WARN, line)
     ]
+
+
+#: A sentence of an earlier paper with a plural possessive in it, typed curly.
+POSSESSIVE = (
+    "Spontaneous reports drawn from the patients\N{RIGHT SINGLE QUOTATION MARK} notes are "
+    "subject to under-reporting and to stimulated reporting after regulatory communications, "
+    "so a signal cannot be read as a measure of risk."
+)
+
+
+@pytest.mark.parametrize(
+    ("opens", "closes", "said_of_it"),
+    [
+        ("\N{LEFT SINGLE QUOTATION MARK}", "\N{RIGHT SINGLE QUOTATION MARK}",
+         ("recycled-text", WARN)),
+        # the other side: in double marks the apostrophe closes nothing
+        ("\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}",
+         ("recycled-quotation", INFO)),
+    ],
+)  # fmt: skip
+def test_an_apostrophe_at_a_word_s_end_closes_a_quotation_in_single_curly_marks(
+    project: Path, opens: str, closes: str, said_of_it: tuple[str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "In single curly marks, a closing mark before a
+    letter is an apostrophe"): "the patients' notes" typed curly inside such a quotation
+    closes it early, and the rest of it is read as recycled text. The 2026-11-09 triage
+    planned a fix (F11), which will change this test."""
+    stored(project, f"Discussion\n\n{POSSESSIVE}\n")
+    line = written(project, f"We wrote then that {opens}{POSSESSIVE[:-1]}{closes} [@{KEY}].",
+                   before="Data availability")  # fmt: skip
+    assert said(project, "internal-review") == [(*said_of_it, line)]
+    (passage,) = recycling_gate.recycled_in(
+        f"# Discussion\n\nWe wrote that {opens}{POSSESSIVE[:-1]}{closes}.\n", POSSESSIVE, KEY
+    )
+    assert (passage.shared, passage.quoted) == (29, 6 if said_of_it[1] == WARN else 29)
 
 
 def test_twelve_words_are_reported_and_eleven_are_not(project: Path) -> None:
@@ -542,6 +772,34 @@ def test_the_discussion_over_its_interpretation_and_conclusions_is_the_discussio
 
 
 @pytest.mark.parametrize(
+    ("top", "under", "said_of_it"),
+    [
+        ("# Background to hepatic injury", "", ("recycled-text", WARN, "in the Introduction")),
+        ("# Data sharing", "", ("recycled-statement", INFO, "in a statement")),
+        # the other side: over the Results too, the heading is a title over the paper
+        ("# Background to hepatic injury", "## Results\n\nWords.\n\n",
+         ("recycled-text", WARN, "in the Discussion")),
+    ],
+)  # fmt: skip
+def test_a_title_over_the_discussion_and_its_conclusions_alone_names_the_part(
+    project: Path, top: str, under: str, said_of_it: tuple[str, str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A title over the Discussion and its conclusions
+    alone is not taken for a title over the paper"): the conclusions count as the
+    Discussion's, so a file whose only top heading names a part over a Discussion and
+    Conclusions names its passages by that heading, the Introduction's or a statement's,
+    where the Discussion's warning is due."""
+    stored(project)
+    path = project / "manuscript" / "supplementary" / "S2_recycled.md"
+    text = f"{top}\n\n{under}## Discussion\n\n{CAVEAT}\n\n## Conclusions\n\nWords.\n"
+    path.write_text(text, encoding="utf-8")
+    (finding,) = found(project, "internal-review")
+    assert (finding.code, finding.severity) == said_of_it[:2]
+    assert said_of_it[2] in finding.message
+    assert finding.line == text[: text.index(CAVEAT)].count("\n") + 1
+
+
+@pytest.mark.parametrize(
     "heading",
     ["## Funding sources of the included trials", "## Data sharing", "## Consent"],
 )
@@ -554,6 +812,46 @@ def test_a_heading_of_the_results_is_the_results_whatever_it_is_called(
     stored(project)
     line = written(project, f"{heading}\n\n{CAVEAT}", before="Discussion")
     assert said(project, "submission") == [("recycled-text", WARN, line + 2)]
+
+
+@pytest.mark.parametrize(
+    ("written_as", "before", "said_of_it"),
+    [
+        # a funding statement under a title the list does not hold: the Discussion's
+        pytest.param(f"## Grant support\n\n{CAVEAT}", "Data availability",
+                     ("recycled-text", WARN, "in the Discussion"), id="Grant support"),
+        pytest.param(f"## Funding and support of the registry\n\n{CAVEAT}", "Data availability",
+                     ("recycled-text", WARN, "in the Discussion"), id="Funding and support"),
+        # a bold label inside a paragraph has no heading: the abstract's
+        pytest.param(f"**Funding:** {CAVEAT}", "Introduction",
+                     ("recycled-text", WARN, "in the abstract"), id="a bold label"),
+        # the other way: a theme named as a statement is, under the Discussion or the Methods
+        pytest.param(f"## Data sharing\n\n{CAVEAT}", "Data availability",
+                     ("recycled-statement", INFO, "in a statement"), id="Data sharing"),
+        pytest.param(f"## Article information\n\n{DESCRIPTION}", "Results",
+                     ("recycled-statement", INFO, "in a statement"), id="Article information"),
+        # and the rule itself: a title the list holds is a statement's
+        pytest.param(f"## Funding\n\n{CAVEAT}", "Data availability",
+                     ("recycled-statement", INFO, "in a statement"), id="Funding"),
+        pytest.param(f"## Data extraction\n\n{DESCRIPTION}", "Results",
+                     ("recycled-text", WARN, "in the Methods"), id="Data extraction"),
+    ],
+)  # fmt: skip
+def test_a_statement_is_known_by_its_heading_s_whole_title_from_a_list(
+    project: Path, written_as: str, before: str, said_of_it: tuple[str, str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A statement is known by its heading's whole
+    title, from a list"): a funding statement under "Grant support" or "Funding and support
+    of the registry", or written as a bold label "**Funding:**" in the abstract, is reported
+    as the part it stands in reports it, a warning from internal-review where a note is due.
+    The other way, "Data sharing" as a theme of the Discussion and "Article information"
+    as a subsection of the Methods are noted where a warning is due."""
+    stored(project)
+    line = written(project, written_as, before=before)
+    (finding,) = found(project, "internal-review")
+    assert (finding.code, finding.severity) == said_of_it[:2]
+    assert said_of_it[2] in finding.message
+    assert finding.line == line + written_as.count("\n")
 
 
 def test_the_methods_with_a_statement_and_statistical_methods_are_the_methods(
@@ -658,6 +956,32 @@ def test_an_earlier_version_of_this_study_is_one_note_however_much_is_repeated(
         assert "covering letter" in finding.hint
     project_, _ = load_project(project)
     assert check_recycling(project_).counts["recycled_passages"] == 2
+
+
+@pytest.mark.parametrize("kind", ["report", "other"])
+def test_a_thesis_or_a_report_of_this_study_is_compared_as_an_earlier_paper(
+    project: Path, kind: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier form of the study is a preprint, an
+    abstract or a protocol, and nothing else"): a thesis chapter or a report of this study,
+    `kind: report` or `other`, is compared as an earlier paper is, so each paragraph it
+    shares outside a cited Methods description warns from internal-review, where a preprint
+    is one note. The 2026-11-09 triage planned a fix (F11), which will change this test."""
+    stored(project)
+    listed(project, kind=kind, shares=["data", "study", "authors"])
+    methods = written(project, DESCRIPTION, before="Results")
+    cited = written(project, f"Here too: {DESCRIPTION} As before [@{KEY}].", before="Results")
+    discussion = written(project, CAVEAT, before="Data availability")
+    assert said(project, "drafting") == [
+        ("recycled-text", INFO, methods),
+        ("recycled-methods-cited", INFO, cited),
+        ("recycled-text", INFO, discussion),
+    ]
+    assert said(project, "internal-review") == [
+        ("recycled-text", WARN, methods),
+        ("recycled-methods-cited", INFO, cited),
+        ("recycled-text", WARN, discussion),
+    ]
 
 
 def test_the_journal_s_policy_is_given_with_each_passage(project: Path) -> None:

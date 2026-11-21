@@ -4948,6 +4948,22 @@ def test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_pla
         assert aligned.flattened == ((kept,) if kept else ()), brace
 
 
+def test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): the space before an italic `_b_`
+    deleted in Word, written word by word, makes `a\\__b_`, which does not read back as
+    Word's "a_b"; the stretch is written from Word's text, and the emphasis of `*d*` is lost
+    with it. An edit that reads back keeps both."""
+    source = "of a _b_ c and *d* at {{results.x}} now."
+    printed = "of a b c and d at ⟦3.84⟧ now."
+    joined = merged_alignment(source, printed, "of a_b c and d at 3.84 now.")
+    assert joined.rebuilt == "of a_b c and d at {{results.x}} now."
+    assert joined.flattened == ("of a_b c and d at",)
+    edited = merged_alignment(source, printed, "of a b c and e at 3.84 now.")
+    assert edited.rebuilt == "of a _b_ c and *e* at {{results.x}} now."
+    assert edited.flattened == ()
+
+
 def test_of_two_equal_words_the_comparison_chooses_which_was_typed() -> None:
     """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
     meets", which of two equal words was edited): "very" typed before a bold "very" is

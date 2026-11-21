@@ -18959,11 +18959,6 @@ Added by the adversarial review, verified and **not** fixed:
   (`unclear-fence`) or by the build's comparison of listings, so no document is built from
   one; the entry stands because `tag` still pairs fences itself.
   Pinned by `tests/test_corruption.py::test_an_r_markdown_chunk_is_refused_by_check_and_the_build`.
-- **A heading with its first paragraph directly under it is one block, left unmarked.**
-  `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
-  with `#` the paragraph never carries an identifier and its edits are never compared.
-  Marking it would mean placing the identifier after the heading line. This was already so
-  before identifiers moved off lists.
 - **A review point anchored to a list or a quote before identifiers moved off them names
   nothing.** A `where:` recorded from a document built earlier can hold the identifier the
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
@@ -22786,6 +22781,7 @@ Open, recorded as each change landed:
     Word's text.
     Pinned by `tests/test_roundtrip.py::test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain`,
     `tests/test_roundtrip.py::test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain`,
+    `tests/test_roundtrip.py::test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain`,
     `tests/test_roundtrip.py::test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word`
     and `tests/test_roundtrip.py::test_a_brace_pair_split_across_a_value_is_refused`.
   - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
@@ -23015,17 +23011,9 @@ Open, recorded as each change landed:
   - in a document built from other inputs, a block without an identifier beside it, other
     than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
     a caption, a list item, a quotation, an entry of the reference list.
-    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs`
+    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs`,
+    `tests/test_corruption.py::test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun`
     and `tests/test_corruption.py::test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_import`.
-- **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
-  looks only at the block directly beside a paragraph as the source has it. A co-author who
-  deletes `### Design` and runs `## Methods`, above it, into the paragraph writes
-  "MethodsPapa..." even in an import of an unchanged document.
-- **Two paragraphs that read the same after blocks that read the same are told apart by
-  position alone.** The record hashes each paragraph's text and the block before it, so
-  "None." under a "# Funding" heading repeated in two places, with a copy of both added
-  above them since the build, would pass for the paragraph the co-author edited, and the
-  edit would land in the copy.
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not
   changes nothing in their order. The import names the paragraphs left out and exits 1, and
@@ -28651,6 +28639,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A paragraph written straight under a heading went without an identifier (closed by #62,
+  9211f9391; moved here 2026-11-21).** `# Methods\nWe did X.` is a heading and a paragraph
+  to pandoc, and since the block started with `#` the paragraph carried no identifier, so a
+  co-author's edits to it were never compared. `tag` now places the identifier after the
+  heading line, and the import merges such a paragraph's rewording, as
+  `tests/test_roundtrip.py::test_the_paragraph_under_a_heading_carries_the_identifier` and
+  `tests/test_roundtrip.py::test_import_merges_a_paragraph_written_straight_under_a_heading`
+  hold.
+
+- **A farther heading run in after the nearer one was deleted in Word was merged (closed by
+  #121, 3d53de0b7; moved here 2026-11-21).** `import` looked only at the block directly
+  beside a paragraph as the source had it, so a co-author who deleted `### Design` and ran
+  `## Methods`, above it, into the paragraph wrote "MethodsPapa..." even in an import of an
+  unchanged document: a heading in the source as prose. The paragraph's identifier now
+  comes back behind the heading's text, which is never the paragraph's own, and the
+  paragraph is refused, as
+  `tests/test_corruption.py::test_a_farther_heading_run_in_after_the_nearer_one_was_deleted_is_not_merged`
+  holds; it merged at #119 (6fc8eeb21) and #120 (21b36d1be), and not from #121 on.
+
+- **Two paragraphs that read the same after blocks that read the same were told apart by
+  position alone (closed by #93, 59891a9f9; moved here 2026-11-21).** The record hashed
+  each paragraph's text and the block before it, so "None." under a "# Funding" heading
+  repeated in two places, with a copy of both added above them since the build, passed for
+  the paragraph the co-author edited, and the edit landed in the copy. The record also
+  hashes the blocks without an identifier around each paragraph now, and the edit is
+  written nowhere, as
+  `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`
+  holds; it landed in the copy at #89 (a2452911e) and not at #93.
 
 - **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
   A sentence that says more or less than the tool does is believed by the author who reads

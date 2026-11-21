@@ -808,6 +808,7 @@ def test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more(paper, tmp_p
     text = bibfile.read_text("utf-8")
     bibfile.write_text(text.replace("@article{pubmed2018,\n", "@article{pubmed2018,\n"
                                     "  pmid = {31000001},\n"), "utf-8")  # fmt: skip
+    assert "pmid = {31000001}" in bibfile.read_text("utf-8")
     papers = tmp_path / "papers"
     put(papers, "31000001.pdf")
     put(papers, "smith2020.pdf")

@@ -19424,8 +19424,10 @@ Open, recorded as each change landed:
     ("0-306-40615-2, reprint", "0-306-40615-2; 2nd printing", "0-306-40615-2 reprint",
     "0-306-40615-2/reprint", "reprint, 0-306-40615-2"), is read as an ISBN and reported as
     one whose check digit does not add up: a false alarm, and its message calls a word an
-    ISBN. A word before it parted by a space only is read with it, "reprint 0-306-40615-2"
-    reported whole. An ISBN-10 that opens with 978 or 979 before such a word is read as
+    ISBN. A word before it parted by a space only is read with it while the two stay short
+    of ten characters together, "reprint 0-306-40615-2" reported whole; a longer run is cut
+    where it reaches ten or thirteen, "reprinting 0-306-40615-2" reporting 'reprinting'
+    alone. An ISBN-10 that opens with 978 or 979 before such a word is read as
     the entry says, as the start of an ISBN-13.
     Pinned by `tests/test_corruption.py::test_a_word_beside_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit`.
 - **Two keys for one work are found by an identifier or a title, and only among what is
@@ -24854,6 +24856,7 @@ Open, recorded as each change landed:
   contrived).
   Pinned by `tests/test_sync_sources.py::test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more`,
   `tests/test_sync_sources.py::test_a_file_both_sources_hold_and_a_name_two_dois_spell_are_read_by_the_record`,
+  `tests/test_sync_sources.py::test_a_file_the_folder_copied_first_stays_the_folder_s_when_zotero_holds_it_too`,
   `tests/test_sync_sources.py::test_the_works_the_folder_has_nothing_for_are_listed`,
   `tests/test_sync_sources.py::test_a_folder_with_no_pdf_where_a_doi_names_one_says_so`
   and `tests/test_sync_sources.py::test_each_name_and_place_a_downloader_gives_a_doi_is_read`.

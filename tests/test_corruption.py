@@ -16951,9 +16951,9 @@ def test_a_reference_s_identifiers_are_held_to_their_form_alone() -> None:
     [("0-306-40615-2, reprint", "reprint"), ("0-306-40615-2; 2nd printing", "2nd printing"),
      ("0-306-40615-2 reprint", "reprint"), ("0-306-40615-2/reprint", "reprint"),
      ("reprint, 0-306-40615-2", "reprint"), ("reprint 0-306-40615-2", "reprint 0-306-40615-2"),
-     ("0-306-40615-2", None)],
+     ("reprinting 0-306-40615-2", "reprinting"), ("0-306-40615-2", None)],
     ids=["after-a-comma", "after-a-semicolon", "after-a-space", "after-a-slash",
-         "before-a-comma", "before-a-space", "the-isbn-alone"],
+         "before-a-comma", "before-a-space", "before-a-space-cut-at-ten", "the-isbn-alone"],
 )  # fmt: skip
 def test_a_word_beside_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
     field: str, word: str | None
@@ -16962,7 +16962,8 @@ def test_a_word_beside_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
     form, not for what they name", its point "In an ISBN field, a word beside the ISBN"): a
     word that is no label or listed qualifier, before the ISBN or after it, parted from it
     by a space, a comma, a semicolon or a slash, is read as an ISBN (with the ISBN, where a
-    space parts a word before it) and reported as one whose check digit does not add up,
+    space parts a word before it and the run reaches neither ten nor thirteen characters
+    before the ISBN ends) and reported as one whose check digit does not add up,
     where the ISBN alone gives no finding. An ISBN-10 opening 978 before a word is the
     entry's own sentence (`test_an_isbn_10_opening_978_before_another_word_is_pinned`)."""
     from manuscript_guard.gates.identifiers import problems

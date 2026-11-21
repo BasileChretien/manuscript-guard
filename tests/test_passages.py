@@ -566,6 +566,9 @@ def test_what_a_list_of_words_cannot_tell_is_as_known_gaps_says(
         pytest.param("Example-drug may in some patients reduce hepatic injury",
                      "Example-drug may reduce hepatic injury, but not costs", "'not' is new",
                      id="a negation on another clause, beside the hedge"),
+        pytest.param("Example-drug reduced hepatic injury",
+                     "Example-drug reduced hepatic injury, only in this sample", None,
+                     id="a limit on another clause"),
     ],
 )  # fmt: skip
 def test_a_passage_is_read_as_it_is_recorded_and_a_sentence_whole(
@@ -575,8 +578,8 @@ def test_a_passage_is_read_as_it_is_recorded_and_a_sentence_whole(
     of words", its point "The passage is read as it is recorded"): "may [...] reduce"
     recorded as "[...] reduce" holds no hedge, so the sentence's "reduces" is told nothing;
     a passage of two sentences is read whole, its hedge in the other sentence counting for
-    the claim; and a hedge or a negation on another clause of the sentence counts for the
-    whole claim."""
+    the claim; and a hedge, a limit or a negation on another clause of the sentence counts
+    for the whole claim."""
     stored(project, "Example-drug may in some patients reduce hepatic injury")
     stored(project, "Example-drug reduced hepatic injury. The effect may be small")
     cited_claim(project, sentence, passage=passage)

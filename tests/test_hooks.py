@@ -2208,10 +2208,13 @@ def test_at_submission_the_panel_comes_first_after_any_round(
     monkeypatch.setattr(cli, "_gate_run", clean)
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)  # no notice after the line
     panel = "Next: Have the review panel read the paper (`manuscript-guard next`)."
-    for source in ("startup", "resume"):
-        said = context(run("session-start", {"cwd": str(project), "source": source}, capsys))
-        assert "stage 'submission'" in said and "0 failing, 0 warning(s)." in said, said
-        assert said.endswith(panel), said
+    for read in (True, False):  # after the last round, then with no round at all
+        if not read:
+            shutil.rmtree(project / "review")
+        for source in ("startup", "resume"):
+            said = context(run("session-start", {"cwd": str(project), "source": source}, capsys))
+            assert "stage 'submission'" in said and "0 failing, 0 warning(s)." in said, said
+            assert said.endswith(panel), said
     # The other side: a stage before submission, where moving on comes first.
     declared("internal-review")
     said = context(run("session-start", {"cwd": str(project)}, capsys))
@@ -2885,7 +2888,7 @@ def test_a_folder_named_like_a_source_fails_g11_and_review(
     it could not read."): a folder `manuscript/notes.md` is named by the gates that read text,
     and G11, which reads bytes for the digest, reports the error the system raises; `review`
     stops on it in one sentence of an error it did not expect and exits 2, a traceback only
-    under `MANUSCRIPT_GUARD_DEBUG`, with or without the dry run of a panel. The 2026-11-09
+    under `MANUSCRIPT_GUARD_DEBUG` or on CI, with or without the dry run of a panel. The 2026-11-09
     triage planned a fix (F16), which will change this test."""
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.cli import main as cli
@@ -2913,6 +2916,11 @@ def test_a_folder_named_like_a_source_fails_g11_and_review(
         assert ("manuscript-guard: review stopped on an error from the system it did not "
                 f"expect: {raised.__name__}:") in said, said  # fmt: skip
         assert "notes.md" in said and "Traceback" not in said, said
+    # On CI: the traceback, then the same sentence, and exit 2.
+    monkeypatch.setenv("CI", "1")
+    assert cli(runs[0]) == 2
+    said = capsys.readouterr().err
+    assert "Traceback" in said and "review stopped on an error from the system" in said, said
 
 
 def test_a_pattern_the_compiler_refuses_is_a_failing_check_and_not_silence(

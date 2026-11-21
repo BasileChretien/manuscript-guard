@@ -6114,10 +6114,14 @@ def test_a_swap_reworded_beside_another_old_key_sentence_is_a_known_limit(
     sentence still citing the old work that holds half or more of the entry's words, is
     not seen as done until the author puts the entry on the new sentence."""
     from manuscript_guard.currency import command
+    from manuscript_guard.currency.survey import survey
 
     _swapped(project, "replace", reworded=True)
     assert _currency_findings(project, "submission") == [
         ("currency-change-unanswered", "fail")]
+    # The entry stays on the other sentence, which still cites the old work.
+    placed = survey(load_project(project)[0])[0].placed["c1"]
+    assert "@fictionalClassSignal2019" in placed.text and "crude incidence" not in placed.text
     said = command.mark(load_project(project)[0], "has been described", "@classTrial2023",
                         None, "c1")  # fmt: skip
     assert said.startswith("c1 placed again")

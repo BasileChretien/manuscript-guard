@@ -199,6 +199,74 @@ def test_the_reviewers_example_a_review_does_not_replace_the_cohort_a_number_is_
     assert "K5" in decided.rules
 
 
+def _cohort_ledger(display: str):
+    """A literature ledger holding one value of the work `cohort`, displayed `display`."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.contracts.values import Value
+
+    return SimpleNamespace(values={"incidence": Value(
+        key="incidence", value=float(display.rstrip("%")), display=display,
+        origin="literature", detail={"citekey": "cohort"})})  # fmt: skip
+
+
+def test_k5_knows_a_synthesis_by_its_types_and_a_number_by_the_ledgers_display() -> None:
+    """A known gap (DESIGN.md, Known gaps, "K5 knows a synthesis by its PubMed publication
+    types"): K5 sets aside a candidate its works record types a review, a systematic review
+    or a meta-analysis; one whose types are not known is read as a primary study, and
+    replaces the source of a number. The number is known only as the ledger's display of it:
+    the same value written otherwise in the sentence is not it."""
+    from manuscript_guard.gates.currency import quotes_a_number
+
+    readings = [Reading(reader, "ocebm-2011", "benefit", 3, {"r": SAME}) for reader in "ab"]
+    for kind in ("Review", "Systematic Review", "Meta-Analysis"):
+        works = {"r": Work("r", published="2023", types=(kind,))}
+        decided = decide(Work("c"), works, readings, number=True)
+        assert (decided.action, decided.rules) == ("keep", ("K1", "K2", "K3", "K5", "D3")), kind
+    # The other side of K5: a works record that gives no types is a primary study's.
+    untyped = records.as_work(case.work("doi:10.5555/r", published="2023"))
+    assert untyped.types == ()
+    decided = decide(Work("c"), {"doi:10.5555/r": untyped},
+                     [Reading(one.reader, one.hierarchy, one.scale, 3, {"doi:10.5555/r": SAME})
+                      for one in readings], number=True)  # fmt: skip
+    assert (decided.action, decided.candidate, decided.rules) == (
+        "replace", "doi:10.5555/r", ("K1", "K2", "K3", "D1"))
+    ledger = _cohort_ledger("12%")
+    assert quotes_a_number("The incidence was 12% [@cohort].", "cohort", ledger)
+    for other in ("The incidence was 12 percent [@cohort].",
+                  "The incidence was twelve per cent [@cohort].",
+                  "The incidence was 0.12 [@cohort]."):  # fmt: skip
+        assert not quotes_a_number(other, "cohort", ledger), other
+
+
+def test_a_bare_whole_number_in_the_ledger_is_found_in_any_equal_number_of_the_sentence(
+) -> None:  # fmt: skip
+    """A known gap (DESIGN.md, Known gaps, "A ledger display that is a bare whole number"):
+    a display "12" is found in "in 12 countries [@cited]", which quotes no value of the
+    cited work, and K5 then sets a synthesis aside there."""
+    from manuscript_guard.gates.currency import quotes_a_number
+
+    ledger = _cohort_ledger("12")
+    sentence = "The class was studied in 12 countries [@cohort]."
+    assert quotes_a_number(sentence, "cohort", ledger)
+    # The other side: another number, or the same digits in a longer one, is not the display.
+    for other in ("The class was studied in 13 countries [@cohort].",
+                  "The class was studied in 112 countries [@cohort].",
+                  "The class was studied in 12.5% of countries [@cohort]."):  # fmt: skip
+        assert not quotes_a_number(other, "cohort", ledger), other
+    review = Fields(level=1, population="same", exposure="same", outcome="same",
+                    stance="supports")  # fmt: skip
+    readings = [Reading(reader, "ocebm-2011", "benefit", 3, {"r": review}) for reader in "ab"]
+    works = {"r": Work("r", published="2024", types=("Systematic Review",))}
+    decided = decide(Work("cohort", published="2019"), works, readings,
+                     number=quotes_a_number(sentence, "cohort", ledger))  # fmt: skip
+    assert (decided.action, decided.rules) == ("keep", ("K1", "K2", "K3", "K5", "D3"))
+    decided = decide(Work("cohort", published="2019"), works, readings,
+                     number=quotes_a_number("In 13 countries [@cohort].", "cohort",
+                                            ledger))  # fmt: skip
+    assert (decided.action, decided.candidate) == ("replace", "r")
+
+
 # --------------------------------------------------------------------------- the hierarchy
 
 
@@ -318,6 +386,23 @@ def test_entries_that_would_not_be_valid_are_never_written(project: Path) -> Non
     assert not (project / "literature" / "currency.yaml").exists()
 
 
+def test_references_writes_currency_yaml_whole_and_a_comment_in_it_is_lost(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`references` writes `literature/currency.yaml`
+    whole"): a comment a person wrote in the file is not kept when the command writes it."""
+    path = case.case(project, readings=False)
+    note = "# Ada: the Discussion's sentence is to be marked too.\n"
+    path.write_text(path.read_text(encoding="utf-8") + note, encoding="utf-8")
+    assert note in path.read_text(encoding="utf-8")
+    assert [entry.id for entry in records.read_entries(load_project(project)[0])[0]] == ["c1"]
+    command.mark(load_project(project)[0], "reported previously", case.CITED_KEY, None)
+    text = path.read_text(encoding="utf-8")
+    assert note.strip() not in text and text.startswith(records.HEADER)
+    assert [entry.id for entry in records.read_entries(load_project(project)[0])[0]] == [
+        "c1", "c2"]
+
+
 # ----------------------------------------------------------------------------- the command
 
 
@@ -355,6 +440,44 @@ def test_an_entry_reworded_a_little_stays_placed_and_one_unplaced_is_put_back(
                         "c1")  # fmt: skip
     assert said.startswith("c1 placed again")
     assert [row.id for row in command.listing(load_project(project)[0])[0]] == ["c1"]
+
+
+def test_an_entry_is_placed_while_half_its_words_stand_and_mark_reads_them_as_one_run(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An entry is placed on a sentence reworded beyond
+    its words"): an entry stays on a sentence citing its work that holds half or more of its
+    words (`NEAR`), one that now says the opposite too, and is unplaced below half. `--mark`
+    finds its sentence by its words folded and taken as one run, and refuses words that two
+    sentences citing the work hold."""
+    from manuscript_guard.checking.produce import CitedSentence
+    from manuscript_guard.currency.survey import place
+    from manuscript_guard.literature.passages import NEAR, statement_words
+
+    assert NEAR == 0.5
+    entry = "Statins raised the risk of hepatic injury in older adults [@k]."
+    assert len(set(statement_words(entry).split())) == 10
+
+    def placed(text: str, keys: tuple[str, ...] = ("k",)) -> bool:
+        cited = [CitedSentence(project / "m.md", 1, text, keys)]
+        return place(entry, "k", cited, [statement_words(text)]) is not None
+
+    assert placed("Statins raised the risk of falls among frail young children [@k].")  # 5
+    assert not placed("Statins raised the odds of falls among frail young children [@k].")
+    assert placed("Statins did not raise the risk of hepatic injury in older adults [@k].")
+    assert not placed("Statins raised the risk of hepatic injury in older adults [@j].", ("j",))
+    case.given_a_doi(project)
+    loaded = load_project(project)[0]
+    # The words must stand as one run in the sentence: these are its words, out of their run.
+    with pytest.raises(command.Refused, match="0 sentences"):
+        command.mark(loaded, "disproportionality signal reported", case.CITED_KEY, None)
+    # "reported" is in the Introduction's sentence and the Discussion's, which both cite it.
+    with pytest.raises(command.Refused, match="2 sentences citing @fictionalClassSignal2019 "
+                       "hold those words"):  # fmt: skip
+        command.mark(loaded, "reported", case.CITED_KEY, None)
+    said = command.mark(loaded, "A DISPROPORTIONALITY  Signal has been reported",
+                        case.CITED_KEY, None)  # fmt: skip
+    assert said == "marked as c1: manuscript/main.md:19"
 
 
 def test_a_claim_in_the_supplement_is_marked_and_held_as_one_in_the_main_text(
@@ -505,6 +628,66 @@ def test_a_corrected_reading_replaces_the_one_it_corrects(project: Path, capsys)
     assert "the rules give replace" in said
 
 
+@pytest.mark.parametrize("broken", ["schema: nothing\n", "entry: [c1\n"], ids=["schema", "yaml"])
+def test_replaces_names_a_reading_that_cannot_be_read_replaced_already(
+    project: Path, broken: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`--replaces N`, where N cannot be used"): a
+    reading N whose file fails its schema or its YAML is not among those `_check_replaces`
+    looks at, and `--replaces N` is refused as replacing a reading "replaced already". The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    case.case(project, readings=False)
+    case.file(project, case.reading("Ada Example"), "first")
+    folder = project / "literature" / "currency" / "readings"
+    path = project / "again.yaml"
+    path.write_text(yaml.safe_dump(case.reading("Ada Example"), sort_keys=False), "utf-8")
+    # The other side: while reading 1 reads, it is no reading replaced already.
+    with pytest.raises(command.Refused, match="has no reading 2 of c1"):
+        command.file_reading(load_project(project)[0], path, replaces=2)
+    (folder / "c1.Ada%20Example.1.yaml").write_text(broken, encoding="utf-8")
+    with pytest.raises(command.Refused, match="Ada Example's reading 1 of c1 is replaced "
+                       "already: replace the reading that replaced it"):  # fmt: skip
+        command.file_reading(load_project(project)[0], path, replaces=1)
+    assert sorted(one.name for one in folder.glob("*.yaml")) == ["c1.Ada%20Example.1.yaml"]
+
+
+def test_replaces_takes_an_edited_reading_silently_and_g7_still_fails_it(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`--replaces N`, where N cannot be used"): an
+    edited reading N, its seal broken, is replaced without a word, and `records.current`
+    never sets it aside, so G7 still fails `currency-record-edited` on it. The next reading's
+    number is the first one free: with readings 1 and 3, 2 deleted, a new reading is filed as
+    2, and `--replaces 3` is refused as replacing no earlier reading. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    case.file(project, case.reading("Ada Example"), "first")
+    folder = project / "literature" / "currency" / "readings"
+    first = folder / "c1.Ada%20Example.1.yaml"
+    first.write_text(first.read_text(encoding="utf-8").replace("2026-11-02", "2026-11-03", 1),
+                     encoding="utf-8")  # fmt: skip
+    path = project / "again.yaml"
+    path.write_text(yaml.safe_dump(case.reading("Ada Example"), sort_keys=False), "utf-8")
+    said = command.file_reading(load_project(project)[0], path, replaces=1)
+    assert said.startswith("filed literature/currency/readings/c1.Ada%20Example.2.yaml; ")
+    edited = [f.path.name for f in check_currency(load_project(project)[0]).findings
+              if f.code == "currency-record-edited"]  # fmt: skip
+    assert edited == ["c1.Ada%20Example.1.yaml"]
+    # Readings 1 and 3 by Ada, 2 deleted by hand.
+    first.unlink()
+    case.file(project, case.reading("Ada Example"), "again")
+    case.file(project, case.reading("Ada Example"), "third")
+    assert sorted(one.name for one in folder.glob("*.yaml")) == [
+        "c1.Ada%20Example.1.yaml", "c1.Ada%20Example.2.yaml", "c1.Ada%20Example.3.yaml"]
+    (folder / "c1.Ada%20Example.2.yaml").unlink()
+    with pytest.raises(command.Refused, match="Ada Example has no reading 3 of c1 to replace"):
+        command.file_reading(load_project(project)[0], path, replaces=3)
+    assert case.file(project, case.reading("Ada Example"), "again").startswith(
+        "filed literature/currency/readings/c1.Ada%20Example.2.yaml")
+
+
 def test_the_cited_work_under_its_other_identifier_is_no_candidate(project: Path) -> None:
     """Round 3 of #499: the cited work, filed as `doi:...`, was refused as a candidate only
     under that id, and under its PMID it was a candidate of its own."""
@@ -530,6 +713,53 @@ def test_a_reading_that_would_change_an_answered_proposal_is_refused(project: Pa
     case.file(project, case.reading("Cy Example"), "third")
     entry = yaml.safe_load((project / "literature" / "currency.yaml").read_text("utf-8"))
     assert entry["entries"][0]["answer"]["by"] == "Ada Example"
+
+
+def test_a_ledger_value_recorded_after_the_rules_decided_turns_their_replace_into_a_mismatch(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A value recorded in the literature ledger from
+    the cited work after the rules decided"): the rules replace the cited work with a
+    synthesis while the ledger records no value of it; once it does, and the sentence quotes
+    that value, K5 sets the synthesis aside and G7 fails `currency-decision-mismatch`.
+    Nothing decides again from the readings filed, and a further reading is refused once the
+    proposal is answered; with the answer taken away, it is filed and decides again."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    records.write_work(load_project(project)[0], case.work(
+        case.CANDIDATE, title="Hepatic injury with the drug class: a review",
+        published="2023-06-01", publication_types=["Systematic Review"],
+        abstract=case.TRIAL_ABSTRACT))  # fmt: skip
+    ledger = project / "literature" / "ledger.yaml"
+    kept = ledger.read_bytes()
+    text = kept.decode("utf-8")
+    value = text[text.index("  - key: background.class_ror"):]
+    ledger.write_bytes(text.replace(value, "").encode("utf-8"))
+    case.file(project, case.reading("Ada Example"), "first")
+    case.file(project, case.reading("Bo Example"), "second")
+    decided = case.decision(project)
+    assert (decided["action"], decided["rules"]) == ("replace", ["K1", "K2", "K3", "D1"])
+    codes = sorted(f.code for f in check_currency(load_project(project)[0]).findings)
+    assert codes == ["currency-change-unanswered"]
+    ledger.write_bytes(kept)  # the value of the cited work its sentence quotes, recorded
+    found = {f.code: f.message for f in check_currency(load_project(project)[0]).findings}
+    assert sorted(found) == ["currency-change-unanswered", "currency-decision-mismatch"]
+    assert "the rules give keep (K1, K2, K3, K5, D3)" in found["currency-decision-mismatch"]
+    command.listing(load_project(project)[0])
+    assert case.decision(project) == decided
+    command.refuse(load_project(project)[0], "c1", "the review pools another population",
+                   "Ada Example")  # fmt: skip
+    with pytest.raises(command.Refused, match="takes their answer away first"):
+        case.file(project, case.reading("Cy Example"), "third")
+    assert case.decision(project) == decided
+    # The other side: the answer taken away, the same reading is filed and decides again.
+    path = project / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del document["entries"][0]["answer"]
+    records.write_document(load_project(project)[0], document)
+    assert "the rules give keep" in case.file(project, case.reading("Cy Example"), "third")
+    assert case.decision(project)["rules"] == ["K1", "K2", "K3", "K5", "D3"]
 
 
 def test_a_refusal_is_a_named_persons(project: Path) -> None:
@@ -622,6 +852,91 @@ def test_explain_names_nothing_a_reading_contested_or_named(project: Path) -> No
     said = command.explain(load_project(project)[0], "c1")
     assert other not in said and "1 work a reading names" in said, said
     assert other in command.explain(load_project(project)[0], "c1", readings=True)
+
+
+SKILL = Path(__file__).resolve().parents[1] / "plugin" / "skills" / "literature-currency"
+
+
+def test_the_hint_sends_a_third_reader_though_a_third_reading_cannot_settle_it(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The `currency-uncertain` hint, and the
+    literature-currency skill's step 5"): both say a third reading settles an `uncertain`
+    entry, and once two readings disagree a third that agrees with one leaves it uncertain.
+    `--replaces N` setting a reading aside settles it, and so does a person's decision with
+    why. The 2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    case.file(project, case.reading("Bo Example"), "first")
+    case.file(project, case.reading("Cy Example", level=3), "second")
+    uncertain = [f for f in check_currency(load_project(project)[0]).findings
+                 if f.code == "currency-uncertain"]  # fmt: skip
+    assert uncertain[0].hint.startswith("a person's decision with why settles it, or a third "
+                                        "reading: ")  # fmt: skip
+    assert "a third reader runs `manuscript-guard references --explain c1`" in uncertain[0].hint
+    step = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    step = " ".join(step[step.index("## 5. "):step.index("## 6. ")].split())
+    assert "nothing is proposed: a third reading, or a person's decision with why, settles " \
+        "it." in step  # fmt: skip
+    said = case.file(project, case.reading("Di Example"), "third")
+    assert "the rules give uncertain (D4)" in said
+    assert case.decision(project)["action"] == "uncertain"
+    # Cy's reading set aside by a corrected one that agrees: replace.
+    path = project / "corrected.yaml"
+    path.write_text(yaml.safe_dump(case.reading("Cy Example"), sort_keys=False), "utf-8")
+    said = command.file_reading(load_project(project)[0], path, replaces=1)
+    assert "the rules give replace doi:10.5555/class.trial.2023" in said
+    # Or a person decides, with why: nothing is uncertain.
+    document = yaml.safe_load((project / "literature" / "currency.yaml").read_text("utf-8"))
+    document["entries"][0]["decision"] = {"action": "keep", "rules": ["D3"],
+                                          "by": "Ada Example", "why": "the trial is another "
+                                          "population", "decided_on": "2026-11-09"}
+    records.write_document(load_project(project)[0], document)
+    codes = [f.code for f in check_currency(load_project(project)[0]).findings]
+    assert "currency-uncertain" not in codes and "currency-decision-mismatch" not in codes
+
+
+def test_explain_counts_a_work_only_a_reading_names_and_names_an_earlier_readers_cited_work(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Without `--readings`, `--explain` counts a
+    missing work"): the count does not say how to see the work. And where references.bib
+    gives the cited work no DOI or PMID, the cited work `--explain` names is the first usable
+    reading's own (`cited_id`), so a next reader is shown an earlier reader's choice. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.currency import _bib, cited_id
+
+    case.case(project, readings=False)
+    other = "doi:10.5555/only.read.2024"
+    first = case.reading("Bo Example")
+    first["candidates"].append({**first["candidates"][0], "work": other})
+    case.file(project, first, "first")
+    (line,) = [one for one in command.explain(load_project(project)[0], "c1").splitlines()
+               if "the works store holds no record" in one]  # fmt: skip
+    assert line == ("  (the works store holds no record of 1 work a reading names: the rules "
+                    "decide nothing until it does)")  # fmt: skip
+    assert other in command.explain(load_project(project)[0], "c1", readings=True)
+    # The cited work with no DOI in references.bib: the first reading's choice is named.
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        "  doi     = {10.5555/class.signal.2019},\n", ""), encoding="utf-8")  # fmt: skip
+    for path in (project / "literature" / "currency" / "readings").glob("*.yaml"):
+        path.unlink()
+    chosen = "doi:10.5555/bo.choice"
+    first = case.reading("Bo Example")
+    first["cited"] = {**first["cited"], "work": chosen}
+    case.file(project, first, "first")
+    loaded = load_project(project)[0]
+    entry = records.read_entries(loaded)[0][0]
+    usable = [read.record for read in records.read_readings(loaded)]
+    assert cited_id(entry, usable, _bib(loaded)) == chosen
+    said = command.explain(loaded, "c1")
+    assert f"(the works store holds no record of {chosen}: the rules decide nothing" in said
+    # The other side: with the DOI in references.bib, the bib's is the cited work.
+    case.given_a_doi(project)
+    loaded = load_project(project)[0]
+    assert cited_id(entry, usable, _bib(loaded)) == case.CITED
 
 
 def test_explain_says_no_decision_without_the_works_and_an_accepted_proposal_as_one(

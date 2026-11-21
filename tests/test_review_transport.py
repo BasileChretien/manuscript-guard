@@ -162,6 +162,39 @@ def test_a_server_that_does_not_answer_in_time_is_a_timeout(server) -> None:
     assert failed.value.kind == "timeout"
 
 
+def test_a_connection_not_opened_in_time_is_a_timeout_not_asked_again(monkeypatch) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A connection that cannot be opened in time reads
+    as a timeout"): the connection itself times out, before any request is sent, and the
+    call is a timeout, made once, whose message says the request may have been billed.
+    Nothing is opened: the socket's connect is the test's, and it times out."""
+    import socket
+
+    tried = []
+
+    def never_connects(address, *args, **kwargs):
+        tried.append(address)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(socket, "create_connection", never_connects)
+    paper = {
+        "review": {
+            "models": ["far/some-model"],
+            "providers": {
+                "far": {"base_url": "https://api.far.example/v1", "key_env": "FAR_KEY"}
+            },
+        }
+    }
+    model = providers.configured_models(paper)[0]
+    with pytest.raises(CallFailed) as failed:
+        client.call(model, client.build_body(model, "s", "u"), key=KEY, timeout=7)
+    assert failed.value.kind == "timeout"
+    assert str(failed.value) == (
+        "far (api.far.example): no answer within 7 s. Not asked again: the request may "
+        "have run and been billed"
+    )
+    assert len(tried) == 1
+
+
 def test_nothing_listening_is_a_network_failure_not_a_traceback(server) -> None:
     port = server.server_address[1]
     server.shutdown()

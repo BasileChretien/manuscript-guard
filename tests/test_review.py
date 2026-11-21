@@ -537,6 +537,59 @@ def test_a_superseded_rounds_unanswered_major_finding_still_blocks(project: Path
     assert "review-stale" not in failures(report)
 
 
+def test_a_superseded_round_s_own_other_warnings_are_not_lowered(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): superseding
+    lowers only `review-stale` and `review-uncovered`, so a warning of the earlier round's
+    own, a file beside a record that the panel does not name, is still a warning. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    (project / "review" / "round-1" / "biostatistician.old.yaml").write_text(
+        "a note\n", encoding="utf-8"
+    )
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+    said = {(f.code, f.severity) for f in report_for(project).findings
+            if f.message.startswith("round 1:")}  # fmt: skip
+    # The other side of the same rule: the round's staleness is lowered to history.
+    assert said == {("review-superseded", INFO), ("reading-unnamed", "warn")}
+
+
+def test_a_record_nobody_filed_in_round_one_still_fails_after_a_complete_later_round(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An unfinished earlier round still blocks after a
+    revision"): the round-one record never filed is `review-missing` though round three is
+    complete and supersedes the rest; filing it, or taking the reviewer off that panel, is
+    the way past."""
+    (project / BIOSTAT).unlink()
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+
+    report = report_for(project, submission=True)
+    [missing] = [f for f in report.failures if f.code == "review-missing"]
+    assert missing.message.startswith("round 1:") and "biostatistician" in missing.message
+    assert "review-superseded" in codes(report)
+    assert failures(report) == {"review-missing"}
+
+    edit_yaml(
+        project / PANEL_1,
+        lambda d: d.update(reviewers=[r for r in d["reviewers"] if r["id"] != "biostatistician"]),
+    )
+    assert report_for(project, submission=True).ok
+
+
+def test_a_record_filed_late_for_round_one_lets_the_later_round_pass(project: Path) -> None:
+    """The other way past "An unfinished earlier round still blocks after a revision": the
+    round-one record filed, the submission passes."""
+    from manuscript_guard.record import write_review
+
+    (project / BIOSTAT).unlink()
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+    write_review(load_project(project)[0], "biostatistician", verdict="pass", round_number=1)
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+
+
 def test_a_file_added_in_revision_does_not_void_the_earlier_rounds(project: Path) -> None:
     """Scoped records cannot list a file written after them, so every earlier round was
     `review-uncovered` for ever, and `rounds_required` could not be met by one new round."""
@@ -685,6 +738,88 @@ def test_sealing_goes_on_its_own(project: Path, flag: list[str]) -> None:
 
     file_by_hand(project)
     assert main(["review", str(project), "--seal", "fresh-reader", *flag]) == 2
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ["--record", "x", "--verdict", "pass"],
+        ["--record-figure", "figures/forest.png", "--verdict", "pass"],
+        ["--providers"],
+        ["--run"],
+        ["--dry-run"],
+    ],
+)
+def test_sealing_refuses_a_record_and_the_models_and_seals_nothing(
+    project: Path, flag: list[str], capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`review --seal` goes on its own, and is not told
+    so of every flag"): these five are refused in words, and the reading is left unsealed.
+    The 2026-11-09 triage planned a fix (F15), which will change this test."""
+    path = file_by_hand(project)
+    capsys.readouterr()
+    before = path.read_bytes()
+    assert seal(project, "fresh-reader", *flag) == 2
+    assert "--seal seals a reading already filed, on its own" in capsys.readouterr().err
+    assert path.read_bytes() == before
+
+
+def test_sealing_with_the_digest_prints_the_digest_and_seals_nothing(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`review --seal` goes on its own, and is not told
+    so of every flag"): `--digest` is answered first, and the reading is left unsealed. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    path = file_by_hand(project)
+    capsys.readouterr()
+    before = path.read_bytes()
+    assert seal(project, "fresh-reader", "--digest") == 0
+    out = capsys.readouterr().out
+    assert out == manuscript_digest(load_project(project)[0]) + "\n"
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ["--verdict", "pass"],
+        ["--summary", "All fine."],
+        ["--by", "Somebody Else"],
+        ["--remit", "another remit"],
+        ["--files"],
+        ["--submission"],
+        ["--one-each"],
+        ["--yes"],
+    ],
+)
+def test_sealing_passes_over_the_flags_it_does_not_take(project: Path, flag: list[str]) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`review --seal` goes on its own, and is not told
+    so of every flag"): each of these is passed over in silence, and the reading is sealed as
+    without it, gaining its one line and nothing of the flag. The 2026-11-09 triage planned a
+    fix (F15), which will change this test."""
+    path = file_by_hand(project)
+    before = path.read_bytes()
+    assert seal(project, "fresh-reader", *flag) == 0
+    after = path.read_bytes()
+    assert after.startswith(before)
+    assert re.fullmatch(rb"reading_sha256: [0-9a-f]{64}\n", after[len(before) :])
+
+
+@pytest.mark.parametrize(
+    "reader", ['Dr "Bob" Smith', "Dr $HOME", "Dr `whoami`", "Dr Smith\\"]
+)
+def test_the_seal_command_printed_puts_the_reader_s_name_in_double_quotes(
+    project: Path, reader: str, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`review --seal` goes on its own, and is not told
+    so of every flag"): the name goes between double quotes as typed, so a `"`, a `$`, a
+    backtick or a closing backslash is left for the shell to act on. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    file_by_hand(project, "fresh-reader", "--reading", reader)
+    out = capsys.readouterr().out
+    assert (
+        f'`manuscript-guard review --seal fresh-reader --round 3 --reading "{reader}"`' in out
+    )
 
 
 # ---------------------------------------------------------------- several readings of a remit
@@ -1231,6 +1366,43 @@ def test_names_that_differ_only_in_vowel_signs_are_two_readers(project: Path) ->
     second = add_reading(project, "desk-editor", raina)
     assert first != second
     assert report_for(project, submission=True).ok
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        ("\N{FULLWIDTH LATIN SMALL LETTER A}lice", "alice"),
+        ("model-\N{ARABIC-INDIC DIGIT ONE}", "model-1"),
+        ("Strau\N{LATIN SMALL LETTER SHARP S}", "Strauss"),
+    ],
+)
+def test_a_readers_name_is_not_folded_beyond_its_composition(
+    project: Path, one: str, other: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reader's name is compared as it is composed,
+    and not otherwise folded"): a full-width letter, a digit of another script and `ß` are
+    not their ordinary, ASCII or `ss` forms, so the two names are two readers, each filed
+    apart, and one filed leaves the other missing."""
+    expect_readers(project, 2, "desk-editor", one, other)
+    first = add_reading(project, "desk-editor", one)
+    report = report_for(project, submission=True)
+    assert [f.code for f in report.failures if "desk-editor" in f.message] == ["reading-missing"]
+    second = add_reading(project, "desk-editor", other)
+    assert first != second
+    assert report_for(project, submission=True).ok
+
+
+def test_a_readers_name_composed_and_decomposed_is_one_reader(project: Path) -> None:
+    """The other side of "A reader's name is compared as it is composed, and not otherwise
+    folded": the same name composed and decomposed is folded to one, so a panel naming both
+    is `duplicate-reader`."""
+    composed = "Ren\N{LATIN SMALL LETTER E WITH ACUTE}e"
+    decomposed = unicodedata.normalize("NFD", composed)
+    assert composed != decomposed
+    expect_readers(project, 2, "desk-editor", composed, decomposed)
+    add_reading(project, "desk-editor", composed)
+    report = report_for(project, submission=True)
+    assert "duplicate-reader" in failures(report)
 
 
 def test_a_file_name_stored_decomposed_is_still_that_readers(project: Path) -> None:

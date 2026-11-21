@@ -29412,6 +29412,30 @@ def test_a_round_every_reading_of_which_came_from_one_provider_is_said(
     assert "round-one-provider" not in _review_warnings(project)
 
 
+@pytest.mark.parametrize("router", ["openrouter", "ollama"])
+def test_a_router_serving_several_families_is_one_provider(
+    project: Path, monkeypatch, router: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a provider is
+    judged by its name, so a round read through OpenRouter or a local Ollama by models of
+    two families is said to come from one provider. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.gates import check_review
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-0123456789SECRETC")
+    _read_by_models(project, monkeypatch, f"{router}/openai-gpt-x", f"{router}/mistral-large")
+    said = [f for f in check_review(load_project(project)[0]).warnings
+            if f.code == "round-one-provider"]  # fmt: skip
+    assert [f.message for f in said] == [
+        f"round 1: every reading came from one provider, {router}, whose models share their "
+        "blind spots"
+    ]
+    # The other side of judging by the name: the same two families under their own
+    # providers' names are two providers.
+    _read_by_models(project, monkeypatch, "openai/openai-gpt-x", "mistral/mistral-large")
+    assert "round-one-provider" not in _review_warnings(project)
+
+
 def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     project: Path, monkeypatch
 ) -> None:
@@ -29426,6 +29450,86 @@ def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     assert "figures-not-seen" not in _review_warnings(project)
     _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
                     remit="Whether the estimator is stated fully.")  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+
+
+@pytest.mark.parametrize(
+    ("remit", "covers"),
+    [
+        ("Whether the figures show what the text says.", True),
+        ("Whether the plots show what the text says.", True),
+        ("Whether the graphs show what the text says.", True),
+        ("Whether the charts show what the text says.", True),
+        ("Whether the visual presentation shows what the text says.", False),
+        ("Whether the display items show what the text says.", False),
+    ],
+)
+def test_a_remit_covers_the_figures_by_its_words(
+    project: Path, monkeypatch, remit: str, covers: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    model's pass of a remit naming figures, plots, graphs or charts is said, and of one that
+    says "visual" or "the display items" is not, though both ask for the figures."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert ("figures-not-seen" in _review_warnings(project)) is covers
+
+
+@pytest.mark.parametrize(
+    ("models", "said"),
+    [(["ollama/model-l", "relay/model-l"], False), (["ollama/model-l", "ollama/model-m"], True)],
+)
+def test_a_round_read_by_one_server_s_models_under_two_providers_names_counts_as_two(
+    project: Path, monkeypatch, models: list[str], said: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A remit covers the figures by its words"): a
+    provider is known by its name, so a local relay passing the request on to the server
+    `ollama` names is another provider, and a round read through both is not
+    `round-one-provider`. The other side of that rule: two models under the one name are."""
+    from test_review_run import Providers, answer, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SAID))
+    monkeypatch.setattr(client, "default_transport", transport)
+    shutil.rmtree(project / "review")
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8")
+        + f"\nreview:\n  models: [{', '.join(models)}]\n"
+        "  providers:\n    relay:\n      base_url: http://localhost:4000/v1\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    assert {request.url.split("/v1")[0] for request in transport.requests} == (
+        {"http://localhost:11434"} if said else {"http://localhost:11434", "http://localhost:4000"}
+    )
+    assert ("round-one-provider" in _review_warnings(project)) is said
+
+
+@pytest.mark.parametrize("remit", [
+    "Whether the chart review was blinded to exposure.",
+    "Whether the medical charts were abstracted twice.",
+])  # fmt: skip
+def test_a_remit_that_speaks_of_charts_is_taken_to_ask_for_the_figures(
+    project: Path, monkeypatch, remit: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a remit
+    covers the figures by its words, so one about a chart review or medical charts, which
+    asks for no figure, has a model's pass of it said as figures not seen. The 2026-11-09
+    triage planned a fix (F15), which will change this test."""
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=remit)  # fmt: skip
+    assert _review_warnings(project).count("figures-not-seen") == 1
+    # The other side of reading the remit's words: the same remit about records, with no
+    # word of a chart in it, is not said.
+    other = remit.replace("chart review", "record review").replace("medical charts",
+                                                                     "medical records")
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=other)  # fmt: skip
     assert "figures-not-seen" not in _review_warnings(project)
 
 
@@ -31421,6 +31525,264 @@ def test_a_named_reader_s_overridden_design_objection_is_signed_apart(project: P
                  "openai/gpt-x"]) == 0  # fmt: skip
     [(code, _severity, hint)] = _override_said(project)
     assert "--finding G12/design-override/1/methodologist.openai-gpt-x/d1" in hint
+
+
+def test_a_design_reading_outside_the_panel_or_outside_any_panel_is_passed_over(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    reading by a reviewer the panel does not list, and a design round folder with no panel,
+    are not read and not said, their major findings with them. The 2026-11-09 triage planned
+    a fix (F15), which will change this test."""
+    record = _design_recorded(project)
+    major = record.read_text(encoding="utf-8").replace("findings: []\n", _DESIGN_MAJOR)
+    (record.parent / "clinician.yaml").write_text(major, encoding="utf-8")
+    second = project / "review" / "design" / "round-2"
+    second.mkdir()
+    (second / "methodologist.yaml").write_text(major.replace("round: 1", "round: 2"), "utf-8")
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    report = check_design_rounds(load_project(project)[0])
+    assert report.findings == () and report.counts["design_rounds"] == 1
+    # The other side: once a panel lists the reviewer, and once the folder has a panel, the
+    # same files are read and their majors said.
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project).count(("design-major-open", "warn")) == 1
+    (panel.parent / "panel-2.yaml").write_text(yaml.safe_dump({**document, "round": 2}),
+                                               encoding="utf-8")  # fmt: skip
+    assert _design_said(project).count(("design-major-open", "warn")) == 2
+
+
+def test_a_stale_design_reading_is_superseded_by_its_reviewer_not_by_its_remit(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a later
+    reading of the plan as it stands by another reviewer with the same remit leaves a stale
+    one stale, and one by the same reviewer under another remit supersedes it. The
+    2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "statistician", "--round",
+                 "2", "--verdict", "pass", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass", "--remit", "Whether the outcome can be counted"
+                 ]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_stale_plain_design_record_is_superseded_only_by_a_later_plain_one(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    reading of the reviewer's remit in a later round does not supersede the reviewer's
+    stale plain record; a later plain record does. The 2026-11-09 triage planned a fix
+    (F15), which will change this test."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    _design_read_by(project, "openai/gpt-x", round_=2)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    assert main(["review", str(project), "--design", "--record", "methodologist", "--round",
+                 "3", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_signed_design_override_is_bound_to_its_finding_and_reason_alone(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the digest a
+    statistician signs is of the finding's words and the reason, so `where`, `ask` and
+    `overridden_by` added after the signature leave it signed; the finding's words changed
+    want it again. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    key = "G12/design-override/1/methodologist/d1"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("- id: d1\n", "- id: d1\n  where: the comparators\n"
+                                   "  ask: computation\n  overridden_by: Ada Example\n"),
+                      encoding="utf-8")  # fmt: skip
+    assert [(code, severity) for code, severity, _hint in _override_said(project)] == [
+        ("design-override-unsigned", "info")
+    ]
+    # The other side: the finding's own words are in the digest.
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "share the indication only in part", "share the indication in part"), "utf-8")  # fmt: skip
+    [(code, severity, hint)] = _override_said(project)
+    assert (code, severity) == ("design-override-unsigned", "warn") and "changed since" in hint
+
+
+def test_a_misfiled_design_reading_s_override_is_listed_under_its_file_s_name(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a named
+    design reading that says another reader inside is not counted, and its override is
+    still listed, named by the slug its file is filed under rather than by either reader.
+    The 2026-11-09 triage planned a fix (F15), which will change this test."""
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    record = _design_read_by(project, "OpenAI/GPT-X", _DESIGN_MAJOR + _OVERRIDDEN)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "reader: OpenAI/GPT-X", "reader: mistral/m"), encoding="utf-8")  # fmt: skip
+    said = check_design_rounds(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in said] == [("design-reading-misfiled", "warn"),
+                                                    ("design-override-unsigned", "warn")]
+    assert said[1].message == ("design round 1: methodologist.openai-gpt-x d1 is overridden "
+                               "(The indication is recorded for too few reports to restrict "
+                               "on.)")  # fmt: skip
+
+
+def test_a_named_design_reading_is_opened_at_the_path_its_name_gives(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): on a file
+    system that tells case apart, a named design reading filed under other capitals is read
+    as missing, and not said as a file the panel does not name. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    record = _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    record.rename(record.with_name("methodologist.OpenAI-GPT-X.yaml"))
+    if record.exists():
+        pytest.skip("this file system does not tell case apart")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_two_design_readings_under_one_name_stored_two_ways_go_unsaid(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): two files
+    whose names are one reader's, composed and decomposed, are read as one in a design
+    round, and the second, a major finding in it, is not said; G11 says the same two in a
+    manuscript round (`duplicate-reading`). The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    import unicodedata
+
+    first = _design_read_by(project, "Zo" + chr(0xE9))
+    second = first.with_name(unicodedata.normalize("NFD", first.name))
+    assert second.name != first.name
+    if second.exists():
+        pytest.skip("this file system does not tell the two spellings apart")
+    second.write_text(first.read_text(encoding="utf-8").replace("findings: []\n",
+                                                                _DESIGN_MAJOR), "utf-8")
+    assert _design_said(project) == []
+    # The other side, the file the panel's name gives: the major written there is said.
+    first.write_text(second.read_text(encoding="utf-8"), encoding="utf-8")
+    assert ("design-major-open", "warn") in _design_said(project)
+
+
+def test_a_design_reader_named_o_brien_is_given_a_command_that_does_not_parse(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): the command a
+    missing design reading's hint prints quotes a reader's name only where it has a space,
+    so `O'Brien` leaves an unclosed quote that a shell cannot parse. The 2026-11-09 triage
+    planned a fix (F15), which will change this test."""
+    import shlex
+
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["O'Brien", "Dr Tanaka"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    hints = [f.hint for f in check_design_rounds(load_project(project)[0]).findings
+             if f.code == "design-review-missing"]  # fmt: skip
+    commands = [hint.split("`")[1] for hint in hints]
+    assert commands == [
+        "manuscript-guard review --record methodologist --design --round 1 --reading O'Brien "
+        "--verdict <verdict>",
+        'manuscript-guard review --record methodologist --design --round 1 --reading '
+        '"Dr Tanaka" --verdict <verdict>',
+    ]
+    with pytest.raises(ValueError, match="No closing quotation"):
+        shlex.split(commands[0])
+    # The other side: a name with a space is quoted, and parses to itself.
+    assert shlex.split(commands[1])[-3] == "Dr Tanaka"
+
+
+def test_recording_a_design_reading_against_a_panel_that_is_a_yaml_list_raises(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): a design
+    panel written as a YAML list raises out of `review --record --design`, both where an
+    earlier panel is read for the reviewer's remit and where the round's own panel is read;
+    and the earlier panels are read for the remit outside the round's lock, the round's own
+    panel inside it. The 2026-11-09 triage planned a fix (F15), which will change this
+    test."""
+    from contextlib import contextmanager
+
+    from manuscript_guard import record as recording
+    from manuscript_guard.contracts import _schema
+
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    kept = panel.read_text(encoding="utf-8")
+    panel.write_text("- methodologist\n", encoding="utf-8")
+    projekt = load_project(project)[0]
+    with pytest.raises(AttributeError):  # the remit looked up in the earlier panels
+        recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    with pytest.raises(AttributeError):  # the round's own panel, under its lock
+        recording.write_design_review(projekt, "statistician", verdict="pass", remit="R")
+    assert not (project / "review" / "design" / "round-2").exists()
+
+    # The other side: a panel that is a mapping is read, and where each is read.
+    panel.write_text(kept, encoding="utf-8")
+    assert recording.write_design_review(projekt, "statistician", verdict="pass",
+                                         round_number=2, remit="R").path.is_file()  # fmt: skip
+    held: list[bool] = [False]
+    reads: list[tuple[str, bool]] = []
+    real_lock, real_read = recording.panel_lock, _schema.read_structured
+
+    @contextmanager
+    def lock(path):
+        with real_lock(path):
+            held[0] = True
+            try:
+                yield
+            finally:
+                held[0] = False
+
+    def read(path, *args, **kwargs):
+        reads.append((Path(path).name, held[0]))
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(recording, "panel_lock", lock)
+    monkeypatch.setattr(_schema, "read_structured", read)
+    recording.write_design_review(projekt, "methodologist", verdict="pass", round_number=2)
+    assert ("panel-1.yaml", False) in reads and ("panel-1.yaml", True) not in reads
+    assert ("panel-2.yaml", True) in reads
+
+
+@pytest.mark.parametrize("flag", ["--digest", "--files"])
+def test_the_design_status_passes_over_the_digest_and_the_files(
+    project: Path, flag: str, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Review panels and their records"): `review
+    --design` with `--digest` or `--files` prints the design rounds' status and neither,
+    and with no design round it says nothing. The 2026-11-09 triage planned a fix (F15),
+    which will change this test."""
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(project), "--design", flag]) == 0
+    assert capsys.readouterr().out == "  (nothing to report)\n"
+    _design_recorded(project, _DESIGN_MAJOR)
+    capsys.readouterr()
+    assert main(["review", str(project), "--design", flag]) == 0
+    out = capsys.readouterr().out
+    assert "design round 1: methodologist d1:" in out
+    assert "file_sha256:" not in out and "design_rounds=1" in out
+    # The other side: without `--design` the flag is answered.
+    assert main(["review", str(project), flag]) == 0
+    out = capsys.readouterr().out
+    assert ("file_sha256:" in out) if flag == "--files" else (len(out.strip()) == 64)
 
 
 # --------------------------------------------------------------------------------------

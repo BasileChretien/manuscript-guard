@@ -208,6 +208,33 @@ def test_more_than_ten_edits_from_one_reading_are_not_all_written(project: Path)
 
 
 @needs_pandoc
+@pytest.mark.parametrize("unplaced", [10, 9], ids=["ten", "nine"])
+def test_the_ten_edits_a_reading_may_have_written_are_counted_though_none_was(
+    project: Path, unplaced: int
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What round 1 of #367's review recorded and
+    left", "The ten a reading may have written are counted as suggested"): the cap counts
+    every edit of a reading, placed or not. Ten whose words are nowhere in the manuscript
+    use it up, and the eleventh, which could be written, is dropped for it; after nine, the
+    same edit is the tenth and is written."""
+    findings = [finding(f"r8-pe-{i:02d}", (f"nowhere word {i}", f"no word {i}"))
+                for i in range(10, 10 + unplaced)]  # fmt: skip
+    findings.append(finding("r8-pe-30", ("asks whether", "asks only whether")))
+    with_edits(project, *findings)
+    code, said = suggest(project)
+    assert code == 0, said
+    assert said.count("its words are not in the manuscript as it stands") == unplaced
+    if unplaced == 10:
+        assert "r8-pe-30: 'asks whether': its reading suggests more than 10 edits, and only " \
+               "the first 10 are written" in said, said  # fmt: skip
+        assert "edit(s) written" not in said
+        assert not document_of(project).exists()
+    else:
+        assert "1 edit(s) written" in said and "more than 10 edits" not in said, said
+        assert document_of(project).exists()
+
+
+@needs_pandoc
 def test_a_reading_not_sealed_or_altered_since_has_no_edits_written(project: Path) -> None:
     with_edits(project, finding("r8-pe-02", ("asks whether", "asks again whether")), seal=False)
     code, said = suggest(project)
@@ -255,6 +282,65 @@ def test_accepted_edits_merge_and_answer_theirfinding(project: Path, tmp_path: P
 
 
 @needs_pandoc
+@pytest.mark.parametrize("severity", ["minor", "major"])
+@pytest.mark.parametrize("first", ["accept", "reject"])
+def test_an_accepted_edit_answers_its_finding_beside_a_refused_one(
+    project: Path, tmp_path: Path, severity: str, first: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What round 1 of #367's review recorded and
+    left", "An accepted edit answers its finding beside a refused one"): of a finding's two
+    edits, one accepted and one refused with no reply, the acceptance is its resolution,
+    major or not, and the refusal is named in it. Only a finding whose edits were all
+    refused needs a reply: with both refused and none, it stays open."""
+    with_edits(project, finding(
+        "r8-pe-02", ("asks whether", "asks only whether"),
+        ("Reports were included without restriction on age or sex.",
+         "Reports of any age or sex were included."), severity=severity,
+    ))  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0 and "2 edit(s) written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: first, 2: "reject"})
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    found = {f["id"]: f for f in reading(project)["findings"]}["r8-pe-02"]
+    assert "overridden" not in found
+    if first == "accept":
+        assert found["resolution"] == (
+            "Edited in Word as pharmacoepidemiologist (Claude Code) suggested: “asks "
+            "whether” now reads “asks only whether”; the edit to “Reports were included "
+            "without restriction on age or sex.” was refused."
+        )
+    else:
+        # The other side: every edit refused, and no reply to say why.
+        assert "resolution" not in found
+        assert "no reply to say why" in said
+
+
+@needs_pandoc
+def test_an_edit_dropped_when_the_document_was_made_goes_unmentioned(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What round 1 of #367's review recorded and
+    left", "An edit dropped when the document was made goes unmentioned"): a finding with
+    one edit written and accepted and another dropped is resolved by the first, and its
+    resolution does not say the second was never offered. The 2026-11-09 triage planned a
+    fix (F15), which will change this test."""
+    with_edits(project, finding("r8-pe-02", ("asks whether", "asks only whether"),
+                                ("words the manuscript lacks", "other words")))  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0, said
+    assert "1 edit(s) written" in said and "1 edit(s) not written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: "accept"})
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    found = {f["id"]: f for f in reading(project)["findings"]}["r8-pe-02"]
+    assert found["resolution"] == (
+        "Edited in Word as pharmacoepidemiologist (Claude Code) suggested: “asks whether” "
+        "now reads “asks only whether”."
+    )
+
+
+@needs_pandoc
 def test_a_refused_edit_with_no_reply_leaves_its_finding_open(
     project: Path, tmp_path: Path
 ) -> None:
@@ -282,6 +368,129 @@ def test_an_edit_whose_place_is_gone_or_changed_is_left_to_the_author(
     assert "r8-pe-02: gone" in said and "r8-pe-03: changed" in said
     assert "place is gone from the document" in said
     assert "changed in Word after it was decided" in said
+
+
+def _without_the_suggestion(document: Path, number: int) -> None:
+    """`document` with suggestion `number` deleted whole, Track Changes off: everything
+    from its bookmark's start to the mark of its comment, and the comment."""
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.tracked import _namespaces, _serialised
+
+    W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    with zipfile.ZipFile(document) as archive:
+        names = archive.namelist()
+        parts = {name: archive.read(name) for name in names}
+    root = ET.fromstring(parts["word/document.xml"])
+    comments = ET.fromstring(parts["word/comments.xml"])
+    for paragraph in root.iter(W + "p"):
+        children = list(paragraph)
+        at = next((i for i, c in enumerate(children) if c.tag == W + "bookmarkStart"
+                   and c.get(W + "name") == f"mg-s-{number}"), None)  # fmt: skip
+        if at is None:
+            continue
+        note = children[at + 1].get(W + "id")
+        end = next(i for i, c in enumerate(children) if i > at
+                   and c.find(W + "commentReference") is not None)  # fmt: skip
+        for child in children[at : end + 1]:
+            paragraph.remove(child)
+        for comment in list(comments):
+            if comment.get(W + "id") == note:
+                comments.remove(comment)
+        break
+    parts["word/document.xml"] = _serialised(root, _namespaces(parts["word/document.xml"]))
+    parts["word/comments.xml"] = _serialised(comments, _namespaces(parts["word/comments.xml"]))
+    with zipfile.ZipFile(document, "w") as archive:
+        for name in names:
+            archive.writestr(name, parts[name])
+
+
+def _comment_retyped(document: Path, author: str) -> None:
+    """`document` with the text of `author`'s comment changed by the person deciding."""
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.tracked import _namespaces, _serialised
+
+    W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    with zipfile.ZipFile(document) as archive:
+        names = archive.namelist()
+        parts = {name: archive.read(name) for name in names}
+    comments = ET.fromstring(parts["word/comments.xml"])
+    mine = next(c for c in comments.iter(W + "comment") if c.get(W + "author") == author)
+    last = [t for t in mine.iter(W + "t") if t.text][-1]
+    last.text += " Seen."
+    parts["word/comments.xml"] = _serialised(comments, _namespaces(parts["word/comments.xml"]))
+    with zipfile.ZipFile(document, "w") as archive:
+        for name in names:
+            archive.writestr(name, parts[name])
+
+
+def _without_extended(document: Path) -> None:
+    """`document` as an editor that writes no `word/commentsExtended.xml` saves it: the
+    reply is a comment of its own over the same words, and nothing says whose reply."""
+    import re
+    import zipfile
+
+    with zipfile.ZipFile(document) as archive:
+        names = [n for n in archive.namelist() if n != "word/commentsExtended.xml"]
+        parts = {name: archive.read(name) for name in names}
+    types = parts["[Content_Types].xml"].decode("utf-8")
+    parts["[Content_Types].xml"] = re.sub(
+        r'<Override PartName="/word/commentsExtended\.xml"[^>]*/>', "", types
+    ).encode("utf-8")
+    rels = parts["word/_rels/document.xml.rels"].decode("utf-8")
+    parts["word/_rels/document.xml.rels"] = re.sub(
+        r'<Relationship [^>]*Target="commentsExtended\.xml"[^>]*/>', "", rels
+    ).encode("utf-8")
+    with zipfile.ZipFile(document, "w") as archive:
+        for name in names:
+            archive.writestr(name, parts[name])
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "how", ["as-word-saves-it", "deleted-whole", "deletion-only", "comment-retyped",
+            "no-extended-part"],
+)  # fmt: skip
+def test_what_was_decided_in_word_is_read_from_the_bookmark_and_the_comment(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What was decided in Word is read from the
+    bookmark and the comment"): a suggestion whose words were deleted whole, or whose
+    deletion was accepted and insertion rejected, has no bookmark, and its finding is left
+    to answer by hand. A refused edit with a reply is answered by the reply only where the
+    comment is the one the document wrote and `word/commentsExtended.xml` says the reply is
+    to it: a comment whose text was edited, or a document with no such part, leaves the
+    finding open. None of these answers it wrongly. The first case is the other side: the
+    reply, as Word saves it, overrides the finding."""
+    with_edits(project, finding("r8-pe-02", ("asks whether", "asks only whether")))
+    code, said = suggest(project)
+    assert code == 0 and "1 edit(s) written" in said, said
+    reason = "The aim reads as a question already."
+    choice = "deletion" if how == "deletion-only" else "reject"
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: choice},
+                      replies={} if how.startswith("delet") else {1: reason})  # fmt: skip
+    if how == "deleted-whole":
+        _without_the_suggestion(returned, 1)
+    elif how == "comment-retyped":
+        _comment_retyped(returned, "pharmacoepidemiologist (Claude Code)")
+    elif how == "no-extended-part":
+        _without_extended(returned)
+    code, said = run("import", str(returned), str(project), "--apply")
+    found = {f["id"]: f for f in reading(project)["findings"]}["r8-pe-02"]
+    assert "resolution" not in found
+    if how == "as-word-saves-it":
+        assert code == 0, said
+        assert found["overridden"] == reason and found["overridden_by"] == AUTHOR
+        return
+    assert "overridden" not in found
+    if how.startswith("delet"):
+        assert "r8-pe-02: gone" in said and "place is gone from the document" in said, said
+    else:
+        assert code == 0, said
+        assert "no reply to say why" in said, said
 
 
 @needs_pandoc
@@ -318,6 +527,128 @@ def test_an_accepted_edit_whose_paragraph_is_refused_stays_open(
     assert "import did not merge its paragraph" in said, said
     found = {f["id"]: f for f in reading(project)["findings"]}
     assert "resolution" not in found["r8-pe-02"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "how, why",
+    [
+        ("source-changed", "its words are in the paragraph 2 times as the build printed it"),
+        ("record-changed", "the words are not known: its finding in the record is not the one "
+                           "the document was made from"),
+        ("record-gone", "the words are not known: its review record is not there to answer"),
+        ("marked-build-unreadable", "its values and citations could not be lined up with "
+                                    "the build"),
+    ],
+)  # fmt: skip
+def test_an_accepted_suggestion_that_cannot_be_written_refuses_its_paragraph(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, how: str, why: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A suggested edit is placed only where it can be
+    written exactly", "A write that cannot be made refuses the paragraph"): at import, an
+    accepted suggestion whose words cannot be written exactly has its whole paragraph
+    refused, the author's own edit there with it. A source changed since the document was
+    made (imported with `--force`; here the analysis was run again, so that the old words
+    now print twice in their paragraph), a record changed or gone since, and a marked build
+    `import` could not read each reach it. With none of them, both come back
+    (`test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back`)."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.gates.review import reading_digest
+
+    main = project / "manuscript" / "main.md"
+    sentence = "Reports were included without restriction on age or sex."
+    edit = (sentence, "Reports of any age or sex were included.")
+    if how == "source-changed":
+        # The paragraph's own source cannot change, or its identifier no longer names it
+        # and it is not compared at all: what changed is what the analysis prints there.
+        sentence = "Reports over 11 years were included without restriction on age or sex."
+        main.write_text(main.read_text(encoding="utf-8").replace(
+            "Reports were included without", "Reports over 11 years were included without"
+        ), encoding="utf-8")  # fmt: skip
+        edit = ("11 years", "11 full years")
+    with_edits(project, finding("r8-pe-02", edit))
+    code, said = suggest(project)
+    assert code == 0 and "1 edit(s) written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: "accept"})
+    retype(returned, 1, "We analysed", "We examined")
+    force = []
+    if how == "source-changed":
+        # The analysis run again: the period it prints, "10 years", is now "11 years" too.
+        results = project / "results" / "01_disproportionality.json"
+        data = json.loads(results.read_text(encoding="utf-8"))
+        data["values"]["cohort.n_years"].update(value=11, display="11")
+        results.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        force = ["--force"]
+    elif how == "record-changed":
+        document = reading(project)
+        document["findings"][-1]["edits"][0]["new"] = "Reports of every age were included."
+        document["reading_sha256"] = reading_digest(document)
+        (project / READING).write_text(yaml.safe_dump(document, sort_keys=False),
+                                       encoding="utf-8")  # fmt: skip
+    elif how == "record-gone":
+        (project / READING).unlink()
+    else:
+        reader = roundtrip.read_blocks
+
+        def unreadable(document: Path):
+            if document.name == "reference-tokens.docx":
+                raise roundtrip.RoundTripError(f"{document.name} is not a readable .docx")
+            return reader(document)
+
+        monkeypatch.setattr(roundtrip, "read_blocks", unreadable)
+    code, said = run("import", str(returned), str(project), "--apply", *force)
+    said += capsys.readouterr().err
+    assert code == 1, said
+    assert ("it holds a suggestion accepted in Word that cannot be written into the source "
+            f"where its words were: {why}.") in said, said  # fmt: skip
+    text = " ".join(main.read_text(encoding="utf-8").split())
+    assert sentence in text and "We analysed" in text
+    assert edit[1] not in text and "We examined" not in text
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "choices, holds",
+    [({1: "accept", 2: "reject", 3: "accept"}, False),
+     ({1: "reject", 2: "accept", 3: "accept"}, True)],
+    ids=["first-and-third", "second-and-third"],
+)  # fmt: skip
+def test_a_mix_of_three_edits_that_was_not_tried_is_written_only_if_it_holds(
+    project: Path, tmp_path: Path, choices: dict[int, str], holds: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A suggested edit is placed only where it can be
+    written exactly", "Several edits in one paragraph"): three edits in one paragraph are
+    tried alone and each with the ones before it written, so the first and third together
+    are not tried. Accepted in Word, that mix is written by `import` only if it holds. Here
+    it does not: together they make `<alphaword betaword gammaword deltaword>` an HTML tag,
+    which the second, between them, keeps from being one. So the paragraph is refused and
+    the findings stay open. The second and third, also untried, hold and are written."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "the signal extends", "the signal <(alphaword) betaword gammaword, deltaword> extends"
+    ), encoding="utf-8")  # fmt: skip
+    with_edits(project, finding("r8-pe-02", ("(alphaword)", "alphaword")),
+               finding("r8-pe-03", ("betaword", "betaword,")),
+               finding("r8-pe-04", ("gammaword, deltaword", "gammaword deltaword")))  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0 and "3 edit(s) written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", choices)
+    code, said = run("import", str(returned), str(project), "--apply")
+    found = {f["id"]: f for f in reading(project)["findings"]}
+    text = main.read_text(encoding="utf-8")
+    if holds:
+        assert code == 0, said
+        assert "the signal <(alphaword) betaword, gammaword deltaword> extends" in text
+        assert "now reads" in found["r8-pe-03"]["resolution"]
+        assert "now reads" in found["r8-pe-04"]["resolution"]
+        return
+    assert code == 1, said
+    assert "it holds a suggestion accepted in Word that cannot be written into the source " \
+           "where its words were: written into the source, it would not read as Word shows " \
+           "it." in said, said  # fmt: skip
+    assert "the signal <(alphaword) betaword gammaword, deltaword> extends" in text
+    assert all("resolution" not in found[f"r8-pe-0{i}"] for i in (2, 3, 4))
+    assert all("overridden" not in found[f"r8-pe-0{i}"] for i in (2, 3, 4))
 
 
 @needs_pandoc
@@ -440,6 +771,46 @@ def test_a_suggestion_that_cannot_be_written_exactly_is_not_written(
 
     result = write_in(source, printed, tokens, [Words(*edit) for edit in edits])
     assert isinstance(result, str) and why in result, result
+
+
+#: Words in or across each kind of markup the reader cannot see, and why each takes no edit.
+ACROSS_MARKUP = {
+    "emphasis-edge": ("Pword value", "across markup the build does not print"),
+    "code": ("glmword code", "inside code"),
+    "link-text": ("linkword text", "inside a link"),
+    "span": ("spanword text", "inside a span with attributes"),
+    "struck": ("struckword text", "inside struck-through text"),
+    "raised": ("raisedword", "inside a superscript"),
+    "lowered": ("loweredword", "inside a subscript"),
+    "line-break": ("brokenword across", "run across a line break"),
+}
+
+
+@needs_pandoc
+def test_words_across_markup_take_no_edit(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A suggested edit is placed only where it can be
+    written exactly", "Words across markup"): words that cross the edge of emphasis, as
+    "Pword value" quoting `*Pword* value`, or lie inside code, a link's text, a span,
+    struck-through, raised or lowered text, or run across a hard line break, take no edit.
+    The other side, words beside all of it in the same paragraph, is written."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "This analysis asks whether the signal extends to example-drug specifically.",
+        "This analysis asks whether the *Pword* value of `glmword code`, "
+        "[linkword text](https://example.org/l), [spanword text]{.x}, ~~struckword text~~, "
+        "x^raisedword^ and y~loweredword~ hold for brokenword  \nacross the line.",
+    ), encoding="utf-8")  # fmt: skip
+    findings = [finding(f"r8-pe-{i:02d}", (old, "other words"))
+                for i, (old, _why) in enumerate(ACROSS_MARKUP.values(), start=10)]  # fmt: skip
+    findings.append(finding("r8-pe-30", ("asks whether", "asks only whether")))
+    with_edits(project, *findings)
+    code, said = suggest(project)
+    assert code == 0, said
+    assert "1 edit(s) written" in said and "r8-pe-30: 'asks whether' -> 'asks only" in said
+    assert f"{len(ACROSS_MARKUP)} edit(s) not written" in said, said
+    for i, (old, why) in enumerate(ACROSS_MARKUP.values(), start=10):
+        line = next(line for line in said.splitlines() if f"r8-pe-{i}: '{old}'" in line)
+        assert why in line, line
 
 
 MARKED_DRUG = {

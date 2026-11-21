@@ -18947,6 +18947,23 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   looked up outside the record's lock, and a panel that is a YAML list raises. `review
   --design` passes over `--digest` and `--files`, and says nothing for a project with no
   design round. The plan sent and its `plan_sha256` come from two reads.
+  Pinned by `tests/test_corruption.py::test_a_router_serving_several_families_is_one_provider`,
+  `tests/test_corruption.py::test_a_remit_that_speaks_of_charts_is_taken_to_ask_for_the_figures`,
+  `tests/test_review.py::test_a_superseded_round_s_own_other_warnings_are_not_lowered`,
+  `tests/test_submission.py::test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled`,
+  `tests/test_submission.py::test_an_unreadable_record_drops_the_overrides_of_the_readings_beside_it`,
+  `tests/test_corruption.py::test_a_design_reading_outside_the_panel_or_outside_any_panel_is_passed_over`,
+  `tests/test_corruption.py::test_a_stale_design_reading_is_superseded_by_its_reviewer_not_by_its_remit`,
+  `tests/test_corruption.py::test_a_stale_plain_design_record_is_superseded_only_by_a_later_plain_one`,
+  `tests/test_corruption.py::test_a_signed_design_override_is_bound_to_its_finding_and_reason_alone`,
+  `tests/test_corruption.py::test_a_named_design_reading_is_opened_at_the_path_its_name_gives`,
+  `tests/test_corruption.py::test_two_design_readings_under_one_name_stored_two_ways_go_unsaid`,
+  `tests/test_review.py::test_two_files_under_one_name_stored_two_ways_are_reported`,
+  `tests/test_corruption.py::test_a_misfiled_design_reading_s_override_is_listed_under_its_file_s_name`,
+  `tests/test_corruption.py::test_a_design_reader_named_o_brien_is_given_a_command_that_does_not_parse`,
+  `tests/test_corruption.py::test_recording_a_design_reading_against_a_panel_that_is_a_yaml_list_raises`,
+  `tests/test_corruption.py::test_the_design_status_passes_over_the_digest_and_the_files`
+  and `tests/test_review_design_run.py::test_the_plan_sent_and_its_digest_come_from_two_reads`.
 - **Sign-offs and approvals.** One authorisation is given per provider, so a cloud model
   added later to a provider already authorised goes unasked, and a `-cloud` model added to
   a local provider voids the sign-off with the message of any other change. No test calls
@@ -19663,11 +19680,14 @@ Open, recorded as each change landed:
   - The title is sent from `paper.yaml` and printed from the front matter, and neither is
     looked in, so a quote of the title is unanchored; so is one of an abstract kept in the
     front matter, which the request leaves out with it.
+    Pinned by `tests/test_review_quotes.py::test_a_quote_of_the_title_or_of_an_abstract_in_the_front_matter_is_unanchored`.
   - A citation is sent and searched as the source writes it, `[@key]`, so a person quoting
     a sentence from the built document across "(Smith 2020)" is unanchored unless the
     citation is left out with "...". LaTeX is searched as it is sent, its commands in: a
     quote across `\textit{a} b` is unanchored, and words in a `%` comment of a hand-filed
     reading's source are found.
+    Pinned by `tests/test_review_quotes.py::test_a_citation_is_searched_as_the_source_writes_it`
+    and `tests/test_review_quotes.py::test_latex_is_searched_as_it_is_sent_its_commands_and_comments_in`.
   - A LaTeX manuscript is printed as whole documents, so a hand-filed reading that carries
     some of its files is held to their source only. Accepted.
   - A heading is found by its whole title, its number and a closing stop set aside: a title
@@ -19690,12 +19710,15 @@ Open, recorded as each change landed:
   - Of what pandoc prints otherwise than it is written, a link, a sub- or superscript and a
     dash are read as Word shows them; LaTeX's tie, `Table~1`, is not, nor a strikeout's
     marks, so a person quoting the printed words across one is unanchored.
+    Pinned by `tests/test_review_quotes.py::test_what_pandoc_prints_otherwise_stands_as_word_prints_it`
+    and `tests/test_review_quotes.py::test_a_latex_tie_and_a_strikeout_s_marks_are_not_read_as_word_prints_them`.
   - A model's reading filed by hand, by an agent reading a remit itself (route A), is read
     as a person's: a finding in it that quotes nothing is in neither list. The skill tells
     such a reader to quote. Accepted.
   - `review --seal` prints the values of the results as they are when it runs, which the
     reading's file digests do not cover: an analysis run again between `review --record`
     and the seal moves the printed numbers a quote is looked for in.
+    Pinned by `tests/test_review_quotes.py::test_results_run_again_before_the_seal_move_the_numbers_a_quote_is_looked_for_in`.
   - Like the seal, `quotes` catches an edit, not a forger: a reading unsealed, its
     `quotes` taken out and its quotes rewritten, is sealed again on what it then says.
     Accepted.
@@ -19721,18 +19744,22 @@ Open, recorded as each change landed:
     sentence at "p.". A sentence is not cut at a LaTeX `\item` or `\\`. An address or a
     citation's key is read as G8 reads it, as a word with a capital, so "see e.g.
     https://a.org for the code" is cut after "e.g." (round 2 of #587).
+    Pinned by `tests/test_review_places.py::test_a_sentence_is_cut_where_g8_cuts_one`.
   - A citation group is any bracket pair with an `@` inside it within one paragraph: a
     stray `[` and `]` round an `@`, "aged [18, 65) as @a found. ... (65, 100]", are read
     as one sentence from one to the other.
+    Pinned by `tests/test_review_places.py::test_a_stray_bracket_pair_round_an_at_sign_is_one_sentence`.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
     Pinned by `tests/test_review_places.py::test_a_quote_across_three_sentences_is_placed_nowhere`.
   - Two sentences in a row are looked at only where no one sentence holds the quote: words
     that stand whole in the Results and across a cut in the abstract are placed in the
     Results only.
+    Pinned by `tests/test_review_places.py::test_two_sentences_in_a_row_are_looked_at_only_where_no_one_sentence_holds_the_quote`.
   - Two places are one when their file, their section and the first 400 characters of the
     sentence kept for each agree, whatever the case: two sentences that open alike for 400
     characters, a table typed without a stop say, are one place.
+    Pinned by `tests/test_review_places.py::test_two_sentences_that_open_alike_for_400_characters_are_one_place`.
   - A person's quote found only as the source writes it, with its binding, is at the
     sentence as written, which is another place than the same sentence as printed: a model
     quoting the printed sentence and a person quoting its source are not put together.
@@ -19749,13 +19776,16 @@ Open, recorded as each change landed:
     level is the section of the sentences between it and the first heading at the level, so
     an abstract typed under a paper's title with no heading of its own is in the title's
     section.
+    Pinned by `tests/test_review_places.py::test_a_section_is_read_at_the_first_level_its_file_has_two_headings_of`.
   - A LaTeX reading filed by hand that carries every file is placed in the documents as
     printed, and one whose quote stands only as written is placed in the file it is typed
     in, under that file's own headings: a sentence of an `\input` file with no `\section`
     in it is before any heading.
+    Pinned by `tests/test_review_places.py::test_a_latex_reading_by_hand_is_placed_as_printed_or_in_the_file_it_is_typed_in`.
   - Readers are counted by name, a named reading's reader or else its `reviewed_by`, as
     typed: one person filing plain records under two spellings of a name is two readers,
     and so is one filing two remits with no `--by`, which writes each remit's id.
+    Pinned by `tests/test_review_places.py::test_readers_are_counted_by_their_names_as_typed`.
   - `quotes in:` shows the sections of each reading's quotes, and what a reading was sent
     decides what it can quote. That a reading sent the whole paper and quoting only its
     abstract read less of the paper is not measured: no such reading has been seen (Basile,
@@ -19767,6 +19797,10 @@ Open, recorded as each change landed:
   `--files`, `--submission`, `--one-each` and `--yes` are passed over. The command
   `review --record` prints for sealing puts the reader's name in double quotes, which a
   name holding `"`, `$`, a backtick or, in bash, a backslash would break.
+  Pinned by `tests/test_review.py::test_sealing_refuses_a_record_and_the_models_and_seals_nothing`,
+  `tests/test_review.py::test_sealing_with_the_digest_prints_the_digest_and_seals_nothing`,
+  `tests/test_review.py::test_sealing_passes_over_the_flags_it_does_not_take`
+  and `tests/test_review.py::test_the_seal_command_printed_puts_the_reader_s_name_in_double_quotes`.
 - **A plain record is not checked against where it is filed.** A named reading must say
   the reader, the reviewer and the round its place says. `<reviewer>.yaml` is read as it
   always was: its `reviewer` and `round` fields are not compared with its place, so a
@@ -19790,6 +19824,8 @@ Open, recorded as each change landed:
 - **A reader's name is compared as it is composed, and not otherwise folded.** A full-width
   letter and its ordinary form, a digit of another script and the same digit in ASCII, or
   `ß` and `ss`, are different readers.
+  Pinned by `tests/test_review.py::test_a_readers_name_is_not_folded_beyond_its_composition`
+  and `tests/test_review.py::test_a_readers_name_composed_and_decomposed_is_one_reader`.
 - **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is
   "the response letter" reads the revised text, the round is complete, and the
   biostatistician's stale reading of the Methods becomes history. The panel file's
@@ -19799,6 +19835,8 @@ Open, recorded as each change landed:
   round one is a `review-missing` failure whatever came later, and the only way past it is
   to file the record or remove the reviewer from that panel. Deliberate: superseding is for
   a reading of an older text, not for a reading that never happened.
+  Pinned by `tests/test_review.py::test_a_record_nobody_filed_in_round_one_still_fails_after_a_complete_later_round`
+  and `tests/test_review.py::test_a_record_filed_late_for_round_one_lets_the_later_round_pass`.
 - **A model reviewing its own draft is worth less than a fresh reader.** The skill warns
   about agreeableness, which is the likely failure, but nothing enforces independence.
   Accepted.
@@ -19822,11 +19860,13 @@ Open, recorded as each change landed:
   that the key also holds are replaced, so a provider's message that happens to share four
   with the key loses them. Fewer than four of the key's characters in a row are not
   recognised as the key's.
+  Pinned by `tests/test_review_providers.py::test_a_word_that_shares_four_characters_with_the_key_loses_them`.
 - **A connection that cannot be opened in time reads as a timeout.** The client does not
   ask again after a timeout, because the request may have run and been billed. urllib does
   not say whether the time ran out before or after the request was sent, so a provider
   that was merely unreachable is not retried either, and the message says it may have
   been billed when it cannot have been.
+  Pinned by `tests/test_review_transport.py::test_a_connection_not_opened_in_time_is_a_timeout_not_asked_again`.
 - **A reviewer is sent the numbers as they print today.** Bindings are replaced with the
   current values in `results/` and the ledger. A record's digests cover the manuscript's
   source files, as a hand-filed record's do, so re-running the analysis after a reading
@@ -19942,6 +19982,8 @@ Open, recorded as each change landed:
   is kept and the YAML is laid out afresh, so a comment typed into a panel file is lost the
   next time `review --record` or `review --run` adds to it. The panel's `rationale` and each
   reviewer's `why` are fields, and are where its reasons belong.
+  Pinned by `tests/test_record.py::test_a_comment_typed_into_a_panel_is_lost_when_a_record_adds_to_it`
+  and `tests/test_review_run.py::test_a_comment_typed_into_a_panel_is_lost_when_a_run_adds_its_readers`.
 - **A run asks the models listed now, not the readers the panel named before.** Take a
   model out of `review.models` after a run and its missing readings stay `reading-missing`
   until its name is taken out of the panel's `readers` as well. The command lists those
@@ -21719,6 +21761,9 @@ Open, recorded as each change landed:
   Only a pass is said: a model that asked for a minor revision of a remit covering the
   figures says nothing of them either. A round read by one provider's models under several
   providers' names, a local server passing the request on, counts as several.
+  Pinned by `tests/test_corruption.py::test_a_remit_covers_the_figures_by_its_words`,
+  `tests/test_corruption.py::test_a_model_that_passed_a_remit_covering_the_figures_is_said`
+  and `tests/test_corruption.py::test_a_round_read_by_one_server_s_models_under_two_providers_names_counts_as_two`.
 - **The submission pack does not convert figures to a journal's required format.** It
   copies what was rendered. A journal wanting 300 dpi TIFF gets whatever the figure script
   produced. Accepted.
@@ -25371,6 +25416,7 @@ Open, recorded as each change landed:
     lowered text, or run across a hard line break, take no edit: written, they would change
     the markup, which an edit does not. The reader is sent the text as printed and cannot
     see where the markup is.
+    Pinned by `tests/test_suggestions.py::test_words_across_markup_take_no_edit`.
   - *The author's own edit beside an accepted suggestion.* The suggestion is written
     exactly, and an edit of the author's in the same stretch between two values or
     citations is then merged from Word's text, as any rewording is: the emphasis or code in
@@ -25387,6 +25433,9 @@ Open, recorded as each change landed:
     in Word that was not tried (below), and a marked build `import` could not read, which
     leaves no value or citation placed, each reach it. The last refuses such a paragraph on
     main too, as unaligned.
+    Pinned by `tests/test_suggestions.py::test_an_accepted_suggestion_that_cannot_be_written_refuses_its_paragraph`,
+    `tests/test_suggestions.py::test_a_mix_of_three_edits_that_was_not_tried_is_written_only_if_it_holds`
+    and `tests/test_roundtrip.py::test_an_unreadable_marked_build_refuses_rather_than_stopping`.
   - *The write is held to this package's reading of Markdown.* "Reads as Word shows it" is
     `roundtrip._reads_as`, which the merge holds its own result to; where that reading and
     pandoc's disagree, written words could print otherwise than Word showed them. New words
@@ -25397,6 +25446,7 @@ Open, recorded as each change landed:
   - *Several edits in one paragraph* are tried alone and each with the ones before it
     written. With three or more, a mix accepted in Word that was not tried is written by
     `import` only if it holds; otherwise the paragraph is refused and the findings stay open.
+    Pinned by `tests/test_suggestions.py::test_a_mix_of_three_edits_that_was_not_tried_is_written_only_if_it_holds`.
   - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
     curled: the source gets what the reader wrote, and Word shows the same words. The next
     build prints them curled. Accepted.
@@ -25410,6 +25460,7 @@ Open, recorded as each change landed:
   and a refused edit then leaves its finding open. A reply is known only by
   `word/commentsExtended.xml`, which Word writes; an editor that writes none has no replies
   here. Nothing of this answers a finding wrongly: each leaves it open.
+  Pinned by `tests/test_suggestions.py::test_what_was_decided_in_word_is_read_from_the_bookmark_and_the_comment`.
 - **What round 1 of #367's review recorded and left.** Each is non-blocking under the bar:
   Accepted.
   - *A failure of `tracked.write` is a traceback.* `write_round` turns a build's failure into
@@ -25421,12 +25472,15 @@ Open, recorded as each change landed:
     edits, one accepted and one refused with no reply, the acceptance is its `resolution`,
     major or not; the refusal is named in it. Only a finding whose edits were all refused
     needs a reply to be answered.
+    Pinned by `tests/test_suggestions.py::test_an_accepted_edit_answers_its_finding_beside_a_refused_one`.
   - *The ten a reading may have written are counted as suggested.* A reading whose first
     ten edits all fail to place has its eleventh dropped for the cap, though none was
     written.
+    Pinned by `tests/test_suggestions.py::test_the_ten_edits_a_reading_may_have_written_are_counted_though_none_was`.
   - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
     written and accepted and another dropped is resolved by the first, and its resolution
     does not say the second was never offered.
+    Pinned by `tests/test_suggestions.py::test_an_edit_dropped_when_the_document_was_made_goes_unmentioned`.
   - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
     dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
     have every panel change read as accepted. The `mg-s-` bookmarks would still be there to

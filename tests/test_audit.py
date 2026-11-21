@@ -7,6 +7,7 @@ and it must report honestly how little a match is worth.
 
 from __future__ import annotations
 
+import json
 import shutil
 import zipfile
 from pathlib import Path
@@ -125,6 +126,26 @@ def test_a_join_stops_at_a_table(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("after", "lines"),
+    [
+        (f"<w:tbl>{row('1')}</w:tbl>", ["-0.5", "|", "1"]),
+        (f"<w:sdt><w:sdtContent>{para('1')}</w:sdtContent></w:sdt>", ["-0.5", "1"]),
+        (para("1"), ["-0.51"]),
+    ],
+    ids=["table", "content control", "paragraph"],
+)
+def test_a_paragraph_whose_mark_was_deleted_runs_on_into_no_table_or_content_control(
+    tmp_path: Path, after: str, lines: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paragraph run on into a table is read apart
+    from it"): Word 16 runs the paragraph into the table's first cell, and the audit ends the
+    line at the table, or at a content control, so "-0.5" and the "1" after it are read in
+    two pieces. Only a paragraph beside it is joined."""
+    text = read_docx(make_docx(tmp_path / "t.docx", gone("-0.5") + after))
+    assert [line.strip() for line in text.split("\n") if line.strip()] == lines
+
+
+@pytest.mark.parametrize(
     ("cell", "line", "is_heading"),
     [
         (gone("-0.5") + para("1"), "-0.51", False),
@@ -175,6 +196,33 @@ def test_a_text_box_is_read_once_although_word_writes_it_twice(
     once, twice = read(fallback=False), read(fallback=True)
     assert once.body.count(number) == 1, once.body
     assert twice == once, twice.body
+
+
+def test_a_text_box_anchored_in_a_reference_heading_is_cut_with_the_list(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A text box anchored in a reference heading is cut
+    with the list"): the box is read after its paragraph, so in a styled References heading
+    it is the list's first line, its "n = 34" is not audited, and "Not audited" names the
+    lines cut and nothing of the box. Anchored in a paragraph before the heading, it is
+    audited."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    box = text_box(para("Figure 1: n = 34"), fallback=True)
+    entries = (para("Smith J, Jones K. Title. Lancet. 2019;393:100-10.")
+               + para("Doe A. Title. BMJ. 2020;370:m1."))  # fmt: skip
+    after = heading("Appendix") + para("It was 4.44.")
+    anchored = ('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>References</w:t>'
+                f"</w:r>{box}</w:p>")  # fmt: skip
+    report = audit([make_docx(tmp_path / "in.docx", para("We saw 77.") + anchored + entries
+                              + after, styles)], [outputs])  # fmt: skip
+    assert [c.text for c in report.unmatched] == ["4.44"]
+    assert report.not_audited == ["in.docx: References, paragraphs 1-3, read as the reference "
+                                  "list"]  # fmt: skip
+    before = f"<w:p><w:r><w:t>Host</w:t></w:r>{box}</w:p>" + heading("References")
+    report = audit([make_docx(tmp_path / "before.docx", para("We saw 77.") + before + entries
+                              + after, styles)], [outputs])  # fmt: skip
+    assert [c.text for c in report.unmatched] == ["34", "4.44"]
 
 
 def tracked(change: str, text: str, style: str = "", runs: str = "") -> str:
@@ -273,6 +321,53 @@ def test_a_table_row_gone_is_read_as_absent_and_an_inserted_one_as_present(
         return read_docx_text(make_docx(tmp_path / f"{name}.docx", body))
 
     assert read("tracked", tracked_table) == read("plain", plain)
+
+
+#: A paragraph whose mark is moved away and whose text box stays: anchored in a run outside
+#: the moved text, or inserted.
+_MOVED_MARK = '<w:pPr><w:rPr><w:moveFrom w:id="2" w:author="a"/></w:rPr></w:pPr>'
+_MOVED_TEXT = '<w:moveFrom w:id="3" w:author="a"><w:r><w:t>b</w:t></w:r></w:moveFrom>'
+_BOX = text_box(para("Box 9"), fallback=True)
+_KEPT_BOX = f"<w:p>{_MOVED_MARK}{_MOVED_TEXT}{_BOX}</w:p>"
+_INSERTED_BOX = f'<w:p>{_MOVED_MARK}{_MOVED_TEXT}<w:ins w:id="4" w:author="a">{_BOX}</w:ins></w:p>'
+_CELL_GONE = "<w:tcPr><w:cellDel w:id='1' w:author='a'/></w:tcPr>"
+
+
+@pytest.mark.parametrize(
+    ("table", "lines", "headings"),
+    [
+        (f"<w:tr><w:tc>{_KEPT_BOX}</w:tc></w:tr>", ["", "Box 9"], []),
+        (f"<w:tr><w:tc>{_INSERTED_BOX}</w:tc></w:tr>", ["", "Box 9"], []),
+        (f"<w:tr><w:tc>{tracked('moveFrom', 'b')}</w:tc><w:tc><w:p><w:pPr><w:pStyle "
+         "w:val='Heading1'/></w:pPr><w:r><w:t>22</w:t></w:r></w:p></w:tc></w:tr>",
+         [" | ", "22"], [7]),
+        (f"<w:tr><w:tc>{tracked('del', 'b')}</w:tc><w:tc>{tracked('del', '22')}</w:tc></w:tr>",
+         [" | ", ""], []),
+        (f"<w:tr><w:tc>{gone('b')}</w:tc><w:tc>{tracked('del', '22')}</w:tc></w:tr>",
+         ["b | ", ""], []),
+        (f"<w:tr><w:tc>{_CELL_GONE}{para('22')}</w:tc><w:tc>{para('c')}</w:tc></w:tr>",
+         ["22 | ", "c"], []),
+        (f"<w:tr><w:tc>{_CELL_GONE}<w:p/></w:tc><w:tc>{para('c')}</w:tc></w:tr>",
+         [" | ", "c"], []),
+    ],
+    ids=["box kept", "box inserted", "partly moved", "every mark deleted",
+         "every mark deleted, text left", "a cell deleted", "an empty cell deleted"],
+)
+def test_a_row_marked_otherwise_than_word_16_marks_one_is_read_as_it_stands(
+    tmp_path: Path, table: str, lines: list[str], headings: list[int]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table row is read as gone only when it is
+    marked the way Word 16 marks one"): a row whose marks are all moved away is kept by a
+    text box anchored in text that stays or was inserted. A row with only some of its marks
+    moved, its heading-styled cell still a heading, and a row whose every mark is deleted with
+    no mark on the row, which Word drops, are read as they stand; so is a cell marked deleted
+    in its properties, an empty one leaving its line."""
+    body = para("Intro") + f"<w:tbl>{row('a', '11')}{table}</w:tbl>" + para("End")
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    document = read_docx_text(make_docx(tmp_path / "t.docx", body, styles))
+    assert document.body.split("\n") == ["", "Intro", " | ", "a | ", "11", " | ", *lines, "End"]
+    assert sorted(document.headings) == headings
 
 
 @pytest.mark.parametrize(
@@ -581,6 +676,29 @@ def test_a_labelled_count_that_is_wrong_is_still_reported(tmp_path: Path) -> Non
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["n=9,999"]
 
 
+def test_a_thousands_separator_typed_as_a_space_splits_the_number_in_two(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A thousands separator written as a space is read
+    as two numbers"): "41 200" in the paper is 41 and 200, and so it is in the outputs. A
+    no-break or a narrow no-break space holds the outputs' number together; in the paper it
+    parts the atom as a space does."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 41200}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    for typed in ("41 200", "41\N{NO-BREAK SPACE}200", "41\N{NARROW NO-BREAK SPACE}200"):
+        paper.write_text(f"We had {typed} reports.\n", encoding="utf-8")
+        assert [c.text for c in audit([paper], [outputs]).unmatched] == ["41", "200"], typed
+    # The other side: closed up, it is the one number the outputs hold.
+    paper.write_text("We had 41200 reports.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == []
+
+    written = tmp_path / "out.txt"
+    written.write_text("n 41 200\n", encoding="utf-8")
+    assert load_backing([written])[0] == {"41", "200"}
+    for space in ("\N{NO-BREAK SPACE}", "\N{NARROW NO-BREAK SPACE}"):
+        written.write_text(f"n 41{space}200\n", encoding="utf-8")
+        assert load_backing([written])[0] == {"41200"}
+
+
 def test_an_interval_whose_bounds_are_both_published_is_found(tmp_path: Path) -> None:
     """A confidence interval written as a range is one atom, and matching it as one string
     matched nothing — so an interval sitting in the outputs was reported as not found.
@@ -751,6 +869,38 @@ def test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation(
         "Rates of 12% [4-6] were reported, in 412 records [3], as earlier work [13-15] had.\n",
     )
     assert unmatched == [], unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "listed"),
+    [
+        ("Age was 64 years [55-72] overall.\n", []),
+        ("Age was 64 [55-72] overall.\n", ["55-72"]),
+        ("Le score \N{LATIN SMALL LETTER E WITH ACUTE}tait de 12,5 [10,5-15,5] points.\n",
+         ["12,5"]),
+        ("Le score \N{LATIN SMALL LETTER E WITH ACUTE}tait de 12,5 [10-15] points.\n",
+         ["12,5", "10-15"]),
+        ("We found 2 [1,3] such trials.\n", ["2", "1,3"]),
+        ("As shown in Table 2 [1-4] here.\n", ["1-4"]),
+        ("It was Grade 3 [2,5] here.\n", ["2,5"]),
+        ("Le taux \N{LATIN SMALL LETTER E WITH GRAVE}tait 1,5 [1-2] ici.\n", ["1,5", "1-2"]),
+        ("It was done in 2019[5] first.\n", ["2019"]),
+        ("It was done (2019)[4] first.\n", []),
+    ],
+    ids=["an interval apart from its value", "the interval beside it", "decimal-comma bounds",
+         "whole bounds after a decimal comma", "found 2 [1,3]", "Table 2 [1-4]", "Grade 3 [2,5]",
+         "1,5 [1-2]", "a year glued to a marker", "a year in brackets"],
+)
+def test_what_the_marker_s_shape_and_position_miss(
+    tmp_path: Path, text: str, listed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit tells a Vancouver marker from a value
+    by shape and position"): an interval apart from its value, `64 years [55-72]`, and one
+    with decimal-comma bounds, `12,5 [10,5-15,5]`, are citations, where beside their value
+    with whole bounds they are audited; a citation enclosing the number before it is listed
+    as unexplained; a year glued to a marker is listed, and one in brackets is a citation."""
+    unmatched, _ = _audited(tmp_path, ["64", "7"], text)
+    assert unmatched == listed
 
 
 @pytest.mark.parametrize(
@@ -967,6 +1117,38 @@ def test_a_decimal_with_no_digit_before_its_point_is_read_as_one(tmp_path: Path)
     assert [c.text for c in audit([paper], [outputs]).unmatched] == []
 
 
+def test_a_leading_point_joined_to_a_word_or_after_a_closing_bracket_starts_no_signed_number(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A number in the outputs starts at its point only
+    where nothing joins the point to a word"): `est.661` holds 661 and `x_.25` 25, and in
+    "(a)-.30" the hyphen is no sign, where after a pipe, a colon, a comma, `=` or an opening
+    bracket it is one. The Abstract's "–.5" with an en dash is not found as a rounding of the
+    Results' "–.45", where a hyphen or U+2212 is; and the paper's "between .30 –.45" reads
+    -0.45."""
+    outputs = tmp_path / "out.txt"
+    outputs.write_text("v est.661, w x_.25, u (a)-.30, t |-.40, s :-.50, q ,-.60, z =-.70, "
+                       "y [-.80\n", "utf-8")  # fmt: skip
+    values, _used, _skipped = load_backing([outputs])
+    assert values == {"661", "25", "0.3", "-0.4", "-0.5", "-0.6", "-0.7", "-0.8"}
+
+    for dash, found in (("\N{EN DASH}", False), ("-", True), ("\N{MINUS SIGN}", True)):
+        paper = tmp_path / "abstract.md"
+        paper.write_text(f"# A study\n\n## Abstract\n\nIt was {dash}.5 here.\n\n## Results\n\n"
+                         f"It was {dash}.45 there.\n", encoding="utf-8")  # fmt: skip
+        read = audit([paper], None).abstract
+        assert [c.text for c in read.not_found] == ([] if found else [f"{dash}.5"]), dash
+        assert [c.text for c in read.rounded] == ([f"{dash}.5"] if found else []), dash
+
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text('{"a": 0.30, "b": -0.45}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("It was between .30 \N{EN DASH}.45 here.\n", encoding="utf-8")
+    report = audit([paper], [estimates])
+    assert report.unmatched == []
+    assert [c.text for c in report.matched] == [".30", "\N{EN DASH}.45"]
+
+
 def test_an_interval_of_leading_point_bounds_is_split() -> None:
     assert parts_of(".72–.82") == ["0.72", "0.82"]
     assert parts_of("-.30–.15") == ["-0.3", "0.15"]
@@ -1075,6 +1257,27 @@ def test_a_marked_heading_may_end_in_what_pandoc_does_not_print(heading: str) ->
     assert is_bibliography_heading(heading, marked=True)
 
 
+@pytest.mark.parametrize("heading", ["# *References {-}", "# References _{-}",
+                                     "# References *##"])  # fmt: skip
+def test_an_unpaired_emphasis_before_the_block_cuts_a_list_pandoc_does_not_head(
+    tmp_path: Path, heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading loses its attribute block as pandoc
+    reads it, and nothing else", its point on an unpaired `*` or `_`): pandoc prints the rest
+    of the line, braces and `#`s, but the toolkit takes them off, so the audit cuts a
+    reference list there and the numbers under it go unread."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert is_bibliography_heading(heading, marked=True)
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"We saw 77.\n\n{heading}\n\nIt was 9.99 here.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == []
+    assert report.not_audited == ["paper.md: lines 3-5, read as the reference list"]
+
+
 @pytest.mark.parametrize(
     "line", ["References {-}", "References {.unnumbered}", "**References** {#refs}"]
 )
@@ -1136,6 +1339,133 @@ def test_a_hash_ends_only_a_heading_that_opens_with_one(line: str) -> None:
     from manuscript_guard.audit import is_bibliography_heading
 
     assert not is_bibliography_heading(line, marked=True)
+
+
+#: An unmarked `#` heading, as pandoc or Word prints it: as text.
+_UNMARKED = {
+    "no space": "#References",
+    "indented": "  # References",
+    "under prose": "We list them below.\n# References",
+}
+_ENTRY = "Smith J, Jones K. Title. Lancet. 2019;393:100-10."
+
+
+@pytest.mark.parametrize("kind", [*_UNMARKED, "Word"])
+def test_an_unmarked_hash_heading_cuts_nothing_and_its_entries_are_read_by_shape(
+    tmp_path: Path, capsys, kind: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An unmarked `#` heading counts as no heading"):
+    `#References`, an indented one, one directly under prose, or a Word paragraph typed
+    `# References` with no heading style, cuts nothing; the entry under it is taken by its
+    shape and its numbers listed apart, where `--strict` does not count them, and the 9.99
+    after it is audited."""
+    from manuscript_guard.cli import main
+
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    if kind == "Word":
+        paper = make_docx(tmp_path / "paper.docx", para("We saw 77.") + para("# References")
+                          + para(_ENTRY) + para("It was 9.99 here."))  # fmt: skip
+    else:
+        paper = tmp_path / "paper.md"
+        paper.write_text(f"We saw 77.\n\n{_UNMARKED[kind]}\n\n{_ENTRY}\n\nIt was 9.99 here.\n",
+                         encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert report.not_audited == []
+    assert [c.text for c in report.unmatched] == ["9.99"]
+    assert [c.text for c in report.reference_like] == ["2019;393:100-10"]
+    assert main(["audit", str(paper), "--against", str(outputs), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)["findings"]
+    assert sorted((f["code"], f["counted"]) for f in said
+                  if f["section"] == "Numbers in the outputs") == [
+        ("not-found", True), ("not-found-on-a-reference-line", False)]  # fmt: skip
+
+
+@pytest.mark.parametrize(("under", "cut"), [("# Appendix", "lines 3-5"),
+                                            ("#Appendix", "lines 3-7"),
+                                            ("  # Appendix", "lines 3-7")])  # fmt: skip
+def test_a_hash_heading_directly_under_the_last_entry_ends_the_list(
+    tmp_path: Path, under: str, cut: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An unmarked `#` heading counts as no heading"):
+    `# Appendix` at the margin directly under the last entry is text to pandoc, and still
+    ends the list a real heading started, so the appendix's 9.99 is audited. `#Appendix`, or
+    an indented `  # Appendix`, there ends nothing, and the list runs on over it."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"We saw 77.\n\n# References\n\n{_ENTRY}\n{under}\nIt was 9.99 here.\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert report.not_audited == [f"paper.md: {cut}, read as the reference list"]
+    assert [c.text for c in report.unmatched] == (["9.99"] if under == "# Appendix" else [])
+
+
+@pytest.mark.parametrize(("styled", "unmatched"), [(False, []), (True, ["9.99"])])
+def test_a_word_paragraph_typed_as_a_hash_heading_ends_no_list(
+    tmp_path: Path, styled: bool, unmatched: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An unmarked `#` heading counts as no heading"):
+    a Word paragraph typed "# Appendix" with no heading style, under the last entry of a
+    list a styled References heading started, ends nothing, and the 9.99 after it goes
+    unaudited; the same paragraph styled as a heading ends the list."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    appendix = heading("Appendix") if styled else para("# Appendix")
+    body = (para("We saw 77.") + heading("References") + para(_ENTRY) + appendix
+            + para("It was 9.99 here."))  # fmt: skip
+    report = audit([make_docx(tmp_path / "paper.docx", body, styles)], [outputs])
+    assert [c.text for c in report.unmatched] == unmatched
+    paragraphs = "paragraph 1" if styled else "paragraphs 1-3"
+    assert report.not_audited == [f"paper.docx: References, {paragraphs}, read as the "
+                                  "reference list"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("opening", "cut"),
+    [
+        ("## Methods\n\n# References\nlibrary(stats)\n", "lines 3-6"),
+        ("## Methods\n\n    References\n    library(stats)\n", "lines 3-6"),
+        ("## Methods\n\n```r\n# References\nlibrary(stats)\n```\n", None),
+    ],
+    ids=["a listing not fenced", "an indented listing", "a fenced listing"],
+)
+def test_a_references_line_in_a_listing_not_fenced_starts_a_reference_list(
+    tmp_path: Path, opening: str, cut: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A `References` line in code that is not fenced
+    can start a reference list"): `# References` starting a block of a listing not fenced is
+    a heading, and an indented block is not blanked, so either hides the numbers after it,
+    and the cut is named under "Not audited". A fenced listing starts none."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 1}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"{opening}\nThe pooled ROR was 9.99, from 413 cases.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    if cut is None:
+        assert ([c.text for c in report.unmatched], report.not_audited) == (["9.99", "413"], [])
+    else:
+        assert report.unmatched == []
+        assert report.not_audited == [f"paper.md: {cut}, read as the reference list"]
+
+
+def test_a_numpydoc_references_section_pasted_into_word_starts_a_reference_list(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A `References` line in code that is not fenced
+    can start a reference list"): a listing pasted into Word as plain paragraphs is text, so
+    its numpydoc `References` starts a list, named under "Not audited"."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 1}', encoding="utf-8")
+    body = "".join(para(line) for line in (
+        "Methods", "def fit(x):", '"""Fit it.', "References", "----------",
+        ".. [1] Smith J. A cohort. Lancet. 2019;393:100-10.", '"""',
+        "The pooled ROR was 9.99, from 413 cases."))  # fmt: skip
+    report = audit([make_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert report.not_audited == ["paper.docx: the heading References, read as the reference "
+                                  "list"]  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -1252,6 +1582,92 @@ def test_a_caption_or_a_sentence_is_not_mistaken_for_an_entry_of_another_style(
     assert not looks_like_reference(line)
 
 
+#: Entries of shapes a headingless list is not recognised by, and the numbers then reported.
+UNKNOWN_ENTRIES = {
+    "a note after the pages": (
+        "Smith J, Jones K. Title. Lancet. 2019;393:100-10. Corrected 2020.",
+        ["2019;393:100-10", "2020"],
+    ),
+    "an organisation as author": (
+        "Example Agency. (2020). Hepatic injury. Drug Safety, 42, 1-9.", ["42", "1-9"]),
+    "a book with no place": (
+        "Smith J, Jones K. Hepatic injury. 2nd ed. Example Press; 2019.", ["2nd", "2019"]),
+    "Cyrillic names": (
+        "\N{CYRILLIC CAPITAL LETTER I}\N{CYRILLIC SMALL LETTER VE}\N{CYRILLIC SMALL LETTER A}"
+        "\N{CYRILLIC SMALL LETTER EN}\N{CYRILLIC SMALL LETTER O}\N{CYRILLIC SMALL LETTER VE} "
+        "\N{CYRILLIC CAPITAL LETTER I}. Title. Lancet. 2019;393:100-10.",
+        ["2019;393:100-10"],
+    ),
+    "Japanese names": (
+        "\N{CJK UNIFIED IDEOGRAPH-7530}\N{CJK UNIFIED IDEOGRAPH-4E2D} T. Title. Lancet. "
+        "2019;393:100-10.",
+        ["2019;393:100-10"],
+    ),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("kind", list(UNKNOWN_ENTRIES))
+def test_an_entry_of_a_shape_the_list_does_not_know_has_its_numbers_reported(
+    tmp_path: Path, kind: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A headingless reference list is recognised by
+    the signature of its year alone"): an entry with a note after its pages, an author-year
+    entry by an organisation, a numbered style's book with no place before its publisher,
+    and names not in the Latin script are no entry, so their numbers are reported as not
+    found, among what `--strict` counts. The same shapes by a person, or with a place, are
+    read as entries, their numbers listed apart."""
+    entry, reported = UNKNOWN_ENTRIES[kind]
+    assert not looks_like_reference(entry)
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"We saw 77 cases.\n\n{entry}\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert ([c.text for c in report.unmatched], report.reference_like) == (reported, [])
+
+
+@pytest.mark.parametrize(
+    "entry",
+    ["Smith, J. (2020). Hepatic injury. Drug Safety, 42, 1-9.",
+     "Smith J, Jones K. Hepatic injury. 2nd ed. London: Example Press; 2019."],
+    ids=["a person as author", "a book with a place"],
+)
+def test_the_other_side_of_an_unknown_entry_is_read_as_an_entry(tmp_path: Path, entry: str) -> None:
+    """The other side of the rule above (Known gaps, "A headingless reference list is
+    recognised by the signature of its year alone"): a person's author-year entry, and the
+    book with its place, are entries, and nothing of them is among the unmatched."""
+    assert looks_like_reference(entry)
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"We saw 77 cases.\n\n{entry}\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == [] and report.reference_like
+
+
+def test_a_data_statement_shaped_as_a_web_page_is_listed_apart_and_not_counted(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A headingless reference list is recognised by
+    the signature of its year alone"): a line of the Data availability statement that names
+    a source, a year and an address as a web page's entry does is taken for one, its numbers
+    listed apart and not among the unmatched, and `--strict` does not count them."""
+    from manuscript_guard.cli import main
+
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\nWe saw 77 cases.\n\n# Data availability\n\nThe registry "
+                     "data are from Example Agency. Hepatic injury [Internet]. Geneva: Example "
+                     "Agency; 2020 [cited 2021 Mar 5]. Available from: https://example.org/x\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert report.unmatched == []
+    assert [c.text for c in report.reference_like] == ["2020", "2021", "5"]
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
+    capsys.readouterr()
+
+
 def test_the_report_says_where_the_reference_list_was_cut(tmp_path: Path) -> None:
     """Dropping text unannounced is how a cut in the wrong place stays invisible."""
     outputs = tmp_path / "out.json"
@@ -1299,6 +1715,39 @@ def test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends
     assert "9.99" in [c.text for c in report.unmatched], report.not_audited
     assert report.not_audited == ["paper.docx: References, paragraphs 1-2, read as the "
                                   "reference list"]
+
+
+def test_a_bold_title_ends_no_docx_list_under_a_paragraph_where_markdown_s_ends_one(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A .docx list under a paragraph that is no heading
+    ends only where its shape does"): bold is not in the text the audit reads of a .docx, so
+    "Search strategy" in bold over an appendix does not end the list, and its 9.99 goes
+    unaudited, the report naming the lines cut; a footnote is read all the same. In
+    Markdown, `**Search strategy**` ends the list `check` passes over."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    entries = ("Smith J, Jones K. Title. Lancet. 2019;393:100-10.",
+               "Doe A. Title. BMJ. 2020;370:m1.")  # fmt: skip
+    titled = "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Search strategy</w:t></w:r></w:p>"
+    body = (para("We saw 77.") + para("References") + "".join(para(e) for e in entries)
+            + titled + para("We searched 9.99 records."))  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", body)
+    notes = (f"<?xml version='1.0'?><w:footnotes {NS}><w:footnote w:id='1'><w:p><w:r>"
+             "<w:t>Of them 4.44 were kept.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    with zipfile.ZipFile(paper, "a") as archive:
+        archive.writestr(zipfile.ZipInfo("word/footnotes.xml", FIXED_TIME), notes)
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.44"]
+    assert report.not_audited == ["paper.docx: References, paragraphs 1-4, read as the "
+                                  "reference list"]  # fmt: skip
+
+    text = "We saw 77.\n\n**References**\n\n" + "\n\n".join(entries)
+    text += "\n\n**Search strategy**\n\nWe searched 9.99 records.\n"
+    [(start, end)] = unmarked_reference_lists(text)
+    assert text[start:end].rstrip("\n").endswith(entries[1])
 
 
 def test_a_styled_reference_heading_in_a_docx_runs_to_the_next_heading_or_a_display(

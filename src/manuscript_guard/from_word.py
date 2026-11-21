@@ -213,8 +213,9 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     body, keywords = keywords_heading(body)
     headings += keywords is not None
     converted, unconverted = _tables(body)
-    left = tuple(f"{said}; {_form(_write(tree, [table], path))}"
-                 for said, table in unconverted)  # fmt: skip
+    forms = _forms(tree, [table for _said, table in unconverted], path)
+    left = tuple(f"{said}; {form}" for (said, _table), form in zip(unconverted, forms,
+                                                                    strict=True))  # fmt: skip
     aside = [*_leftovers(meta, others), *aside]
     text = _comment(_write(tree, aside, path)) + _write(tree, body, path)
     return Converted(title=title, authors=names, abstract=bool(abstract), text=text,
@@ -911,6 +912,28 @@ def _tables(blocks: list) -> tuple[int, list[tuple[str, dict]]]:
             first = " ".join(text_of(table["c"][3:5]).split())[:40]
             left.append((f'table {number} ("{first}"): {why}', table))
     return done, left
+
+
+#: What stands between the tables left as they came where they are written in one run of
+#: pandoc (`_forms`): raw Markdown, which pandoc writes as it is, and a table's text, which
+#: it escapes, does not.
+_APART = "<!-- manuscript-guard: the next table -->"
+
+
+def _forms(tree: dict, tables: list[dict], path: Path) -> list[str]:
+    """What kind of table pandoc wrote each of `tables` as (`_form`), in one run of pandoc:
+    it was started once for each, for a line of what `init` prints that the audit never
+    reads, 12 times for zenodo-7225070 of the robustness sweep of 2026-11-21. Each is told
+    apart by what stands before it (`_APART`); where the pieces are not one to a table, each
+    is written alone, as it was."""
+    if len(tables) < 2:
+        return [_form(_write(tree, [table], path)) for table in tables]
+    apart = {"t": "RawBlock", "c": ["markdown", _APART]}
+    pieces = _write(tree, [block for table in tables for block in (apart, table)],
+                    path).split(_APART)  # fmt: skip
+    if len(pieces) != len(tables) + 1 or pieces[0].strip():
+        return [_form(_write(tree, [table], path)) for table in tables]
+    return [_form(piece) for piece in pieces[1:]]
 
 
 def _form(markdown: str) -> str:

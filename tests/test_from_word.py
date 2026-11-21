@@ -598,6 +598,54 @@ def _texts(table: dict) -> list[list[str]]:
     return [[text_of(cell[4]).strip() for cell in row[1]] for row in rows]
 
 
+#: A Word paper with three tables a list in a cell keeps as they came.
+LISTED_TABLES = "# Introduction\n\nFalls are common.\n" + "".join(f"""
++---------+-------------+
+| Step {n}  | What        |
++=========+=============+
+| One     | - first     |
+|         | - second 3{n} |
++---------+-------------+
+""" for n in range(1, 4))
+
+
+@needs_pandoc
+@pytest.mark.parametrize("apart", [None, "first"], ids=["apart", "where a table holds it"])
+def test_the_tables_left_as_they_came_are_written_in_one_run(
+        tmp_path: Path, monkeypatch, apart: str | None) -> None:  # fmt: skip
+    """What `init` says of each table left as it came, how pandoc wrote it, was asked of
+    pandoc once for each: started 12 times for zenodo-7225070 of the robustness sweep of
+    2026-11-21, for a line the audit never reads. The tables are written in one run, told
+    apart by what stands before each (`from_word._APART`); where a table holds that too,
+    each is written alone, and said the same."""
+    paper = word(tmp_path / "word", LISTED_TABLES)
+    if apart is not None:
+        monkeypatch.setattr(from_word, "_APART", apart)
+    read = from_word._pandoc
+    written: list[str] = []
+
+    def counted(arguments: list[str], given: str | None, path: Path) -> str:
+        if given is not None:
+            written.append(given)
+        return read(arguments, given, path)
+
+    monkeypatch.setattr(from_word, "_pandoc", counted)
+    converted = from_word.convert(paper)
+    assert converted.tables_left == tuple(
+        f'table {n} ("Step {n} What One first second 3{n}"): a list in a cell; written as a grid'
+        " table" for n in range(1, 4))  # fmt: skip
+    # The tables together and the text; or, after that, each table alone.
+    assert len(written) == (2 if apart is None else 5)
+    assert "Falls are common." in converted.text
+    # Each table's piece is the table as pandoc writes it alone, in its place.
+    monkeypatch.setattr(from_word, "_form", lambda markdown: markdown.strip())
+    tree = json.loads(read([str(paper), "-f", "docx", "-t", "json"], None, paper))
+    tables = [table for _said, table in from_word._tables(tree["blocks"])[1]]
+    assert len(tables) == 3
+    assert from_word._forms(tree, tables, paper) == [
+        from_word._write(tree, [table], paper).strip() for table in tables]
+
+
 def test_a_merged_cell_keeps_its_text_once_in_its_first_row_and_column() -> None:
     table = _table(
         [[_ATTR, [_cell(_plain("Group")), _cell(_plain("Outcome"), across=2)]]],

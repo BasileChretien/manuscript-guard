@@ -11,6 +11,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import pytest
 
@@ -541,6 +542,64 @@ def test_a_zotero_field_in_a_document_built_offline_is_named(
     assert (named in out) is changed, out
 
 
+#: Zotero's run properties on a field's runs, as Word keeps them.
+_FIELD_RPR = '<w:rPr><w:rFonts w:ascii="Calibri"/><w:noProof/></w:rPr>'
+#: The field's code with the properties Zotero records, the citation as it last formatted it.
+_FORMATTED_CODE = ZOTERO_CODE.replace(
+    '"schema":"x"',
+    '"properties":{"formattedCitation":"(Fictional and Fictional 2021)",'
+    '"plainCitation":"(Fictional and Fictional 2021)","noteIndex":0},"schema":"x"',
+)
+
+
+def _complex_field(code: str, shown: list[str], rpr: str = "") -> str:
+    """A field of `begin`, its code in one `instrText`, `separate`, a run for each part of
+    `shown` and `end`, every run under `rpr`."""
+    return (
+        f'<w:r>{rpr}<w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r>{rpr}<w:instrText xml:space="preserve">{escape(code)}</w:instrText></w:r>'
+        f'<w:r>{rpr}<w:fldChar w:fldCharType="separate"/></w:r>'
+        + "".join(f'<w:r>{rpr}<w:t xml:space="preserve">{part}</w:t></w:r>' for part in shown)
+        + f'<w:r>{rpr}<w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "field",
+    [
+        _complex_field(ZOTERO_CODE, ["(Fictional and Fictional 2021)"], _FIELD_RPR),
+        _complex_field(ZOTERO_CODE, ["(Fictional", " and Fictional ", "2021)"]),
+        _complex_field(ZOTERO_CODE, ["(Fictional and ", "Fictional 2021)"], _FIELD_RPR),
+        _complex_field(_FORMATTED_CODE, ["(Fictional and Fictional 2021)"]),
+        f'<w:fldSimple w:instr="{escape(ZOTERO_CODE, {chr(34): "&quot;"})}">'
+        '<w:r><w:t xml:space="preserve">(Fictional and Fictional 2021)</w:t></w:r>'
+        "</w:fldSimple>",
+    ],
+    ids=["run properties", "result over several runs", "both", "formattedCitation",
+         "fldSimple"],  # fmt: skip
+)
+def test_a_zotero_field_in_any_shape_word_saves_is_named(
+    project: Path, tmp_path: Path, field: str, capsys
+) -> None:
+    """Round 1 of #281 drew the field in one shape, its runs bare and its result in one run
+    (Known gaps F04). Zotero's fields carry run properties, a result Word split over several
+    runs, a `formattedCitation` in their code, or come as a `w:fldSimple`: each is a citation
+    a co-author inserted, named and its paragraph refused, though its words are the offline
+    build's."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {CITED: field}
+    )
+    assert main(["import", str(returned), str(project)]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert '"Hepatic injury" was cited in Word with a reference manager' in out, out
+    assert "is the citation [@fictionalHepaticCohort2021]" not in out, out
+
+
 #: A citation style of the fewest lines, numeric, written here: no style of the official
 #: repository is committed to this one.
 MINIMAL_CSL = """<?xml version="1.0" encoding="utf-8"?>
@@ -686,14 +745,15 @@ CLASS_SHOWN = "&lt;Do Zotero Refresh: [@fictionalClassSignal2019]&gt;"
 CLASS_FORMATTED = "&quot;formattedCitation&quot;:&quot;[@fictionalClassSignal2019]&quot;"
 
 
-def _built_live(project: Path, tmp_path: Path, monkeypatch, capsys) -> Path:
+def _built_live(project: Path, tmp_path: Path, monkeypatch, capsys,
+                name: str = "Fictional and Fictional ") -> Path:  # fmt: skip
     """The example built live, its citations Zotero fields, with no Zotero: the filter
-    above in place of Better BibTeX's."""
+    above in place of Better BibTeX's, printing `name` before a narrative citation."""
     from manuscript_guard.build import document
     from manuscript_guard.cli import main
 
     lua = tmp_path / "zotero.lua"
-    lua.write_text(FAKE_ZOTERO_LUA, encoding="utf-8")
+    lua.write_text(FAKE_ZOTERO_LUA.replace("Fictional and Fictional ", name), encoding="utf-8")
     monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
     monkeypatch.setattr(document, "_zotero_version", lambda: None)
     assert main(["build", str(project)]) == 0
@@ -782,6 +842,39 @@ def test_a_live_narrative_citation_is_read_with_the_name_before_it(
     assert written in " ".join(after.split())
     if written.startswith(NARRATIVE):
         assert after == before
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "name",
+    ["山田と鈴木 ", "Παπαδάκης και Иванов ", "Müller and Łódź ", "\U00020b9f山 and Smith "],
+    ids=["Japanese", "Greek and Cyrillic", "Latin with accents", "beyond the BMP"],
+)  # fmt: skip
+def test_a_live_narrative_citation_s_name_outside_ascii_is_read_as_printed(
+    project: Path, tmp_path: Path, monkeypatch, capsys, name: str
+) -> None:
+    """Round 3 of #296 hands the names printed before narrative citations to pandoc in
+    hexadecimal on the command line, so that it carries them whatever they hold, and tested
+    that with Latin names alone (Known gaps F04). A name in Japanese, in Greek and
+    Cyrillic, with accents, or with a letter beyond the Basic Multilingual Plane is decoded
+    as printed: a document sent back refreshed and nothing else merges with the source left
+    as it was, and no name is written into it."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_text(
+        text.replace("reported previously [@fictionalClassSignal2019]", NARRATIVE, 1),
+        encoding="utf-8",
+    )
+    built = _built_live(project, tmp_path, monkeypatch, capsys, name)
+    before = main_md.read_text(encoding="utf-8")
+    returned = edit_docx(built, tmp_path / "back.docx", {NARRATIVE_SHOWN: "(2019)"})
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "NOT merged" not in out, out
+    assert main_md.read_text(encoding="utf-8") == before
+    assert name.strip() not in before
 
 
 @needs_pandoc

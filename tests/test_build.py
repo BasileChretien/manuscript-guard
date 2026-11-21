@@ -452,6 +452,114 @@ def test_prose_opening_fig_or_efigure_under_a_figure_is_not_its_caption(prose: s
 
 
 @needs_pandoc
+@pytest.mark.parametrize(
+    ("markdown", "styled"),
+    [
+        ("![](figure.png)\n\nFigure 4: The estimate.\n", True),
+        ("![](figure.png)\n\nFigure S1. The estimate.\n", True),
+        ("![](figure.png)\n\nFig. 1. The estimate.\n", True),
+        ("![](figure.png)\n\neFigure 1. The estimate.\n", True),
+        # left at body size
+        ("![](figure.png)\n\nFig 1. The estimate.\n", False),
+        ("![](figure.png)\n\nFigure one. The estimate.\n", False),
+        ("![](figure.png)\n\nFigure 1.1. The estimate.\n", False),
+        ("![](figure.png)\n\nSupplementary Figure 1. The estimate.\n", False),
+        ("![](figure.png)\n\nFigure 1 - the estimate.\n", False),
+        ("![](figure.png)\n\n**Figure 1** The estimate.\n", False),
+        ("![](figure.png)\n\n<!-- a note -->\n\nFigure 1. The estimate.\n", False),
+        ("See ![](figure.png) here.\n\nFigure 1. The estimate.\n", False),
+    ],
+)
+def test_the_caption_style_reads_one_convention_and_nothing_else(
+    markdown: str, styled: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The figure-caption style reads one convention
+    and nothing else"): under a figure, "Figure 4:", "Figure S1.", "Fig. 1." and "eFigure
+    1." are styled; "Fig 1.", "Figure one.", "Figure 1.1.", the other forms G2 holds, a
+    caption a comment separates from its figure, and one under an image in a paragraph of
+    text are left at body size. The 2026-11-09 triage planned a fix (F08), which will
+    change this test."""
+    found = styled_captions(markdown)
+    caption = markdown.rsplit("\n\n", 1)[1].strip().replace("**", "")
+    assert found == ([caption] if styled else []), found
+
+
+def _pixel() -> bytes:
+    """A PNG of one white pixel."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        size, crc = struct.pack(">I", len(data)), struct.pack(">I", zlib.crc32(kind + data))
+        return size + kind + data + crc
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff")) + chunk(b"IEND", b"")
+    )  # fmt: skip
+
+
+@needs_pandoc
+def test_pandoc_s_own_caption_and_a_quoted_one_are_styled_as_the_known_gap_says(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The figure-caption style reads one convention
+    and nothing else"): a figure with pandoc's own caption keeps `Image Caption`, which the
+    build's reference document does not size, nor the `Caption` it is based on; a caption
+    in a block quotation takes `Figure Caption` in place of `Block Text`; a table's caption
+    is untouched. The build's reference document is made from pandoc's own: pandoc's user
+    data folder is pointed at an empty one, as XDG_DATA_HOME points it, so that no
+    `reference.docx` of whoever runs the test is read. The 2026-11-09 triage planned a fix
+    (F08), which will change this test."""
+    import re
+    import subprocess
+
+    from manuscript_guard.build.document import FIGURE_CAPTION_LUA, pandoc
+    from manuscript_guard.build.styles import reference_with, user_reference
+
+    # Its `pandoc` folder made, or pandoc falls back to its older user data folder.
+    (tmp_path / "data-home" / "pandoc").mkdir(parents=True)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data-home"))
+    assert user_reference(pandoc()) is None
+    (tmp_path / "figure.png").write_bytes(_pixel())
+    reference = reference_with(pandoc(), tmp_path / "reference.docx")
+    markdown = (
+        "![Own caption words.](figure.png)\n\n"
+        "> ![](figure.png)\n>\n> Figure 1. Quoted caption words.\n\n"
+        "> Quoted prose words.\n\n"
+        "| A | B |\n|---|---|\n| x | y |\n\n: Table caption words.\n"
+    )
+    output = tmp_path / "out.docx"
+    subprocess.run(
+        [pandoc(), "-f", "markdown", "-o", str(output), "--lua-filter", str(FIGURE_CAPTION_LUA),
+         f"--reference-doc={reference}", f"--resource-path={tmp_path}"],
+        input=markdown, text=True, encoding="utf-8", check=True, capture_output=True,
+    )  # fmt: skip
+
+    def style_of(words: str) -> str:
+        for paragraph in _paragraphs(output):
+            if words in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", paragraph)):
+                found = re.search(r'<w:pStyle w:val="([^"]+)"', paragraph)
+                return found.group(1) if found else ""
+        raise AssertionError(f"{words!r} is not in the document")
+
+    assert style_of("Own caption words.") == "ImageCaption"
+    assert style_of("Quoted caption words.") == "FigureCaption"
+    assert style_of("Quoted prose words.") == "BlockText"
+    assert style_of("Table caption words.") == "TableCaption"
+    styles = _styles(output)
+    for style in ("ImageCaption", "Caption"):
+        defined = re.search(
+            rf'<w:style [^>]*w:styleId="{style}".*?</w:style>', styles, re.DOTALL
+        )
+        assert defined is not None and "<w:sz " not in defined.group(0), (style, defined)
+    image = re.search(r'<w:style [^>]*w:styleId="ImageCaption".*?</w:style>', styles, re.DOTALL)
+    assert image is not None, styles
+    assert '<w:basedOn w:val="Caption"/>' in image.group(0).replace(" />", "/>"), image
+
+
+@needs_pandoc
 def test_a_fold_change_under_a_figure_is_not_a_caption(project: Path) -> None:
     """"Figure 2.5-fold higher ..." opens with a figure number only if the stop is not read."""
     import re

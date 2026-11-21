@@ -283,6 +283,36 @@ def test_a_single_published_value_can_be_a_caption_part(scratch: Path) -> None:
     assert em.document()["tables"]["t"]["caption"] == "4000"
 
 
+@pytest.mark.parametrize("where", ["caption", "header"])
+def test_a_bare_float_caption_or_header_is_told_to_pass_digits_it_cannot_take(
+    scratch: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A binding in emitted table text is found in its
+    Markdown form only", *A bare float caption or header*): the table's `digits=` reaches
+    the body's cells only, so a float caption or header is refused with advice to pass
+    `digits=` to table(), which it already has, while `Emitter.table`'s docstring says the
+    caption and the headers take what a cell takes. The 2026-11-09 triage planned a fix
+    (F07), which will change this test."""
+    em = emitter(scratch)
+    # The other side: the same float in the body is rounded by the table's `digits=`.
+    em.table("body", ["Group", "x"], [["Exposed", 3.8439]], digits=2)
+    assert em.document()["tables"]["body"]["rows"][0][1] == "3.84"
+    # A Composed, a string and an int take what a cell takes.
+    em.table("fine", ["Group", em.cell("x ({})", (3.8439, 2))], [["a", 1]], caption=4000)
+    columns = ["Group", 3.84] if where == "header" else ["Group", "x"]
+    caption = 3.84 if where == "caption" else None
+    with pytest.raises(DisplayError) as refused:
+        em.table("t", columns, [["Exposed", 3.8439]], caption=caption, digits=2)
+    named = "caption of table 't'" if where == "caption" else "table 't' column 1 header"
+    assert str(refused.value) == (
+        f"{named}: a float needs `display` or `digits` so that every place it is quoted "
+        "rounds it identically. Pass `digits=` to table() — an int for every column, or a "
+        "{column: digits} mapping"
+    )
+    said = " ".join((Emitter.table.__doc__ or "").split())
+    assert "The caption and the column headers take what a cell takes" in said
+
+
 @pytest.mark.parametrize(
     ("where", "match"),
     [
@@ -312,6 +342,37 @@ def test_a_binding_left_in_emitted_table_text_is_refused(
     em.table("t", ["Group", header], [[label, count]], caption=caption)
     with pytest.raises(DisplayError, match=rf"{match}.*binding"):
         write(em)
+
+
+@pytest.mark.parametrize(
+    ("where", "match"), [("cell", "table 't' row 0 column 1"), ("caption", "caption of table 't'")]
+)
+def test_a_doubled_brace_in_a_template_never_rebuilds_its_own_cell(
+    scratch: Path, where: str, match: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A binding in emitted table text is found in its
+    Markdown form only", *A literal brace*): `Composed.render` fills the template with
+    `str.format`, which prints `{{a.b}}` as "{a.b}", while `tables.rebuilt` keeps the doubled
+    brace, so a cell or a caption so composed is refused as `composition-does-not-match` and
+    never as `binding-in-table`. The 2026-11-09 triage planned a fix (F07), which will
+    change this test."""
+    from manuscript_guard.tables import rebuilt
+
+    em = emitter(scratch)
+    brace = em.cell("n ({{a.b}}, {})", 5)
+    assert brace.render("x") == ("n ({a.b}, 5)", ["5"])
+    assert rebuilt({"template": brace.template, "parts": ["5"]}) == "n ({{a.b}}, 5)"
+    if where == "cell":
+        em.table("t", ["Group", "n"], [["Exposed", brace]])
+    else:
+        em.table("t", ["Group", "n"], [["Exposed", 77]], caption=brace)
+    with pytest.raises(DisplayError) as refused:
+        write(em)
+    assert str(refused.value).startswith(
+        f"{match}: the fragment says 'n ({{a.b}}, 5)' was composed, but the template and parts "
+        "it records rebuild to 'n ({{a.b}}, 5)'"
+    )
+    assert "holds the binding" not in str(refused.value)
 
 
 def test_a_p_value_typed_into_a_cell_is_not_a_threshold(scratch: Path) -> None:

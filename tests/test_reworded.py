@@ -344,6 +344,29 @@ def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("old", "new", "warned"),
+    [
+        ("The dose was 5 mg.", "The dose was 5 g.", []),
+        ("Risk increased with the dose.", "Risk decreased with the dose.", []),
+        ("It held in three centres.", "It held in four centres.", []),
+        ("The groups did not differ in risk.", "The groups differed in risk.",
+         [("claim-negation", WARN)]),
+        # The other side: the figure itself is held.
+        ("The dose was 5 mg.", "The dose was 6 mg.", [("fact-lost", FAIL), ("fact-new", FAIL)]),
+    ],
+)  # fmt: skip
+def test_a_unit_a_direction_and_a_number_in_words_are_not_held(
+    old: str, new: str, warned: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): a unit, "increased" for "decreased" and a number written in
+    words are words and pass; "did not differ" made "differed" passes with a warning."""
+    report = compare(f"{old}\n", f"{new}\n", PATH)
+    assert sorted(told(report)) == warned, said(report)
+    assert report.ok is all(severity != FAIL for _code, severity in warned)
+
+
+@pytest.mark.parametrize(
     ("old", "new", "lost", "added"),
     [
         # the experiment that found it: the sign turned round, "nothing to report"
@@ -399,6 +422,49 @@ def test_the_space_around_a_sign_of_comparison_is_free(old: str, new: str) -> No
     assert not report.findings, said(report)
 
 
+def test_a_sign_of_comparison_is_held_only_as_a_sign() -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): a sign spelt out or typed in TeX is words; a ">" after a
+    tag opened on its line is the tag's; a quotation mark under a heading or a closing fence
+    with no blank line, and the ">" of a folded abstract, are signs; a quoted paragraph
+    rewrapped before its sign loses it; and "=>" is an arrow, typed plainly or full width.
+    ("P < 0.05" made "P less than 0.05" failing as a sign gone is
+    `test_a_sign_of_comparison_gone_new_or_turned_round_fails`.)"""
+
+    def numbers(text: str) -> list[str]:
+        return [held for kind, held in kinds(text) if kind == NUMBER]
+
+    def passes(old: str, new: str) -> bool:
+        report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
+        return not report.findings
+
+    assert passes("P less than 0.05", "P more than 0.05")
+    assert numbers("It was $p \\leq 0.05$ here.\n") == ["0.05"]
+    assert passes("$p \\leq 0.05$", "$p \\geq 0.05$")
+    # A ">" after a "<" that may open a tag on its line, escaped or not; without one, a sign.
+    assert numbers("It was x<y and z>3 here.\n") == ["3"]
+    assert numbers("It was x<y and z\\>3 here.\n") == ["3"]
+    assert numbers("It was y and z>3 here.\n") == [">3"]
+    # Directly under a heading or a closing fence the quotation's mark is a sign; after a
+    # blank line it is none.
+    assert numbers("# Results\n> 12 said so.\n") == [">12"]
+    assert numbers("```\nx\n```\n> 12 said so.\n") == [">12"]
+    assert numbers("# Results\n\n> 12 said so.\n") == ["12"]
+    assert numbers("```\nx\n```\n\n> 12 said so.\n") == ["12"]
+    # A quoted paragraph rewrapped before its sign loses it.
+    assert numbers("> It was significant (P > 0.05) here.\n") == [">0.05"]
+    assert numbers("> It was significant (P\n> > 0.05) here.\n") == ["0.05"]
+    # A folded abstract's ">" is the first number's sign; a literal block's "|" is not.
+    assert numbers("---\nabstract: >\n  12 reports.\n---\n\nText.\n") == [">12"]
+    assert numbers("---\nabstract: |\n  12 reports.\n---\n\nText.\n") == ["12"]
+    for arrow in ("=>", "\N{FULLWIDTH EQUALS SIGN}\N{FULLWIDTH GREATER-THAN SIGN}",
+                  "=\N{FULLWIDTH GREATER-THAN SIGN}"):  # fmt: skip
+        assert numbers(f"It was age {arrow} 18 here.\n") == ["18"]
+        assert passes(f"age {arrow} 18", "age 18"), arrow
+    # The other side: "≥" typed as ">=" is a sign, and its loss fails.
+    assert not passes("age >= 18", "age 18")
+
+
 @pytest.mark.parametrize(
     ("old", "new"),
     [
@@ -419,6 +485,42 @@ def test_a_minus_sign_that_is_sure_fails_when_it_goes_or_comes(old: str, new: st
     assert told(come) == [("sign-new", FAIL)], said(come)
     assert come.findings[0].line == 1
     assert "has a minus sign it did not have" in come.findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "was", "is_now", "code"),
+    [
+        ("about -3", "about-3", ["-3"], ["3"], "sign-lost"),
+        ("Day-1", "Day -1", ["1"], ["-1"], "sign-new"),
+        ("5 mg -10 mg", "5 mg-10 mg", ["5", "-10"], ["5", "10"], "sign-lost"),
+    ],
+)
+def test_a_dash_left_where_it_stood_fails_when_the_edit_moves_its_place(
+    old: str, new: str, was: list[str], is_now: list[str], code: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): a dash that stands as it stood fails where the edit moves
+    it between a place where it is a sign for sure and one where it joins."""
+    for text, read in ((old, was), (new, is_now)):
+        assert [held for kind, held in kinds(f"It was {text} in all.\n") if kind == NUMBER] == read
+    report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
+    assert told(report) == [(code, FAIL)], said(report)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"), [("\N{MINUS SIGN} 0.3", "0.3"), ("- 0.3", "0.3"), ("-$5", "$5")]
+)
+def test_a_sign_set_apart_from_its_number_is_not_read_with_it(old: str, new: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): a minus with a space or a currency sign between it and its
+    number is not the number's, so taking it away passes."""
+    assert [text for kind, text in kinds(f"It was {old} in all.\n") if kind == NUMBER] == [
+        new.lstrip("$")
+    ]
+    assert not compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH).findings
+    # The other side: the minus against its number is its sign, and its loss fails.
+    gone = compare("It was \N{MINUS SIGN}0.3 in all.\n", "It was 0.3 in all.\n", PATH)
+    assert told(gone) == [("sign-lost", FAIL)], said(gone)
 
 
 @pytest.mark.parametrize(
@@ -749,6 +851,33 @@ def test_a_listing_under_a_key_that_is_not_printed_holds_no_fact() -> None:
     assert compare(before, before.replace("40 centres", "41 centres"), PATH).findings
 
 
+@pytest.mark.parametrize(
+    ("key", "read"),
+    [
+        *((key, ["40"]) for key in ("title", "subtitle", "short_title", "running_title",
+                                    "abstract", "summary", "keywords")),
+        *((key, []) for key in ("date", "author", "nocite", "lang", "description")),
+    ],
+)  # fmt: skip
+def test_the_front_matter_holds_a_number_only_under_a_key_the_build_prints(
+    key: str, read: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): in the front matter a number is read under the keys the
+    build prints and under no other, while bindings and citations are read in all of it, so
+    a key under `nocite:` is held, and so is an `author: '@handle'`."""
+    before = f"---\n{key}: A study of 40 centres\n---\n\nText.\n"
+    assert kinds(before) == [(NUMBER, number) for number in read]
+    changed = compare(before, before.replace("40", "41"), PATH)
+    assert sorted(told(changed)) == ([("fact-lost", FAIL), ("fact-new", FAIL)] if read else [])
+
+    held = "---\nnocite: '@gone2001'\nauthor: '@handle'\ndate: '{{results.when}}'\n---\n\nText.\n"
+    assert kinds(held) == [(CITATION, "gone2001"), (CITATION, "handle"),
+                           (BINDING, "results.when")]  # fmt: skip
+    dropped = compare(held, held.replace("nocite: '@gone2001'\n", ""), PATH)
+    assert told(dropped) == [("fact-lost", FAIL)], said(dropped)
+
+
 def test_a_change_inside_a_listing_is_one() -> None:
     before = "# Methods\n\n```r\nset.seed(20240115)\n```\n"
     report = compare(before, before.replace("20240115", "20240116"), PATH)
@@ -875,6 +1004,27 @@ def test_an_edit_of_a_binding_fails_and_names_the_place(
 @needs_git
 def test_an_edit_in_the_supplement_is_read_too(paper: Path) -> None:
     edit(paper / "manuscript" / "supplementary" / "s1.md", "4 centres", "5 centres")
+    assert main(["reworded"]) == 1
+
+
+@needs_git
+def test_a_figure_changed_in_the_title_paper_yaml_holds_passes(
+    paper: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`reworded` holds bindings, citation keys and typed
+    numbers, and nothing else"): the title and keywords the build prints are in
+    `paper.yaml`, which is not compared, so a figure changed in its title passes, where the
+    same change in a manuscript file's front matter fails."""
+    (paper / "paper.yaml").write_text("title: A study of 40 centres\nkeywords: [12 sites]\n"
+                                      "stage: drafting\n", encoding="utf-8")  # fmt: skip
+    main_md = paper / "manuscript" / "main.md"
+    main_md.write_text("---\ntitle: A study of 40 centres\n---\n\n" + BEFORE, encoding="utf-8")
+    git(paper, "commit", "-q", "-am", "a title with a figure")
+    edit(paper / "paper.yaml", "40 centres", "41 centres")
+    edit(paper / "paper.yaml", "12 sites", "13 sites")
+    assert main(["reworded"]) == 0
+    assert "0 failing, 0 warnings" in capsys.readouterr().out
+    edit(main_md, "40 centres", "41 centres")
     assert main(["reworded"]) == 1
 
 

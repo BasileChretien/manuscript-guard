@@ -9,6 +9,7 @@ commands.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -144,6 +145,25 @@ def test_what_cannot_be_read_without_a_guess_is_refused(
         harvest_entry(root, entry)
 
 
+def test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A year as a header is refused"): a wide table by
+    year, a column named "2020", cannot be harvested; the same table written long, a row a
+    year, can."""
+    _write_script(project)
+    (project / "output").mkdir()
+    output = project / "output" / "est.csv"
+    entry = Entry("est", "output/est.csv", "analysis/02_est.py", row_key="group")
+    output.write_bytes(b"group,2020,2021\nDrug,40,41\n")
+    with pytest.raises(HarvestError) as refused:
+        harvest_entry(project, entry)
+    assert str(refused.value).startswith(
+        "output/est.csv: table 'est' column 1 header: '2020' is a number written as text"
+    )
+    output.write_bytes(b"group,year,n\nDrug 2020,2020,40\nDrug 2021,2021,41\n")
+    document = json.loads(harvest_entry(project, entry).read_text(encoding="utf-8"))
+    assert document["values"]["est.drug_2020.n"]["display"] == "40"
+
+
 def test_a_results_file_an_analysis_wrote_is_not_written_over(project: Path) -> None:
     _harvested(project)
     entry = Entry("01_disproportionality", "output/est.csv", "analysis/02_est.py",
@@ -226,6 +246,25 @@ def test_an_output_whose_line_endings_git_changed_is_the_same_output(project: Pa
     assert "harvested-output-changed" not in _codes(project)
 
 
+def test_a_carriage_return_in_a_quoted_cell_made_a_line_feed_is_no_change(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An output's digest leaves its line endings
+    out"): as an input's does, so a carriage return inside a quoted cell that becomes a line
+    feed is not seen, where any other change in the cell is."""
+    _write_script(project)
+    (project / "output").mkdir()
+    output = project / "output" / "est.csv"
+    output.write_bytes(b'group,n,note\nWomen,120,"a\rb"\n')
+    harvest_entry(project, Entry("est", "output/est.csv", "analysis/02_est.py",
+                                 row_key="group"))  # fmt: skip
+    output.write_bytes(b'group,n,note\nWomen,120,"a\nb"\n')
+    assert "harvested-output-changed" not in _codes(project)
+    # The other side: the same cell given a space in place of the break is a change.
+    output.write_bytes(b'group,n,note\nWomen,120,"a b"\n')
+    assert _codes(project)["harvested-output-changed"] == "fail"
+
+
 # ---------------------------------------------------------------------------------- verify
 
 
@@ -293,6 +332,23 @@ def test_inputs_held_at_the_site_are_a_note_at_the_centre(project: Path) -> None
     found = {f.code: f for f in _g1(project) if f.path.name == "est.json"}
     assert found["input-at-site"].severity == "info"
     assert "input-missing" not in found
+
+
+def test_a_centre_s_copy_at_an_input_s_path_is_compared_with_the_site_s_data(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A centre's copy at an input's path is compared
+    with the site's data"): a synthetic copy kept where the site's input is fails G1 as
+    `input-changed` against the receipt's digest; only an input that is not there is
+    `input-at-site`."""
+    _receipted(project)
+    data = project / "data" / "reports.csv"
+    data.write_text("id\nsynthetic\n", encoding="utf-8")
+    said = [(f.code, f.severity) for f in _g1(project) if f.path.name == "est.json"]
+    assert said == [("input-changed", "fail")]
+    data.unlink()
+    said = [(f.code, f.severity) for f in _g1(project) if f.path.name == "est.json"]
+    assert said == [("input-at-site", "info")]
 
 
 def test_a_receipt_that_does_not_cover_the_output_is_refused_at_harvest(project: Path) -> None:
@@ -454,6 +510,30 @@ def test_a_declared_sum_that_gives_a_count_away_refuses_the_receipt(
     assert warned == ["output/site.csv: results.site.placebo.n is 3 by subtraction"]
 
 
+def test_a_header_that_states_a_count_only_ever_warns(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A header that states a count is only ever a
+    warning"): "Deaths (n=2)" as a column's header gives its count to `recoverable_cells`,
+    which warns, and nothing refuses the receipt for the 2 the header states, where the same
+    2 in a cell refuses it."""
+    _minimum(project, 5)
+    _site_output(project, ["group,Deaths (n=2)", "Sex,", "Women,<5", "Men,0"])
+    _path, _written, warned = make_receipt(load_project(project)[0], "site-a")
+    assert warned == [
+        "output/site.csv: table.site in results/site.json: <5 in row 'Women', column "
+        "'Deaths (n=2)' can only be 2: the header of column 'Deaths (n=2)' prints n = 2, and "
+        "the other category of 'Sex' leaves 2 of it, if every one of the column has one of "
+        "the categories"
+    ]
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,Deaths (n=2)", "Women,40", "Men,40"])
+    assert make_receipt(load_project(project)[0], "site-a")[2] == []
+    # The other side: the count in a cell, not in the header, refuses the receipt.
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,deaths", "Women,2"])
+    with pytest.raises(HarvestError, match=r"site\.women\.deaths is 2, a count below"):
+        make_receipt(load_project(project)[0], "site-a")
+
+
 # ------------------------------------------------------------- working output, and counts
 
 
@@ -517,6 +597,30 @@ def test_a_receipt_holds_only_the_counted_columns_to_the_minimum(project: Path) 
     (project / "harvest.yaml").unlink()
     _site_output(project, ["group,n,df", "Drug,40,2"], counts=("n",))
     make_receipt(load_project(project)[0], "site-a")
+
+
+@pytest.mark.parametrize(
+    ("column", "cell", "said"), [("df", "3", "3"), ("or", "1.0", "1.0")]
+)
+def test_without_counts_a_whole_number_with_no_unit_is_a_count_at_the_site(
+    project: Path, column: str, cell: str, said: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Which cells are counts is the entry's word"):
+    with no `counts`, a degrees-of-freedom column of 3 or an odds ratio of 1.0 under a
+    minimum of 5 refuses the receipt; with `counts` naming another column it is no count,
+    and a count in a column the entry takes in but `counts` does not name is printed
+    unchecked."""
+    _minimum(project, 5)
+    _site_output(project, ["group,n," + column, f"Drug,40,{cell}"])
+    with pytest.raises(HarvestError, match=rf"site\.drug\.{column} is {re.escape(said)}, a "
+                                           "count below the data custodian's minimum of 5"):
+        make_receipt(load_project(project)[0], "site-a")
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,n," + column, f"Drug,40,{cell}"], counts=("n",))
+    assert make_receipt(load_project(project)[0], "site-a")[2] == []
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,n,deaths", "Drug,40,2"], counts=("n",))
+    assert make_receipt(load_project(project)[0], "site-a")[2] == []
 
 
 def test_the_command_takes_working_output_and_the_count_columns(project: Path) -> None:
@@ -623,6 +727,30 @@ def test_deposit_counts_no_harvested_whole_number_outside_counts() -> None:
     assert _values(document) == [("t.a.n", 3)]
 
 
+@pytest.mark.parametrize(("cell", "small"), [("<2", []), ("2", ["est.women.n", "table est"])])
+def test_deposit_reads_a_harvested_held_back_count_as_nothing(
+    project: Path, cell: str, small: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Deposit reads a harvested "<2" as nothing"):
+    `deposit` skips a harvested "<2" as a value, which has none, and as a table cell, which
+    `count_in_cell` reads as no count, where a printed 2 is a small count in both. (G2 and
+    the receipt hold "<2" to the minimum:
+    `test_a_count_held_back_or_written_with_a_point_is_a_count`.)"""
+    from manuscript_guard.deposit.counts import count_in_cell, small_counts
+
+    _minimum(project, 5)
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(f"group,n\nWomen,{cell}\n".encode())
+    harvest_entry(project, Entry("est", "output/est.csv", "analysis/02_est.py",
+                                 row_key="group", counts=("n",)))  # fmt: skip
+    project_, _ = load_project(project)
+    found = small_counts(project_, load_namespace(project_)[1])
+    found = [s for s in found if s.fragment == "results/est.json"]
+    assert [(s.where.split(",")[0], s.count) for s in found] == [(where, 2) for where in small]
+    assert count_in_cell(cell) == (None if cell == "<2" else 2)
+
+
 def test_digits_keep_a_space_that_groups_thousands() -> None:
     entry = Entry("t", "o.csv", "s.py", digits=2)
     table = read_output(b"n\n1 234.5\n", ".csv", entry)
@@ -690,6 +818,27 @@ def test_a_count_written_as_text_that_is_large_enough_passes(project: Path) -> N
     _minimum(project, 5)
     _site_output(project, ["group,n", 'A,"40 (12.5%)"'], counts=("n",))
     make_receipt(load_project(project)[0], "site-a")
+
+
+@pytest.mark.parametrize(
+    ("column", "cell"), [("ci", '"1.2 (0.8 to 1.9)"'), ("when", "2020-01-03")]
+)
+def test_text_with_a_digit_is_refused_at_a_site_where_counts_names_none(
+    project: Path, column: str, cell: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Text with a digit is refused at a site where
+    `counts` names none"): every column is then a count column, so a confidence interval
+    written in one cell, or a date, refuses the receipt; naming the count columns lets it
+    through."""
+    _minimum(project, 5)
+    _site_output(project, ["group,n," + column, f"Drug,40,{cell}"])
+    shown = cell.strip('"')
+    with pytest.raises(HarvestError, match=rf"site\.drug\.{column} is {re.escape(shown)}, a "
+                                           "cell this tool reads as a count, failing closed"):
+        make_receipt(load_project(project)[0], "site-a")
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,n," + column, f"Drug,40,{cell}"], counts=("n",))
+    assert make_receipt(load_project(project)[0], "site-a")[2] == []
 
 
 def test_a_bound_count_with_a_unit_in_a_count_column_is_held_by_g2(project: Path) -> None:

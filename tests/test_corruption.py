@@ -108,6 +108,33 @@ def test_a_value_written_hard_after_a_citation_locator_is_still_caught(project: 
 
 
 @pytest.mark.parametrize(
+    ("after", "said"),
+    [
+        ("[p. 3]/9.99", ["'/9.99'"]),  # reported with its slash
+        ("[p. 3]-4.2", ["'-4.2'"]),  # the dash kept as a sign
+        ("[p. 3]+1.5", ["'1.5'"]),  # a plus lost, as any atom loses it
+        ("[p. 3]<0.05", ["'0.05'"]),  # and a sign of comparison
+        # No space inside the bracket: it opens its own run, which is not cut.
+        ("[p.3]/{{results.ror.point}}", ["'p.3]/'"]),
+        # The other side of that rule: with the space, the run is cut, and the locator passes.
+        ("[p. 3]/{{results.ror.point}}", []),
+    ],
+)
+def test_an_atom_cut_at_a_locator_s_bracket_keeps_what_the_trimming_leaves(
+    project: Path, after: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An atom cut at a bracket keeps what the trimming
+    leaves"): after `@key [p. 3]` the value is caught with what trimming leaves of its
+    sign, and a locator with no space inside its bracket fails G2 whole."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = f"As @fictionalClassSignal2019 {after} overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    found = [(f.code, f.message.split()[0]) for f in report.failures]
+    assert found == [("unclassified-number", quoted) for quoted in said], report.render(project)
+
+
+@pytest.mark.parametrize(
     "link",
     [
         "[the repository](https://example.org/a/b)",
@@ -1772,6 +1799,30 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     typed = sorted(f.message.split()[0] for f in report.failures if f.code == "typed-parameter")
     assert typed == ["'0.05'", "'3'"], report.render(project)
     assert codes(report) == {"typed-parameter"}, report.render(project)
+
+
+@pytest.mark.parametrize("where", ["abstract", "methods"])
+def test_a_structured_abstract_cannot_state_its_own_signal_threshold(
+    project: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A structured abstract cannot state its own signal
+    threshold"): `methods_only` rules need a Methods heading, and the abstract's chain is
+    `("Abstract",)`, so a threshold its **Methods.** part states is an unbound number, where
+    the same sentence under the Methods heading is a convention."""
+    sentence = "Signals were those with IC025 > 0."
+    if where == "methods":
+        _in_methods(project, sentence)
+    else:
+        path = main_md(project)
+        text = path.read_text(encoding="utf-8")
+        anchor = "against all other drugs.\n**Results.**"
+        assert anchor in text
+        path.write_text(text.replace(anchor, anchor.replace(".\n", f". {sentence}\n"), 1),
+                        encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    found = [(f.code, f.message.split()[0]) for f in report.failures]
+    expected = [("unclassified-number", "'0'")] if where == "abstract" else []
+    assert found == expected, report.render(project)
 
 
 def test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention(
@@ -7164,6 +7215,32 @@ def test_a_transposed_interval_typed_into_a_fragment_is_caught(project: Path) ->
     assert "typed-composite-cell" in codes
 
 
+def test_a_transposed_interval_composed_into_a_cell_passes(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A transposed interval passes inside a composed
+    table cell"): `em.interval()` refuses bounds that do not bracket the estimate, and
+    `em.cell()` renders the same three numbers transposed, which the fragment records as
+    ordered parts that rebuild the template exactly, so every gate passes the table."""
+    from manuscript_guard.contracts.values import DisplayError
+    from manuscript_guard.emit import Emitter
+
+    script = project / "analysis" / "09_probe.py"
+    script.write_text("# probe\n", encoding="utf-8")
+    with pytest.raises(DisplayError, match="does not bracket the estimate"):
+        Emitter(script, root=project).interval("probe", 3.84, 7.02, 2.10, digits=2)
+
+    em = Emitter(script, root=project)
+    for key, value in (("probe.point", 3.84), ("probe.low", 2.10), ("probe.high", 7.02)):
+        em.value(key, value, digits=2, quoted=False)
+    transposed = em.cell("{} ({} to {})", (3.84, 2), (7.02, 2), (2.10, 2))
+    em.table("probe", ["Group", "ROR"], [["Exposed", transposed]], quoted=False)
+    document = json.loads(em.write().read_text(encoding="utf-8"))
+    assert document["tables"]["probe"]["rows"] == [["Exposed", "3.84 (7.02 to 2.10)"]]
+    assert document["tables"]["probe"]["composed"][0]["parts"] == ["3.84", "7.02", "2.10"]
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert not [f for f in report.findings if "'probe'" in f.message], report.render(project)
+
+
 def test_claiming_a_cell_was_composed_does_not_launder_it(project: Path) -> None:
     """The exemption records what the emitter formatted; the literal is still checked.
 
@@ -7275,6 +7352,39 @@ def test_a_binding_left_in_a_fragment_table_is_caught(project: Path, where: str)
     said = [f for f in gate_report(project).failures if f.code == "binding-in-table"]
     assert len(said) == 1, said
     assert binding in said[0].message
+
+
+def test_a_binding_left_in_a_fragment_table_gets_the_hint_for_a_typed_number(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A binding in emitted table text is found in its
+    Markdown form only", *A hint meant for a typed number*): every finding of
+    `tables.problems_in` gets G2's one hint, so a binding left in a cell is told that a cell
+    nothing published is a number with no origin, as a number typed there is. The
+    2026-11-09 triage planned a fix (F07), which will change this test."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    table = document["tables"][key]
+    table["rows"][0][0] = "Exposed {{rv10.bootstrap.n}}"
+    table["rows"][0][2] = "9999"
+    table["composed"] = [
+        entry
+        for entry in table.get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    hints = {f.code: f.hint for f in gate_report(project).failures}
+    hint = ("emit the table from the analysis rather than editing the fragment; a cell "
+            "nothing published is a number with no origin")  # fmt: skip
+    assert hints["binding-in-table"] == hint
+    assert hints["unemitted-table-number"] == hint
 
 
 def test_a_composed_caption_must_rebuild_the_caption_it_is_attached_to(project: Path) -> None:
@@ -34456,6 +34566,27 @@ def test_an_email_address_and_an_interleukin_are_no_numbers(tmp_path: Path) -> N
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         assert kinds["someone1989@example.org"] == kinds["a.b2@uni-3.edu.tr"] == STRUCTURAL
         assert {kinds[name] for name in names} == {TERM}, kinds
+
+
+def test_an_e_mail_address_whose_domain_ends_in_no_letters_is_a_number(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An e-mail address is one whose domain ends in
+    letters"): an address with no dot in its domain, or at a bare IP number, is read as a
+    number, by G2's classifier and by the audit, where one whose domain ends in letters is
+    an address."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import STRUCTURAL, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = "Write to name2@host, to name@192.168.0.1 or to name2@host.org for it.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["name2@host", "name@192.168.0.1"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {"name2@host": UNCLASSIFIED, "name@192.168.0.1": UNCLASSIFIED,
+                         "name2@host.org": STRUCTURAL}  # fmt: skip
 
 
 def test_a_term_inside_a_word_leaves_its_number_a_number(tmp_path: Path) -> None:

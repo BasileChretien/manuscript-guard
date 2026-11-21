@@ -22585,6 +22585,7 @@ Open, recorded as each change landed:
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
   through one API and renders one through another.
+  Pinned by `tests/test_corruption.py::test_a_transposed_interval_composed_into_a_cell_passes`.
 - **A binding in emitted table text is found in its Markdown form only, and a composed
   template cannot hold a literal brace.** Since #557 `tables.problems_in` refuses a `{{...}}`
   in a caption, header or cell as `binding-in-table`, at emit time and in G2, and a caption
@@ -22607,9 +22608,12 @@ Open, recorded as each change landed:
     A composed cell had this before #557; a composed caption, which #557 made possible,
     has it too. Closed by filling the template the way `rebuilt` splits it, in both
     emitters.
+    Pinned by `tests/test_emit.py::test_a_doubled_brace_in_a_template_never_rebuilds_its_own_cell`
+    and `tests/test_r_emitter.py::test_r_refuses_a_binding_left_in_table_text`.
   - *A hint meant for a typed number.* Every finding of `problems_in` gets G2's hint "a
     cell nothing published is a number with no origin", which is false for a binding
     (finding 2).
+    Pinned by `tests/test_corruption.py::test_a_binding_left_in_a_fragment_table_gets_the_hint_for_a_typed_number`.
   - *A bare float caption or header.* The table's `digits=` reaches the body's cells only:
     the caption and the headers go through `_cell` with no digits (`emit.py`, and R passes
     `NULL`), so `Emitter.table(..., caption=3.84, digits=2)` is refused with "Pass `digits=`
@@ -22621,6 +22625,7 @@ Open, recorded as each change landed:
     inside `em.cell` with `(x, digits)`, so an agent who copies it is not caught. Closed by
     the message naming `em.cell(...)` for a caption or a header, or by the sentence saying
     that the table's `digits=` covers the body only.
+    Pinned by `tests/test_emit.py::test_a_bare_float_caption_or_header_is_told_to_pass_digits_it_cannot_take`.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone
@@ -22650,6 +22655,8 @@ Open, recorded as each change landed:
   run wherever it stands, so an identifier written across one, `x]y2`, would be read as
   `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
   its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
+  Pinned by `tests/test_corruption.py::test_an_atom_cut_at_a_locator_s_bracket_keeps_what_the_trimming_leaves`
+  and `tests/test_text.py::test_a_bracket_closed_from_outside_cuts_the_run_wherever_it_stands`.
 - **The audit tells a Vancouver marker from a value by shape and position.** The
   `numbered-citation` rule spans the word before a marker, since an atom runs to the next
   space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
@@ -23727,6 +23734,7 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
+  Pinned by `tests/test_corruption.py::test_a_structured_abstract_cannot_state_its_own_signal_threshold`.
 - **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
   or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
   tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
@@ -23836,6 +23844,7 @@ Open, recorded as each change landed:
     ladder. So does a number written in words: "three" made "four". "Did not differ" made
     "differed" passes with a warning, as every move of a claim's words does (the next
     entry).
+    Pinned by `tests/test_reworded.py::test_a_unit_a_direction_and_a_number_in_words_are_not_held`.
   - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
     0.05" fails as a sign gone, though the sentence says the same; "less than" made
     "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
@@ -23847,6 +23856,8 @@ Open, recorded as each change landed:
     number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
     an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes, and
     so do the full-width "＝＞" and "=＞".
+    Pinned by `tests/test_reworded.py::test_a_sign_of_comparison_is_held_only_as_a_sign`
+    and `tests/test_reworded.py::test_a_sign_of_comparison_gone_new_or_turned_round_fails`.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
     Pinned by `tests/test_reworded.py::test_a_number_is_read_as_it_is_typed`.
@@ -23872,8 +23883,10 @@ Open, recorded as each change landed:
     subtitle, short and running title, abstract, summary, keywords) and under no other.
     Bindings and citations are read in all of it, so a key under `nocite:` is held, and
     so is an `author: '@handle'`.
+    Pinned by `tests/test_reworded.py::test_the_front_matter_holds_a_number_only_under_a_key_the_build_prints`.
   - The title and the keywords the build prints are in `paper.yaml`, which is not
     compared: a figure changed in the title there passes.
+    Pinned by `tests/test_reworded.py::test_a_figure_changed_in_the_title_paper_yaml_holds_passes`.
   - In a listing every figure is held, a figure in a name there too. A binding or a
     citation in a listing is held as one, though pandoc prints it as typed.
     Pinned by `tests/test_reworded.py::test_a_listing_is_printed_and_its_numbers_are_held`
@@ -23896,6 +23909,7 @@ Open, recorded as each change landed:
     it is a sign for sure and one where it joins: "about -3" closed up to "about-3",
     "Day-1" opened to "Day -1", and a range typed with a space on one side after a
     word or a unit, "5 mg -10 mg" made "5 mg-10 mg".
+    Pinned by `tests/test_reworded.py::test_a_dash_left_where_it_stood_fails_when_the_edit_moves_its_place`.
   - Where the same figures stand in several places, a sign fails only where the counts
     say it is gone or new and one place of the number, taken in order, lost or gained
     it. A sure sign gone at one place while a dash that may be one is new at another is
@@ -23910,6 +23924,7 @@ Open, recorded as each change landed:
     and `tests/test_reworded.py::test_a_sure_sign_that_goes_fails_beside_a_dash_that_may_be_one`.
   - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
     made "0.3", passes, and so does "-$5" made "$5".
+    Pinned by `tests/test_reworded.py::test_a_sign_set_apart_from_its_number_is_not_read_with_it`.
   - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a
     square metre typed with the raised character made `m^2^`, or "CO2" given a lowered 2.
     Pinned by `tests/test_reworded.py::test_a_number_is_read_as_it_is_typed`.
@@ -26129,8 +26144,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
   to a first that itself opened a word or at a capital changes nothing for it, "mesh"
   opening its word; and "MESHD2" is `d2` after a capital in any case, as "CCR2" is `r2`.
+  Pinned by `tests/test_script_signs.py::test_a_term_counts_directly_after_one_with_no_digit`.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
+  Pinned by `tests/test_corruption.py::test_an_e_mail_address_whose_domain_ends_in_no_letters_is_a_number`.
 - **`set` writes five settings, and only as values.** It cannot take a key out, so a stage,
   a journal or an English once set is changed and never unset; that is an edit by hand. It
   refuses a whole file for an anchor or an alias anywhere in it, even one in a setting it
@@ -26183,6 +26200,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
   - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
+    Pinned by `tests/test_script_signs.py::test_declaring_r2_makes_a_ratio_with_a_subscript_a_term`.
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
   - G8r takes "(Spring and Summer 2019)" for a citation, and one season name in a group of
@@ -26705,14 +26723,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   in a column it names otherwise is printed unchecked; without it, every whole number with no
   unit is a count, "1.0" among them, so a degrees-of-freedom column of 3 or an odds ratio of
   1.0 under a minimum of 5 refuses a receipt until `counts` leaves it out.
+  Pinned by `tests/test_harvest.py::test_without_counts_a_whole_number_with_no_unit_is_a_count_at_the_site`,
+  `tests/test_harvest.py::test_only_the_columns_an_entry_counts_are_held_to_the_minimum`
+  and `tests/test_harvest.py::test_a_column_the_entry_does_not_take_in_is_held_to_the_minimum_at_the_site`.
 - **A centre's copy at an input's path is compared with the site's data.** Where the centre
   keeps a synthetic copy where the site's input is, G1 compares it with the receipt's digest
   and fails `input-changed`, which nothing at the centre can put right; only an input that is
   not there is `input-at-site`.
+  Pinned by `tests/test_harvest.py::test_a_centre_s_copy_at_an_input_s_path_is_compared_with_the_site_s_data`.
 - **A year as a header is refused.** A column named "2020" makes no key part a binding can
   start with, so a wide table by year cannot be harvested; write it long, a row a year.
+  Pinned by `tests/test_harvest.py::test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested`.
 - **An output's digest leaves its line endings out.** As an input's does: a carriage return
   inside a quoted cell that becomes a line feed is not seen as a change.
+  Pinned by `tests/test_harvest.py::test_a_carriage_return_in_a_quoted_cell_made_a_line_feed_is_no_change`.
 - **A receipt is unsigned.** Anyone who can write `receipts/` can write a receipt; it proves
   that a file with these digests was written, not who wrote it, that the run took place, or
   when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
@@ -26720,12 +26744,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **Deposit reads a harvested "<2" as nothing.** It is held to the minimum only where the
   manuscript binds it (G2) and at the site (the receipt); `deposit` skips it as a value,
   which has none, and as a table cell, which `count_in_cell` reads as no count.
+  Pinned by `tests/test_harvest.py::test_deposit_reads_a_harvested_held_back_count_as_nothing`
+  and `tests/test_harvest.py::test_a_count_held_back_or_written_with_a_point_is_a_count`.
 - **A header that states a count is only ever a warning.** "Deaths (n=2)" as a column's
   header gives a count to `recoverable_cells`, which warns; nothing refuses a receipt for
   the count a header states.
+  Pinned by `tests/test_harvest.py::test_a_header_that_states_a_count_only_ever_warns`.
 - **Text with a digit is refused at a site where `counts` names none.** Every column is then
   a count column, so a confidence interval written in one cell or a date refuses the
   receipt: name the count columns.
+  Pinned by `tests/test_harvest.py::test_text_with_a_digit_is_refused_at_a_site_where_counts_names_none`.
 - **A receipt is never refused for a count given away by subtraction.**
   `recoverable_cells` fails a count held back only where the analysis declares the sum that
   gives it away; a harvested output declares no sum, so its total rows and header counts

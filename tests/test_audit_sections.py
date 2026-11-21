@@ -1229,3 +1229,60 @@ def test_a_markdown_paper_beside_a_standalone_figure_is_passed_over(
     (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
     assert "audit|passed-over|paper.md|-" in _passed_over(_audited(capsys, str(tmp_path)))
     assert _audited(capsys, str(tmp_path / "paper.md"))["counts"]["files"] == 1
+
+
+@pytest.mark.parametrize("named", [
+    "!documentclass{article}\n!begin{document}\nOf 412.\n!end{document}\n",
+    "Of 412 reports.\n",
+], ids=["paper", "chapter"])  # fmt: skip
+def test_a_tex_named_above_a_folder_given_sets_none_of_it_aside(
+    tmp_path: Path, capsys, named: str
+) -> None:
+    """Round 1 of #753: `audit proj/main.tex proj/supplement` passed over the supplement's
+    Markdown, which the paper given above it sets aside only where a folder given holds the
+    paper, and a named `.tex` with no document class sets nothing aside."""
+    proj = tmp_path / "proj"
+    (proj / "supplement").mkdir(parents=True)
+    (proj / "main.tex").write_text(tex(named), encoding="utf-8")
+    (proj / "supplement" / "supp.md").write_text("# Results\n\nOf 40 cases.\n",
+                                                 encoding="utf-8")  # fmt: skip
+    report = _audited(capsys, str(proj / "main.tex"), str(proj / "supplement"))
+    assert report["counts"]["files"] == 2
+    assert _passed_over(report) == {}
+
+
+def test_a_named_tex_with_no_document_class_sets_nothing_aside_in_its_folder(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "chapter.tex").write_text("Of 412 reports.\n", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    report = _audited(capsys, str(tmp_path / "chapter.tex"), str(tmp_path))
+    assert "audit|passed-over|notes.md|-" not in _passed_over(report)
+
+
+def test_a_body_in_a_comment_makes_no_paper_a_template(tmp_path: Path, capsys) -> None:
+    """Round 1 of #753: a `$body$` in a comment of a LaTeX paper took it for a pandoc
+    template, and the data under its `anc/` was read as a paper again."""
+    bundle = _bundle(tmp_path / "bundle")
+    paper = bundle / "paper.tex"
+    paper.write_text("% built from a $body$ template\n" + paper.read_text(encoding="utf-8"),
+                     encoding="utf-8")  # fmt: skip
+    assert "audit|passed-over|anc/data.txt|-" in _passed_over(_audited(capsys, str(bundle)))
+
+
+def test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #753: the template sets nothing aside of itself; a document beside it,
+    a letter, still sets aside the Markdown paper in their folder."""
+    (tmp_path / "template.tex").write_text(
+        tex("!documentclass{$documentclass$}\n!begin{document}\n$body$\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "cover.tex").write_text(
+        tex("!documentclass{letter}\n!begin{document}\nDear editor.\n!end{document}\n"),
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40 cases.\n", encoding="utf-8")
+    notes = _passed_over(_audited(capsys, str(tmp_path)))
+    assert notes["audit|passed-over|paper.md|-"].endswith(
+        "it is in the folder of the LaTeX paper cover.tex, so it was not read as a paper; "
+        "name it to audit it")

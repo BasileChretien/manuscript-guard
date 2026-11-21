@@ -118,7 +118,7 @@ ranges by hand. A `.tex` is read with the files it inputs from its folder, at `.
 in a folder every `.tex` with `\documentclass` starts a paper, an old draft or a LaTeX
 template too, so name the paper's own file when the folder holds others; a file nothing
 inputs is named under `Passed over`, and so is a `.txt` or Markdown file in that paper's
-folder or under it, unless the `.tex` is a pandoc template. A PDF manuscript named on its own is read through
+folder or under it, though a pandoc template sets none aside itself. A PDF manuscript named on its own is read through
 `pdftotext` (refused without it), each place a page and a line; its tables are lines of text
 there, so no table's arithmetic is checked, and a line is a heading only where it holds a
 section's name alone. Audit the source where the author has it. `--figures` takes SVG and PDF files with a text layer; one with no text at all,

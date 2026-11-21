@@ -47,8 +47,9 @@ _DOCUMENT_CLASS = re.compile(r"^(?:[^%\n]|\\%)*?\\documentclass(?![A-Za-z@])", r
 #: paper does not read as papers (`set_aside`).
 TEXT_SUFFIXES = frozenset({".md", ".markdown", ".txt"})
 
-#: What a pandoc template prints the document's body with, `$body$` or `${body}`.
-_PANDOC_BODY = re.compile(r"\$body\$|\$\{body\}")
+#: What a pandoc template prints the document's body with, `$body$` or `${body}`, outside a
+#: comment, as `_DOCUMENT_CLASS` is read (round 1 of #753: one in a comment was a template).
+_PANDOC_BODY = re.compile(r"^(?:[^%\n]|\\%)*?(?:\$body\$|\$\{body\})", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -119,20 +120,19 @@ def set_aside(papers: list[Path], found: dict[Path, Path],
     beside the source, and the robustness sweep of 2026-11-21 found a 908 KB data transcript
     audited as a paper, 141,923 numbers classified in most of a 120 s budget (Basile,
     2026-11-22). `found` gives each file found in a folder the innermost folder given that
-    holds it, and one also in `named`, given on its own, is read. A pandoc template, a `.tex`
-    that prints `$body$`, sets none aside: the Markdown paper beside it is what it prints."""
+    holds it, and one also in `named`, given on its own, is read. A LaTeX paper is a `.tex`
+    with `\\documentclass` (`_sets_aside`), and sets aside only what a folder given that holds
+    it holds: `audit main.tex supplement/` reads the supplement's Markdown (round 1 of #753)."""
     homes: dict[str, Path] = {}
     for paper in papers:
-        if paper.suffix.lower() == ".tex" and not _is_template(paper):
+        if paper.suffix.lower() == ".tex" and _sets_aside(paper):
             homes.setdefault(_absolute(paper.parent), paper)
     kept = {_absolute(path) for path in named}
     aside: dict[Path, Notice] = {}
     for path, given in found.items():
         if path.suffix.lower() not in TEXT_SUFFIXES or _absolute(path) in kept:
             continue
-        # The innermost folder of a LaTeX paper that holds it: its parents run outwards.
-        home = next((homes[folder] for folder in map(_absolute, path.parents)
-                     if folder in homes), None)  # fmt: skip
+        home = _home(path, given, homes)
         if home is not None:
             aside[path] = Notice(f"{path.as_posix()}: it is in the folder of the LaTeX paper "
                                  f"{_shown(home, given)}, so it was not read as a paper; name "
@@ -140,14 +140,29 @@ def set_aside(papers: list[Path], found: dict[Path, Path],
     return aside
 
 
-def _is_template(path: Path) -> bool:
-    """Whether a `.tex` is a pandoc template: one that prints the body, `$body$`."""
+def _sets_aside(path: Path) -> bool:
+    """Whether a `.tex` is a LaTeX paper whose folder sets text files aside: one with
+    `\\documentclass` outside a comment, and not a pandoc template, which prints the Markdown
+    paper beside it where `$body$` stands (Basile, 2026-11-22)."""
     from manuscript_guard.audit import UnreadableText, read_text
 
     try:
-        return bool(_PANDOC_BODY.search(read_text(path)))
+        text = read_text(path)
     except (OSError, UnreadableText):
         return False
+    return bool(_DOCUMENT_CLASS.search(text)) and not _PANDOC_BODY.search(text)
+
+
+def _home(path: Path, given: Path, homes: dict[str, Path]) -> Path | None:
+    """The LaTeX paper of `homes` whose folder is the innermost to hold `path`, looked for
+    from its own folder out to the folder given, `given`, and no higher."""
+    top = _absolute(given)
+    for folder in map(_absolute, path.parents):
+        if folder in homes:
+            return homes[folder]
+        if folder == top:
+            return None
+    return None
 
 
 def _absolute(path: Path) -> str:

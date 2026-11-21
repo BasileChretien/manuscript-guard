@@ -208,6 +208,20 @@ def test_a_running_head_off_the_edge_or_on_a_proof_of_one_page_is_added(tmp_path
     assert changes_of(tmp_path, text=paged(lines)).changes == ()
 
 
+def test_a_running_head_set_inside_a_paragraph_is_read_as_a_correction(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a page repeats is found by rule.", "A
+    running head set inside a paragraph"): put between two lines of one paragraph, on page 2
+    of 4, the head is no added text: its number is counted as a correction."""
+    pages = paged(typeset_lines(), per_page=7).split("\f")
+    second = pages[1].split("\n")
+    second.insert(second.index("cohort (Smith and Jones 2019)."), HEAD)
+    pages[1] = "\n".join(second)
+    result = changes_of(tmp_path, text="\f".join(pages))
+    assert HEAD in result.reading.furniture
+    assert [(c.kind, c.what, c.part, c.page, c.note) for c in result.changes] == [
+        (CORRECTION, "number", PARTS[2].label, 2, "the proof prints a number that was not sent")]
+
+
 def test_a_word_broken_at_a_line_end_is_one_word(tmp_path: Path) -> None:
     text = paged(typeset_lines())
     text = edited(text, ("notoriety", "noto-\nriety"), ("class-level", "class-\nlevel"))

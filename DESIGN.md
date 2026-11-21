@@ -24979,6 +24979,12 @@ Open, recorded as each change landed:
   `tests/test_proof.py::test_line_numbers_are_read_at_a_line_s_start_from_one_by_one_five_or_ten`,
   `tests/test_proof.py::test_line_numbers_are_read_on_five_lines_at_least`
   and `tests/test_proof.py::test_a_correction_where_no_line_number_is_read_is_named_by_its_page`.
+  - *A running head set inside a paragraph* is no added text: a running head a reader puts
+    in the middle of a page is shown as added only where it falls between two parts. Set
+    between two lines of one paragraph, "Example et al. J Imag Pharm 2026" on page 2 of 4,
+    its number is counted as a correction of that paragraph, "the proof prints a number
+    that was not sent".
+    Pinned by `tests/test_proof.py::test_a_running_head_set_inside_a_paragraph_is_read_as_a_correction`.
 - **Numbers stand for any number in the alignment.** A number dropped beside another, "12 15"
   printed "15", may be read as the first changed and the second dropped. Both are corrections,
   and the quotation shows which; but the binding named is the first's. A decimal comma before

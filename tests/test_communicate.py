@@ -423,6 +423,29 @@ def test_compare_pair_reads_a_paraphrase_against_its_source_whole() -> None:
     assert claims.compare_pair(source, "") is None
 
 
+def test_a_statement_s_hedge_is_lent_to_a_text_that_drops_it_from_its_sentence(
+    ready: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A claim is compared with its statements read
+    whole, as one stretch"): a statement that hedges one sentence and asserts another lends
+    its "may" to a text that drops it from the sentence that had it and puts it on the
+    other, and the text is told nothing; dropped altogether, the text claims more."""
+
+    def two_sentences(document: dict) -> None:
+        finding = next(one for one in document["findings"] if one["id"] == "findings.2")
+        finding["from"]["quote"] = ("Use may be associated with hepatic injury. Use increased "
+                                    "the reports.")
+
+    edit_brief(ready, two_sentences)
+    claim_codes = {"comm-claim-stronger", "comm-claim-weaker", "comm-claim-moved"}
+    text(ready, "post.md", "Use was associated with hepatic injury, and may have increased "
+         "the reports [](#brief:findings.2).")  # fmt: skip
+    assert codes(ready, "texts") & claim_codes == set()
+    text(ready, "post.md", "Use was associated with hepatic injury, and increased the reports "
+         "[](#brief:findings.2).")  # fmt: skip
+    assert ("comm-claim-stronger", FAIL) in found(ready, "texts")
+
+
 # ------------------------------------------------------------------- the graphical abstract
 
 

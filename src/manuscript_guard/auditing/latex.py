@@ -25,13 +25,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.keys import Notice
-from manuscript_guard.text.latex.mask import NUL, Refusal, read
+from manuscript_guard.text.latex.mask import NUL, Refusal
 from manuscript_guard.text.latex.structure import (
     SECOND_DOCUMENT,
     Document,
     Source,
-    _target,
-    read_past_stop,
+    inside_blocks,
+    past_stops,
     read_tree,
 )
 from manuscript_guard.text.latex.tables import latex_tables
@@ -225,53 +225,23 @@ def _unfollowed(document: Document, files: dict, entry: str, folder: Path) -> di
     """Each file the inputs past where a file of `document` stopped reach, through the files
     they input, by its path, with where that file stopped: the inputs as the reader records
     them, a braceless `\\input` and an `\\import` among them, not one in a comment (round 3
-    of #637: typed inputs in the stopped file alone were looked for)."""
-    reached = {source.path for source in document.sources if not source.loose}
-    said: dict[Path, list[str]] = {}
-    for source in document.sources:
-        if source.loose or not source.reading.refusals:
-            continue
-        line = source.text.count("\n", 0, source.reading.refusals[0].offset) + 1
-        pending = [put for past in read_past_stop(source) for put in past.inputs]
-        while pending:
-            put = pending.pop()
-            target = _target(entry, put, "", files)[0]
-            if target is not None and target not in reached:
-                reached.add(target)
-                said[folder / target] = [f"{source.path} was not read past line {line}"]
-                pending += read(files[target], body=put.body,
-                                environments=put.environments).inputs  # fmt: skip
-    return said
-
-
-#: An `\\input` or an `\\include` with its path in braces, as a skipped block holds one.
-_BLOCK_INPUT = re.compile(r"\\(?:input|include)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
-#: A comment, to its line's end, which inputs nothing.
-_BLOCK_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+    of #637: typed inputs in the stopped file alone were looked for). BUILD reads them by
+    the same rule (`past_stops`)."""
+    texts = {source.path: source.text for source in document.sources}
+    return {folder / target: [f"{path} was not read past line "
+                              f"{texts[path].count(chr(10), 0, stop.offset) + 1}"]
+            for target, (path, stop) in past_stops(document, files, entry).items()}  # fmt: skip
 
 
 def _inside_blocks(document: Document, files: dict, entry: str,
                    folder: Path) -> dict[Path, list[str]]:  # fmt: skip
     """Each file an `\\input` or an `\\include` inside a block the reader skipped names, by
     its path, with the block, as `file, lines A-B`: no check read the block, so the reader
-    followed none of them (round 1 of #674)."""
-    from manuscript_guard.text.latex.mask import Input
-
-    said: dict[Path, list[str]] = {}
-    for source in document.sources:
-        if source.loose:
-            continue
-        for block in source.reading.skipped:
-            held = _BLOCK_COMMENT.sub(lambda found: " " * len(found.group(0)),
-                                      source.text[block.offset : block.end])  # fmt: skip
-            for put in _BLOCK_INPUT.finditer(held):
-                at = block.offset + put.start()
-                target = _target(entry, Input(at, at + len(put.group(0)), put.group(1).strip(),
-                                              True, ()), "", files)[0]  # fmt: skip
-                if target is not None:
-                    said.setdefault(folder / target, []).append(
-                        f"{source.path}, {_lines(source.text, block)}")
-    return said
+    followed none of them (round 1 of #674). BUILD reads them by the same rule
+    (`inside_blocks`)."""
+    texts = {source.path: source.text for source in document.sources}
+    return {folder / target: [f"{path}, {_lines(texts[path], block)}" for path, block in named]
+            for target, named in inside_blocks(document, files, entry).items()}  # fmt: skip
 
 
 def _stops(document: Document) -> set[tuple[str, Refusal]]:

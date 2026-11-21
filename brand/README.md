@@ -59,8 +59,8 @@ The emblem is Vord's helmet on a round shield.
 The motion is CSS inside the SVG, so it plays in a browser that shows the SVG as an image,
 GitHub included, with no script. A renderer that reads the style but not the animation, such
 as librsvg in some converters, shows the still frame. So does a browser whose reader asks for
-less motion. The still frame is the Stray Number blocked by G2, and the co-author reading.
-The order and the timing are
+less motion. The still frame is the Stray Number blocked by G2, with the gate's tag on the
+shield and the spark of the blow, and the co-author reading. The order and the timing are
 `CAST` and `LOOP` with the constants beside them in `tools/brand_assets.py`. The test holds
 each villain's gate in the banner to the gate its drawing's title names.
 

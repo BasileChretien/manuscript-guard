@@ -19,7 +19,9 @@ its count's of the column's n, something to ask the author rather than a finding
   asked about; one below it is wrong under any adjustment, and stays a finding.
 * **A weighted table** says so in words of `WEIGHTED`: "weighted %", "weighted
   percentages", "weighted n", "weighted statistics", "percentages are weighted",
-  "survey-weighted", "inverse probability weighted", "IPW", "IPTW". "Unweighted" is none,
+  "survey-weighted", "inverse probability weighted", "IPW", "IPTW", "nationally
+  representative" (Basile, 2026-11-21, "Caption wording"; "non-nationally representative"
+  is none). "Unweighted" is none,
   "weighted mean" or "weighted median" names an estimate, not the table's shares, and words
   whose clause holds before them a word of `NOT_WEIGHTED` ("Before IPTW") are none.
 """
@@ -67,6 +69,10 @@ WEIGHTED = re.compile(
     r"|estimates?)\s+(?:are|were|is|was)\s+weighted\b)"
     r"|(?i:\bsurvey[- ]weighted\b|\binverse[- ]probability(?:[- ]of[- ]treatment)?[- ]weight\w*)"
     r"|\bIPT?W\b"
+    # Basile, 2026-11-21, "Caption wording": a survey's shares made to stand for its nation;
+    # "non-nationally representative" says they do not, "Lebanon nationally representative"
+    # does (rounds 1 and 2 of the review of #718).
+    r"|(?i:(?<!\bnon[- \xa0\u2010\u2011])\bnationally[- ]representative\b)"
 )
 #: What before words of weighting in their clause says the numbers are not weighted:
 #: "Before IPTW", "prior to weighting", "crude".

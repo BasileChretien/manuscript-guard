@@ -134,6 +134,12 @@ class _Staged:
     #: definition of a short form.
     running: dict[str, frozenset[int]] = field(default_factory=dict)
 
+    @property
+    def from_pdf(self) -> frozenset[str]:
+        """The staged files' names whose text was read from a PDF, by where each came from."""
+        return frozenset(name for name, source in self.back.items()
+                         if source.suffix.lower() == ".pdf")  # fmt: skip
+
 
 def _staged_pdf(paper: Path) -> _Staged:
     """A PDF's text as the Markdown G4, G6 and G14 read: each line of it a line, and each line
@@ -269,7 +275,7 @@ def run_gates(
                                  word=staged.converted)  # fmt: skip
         try:
             writing = check_writing(project, submission=residue)
-            language = check_language(project, running=staged.running)
+            language = check_language(project, running=staged.running, pdf=staged.from_pdf)
         except Exception as exc:  # noqa: BLE001 - a gate that raised is said, not hidden
             from manuscript_guard.diagnostics import crashes
 

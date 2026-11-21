@@ -1977,9 +1977,27 @@ The result is compiled and packed by the code above, and checked three times:
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
   distribution's again (2026-10-23).
 - A file input past a refusal in the file that inputs it, from inside a definition, or from
-  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
-  message says no `\input` the reader follows names it, and is read under no heading (round 1
-  of #385).
+  `\AtBeginDocument{\input{x}}` is not followed. It is read under no heading (round 1 of
+  #385). One input from inside a definition or a hook is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it. One input past where the reader
+  stopped in a file, by a path written out in full, there or through a file input there, is
+  named once in that refusal's finding, "the 3 files its inputs past it reach, …, are read
+  as body under no heading", and not warned of again, by the rule `audit` follows to say it
+  was not followed (`structure.past_stops`; Basile, 2026-11-21, "Fold the warnings": a
+  paper refused at its preamble's `[latin1]` had 17 files warned of as named by no
+  `\input`, 15 of them judged false). So is one input only inside a block the reader
+  skipped, by `\input{...}` or `\include{...}`, in that block's finding, "the file an input
+  inside it names, …" (`structure.inside_blocks`; round 1 of #716). An input is looked for
+  among every `.tex` file of its own half of `manuscript/`, the main text's or the
+  supplement's, as `read_document` splits them, a document of its own and a class's among
+  them, and from the folder its file was imported from, as the tree looks for it (rounds 1
+  and 2 of #716). Warned of as before (Known gaps) are one whose path a command builds, one
+  a block holds without braces or by `\import` or `\subimport` (the block is read for
+  `\input` and `\include` alone), one that a file input only inside a block inputs in turn
+  (a block's inputs are not followed further), and one a file reached past a stop inputs
+  past that file's own stop. Past a stop in the author's package nothing is named: an `\input` the package
+  makes is the class's, there as before it, and one inside a definition is warned of as
+  one input from inside a definition is.
 - A file input from the preamble by a path with no folder that `manuscript/` lacks,
   `\input{settings.tex}` or `\input settings` too, is taken for the distribution's and
   passes; the compile finds it missing (step 9) (rounds 1 and 2 of #385). In the body,
@@ -5894,7 +5912,16 @@ journals do otherwise, so "%" is held to consistency alone. Basile chose both on
 left to it; its plural, "5mins", which `notation-unit` does not read, is a space left out
 (round 1 of #613). A stop ends the number after a word, "to+0.77.", and a bound value is
 read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
-by the letter before it; a number in hexadecimal, "0xff", is left alone. The audit's
+by the letter before it; a number in hexadecimal, "0xff", is left alone. Nor is a number
+read inside a piece raised or lowered as pandoc writes one, `~…~` or `^…^`, where a Word
+table's note converted to Markdown writes a symbol's index, "u~0school~"; nor inside a word
+joined by underscores, `RATE\_12mth` in a LaTeX data table, which is a name from code as
+`code-name-in-prose` reads one (`code_names.joined_names`), so the two readings agree on
+what a name is. In text the audit read from a PDF a word typed against a signed number is
+not read at all: pdftotext sets a superscript or a subscript on the line, so "cm−3",
+"yr−1", "cos−1" and "tn+1" are exponents and indices there, and on the real-paper corpus
+every such finding was one (Basile, 2026-11-21, "Skip in PDF text"). The audit says which
+staged file came from a PDF (`check_language`'s `pdf`). The audit's
 Abstract against Results reads the numbers of such words, and of pieces closed up by a
 round bracket, a colon or a semicolon, "CI):+0.05", "45%(95%CI:40-50%)" (below).
 
@@ -10802,7 +10829,15 @@ the table its number names (Basile, 2026-11-18, after the scoped check of round 
 where a guess at where a file's legends stood gave one table the next one's legend): "Table
 N" captions the Nth table read, standing before it or after it with no other table and no
 other legend between (round 3 of #703), where the file's legends number its tables 1 to the
-count read, in one form, each once; else no legend captions any. Legends are read on the
+count read, in one form, each once. Where they do not, a legend directly above a table,
+the last paragraph before it with no table between, captions that table, and only that
+table: one with a paragraph between it and its table captions nothing, and so does a legend
+below a table unless it stands directly above the next table, which it then captions (Known
+gaps) (Basile, 2026-11-21, "Adjacent fallback", `adjacent_captions`). Where the
+numbering holds, the fallback is never read. "Nationally representative" says a table's
+shares are weighted as "weighted" does, in the same places and under the same rule against a
+word before it in its clause (Basile, 2026-11-21, "Caption wording"); a sentence of the
+Methods still lets off no table. Legends are read on the
 masked text with every line break of the text kept (`audit._legend_mask`), so a comment of
 several lines leaves them on their lines, and "(" after "Table N" opens a legend only as
 "(continued". pandoc's own caption syntax, "Table: ...", is its
@@ -10816,8 +10851,10 @@ counted in `--json` as `asked_p_adjusted` and `asked_share_weighted`, and make t
 Arithmetic's tile say "N QUESTIONS" where it has nothing else to say. In the corpus run on
 0223ca005 seven P values became questions, six of docx-sport-A3 ("Bonferroni corrections
 were applied where necessary") and one of docx-psych-A3 (the false discovery rate), the
-latter in `check` too; no share did, since docx-psych-B2's weighted supplementary tables say
-so only in its Methods (Known gaps).
+latter in `check` too; no share did, since docx-psych-B2's weighted supplementary tables
+were captioned by legends that do not number them ("Table S1a", "Table S1b", ...), and their
+words were none of the list. The two decisions of 2026-11-21 were made for those 31 shares,
+each judged false on the corpus.
 
 ### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
 
@@ -16923,7 +16960,25 @@ shifted by one word, and a true finding read as lost. So every finding `check --
   a spelling's word, a notation's form, a name from the code; a G6 rule and the words it
   matched; the keys a G8 summary sentence binds; a reference entry's label; a compared
   fact as it was and is, `12.5→12.6`; a section as `parent/title`, its title as compare
-  matches it after the title of the section it stands under.
+  matches it after the title of the section it stands under. Two codes of gates the corpus
+  does not otherwise key name one because their messages change while the finding stays
+  (Basile, 2026-11-21, "Stable key first"; scheme 3): G3's `figure-colours-confused` and
+  `figure-greyscale-confused`, one finding per figure per way of seeing whose message lists
+  the pairs, are the figure's file from the project's root and the way,
+  `figures/forest.svg@deuteranopia`; a path written outside the project that a link brings
+  back inside is keyed by its resolved path from the root, `figures/f.svg@…`. One outside
+  the project as written and as resolved is keyed by its name alone, `fig.svg@deuteranopia`,
+  as before: a path climbing from the root to it would change with where the checkout sits
+  where the manuscript names it by an absolute path, and would carry the author's folders
+  (round 2 of #720). One figure inside the project is one sidecar and one file, so no two
+  there share a key. The same colour check on the graphical abstract,
+  `communicate check`'s COMM findings of those two codes, keys its file from the root the
+  same way, `communication/graphical-abstract/concept-1.svg@deuteranopia`, and so changed
+  key with them. BUILD's `tex-refused` is the file and the refusal's kind, a short fixed name
+  the reader gives each place it refuses (`Refusal.kind`: `command`, `redefined`,
+  `encoding`, `input-not-followed`, `makeatletter`, `conditional` and the rest),
+  `manuscript/main.tex@encoding`, with the line it stands on for its sentence, so that two
+  of one kind in one file are two keys.
 - **The digest is of the sentence**, with its part, abstract, main or supplement: 12 hex
   characters of SHA-256 of `part|sentence`. The sentence is cut by a copy of the splitter
   frozen in `keys.py`, so that a pull request that changes the gates' splitter moves no
@@ -17034,24 +17089,47 @@ been sorted yet.
   "Note", "Abbreviations" or a footnote's mark and is no table's caption; in LaTeX, the
   float's text outside the table) or, for one column alone, the header over it, must hold
   words of the closed list with no word such as "before", "prior" or "unweighted" before
-  them in their clause (round 1 of #703). A sentence elsewhere, "Descriptive statistics were
-  weighted to be nationally representative", names no table by an exact rule, so it lets
-  off none, and docx-psych-B2's 31 supplementary shares off their column's n stay findings
-  though its Methods says they are weighted. Words outside the list ("%, weighted"), a note
-  that opens on no mark, and a .docx's paragraph before a table that is no legend say
-  nothing. A legend captions the table its number names, before it or after it with no
-  table between, and only where the file's legends number its tables 1 to the count read,
-  in one form, each once (`auditing.adjusted.numbered_captions`). `check` holds
-  no share to a denominator, so there is nothing to let off there.
+  them in their clause (round 1 of #703). A sentence elsewhere, such as a Methods sentence
+  saying the statistics were weighted, names no table by an exact rule, so it lets off none.
+  Words outside the list ("%, weighted"), a note that opens on no mark, and a .docx's
+  paragraph before a table that is no legend say nothing. A legend captions the table its
+  number names, before it or after it with no table between, where the file's legends
+  number its tables 1 to the count read, in one form, each once
+  (`auditing.adjusted.numbered_captions`); else the table directly under it
+  (`adjacent_captions`). `check` holds no share to a denominator, so there is nothing to
+  let off there.
   Pinned by
   `tests/test_adjusted_weighted.py::test_a_paper_s_weighted_sentence_alone_lets_off_no_table`
   and `tests/test_adjusted_weighted.py::test_a_paragraph_after_a_table_with_no_note_s_mark_is_no_note`.
   - A file whose legends do not number its tables (a table given as a picture, a "Table 2
-    (continued)", a "Table S1" beside a "Table 1") lets off no table by its caption, so a
-    weighted table's shares are findings there, as on main. Where they do, a legend that
-    cannot reach the table its number names, another table or another legend between them,
-    captions nothing, and the file's other legends caption their tables still. Pinned by
-    `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_none`.
+    (continued)", a "Table S1" beside a "Table 1", "Table S1a" beside "Table S1b") has a
+    table captioned only by the legend directly above it, with no paragraph between (Basile,
+    2026-11-21, "Adjacent fallback"): a weighted legend below a table, or over a subtitle,
+    lets off nothing there, unless it stands directly above the next table (the point
+    below), and a table whose legend is typed in its own first row has none. Where the
+    legends do number the tables, a legend that cannot reach the table its number names,
+    another table or another legend between them, captions nothing, though it stands right
+    above a table, and the file's other legends caption their tables still.
+    Pinned by
+    `tests/test_adjusted_weighted.py::test_legends_that_do_not_number_the_tables_caption_the_table_under_them`
+    and `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_not_right_above_its_table_captions_nothing`.
+  - Where legends stand below their tables and do not number them, a legend below one table
+    and directly above the next is read as the next table's caption: the first table's
+    weighted shares stay findings, and the next table's are asked about on the first's
+    words. Pinned by
+    `tests/test_adjusted_weighted.py::test_under_the_fallback_a_legend_below_a_table_captions_the_next`.
+  - In a .docx whose legends do not number its tables, a picture's paragraph has no text,
+    so a legend over a table given as a picture, then a read table with no legend of its
+    own above it, captions the read table: its shares are asked about on the picture's
+    words. Accepted. Pinned by
+    `tests/test_adjusted_weighted.py::test_under_the_fallback_a_picture_s_legend_captions_the_table_under_it`.
+  - "Nationally representative" is read as weighted wherever the table's caption, note,
+    row label or header says it, though it may name only how the sample was drawn ("a
+    nationally representative sample") over crude shares, and a word after it that says the
+    shares are unweighted ("nationally representative sample; unweighted n") does not undo
+    it: such a table's shares off their n are asked about rather than found. A word before
+    it in its clause ("not", "before", "unweighted") does, and so does "non-" glued to it.
+    Accepted.
   - A comment of several lines inside a legend's paragraph ends the legend where the
     comment opens, since legends are read with each line of the file kept, though pandoc
     reads the paragraph whole. "Table 1. Baseline characteristics," over a comment, then
@@ -17085,9 +17163,12 @@ been sorted yet.
   - What a block holds is read by no check, the branch TeX prints among it: a heading, a
     citation or a binding in it is not seen. A file the paper inputs only from inside a
     block, by `\input{...}` or `\include{...}`, is passed over and said to be (round 1 of
-    #674); one it inputs by `\input name`, without braces, or one that file inputs in turn,
-    is passed over with the advice for a file nothing inputs. `check` fails BUILD on the
-    block, so a project's paper is not built with it in the body. Accepted.
+    #674); one it inputs by `\input name`, without braces, or by `\import` or `\subimport`,
+    or one that file inputs in turn, is passed over with the advice for a file nothing
+    inputs. `check` fails BUILD on the block, so a project's paper is not built with it in
+    the body, and names in that finding each file the block inputs by `\input{...}` or
+    `\include{...}`, by the same rule, and warns of the others as `tex-not-input` (rounds 1
+    and 2 of #716). Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
   but in two exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it
@@ -17102,18 +17183,22 @@ been sorted yet.
   is (above). Anything else, a font switch round `\@startsection`, a parameter, another
   section's name, a second command in the body, is refused at its first use, and nothing of
   the file past it is read, nor a file it inputs past there, which `audit` names as not
-  followed rather than as input by no file; `audit` says so.
+  followed rather than as input by no file; `audit` says so, and BUILD names each such file
+  of a project in the refusal's finding rather than warning of it as `tex-not-input`
+  (Basile, 2026-11-21, "Fold the warnings").
   Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
-  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
-  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
-  - A `\subimport{chapters/}{intro}` past a stop is followed without its folder, so what
-    chapters/intro.tex inputs, `\input{methods}`, is looked for at the manuscript's root,
-    and given the advice for a file nothing inputs (check of #637). Accepted.
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`,
+  `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`
+  and `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left
-    unfollowed, and they are given the advice for a file nothing inputs (check of #637).
-    Accepted.
+    unfollowed, and they are given the advice for a file nothing inputs, in `audit` and in
+    BUILD's `tex-not-input` (check of #637). Accepted.
+  - A file input past a stop by a path a command builds, `\input{\dir/methods}`, is not
+    followed, since the reader cannot read the path exactly, and is warned of as named by
+    no `\input`, as a file nothing inputs is (Basile, 2026-11-21).
+    Pinned by `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
 - **A part placed by `\subfile` that defines a known command again in its own preamble has
   its uses refused.** The part's reading reads its own preamble, so a part that repeats
   main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
@@ -22405,9 +22490,6 @@ Open, recorded as each change landed:
   looks at string literals, because that is where a hard-coded result hides in a figure
   script. A bare numeric literal in displayed code is left alone; treating every constant
   in an example snippet as a claim would make code blocks unusable. Accepted.
-- **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
-  this section; repeated here because it is the same shape as the two above — the toolkit
-  judges what it can parse and says so, rather than guessing.
 - **The exemption inventory is open-world.** `tests/test_exemptions.py` checks that every
   listed exemption has a passing abuse test, and that nothing listed has quietly left the
   code. It cannot see an escape hatch nobody wrote down: a new grant, spelled some way the
@@ -23599,8 +23681,9 @@ Open, recorded as each change landed:
     Pinned by `tests/test_corruption.py::test_the_annotated_copy_marks_what_main_marked`.
   - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked (the extra
     round);
-  - a number straight after a TeX command, `\a 5`, is left unmarked: the command took the
-    mark for its argument, and the paragraph lost every mark (the final round);
+  - a number straight after a TeX command, `\a 5`, is left unmarked, since the command would
+    take the mark for its argument; the paragraph's other numbers keep theirs, as "12" in
+    "Of 12 patients, \a 5 were seen." does (the final round);
     Pinned by `tests/test_corruption.py::test_the_annotated_copy_marks_what_main_marked`.
   - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
     file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
@@ -24037,9 +24120,11 @@ Open, recorded as each change landed:
     computed it", and PRR is then defined by its prose. And a run of thousands of
     paragraphs that each open on the word and are each an entry, "Glossary: terms used",
     is read in time that grows as its square.
-    A glossary's entries are read one to a line, and "ROR reporting odds
-    ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
-    PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
+    A glossary's entries are read one to a line, or run on in one paragraph with a colon
+    after each short form and a semicolon between them, "ROR: reporting odds ratio; PRR:
+    ...", and "ROR reporting odds ratio" only in a table or a definition list: a paragraph
+    of "ROR, reporting odds ratio; PRR, ..." is not read, and a grid table's long form over
+    several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.
     A run-on glossary paragraph wrapped so that one word stands alone above a line that
     opens with a colon and a space is cut before that word, which is read as a
@@ -24392,6 +24477,24 @@ Open, recorded as each change landed:
     digits and capitals in a bracket, "lamivudine(3TC)", "mercaptopurine(6MP)", is taken for
     a level and gives its digit, most likely found; and a square bracket closes nothing up,
     so "students[66%" is read whole (round 2 of #613). Accepted.
+  - In text the audit read from a PDF, a word typed against a signed number is not
+    reported, so a real "to+0.77" in a PDF passes: pdftotext prints an exponent or an index
+    on the line, "cm−3", "tn+1", and the two cannot be told apart there (Basile,
+    2026-11-21). A number typed against its word, "12patients", is reported in a PDF as
+    anywhere. In Markdown, Word and LaTeX a word typed against a signed number is read as
+    before.
+    Pinned by `tests/test_notation.py::test_a_word_against_a_signed_number_is_not_read_in_a_pdf_s_text`
+    and `tests/test_corruption.py::test_a_number_typed_against_its_word_in_a_pdf_is_caught`.
+  - A number inside a piece raised or lowered, `~…~` or `^…^` with no blank in it but an
+    escaped one, is not read, so a space left out inside a subscript passes; one inside a
+    word joined by underscores, a name from code, is not read either. A number joined by a
+    hyphen to such a name, `RATE\_6-12mth`, stands outside the name and is read.
+    Pinned by `tests/test_notation.py::test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out`
+    and `tests/test_notation.py::test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out`.
+  - A tilde for "approximately" pairs with the next tilde where no blank stands between
+    them, "(~3days,~5days)", and the stretch between is taken for a subscript, as pandoc
+    prints it: "3days" passes and "5days" is reported (round 1 of #719).
+    Pinned by `tests/test_notation.py::test_a_tilde_for_approximately_lowers_what_stands_before_the_next`.
   - A space where the SI has none, "30 °" for an angle, is not reported.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.
@@ -25619,9 +25722,11 @@ Open, recorded as each change landed:
   the counts run together in a cell, the audit does not pair a count with its share there,
   and a reader of the Markdown sees one row. Rewrite such a table by hand, or emit it from
   the analysis.
+  Pinned by `tests/test_from_word.py::test_a_word_table_s_rows_stacked_in_one_cell_become_one_row`.
 - **A merged cell's text stands in its first column only.** A header spanning a count's and a
   share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
   audit reads its denominator for that column alone.
+  Pinned by `tests/test_from_word.py::test_a_merged_header_s_n_is_read_for_its_first_column_alone`.
 - **A rule in a Word table's cell is as long as the converter's line.** pandoc writes a rule
   as long as its line, 100,000 hyphens, and `init --from` cuts it to 72 only where it stands
   on a line of its own (#732): in a cell, its row is as wide, and so is every line of its
@@ -25632,6 +25737,7 @@ Open, recorded as each change landed:
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
   title page over 600 words stays in the text, where its names and affiliations are read.
   `init` prints which it did and how many words.
+  Pinned by `tests/test_from_word.py::test_init_sets_aside_a_title_page_by_a_count_of_words`.
 - **`init --from` finds an abstract on the title page by its style alone.** A paragraph in
   Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
   document with its styles is, the styles taken off, its ordinary reading block for block;
@@ -25640,6 +25746,8 @@ Open, recorded as each change landed:
   read by no gate until it is moved out; one under a line "Abstract" alone, in bold or not,
   in a paper that uses a heading style elsewhere, or opening on a run-in "Abstract:", has that line made a
   heading (below, "A Word paper's typed titles are headings only by a closed list of names").
+  Pinned by `tests/test_from_word.py::test_an_abstract_in_another_style_stays_in_the_comment`
+  and `tests/test_from_word.py::test_an_abstract_style_stays_set_aside_where_readings_differ`.
 - **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
   top-level paragraph of words, in bold or not, numbered as typed or not, in capitals or not
@@ -25888,15 +25996,19 @@ Open, recorded as each change landed:
 - **A table `init --from` leaves as a grid table keeps pandoc's numbering.** A numbered list
   in a cell is written with its numbers, "1.", "2.", and `check` reports them as numbers
   typed in a table, as it reports the rest of the grid table's rows.
+  Pinned by `tests/test_from_word.py::test_a_numbered_list_in_a_grid_table_keeps_its_numbers`.
 - **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
   tracked changes; the audit and `import` read comments, `init` does not. Accepted.
 - **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
   superscript of digits or `*`, `†`, `‡`, `§`, `¶`, `‖`, `#` at the title's end out of `paper.yaml`, so "per
   m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
+  Pinned by `tests/test_from_word.py::test_digits_or_a_note_s_sign_at_a_title_s_end_are_a_mark`
+  and `tests/test_from_word.py::test_a_power_at_a_word_title_s_end_is_left_out`.
 - **A Word title's mark inside a wrapper stays in the title.** `init --from` looks for the
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+  Pinned by `tests/test_from_word.py::test_a_word_title_s_mark_inside_a_wrapper_stays_in_the_title`.
 - **`init --from` reads a typed reference entry in two of APA's shapes only.** A journal
   article, `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.` with a DOI
   or an address after it or not, and a book, `Lee, C. (2018). *Title*. Publisher.`, are
@@ -26083,8 +26195,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading's title is not folded: `\section{Caf\'e}` prints "Cafe" in the printed view.
   - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
   - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
-  - `classify._names_covering`'s docstring says "PharmD~2~" is no term with D2 declared; it
-    is one, as DESIGN says.
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
@@ -26095,7 +26205,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `docx-unreadable` from the live-field check says the journal's review is blind.
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
-  - ci.yml's comment on setup-pandoc names a step that is gone.
 
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
   Accepted.
@@ -27147,8 +27256,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_compare.py::test_tables_the_view_cannot_count_are_not_numbered`
     and `tests/test_latex_pointers.py::test_a_table_the_view_cannot_count_leaves_tables_unchecked`.
   - A table display's cells are read only where its float holds one table display and one
-    table: subtables, two captions over two tables, a picture of a table, and a file two
-    floats input are "not read"; the caption is still compared.
+    table: subtables, two captions over two tables and a picture of a table are "not read",
+    and a file two floats input is read for the first float and "not read" for the second;
+    the caption is still compared.
     Pinned by `tests/test_compare.py::test_a_float_whose_captions_and_tables_are_not_one_to_one_is_not_read`
     and `tests/test_compare.py::test_a_file_two_floats_input_is_read_for_the_first_only`.
   - The numbers of the reference list and of the tables are not compared as the prose's: a
@@ -27496,42 +27606,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   And CLAUDE.md says a new gate needs its row in `docs/gates.md`, not that it must also join
   a group of `assurance.DIMENSIONS` or be named after the README's table of groups, with
   "Seventeen gates" changed: two tests fail otherwise, and their messages name what is
-  missing (round 1 of #550). Closed by reading a page's sentences through the Markdown
-  reader and matching the link on either side of the word, and by a line in CLAUDE.md.
-  Accepted.
+  missing (round 1 of #550). Neither part is closed: the test still splits a page after "."
+  and ":", and CLAUDE.md names neither `assurance.DIMENSIONS` nor the count. Reading a
+  page's sentences through the Markdown reader and matching the link on either side of the
+  word, and a line in CLAUDE.md, would close it. Accepted.
 
-- **Five sentences of the docs pages say more or less than the tool does.** Each was found
-  by review and left, each is a sentence to change, and no test reads them (round 1 of
-  #556; round 1 of #550 for the last):
-  - `docs/teams.md`, approvals and sign-offs: "under Codex they refuse it" leaves out that
-    Codex runs the hooks only once the user has trusted them under `/hooks` (see "Under
-    Codex the hooks are tested against its source"); until then an agent's `approve` or
-    `sign` goes through.
-  - `docs/teams.md`, the layout table: `authors.yaml` is said to hold "who signs off what",
-    but the file `init` writes has no `roles:` key and no comment naming one; the section
-    below the table says where it goes.
-  - `docs/teams.md`, the badge: the warning to look at `literature/sources/` before a
-    repository is made public leaves out that a new project's `.gitignore` keeps the copies
-    out of git, and which projects commit them (`docs/github-actions.md`). Overcautious
-    rather than false.
-  - `docs/getting-started.md`, "What you need": "nothing has to be installed" is followed by
-    the `uvx` route, which needs uv; only the audit page needs nothing.
-  - The README, under "What is checked": "G0, which holds that the manuscript can be read at
-    all, is in none" gives G0 its gate's meaning only; G0 also labels a file of the project
-    that cannot be used (`schema-violation`), as `docs/gates.md` says under "G0 and BUILD".
-
-- **The brand drawings' test holds the SVGs, not the PNGs, and reads the banner's CSS for
-  one spelling.** `tests/test_brand.py` holds every SVG to what `tools/brand_assets.py`
-  writes, and the PNGs (`social-preview.png`, `emblem-512.png`, `favicon-32.png`) only to
-  their presence and size, since their pixels depend on the browser that renders them:
-  after an edit to the emblem the PNGs stay as they were and the suite passes (round 1 of
-  #551, finding 4; `brand/README.md` says so). The banner's still frame is held by the exact
-  set of drawings it hides and by its reduced-motion rule coming after the last
-  `animation-name:`; a shorthand `animation:` rule placed after it would override it and
-  pass (round 2 of #554, finding 1). The test's comment, and `brand/README.md`'s account of
-  the still frame, leave out the spark, which is shown; the assertion is right (finding 2).
-  Closed by rendering the PNGs in CI against the committed ones, and by reading the
-  shorthand too.
+- **The brand drawings' test holds the SVGs, not the PNGs.** `tests/test_brand.py` holds
+  every SVG to what `tools/brand_assets.py` writes, and the PNGs (`social-preview.png`,
+  `emblem-512.png`, `favicon-32.png`) only to their presence and size, since their pixels
+  depend on the browser that renders them: after an edit to the emblem the PNGs stay as
+  they were and the suite passes (round 1 of #551, finding 4; `brand/README.md` says so).
+  Rendering the PNGs in CI against the committed ones would close it. Accepted.
 
 - **The AI-use statement is held to names, and to the records that say a model made them.**
   G4's AI-use check (`gates/ai_use.py`, `text/model_names.py`; "The AI-use statement names
@@ -28469,6 +28554,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     give the same. Accepted.
   - Two sections of one title under one parent share a key, `results/sensitivity`.
     Accepted.
+  - G3's confused colours name a figure outside the project, as written and as resolved, by
+    its file name alone, one on another drive or reached by `../` or by an absolute path,
+    since a path from the root to it would name the author's folders and, written absolute,
+    move with the checkout: two such figures of one name share a key, as before scheme 3.
+    Pinned by
+    `tests/test_finding_keys.py::test_two_figures_of_one_name_outside_the_project_share_a_key`
+    and `tests/test_finding_keys.py::test_a_figure_named_by_an_absolute_path_keeps_its_key_where_the_project_moves`.
+  - On a file system that ignores case where paths do not (macOS), an inside figure written
+    through the root's folder in another case, `../Paper/figures/f.svg`, is read as outside
+    and keyed by its name, as `placed_figures` reads it. Accepted.
+  - A refusal's key is moved by an edit of the line it stands on. Accepted.
   - In a Word paper's or a PDF's text, where a heading is its name alone on a line, an
     Abstract is read as structured where its first line after the heading is shaped as a
     heading (a capital, no stop) and names, emphasis, stops and colons aside, one of its
@@ -28496,6 +28592,43 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **Docs and comments that no longer said what the tool does (Known gaps F03, 2026-11-21).**
+  A sentence that says more or less than the tool does is believed by the author who reads
+  it, and a Known gap that contradicts another is trusted for whichever is read first:
+  - "A fence tagged with a language nothing can lex is read as prose", an entry of its own
+    near "`em.cell()` launders whatever its parts are", repeated the entry at the top of
+    Known gaps and contradicted it: such a block is reported unread (`code-block-unread`),
+    as `tests/test_text.py::test_a_fenced_block_is_judged_as_code` holds. It is gone.
+  - Under "Left by round 2 of #452": `classify._names_covering`'s docstring said that with
+    D2 declared "PharmD~2~" is no term; it is `d2` declared or not, and the docstring says
+    so. And ci.yml's comment on the r-interop job's setup-pandoc named
+    setup-r-dependencies, a step gone since R came from conda-forge; it names the pinned
+    pandoc the requirement asks for.
+  - Five sentences of the docs pages (round 1 of #556 and of #550). `docs/teams.md` said
+    that under Codex the hooks refuse `approve` and `sign`, and now says that until the user
+    trusts them under `/hooks` the hooks do not run; that `authors.yaml` holds who signs off
+    what, which a `roles:` key the author adds holds, as it now says, since the file `init`
+    writes has none; and its warning on `literature/sources/` before a repository is made
+    public now says that a new project's `.gitignore` keeps the copies out and which
+    projects commit them. `docs/getting-started.md` said nothing had to be installed to
+    check a paper, before the `uvx` route, which needs uv; only the audit page needs
+    nothing, as it says now. And the README gave G0 its gate's meaning only; it says now
+    that G0 also labels a file of the project that cannot be used (`schema-violation`).
+  - Under "The brand drawings' test holds the SVGs, not the PNGs": two of its points had
+    been closed by #561 and were still listed, the test refusing a shorthand `animation:`
+    after the reduced-motion rule as well as `animation-name:`, and its comment naming the
+    spark among what the still frame shows. `brand/README.md` still left the spark and the
+    gate's tag out of the still frame, and names them now.
+
+- **An input past a stop was looked for beside the entry, not where its file was imported
+  from (round 1 of #716).** What a `\subimport{chapters/}{intro}` past a stop reached, and
+  what chapters/intro.tex inputs past its own stop, `\input{methods}`, was looked for at the
+  manuscript's root, so chapters/methods.tex was given the advice for a file nothing inputs
+  in `audit` and warned of as `tex-not-input` by BUILD (check of #637). Each input past a
+  stop, and each a skipped block holds, is looked for from the folder its file was
+  imported from, as the tree looks for it (`structure.past_stops`,
+  `structure.inside_blocks`).
 
 - **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
   section of another name was not found (2026-11-11).** Of the twelve numbers the audit

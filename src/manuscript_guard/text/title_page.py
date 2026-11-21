@@ -102,8 +102,11 @@ _LABEL = re.compile(
     r")\.?[*_\s]*(?::|$))",
     re.IGNORECASE,
 )
-#: An e-mail address and an ORCID iD.
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+#: An e-mail address and an ORCID iD. The address is tried only where its run of a name's
+#: characters starts, as the lookbehind says, and it is found wherever it was: tried from
+#: every character of a run, each start read to the run's end, and 100,000 hyphens, a rule
+#: in a Word paper converted, took 109 s (the robustness sweep of 2026-11-21).
+_EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _ORCID = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b|\borcid\b", re.IGNORECASE)
 #: What names an institution in an affiliation, in the languages papers are most often
 #: written in: "Department of Pharmacology", "Université de Caen", "INSERM U1237",

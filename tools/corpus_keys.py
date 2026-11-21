@@ -180,7 +180,9 @@ def key_state(key: str, new: Keys, base_count: int, successor_codes: tuple = ())
 
 def load_ties(root: Path) -> dict | None:
     """`report/ties.yaml`: the keyed run the judged set was tied in, and each tie by its
-    judged finding's slug, report and index. None where there is none."""
+    judged finding's slug, report and index; a batch's, under `batches` by the batch's name,
+    by slug, report, index and the batch's name, as `Judged.key` names its verdict. None
+    where there is none."""
     path = root / TIES
     if not path.is_file():
         return None
@@ -190,21 +192,35 @@ def load_ties(root: Path) -> dict | None:
         raise CorpusError(f"{path} is not YAML: {exc}") from None
     if not isinstance(document, dict) or not isinstance(document.get("ties"), list) \
             or not isinstance(document.get("run"), str) \
-            or set(document) - {"judged_run", "run", "scheme", "ties"}:  # fmt: skip
+            or set(document) - {"judged_run", "run", "scheme", "ties", "batches"}:  # fmt: skip
         raise CorpusError(f"{path}: the ties are a list under `ties`, the run they name `run`, "
-                          "and nothing but `judged_run` and `scheme` beside them")
+                          "and nothing but `judged_run`, `scheme` and `batches` beside them")
+    out = _ties(document["ties"], path, ())
+    batches = document.get("batches") or {}
+    if not isinstance(batches, dict):
+        raise CorpusError(f"{path}: `batches` maps each batch's name to its ties")
+    for name, batch in batches.items():
+        if not isinstance(batch, dict) or not isinstance(batch.get("ties"), list) \
+                or set(batch) - {"judged_run", "scheme", "ties"}:  # fmt: skip
+            raise CorpusError(f"{path}: a batch's ties are a list under `ties`, with nothing "
+                              "but `judged_run` and `scheme` beside them")  # fmt: skip
+        out.update(_ties(batch["ties"], path, (str(name),)))
+    scheme = document.get("scheme", 1)
+    if not isinstance(scheme, int):
+        raise CorpusError(f"{path}: the scheme of the ties' keys is a number, not {scheme!r}")
+    return {"run": document["run"], "ties": out, "scheme": scheme}
+
+
+def _ties(entries: list, path: Path, batch: tuple) -> dict:
     out = {}
-    for entry in document["ties"]:
+    for entry in entries:
         if not isinstance(entry, dict) or not {"slug", "report", "index", "key", "how"} \
                 <= set(entry) <= {"slug", "report", "index", "key", "how", "family"}:  # fmt: skip
             raise CorpusError(f"{path}: a tie is slug, report, index, key and how, and family")
         if not isinstance(entry["key"], str):
             raise CorpusError(f"{path}: a tie's key is a string, not {entry['key']!r}")
-        out[_where(entry, path)] = Tie(entry["key"], bool(entry.get("family")))
-    scheme = document.get("scheme", 1)
-    if not isinstance(scheme, int):
-        raise CorpusError(f"{path}: the scheme of the ties' keys is a number, not {scheme!r}")
-    return {"run": document["run"], "ties": out, "scheme": scheme}
+        out[(*_where(entry, path), *batch)] = Tie(entry["key"], bool(entry.get("family")))
+    return out
 
 
 @dataclass(frozen=True)
@@ -223,11 +239,12 @@ def _where(entry: dict, path: Path) -> tuple[str, str, int]:
         raise CorpusError(f"{path}: a tie's index is a number, not {entry['index']!r}") from None
 
 
-def load_decided(root: Path) -> dict[tuple[str, str, int], Tie]:
+def load_decided(root: Path) -> dict[tuple, Tie]:
     """`report/ties-decided.yaml`: the author's ties, each `{slug, report, index, key, by,
     date}`, the key null where no keyed finding is the judged one, `family: true` for a key
-    family. Read beside the ties, over them; checked against the judged set and the run of
-    the ties by `check_decided`. A judged finding decided twice is refused."""
+    family, and `batch` for a batch's verdict. Read beside the ties, over them; checked
+    against the judged set and the run of the ties by `check_decided`. A judged finding
+    decided twice is refused."""
     path = root / DECIDED
     if not path.is_file():
         return {}
@@ -240,9 +257,12 @@ def load_decided(root: Path) -> dict[tuple[str, str, int], Tie]:
     out = {}
     for entry in document:
         needed = {"slug", "report", "index", "key", "by", "date"}
-        if not isinstance(entry, dict) or not needed <= set(entry) <= needed | {"family"}:
-            raise CorpusError(f"{path}: a decision is slug, report, index, key, by and date")
-        key, where = entry["key"], _where(entry, path)
+        if not isinstance(entry, dict) or not needed <= set(entry) <= needed | {"family",
+                                                                                "batch"}:
+            raise CorpusError(f"{path}: a decision is slug, report, index, key, by and date, "
+                              "and batch for a batch's verdict")  # fmt: skip
+        batch = (str(entry["batch"]),) if entry.get("batch") else ()
+        key, where = entry["key"], (*_where(entry, path), *batch)
         if key is not None and not isinstance(key, str):
             raise CorpusError(f"{path}: a decision's key is a string or null, not {key!r}")
         if where in out:
@@ -469,7 +489,8 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
         lines = [f"# Judged findings for the author to tie: {len(rows)}", "",
                  f"To record a decision, add a line to `{DECIDED.as_posix()}`: `- {{slug: S, "
                  "report: R, index: N, key: 'K', by: NAME, date: YYYY-MM-DD}`, where K is the "
-                 "key it is, or `key: null` where none is.", "",
+                 "key it is, or `key: null` where none is; a batch's verdict, listed with its "
+                 "batch's name first, names its batch too, `batch: B`.", "",
                  f"The judged run {judged_run} against the keyed run {keyed_run}: the findings "
                  "with more than one candidate, and those whose candidate's key is repeated.",
                  ""]  # fmt: skip
@@ -487,7 +508,9 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
         lines += [f"## {title} ({len(part)})", ""]
         for row in part:
             by = f", paired by {row['how']}" if row.get("how") else ""
-            lines.append(f"- **{row['slug']} {row['report']} {row['index']}** ({row['verdict']}, "
+            batch = f"{row['batch']} " if row.get("batch") else ""
+            lines.append(f"- **{batch}{row['slug']} {row['report']} {row['index']}** "
+                         f"({row['verdict']}, "
                          f"{row['code']}{by}): {row['message']}")  # fmt: skip
             lines += [f"  - `{c['key']}` ({c['code']}): {c['message']}"
                       for c in row["candidates"]] or ["  - no finding of its code"]
@@ -498,9 +521,10 @@ def render_ambiguous(rows: list[dict], judged_run: str, keyed_run: str,
 def check_decided(found: dict, judged: set, tied: str, keys_of) -> dict:
     """The author's decisions, each refused unless its judged finding is one of the judged
     set and its key is in the run of the ties (a family's where it says `family`), or null."""
-    for (slug, report, index), tie in found.items():
-        if (slug, report, index) not in judged:
-            raise CorpusError(f"{DECIDED.as_posix()}: {slug} {report} {index} is no judged "
+    for where, tie in found.items():
+        slug, report = where[:2]
+        if where not in judged:
+            raise CorpusError(f"{DECIDED.as_posix()}: {' '.join(map(str, where))} is no judged "
                               "finding")  # fmt: skip
         if tie.key is not None and not keys_of(slug, report).count(tie.key, tie.family):
             raise CorpusError(f"{DECIDED.as_posix()}: {tie.key} is not in {tied}'s {slug} "
@@ -517,6 +541,13 @@ def render_tie(result: dict) -> str:
              f"({UNTIED.as_posix()}).", "",
              "| why not tied | judged findings |", "| --- | ---: |"]  # fmt: skip
     lines += [f"| {KINDS[k]} | {n} |" for k, n in result["by_kind"].items()]
+    told = [f"- {name} (scheme {b['scheme']}, judged in {b['judged_run']}): {b['tied']} tied, "
+            f"{b['ambiguous']} not, of them {b['to_decide']} for the author"
+            for name, b in result.get("batches", {}).items()]  # fmt: skip
+    told += [f"- {name} keys by the keyed run's scheme {result['scheme']}: paired by its own "
+             "keys" for name in result.get("own_scheme", [])]  # fmt: skip
+    if told:
+        lines += ["", "Batches, in the same files:", "", *told]
     return "\n".join(lines) + "\n"
 
 

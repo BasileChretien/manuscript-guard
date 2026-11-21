@@ -136,9 +136,11 @@ against `report/packets/<batch>.json`, since the same slug, report and index sta
 first packets for another finding; the first verdicts are read by slug as before. A batch's
 verdict is paired by the key its finding carries, with no tie, where the run measured keys by
 the packet's scheme, its count held to the batch's run (at the gate's new run, to the base,
-where that keys so too); otherwise by the matcher. The batch's run is found at its `folder`,
-else at `runs/<run>`; where neither is there, the count is held to the run measured. The first verdicts are paired before a
-batch's, so that no batch changes their fates. A ledger's matcher re-judges a batch's verdict
+where that keys so too); in a run of another scheme, by the key `tie` tied it to where the
+ties hold one (Pairing by key, below), as a first verdict is; otherwise by the matcher. The
+batch's run is found at its `folder`, else at `runs/<run>`; where neither is there, the count
+is held to the run measured. The first verdicts are paired before a batch's, so that no batch
+changes their fates. A ledger's matcher re-judges a batch's verdict
 as it does a first one; a ledger's `findings`, by slug, report and index, name first verdicts
 only.
 
@@ -309,13 +311,24 @@ alone:
   the judged findings in order of index. Their verdict is one, so the order changes no
   measure. Never where their verdicts or their numbers differ.
 
+A batch's verdicts carry keys of their run's scheme, so after a raise of the scheme they too
+are tied (Basile, 2026-11-21): the same `tie` ties the verdicts of each batch whose packet
+keys by another scheme than the keyed run, by the same rules, the batch's own run (found as
+`measure` finds it, at the packet's `folder`, else at `runs/<run>`) standing for the judged
+run. It refuses a batch whose run is at neither. A batch of the keyed run's own scheme is
+not tied: its verdicts are paired by the keys they carry, as before.
+
 Each tie goes to `report/ties.yaml`, `{slug, report, index, key, how}` and `family` for a
-family, under the name of the keyed run. A judged finding no rule settles, with several
-candidates or a repeated key, goes to `report/ties-ambiguous.md` with its verdict, its message
-and the candidates' keys and messages, for the author to decide by hand. A decision goes in
-`report/ties-decided.yaml`, a list of `{slug, report, index, key, by, date}`, the key null
-where no keyed finding is the judged one (it then reads gone in a keyed run) and `family:
-true` for a key family; `measure` and `gate` read it over the ties, and refuse a decision
+family, under the name of the keyed run; a batch's under `batches`, by the batch's name, with
+the batch's `judged_run` and `scheme`. They are kept in the one file because they are made in
+the one keyed run, of one scheme, by one command: `measure` and `gate` read a batch's ties
+where they read the first ones, only where every run measured keys by the ties' scheme. A
+judged finding no rule settles, with several candidates or a repeated key, goes to
+`report/ties-ambiguous.md` with its verdict, its message and the candidates' keys and
+messages, a batch's verdict with its batch's name first, for the author to decide by hand. A
+decision goes in `report/ties-decided.yaml`, a list of `{slug, report, index, key, by, date}`,
+`batch` too for a batch's verdict, the key null where no keyed finding is the judged one (it
+then reads gone in a keyed run) and `family: true` for a key family; `measure` and `gate` read it over the ties, and refuse a decision
 whose judged finding is not one of the judged set or whose key is not in the run of the ties.
 The rest, with no candidate, a candidate another judged finding took, a weaker pass or a
 finding of another code, go to `report/ties-untied.md` and stay for the matcher.

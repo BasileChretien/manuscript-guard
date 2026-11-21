@@ -153,7 +153,10 @@ def test_a_sentence_whose_words_the_build_does_not_print_as_cut_gets_no_comment(
     """A known gap (DESIGN.md, Known gaps, "A comment is put on a sentence only where its
     words, as the build printed them, are once in their paragraph"): a sentence whose
     emphasis runs across its edge, or one the splitter cuts inside a note, where pandoc
-    prints the note's mark, gets no comment, and the command says why."""
+    prints the note's mark, gets no comment, and the command says why. The first case holds
+    the emphasis, the second the splitter: its sentence starts inside the note, after the
+    note's stop, so its words are not what pandoc prints. The same note with no stop,
+    `^[Crude]`, leaves the sentence whole, and it is commented (tried in review of #733)."""
     main_md = project / "manuscript" / "main.md"
     text = main_md.read_text("utf-8")
     for old, new in (change[:2], change[2:]):

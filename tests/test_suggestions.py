@@ -340,6 +340,58 @@ def test_a_document_whose_record_of_suggestions_was_altered_is_not_imported(
     assert code == 2
 
 
+@needs_pandoc
+def test_a_recorded_suggestion_whose_written_digest_is_null_is_refused(
+    project: Path, tmp_path: Path
+) -> None:
+    """`written` may be left out, by a document written before it was recorded, but never
+    null: a record holding one is not one this tool writes, and the document is refused
+    rather than its comments matched by nothing (Known gaps F04)."""
+    import re
+    import zipfile
+
+    from manuscript_guard.tracked import TrackedError, offered_of
+
+    document = offered_round(project)
+    returned = decide(document, tmp_path / "back.docx", {1: "accept", 2: "accept", 3: "accept"})
+    with zipfile.ZipFile(returned) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    custom = parts["docProps/custom.xml"].decode("utf-8")
+    custom, count = re.subn(r'"written":"[0-9a-f]+"', '"written":null', custom, count=1)
+    assert count == 1, custom
+    parts["docProps/custom.xml"] = custom.encode("utf-8")
+    with zipfile.ZipFile(returned, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    with pytest.raises(TrackedError, match="in a form this version does not write"):
+        offered_of(returned)
+    code, _said = run("import", str(returned), str(project), "--apply")
+    assert code == 2
+
+
+@needs_pandoc
+def test_a_reply_to_a_comment_that_carries_a_note_overrides_its_finding(
+    project: Path, tmp_path: Path
+) -> None:
+    """The first edit puts an "only" in, and its comment carries a note after the finding:
+    the comment is matched by its `written` digest, not the finding's, and a reply to it is
+    the author's reason for refusing the edit, never a co-author's comment (Known gaps
+    F04)."""
+    from manuscript_guard.tracked import offered_of
+
+    document = offered_round(project)
+    noted = next(entry for entry in offered_of(document) if entry["n"] == 1)
+    assert noted["written"] != noted["comment"], noted
+    returned = decide(document, tmp_path / "back.docx", {1: "reject", 2: "reject", 3: "reject"},
+                      replies={1: "The limit is not meant here."})  # fmt: skip
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    found = {f["id"]: f for f in reading(project)["findings"]}
+    assert found["r8-pe-02"]["overridden"] == "The limit is not meant here.", found
+    assert found["r8-pe-02"]["overridden_by"] == AUTHOR
+    assert "comment from" not in said, said
+
+
 # --------------------------------------------------------------- beside and inside markup
 
 

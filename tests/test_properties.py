@@ -12911,13 +12911,17 @@ from generated import names_in_tex  # noqa: E402
 
 @holds(30, names_in_tex())
 def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
-    drawn: tuple[str, list[tuple[str, str]]],
+    drawn: tuple[str, list[tuple[str, str | None]]],
 ) -> None:
     """Round 1 of #510: `{\\AA}ngstr{\\"o}m` was read as "aangstrom", and the hint for
     "(Ångström, 2018)" said references.bib held no work by Ångström and to add one. Each
     family name a `.bib` writes in TeX is found for the citation typed with its letter, or
     with the letters a reader without it types; and a name holding TeX the hint does not
-    read is never said to be missing: the hint names its entry."""
+    read is never said to be missing: the hint names its entry. A citation no work is, by a
+    name of theirs from another year or by another name from one of their years, names no
+    entry and is the only one told to add the work (Known gaps F04: no citation was drawn
+    that matched no entry, and the check that the hint never says a work is missing could
+    not fail)."""
     bib, cited = drawn
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "references.bib"
@@ -12927,7 +12931,12 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
         assert read is not None, written
         said = typed_module.hint(read, works, latex=False, otherwise="")
-        assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+        if key is None:
+            assert "[@work" not in said, (written, said, bib)
+            assert "adding the work there first if it is not yet in it" in said, said
+        else:
+            assert f"[@{key}]" in said, (written, said, bib)
+            assert "adding the work there" not in said, (written, said)
 
 
 from generated import typed_reference_papers  # noqa: E402
@@ -13003,6 +13012,23 @@ def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
 
 def _a_name_in_tex_not_read_is_missing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_unread", lambda family: False)
+
+
+def _a_work_of_another_year_is_named(patch: pytest.MonkeyPatch) -> None:
+    def keys_for(typed, works):
+        name = typed_module._fold(typed.name)
+        return sorted(key for (family, _year), keys in works.keys.items() if family == name
+                      for key in keys)  # fmt: skip
+
+    patch.setattr(typed_module, "keys_for", keys_for)
+
+
+def _a_work_of_another_name_is_named(patch: pytest.MonkeyPatch) -> None:
+    def keys_for(typed, works):
+        return sorted(key for (_family, year), keys in works.keys.items()
+                      if year == typed.year for key in keys)  # fmt: skip
+
+    patch.setattr(typed_module, "keys_for", keys_for)
 
 
 def _et_al_is_a_name(patch: pytest.MonkeyPatch) -> None:
@@ -25539,6 +25565,14 @@ BROKEN = {
     ),
     "a .bib name in TeX the hint does not read is said to be missing": (
         _a_name_in_tex_not_read_is_missing,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a typed citation's hint names a work by that name from another year": (
+        _a_work_of_another_year_is_named,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a typed citation's hint names a work from that year by another name": (
+        _a_work_of_another_name_is_named,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
     ),
     "in LaTeX, an escaped percent opens a comment": (

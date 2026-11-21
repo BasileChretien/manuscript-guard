@@ -11,6 +11,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import pytest
 
@@ -474,6 +475,64 @@ def test_a_zotero_field_in_a_document_built_offline_is_named(
     assert '"Hepatic injury" was cited in Word with a reference manager' in out, out
     named = "'(Fictional and Fictional 2021)' is the citation [@fictionalHepaticCohort2021]"
     assert (named in out) is changed, out
+
+
+#: Zotero's run properties on a field's runs, as Word keeps them.
+_FIELD_RPR = '<w:rPr><w:rFonts w:ascii="Calibri"/><w:noProof/></w:rPr>'
+#: The field's code with the properties Zotero records, the citation as it last formatted it.
+_FORMATTED_CODE = ZOTERO_CODE.replace(
+    '"schema":"x"',
+    '"properties":{"formattedCitation":"(Fictional and Fictional 2021)",'
+    '"plainCitation":"(Fictional and Fictional 2021)","noteIndex":0},"schema":"x"',
+)
+
+
+def _complex_field(code: str, shown: list[str], rpr: str = "") -> str:
+    """A field of `begin`, its code in one `instrText`, `separate`, a run for each part of
+    `shown` and `end`, every run under `rpr`."""
+    return (
+        f'<w:r>{rpr}<w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r>{rpr}<w:instrText xml:space="preserve">{escape(code)}</w:instrText></w:r>'
+        f'<w:r>{rpr}<w:fldChar w:fldCharType="separate"/></w:r>'
+        + "".join(f'<w:r>{rpr}<w:t xml:space="preserve">{part}</w:t></w:r>' for part in shown)
+        + f'<w:r>{rpr}<w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "field",
+    [
+        _complex_field(ZOTERO_CODE, ["(Fictional and Fictional 2021)"], _FIELD_RPR),
+        _complex_field(ZOTERO_CODE, ["(Fictional", " and Fictional ", "2021)"]),
+        _complex_field(ZOTERO_CODE, ["(Fictional and ", "Fictional 2021)"], _FIELD_RPR),
+        _complex_field(_FORMATTED_CODE, ["(Fictional and Fictional 2021)"]),
+        f'<w:fldSimple w:instr="{escape(ZOTERO_CODE, {chr(34): "&quot;"})}">'
+        '<w:r><w:t xml:space="preserve">(Fictional and Fictional 2021)</w:t></w:r>'
+        "</w:fldSimple>",
+    ],
+    ids=["run properties", "result over several runs", "both", "formattedCitation",
+         "fldSimple"],  # fmt: skip
+)
+def test_a_zotero_field_in_any_shape_word_saves_is_named(
+    project: Path, tmp_path: Path, field: str, capsys
+) -> None:
+    """Round 1 of #281 drew the field in one shape, its runs bare and its result in one run
+    (Known gaps F04). Zotero's fields carry run properties, a result Word split over several
+    runs, a `formattedCitation` in their code, or come as a `w:fldSimple`: each is a citation
+    a co-author inserted, named and its paragraph refused, though its words are the offline
+    build's."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {CITED: field}
+    )
+    assert main(["import", str(returned), str(project)]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert '"Hepatic injury" was cited in Word with a reference manager' in out, out
+    assert "is the citation [@fictionalHepaticCohort2021]" not in out, out
 
 
 #: A citation style of the fewest lines, numeric, written here: no style of the official

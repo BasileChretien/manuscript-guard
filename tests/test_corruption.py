@@ -1628,10 +1628,14 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
     assert len(found) == 1, report.render(project)
     hint = " ".join(found[0].hint.split())
     assert said in hint and "holds no work" not in hint, hint
-    if "[@" in said:
-        # Said as what may be, never as fact, and the hint G2 gave before stays after it.
+    if "a date" not in said:
+        # Said as what may be, never as fact, and the hint G2 gave before stays after it,
+        # whether the hint names a key, an entry it cannot read, or none (Known gaps F04).
         assert "typed as text" in hint and "Otherwise, bind it with {{results" in hint, hint
         assert "holds the work" not in hint, hint
+    if "adding the work there" in said:
+        # Where no entry is the work, none is named as one the author may mean.
+        assert "[@" not in hint.split("Otherwise,")[0].replace("[@key]", ""), hint
 
 
 @pytest.mark.parametrize(

@@ -14874,28 +14874,42 @@ TEX_UNREAD = ((r"{\IJ}", "IJ"), (r"\foreignlanguage{dutch}{IJ}", "IJ"))
 
 
 @st.composite
-def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | None]]]:
     """A `.bib` file with a work for each letter of `TEX_LETTERS`, its first author's family
     name holding the letter in TeX, written "Family, Given" or "Given Family", and one whose
     name holds TeX of `TEX_UNREAD`; and for each, the citation a manuscript types for it, the
-    letter as typed or as a reader without it types it, with the key. Every letter in every
-    example, so that a reading broken for one fails under any seed."""
+    letter as typed or as a reader without it types it, with the key. Then two citations no
+    work is, with None: the name of a work whose name is read, with a year no work has, and a
+    name no work has, with the year of a work whose name is read (no two works share a year).
+    Every letter and both citations in every example, so that a reading broken for one fails
+    under any seed."""
     # No "e" or "s" around the letter: "oe" and "ss" are a transcription of their own.
     part = st.text("abdfghikmnoprtuvz", min_size=1, max_size=5)
-    entries, cited = [], []
+    entries: list[str] = []
+    cited: list[tuple[str, str | None]] = []
     shapes = [(letter, typed, tex, True) for letter, typed, tex in TEX_LETTERS]
     shapes += [(typed, typed, tex, False) for tex, typed in TEX_UNREAD]
+    years = iter(draw(st.lists(st.integers(1900, 2020), min_size=len(shapes),
+                               max_size=len(shapes), unique=True)))  # fmt: skip
+    read_by: list[tuple[str, int]] = []
     for number, (letter, plain, tex, read) in enumerate(draw(st.permutations(shapes))):
         head = "" if letter[0].isupper() else draw(st.sampled_from("BDGKMPTV"))
         tail = draw(part)
         written = draw(st.sampled_from((letter, plain))) if read else plain
-        year = 1900 + draw(st.integers(0, 120))
+        year = next(years)
         key = f"work{number}"
         family = f"{head}{tex}{tail}"
         author = draw(st.sampled_from((f"{family}, Anne", f"Anne {family}")))
         entries.append(f"@article{{{key},\n  author = {{{author} and Other, Eve}},\n"
                        f"  year = {{{year}}},\n}}\n")  # fmt: skip
         cited.append((f"({head}{written}{tail}, {year})", key))
+        if read:
+            read_by.append((f"{head}{written}{tail}", year))
+    # The years run to 2020, and no name of a work opens with "Q".
+    name, _year = draw(st.sampled_from(read_by))
+    cited.append((f"({name}, {draw(st.integers(2021, 2099))})", None))
+    _name, year = draw(st.sampled_from(read_by))
+    cited.append((f"(Q{draw(part)}, {year})", None))
     return "\n".join(entries), cited
 
 

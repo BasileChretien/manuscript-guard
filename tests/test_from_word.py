@@ -957,6 +957,12 @@ STYLE_PARTS = {
                         if part == "word/document.xml" else data, True),
     "with the style undefined": (_styles(lambda d: re.sub(_ABSTRACT_STYLE, b"", d, flags=re.S)),
                                  False),
+    # Word's "Strict Open XML Document": pandoc reads the `w:` prefix in another namespace
+    # (round 1 of #752).
+    "in Strict Open XML": (lambda part, data: data.replace(
+        b"http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        b"http://purl.oclc.org/ooxml/wordprocessingml/main") if part.endswith(".xml") else data,
+        True),
 }
 
 
@@ -977,6 +983,11 @@ def test_a_style_is_named_abstract_wherever_pandoc_reads_a_paragraph_in_it(
     styled = [from_word._custom_style(block) for block in tree["blocks"]]
     assert (from_word.ABSTRACT_STYLE in styled) <= from_word._names_the_abstract_style(paper)
     assert from_word._names_the_abstract_style(paper) is named
+    if from_word.ABSTRACT_STYLE in styled:
+        # As main lifted it: round 1 of #752 found a Strict paper's left on the title page.
+        converted = from_word.convert(paper)
+        assert converted.abstract and "We followed 120 patients." not in (
+            converted.text[: converted.text.index("-->")])
 
 
 @needs_pandoc

@@ -463,8 +463,16 @@ def _labelled(label: str, blocks: list) -> list:
 
 #: The paragraph style pandoc reads as the abstract, where it stands after the title.
 ABSTRACT_STYLE = "Abstract"
-#: The namespace of the elements of a .docx's parts.
-_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _local(name: str) -> str:
+    """An element's or an attribute's name without its namespace."""
+    return name.rpartition("}")[2]
+
+
+def _attribute(element, name: str) -> str | None:
+    """The value of the attribute of `element` called `name`, in any namespace, or None."""
+    return next((value for key, value in element.attrib.items() if _local(key) == name), None)
 
 
 def _names_the_abstract_style(path: Path) -> bool:
@@ -474,8 +482,10 @@ def _names_the_abstract_style(path: Path) -> bool:
     not define no style; so where none is named so, the reading with styles
     (`_styled_run`) finds no paragraph in the Abstract style, and is not made. Most Word
     papers have none: 49 of the 50 of the robustness sweep of 2026-11-21, of which 29 pandoc
-    read a second time for nothing, a quarter of the time it took to convert the 50. True
-    where the part cannot be read, so that pandoc's reading decides."""
+    read a second time for nothing, a quarter of the time it took to convert the 50. The
+    elements are found by their names in any namespace: pandoc goes by the `w:` prefix, which
+    a Strict Open XML document binds to another (round 1 of #752). True where the part cannot
+    be read, so that pandoc's reading decides."""
     from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
     try:
@@ -485,10 +495,12 @@ def _names_the_abstract_style(path: Path) -> bool:
             styles = read_part(archive, "word/styles.xml", what=f"{path.name}:word/styles.xml")
     except UnsafeDocument:
         return True
-    for style in styles.iter(_W + "style"):
-        name = style.find(_W + "name")
-        said = name.get(_W + "val") if name is not None else None
-        named = said if said is not None else style.get(_W + "styleId", "")
+    for style in styles.iter():
+        if _local(style.tag) != "style":
+            continue
+        names = [child for child in style if _local(child.tag) == "name"]
+        said = _attribute(names[0], "val") if names else None
+        named = said if said is not None else _attribute(style, "styleId") or ""
         if named.casefold() == ABSTRACT_STYLE.casefold():
             return True
     return False

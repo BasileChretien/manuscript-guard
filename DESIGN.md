@@ -24769,10 +24769,12 @@ Open, recorded as each change landed:
     Pinned by `tests/test_spelling.py::test_where_a_capital_is_the_sentence_s`.
   - A word that is mentioned and not used is reported: "the term *color* is American".
     Set as code, it is not read.
+    Pinned by `tests/test_spelling.py::test_a_word_that_is_mentioned_and_not_used_is_reported`.
   - A word of another language, or a name written in lower case, is read as English:
     the species in "*Castor fiber*", the Latin of "rubor, tumor, calor and dolor", the
     genes *dishevelled* and *colourless*. Emphasis cannot excuse them, since "the
     *color* was recorded" has to be read. Each goes under `accepted_spellings`.
+    Pinned by `tests/test_spelling.py::test_a_word_of_another_language_or_a_name_in_lower_case_is_read_as_english`.
   - The spelling is not read in a contributions, acknowledgements, funding or
     competing-interests section, nor in its subsections, nor in such a statement run on
     from its bold label: a word of the author's own that is misspelt there passes. A
@@ -24792,10 +24794,13 @@ Open, recorded as each change landed:
     fails for the command only from `drafting` on and where pandoc is installed, and a
     word in a macro's definition, `\newcommand{\vol}{\mathrm{tumor}}`, which
     `check` passes.
+    Pinned by `tests/test_spelling.py::test_what_a_latex_command_holds_in_its_braces_is_read`.
   - Words quoted inside a sentence are read as the manuscript's own, as for the
     vocabulary; only a quotation set as a block keeps its author's spelling.
+    Pinned by `tests/test_spelling.py::test_words_quoted_inside_a_sentence_are_the_manuscript_s_own`.
   - A capital after a colon is taken for a sentence's, so in "the journal: Color Research"
     the name is read.
+    Pinned by `tests/test_spelling.py::test_a_capital_after_a_colon_is_taken_for_a_sentence_s`.
   - A spelling that differs by a hyphen or a space is not read: "co-operate" and "per
     cent" pass in an American paper. Nor is vocabulary: "whilst", "autumn" and
     "fortnight" are words, not spellings. Accepted.
@@ -24808,17 +24813,21 @@ Open, recorded as each change landed:
     one. "anaesthetise" and "anaesthetized" are both British to the list, since American
     usage writes "anesthetize", so neither is counted: a paper whose only word in `-ise`
     is "anaesthetised", beside "randomized", hears nothing. About fifty rows are so.
+    Pinned by `tests/test_spelling.py::test_a_verb_both_british_spellings_of_is_not_counted_for_the_endings`.
   - `spelling-not-as-declared` lists twelve words and counts the rest. The others are
     reported one by one only when the paper's own spellings are no longer the fewer.
     Pinned by `tests/test_spelling.py::test_that_finding_lists_so_many_words_and_counts_the_rest`.
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
+    Pinned by `tests/test_spelling.py::test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word`.
   - Of code, only what is set in backticks or in a fence is left alone. A block set off
     by four spaces is read, and so is `<code>color</code>`, the CSS inside a `<style>`
     block, and a tag whose attributes run on to a second line.
+    Pinned by `tests/test_spelling.py::test_only_code_in_backticks_or_a_fence_is_left_alone`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read.
     Nor is a caption written as an image's description, `![Color of each tumor](...)`;
     a table's caption under `Table:` is.
+    Pinned by `tests/test_spelling.py::test_paper_yaml_s_titles_and_an_image_s_description_are_not_read`.
   - Where a sentence opens is read from what stands before the word, and a capital is
     left alone where that is not plain: after a heading's number (`## 2.1 Color
     measurement`), after a footnote's mark or a closing quotation mark, in an item
@@ -24826,6 +24835,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_spelling.py::test_where_a_capital_is_the_sentence_s`.
   - A derived form is paired with its line's preferred spelling: "amebae" is told
     "amoebas", since the column numbers VarCon gives such lines are not read.
+    Pinned by `tests/test_spelling.py::test_a_derived_form_is_paired_with_its_line_s_preferred_spelling`.
   - The list is VarCon's of 2020 with changes to 2024, and usage moves. A row that is
     wrong for everyone is put right in the script that derives the list, with its
     authority, and not in the data file. Accepted.
@@ -24836,14 +24846,18 @@ Open, recorded as each change landed:
   - The sign is read only after `P` and `n`. "r = 0.31", "OR=2.1", "t(58)=2.41" and a
     comparison with no symbol before it, "aged <65 years", are not read, so a manuscript
     that mixes "r = 0.31" with "r=0.42" passes.
+    Pinned by `tests/test_notation.py::test_the_sign_is_read_only_after_p_and_n`.
   - A `p` that is a proportion or a probability, "where p = 0.5 is the expected share", is
     counted as a P value. A pressure or a count is told from one by a typed value above
     1, which a binding hides: `P~plat~ < {{results.limit}}` is counted. So is a pressure
     whose figures are followed by a power of ten, "P = 2.5 x 10^5^ Pa". A threshold whose
     caret was lost and whose minus sign is a hyphen, "P < 10-8", is not counted.
+    Pinned by `tests/test_notation.py::test_a_p_is_told_from_a_p_value_only_by_a_typed_value_above_one`
+    and `tests/test_notation.py::test_a_binding_hides_the_value_above_one_that_tells_a_pressure`.
   - Words between the symbol and its sign hide the sign: "P for trend = 0.03" counts
     neither the symbol nor the spacing. A subscript written as pandoc's, `P~trend~`, is
     read.
+    Pinned by `tests/test_notation.py::test_words_between_the_symbol_and_its_sign_hide_the_sign`.
   - "p-value" spelt out counts as the symbol "p", so a manuscript that writes "P = 0.03"
     and "the p-value" is told. A capital that opens a sentence, "P values were
     two-sided" or "P < 0.05 was considered significant", is not counted, so a paper
@@ -24855,6 +24869,8 @@ Open, recorded as each change landed:
     between the letters and the first bound, "95% CI 1.2" against "95% CI: 1.2". An
     interval printed by one binding is not read. "CI" for a cardiac index followed by two
     numbers is counted as an interval.
+    Pinned by `tests/test_notation.py::test_an_interval_is_read_only_after_its_letters_and_from_its_first_bound`
+    and `tests/test_notation.py::test_an_interval_one_binding_prints_is_not_read`.
   - An interval joined by "to" is left out of the count where a typed bound is
     negative, as a house that joins with a dash writes it. Where both bounds are
     bindings their sign is not seen, and that "to" is counted as a second form. And a
@@ -24867,6 +24883,8 @@ Open, recorded as each change landed:
     where the first number is 80, 90, 95, 99 or 99.9 and a comma or a semicolon
     follows it, so an interval written "CI 95%, 99%" with no level before it is not
     counted.
+    Pinned by `tests/test_notation.py::test_an_interval_joined_another_way_is_reported`
+    and `tests/test_notation.py::test_two_percents_after_the_letters_are_a_level_and_a_margin`.
   - A first bound in percent is told from a level by the percent sign of the second.
     Where the second has none, "(95% CI 80%-93; 12 studies)", the 80% is taken for a
     level, "-93" for a bound and the semicolon for the join, and the manuscript is told
@@ -24931,12 +24949,16 @@ Open, recorded as each change landed:
     prints it: "3days" passes and "5days" is reported (round 1 of #719).
     Pinned by `tests/test_notation.py::test_a_tilde_for_approximately_lowers_what_stands_before_the_next`.
   - A space where the SI has none, "30 °" for an angle, is not reported.
+    Pinned by `tests/test_notation.py::test_a_space_where_the_si_has_none_is_not_reported`.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.
   - A binding in a sentence is taken for a number whatever it holds.
+    Pinned by `tests/test_notation.py::test_a_binding_in_a_sentence_is_a_number_whatever_it_holds`.
   - A table typed into the manuscript is read with the prose, so its own compact
     notation, "n=12" in a header, counts against the text's.
+    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
   - A block set off by four spaces is read, as it is for the spelling.
+    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
@@ -25002,10 +25024,13 @@ Open, recorded as each change landed:
     Pinned by `tests/test_vocabulary.py::test_a_term_written_in_the_plural_is_not_its_singular`.
   - Only the plural in `s` is folded, and only onto a term written without one: "study"
     does not find "studies", nor "analysis" "analyses". Both forms go in the entry.
+    Pinned by `tests/test_vocabulary.py::test_only_a_plural_in_s_is_folded_onto_a_term`.
   - Hyphenation cannot be declared. A hyphen and a space between a term's words are read
     as one, so "follow up" given up for "follow-up" is a conflict. Written as one word,
     "followup" is another term and can be given up. An en dash or a non-breaking hyphen
     between two words is not read as joining them.
+    Pinned by `tests/test_vocabulary.py::test_two_spellings_of_one_term_are_a_conflict_that_says_so`
+    and `tests/test_vocabulary.py::test_an_en_dash_or_a_non_breaking_hyphen_does_not_join_a_term_s_words`.
   - A word in two capitals or more is matched as written, and so is not found where the
     manuscript writes it otherwise: `OR` given up does not find "Or" or "or", which is the
     point, nor a `Who` typed in error, nor "phase ii trial" for "phase II trial".
@@ -25014,6 +25039,7 @@ Open, recorded as each change landed:
     `HbA1c` are found in any case, so `SARS-Cov-2` given up for `SARS-CoV-2` is a conflict,
     as `Hba1c` for `HbA1c` is: only `SARS` is held to its capitals. Before the case rule
     went word by word the first of these was reported, because `SARS` held the whole term.
+    Pinned by `tests/test_vocabulary.py::test_a_capital_inside_a_word_with_no_two_together_cannot_be_declared`.
   - A quotation is left alone only when it is set as a block, each line under `>`. Words
     quoted inside a sentence are read as the manuscript's own, and so is a line that
     continues a block quotation without its `>`. Everything set under `>` is left alone,
@@ -25034,30 +25060,38 @@ Open, recorded as each change landed:
   - A heading with no blank line under it runs into its paragraph: `# The other side`
     over `Effect sizes were small.` on the next line reports "side effect". With the
     blank line it does not.
+    Pinned by `tests/test_vocabulary.py::test_a_heading_with_no_blank_line_under_it_runs_into_its_paragraph`.
   - A term is not found where something the reading hides stands between its words, even
     something that prints as nothing: a comment, or a link that opens part-way through
     the term, "side [effect](...)".
     Pinned by `tests/test_vocabulary.py::test_two_words_that_are_not_side_by_side_are_not_a_term`.
   - The underscore is taken for a mark of emphasis, so a term is found in a name written
     with one, `n_subjects`, when that name is not set as code.
+    Pinned by `tests/test_vocabulary.py::test_a_term_is_found_in_a_name_with_an_underscore_not_set_as_code`.
   - A term with an asterisk or an underscore in it is found as the entry writes it.
     pandoc reads `CYP2D6*4 and CYP2D6*10` as emphasis, so a manuscript writes the mark
     with a backslash, `CYP2D6\*4`, and that spelling is found only by an entry that has
     the backslash too. A mark at the end of an entry's word is taken off it: `n_` is read
     as "n", and `_id` as "id".
+    Pinned by `tests/test_vocabulary.py::test_a_term_with_a_mark_inside_it_is_found_as_written`
+    and `tests/test_vocabulary.py::test_a_mark_is_found_as_the_entry_writes_it_and_taken_off_its_end`.
   - A term typed with an accent as one character does not find the same word typed as a
     letter and a combining accent. Nor does one typed with the micro sign find the Greek
     mu, or the other way round: the search takes the two for one letter and the
     comparison after it does not, so the match is passed over.
+    Pinned by `tests/test_vocabulary.py::test_a_letter_typed_another_way_is_not_the_term`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read:
     the example gives up "liver damage" and could still list it as a keyword. Tables and
     figures generated from results are not read either; a table typed into the manuscript
     is, with its caption.
+    Pinned by `tests/test_vocabulary.py::test_paper_yaml_s_titles_and_generated_displays_are_not_read`.
   - A term to avoid is not found where it overlaps a term to use that starts before it:
     with "drug reaction" kept, "reaction time" given up is not found in "drug reaction
     time".
+    Pinned by `tests/test_vocabulary.py::test_a_term_to_avoid_that_overlaps_a_term_to_use_before_it_is_not_found`.
   - The count in a finding is of the whole manuscript, and its place is the first use in
     the order the files are printed, the paper before its supplement.
+    Pinned by `tests/test_vocabulary.py::test_a_finding_counts_the_whole_manuscript_and_stands_at_the_first_printed_use`.
   - The reading costs the number of terms times the length of the manuscript: 6,000
     terms over a megabyte of text took 15 to 20 s. A vocabulary of some tens of entries is
     not felt. Accepted.
@@ -26039,16 +26073,21 @@ Open, recorded as each change landed:
   citation (round 1 of #452: each was blanked), so a citation of one author of such a
   name, "(Winter, 2019)", is read as words; with "et al." or a second author it is a
   citation (`recycling._NO_AUTHOR`).
+  Pinned by `tests/test_recycling.py::test_a_citation_by_author_and_year_is_known_in_parentheses_only`
+  and `tests/test_recycling.py::test_a_parenthesis_that_reads_as_a_citation_and_is_none_is_blanked`.
 - **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
   "As described previously [@key]" heading a subsection, with the description two paragraphs
   on, is reported as uncited, a warning from internal-review.
+  Pinned by `tests/test_recycling.py::test_a_citation_heading_a_subsection_does_not_cite_its_description`.
 - **Digits at a word's end are dropped on both sides,** so that a reference's number glued to
   a word in a PDF is no difference. "CYP3A4" and "CYP3A5", or "phase2" and "phase3", are then
   one word to this check, and a passage that differs only there is reported whole.
+  Pinned by `tests/test_recycling.py::test_digits_at_a_word_s_end_are_dropped_on_both_sides`.
 - **An earlier form of the study is a preprint, an abstract or a protocol, and nothing
   else.** A thesis chapter or a report of this study (`kind: report` or `other`) is compared
   as an earlier paper is, and each paragraph it shares outside a cited Methods description
   warns from internal-review, though its reuse is disclosed and accepted as a preprint's is.
+  Pinned by `tests/test_recycling.py::test_a_thesis_or_a_report_of_this_study_is_compared_as_an_earlier_paper`.
 - **A statement is known by its heading's whole title, from a list.** A funding statement
   under a title the list does not hold ("Grant support", "Funding and support of the
   registry") is reported as the part the heading stands in reports it, a warning from
@@ -26058,6 +26097,8 @@ Open, recorded as each change landed:
   warning is due; under the Results it is the Results'. So is a subsection of the Methods
   that happens to bear a back-matter title, "Article information" in a review's data
   extraction (round 6 of the review; rare).
+  Pinned by `tests/test_recycling.py::test_a_statement_is_known_by_its_heading_s_whole_title_from_a_list`
+  and `tests/test_recycling.py::test_a_heading_of_the_results_is_the_results_whatever_it_is_called`.
 - **The Methods are the sections whose title holds "methods", in the supplement as in the
   main text.** A supplement's "eAppendix 1. Data source" or "Appendix S1: Definitions"
   names no part, so a description reused there, cited or not, warns from internal-review as
@@ -26068,6 +26109,9 @@ Open, recorded as each change landed:
   more, numbered or not ("eResults 1", "Supplementary results and discussion"): one that says
   more, "Supplementary results of the sensitivity analyses", names none, and a passage under
   it is given the advice for text under no heading (round 9).
+  Pinned by `tests/test_recycling.py::test_the_methods_are_the_sections_whose_title_holds_methods`,
+  `tests/test_recycling.py::test_a_section_titled_methods_and_results_is_the_methods_throughout`
+  and `tests/test_recycling.py::test_the_supplement_is_held_to_the_norms_the_main_text_is`.
 - **A title over the Discussion and its conclusions alone is not taken for a title over the
   paper.** The conclusions count as the Discussion's when the parts under a heading are
   counted, so that the Discussion over "Interpretation" and "Conclusions" stays the
@@ -26075,9 +26119,11 @@ Open, recorded as each change landed:
   and nothing else ("# Background to hepatic injury" over them), therefore names its
   passages by that heading: the Introduction's advice, or a statement's note under "# Data
   sharing", where the Discussion's warning is due (round 5 of the review; rare).
+  Pinned by `tests/test_recycling.py::test_a_title_over_the_discussion_and_its_conclusions_alone_names_the_part`.
 - **In single curly marks, a closing mark before a letter is an apostrophe.** An apostrophe at
   a word's end inside such a quotation ("the patients' notes", typed curly) closes it early,
   and the rest of it is read as recycled text.
+  Pinned by `tests/test_recycling.py::test_an_apostrophe_at_a_word_s_end_closes_a_quotation_in_single_curly_marks`.
 - **The earlier outputs are those the author lists.** No ORCID iD is looked up; an earlier
   paper left off `literature/related.yaml` is not compared, and the journal's check still
   finds it. An output of the same data by other authors is not compared either: overlap with
@@ -26754,8 +26800,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
     Pinned by `tests/test_compliance.py::test_the_rows_of_a_simple_or_multiline_table_are_read_as_one_sentence`.
-  - G8r takes "(Spring and Summer 2019)" for a citation, and one season name in a group of
-    citations leaves the whole group as words.
+  - G7 and G6, and the audit, take "(Spring and Summer 2019)" for a citation, and one
+    season name in a group of citations leaves the whole group as words.
+    Pinned by `tests/test_recycling.py::test_a_season_in_parentheses_is_read_wrong_both_ways`.
   - `build` sets aside `supplementary.docx`'s staleness when the supplement's folder holds any
     file, though it builds one only from Markdown there.
   - A `docx-unreadable` from the live-field check says the journal's review is blind.

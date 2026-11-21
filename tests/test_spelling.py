@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -21,6 +22,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from manuscript_guard.cli import main
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.spelling import (
@@ -171,6 +173,17 @@ def test_a_word_british_usage_spells_two_ways_is_told_both(project: Path) -> Non
     assert messages(found) == [
         "'anesthetized' is the American spelling of 'anaesthetised' or 'anaesthetized', "
         "used once; this paper is in British English"
+    ]
+
+
+def test_a_derived_form_is_paired_with_its_line_s_preferred_spelling(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    the column numbers VarCon gives a line's derived forms are not read, so the Latin
+    plural "amebae" is told the line's preferred "amoebas", not "amoebae"."""
+    _, found = written(project, "# Methods\n\nThe amebae were counted.\n")
+    assert messages(found) == [
+        "'amebae' is the American spelling of 'amoebas', used once; this paper is in "
+        "British English"
     ]
 
 
@@ -470,6 +483,26 @@ def test_the_two_endings_are_counted_across_files(project: Path) -> None:
     assert finding.path.name == "main.md", "-ise is used less, and it is in the first file"
 
 
+def test_a_verb_both_british_spellings_of_is_not_counted_for_the_endings(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    a verb is counted for `spelling-mixed` only where Oxford's spelling is the American one.
+    "anaesthetise" and "anaesthetized" are both British to the list, so a paper whose only
+    word in -ise is "anaesthetised", beside "randomized", hears nothing."""
+    report, found = written(
+        project, "# Methods\n\nThe rats were anaesthetised and randomized.\n"
+    )
+    assert not found, messages(found)
+    assert report.counts["spelling_own"] == 1, "it is read, as British"
+    _, found = written(project, "# Methods\n\nThe rats were anaesthetized and randomised.\n")
+    assert not found, messages(found)
+    # The other side of the rule: a verb Oxford writes in -ize is counted, so "summarised"
+    # beside "randomized" is told.
+    _, found = written(project, "# Methods\n\nThe data were summarised and randomized.\n")
+    assert messages(found) == [
+        "both endings are used: -ise once ('summarised') and -ize once ('randomized')"
+    ]
+
+
 # ---------------------------------------------------------------- what must be left alone
 
 
@@ -580,6 +613,49 @@ def test_only_the_first_word_of_a_heading_in_title_case_is_read(project: Path) -
     assert reported(found) == ["tumor"]
 
 
+def test_a_word_that_is_mentioned_and_not_used_is_reported(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    a word the sentence talks about is read as one it uses, "the term *color* is American";
+    set as code, it is not read."""
+    _, found = written(project, "# Methods\n\nThe term *color* is American.\n")
+    assert reported(found) == ["color"]
+    _, found = written(project, "# Methods\n\nThe term `color` is American.\n")
+    assert not found, messages(found)
+
+
+@pytest.mark.parametrize(
+    ("variant", "sentence", "words"),
+    [
+        ("en-GB", "The beaver *Castor fiber* was seen.", ["fiber"]),
+        ("en-GB", "The signs rubor, tumor, calor and dolor were noted.", ["tumor", "dolor"]),
+        ("en-US", "The genes *dishevelled* and *colourless* were knocked out.",
+         ["dishevelled", "colourless"]),
+        ("en-GB", "The *color* was recorded.", ["color"]),
+    ],
+)  # fmt: skip
+def test_a_word_of_another_language_or_a_name_in_lower_case_is_read_as_english(
+    project: Path, variant: str, sentence: str, words: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    the species in "*Castor fiber*", the Latin of "rubor, tumor, calor and dolor" and the
+    genes *dishevelled* and *colourless* are read as English, emphasis or not, since "the
+    *color* was recorded" has to be read; each goes under `accepted_spellings`."""
+    _, found = written(project, f"# Methods\n\n{sentence}\n", variant)
+    assert reported(found) == words
+    _, found = written(project, f"# Methods\n\n{sentence}\n", variant, accepted=words)
+    assert not found, messages(found)
+
+
+def test_a_capital_after_a_colon_is_taken_for_a_sentence_s(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    in "the journal: Color Research" the name is read, since a capital after a colon opens
+    a sentence; without the colon it is a name's."""
+    _, found = written(project, "# Methods\n\nIt appeared in the journal: Color Research.\n")
+    assert reported(found) == ["color"]
+    _, found = written(project, "# Methods\n\nIt appeared in the journal Color Research.\n")
+    assert not found, messages(found)
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -616,11 +692,120 @@ def test_braces_that_hold_no_key_are_prose(project: Path) -> None:
     assert reported(found) == ["color", "tumor"]
 
 
+#: A sentence of the example's Results, where a test puts TeX.
+TABLE_ONE = "Baseline characteristics are shown in Table 1."
+
+
+def _checked(project: Path, capsys: pytest.CaptureFixture[str], stage: str) -> tuple[int, dict]:
+    """`check --json` at `stage`: its exit code and what it printed."""
+    capsys.readouterr()
+    code = main(["check", str(project), "--json", "--stage", stage])
+    return code, json.loads(capsys.readouterr().out)
+
+
+def _tex(report: dict) -> list[tuple[str, str]]:
+    return [(f["code"], f["severity"]) for f in report["findings"] if f["code"].startswith("tex-")]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_what_a_latex_command_holds_in_its_braces_is_read(
+    project: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    a word after a backslash is not read, and what a command holds in its braces is. The
+    `color` of `\\label{tab:color}` is reported, in a manuscript `check` fails for the
+    command from `drafting` on and only where pandoc is installed; the `tumor` of a macro's
+    definition is reported too, in a manuscript `check` passes."""
+    source = project / "manuscript" / "main.md"
+    example = source.read_text(encoding="utf-8")
+    assert example.count(TABLE_ONE) == 1
+
+    def put(sentence: str) -> tuple[str, ...]:
+        source.write_text(example.replace(TABLE_ONE, sentence), encoding="utf-8")
+        report = check_language(load_project(project)[0])
+        return tuple(reported(f for f in report.findings if f.code.startswith("spelling-")))
+
+    assert put("Baseline characteristics are shown in Table 1 \\color.") == ()
+    assert put("Baseline characteristics are shown in Table 1 \\label{tab:color}.") == ("color",)
+    early, report = _checked(project, capsys, "analysis")
+    assert (early, _tex(report)) == (0, [("tex-in-the-text", "info")])
+    code, report = _checked(project, capsys, "drafting")
+    assert (code, _tex(report)) == (1, [("tex-in-the-text", "fail")])
+    with monkeypatch.context() as patched:
+        empty = tmp_path / "an-empty-path"
+        empty.mkdir()
+        patched.setenv("PATH", str(empty))
+        code, report = _checked(project, capsys, "drafting")
+        assert (code, _tex(report)) == (0, [("tex-not-judged", "info")])
+
+    defined = "\\newcommand{\\vol}{\\mathrm{tumor}}\n\n" + TABLE_ONE
+    assert put(defined) == ("tumor",)
+    code, report = _checked(project, capsys, "drafting")
+    assert (code, _tex(report)) == (0, [])
+
+
+def test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    in "tumor-color.csv" written in a sentence the gate reads "tumor" and not "color"; set
+    as code, the name is not read."""
+    _, found = written(project, "# Methods\n\nThe data are in tumor-color.csv here.\n")
+    assert reported(found) == ["tumor"]
+    _, found = written(project, "# Methods\n\nThe data are in `tumor-color.csv` here.\n")
+    assert not found, messages(found)
+
+
+@pytest.mark.parametrize(
+    ("text", "words"),
+    [
+        ("The value was high.\n\n    color = tumor\n\nDone.", ["color", "tumor"]),
+        ("See <code>color</code> here.", ["color"]),
+        ("<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
+        ('<span class="x"\nstyle="color: red">The value</span> was high.', ["color"]),
+        # the other side: in backticks, in a fence, and a tag on one line are left alone
+        ("See `color` here.", []),
+        ("```\ncolor = tumor\n```\n\nDone.", []),
+        ('<span class="x" style="color: red">The value</span> was high.', []),
+    ],
+)
+def test_only_code_in_backticks_or_a_fence_is_left_alone(
+    project: Path, text: str, words: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    a block set off by four spaces is read, and so is `<code>color</code>`, the CSS inside a
+    `<style>` block and a tag whose attributes run on to a second line."""
+    _, found = written(project, f"# Methods\n\n{text}\n")
+    assert reported(found) == words
+
+
 def test_the_front_matter_is_not_read(project: Path) -> None:
     _, found = written(
         project, "---\ntitle: The color of tumors\n---\n\n# Methods\n\nNothing here.\n"
     )
     assert not found
+
+
+def test_paper_yaml_s_titles_and_an_image_s_description_are_not_read(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    the title, the short title and the keywords come from `paper.yaml` and are not read, nor
+    is a caption written as an image's description; a table's caption under `Table:` is."""
+    path = project / "paper.yaml"
+    paper = yaml.safe_load(path.read_text(encoding="utf-8"))
+    paper.update(title="The color of each tumor", short_title="Tumor color",
+                 keywords=["tumor", "color"])  # fmt: skip
+    path.write_text(yaml.safe_dump(paper, sort_keys=False), encoding="utf-8")
+    _, found = written(
+        project, "# Methods\n\n![Color of each tumor](figures/forest.svg)\n\nDone.\n"
+    )
+    assert not found, messages(found)
+    _, found = written(
+        project,
+        "# Methods\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nTable: Color of each tumor.\n",
+    )
+    assert reported(found) == ["color", "tumor"]
+    assert {f.line for f in found} == {7}
 
 
 def test_a_quotation_keeps_its_author_s_spelling(project: Path) -> None:
@@ -630,6 +815,20 @@ def test_a_quotation_keeps_its_author_s_spelling(project: Path) -> None:
         "We recorded the colour.\n",
     )
     assert not found
+
+
+def test_words_quoted_inside_a_sentence_are_the_manuscript_s_own(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
+    only a quotation set as a block keeps its author's spelling; the same words quoted
+    inside a sentence are read as the manuscript's own."""
+    _, found = written(
+        project, '# Methods\n\nThe guideline says "the color of the tumor" is to be kept.\n'
+    )
+    assert reported(found) == ["color", "tumor"]
+    _, found = written(
+        project, "# Methods\n\nThe guideline says:\n\n> the color of the tumor\n\nWe kept it.\n"
+    )
+    assert not found, messages(found)
 
 
 def test_the_reference_list_is_not_read(project: Path) -> None:

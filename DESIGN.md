@@ -26321,9 +26321,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     entries after it are numbered as though it were not there (fix-only round of #463).
     Pinned by `tests/test_audit_sections.py::test_a_paragraph_word_numbers_in_a_table_s_cell_is_given_no_count`.
   - `--lookup` asks about the first DOI and the first PMID of an entry, and Crossref for the
-    title of one with neither only where it is an article or a book. A record kept with
-    `--lookup-cache` is used however old it is, until the identifiers it was asked for
-    change. `--strict` counts no finding of G7's, in the census or from a registry.
+    title of one with neither only where it is an article, a book or a chapter. A record
+    kept with `--lookup-cache` is used however old it is, until the identifiers it was
+    asked for change. `--strict` counts no finding of G7's, in the census or from a
+    registry.
     Pinned by `tests/test_audit_sections.py::test_lookup_asks_of_the_first_identifiers_and_keeps_a_record_however_old`
     and `tests/test_audit_sections.py::test_a_retracted_work_is_said_and_kept_only_where_asked`.
   - In a folder given, a `.tex` with `\documentclass` is audited as a paper beside the

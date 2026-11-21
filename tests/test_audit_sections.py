@@ -749,16 +749,17 @@ def test_the_entries_under_a_simple_table_s_rule_are_read_as_the_paper_s_text(
     """A known gap (DESIGN.md, Known gaps, "A Markdown reference list ends at any line shaped
     as a thematic break"): a simple table's dashed rule under the heading, after a blank
     line, ends the list there, and the years, volumes and pages of the entries below it are
-    compared as the paper's numbers: a false alarm."""
+    compared as the paper's numbers: a false alarm. Pandoc 3.9.0.2 reads this as a Table."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     paper = tmp_path / "paper.md"
-    paper.write_text("# Results\n\nWe saw 77.\n\n# References\n\n-----  -----\n\n"
-                     + "\n".join(_ENTRIES[:2]) + "\n\n# Appendix\n\nText.\n", encoding="utf-8")
+    paper.write_text("# Results\n\nWe saw 77.\n\n# References\n\n-----  -----\n"
+                     + "\n".join(_ENTRIES[:2]) + "\n-----  -----\n\n# Appendix\n\nText.\n",
+                     encoding="utf-8")  # fmt: skip
     report = audit([paper], [outputs])
     assert report.not_audited == ["paper.md: lines 5-6, read as the reference list"]
-    assert [(c.text, c.line) for c in report.unmatched] == [("2019;393:100-10", 9),
-                                                           ("2020;370:m1", 10)]  # fmt: skip
+    assert [(c.text, c.line) for c in report.unmatched] == [("2019;393:100-10", 8),
+                                                           ("2020;370:m1", 9)]  # fmt: skip
     assert report.reference_like == []
 
 
@@ -856,21 +857,25 @@ def test_a_docx_list_is_numbered_by_place_only_by_a_decimal_count_from_one(
     assert [(p.code, p.line) for p in census.problems] == (held if style != "not numbered" else [])
 
 
-@pytest.mark.parametrize(("above", "style"), [(True, "not numbered"),
-                                              (False, "numbered by place")])  # fmt: skip
+@pytest.mark.parametrize(("above", "style"), [("restarted", "not numbered"),
+                                              ("not restarted", "not numbered"),
+                                              ("", "numbered by place")])  # fmt: skip
 def test_a_level_a_paragraph_above_restarts_is_not_looked_at(
-    tmp_path: Path, above: bool, style: str
+    tmp_path: Path, above: str, style: str
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "What `audit` reads of a LaTeX paper", its point
     on the census): the entries are numbered at level 1, and so is a paragraph with words
     higher up. A paragraph at level 0 between them restarts level 1, so Word prints the
     entries 1 and 2, but only the count is compared: the paragraph above is in it, and the
-    list is taken for not numbered. With nothing above, the list is numbered by place."""
+    list is taken for not numbered. With no "Step." between, Word prints 2) and 3), and "not
+    numbered" is right. With nothing above, the list is numbered by place."""
     level_1 = "<w:numPr><w:ilvl w:val='1'/><w:numId w:val='1'/></w:numPr>"
     level_0 = "<w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr>"
     numbered = {SMITH: level_1, JONES: level_1}
     if above:
-        numbered |= {"Methods.": level_1, "Step.": level_0}
+        numbered |= {"Methods.": level_1}
+    if above == "restarted":
+        numbered |= {"Step.": level_0}
     paper = make_docx(tmp_path / "paper.docx", ["Methods.", "Step.", "The rate rose [1, 3].",
                                                 "References", SMITH, JONES],
                       heading="References", numbered=numbered,

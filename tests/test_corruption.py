@@ -2082,6 +2082,145 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+def _reported(project: Path, sections: list[str]) -> set[str]:
+    """The numbers G2 reports as bound to nothing once `sections` end the manuscript."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + "".join(sections), "utf-8")
+    return {
+        f.message.split("'")[1]
+        for f in gate_report(project).failures
+        if f.code == "unclassified-number"
+    }
+
+
+def _reported_lines(project: Path, sections: list[str]) -> set[int]:
+    """The lines on which G2 reports a number as bound to nothing once `sections` end the
+    manuscript."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + "".join(sections), "utf-8")
+    return {f.line for f in gate_report(project).failures if f.code == "unclassified-number"}
+
+
+# Where pandoc prints a heading-shaped line as text: in a paragraph, a list item, a
+# quotation, a `<pre>` and a LaTeX environment, a `#` line and an underlined title.
+_AS_TEXT = {
+    "paragraph": "The rule counted\n{line}\n",
+    "list item": "- The rule counted\n{line}\n",
+    "quotation": "> The rule counted\n{line}\n",
+    "pre": "<pre>\n{line}\n</pre>\n",
+    "latex": "\\begin{{center}}\n{line}\n\\end{{center}}\n",
+}
+
+
+def test_a_line_shaped_like_a_heading_ends_a_section_for_g2_and_opens_no_methods(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A line shaped like a heading always ends a
+    section for G2"): each heading-shaped line pandoc prints as text ends the Methods above
+    it, so the threshold after it is reported, and one titled Methods under the Results
+    opens no Methods rules. Not such lines, the other side: a `\\#` that starts a wrapped
+    line, and the last row of a table the walk reads, or a table placeholder, over a rule."""
+    sections: list[str] = []
+    reported: list[str] = []
+    passed: list[str] = []
+
+    def section(heading: str, lines: str, case: str) -> str:
+        return f"# {heading}\n\nText.\n\n{lines}\nThe threshold ({case}) was p < 0.05.\n\n"
+
+    for name in sorted(_AS_TEXT):
+        for kind, line in [("hash", "# {title}"), ("underlined", "{title}\n========")]:
+            for heading, title, what in [("Methods", "Outcomes", "ends"),
+                                         ("Results", "Methods", "opens")]:  # fmt: skip
+                case = f"{what} {kind} {name}"
+                lines = _AS_TEXT[name].format(line=line.format(title=title))
+                sections.append(section(heading, lines, case))
+                reported.append(case)
+    # A Methods paragraph wrapped at "# of reports" reports the threshold after it.
+    sections.append(section("Methods", "The rule counted the\n# of reports named.\n", "wrap"))
+    reported.append("wrap")
+    for case, lines in [
+        ("escaped", "The rule counted the\n\\# of reports named.\n"),
+        ("table", "| a | b |\n|---|---|\n| 1 | 2 |\n---\n"),
+        ("placeholder", "{{table.two_by_two}}\n---\n"),
+    ]:
+        sections.append(section("Methods", lines, case))
+        passed.append(case)
+    found = _reported_lines(project, sections)
+    written = main_md(project).read_text(encoding="utf-8").split("\n")
+
+    def line_of(case: str) -> int:
+        return next(i for i, text in enumerate(written, 1) if f"({case})" in text)
+
+    assert [case for case in reported if line_of(case) not in found] == []
+    assert [case for case in passed if line_of(case) in found] == []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("fence", "printed"),
+    [("~~~", True), (" " + "`" * 3, True), ("`" * 3, False)],
+    ids=["tilde", "indented", "backtick at the margin"],
+)
+def test_a_fence_under_a_line_of_prose_is_code_to_the_gates(
+    project: Path, fence: str, printed: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A fence directly under a line of prose is code
+    to the gates and prose to pandoc"): a tilde fence, or one indented a space, straight
+    under a line of prose is printed as text, and the `# Methods` past the blank line is a
+    heading, where the gates blank the whole span: the number in it goes unread by G2 and
+    the heading is missed. A backtick fence at the margin, the other side, is code to both."""
+    from test_pandoc_agreement import pandoc_headings
+
+    from manuscript_guard.text.sections import headings
+
+    snippet = (
+        f"# Results\n\nWe saw it.\n{fence}\nThe ROR was 9.99.\n\n# Methods\n\n"
+        f"The threshold was p < 0.05.\n{fence}\n\n"
+    )
+    assert headings(snippet) == ["Results"]
+    assert pandoc_headings(snippet) == (["Results", "Methods"] if printed else ["Results"])
+    # The other side, the same lines with no fence: G2 reads the number.
+    bare = snippet.replace(f"{fence}\n", "").replace("9.99", "9.98")
+    found = _reported(project, [snippet, bare])
+    assert "9.98" in found
+    assert not {"9.99", "0.05"} & found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize("gap", ["", "\n"], ids=["directly under", "apart"])
+def test_a_heading_directly_under_a_figure_line_is_printed_as_text(
+    project: Path, gap: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading directly under a `{{figure.x}}` line is
+    printed as text"): the build writes an image there, the heading on the next line does
+    not interrupt the paragraph, and the gates read it as text too, so the threshold under
+    it is reported as the Results'. With a blank line between, it is a heading to both."""
+    from test_pandoc_agreement import pandoc_headings
+
+    from manuscript_guard.build import assemble
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "{{figure.forest}}\n\n# Discussion"
+    assert text.count(anchor) == 1
+    snippet = f"{{{{figure.forest}}}}\n{gap}# Methods\n\nThe threshold was p < 0.05.\n\n"
+    path.write_text(text.replace(anchor, snippet + "# Discussion"), encoding="utf-8")
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assembled, _assembly = assemble(projekt, namespace, results)
+    built = next(item.text for item in assembled if item.path.name == "main.md")
+    assert pandoc_headings(built).count("Methods") == (2 if gap else 1)
+    reported = any(
+        f.code == "unclassified-number" and "'0.05'" in f.message
+        for f in gate_report(project).failures
+    )
+    assert reported is not bool(gap)
+
+
 def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
     """`numbered-heading` took the number opening any setext title for section numbering, so
     "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
@@ -2217,6 +2356,40 @@ def test_a_heading_line_under_a_list_is_text(
     path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
     report = gate_report(project)
     assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "number", "reported"),
+    [
+        # A heading pandoc prints directly under an indented rule after a list.
+        ("# Safety\n\n1. Item\n\n  ***\n## 12 Patients\n\nText.\n\n", "'12'", True),
+        ("# Results\n\n1. Item\n\n  ***\n# Methods\n\nThe threshold was p < 0.05.\n\n",
+         "'0.05'", True),  # fmt: skip
+        # The other side: with no such line between, the heading is read and numbered.
+        ("# Safety\n\n1. Item\n\n## 12 Patients\n\nText.\n\n", "'12'", False),
+        # A numbered item pandoc starts after such a line: a new list, a nested item, an
+        # outer item directly under it.
+        ("# Safety\n\n1. First\n\n  An indented paragraph.\n\n 2. Second\n\n", "'2'", True),
+        ("# Safety\n\n1. Next\n   - next\n\n    More\n\n   3. Nested\n\n", "'3'", True),
+        ("# Safety\n\n1. First step\n\n  ***\n2. Second step\n\n", "'2'", True),
+        # The other side: an item at the margin after a blank line is recorded.
+        ("# Safety\n\n1. First step\n\n  An indented line.\n\n2. Second step\n\n", "'2'", False),
+    ],
+    ids=["heading", "methods", "no-line", "new-list", "nested", "outer", "outer-apart"],
+)
+def test_an_indented_line_under_a_list_costs_what_pandoc_starts_under_it(
+    project: Path, snippet: str, number: str, reported: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Every indented line under a list is the list's
+    for headings"): the walk reads an indented line under a list as the list's text, so a
+    heading pandoc prints directly under it is read as text, its number reported and no
+    Methods opened, and a numbered item pandoc starts after it is reported."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    found = any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+    assert found is reported
 
 
 @pytest.mark.parametrize("above", ["", "* * *\n"], ids=["under the item", "under a spaced rule"])
@@ -22713,6 +22886,30 @@ def test_the_build_refuses_what_pandoc_reads_otherwise(
     assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
 
 
+@pytest.mark.parametrize("gap", ["", "\n"], ids=["continuing", "apart"])
+def test_a_title_continuing_a_paragraph_over_equals_is_titled_methods_by_check(
+    project: Path, gap: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A title continuing a paragraph over `===` is
+    read as a heading by `check`"): the heading scan files the threshold under the title in
+    a section titled Methods, the Results ended, while the walk reads one paragraph as
+    pandoc does, so G2 judges it under no Methods rules and reports it. Apart from the
+    paragraph, the title is a heading to both, and the threshold is the alpha."""
+    from manuscript_guard.text.sections import headings, section_chain
+
+    snippet = f"# Results\n\nWe also saw\n{gap}Methods\n=======\n\nThe threshold was p < 0.05.\n"
+    assert section_chain(snippet, snippet.index("0.05")) == ("Methods",)
+    assert headings(snippet) == (["Results"] if not gap else ["Results", "Methods"])
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", f"\n{snippet}\n# Discussion", 1), "utf-8")
+    reported = any(
+        f.code == "unclassified-number" and "'0.05'" in f.message
+        for f in gate_report(project).failures
+    )
+    assert reported is not bool(gap)
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
@@ -22797,6 +22994,42 @@ def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: st
     header = "---\ntitle: A study\n---\n"
     body = f"# Introduction\n\nText.\n\n{heading}\n\nMore text.\n"
     found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Two headings the build refuses that print as the
+    gates read them"): with an unlabelled `(@)` item before `(@good)`, pandoc numbers it 2 in
+    the document and 1 in the titles set out on their own, and the heading citing it is
+    refused; with the unlabelled item after it, both number it 1. A setext title whose
+    placeholder's value starts with `#` is read as a heading on the built line by the gates
+    too, and is not refused."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+
+    def refused(examples: str) -> str | None:
+        body = f"# Introduction\n\nText.\n\n{examples}\n\n## As in example (@good)\n\nMore.\n"
+        return misreading(
+            header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+        )
+
+    assert refused("(@) First.\n(@good) An example.") == (
+        "the heading 'As in example (2)' (level 2) where the gates read "
+        "'As in example (@good)' (level 2) at main.md:8"
+    )
+    assert refused("(@good) An example.\n(@) Second.") is None
+    written = "# Introduction\n\nText.\n\n{{results.rank}} ranked drugs\n==============\n\nMore.\n"
+    built = written.replace("{{results.rank}}", "#1")
+    found = misreading(
+        header + built, header, [("main.md", written)], shutil.which("pandoc"), Path(),
+        built=[built],
+    )  # fmt: skip
     assert found is None, found
 
 
@@ -22997,6 +23230,47 @@ def test_titles_that_cannot_be_read_while_the_document_can_are_refused() -> None
         header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
     )
     assert found is not None and found.startswith("the document, but not"), found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("opener", "closer", "refused"),
+    [
+        ("<pre>", "</pre>", True),
+        ("\\begin{verbatim}", "\\end{verbatim}", True),
+        # The other side: a listing is code to the gates, so its line is not copied.
+        ("```", "```", False),
+    ],
+    ids=["pre", "verbatim", "listing"],
+)
+def test_a_footnote_shaped_line_in_raw_markup_is_copied_to_the_titles(
+    opener: str, closer: str, refused: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A footnote-shaped line in a `<pre>` or a TeX
+    environment is copied to the titles"): a `[^n1]:` line over YAML pandoc cannot read, in
+    a `<pre>` or a `\\begin{verbatim}`, is copied to the titles' own run, which then fails
+    while the document reads, and the build refuses the document; in a listing it is not."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        f"# Results\n\nThe excess was significant.\n\n{opener}\n[^n1]:\n    ---\n"
+        f"    sites: [Caen\n    ...\n{closer}\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    if refused:
+        assert found == (
+            "the document, but not the build's header or the gates' titles set out on their "
+            "own, so their reading cannot be compared with the gates'"
+        )
+    else:
+        assert found is None, found
 
 
 @pytest.mark.skipif(
@@ -24113,6 +24387,30 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        # An inline command pandoc starts no block behind.
+        "\\foo[x]{1em}",
+        # A colon after a command, which pandoc reads as text.
+        "\\newpage[^1]:",
+        "\\foo[x]:",
+        # A definition's brackets after its groups, text to pandoc.
+        "\\newcommand{\\foo}{bar}[x]",
+        "\\newcommand{a}[^x]",
+    ],
+)
+def test_dashes_after_a_tex_command_that_opens_nothing_are_refused(command: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some lines of dashes after a TeX command are
+    refused that open nothing"): pandoc reads each line as the command, then text, and the
+    refusal takes the dashes for a block's; the command on a line of its own clears it."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    head = "---\ntitle: A study\n---\n\n# Introduction\n\n"
+    assert rules_opening_blocks(f"{head}{command} ---\nnext.\n") == [7]
+    assert rules_opening_blocks(f"{head}{command}\n\n---\n\nnext.\n") == []
+
+
+@pytest.mark.parametrize(
     ("text", "printed"),
     [
         # A rule, not front matter: the heading prints.
@@ -24646,6 +24944,48 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     assert all(masked[i] == "\n" for i, ch in enumerate(text) if ch == "\n")
 
 
+# Two fences the body's refusal refuses: an R Markdown chunk pair, the prose between them,
+# and a tilde fence straight under a line of text, which pandoc prints as prose.
+_FRONT_MATTER_FENCES = (
+    "```{r}\nx\n```\n\nThe ROR was 9.98.\n\n```{r}\ny\n```\n\n"
+    "We also saw\n~~~\nan ROR of 9.99.\n~~~\n"
+)
+
+
+def test_an_unclear_fence_in_the_front_matter_hides_prose_and_is_not_refused(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A fence in the front matter is read and not
+    refused"): in `abstract: |`, a chunk pair and a tilde fence under a line of text hide
+    9.98 and 9.99 from G2, which reports both once the fence lines are gone, and `check`
+    refuses no fence there, where it refuses the same lines in the body."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+
+    def failing(abstract: str, body: str) -> set[tuple[str, str]]:
+        indented = "".join(f"  {line}\n" if line else "\n" for line in abstract.split("\n")[:-1])
+        written = text.replace("\n---\n", f"\nabstract: |\n{indented}---\n", 1)
+        source.write_text(written.replace("\n# Discussion", f"{body}\n# Discussion", 1), "utf-8")
+        capsys.readouterr()
+        main(["check", str(project), "--json"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return {(f["code"], f["message"].split("'")[1] if f["code"] == "unclassified-number"
+                 else "") for f in found if f["severity"] == "fail"}  # fmt: skip
+
+    numbers = {("unclassified-number", "9.98"), ("unclassified-number", "9.99")}
+    hidden = failing(_FRONT_MATTER_FENCES, "")
+    assert not numbers & hidden
+    assert ("unclear-fence", "") not in hidden
+    bare = _FRONT_MATTER_FENCES
+    for line in ("```{r}\n", "```\n", "~~~\n"):
+        bare = bare.replace(line, "")
+    assert numbers <= failing(bare, "")
+    in_body = failing("Cases were counted.\n", f"\n{_FRONT_MATTER_FENCES}")
+    assert ("unclear-fence", "") in in_body
+
+
 def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
     """A URL is masked to the next space, and the key of the next YAML line is masked too,
     so one ending a title ran through that key into the next value: 9.99, which pandoc
@@ -24676,6 +25016,23 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_yaml_block_in_the_body_is_read_as_prose(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A YAML block in the middle of a document is
+    read as prose"): a number in a body block is reported, and its `# Methods` line under a
+    Results heading keeps the Results rules below it, the threshold reported. A bare `---`
+    over `---` is read as a heading titled "---", where a key between them heads nothing."""
+    from manuscript_guard.text.sections import headings, section_chain
+
+    assert headings("# Safety\n\nWe saw it.\n\n---\n---\n\nText.\n") == ["Safety", "---"]
+    assert headings("# Safety\n\nWe saw it.\n\n---\nnote: x\n---\n\nText.\n") == ["Safety"]
+    block = (
+        "# Results\n\nWe saw it.\n\n---\n# Methods\nnote: 9.99\n---\n\n"
+        "The threshold was p < 0.05.\n"
+    )
+    assert section_chain(block, block.index("0.05")) == ("Results",)
+    assert {"9.99", "0.05"} <= _reported(project, [block])
 
 
 @pytest.mark.parametrize(
@@ -25113,6 +25470,31 @@ def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        # The other side of the blank line rule: a blank line under the `<!--`.
+        f"<!-- An earlier model:\n\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # `<!--` on a line of its own after a blank line (the paragraph and heading shapes).
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # `<!--` straight under a listing's closer.
+        f"{_TICKS}r\na\n{_TICKS}\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # The listing moved out of the commented-out item (the list item shape).
+        f"<!--\n- Fit the model:\n\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+    ],
+    ids=["blank-under-comment", "comment-after-blank", "comment-under-closer", "out-of-item"],
+)
+def test_a_listing_commented_out_in_these_shapes_is_accepted(block: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "More listings commented out whole are
+    refused"): the other side of the shapes refused above. A listing a comment holds is let
+    be straight under a `<!--` that starts its line, with a blank line, the file's start or
+    a listing's closer above it, under a blank line after the `<!--`, or moved out of the
+    commented-out list item."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
 def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
     """A comment whose `-->` falls inside the listing ends there, and the lines after it are
     printed: the listing is not the comment's, and stays refused."""
@@ -25120,6 +25502,23 @@ def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
 
     text = f"# Results\n\n<!--\n{_TICKS}r\nx -->\nThe excess (p < 0.001).\n{_TICKS}\n"
     assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize("closer", [f"{_TICKS} -->", f"{_TICKS}-->"], ids=["spaced", "glued"])
+def test_a_listing_commented_out_with_its_arrow_on_the_closer_is_refused(closer: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A listing commented out with `-->` on its
+    closing line is refused"): the gates read no closer in ```` ``` --> ````, so the opener is
+    left unpaired and both fence lines are refused, under a hint that says to put the `-->`
+    on a line of its own; written so, the same listing is accepted."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Results\n\nWe found it.\n\n<!--\n{_TICKS}r\nx\n{closer}\n\nThe end.\n"
+    found = fence_findings(Path("main.md"), text)
+    assert [f.line for f in found] == [6, 8]
+    assert all(f.code == "unclear-fence" for f in found)
+    assert "put the comment's `-->` on a line of its own after the closer" in found[0].hint
+    apart = text.replace(closer, f"{_TICKS}\n-->")
+    assert fence_findings(Path("main.md"), apart) == ()
 
 
 @pytest.mark.parametrize(
@@ -28915,6 +29314,123 @@ def test_the_annotated_copy_marks_what_main_marked(
     assert marked <= {s for s, reason in shown.items() if not reason}, shown
     for number, reason in unmarked.items():
         assert shown.get(number) == getattr(module, reason), shown
+
+
+_OTHERWISE = "READ_OTHERWISE"
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # A link's text across a line break; the other side, on one line.
+        (
+            "Of 120 reports, 14 as in [Table\n2](#t) of 40 sites.",
+            {"120": _OTHERWISE, "14": _OTHERWISE, "2": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        (
+            "Of 120 reports, 14 as in [Table 2](#t) of 40 sites.",
+            {"120": "", "14": "", "2": "IN_LINK", "40": ""},
+        ),
+        # A link's text holding `@` and a number; the other side, with no `@`.
+        (
+            "Of 120 reports, ask [a@b.org room 5](mailto:a@b.org) at 40 sites.",
+            {"120": _OTHERWISE, "5": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        (
+            "Of 120 reports, ask [the room 5](mailto:a@b.org) at 40 sites.",
+            {"120": "", "5": "IN_LINK", "40": ""},
+        ),
+        # An escaped `\$` closing an equation; the other side, no `$` to open one.
+        (
+            "Prices rose from $5 to 7\\$ at 40 sites.",
+            {"$5": "IN_EQUATION", "7": "IN_EQUATION", "40": ""},
+        ),
+        ("Prices rose from 5 to 7\\$ at 40 sites.", {"5": "", "7": "", "40": ""}),
+        # A range whose backslash is itself escaped; the other side, a single backslash.
+        (
+            "Fees were \\\\$10-\\\\$50 at 40 sites.",
+            {"\\\\$10-\\\\$50": "IN_MARKUP", "40": ""},
+        ),
+        ("Fees were \\$10-\\$50 at 40 sites.", {"\\$10-\\$50": "", "40": ""}),
+        # A definition on a list item's own line; the other side, at the margin.
+        (
+            "As in [Table 2][t] for 40 sites.\n\n- [t]: #x",
+            {"2": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        ("As in [Table 2][t] for 40 sites.\n\n[t]: #x", {"2": "IN_LINK", "40": ""}),
+    ],
+    ids=[
+        "link across a break", "link on one line", "link with an at", "link without",
+        "escaped dollar", "no dollar", "escaped backslash range", "escaped range",
+        "definition in an item", "definition at the margin",
+    ],  # fmt: skip
+)
+def test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text(
+    text: str, said: dict[str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some numbers are listed in the annotated copy's
+    appendix and not marked in its text"): what the annotator says of each number, a mark
+    or the reason it has none, for the points left by the rounds of #76, each beside the
+    same paragraph with the cause taken out."""
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    reasons = {getattr(module, name): name for name in dir(module) if name.startswith("IN_")}
+    reasons[module.READ_OTHERWISE] = "READ_OTHERWISE"
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    assert {mark.shown: reasons.get(mark.unmarked, mark.unmarked) for mark in marks} == said
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_reference_definition_in_another_file_is_not_found_by_the_annotator() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some numbers are listed in the annotated copy's
+    appendix and not marked in its text"): annotated one file at a time, `[Table 2][tbl]`
+    has its 2 marked when `[tbl]:` stands in the next file, and the copy the build joins
+    prints the mark as text; with the definition in its own file, 2 is a link's."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    pandoc = shutil.which("pandoc")
+    classifier = Classifier.load([], [])
+    counter = [0]
+    cited = "# Results\n\nAs shown in [Table 2][tbl] for 40 sites.\n"
+    first, marks = module.annotate(cited, {}, classifier, counter=counter, pandoc=pandoc)
+    second, _ = module.annotate(
+        "# Appendix\n\n[tbl]: #results\n", {}, classifier, counter=counter, pandoc=pandoc
+    )
+    assert [(mark.shown, mark.unmarked) for mark in marks] == [("2", ""), ("40", "")]
+    printed = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "plain"],
+        input=f"{first}\n\n{second}",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    assert "As shown in Table [2](#mg-n1) for 40 sites." in printed
+    _one, alone = module.annotate(
+        f"{cited}\n[tbl]: #results\n", {}, classifier, counter=[0], pandoc=pandoc
+    )
+    assert [(mark.shown, mark.unmarked) for mark in alone] == [
+        ("2", module.IN_LINK),
+        ("40", ""),
+    ]
 
 
 @pytest.mark.skipif(

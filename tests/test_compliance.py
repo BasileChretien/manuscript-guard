@@ -253,6 +253,23 @@ def test_a_missing_required_section_is_caught(project: Path) -> None:
     assert "missing-required-section" in codes(journal_report(project))
 
 
+@pytest.mark.parametrize("gap", ["", "\n"], ids=["under the table", "apart"])
+def test_a_heading_under_a_dash_table_is_missed_by_the_counts(project: Path, gap: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table written with lines of dashes is read as
+    a paragraph"): `# Discussion` directly under a table with no header, which pandoc
+    prints as a heading, is not among the sections the word counts go by, and the required
+    section is reported missing. After a blank line it is found."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    assert text.count("\n# Discussion\n") == 1
+    table = f"------  -----\nCases   120\n------  -----\n{gap}"
+    path.write_text(text.replace("\n# Discussion\n", f"\n{table}# Discussion\n"), "utf-8")
+    sections = measure(path.read_text(encoding="utf-8")).sections
+    assert ("Discussion" in sections) is bool(gap)
+    missing = [f for f in journal_report(project).failures if f.code == "missing-required-section"]
+    assert [("Discussion" in f.message) for f in missing] == ([] if gap else [True])
+
+
 def test_a_structured_abstract_missing_a_heading_is_caught(project: Path) -> None:
     def mutate(document):
         document["structure"]["abstract_headings"] = ["Background", "Methods", "Objective"]

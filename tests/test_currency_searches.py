@@ -339,6 +339,57 @@ def test_the_works_store_holds_the_cited_work_and_every_candidate(marked: Path) 
     assert (records.works_folder(loaded) / ".gitignore").is_file()
 
 
+UPDATE_DOI = "10.5555/update.2023"
+
+
+class _UpdateFoundByItsDoiToo(Registry):
+    """The registries, PubMed giving the update a DOI, and S3 at PubMed finding it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pubmed[UPDATE] = (UPDATE_DOI, "An update of the signal", ["Journal Article"])
+
+    def _esearch(self, request: Request, params: dict) -> Response:
+        if params.get("mindate"):
+            return _json(200, {"esearchresult": {"count": "32", "idlist": [TRIAL_PMID, UPDATE]}})
+        return super()._esearch(request, params)
+
+
+def test_a_work_pubmed_links_to_by_its_pmid_and_found_by_its_doi_is_two_candidates(
+    marked: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "S1 at OpenAlex asks for the reviews that cite
+    the work"): a work PubMed's forward links (S1) give by its PMID alone is kept as `pmid:`,
+    and the same work found by S3 with its DOI is kept as `doi:`, a second candidate, with a
+    works record of its own, which a reading reads apart: a reading of the one leaves the
+    other unread."""
+    from manuscript_guard.currency.rules import Fields, Reading, Work, decide
+
+    run = _search(marked, _UpdateFoundByItsDoiToo())
+    assert run.whole, run.lines
+    by = _by(_records(marked))
+    assert by[("S1", None, "pubmed")]["candidates"] == [f"pmid:{UPDATE}", f"pmid:{COMMENT}"]
+    assert by[("S3", None, "pubmed")]["candidates"] == [f"doi:{TRIAL_DOI}", f"doi:{UPDATE_DOI}"]
+    loaded = load_project(marked)[0]
+    linked = records.read_work(loaded, f"pmid:{UPDATE}").record
+    found = records.read_work(loaded, f"doi:{UPDATE_DOI}").record
+    assert (linked["work"], found["work"]) == (f"pmid:{UPDATE}", f"doi:{UPDATE_DOI}")
+    assert found["identifiers"] == {"doi": UPDATE_DOI, "pmid": UPDATE}
+    # Read twice: a reading of the work by its DOI alone leaves its PMID's candidate unread,
+    # and the readings disagree on it until each reading reads both.
+    same = Fields(level=1, population="same", exposure="same", outcome="same",
+                  stance="supports")  # fmt: skip
+    held = {one["work"]: records.as_work(one) for one in (linked, found)}
+    both = {f"doi:{UPDATE_DOI}": same, f"pmid:{UPDATE}": same}
+    one = Reading("Ada Example", "ocebm-2011", "benefit", 3, {f"doi:{UPDATE_DOI}": same})
+    other = Reading("Bo Example", "ocebm-2011", "benefit", 3, both)
+    decided = decide(Work("c"), held, [one, other])
+    assert (decided.action, decided.why) == (
+        "uncertain", f"the readings disagree on what decides pmid:{UPDATE}")
+    one = Reading("Ada Example", "ocebm-2011", "benefit", 3, both)
+    assert decide(Work("c"), held, [one, other]).action == "replace"
+
+
 @pytest.mark.parametrize("source", ["crossref", "pubmed", "europepmc", "openalex"])
 def test_a_work_any_source_says_is_retracted_is_retracted(marked: Path, source: str) -> None:
     registry = Registry()
@@ -420,6 +471,30 @@ def test_the_cutoff_is_a_synthesis_search_end_a_reading_gives_where_later(marked
     assert searching.cutoff(loaded, searching._claim(loaded, "c1"))["date"] == "2021-06"
 
 
+@pytest.mark.parametrize("ends", [("2020-06", "2022-01"), ("2022-01", "2020-06")],
+                         ids=["earlier first", "later first"])  # fmt: skip
+def test_two_readings_that_disagree_on_a_search_end_move_the_cutoff_to_the_later(
+    marked: Path, ends: tuple[str, str],
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The cutoff of S3 reads every filed reading's
+    search end date"): of two readings that give a synthesis S2 found two search end dates,
+    both after the cited work's publication, S3 is asked from the later, whichever reading
+    was filed first."""
+    _search(marked, Registry())
+    loaded = load_project(marked)[0]
+    later = "Bea Example" if ends[1] == "2022-01" else "Ada Example"
+    for reader, end in zip(("Ada Example", "Bea Example"), ends, strict=True):
+        reading = case.reading(reader, candidate=f"doi:{SR_DOI}")
+        reading["candidates"][0]["search_end"] = {"value": end, "quote": "searched to then"}
+        records.file_reading(loaded, reading, "2026-11-05")
+        if reader == "Ada Example":
+            # The other side: Ada's alone, its date is the cutoff.
+            assert searching.cutoff(loaded, searching._claim(loaded, "c1"))["date"] == end
+    assert searching.cutoff(loaded, searching._claim(loaded, "c1")) == {
+        "date": "2022-01",
+        "from": f"the search end date of doi:{SR_DOI}, as {later}'s reading 1 gives it"}
+
+
 def test_a_replay_runs_each_recorded_search_as_recorded(marked: Path) -> None:
     _search(marked, Registry(), against_text=AGAINST)
     before = _records(marked)
@@ -497,6 +572,35 @@ def test_a_cited_work_pubmed_does_not_hold_is_not_asked_there(marked: Path) -> N
     _search(marked, Registry())
     links = _by(_records(marked))[("S1", None, "pubmed")]
     assert links["status"] == "not asked" and "2026-10-30" in links["why"]
+
+
+def test_s1_asks_openalex_for_reviews_by_the_doi_only(marked: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "S1 at OpenAlex asks for the reviews that cite
+    the work"): S1 at OpenAlex asks for the works citing the cited work typed `review`, so a
+    trial that cites it is not looked for, and it asks by the DOI only: a work references.bib
+    gives a PMID alone is not asked there."""
+    registry = Registry()
+    _search(marked, registry)
+    citing = [one.params["filter"] for one in registry.asked("openalex")
+              if one.params.get("filter", "").startswith("cites:")]  # fmt: skip
+    assert citing == ["cites:W100,type:review"]
+    found = [one.params["filter"] for one in registry.asked("openalex")
+             if one.params.get("filter", "").startswith("doi:")]  # fmt: skip
+    assert found and found[0].startswith(f"doi:{CITED_DOI}")
+    assert _by(_records(marked))[("S1", None, "openalex")]["status"] == "run"
+    # The other side: the cited work by its PMID alone is not asked at OpenAlex.
+    bib = marked / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    doi = "  doi     = {10.5555/class.signal.2019},\n"
+    assert doi in text
+    bib.write_text(text.replace(doi, f"  pmid    = {{{CITED_PMID}}},\n", 1), encoding="utf-8")
+    loaded = load_project(marked)[0]
+    claim = searching._claim(loaded, "c1")
+    assert (claim.cited.work, claim.cited.doi) == (f"pmid:{CITED_PMID}", None)
+    plan = {(one.step, one.source): one for one in searching.planned(
+        claim, TERMS, None, "Ada Example", 10, None)}  # fmt: skip
+    assert plan[("S1", "openalex")].why == ("the cited work has no DOI, by which OpenAlex is "
+                                            "asked for it")  # fmt: skip
 
 
 def test_the_question_is_written_and_never_sent(marked: Path) -> None:
@@ -799,6 +903,31 @@ def test_a_record_of_a_search_not_asked_is_no_search(marked: Path, monkeypatch) 
     assert "searched (1), not read" in missing[0].message
     rows, _unplaced = command.listing(loaded)
     assert any(row.state.startswith("searched 1,") for row in rows)
+
+
+def test_one_step_run_again_freshens_an_entry_whose_other_steps_are_old(
+    marked: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`currency-record-stale` reads the newest search
+    of an entry"): whatever its step, the newest search asked dates the entry, so S3 run
+    again today leaves it fresh, though its S2 is seven months old."""
+    from manuscript_guard.gates import currency as gate
+
+    loaded = load_project(marked)[0]
+    base = {"entry": "c1", "source": "pubmed", "query": TERMS, "status": "run", "hits": 0,
+            "candidates": []}  # fmt: skip
+    for step in ("S2", "S3"):
+        records.file_search(loaded, {**base, "step": step, "searched_on": "2026-04-02"})
+    monkeypatch.setattr(gate, "today", lambda: date(2026, 11, 5))
+
+    def stale() -> list[str]:
+        return [f.message for f in gate.check_currency(load_project(marked)[0]).findings
+                if f.code == "currency-record-stale"]  # fmt: skip
+
+    (said,) = stale()
+    assert "its newest search was run on 2026-04-02, more than 6 months ago" in said
+    records.file_search(loaded, {**base, "step": "S3", "searched_on": "2026-11-05"})
+    assert stale() == []
 
 
 def test_a_dry_replay_with_no_current_lookup_record_says_so(marked: Path) -> None:

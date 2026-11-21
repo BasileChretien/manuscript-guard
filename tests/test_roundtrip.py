@@ -457,6 +457,36 @@ def test_a_prose_edit_merges(project: Path, tmp_path: Path) -> None:
     )
 
 
+@needs_pandoc
+def test_a_picture_s_description_changed_in_word_is_not_brought_back(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): a co-author who rewrites the figure's alternative text in
+    Word, beside an edit of the prose, gets the prose back and not the text: the figure's
+    guard file is as it was."""
+    from manuscript_guard.cli import main
+
+    sidecar = project / "figures" / "forest.guard.yaml"
+    before = sidecar.read_bytes()
+    assert main(["build", str(project), "--offline"]) == 0
+    document = project / "build" / "manuscript.docx"
+    with zipfile.ZipFile(document) as archive:
+        written = set(re.findall(r'descr="([^"]+)"', archive.read("word/document.xml").decode()))
+    [shown] = [said for said in written if said.startswith("Forest plot of")]
+    described = "A picture its co-author described again."
+    returned = edit_docx(document, tmp_path / "back.docx", {
+        f'descr="{shown}"': f'descr="{described}"',
+        "This work received no funding.": "This work received no external funding.",
+    })  # fmt: skip
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+    assert sidecar.read_bytes() == before
+    assert described not in sidecar.read_text(encoding="utf-8")
+
+
 # What `import` does today with a document whose citations were not made by the offline
 # build in the default style. Pinned here, and named in the word-roundtrip skill and Known
 # gaps, before `import` is taught to follow how a document was built.

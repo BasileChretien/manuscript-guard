@@ -751,6 +751,108 @@ def test_an_allowlist_section_that_is_no_list_allows_nothing(project: Path) -> N
     assert _estimates_said(project) == ["sns.barplot"]
 
 
+def _estimated(text: str, language: str = "python") -> list[str]:
+    """The calls `estimates_in` finds in a script's text, by the name they are made by."""
+    from manuscript_guard.gates.figure_estimates import estimates_in
+
+    return [estimate.call.name for estimate in estimates_in(text, language)]
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        # A wrapper of the script's own: its body is read once, and its calls not at all.
+        ("def bars(**kw):\n    return sns.barplot(**kw)\nbars(data=a)\nbars(data=b)\n",
+         ["sns.barplot"]),
+        ("bar = sns.barplot\nbar(data=frame)\n", []),
+        ('sns.catplot(data=frame, kind="bar")\nsns.relplot(data=frame, kind="line")\n', []),
+        ("sns.kdeplot(data=frame)\n", []),
+        # A method of the same name on another object.
+        ("picked = palette.sample(2)\nspread = timer.std()\n", ["palette.sample", "timer.std"]),
+        # One seed settles every random call, though numpy's does not seed `random`.
+        ("np.random.seed(1)\nx = random.random()\n", []),
+        ("x = random.random()\n", ["random.random"]),
+        # A seaborn bootstrap is settled by its own seed alone.
+        ("np.random.seed(1)\nsns.barplot(data=frame)\n", ["sns.barplot"]),
+        ("frame.dropna(how='all')\n", ["frame.dropna"]),
+    ],
+    ids=["wrapper", "alias", "catplot and relplot", "kdeplot", "another object's method",
+         "one seed", "no seed", "seaborn's own seed", "dropna"],  # fmt: skip
+)
+def test_a_figure_that_estimates_is_found_by_the_names_of_the_calls_it_makes(
+    script: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure that estimates is found by the names of
+    the calls it makes"): only the calls `data/figure_estimates.yaml` names, by the last
+    part of their name, whatever they are called on; a seed anywhere settles every random
+    call but a seaborn bootstrap's, and `dropna` has no argument that quiets it."""
+    assert _estimated(script) == said
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ("ggplot(d, aes(x, y)) + stat_summary(fun = mean, geom = 'point')", ["stat_summary"]),
+        ('ggplot(d, aes(x, y)) + geom_smooth(method = "lm", se = FALSE, span = 1)',
+         ["geom_smooth"]),
+    ],
+)
+def test_an_r_summary_or_smoother_has_no_argument_that_quiets_it(
+    script: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure that estimates is found by the names of
+    the calls it makes"): `stat_summary` and `geom_smooth` are said whatever they are given;
+    a reason under `allow_estimates` is what quiets them."""
+    assert _estimated(script, "r") == said
+
+
+@pytest.mark.parametrize(
+    ("script", "language", "said"),
+    [
+        ("def std(values):\n    return 0\n", "python", ["std"]),
+        ("np.random.seed(1)\nsns.stripplot(data=frame)\n", "python", ["sns.stripplot"]),
+        ('ggplot(d, aes(x, y)) + geom_jitter(position = "jitter")', "r", []),
+        ("x <- rt(5, 2) + rchisq(5, 2) + rlnorm(5) + rnbinom(5, 2, 0.5) + rweibull(5, 2)\n"
+         "i <- sample.int(10)\n", "r", []),
+        ("x <- rnorm(5)\n", "r", ["rnorm"]),
+    ],
+    ids=["a definition", "stripplot seeded", "jitter by name", "draws not listed",
+         "a draw listed"],  # fmt: skip
+)
+def test_figure_estimates_reads_as_the_known_gaps_say(
+    script: str, language: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Figure estimates"): a definition of `std` is
+    read as a call; `stripplot`, which takes no seed, is still said where the script sets
+    one; a jitter given by name passes; and R's draws from the t, chi-squared, log-normal,
+    negative binomial and Weibull distributions, and `sample.int`, are not among the calls.
+    The 2026-11-09 triage planned a fix (F19), which will change this test."""
+    assert _estimated(script, language) == said
+
+
+@pytest.mark.parametrize("suffix", [".Rmd", ".qmd"])
+def test_an_rmd_figure_script_is_read_as_r_throughout(tmp_path: Path, suffix: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Figure estimates"): an `.Rmd` or a `.qmd` is
+    lexed as R, so "sample (" in its prose is read as a call and its Python chunk's
+    bootstrap is missed; and a form feed is a line break to the finding's context and not
+    to its line. The 2026-11-09 triage planned a fix (F19), which will change this test."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    script = tmp_path / f"forest{suffix}"
+    script.write_text("We draw a sample (of the reports) here.\n\n```{python}\n"
+                      "sns.barplot(data=frame)\n```\n", encoding="utf-8")  # fmt: skip
+    found = [(f.message.split("(")[0], f.line)
+             for f in check_figure_source(script, Classifier.load()).findings
+             if f.code == "figure-estimates"]  # fmt: skip
+    assert found == [("sample", 1)]
+    fed = tmp_path / "fed.py"
+    fed.write_text("a = 1\fb = 2\nsns.barplot(data=frame)\n", encoding="utf-8")
+    [said] = [f for f in check_figure_source(fed, Classifier.load()).findings
+              if f.code == "figure-estimates"]  # fmt: skip
+    assert (said.line, said.context) == (2, "b = 2")
+
+
 @pytest.mark.parametrize(
     ("script", "said"),
     [
@@ -6114,10 +6216,14 @@ def test_a_swap_reworded_beside_another_old_key_sentence_is_a_known_limit(
     sentence still citing the old work that holds half or more of the entry's words, is
     not seen as done until the author puts the entry on the new sentence."""
     from manuscript_guard.currency import command
+    from manuscript_guard.currency.survey import survey
 
     _swapped(project, "replace", reworded=True)
     assert _currency_findings(project, "submission") == [
         ("currency-change-unanswered", "fail")]
+    # The entry stays on the other sentence, which still cites the old work.
+    placed = survey(load_project(project)[0])[0].placed["c1"]
+    assert "@fictionalClassSignal2019" in placed.text and "crude incidence" not in placed.text
     said = command.mark(load_project(project)[0], "has been described", "@classTrial2023",
                         None, "c1")  # fmt: skip
     assert said.startswith("c1 placed again")
@@ -7653,6 +7759,121 @@ def test_what_a_reply_may_say_passes(project: Path, reply: str) -> None:
     _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
     report = _g13(project)
     assert _said(report, "response-leak", "response-placeholder", "response-artefact") == []
+
+
+_QUOTE_CODES = ("quoted-text-absent", "quoted-text-not-new", "quoted-text-elsewhere",
+           "quoted-text-unchecked")  # fmt: skip
+
+
+@pytest.mark.parametrize(("point", "said"), [
+    ({}, [("response-claims-nothing", "fail")]), ({"rebutted": "x"}, []),
+], ids=["neither changed nor rebutted", "rebutted"])  # fmt: skip
+def test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked(
+    project: Path, point: dict, said: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a reply that says the Abstract "now reads" a sentence the
+    paper does not hold, with no `text` entry, is not checked for that sentence: of point 1.1
+    G13 says only that it names no change, and with a rebuttal it says nothing."""
+    _round_with(project, [_point(response='We revised the Abstract, which now reads "A sentence '
+                                 'the paper does not hold."', **point)])  # fmt: skip
+    assert [(f.code, f.severity) for f in _g13(project).findings if "point 1.1" in f.message
+            ] == said  # fmt: skip
+
+
+@pytest.mark.parametrize(("typed", "found"), [
+    ('The "adjusted" ratio\nwas `reported`, *again*.', True),
+    ("The \N{LEFT DOUBLE QUOTATION MARK}adjusted\N{RIGHT DOUBLE QUOTATION MARK} ratio was "
+     "reported, again.", False),
+    ('The "adjusted" ratio was reported again.', False),
+])  # fmt: skip
+def test_a_quote_is_compared_without_its_marks_and_breaks_but_with_its_punctuation(
+    project: Path, typed: str, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a quote is found through the paper's emphasis, code marks
+    and line breaks, and not where its quotation marks or its punctuation differ."""
+    _round_with(project, [_point(response="We now say so.", changed=[{
+        "kind": "text", "quote": 'The "adjusted" ratio was reported, again.',
+        "section": "Discussion"}])])  # fmt: skip
+    _in_the_discussion(project, typed)
+    absent = [] if found else [("quoted-text-absent", "fail")]
+    assert _said(_g13(project), *_QUOTE_CODES) == absent
+
+
+@pytest.mark.parametrize(("section", "said"), [
+    ("Discussion", []), ("Results", [("quoted-text-elsewhere", "fail")]),
+])  # fmt: skip
+def test_a_quote_s_section_is_found_by_the_words_of_its_heading(
+    project: Path, section: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): "Discussion" names a section headed "Discussion and
+    conclusions", and a quote in a subsection of it counts as in it."""
+    _round_with(project, [_point(response="We now say so.", changed=[{
+        "kind": "text", "quote": "A new sentence.", "section": section}])])  # fmt: skip
+    _rewrite(project, ("# Discussion", "# Discussion and conclusions"))
+    _in_the_discussion(project, "## Strengths\n\nA new sentence.")
+    assert _said(_g13(project), *_QUOTE_CODES) == said
+
+
+@pytest.mark.parametrize(("reply", "leak"), [
+    ("See main.md line 120 for the new text.", True),
+    ("See main.md, line 120 for it.", True),
+    ("G13: point-unanswered was resolved.", True),
+    ("G6: ai-cadence was resolved.", False),
+])  # fmt: skip
+def test_a_place_in_the_sources_is_a_file_s_line_and_a_gate_a_failing_code(
+    project: Path, reply: str, leak: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a source file's line is caught written "main.md line 120"
+    too, and a gate only with a code that fails after it: a warning's code is not caught."""
+    from manuscript_guard.policy import BINDS_AT
+
+    assert ("point-unanswered" in BINDS_AT, "ai-cadence" in BINDS_AT) == (True, False)
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    assert _said(_g13(project), "response-leak") == ([("response-leak", "fail")] if leak else [])
+
+
+@pytest.mark.parametrize(("reply", "typed"), [
+    ("As line 3.2 says.", []), ("Reviewer 2 found 41 cases.", ["41"]),
+    ("The ratio was 3.2.", ["3.2"]),
+])  # fmt: skip
+def test_a_number_after_a_place_word_is_not_read_in_a_reply(
+    project: Path, reply: str, typed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose."): a number right after a word that names a place is not read,
+    so "line 3.2" types a number past G2; in "Reviewer 2 found 41 cases" the 41 has no place
+    word before it, and is read."""
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert _reply_numbers(project) == [
+        f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"
+        for number in typed
+    ]
+
+
+@pytest.mark.parametrize(("reply", "typed"), [
+    ("Reviewer 2 and 41 cases were excluded.", []),
+    ("Reviewer 2 & 41 cases were excluded.", []),
+    ("Reviewer 2 to 41 cases were excluded.", []),
+    ("Reviewer 2 through 41 cases were excluded.", []),
+    ("Reviewer 2 \N{EN DASH} 41 cases were excluded.", []),
+    ("Reviewer 2 and 41 cases were excluded, 12 of them late.", ["12"]),
+])  # fmt: skip
+def test_a_count_joined_by_and_to_a_place_is_read_as_a_place_in_a_reply(
+    project: Path, reply: str, typed: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
+    what it claims in prose.", "A count joined to a place by "and""): after a place word,
+    "and" runs a list of places on, so the 41 of "Reviewer 2 and 41 cases were excluded"
+    passes G2 unbound; the 12 after it is read."""
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert _reply_numbers(project) == [
+        f"round 1, reviewer-1 point 1.1, `response`: {number!r} is not bound to any source"
+        for number in typed
+    ]
 
 
 def test_the_templates_words_left_for_the_reviewers_fail(project: Path) -> None:
@@ -10244,6 +10465,35 @@ def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
     assert "ref-number-unknown" in codes(drafting)
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_the_count_cannot_number_passes_in_a_reply_and_prints_as_written(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A ref in a reply to the reviewers is not
+    held."): with a figure sent as a file, a ref to it in a reply draws no finding and the
+    letter prints it as typed; in the Abstract it is `ref-number-unknown`, and the abstract
+    is left out of the pack for the formatting the build does. The 2026-11-09 triage planned
+    a fix (F19), which will change this test."""
+    from manuscript_guard.build.submission import abstract_text, response_letter
+
+    _declare(project, "displays: {figures_as_files: 1}")
+    before = _ref_findings(project)
+    _round_with(project, [_point(response="We now say so, in {{ref.figure.forest}}.",
+                                 rebutted="x")])  # fmt: skip
+    assert _ref_findings(project) == before
+    assert "We now say so, in {{ref.figure.forest}}." in response_letter(load_project(project)[0])
+    _rewrite(project, ("The reporting odds ratio was",
+                       "In {{ref.figure.forest}}, the reporting odds ratio was"))  # fmt: skip
+    assert [m for c, m in _ref_findings(project) if c == "ref-number-unknown"] == [
+        "{{ref.figure.forest}} cannot be numbered: paper.yaml sends 1 of the main text's "
+        "figures as files, and where {{figure.forest}} falls among those is not known"]
+    assert abstract_text(load_project(project)[0]) == (None, (
+        "abstract.txt is not written: the abstract holds what the build formats and plain "
+        "text cannot (a citation, a footnote, maths, code, an image, a table, a figure, a "
+        "link with words of its own, or a block other than a paragraph or a heading); copy "
+        "it from the document"))
+
+
 @pytest.mark.parametrize(
     "sentence",
     ["In step 1204 reports were excluded.", "Box 47 lists the reports.",
@@ -11237,6 +11487,61 @@ def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_soft
         plan.write_bytes(text.replace("## Sample size", own + "## Sample size").encode())
         assert _software_said(project) == [], heading
         assert ("plan-variable-undefined", "warn") not in _plan_said(project), heading
+
+
+def _software_of(items: str, scripts: dict[str, str]) -> list[tuple[str, str, int | None]]:
+    """What G12 says of a plan whose Software section holds `items`, against `scripts`."""
+    from manuscript_guard.gates.software import judge_software
+
+    plan = f"# Analysis plan\n\n## Population\n\nAll reports.\n\n## Software\n\n{items}"
+    report = judge_software(Path("."), plan, scripts, [], frozenset(), "drafting")
+    return [(f.code, f.message.split(",")[0], f.line) for f in report.findings]
+
+
+def test_an_item_is_loaded_when_any_of_its_names_is() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its second point): "`dplyr`, `tidyr`" is never said
+    where only dplyr is loaded, in either order, and a variable written in backticks in an
+    item stands down the note for a package of that name."""
+    dplyr = {"analysis/a.R": "library(dplyr)\n"}
+    assert _software_of("- `dplyr`, `tidyr`: reshape the data\n", dplyr) == []
+    assert _software_of("- `tidyr`, `dplyr`: reshape the data\n", dplyr) == []
+    assert _software_of("- `dplyr`: select\n- `tidyr`: reshape the data\n", dplyr) == [
+        ("planned-package-unloaded", "the plan's Software section names tidyr", 10)
+    ]
+    both = {"analysis/a.R": "library(lme4)\nlibrary(survey)\n"}
+    assert _software_of("- `lme4`: `glmer()`, `survey` as its group\n", both) == []
+    assert _software_of("- `lme4`: `glmer()`, survey as its group\n", both) == [
+        ("plan-package-unnamed", "analysis/a.R loads survey", 2)
+    ]
+
+
+def test_a_base_package_r_leaves_unattached_is_loaded() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its fifth point): `splines` or `parallel` as an
+    item's first name counts as loaded wherever an R script is read, though none loads it;
+    with no R script, or as a later name, it does not."""
+    for item in ("- `splines`: `ns()` for the curve\n", "- `parallel`: `mclapply()`\n"):
+        assert _software_of(item, {"analysis/a.R": "x <- 1\n"}) == [], item
+    assert _software_of("- `splines`: `ns()` for the curve\n", {"analysis/a.py": "x = 1\n"}) == [
+        ("planned-package-unloaded", "the plan's Software section names splines", 9)
+    ]
+    assert _software_of("- `brms`, `splines`: `ns()`\n", {"analysis/a.R": "x <- 1\n"}) == [
+        ("planned-package-unloaded", "the plan's Software section names brms", 9)
+    ]
+
+
+def test_a_heading_with_no_blank_line_is_in_the_item() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The plan's Software section is held to the names
+    a script writes, not to what runs", its tenth point): a heading needs a blank line before
+    it, so "Considered and not used" typed on the line after an item is part of that item,
+    and the packages under it are held to the scripts."""
+    dplyr = {"analysis/a.R": "library(dplyr)\n"}
+    apart = "- `dplyr`: select\n\n### Considered and not used\n\n- `tidyr`: not needed\n"
+    assert _software_of(apart, dplyr) == []
+    assert _software_of(apart.replace("\n\n###", "\n###", 1), dplyr) == [
+        ("planned-package-unloaded", "the plan's Software section names tidyr", 12)
+    ]
 
 
 def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> None:
@@ -15262,6 +15567,36 @@ def test_g6_tells_a_markdown_paper_of_lines_in_brackets_beside_a_listing(project
                     "The stride is set (line 8) of the step.\n", encoding="utf-8")  # fmt: skip
     assert any(f.code == "revision-residue" and "(line 8)" in f.message
                for f in _g6_findings(project))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("block", "pointed"),
+    [
+        ("\\begin{verbatim}\nx <- 1\n\\end{verbatim}", False),
+        ("\\begin{procedure}\nWe have now clarified the step\n\\end{procedure}", True),
+    ],
+)  # fmt: skip
+def test_g6_tries_lines_in_brackets_nowhere_in_a_latex_paper_with_a_listing_anywhere(
+    project: Path, block: str, pointed: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`lines-cited-alone` is not tried anywhere in a
+    LaTeX document that sets out an algorithm or a listing"): a `verbatim` block in the
+    Introduction turns the rule off for every pointer in the Results, one into the
+    reviewers' copy too. An algorithm in `algorithm2e`'s `procedure`, an environment the
+    reader does not name, is read as prose: the rule stays on, and words to the reviewers in
+    it are reported."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Introduction}\n"
+    entry.write_text(text.replace(heading, heading + block + "\n\n", 1), encoding="utf-8")
+    _into_results(entry, "The stride is set (line 8) of the step.\n\n"
+                         "The wording was changed (lines 245-250).")  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    said = sorted(f.line for f in _g6_findings(project) if f.code == "revision-residue")
+    pointers = [text.count("\n", 0, text.index(words)) + 1
+                for words in ("(line 8)", "(lines 245-250)")]  # fmt: skip
+    inside = [text.count("\n", 0, text.index("We have now clarified")) + 1] if pointed else []
+    assert said == sorted(inside + (pointers if pointed else [])), said
 
 
 def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
@@ -20392,6 +20727,29 @@ def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: s
     assert _artwork_said(project, formats=[written.lower(), "eps"]) == []
 
 
+def test_a_figure_kept_as_png_and_tiff_is_held_to_the_journal_s_limits_twice(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure file is read for its pixels only where
+    it is a PNG, JPEG or TIFF"): the build places the PNG, the first of the figure's files
+    in its order, and G4 holds the TIFF beside it to the rules as well, so a resolution too
+    low is said of each. The TIFF is one of its own, of the PNG's 1950 by 660 pixels."""
+    from test_figure_files import tiff
+
+    from manuscript_guard.build.assemble import FIGURE_PREFERENCE, find_figure
+    from manuscript_guard.gates.figure_files import raster_of
+
+    kept = project / "figures" / "forest.tif"
+    kept.write_bytes(tiff(1950, 660, 300, 2))
+    assert kept.read_bytes()[:4] == b"II*\x00" and raster_of(kept) is not None
+    assert FIGURE_PREFERENCE[0] == ".png"
+    assert find_figure(load_project(project)[0], "forest") == project / "figures" / "forest.png"
+    assert _artwork_said(project, min_dpi={"halftone": 600}, widths_mm=[89]) == [
+        ("figure-resolution", "warn")] * 2  # fmt: skip
+    found = [f.path.name for f in _journal(project).findings if f.code == "figure-resolution"]
+    assert found == ["forest.png", "forest.tif"]
+
+
 @pytest.mark.parametrize(
     ("width_mm", "rules", "shown"),
     [
@@ -20429,6 +20787,21 @@ def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> N
         "{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"), encoding="utf-8")
     assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
     assert _artwork_said(project, legend_words=40) == []
+
+
+def test_a_legend_written_above_its_figure_is_not_counted(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure file is read for its pixels only where
+    it is a PNG, JPEG or TIFF"): the legend G4 counts is the paragraph straight after the
+    figure that opens with "Figure"; the same words above it are not counted."""
+    main = main_md(project)
+    placed = main.read_text(encoding="utf-8")
+    legend = "**Figure 1.** " + " ".join(["The reporting odds ratio and its interval."] * 4)
+    main.write_text(placed.replace("{{figure.forest}}\n", legend + "\n\n{{figure.forest}}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _artwork_said(project, legend_words=20) == []
+    main.write_text(placed.replace("{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
 
 
 def test_a_latex_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
@@ -20630,6 +21003,76 @@ def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
         "methods-not-found"
     ], report.render(project)
     assert "missing-required-section" in codes(_journal(project))
+
+
+def test_g2_and_g15_read_fewer_headings_than_g4_and_g9(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Methods are a heading that holds the word,
+    and two gates read fewer headings than G4 counts"): G4 and G9 take a heading that holds
+    "methods" for the Methods, and the singular as a whole title; G2 and G15 read only the
+    names of `METHODS_SECTIONS`, so "Overview of methods" is the Methods to the first two and
+    not to the other two, and "Method" is no Methods to G2 and G15."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.gates import check_methods
+    from manuscript_guard.gates.methods import methods_in
+    from manuscript_guard.gates.models import named_in_methods
+    from manuscript_guard.text.section_names import names_methods
+
+    # What G4 and G9 can take for the Methods, and what G2 and G15 read as them.
+    read = {
+        "Overview of methods": (True, False), "Limitations of existing methods": (True, False),
+        "Methods used": (True, False), "Method": (True, False), "3. Method": (True, False),
+        "Materials and method": (True, False), "Methodology": (True, True),
+        "A method for signal detection": (False, False),
+        "Performance of the proposed method": (False, False),
+        "Methodological notes": (False, False), "Methods": (True, True),
+        "2. Methods": (True, True), "Patients and methods": (True, True),
+        "Methods and analysis": (True, True), "Methods: data sources": (True, True),
+        "Methods. Study design": (True, True), "Methods \N{EN DASH} design": (True, True),
+        "Methods of the study": (True, True), "Statistical analysis": (False, True),
+    }  # fmt: skip
+    assert {title: (names_methods(title), is_methods((title,))) for title in read} == read
+    # G9 reads the first such heading where none is named, and a named one first.
+    assert methods_in("## Overview of methods\n\nA.\n\n## Results\n\nB.\n") == "\n\nA.\n\n"
+    other = "## Limitations of existing methods\n\nL.\n\n## {}\n\nM.\n"
+    assert methods_in(other.format("Method")) == "\n\nL.\n\n"
+    assert methods_in(other.format("Methodology")) == "\n\nM.\n"
+    assert methods_in(other.format("Methods")) == "\n\nM.\n"
+    # A Methods with a subsection that names another part of the paper is not read.
+    for sub in ("Results", "Limitations", "Background"):
+        assert methods_in(f"## Methods\n\nA.\n\n### {sub}\n\nB.\n") is None, sub
+    assert methods_in("## Methods\n\nA.\n\n### Statistical analysis\n\nB.\n") is not None
+    # G15 reads a model's name under "Methods" and not under "Overview of methods".
+    fitted = "\n\nA logistic regression was fitted.\n"
+    assert [kind for _s, _e, kind in named_in_methods("## Methods" + fitted)] != []
+    assert named_in_methods("## Overview of methods" + fitted) == []
+    # G4 counts "Overview of methods" a Methods present, and G2 holds a number there that
+    # it lets through under "Methods".
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Methods\n", "# Methods\n\nA difference was significant at p < 0.001.\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+    def unbound() -> list[str]:
+        return [f.message for f in gate_report(project).failures
+                if f.code == "unclassified-number" and "0.001" in f.message]  # fmt: skip
+
+    assert unbound() == []
+    _methods_retitled(project, "Overview of methods")
+    assert "missing-required-section" not in codes(_journal(project))
+    assert len(unbound()) == 1
+    # `methods-not-found` is said only where the project has analysis code.
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Overview of methods\n", "# Approach\n", 1),
+        encoding="utf-8",
+    )
+    report = check_methods(load_project(project)[0])
+    assert "methods-not-found" in {f.code for f in report.warnings}
+    shutil.rmtree(project / "analysis")
+    report = check_methods(load_project(project)[0])
+    assert "methods-not-found" not in {f.code for f in report.findings}
 
 
 # ------------------------------------------------ the supplement's Methods, held to the code
@@ -21079,6 +21522,115 @@ def test_a_supplementary_figure_is_held_to_the_supplements_rule(project: Path) -
     assert ("figure-alt-missing", "fail") in _alt_said(project, "submission")
 
 
+def test_a_figure_placed_in_the_main_text_and_the_supplement_is_held_to_the_main_rule(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): placed in both, the figure is held to the main text's
+    rule, a warning, and not the supplement's failure, which holds it once the main text
+    places it no more."""
+    main = main_md(project)
+    placed = main.read_text(encoding="utf-8")
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _alt(project, None, alt_text="requested", supplementary={"alt_text": "required"})
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "warn")]
+    main.write_text(placed.replace("{{figure.forest}}\n", ""), encoding="utf-8")
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "fail")]
+
+
+def test_alternative_text_is_read_from_the_guard_file_and_not_for_what_it_says(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): "A figure." says nothing of what is drawn and passes; with
+    none in the guard file, the description a PDF figure carries in its own structure is
+    not read, and the text is missing."""
+    from generated import pdf_document
+
+    _alt(project, "A figure.")
+    assert _alt_said(project) == []
+    tagged = pdf_document(b"BT /F1 9 Tf (a) Tj ET").replace(
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Catalog /Pages 2 0 R /MarkInfo << /Marked true >> /StructTreeRoot 98 0 R"
+        b" >>").replace(b"%%EOF", b"98 0 obj\n<< /Type /StructTreeRoot /K 99 0 R >>\nendobj\n"
+        b"99 0 obj\n<< /Type /StructElem /S /Figure /P 98 0 R /Alt (Forest plot of the"
+        b" estimate and its interval.) >>\nendobj\n%%EOF")  # fmt: skip
+    (project / "figures" / "forest.pdf").write_bytes(tagged)
+    _alt(project, None)
+    assert _alt_said(project) == [("figure-alt-missing", "info")]
+
+
+def test_a_latex_manuscript_s_build_writes_no_alternative_text_the_check_reads(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): the LaTeX twin places the figure by `\\mg{figure.forest}`,
+    and the check holds it to the rule as a Markdown manuscript's, missing where the guard
+    file has none; but the values file the build writes draws it with `\\includegraphics`
+    alone, and nothing of the text the guard file gives."""
+    from manuscript_guard.build.latex_values import values_files
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    alt = "Forest plot of a reporting odds ratio drawn on a log scale."
+    _alt(project, alt)
+    assert _alt_said(project, "submission") == []
+    loaded = load_project(project)[0]
+    namespace, results, *_ = load_namespace(loaded)
+    written = "".join(file.text for file in values_files(loaded, namespace, results))
+    drawn = [line for line in written.splitlines() if "mg@figure.forest" in line]
+    assert drawn and all(
+        re.search(r"#1\{\\includegraphics\[#1\]\{[^{}]*forest\.(pdf|png)\}\}$", line)
+        for line in drawn
+    ), drawn
+    assert "log scale" not in written
+    _alt(project, None)
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "warn")]
+
+
+def test_a_number_the_mask_hides_in_the_alternative_text_is_not_read_and_a_release_twice(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): a number in a link's target, a URL, a citation key or an
+    attribute is hidden by the prose's mask, though the build prints it; the same numbers in
+    the words are each said. A dictionary's release typed across two numbers is said for
+    each."""
+    hidden = ("The estimate ([table](https://example.org/table/3.84)), as at "
+              "https://example.org/2.71 and in [@estimate-1.5], [drawn]{.wide width=5.12}.")
+    _alt(project, hidden)
+    assert _alt_said(project) == []
+    _alt(project, "The estimate, 3.84, as at 2.71 and in 1.5, drawn at 5.12.")
+    assert _alt_said(project) == [("figure-alt-number", "fail")] * 4
+    _coded_with(project, whodrug="Global B3 March 2025")
+    _alt(project, "Drugs were coded with WHODrug Global B3 March 2025.")
+    assert _alt_said(project) == [("figure-alt-number", "fail")] * 2
+
+
+def test_a_value_quoted_in_the_alternative_text_alone_is_stamped_and_still_unquoted(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
+    there, not for being right"): the document's stamp hashes the text as written, its
+    bindings among its words and none of them resolved, so the text with another binding
+    in it is another stamp; and G2's coverage does not read the text, so a result quoted
+    there alone is still one nothing quotes."""
+    from manuscript_guard.gates.review import document_digest
+
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{results.case.n_serious}}", "an unreported number of"), encoding="utf-8")  # fmt: skip
+    _alt(project, "Of the cases, {{results.case.n_serious}} were serious.")
+    stamped = document_digest(load_project(project)[0])
+    unquoted = [f.message for f in gate_report(project).findings if f.code == "unquoted-result"]
+    assert unquoted == ["results key 'case.n_serious' is declared as quoted but nothing "
+                        "references it"]  # fmt: skip
+    _alt(project, "Of the cases, {{results.ror.point}} were serious.")
+    assert document_digest(load_project(project)[0]) != stamped
+
+
 def test_each_binding_in_the_alternative_text_typed_as_its_value_fails(project: Path) -> None:
     """The headline corruption, in the alternative text: each binding replaced by the value
     it prints is correct today and stale in waiting, and fails as it would in the prose."""
@@ -21473,6 +22025,274 @@ def test_a_texts_colour_is_not_a_series(project: Path, svg: bool) -> None:
     """A label in red beside a green line confuses no data."""
     _painted(project, f"text:{_RED}", _GREEN, svg=svg)
     assert _colours_said(project) == []
+
+
+_SVG_HEAD = ('<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+             'viewBox="0 0 100 80">')  # fmt: skip
+
+
+def _vector_file(folder: Path, body: str | bytes) -> Path:
+    """An SVG of `body`; or, where `body` is bytes, a PDF: `body` itself where it is a whole
+    PDF, else a page that draws it."""
+    from generated import pdf_document
+
+    if isinstance(body, bytes):
+        path = folder / "figure.pdf"
+        path.write_bytes(body if body.startswith(b"%PDF") else pdf_document(body))
+        return path
+    path = folder / "figure.svg"
+    path.write_text(_SVG_HEAD + body + "</svg>", encoding="utf-8")
+    return path
+
+
+def _red_png() -> str:
+    """A PNG of one red pixel, whole and decodable, as base64."""
+    import base64
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return (struct.pack(">I", len(body)) + kind + body
+                + struct.pack(">I", zlib.crc32(kind + body)))  # fmt: skip
+
+    data = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00")) + chunk(b"IEND", b""))  # fmt: skip
+    return base64.b64encode(data).decode("ascii")
+
+
+def _pdf_page(content: bytes, resources: bytes, *objects: bytes) -> bytes:
+    """A PDF of one page that draws `content` with `resources`, and `objects` after its
+    content stream, numbered from 5."""
+    bodies = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 100 80] >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << " + resources + b" >> /Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        *objects,
+    ]
+    return b"%PDF-1.7\n" + b"".join(
+        b"%d 0 obj\n" % number + body + b"\nendobj\n" for number, body in enumerate(bodies, 1)
+    ) + b"%%EOF\n"
+
+
+#: An image XObject of one red pixel, and an axial shading red at both ends.
+_RED_IMAGE = (b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB"
+              b" /BitsPerComponent 8 /Length 3 >>\nstream\n\xff\x00\x00\nendstream")  # fmt: skip
+_RED_SHADING = (b"<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 100 0] /Function <<"
+                b" /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [1 0 0] /N 1 >> >>")  # fmt: skip
+#: A spot colour whose tint transform takes a full tint to red.
+_SPOT = (b"/ColorSpace << /C [/Separation /Spot /DeviceRGB << /FunctionType 2 /Domain [0 1]"
+         b" /C0 [1 1 1] /C1 [1 0 0] /N 1 >>] >>")  # fmt: skip
+_FILLED_PATH = b"0 0 m 1 1 l 1 0 l f"
+
+
+@pytest.mark.parametrize(
+    ("body", "read"),
+    [
+        (f'<rect width="10" height="10" fill="{_RED}"/>', [_RED]),
+        (f'<linearGradient id="g"><stop offset="0" stop-color="{_RED}"/><stop offset="1" '
+         f'stop-color="{_GREEN}"/></linearGradient><rect width="10" height="10" '
+         'fill="url(#g)"/>', []),
+        (f'<pattern id="p" width="2" height="2"><rect width="1" height="1" fill="{_RED}"/>'
+         '</pattern><rect width="10" height="10" fill="url(#p)"/>', []),
+        ('<image width="10" height="10" href="data:image/png;base64,' + _red_png() + '"/>', []),
+        (_pdf_page(b"q 10 0 0 10 0 0 cm /Im0 Do Q", b"/XObject << /Im0 5 0 R >>", _RED_IMAGE),
+         []),
+        (_pdf_page(b"/Sh0 sh", b"/Shading << /Sh0 5 0 R >>", _RED_SHADING), []),
+        (_pdf_page(b"/C cs 1 sc " + _FILLED_PATH, _SPOT), []),
+        (_pdf_page(b"/C cs 0 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/Indexed /DeviceRGB 1 <ff0000 00ff00>] >>"), []),
+        (_pdf_page(b"/C cs 50 60 40 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/Lab << /WhitePoint [0.9505 1 1.089] >>] >>"), []),
+        # CMYK without its profile, and any space of three numbers as sRGB.
+        (b"0 1 1 0 K 0 0 m 1 1 l S", ["#ff0000"]),
+        (_pdf_page(b"/C cs 1 0 0 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/CalRGB << /WhitePoint [0.9505 1 1.089] >>] >>"),
+         ["#ff0000"]),
+    ],
+    ids=["a fill", "a gradient", "a pattern", "an image", "a pdf's image", "a pdf's shading",
+         "a separation", "an indexed colour", "a lab colour", "cmyk", "a calibrated rgb"],
+)  # fmt: skip
+def test_a_colour_in_an_image_a_gradient_a_pattern_or_a_shading_is_not_read(
+    tmp_path: Path, body: str | bytes, read: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
+    and compared all with all"): what a figure paints red through an image of a red pixel,
+    a gradient, a pattern, an axial shading, or a separation, indexed or Lab colour space
+    whose colour is red, is not read; a PDF's CMYK is taken to RGB without its profile, and
+    a calibrated RGB is read as sRGB."""
+    from manuscript_guard.gates.figure_colours import painted
+
+    assert painted(_vector_file(tmp_path, body)) == read
+
+
+def _over_white(code: str, alpha: float) -> str:
+    from manuscript_guard.colour import hex_of, over_white, parse
+
+    return hex_of(over_white(parse(code)[0], alpha))
+
+
+def _jet() -> list[str]:
+    """A rainbow colormap's shades, dark blue to cyan to yellow to dark red, as jet draws
+    them."""
+    from manuscript_guard.colour import hex_of
+
+    stops = ((0, 0, 0.5), (0, 0, 1), (0, 1, 1), (1, 1, 0), (1, 0, 0), (0.5, 0, 0))
+    return list(dict.fromkeys(
+        hex_of(tuple(x + (y - x) * i / 20 for x, y in zip(a, b, strict=True)))
+        for a, b in zip(stops, stops[1:], strict=False) for i in range(20)))  # fmt: skip
+
+
+def _steps(first: str, last: str, count: int) -> list[str]:
+    from manuscript_guard.colour import hex_of, parse
+
+    start, end = parse(first)[0], parse(last)[0]
+    return [hex_of(tuple(a + (b - a) * i / (count - 1) for a, b in zip(start, end, strict=True)))
+            for i in range(count)]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("codes", "said"),
+    [
+        (_steps(_RED, _GREEN, 64), ["figure-colours-scale"]),
+        # Four steps from red to green, more than 10 apart: no scale, and compared.
+        (_steps(_RED, _GREEN, 4), ["figure-colours-confused", "figure-colours-confused",
+                                   "figure-greyscale-confused"]),
+        # Five shades of one blue within 10 of lightness, beside red and green.
+        ([*_steps("#3182bd", "#3a88c2", 5), _RED, _GREEN],
+         ["figure-colours-confused", "figure-colours-confused", "figure-greyscale-confused"]),
+        (_jet(), ["figure-colours-scale"]),
+        # Red's bands at two opacities are compared; at three, they are a scale.
+        ([_RED, _GREEN, _over_white(_RED, 0.1), _over_white(_RED, 0.2)],
+         ["figure-colours-confused"]),
+        ([_RED, _GREEN, *(_over_white(_RED, a) for a in (0.1, 0.2, 0.3))],
+         ["figure-colours-scale"]),
+    ],
+    ids=["a scale", "steps far apart", "a narrow slice", "a rainbow", "two bands",
+         "three bands"],  # fmt: skip
+)
+def test_a_figure_is_taken_to_draw_a_scale_by_the_chain_of_its_shades(
+    tmp_path: Path, codes: list[str], said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
+    and compared all with all"): shades more than 10 apart, or through less than 10 of
+    lightness, are no scale and are compared as series; a rainbow, which a deficiency
+    scrambles, is a scale and nothing is said of it; and a series' bands at three opacities
+    are taken for a scale, so its red and green are not compared."""
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    body = "".join(f'<rect y="{n}" width="10" height="1" fill="{code}"/>'
+                   for n, code in enumerate(codes))  # fmt: skip
+    found = colour_findings(_vector_file(tmp_path, body), "figure")
+    assert found is not None and [f.code for f in found] == said
+
+
+@pytest.mark.parametrize(
+    ("glyphs", "said"),
+    [
+        (f'<g id="text_1"><path d="M0 0L5 5L5 0Z" fill="{_RED}"/></g>', []),
+        (f'<defs><path id="glyph0-1" d="M0 0L5 5L5 0Z" fill="{_RED}"/></defs>'
+         '<use href="#glyph0-1" x="10" y="10"/>', []),
+        (f'<g id="label_1"><path d="M0 0L5 5L5 0Z" fill="{_RED}"/></g>',
+         ["figure-colours-confused"]),
+    ],
+    ids=["matplotlib", "cairo", "another program"],
+)
+def test_a_text_drawn_as_glyphs_is_known_only_where_matplotlib_or_cairo_draws_it(
+    tmp_path: Path, glyphs: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
+    and compared all with all"): a red label drawn as glyphs beside a green line is text,
+    and left out, in matplotlib's `text_` group or as Cairo's `glyph` symbol; drawn so by
+    another program, it is a mark, and red and green are said."""
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    line = f'<path d="M0 40L90 40" style="fill: none; stroke: {_GREEN}"/>'
+    found = colour_findings(_vector_file(tmp_path, glyphs + line), "figure")
+    assert found is not None and [f.code for f in found] == said
+
+
+def test_every_colour_a_figure_paints_is_compared_its_background_among_them(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
+    and compared all with all"): a green background and a red line, which no data told
+    apart, are said as two series would be; and the ways of seeing are the three
+    dichromacies, at full severity, and grey."""
+    from manuscript_guard.colour import DEFICIENCIES
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    body = (f'<rect width="100" height="80" fill="{_GREEN}"/>'
+            f'<path d="M0 40L90 40" style="fill: none; stroke: {_RED}"/>')  # fmt: skip
+    [found] = colour_findings(_vector_file(tmp_path, body), "figure") or []
+    assert found.code == "figure-colours-confused"
+    assert _GREEN in found.message and _RED in found.message and "deuteranopia" in found.message
+    assert DEFICIENCIES == ("protanopia", "deuteranopia", "tritanopia")
+
+
+def test_a_colour_at_an_opacity_is_laid_over_white_and_not_over_what_is_under_it(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
+    and compared all with all"): red at half its opacity over a black square is read as the
+    pink it is over white."""
+    from manuscript_guard.gates.figure_colours import painted
+
+    body = ('<rect width="100" height="80" fill="#000000"/><path d="M0 40L90 40" '
+            f'style="fill: none; stroke: {_RED}; stroke-opacity: 0.5"/>')  # fmt: skip
+    assert painted(_vector_file(tmp_path, body)) == ["#000000", _over_white(_RED, 0.5)]
+    assert _over_white(_RED, 0.5) == "#eb9393"
+
+
+def test_two_series_told_apart_by_marker_and_line_style_as_well_are_warned_of(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A marker or a line style is not seen"): red
+    circles on a solid line and green triangles on a dashed one, as ggplot draws
+    `aes(colour = series, shape = series)`, are warned of as red and green lines are."""
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    def series(code: str, y: int, dashed: bool, marker: str) -> str:
+        dash = "; stroke-dasharray: 4 2" if dashed else ""
+        return (f'<path d="M0 {y}L90 {y}" style="fill: none; stroke: {code}{dash}"/>'
+                + "".join(marker.format(x=x, y=y, code=code) for x in (10, 50, 90)))
+
+    circles = '<circle cx="{x}" cy="{y}" r="2" fill="{code}"/>'
+    triangles = '<path d="M{x} {y}l2 3h-4z" fill="{code}"/>'
+    shaped = series(_RED, 20, False, circles) + series(_GREEN, 50, True, triangles)
+    plain = series(_RED, 20, False, "") + series(_GREEN, 50, False, "")
+    said = []
+    for body in (shaped, plain):
+        found = colour_findings(_vector_file(tmp_path, body), "figure") or []
+        said.append([(f.code, f.severity) for f in found])
+    assert said[0] == said[1] == [("figure-colours-confused", "warn")]
+
+
+def test_a_palette_offered_is_asked_only_of_the_pairs_normal_vision_tells_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A marker or a line style is not seen"): a palette
+    put in Okabe and Ito's place whose two reds are close to normal vision, and so to a
+    reader with deuteranopia, is offered all the same; one whose red and green deuteranopia
+    makes one is not."""
+    from types import SimpleNamespace
+
+    from manuscript_guard import palettes
+    from manuscript_guard.colour import THRESHOLD, difference, parse, simulate
+    from manuscript_guard.gates import figure_colours
+
+    close = ("#d62728", "#d82a2a", "#1f77b4")
+    assert difference(*(simulate(parse(code)[0], "deuteranopia") for code in close[:2])) < (
+        THRESHOLD
+    )
+    offered = {}
+    for colours in (close, (_RED, _GREEN, "#1f77b4")):
+        monkeypatch.setattr(palettes, "palette", lambda _name, c=colours: SimpleNamespace(
+            colours=c))  # fmt: skip
+        figure_colours._offered.cache_clear()
+        offered[colours] = figure_colours._offered("deuteranopia")
+    figure_colours._offered.cache_clear()
+    assert list(offered.values()) == [figure_colours.OFFERED, None]
 
 
 def _ramp_codes(steps: int) -> list[str]:
@@ -27644,6 +28464,39 @@ def test_a_paragraph_deleted_before_a_block_reading_mostly_like_it_is_not_that_b
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_deleted_in_front_of_a_reworded_div_is_refused_in_the_whole_sentence(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A deletion that leaves its bookmark is counted
+    from the session as drawn"): #121's case, a paragraph deleted in Word in front of a
+    plain div that reads like it, one word of the div reworded, as the generated sessions
+    type them. What the import says of it is held from the block it quotes to the
+    sentence's closing words, which no other test held: that nothing tells which it is,
+    that nothing is written, and what to do in the .md either way."""
+    from test_roundtrip import _word_delete
+
+    lead = "The zulu reports of hepatic injury were counted once in each group."
+    div = "::: {.plain}\nThe yankee reports of hepatic injury were counted once in each group.\n:::"
+    blocks = ("# Intro", _ALPHA, lead, div, _BRAVO)
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, "The zulu reports"))
+        assert "yankee reports of hepatic" in xml
+        return xml.replace("yankee reports of hepatic", "yankee reports of liver", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    said = " ".join(out.split())
+    assert (
+        "or the text that stood under it when the document was sent ('The yankee reports "
+        "of hepatic injury were counted once in ea'), edited in Word with this paragraph "
+        "deleted. "
+        "Nothing in the document says which, so nothing is written. If the paragraph was "
+        "deleted, delete it in the .md; if it was reworded, make the edit there."
+    ) in said, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_sentence_deleted_above_the_example_s_table_is_not_its_caption(
     project: Path, tmp_path: Path
 ) -> None:
@@ -31086,6 +31939,83 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     assert language_findings(project) == [
         ("abbreviation-redefined", line_of(again, "ratio (ROR) observed"))
     ]
+
+
+def test_each_other_meaning_pasted_is_caught_once_and_a_new_one_too(project: Path) -> None:
+    """Another meaning of ROR is pasted into two legends, and a third into the Discussion:
+    the meaning given twice is reported once, where it is first given, and the third, which
+    no finding has named yet, is reported too (a meaning already reported is not reported
+    again)."""
+    mended = with_ror_defined(project)
+    legends = ("Figure 1. The relative odds ratio (ROR) by year.\n\n"
+               "Figure 2. The relative odds ratio (ROR) by drug.\n\n")  # fmt: skip
+    again = mended.replace(
+        "The analysis was run in Python", legends + "The analysis was run in Python"
+    ).replace(
+        "The reporting odds ratio observed here", "The raw odds of reporting (ROR) observed here"
+    )
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == sorted([
+        ("abbreviation-redefined", line_of(again, "Figure 1. The relative")),
+        ("abbreviation-redefined", line_of(again, "reporting (ROR) observed")),
+    ])  # fmt: skip
+
+
+def test_another_meaning_before_a_typed_citation_is_still_caught(project: Path) -> None:
+    """The citation after a long form in its bracket is no part of it, "ROR (reporting odds
+    ratio; Fictional, 2014)": a long form of another meaning before the citation is still
+    another meaning."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here",
+        "The ROR (relative odds ratio; Fictional, 2014) observed here",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    found = language_findings(project)
+    assert found == [("abbreviation-redefined", line_of(again, "ROR (relative"))], found
+    from manuscript_guard.gates import check_language
+
+    (message,) = [f.message for f in check_language(load_project(project)[0]).findings]
+    assert "'relative odds ratio' here" in message, message
+
+
+def test_a_colon_before_a_bracket_s_definition_defines_nothing_to_hide_a_slip(
+    project: Path,
+) -> None:
+    """A revision introduces a new estimate by its family, "the PRRs: proportional reporting
+    ratio adjusted (PRRA)", and uses PRR alone afterwards, never defining it. The bracket's
+    definition wins over the colon pair the same words could make (Basile, 2026-11-21,
+    "Bracket wins"): PRR is not defined by it, and is asked about where it is first used,
+    where it was defined before and hid the slip."""
+    mended = with_ror_defined(project)
+    slipped = mended.replace(
+        "A signal was defined",
+        "The latest of the PRRs: proportional reporting ratio adjusted (PRRA) was computed, "
+        "and the PRRA and the PRR rose. A signal was defined",
+    )
+    assert slipped != mended
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(slipped, "The latest of the PRRs"))
+    ]
+
+
+def test_a_designation_or_a_joined_name_beside_a_slip_hides_none(project: Path) -> None:
+    """A catalogue's designation, "[ZK92]30", and a series' name whose parts underscores
+    join, "ROR_ALL", are no short forms; a use of ROR before its definition in the same
+    sentence as each is still a use before the definition, at its line. (The joined name is
+    said once more, as a name from the code: `code-name-in-prose`, not G14's abbreviations.)"""
+    mended = with_ror_defined(project)
+    early = mended.replace(
+        "# Introduction\n\n",
+        "# Introduction\n\nThe ROR_ALL series and the source [ZK92]30 were read; the ROR "
+        "was raised.\n\n", 1,
+    )
+    assert early != mended
+    main_md(project).write_text(early, encoding="utf-8")
+    found = [each for each in language_findings(project) if each[0].startswith("abbreviation-")]
+    assert found == [("abbreviation-used-before-defined", line_of(early, "The ROR_ALL series"))]
 
 
 def test_a_short_form_used_undefined_in_the_results_is_still_reported(project: Path) -> None:

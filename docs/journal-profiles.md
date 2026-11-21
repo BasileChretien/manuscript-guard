@@ -160,7 +160,7 @@ and `journal-checklist.md` carries it as an item to tick.
 | Code | What it says |
 |---|---|
 | `main-document-format` | the main document of the pack on disk, as its manifest records it, or, where there is none, the one `submit` will pack, is in no format the journal takes |
-| `journal-format-not-in-quote` | a format of `main_document` its quote does not name ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument", "LaTeX"); fails from internal review |
+| `journal-format-not-in-quote` | a format of `main_document` its quote does not name ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument", "LaTeX"); fails from internal review. It proves a format is named, not that it is the one taken: "a Word version is requested on acceptance" passes for `[docx]` |
 
 `main-document-format` is a warning at submission and a note before it, never a failure:
 `submit --latex`, which makes a Markdown paper's PDF, runs the submission check, and a

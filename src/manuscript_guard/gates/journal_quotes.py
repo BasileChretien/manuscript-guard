@@ -181,13 +181,19 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
 
 #: How a page names each format it takes the main document in, searched in the quote with
 #: its case off: "PDF", "a Word file", ".docx", "Rich Text Format", "OpenDocument", "LaTeX".
+#: It proves a format is named, not that it is the one taken: "a Word version is requested
+#: on acceptance" names Word, and passes for `[docx]`.
+#: Word, and not the word of a count or a limit ("8,000-word limit", "a word count of 8000"),
+#: which let `[docx]` pass for a page that asks for a PDF (round 2 of #724).
+_WORD = r"(?<!\d-)\bword\b(?![\s-]+(?:count|limit)s?\b)"
 _FORMAT_WORDS = {
-    "pdf": r"\bpdfs?\b",
-    "docx": r"\bword\b|\bdocx\b",
-    "doc": r"\bword\b|\bdoc\b",
-    "rtf": r"\brtf\b|\brich text\b",
-    "odt": r"\bodt\b|\bopen ?document\b",
-    "tex": r"\b(?:la)?tex\b",
+    "pdf": r"\bpdfs?\b|\bportable document format\b",
+    "docx": _WORD + r"|\bdocx\b",
+    "doc": _WORD + r"|\bdoc\b",
+    "rtf": r"\brtf\b|\brich[\s-]?text\b",
+    "odt": r"\bodt\b|\bodf\b|\bopen[\s-]?document\b|\b(?:open|libre)office\b",
+    # LaTeX2e as well: no boundary after "LaTeX" in it (round 2 of #724).
+    "tex": r"\b(?:la)?tex(?:\s?2e)?\b",
 }
 
 

@@ -156,7 +156,8 @@ def check_main_document(project: Project, stage: str) -> Report:
     hint = how_to(takes, formats, latex_manuscript=latex, revision=bool(rounds(project)))
     # G4 runs before `submit` replaces the pack, so what is on disk may not be what the next
     # `submit` packs: it said "the pack's" as though it were (round 1 of #724).
-    if packed is not None:
+    # A LaTeX manuscript has one route, its PDF and source (round 2 of #724).
+    if packed is not None and not latex:
         hint += (". G4 reads the pack on disk; the next `submit` by the other route packs "
                  "another, and says so")
     hint += f". The journal's words: \"{quote}\"" if quote else ""

@@ -8555,6 +8555,12 @@ _NAMING = [
     (["doc", "rtf"], "The manuscript may be sent as a .doc or Rich Text Format file."),
     (["odt"], "OpenDocument text files are accepted."),
     (["tex"], "LaTeX submissions are welcome."),
+    # Round 2 of #724: LaTeX2e had no boundary after LaTeX, and these names were not read.
+    (["tex"], "Manuscripts prepared in LaTeX2e are welcome."),
+    (["tex"], "Manuscripts prepared in LaTeX 2e are welcome."),
+    (["pdf"], "Send it in Portable Document Format."),
+    (["rtf", "odt"], "A rich-text or Open-Document file is accepted."),
+    (["odt"], "Files from OpenOffice or LibreOffice (ODF) are accepted."),
 ]
 
 
@@ -8631,6 +8637,11 @@ def test_a_main_document_in_a_format_the_journal_does_not_take_is_warned_of(
         (["docx", "pdf"], _MAIN_QUOTE, ["docx"], [("journal-format-not-in-quote", "fail")]),
         (["pdf"], _WORD_QUOTE, None, [("journal-format-not-in-quote", "fail"),
                                       ("main-document-format", "warn")]),
+        # Round 2: "word" in a word count or limit is no Word file.
+        *[(["docx"], f"Submit a PDF of the main document; {limit}.", ["docx"],
+           [("journal-format-not-in-quote", "fail")])
+          for limit in ("8,000-word limit", "8000 words at most", "a word count of 8000",
+                        "a word limit applies")],
         # Each format named as a page names it, in capitals or not, with its dot or by name.
         *[(formats, quote, formats[:1], []) for formats, quote in _NAMING],
     ],
@@ -8657,6 +8668,21 @@ def test_the_warning_of_a_pack_on_disk_says_another_route_may_pack_another(
     assert said.message == ("the journal takes its main document as PDF, and the pack on "
                             "disk, manuscript.docx, is Word (.docx)")  # fmt: skip
     assert "the next `submit` by the other route packs another" in said.hint
+
+
+def test_a_latex_paper_s_pack_on_disk_is_offered_no_other_route(
+    project: Path, monkeypatch
+) -> None:
+    """Round 2 of #724: a LaTeX manuscript has one route, its PDF and source, and was told
+    the other would pack another."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+    from manuscript_guard.text import reader
+
+    _main_document_codes(project, ["docx"], SUBMISSION, packed=["pdf", "tex"], quote=_WORD_QUOTE)
+    monkeypatch.setattr(reader, "manuscript_format", lambda _folder: reader.LATEX)
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert "other route" not in said.hint
 
 
 def test_the_main_document_warning_says_what_the_journal_takes_and_how_to_make_it(

@@ -394,7 +394,8 @@ reporting_guidelines:
 # The formats the journal takes the main document in at submission, where its page says:
 # pdf, docx, doc, rtf, odt, or tex for the LaTeX source. Look for "submit a PDF as your main
 # document", "upload the manuscript as a Word file", "LaTeX submissions". Quote it under
-# `quotes.submission.main_document`. A Markdown manuscript is packed as a .docx, or as a PDF
+# `quotes.submission.main_document`; each format listed must be named in the quote ("PDF",
+# "Word", "LaTeX"), or G4 fails `journal-format-not-in-quote`. A Markdown manuscript is packed as a .docx, or as a PDF
 # with its LaTeX source by `submit --latex`; a LaTeX one as its PDF and source. Where the
 # journal takes none of what the pack holds, `submit` says so and how to make it, in
 # journal-checklist.md as well, and G4 warns at submission (`main-document-format`). Delete

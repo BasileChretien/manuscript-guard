@@ -18310,6 +18310,8 @@ been sorted yet.
   the field's DOI is always taken first, each DOI read as the gates read one: without the
   dressing `normal_doi` takes off (`doi:`, a resolver's address, a stop after it), in one
   case.
+  Pinned by `tests/test_citation_fields.py::test_a_field_s_doi_no_entry_has_is_matched_to_an_entry_without_one_by_its_title`
+  and `tests/test_citation_fields.py::test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one`.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
   a digit: a value quoted twice, or within "CYP3A14", are held by corruption cases only, or
@@ -18906,6 +18908,11 @@ Added by the adversarial review, verified and **not** fixed:
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
   exists.
+  Pinned by `tests/test_roundtrip.py::test_a_number_corrected_in_a_table_is_only_counted_and_a_heading_reworded_is_listed`,
+  `tests/test_roundtrip.py::test_a_document_that_ran_a_list_into_a_paragraph_comes_back_listing_it_untouched`,
+  `tests/test_roundtrip.py::test_a_block_that_is_not_a_paragraph_carries_no_marker`,
+  `tests/test_roundtrip.py::test_a_deleted_paragraph_without_an_identifier_is_named`
+  and `tests/test_roundtrip.py::test_a_heading_dragged_above_a_reversed_list_is_still_named`.
 - **The dry run of `import` shows each change by its words, not by what it means.** Under
   "would merge into" and "NOT merged into" it prints each stretch whose words differ, with
   five words either side, at most three stretches a paragraph (`preview.py`); the rest are
@@ -18926,6 +18933,16 @@ Added by the adversarial review, verified and **not** fixed:
   changed beside the co-author's edit. The generated edits (`previewed_edits`) never pass
   the three stretches a paragraph shows, and hold no binding, no parenthesis inside another
   and no refusal. A run of `{{` never closed takes time in the square of its length.
+  Pinned by `tests/test_preview.py::test_a_change_is_shown_with_a_few_words_either_side`,
+  `tests/test_preview.py::test_changes_past_the_most_shown_are_counted`,
+  `tests/test_preview.py::test_no_changed_word_is_left_out_of_a_sentence_copy_edited_word_by_word`,
+  `tests/test_preview.py::test_nothing_is_shown_where_the_words_are_the_same`,
+  `tests/test_preview.py::test_a_binding_or_a_citation_is_never_cut`,
+  `tests/test_preview.py::test_what_is_one_word_is_shown_whole_and_a_long_or_nested_group_is_cut`,
+  `tests/test_roundtrip.py::test_a_spacing_change_inside_a_parenthesis_prints_two_equal_lines`,
+  `tests/test_roundtrip.py::test_a_bracket_is_printed_whole_however_long`,
+  `tests/test_roundtrip.py::test_a_nested_parenthesis_is_cut_and_a_line_opens_inside_it`
+  and `tests/test_roundtrip.py::test_a_refusal_is_shown_against_the_build_s_record_or_else_the_fresh_build`.
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
@@ -18999,6 +19016,7 @@ Added by the adversarial review, verified and **not** fixed:
   such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
   to it in Word is reported as not compared and not applied, so it can be edited only in
   the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
+  Pinned by `tests/test_roundtrip.py::test_a_brace_an_earlier_version_wrote_back_leaves_its_paragraph_uncompared`.
 - **A rewording that splits a brace pair across a number or citation is refused.** A brace
   from Word is written escaped, so where a rewording leaves a bare brace from the `.md` on
   one side of a number or citation and its partner comes back from Word - edited, moved or
@@ -19028,17 +19046,23 @@ Added by the adversarial review, verified and **not** fixed:
   source. A `---` that opens mid-block, straight after a code fence, straight under a
   table's closing rule or inside a fenced div with no blank line before it, fails the build
   when its YAML holds a blank line. An attempt that opens in one source file
-  and stops in the next - each file is tagged on its own and the build joins them - builds,
-  with the second file's paragraphs read into a table whose bookmarks `import` ignores, so
-  their edits go uncompared.
+  and stops in the next - each file is tagged on its own and the build joins them - would
+  read the second file's paragraphs into a table whose bookmarks `import` ignores; the build
+  refuses its opening line, as it does a line of dashes with a line above or under it,
+  outside a quotation, code, a comment or the front matter (`rule-opens-a-block`).
+  Pinned by `tests/test_roundtrip.py::test_no_marker_inside_a_table_or_yaml_across_blank_lines`,
+  `tests/test_roundtrip.py::test_yaml_opened_mid_block_is_not_followed_and_its_marker_fails_the_build`
+  and `tests/test_roundtrip.py::test_yaml_opened_in_one_file_and_stopped_in_the_next_is_tagged_apart_and_refused`.
 - **A block that opens on a line of dashes is taken for a table whatever surrounds it.**
   When the line has text straight under it, `tag` leaves everything up to the table's
   closing line of dashes unmarked; with a blank line under it, the line is a rule and opens
   nothing. Pandoc reads no table there when the line continues a list item, sits inside a
   fenced div after a blank line, or follows a no-break-space line inside a paragraph. The
-  paragraphs in between then go uncompared although pandoc reads them as paragraphs, and
-  nothing is corrupted. Lines of three dashes or more had these cases already; since two
-  dashes can open a table, `--` has them too.
+  paragraphs in between would go uncompared although pandoc reads them as paragraphs, and
+  nothing is corrupted; `check` and the build refuse such a line (`rule-opens-a-block`).
+  Lines of three dashes or more had these cases already; since two dashes can open a
+  table, `--` has them too.
+  Pinned by `tests/test_roundtrip.py::test_a_block_opening_on_dashes_hides_paragraphs_pandoc_reads_as_paragraphs`.
 - **A table that opens mid-block is followed only under the lines it was seen to open
   under.** Pandoc 3.9 opens one straight under a code or div fence, a whole line of
   block-level HTML, a setext underline, a grid table's border, a pipe-table row, a line
@@ -19075,11 +19099,6 @@ Added by the adversarial review, verified and **not** fixed:
   (`unclear-fence`) or by the build's comparison of listings, so no document is built from
   one; the entry stands because `tag` still pairs fences itself.
   Pinned by `tests/test_corruption.py::test_an_r_markdown_chunk_is_refused_by_check_and_the_build`.
-- **A heading with its first paragraph directly under it is one block, left unmarked.**
-  `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
-  with `#` the paragraph never carries an identifier and its edits are never compared.
-  Marking it would mean placing the identifier after the heading line. This was already so
-  before identifiers moved off lists.
 - **A review point anchored to a list or a quote before identifiers moved off them names
   nothing.** A `where:` recorded from a document built earlier can hold the identifier the
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
@@ -21250,12 +21269,22 @@ Open, recorded as each change landed:
   import that loses the co-author's insertion, and where Word writes text already in the
   source that way, `--apply` deletes it from the source. A second choice, which the format
   allows and Word does not write, would be read as well as the first.
+  Pinned by `tests/test_roundtrip.py::test_word_text_reads_every_choice_and_no_fallback_whatever_the_choice_requires`,
+  `tests/test_roundtrip.py::test_source_text_word_writes_only_in_a_fallback_is_deleted_by_apply`,
+  `tests/test_roundtrip.py::test_an_emoji_word_saves_as_a_choice_is_no_edit`,
+  `tests/test_audit.py::test_the_audit_reads_every_choice_and_no_fallback_whatever_the_choice_requires`
+  and `tests/test_audit.py::test_an_emoji_word_inserted_is_read_from_the_choice`.
 - **A symbol with no text refuses its paragraph in the import, and reads as a space in the
   audit.** A Wingdings check box, or the smiley AutoCorrect makes of `:)`, that a co-author
   adds to a sentence costs a manual edit in the .md, and so does Symbol-font text whose font
   a style, the defaults or the theme sets: it is read, but a style's font is not taken as
   exact. The audit reads the style's font the same way and cannot refuse, so its reading of
   such text is as good as the resolution.
+  Pinned by `tests/test_roundtrip.py::test_a_symbol_with_no_text_is_refused_and_named`,
+  `tests/test_roundtrip.py::test_a_new_paragraph_holding_only_a_symbol_is_new_text_beside_its_neighbour`,
+  `tests/test_roundtrip.py::test_text_whose_symbol_font_a_style_sets_is_refused_as_read`,
+  `tests/test_audit.py::test_a_symbol_with_no_text_reads_as_a_space`
+  and `tests/test_audit.py::test_the_symbol_font_is_read_as_what_it_draws`.
 - **Fonts are resolved as far as the run, its styles, the defaults and the theme.** A table
   style's font, the complex-script font (`w:cs`, with `w:rtl` or `w:cs` on the run) and an
   East Asian font of Symbol drawing CJK text are not considered: such text is read as the
@@ -21266,6 +21295,11 @@ Open, recorded as each change landed:
   that code than it was sent with. One deleted and another of the same code typed elsewhere
   in the paragraph count as no change, and merge as the character moved, which the build
   draws in the body font as before.
+  Pinned by `tests/test_roundtrip.py::test_a_font_past_the_run_styles_defaults_and_theme_is_not_considered`,
+  `tests/test_roundtrip.py::test_a_table_style_s_font_is_not_considered`,
+  `tests/test_roundtrip.py::test_a_private_use_character_in_the_source_is_kept`,
+  `tests/test_roundtrip.py::test_a_second_private_use_character_of_a_code_already_sent_is_refused`
+  and `tests/test_roundtrip.py::test_a_private_use_character_moved_in_its_paragraph_merges_as_moved`.
 - **The import refuses a document whose styles, theme, font table or document relationships
   it cannot read safely.** Without them it cannot tell which font a run is in. Word does not
   write such parts; the audit, which cannot refuse, reads only the fonts a run names itself,
@@ -21893,10 +21927,15 @@ Open, recorded as each change landed:
   "a work it does not name". Its key is found in `references.bib` by DOI or by title, as
   written, and only there. One in a paragraph without an identifier (a heading, a table, a
   caption) is not reported, as nothing there is compared.
+  Pinned by `tests/test_roundtrip.py::test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose`,
+  `tests/test_citation_fields.py::test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work`
+  and `tests/test_roundtrip.py::test_a_citation_inserted_where_nothing_is_compared_is_not_named`.
 - **A document built with `--csl` is compared in the style its digest names.** Where that
   style is not where the build found it, or has changed, `import` says so and compares in
   the default style, refusing every paragraph that cites, until `--csl` names it. Line
   endings changed by a checkout are not a change of style; any other edit is.
+  Pinned by `tests/test_roundtrip.py::test_a_style_moved_since_the_build_is_asked_for`
+  and `tests/test_roundtrip.py::test_a_style_edited_where_the_build_found_it_is_a_change_and_its_line_endings_are_not`.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later
@@ -22326,6 +22365,8 @@ Open, recorded as each change landed:
   Pinned by `tests/test_steps.py::test_a_step_marked_where_there_is_no_script_says_that_is_why`.
 - **An anchor inside a paragraph stops the round trip for that paragraph.** An edit made in
   Word to a paragraph with an anchor before its end is refused, and has to be made in the .md.
+  Pinned by `tests/test_steps.py::test_a_reworded_paragraph_with_an_anchor_inside_it_is_refused_and_says_why`
+  and `tests/test_steps.py::test_a_reworded_paragraph_keeps_the_anchor_that_ends_it`.
 - **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
   claims all five, and the gate cannot tell whether the step backs them all. Accepted.
 - **An anchor on a heading's line is not judged.** `## Statistical analysis {{method.typo}}`
@@ -22958,9 +22999,12 @@ Open, recorded as each change landed:
   identifier, which import lists but does not apply. Two or more bring the later ones'
   identifiers, and the whole document is refused. Either way, the author makes the move
   in the .md.
+  Pinned by `tests/test_roundtrip.py::test_one_paragraph_pasted_from_the_paper_into_the_supplement_is_listed_not_applied`
+  and `tests/test_roundtrip.py::test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_refused`.
 - **A supplement of headings, tables and figures cannot be imported.** It carries no
   paragraph identifier, so its document is refused as one that could be either, even when
   it comes back untouched. It holds nothing import compares.
+  Pinned by `tests/test_roundtrip.py::test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper`.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
@@ -23096,6 +23140,7 @@ Open, recorded as each change landed:
   - *A run of Chinese or Japanese is one word.* Kana and kanji written without spaces are
     compared as one word, so any edit in the run writes the whole run from Word's text,
     and emphasis inside it is lost; the loss is listed.
+    Pinned by `tests/test_roundtrip.py::test_a_run_of_chinese_or_japanese_is_one_word_and_loses_its_emphasis_when_edited`.
   - *Any edit in inline code writes the code plain*, since words from Word's text would be
     written escaped inside it, and an escape or an entity an edit runs into is written as
     the character, which prints the same.
@@ -23113,13 +23158,22 @@ Open, recorded as each change landed:
     `>` of the source after it, can turn what pandoc read as text into a tag. A paragraph
     whose prose has a bare brace is not written word by word at all, so the refusals of a
     brace pair split across a value (#90) stand as they were. So too a stretch while a
-    straight quote opened before it is still open, one whose source does not line up with
-    what the build printed of it, and any paragraph whose merge does not read back as
-    Word's text.
+    straight quote opened before it is still open, and any paragraph whose merge does not
+    read back as Word's text. A stretch whose source does not line up with what the build
+    printed of it refuses its whole paragraph, as one whose "numbers, citations and markup
+    could not be told apart from its prose"; so does a citation in a note style, for which
+    pandoc drops the space before the note.
+    Pinned by `tests/test_roundtrip.py::test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain`,
+    `tests/test_roundtrip.py::test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain`,
+    `tests/test_roundtrip.py::test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain`,
+    `tests/test_roundtrip.py::test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written`,
+    `tests/test_roundtrip.py::test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word`
+    and `tests/test_roundtrip.py::test_a_brace_pair_split_across_a_value_is_refused`.
   - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
     the words up, and of "very **very**" from "**very**" it keeps the bold on the second;
     the words are right either way, and only the formatting of a repeated word can differ
     from what the co-author meant.
+    Pinned by `tests/test_roundtrip.py::test_of_two_equal_words_the_comparison_chooses_which_was_typed`.
   - *The generated inputs draw the simple shapes only.* The property over Word's edits
     never edits a paragraph's first word (the bold lead-in this was written for), draws
     distinct ASCII words only (no repeated word, CJK, quote, `&`, `<`, entity or
@@ -23150,6 +23204,7 @@ Open, recorded as each change landed:
     lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
+    Pinned by `tests/test_roundtrip.py::test_a_link_read_otherwise_than_pandoc_reads_it_refuses_the_edit`.
   - *A tag left open by the paragraph before is not seen.* A rewording is read for the tags
     pandoc would read in it once its values are in (`roundtrip._tag_made`), one paragraph at
     a time. A paragraph that ends after the `=` of a would-be tag, or inside its quoted
@@ -23184,6 +23239,7 @@ Open, recorded as each change landed:
     `\ ` or `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
+    Pinned by `tests/test_roundtrip.py::test_text_written_from_word_loses_the_source_s_way_of_writing_a_character`.
   - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
     again.* Pandoc puts one after an abbreviation on its list ("e.g.", "et al.", "p.",
     "vs."), where the source has a plain space, before anything but a citation, a footnote
@@ -23216,6 +23272,7 @@ Open, recorded as each change landed:
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
     without its own, so a no-break space the co-author added there is dropped: silently,
     when it is the only change to the paragraph.
+    Pinned by `tests/test_roundtrip.py::test_a_no_break_space_added_at_either_end_of_a_paragraph_is_dropped`.
 - **Two protected tokens with nothing between them cannot be aligned.** The marked build
   knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
   '1' and '2' come back as '12'. The paragraph is refused. A rewording that deletes
@@ -23226,9 +23283,14 @@ Open, recorded as each change landed:
 - **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
   punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
   stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
-  closes it is written straight. Where that rule and pandoc disagree, one quote prints
-  the wrong way round, and no word changes. A space typed just before that closing quote is
-  lost: pandoc trims it from inside the quotation, so "3.84 ’" prints as "3.84’".
+  closes it is written straight. The rule and pandoc agree in every placement tried: after
+  a space, a bracket, a hyphen, a dash or a colon, before or after a binding, around
+  emphasis, beside a decade's or a possessive's apostrophe. A source where they disagreed
+  would print one quote the wrong way round, with no word changed. A space typed just
+  before that closing quote is lost: pandoc trims it from inside the quotation, so
+  "3.84 ’" prints as "3.84’".
+  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight`
+  and `tests/test_roundtrip.py::test_a_quote_the_rule_opens_prints_as_word_s_text_read`.
 - **A straight quote from Word is typeset like one in the source.** Word's text is written
   back with its quotes as they are, and pandoc curls a straight one. So a co-author who
   types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
@@ -23243,11 +23305,14 @@ Open, recorded as each change landed:
   read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
   it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
   the source opened itself after a `<` of its own, `Values <LOD in {{unit}} were
-  coded="HR {{x}} or LOD" in all.`, stays open if its stretch is edited, since Word's closing
-  `”` is written back curly and closes nothing: with `"d was >0.5"` in the next paragraph,
-  the two print as "Values 0.5” in all.".
+  coded="HR {{x}} or LOD" in all.`, keeps its straight closing quote when its stretch is
+  edited, and an edit beside that quote is refused. Written back as Word's curly `”`, it
+  closed nothing: with `"d was >0.5"` in the next paragraph, the two printed as "Values 0.5”
+  in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
+  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_from_word_is_written_as_typed_and_may_pair_across_a_token`
+  and `tests/test_roundtrip.py::test_curly_quotes_turned_straight_in_word_come_back_as_nothing`.
 - **A document from before paragraphs were recorded is judged by the front-matter rules
   only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
   and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
@@ -23273,6 +23338,9 @@ Open, recorded as each change landed:
   a paragraph that reads word for word like another in its file once the block before it
   changed, and to the paragraph before one that is left out of the comparison and did not
   come back, which may be a join.
+  Pinned by `tests/test_corruption.py::test_an_edit_to_a_paragraph_the_source_changed_is_left_even_under_force`,
+  `tests/test_corruption.py::test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same`
+  and `tests/test_corruption.py::test_an_edit_before_a_paragraph_not_compared_that_did_not_come_back_is_left`.
 - **A paragraph whose identifier shifted is followed only where nothing beside it
   changed.** Below a paragraph the source added or removed since the build, identifiers
   moved by a block and name their neighbours; a paragraph is followed to where it stands now
@@ -23311,6 +23379,15 @@ Open, recorded as each change landed:
   deleting the second from the `.md` as told, without carrying the first's Word text over
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
+  Pinned by `tests/test_corruption.py::test_a_join_retyped_from_a_paragraph_not_compared_reads_as_a_deletion`.
+- **An edit to a repeated paragraph whose copy was added above it since the build can be
+  reported as a join.** "None." under "# Funding" in two places, a copy of both added
+  above them in the `.md`, and the second edited in Word: the import says "2 paragraphs
+  came back joined into one", naming the edited "None." by its text as sent and, beside
+  it, an identifier "not compared" that no paragraph of the returned document carries; the
+  co-author's words are printed nowhere. Nothing is written, and the edit is
+  carried over by hand only if the author sees that it was one.
+  Pinned by `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`.
 - **A document built before the record held the blocks around each paragraph is read as
   it was.** Its record hashes only each paragraph's text and the block before it. So a
   heading beside a paragraph removed from the `.md` since the build goes unseen, and a
@@ -23326,19 +23403,17 @@ Open, recorded as each change landed:
   - the run of blocks without an identifier around the paragraph, up to the paragraphs on
     either side, changed in the `.md` since the build. That includes a paragraph added or
     removed at the far end of the run, which joins it to the next run or splits it, while
-    the block beside the paragraph stays as it was;
+    the block beside the paragraph stays as it was. A plain paragraph added or removed
+    before the paragraph also shifts its identifier, so its edit is refused as not
+    compared;
+    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_run_of_blocks_changed_at_its_far_end_is_refused_under_force`.
   - in a document built from other inputs, a block without an identifier beside it, other
     than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
     a caption, a list item, a quotation, an entry of the reference list.
-- **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
-  looks only at the block directly beside a paragraph as the source has it. A co-author who
-  deletes `### Design` and runs `## Methods`, above it, into the paragraph writes
-  "MethodsPapa..." even in an import of an unchanged document.
-- **Two paragraphs that read the same after blocks that read the same are told apart by
-  position alone.** The record hashes each paragraph's text and the block before it, so
-  "None." under a "# Funding" heading repeated in two places, with a copy of both added
-  above them since the build, would pass for the paragraph the co-author edited, and the
-  edit would land in the copy.
+    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs`,
+    `tests/test_corruption.py::test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun`,
+    `tests/test_corruption.py::test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_inputs`
+    and `tests/test_corruption.py::test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_import`.
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not
   changes nothing in their order. The import names the paragraphs left out and exits 1, and
@@ -23346,6 +23421,9 @@ Open, recorded as each change landed:
   passed one left out is named as not applied, with every other move in its section; it
   used to be applied, and the moved paragraph landed on the other side of the one it
   passed.
+  Pinned by `tests/test_corruption.py::test_a_move_past_only_a_paragraph_not_compared_is_not_reported_as_moved`,
+  `tests/test_corruption.py::test_every_move_in_a_section_where_one_passed_a_paragraph_not_compared_is_withheld`
+  and `tests/test_corruption.py::test_a_move_past_a_paragraph_not_compared_is_not_applied`.
 - **Without its record of what it printed, a document is read by the older rules**, as one
   built before the record is: the entries below on the five-word rule and on an identifier
   Word left behind describe them. The record is a file beside the
@@ -29276,6 +29354,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A paragraph written straight under a heading went without an identifier (closed by #62,
+  9211f9391; moved here 2026-11-21).** `# Methods\nWe did X.` is a heading and a paragraph
+  to pandoc, and since the block started with `#` the paragraph carried no identifier, so a
+  co-author's edits to it were never compared. `tag` now places the identifier after the
+  heading line, and the import merges such a paragraph's rewording, as
+  `tests/test_roundtrip.py::test_the_paragraph_under_a_heading_carries_the_identifier` and
+  `tests/test_roundtrip.py::test_import_merges_a_paragraph_written_straight_under_a_heading`
+  hold.
+
+- **A farther heading run in after the nearer one was deleted in Word was merged (closed by
+  #121, 3d53de0b7; moved here 2026-11-21).** `import` looked only at the block directly
+  beside a paragraph as the source had it, so a co-author who deleted `### Design` and ran
+  `## Methods`, above it, into the paragraph wrote "MethodsPapa..." even in an import of an
+  unchanged document: a heading in the source as prose. The paragraph's identifier now
+  comes back behind the heading's text, which is never the paragraph's own, and the
+  paragraph is refused, as
+  `tests/test_corruption.py::test_a_farther_heading_run_in_after_the_nearer_one_was_deleted_is_not_merged`
+  holds; it merged at #119 (6fc8eeb21) and #120 (21b36d1be), and not from #121 on.
+
+- **Two paragraphs that read the same after blocks that read the same were told apart by
+  position alone (closed by #93, 59891a9f9; moved here 2026-11-21).** The record hashed
+  each paragraph's text and the block before it, so "None." under a "# Funding" heading
+  repeated in two places, with a copy of both added above them since the build, passed for
+  the paragraph the co-author edited, and the edit landed in the copy. The record also
+  hashes the blocks without an identifier around each paragraph now, and the edit is
+  written nowhere, as
+  `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`
+  holds; it landed in the copy at #89 (a2452911e) and not at #93.
 
 - **A BMC-style PDF paper was left unplaced (found fixed while pinning, 2026-11-21).** Under
   "A PDF manuscript (`audit paper.pdf`, `compare`) is read as `pdftotext` sets out its text":

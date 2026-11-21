@@ -18014,6 +18014,11 @@ been sorted yet.
   on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
   a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
   (round 3 of #382).
+  Pinned by `tests/test_dictionary.py::test_a_condition_is_one_coded_variable_and_its_codes`,
+  `tests/test_dictionary.py::test_a_range_is_read_by_its_type_alone`,
+  `tests/test_dictionary.py::test_an_order_takes_dates_and_datetimes_as_one_family_and_refuses_times`,
+  `tests/test_dictionary.py::test_a_sign_yaml_drops_is_a_misreading_except_in_a_reporting_item`
+  and `tests/test_dictionary.py::test_a_value_yaml_reads_as_written_is_not_said_to_be_misread`.
 - **The plan names a variable by its backticks, and nothing else.** A covariate the plan
   writes in words, "adjusted for age", is not read, and an entry for it is said to be
   unused until the plan writes `age`. A name in backticks that is code and not a variable,
@@ -18780,6 +18785,12 @@ Added by the adversarial review, verified and **not** fixed:
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
+  Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
+  `tests/test_corruption.py::test_seven_designs_are_named_and_another_is_other`,
+  `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
+  `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
+  `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`
+  and `tests/test_corruption.py::test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone`.
 - **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
@@ -18949,8 +18960,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   design round. The plan sent and its `plan_sha256` come from two reads.
 - **Sign-offs and approvals.** One authorisation is given per provider, so a cloud model
   added later to a provider already authorised goes unasked, and a `-cloud` model added to
-  a local provider voids the sign-off with the message of any other change. No test calls
-  the backstop with a model that has no sign-off standing. The text "manuscript-guard
+  a local provider voids the sign-off with the message of any other change. The backstop
+  refuses a model that has no sign-off standing. The text "manuscript-guard
   approve" in a search draws an extra prompt. An approval that cannot be parsed stops
   `submit` after the pack is written, and one that breaks the schema is printed as a
   failure and not acted on. Approvals are not guarded against `cp` or `rm` from a shell.
@@ -18958,6 +18969,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   only in characters outside `[\w.@-]` folds into another, a duplicate ORCID is not
   flagged, and a very long name or a device name (`Con`, `Nul`) can make no file. The
   unsigned checklist in the pack does not say whether a sign-off was void or never made.
+  Pinned by `tests/test_corruption.py::test_one_authorisation_is_given_per_provider`,
+  `tests/test_corruption.py::test_a_model_no_sign_off_stands_for_is_refused_by_the_backstop`,
+  `tests/test_hooks.py::test_a_search_naming_approve_is_asked_and_a_shell_copy_of_an_approval_is_not`,
+  `tests/test_corruption.py::test_an_approval_that_cannot_be_read_stops_submit_after_the_pack_is_written`,
+  `tests/test_corruption.py::test_an_approval_s_file_is_named_by_a_fold_two_authors_can_share`,
+  `tests/test_corruption.py::test_an_orcid_two_authors_give_is_not_flagged`
+  and `tests/test_compliance.py::test_the_pack_s_checklist_says_alike_a_sign_off_void_and_one_never_made`.
 - **The literature and its lookups.** Citation keys that differ only in case are filed
   apart or not found, by the file system. `[x?]+` in pages takes Roman page numbers for a
   placeholder; a Crossref `component` always fails, a cited supplementary item included;
@@ -19037,11 +19055,15 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   selection" are not found. A guideline counts by its name's start, so PRISMA-P or an
   abstracts checklist counts for PRISMA, and a trial protocol that declares SPIRIT 2025 is
   told to declare CONSORT.
+  Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_some_headings_and_not_others`
+  and `tests/test_corruption.py::test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone`.
 - **Planned results.** A nested subsection also titled "Planned results" is read twice, a
   dotted code span (`data.table`, `table1.csv`) is taken for a key, and a key copied with
   its braces is skipped. At the analysis stage every planned key not yet emitted warns, by
   design. A feasibility fragment that fails its schema is dropped, and the warning says
   nothing was emitted.
+  Pinned by `tests/test_corruption.py::test_a_planned_results_list_is_read_by_the_shape_of_its_code_spans`
+  and `tests/test_corruption.py::test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing`.
 - **Checklists transcribed from a paper.** A `jats-table` recipe with no `rows_sha256`
   transcribes unchecked; `table:` is read for a Word recipe too; an `.xml` fetch accepts a
   page with `<article` in its first 4096 bytes; a recipe's name is matched in its case on
@@ -19510,6 +19532,8 @@ Open, recorded as each change landed:
   one, the others are not reported. A LaTeX manuscript's `%` comments are read with the rest
   of it, so an identifier given only in one counts as given; Markdown's HTML comments are
   not read.
+  Pinned by `tests/test_corruption.py::test_the_identifiers_a_manuscript_gives_are_one_warning_until_one_is_listed`
+  and `tests/test_corruption.py::test_an_identifier_in_a_latex_comment_counts_as_given`.
 - **The first results are dated by the plan's frozen copy.** A study analysed before the
   project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
   first results, is held to that later date, and a registration made in between is not seen
@@ -19519,6 +19543,7 @@ Open, recorded as each change landed:
   notes it and holds the paper to what it says, and `lookup` does not write over it. That is
   an edit made on purpose, as running the digest again is, and the note is what shows it
   (round 1 of #390).
+  Pinned by `tests/test_corruption.py::test_a_fetched_record_edited_and_marked_by_hand_is_read_as_a_copy`.
 - **Only all-synthetic first results are set aside.** A first run on simulated data marks
   the frozen plan, and the real data's first results, which come later, are dated by nobody:
   such a project's registration is held to the registry's own start dates only. A first run
@@ -20999,7 +21024,7 @@ Open, recorded as each change landed:
   model is compared under its key only, so a model renamed since is compared with nothing;
   its engine's class is not compared (a GLM and a mixed model of one family and link read
   alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
-  `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
+  `-` here differs, and a heading given an attribute (`{#id}`) is the same heading. A reason
   under `methods:` answers for its model or section, not for one difference, so a later
   change to a model already explained is explained by the old reason. A heading that stands
   twice in a plan is not compared at all, though one of the two may have changed. A heading
@@ -21010,6 +21035,15 @@ Open, recorded as each change landed:
   a date) are compared, and a title the Deviations rule matches ("amendment 2") leaves the
   whole plan out. The generator draws only titled plans; the untitled one is held by a unit
   test (the second post-budget round).
+  Pinned by `tests/test_related.py::test_a_plan_s_section_is_compared_as_words_under_one_heading`,
+  `tests/test_related.py::test_a_section_of_the_plan_worded_otherwise_is_a_method`,
+  `tests/test_related.py::test_what_g8_does_not_compare_of_an_earlier_output_s_methods`,
+  `tests/test_related.py::test_a_value_printed_by_one_paper_only_is_not_compared`,
+  `tests/test_related.py::test_a_reason_for_a_model_explains_a_later_change_to_it`,
+  `tests/test_related.py::test_a_heading_that_stands_twice_is_said_and_not_guessed`,
+  `tests/test_related.py::test_a_heading_s_number_of_one_or_two_digits_is_dropped`,
+  `tests/test_related.py::test_a_plan_with_a_second_top_level_heading_keeps_its_title_as_a_section`
+  and `tests/test_related.py::test_a_plan_with_no_title_has_its_first_section_compared`.
 - **An earlier output's data dictionary is compared by variable name, and by what defines
   and codes a variable.** A variable renamed since, or whose name changed case, is two
   variables, each compared with nothing, and nothing says that one is gone or new. A
@@ -21022,6 +21056,10 @@ Open, recorded as each change landed:
   already explained is explained by the old reason. A copied dictionary the loader of this
   version refuses, one written under an earlier shape of the schema among them, is not
   compared, though it read when the earlier output was made.
+  Pinned by `tests/test_related.py::test_a_dictionary_is_compared_by_variable_name_and_what_defines_and_codes_one`,
+  `tests/test_related.py::test_a_unit_is_compared_as_written`,
+  `tests/test_related.py::test_a_reason_for_a_variable_explains_a_later_change_to_it`
+  and `tests/test_related.py::test_a_dictionary_that_cannot_be_read_is_said_and_compares_nothing`.
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one
@@ -21031,6 +21069,9 @@ Open, recorded as each change landed:
   quantities that happen to be equal passes. Which earlier outputs exist is the author's
   word: an abstract nobody records is compared with nothing and its overlap is not asked
   about.
+  Pinned by `tests/test_related.py::test_a_printed_value_is_read_as_the_number_it_prints`,
+  `tests/test_related.py::test_a_printed_value_is_compared_as_printed_and_paired_by_the_author`
+  and `tests/test_related.py::test_a_project_with_no_record_is_told_nothing`.
 - **The copy holds the earlier project's results as they were, unprinted ones included.**
   `related --take` copies every results fragment, so values the earlier paper did not print,
   and counts its custodian may forbid outside the team, are committed with this paper. The
@@ -21043,6 +21084,9 @@ Open, recorded as each change landed:
   citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
   A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
   `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
+  Pinned by `tests/test_related.py::test_a_sentence_that_explains_or_discloses_is_found_as_words_anywhere`,
+  `tests/test_related.py::test_a_disclosing_sentence_is_found_as_words_anywhere`
+  and `tests/test_related.py::test_a_value_a_yaml_merge_key_brings_in_is_read_as_yaml_reads_it`.
 - **A disclosure is a citation or a sentence, and the covering letter is not read.** An
   overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
   or the declared sentence is printed anywhere: neither is checked to say that the two share
@@ -21872,6 +21916,8 @@ Open, recorded as each change landed:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
+  Pinned by `tests/test_corruption.py::test_a_frozen_plan_holds_the_plan_of_the_first_run_whenever_that_was`
+  and `tests/test_corruption.py::test_a_plan_not_in_utf8_or_holding_a_nul_is_not_frozen`.
 - **The residue of a revision is found by its words, in English, in the manuscript's prose
   only.** A reply worded otherwise passes: "Reviewer 2 was right that", "we agree with the
   reviewer", "this point is now made". Writing Guard's list in Chinese was not taken. A
@@ -21939,12 +21985,16 @@ Open, recorded as each change landed:
   and "<2E1" as a bound of 2 (round 2 of #341). A restricted input that git ignores but that
   a person copies elsewhere is not seen, and one that was committed and then removed stays
   in the history, which only a rewrite takes out.
+  Pinned by `tests/test_corruption.py::test_a_small_count_is_found_where_it_is_bound_by_its_value`
+  and `tests/test_corruption.py::test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen`.
 - **A synthetic input is followed to the results the text binds, and no further.** G1 names
   a result of a run that read a synthetic input where the manuscript or the supplement binds
   it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is
   not named, nor a result of a second script that reads the first one's results file as its
   input: the declaration belongs to the run that made it. Declare the input again in the
   second script. Nothing finds an input that is synthetic and not declared so.
+  Pinned by `tests/test_corruption.py::test_a_result_quoted_from_synthetic_data_fails_at_submission`
+  and `tests/test_corruption.py::test_a_synthetic_input_is_followed_to_the_results_the_text_binds_and_no_further`.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed
@@ -24813,6 +24863,7 @@ Open, recorded as each change landed:
   folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
   is not taken as the data dictionary: it is withheld as data, and the package refused, as
   before the design records were taken as such (round on c4c78959 of #389).
+  Pinned by `tests/test_package.py::test_a_design_record_declared_in_other_capitals_is_data_where_names_are_not_folded`.
 - **A deposited package is not checked against the results once it is deposited.** After the
   DOI exists, the analysis can be run again and the paper's numbers change, and the statement
   still names a deposit of the old ones. Nothing records what was deposited for `check` to
@@ -24831,6 +24882,8 @@ Open, recorded as each change landed:
   and the
   custodian signs it off. A dataset's own file deposited by `package.share` is the author's
   declaration, and nothing reads it for small cells.
+  Pinned by `tests/test_package.py::test_a_cell_is_read_for_a_count_only_in_the_shapes_count_in_cell_knows`
+  and `tests/test_package.py::test_the_custodian_s_minimum_is_read_in_the_fragments_past_the_first_column`.
 - **What a file is, the package takes from its folder and its name.** A file of `analysis/`
   that is data, committed beside the scripts, goes in as a script would; only a declared
   input is held to the declaration. Outside a git repository there is no record of what the
@@ -24905,6 +24958,13 @@ Open, recorded as each change landed:
   results file or an input the package withholds is shown unless a record says so (its
   `*.render.json`'s `inputs`, or a run of its script), since what a figure script reads is
   otherwise recorded nowhere.
+  Pinned by `tests/test_companion.py::test_figures_tables_and_models_are_shown_from_their_records`,
+  `tests/test_companion.py::test_the_page_shows_a_figure_as_its_svg_and_dates_what_the_records_date`,
+  `tests/test_companion.py::test_the_page_reads_a_caption_a_limitation_and_a_sentence_by_their_words`,
+  `tests/test_companion.py::test_a_latex_float_of_two_captions_gives_its_figure_none`,
+  `tests/test_companion.py::test_a_key_finding_is_linked_to_a_passage_only_where_the_words_are_the_same`,
+  `tests/test_companion.py::test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown`
+  and `tests/test_package.py::test_the_custodian_s_minimum_is_read_in_the_fragments_past_the_first_column`.
 - **The page reads no typed number for a small count.** The custodian's check of the
   package reads the results files, and the page shows their values only through it; a count
   typed into the abstract or a limitation is printed as the authors wrote it. G2's
@@ -25580,6 +25640,10 @@ Open, recorded as each change landed:
   display of a year or a month they pass unread, since "2010-12" is also a period written
   short. "Spring 2025" for the value "2024" passes so. Years are of four digits, 0001 to
   9999, in the Gregorian calendar.
+  Pinned by `tests/test_datasets.py::test_a_date_is_read_in_each_way_it_is_written`,
+  `tests/test_datasets.py::test_a_date_in_figures_is_read_as_its_date`,
+  `tests/test_datasets.py::test_a_display_that_is_no_date_is_refused_for_a_day_and_unread_for_a_year_or_month`
+  and `tests/test_datasets.py::test_a_year_is_of_four_digits_in_the_gregorian_calendar`.
 - **R counts the data's dates from one.** A refusal of `dates` names the first entries that
   lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
   Accepted.
@@ -25588,6 +25652,8 @@ Open, recorded as each change landed:
   `english_variant` from its own line of `paper.yaml`, not as YAML, and takes no English
   where it finds none there, printing day, month, year: a value in a flow mapping is not
   seen, so an American paper that declares itself so prints "1 March 2024" from R.
+  Pinned by `tests/test_datasets.py::test_a_dataset_date_in_another_english_warns_and_never_fails`
+  and `tests/test_r_emitter.py::test_r_reads_the_english_from_its_own_line_and_not_from_a_flow_mapping`.
 - **A chosen source's coverage is not compared with a dataset's.** The record says what a
   candidate covers in words (`covers.period`, "1968 to present", "2004 Q1 onwards"), and
   `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
@@ -25601,6 +25667,7 @@ Open, recorded as each change landed:
   Pinned by `tests/test_corruption.py::test_a_second_dataset_of_the_chosen_source_is_warned_of_until_chosen`.
 - **"After today" is the machine's today.** An extraction dated today in one timezone may be
   tomorrow on the machine that runs the analysis, and is refused there.
+  Pinned by `tests/test_datasets.py::test_after_today_is_the_machine_s_today`.
 
 - **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
   and none is reached by a document Word 16 saves from a build: Accepted.
@@ -25658,6 +25725,8 @@ Open, recorded as each change landed:
   `Z` or `+02:00`, is read and not applied, and an object that carries a time zone is read
   as its own local time: two values from two time zones compare as their clocks do, not as
   the instants they are.
+  Pinned by `tests/test_quality.py::test_an_order_rule_compares_a_date_and_time_as_the_clock_it_was_written_with`
+  and `tests/test_quality.py::test_a_value_as_a_date_and_time`.
 - **A pattern is read by Python's `re` and by R's PCRE.** Both are told to read `\d` and
   `\w` as ASCII, and they agree on what a pattern for a code usually holds; a construct
   only one of them knows (a possessive quantifier before Python 3.11, `\h`) is refused by
@@ -25668,8 +25737,10 @@ Open, recorded as each change landed:
   never taken in silence, but `em$check_data()` itself makes them.
   Pinned by `tests/test_corruption.py::test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage`.
 - **A table is checked once in a project.** A key has one owner, so the same table checked
-  before and after cleaning, by one script or two, is `duplicate-key`. Check the table as
-  read; what was dropped after is the script's to count.
+  before and after cleaning is refused in one script and `duplicate-key` from two. Check the
+  table as read; what was dropped after is the script's to count.
+  Pinned by `tests/test_quality.py::test_check_data_checks_a_table_once`
+  and `tests/test_quality.py::test_a_table_checked_by_two_scripts_is_a_duplicate_key`.
 - **An identifier read as a number is read as one.** A whole number held as a double is
   written to fifteen significant digits from 2 to the 53rd (about 9 x 10^15), so two
   identifiers from there up that `read.csv`, or pandas with one blank in the column, reads
@@ -25683,12 +25754,14 @@ Open, recorded as each change landed:
 - **A condition on a variable of another table needs its column.** `applies_if` may name a
   variable of another dataset, which the loader accepts; `check_data` then refuses the table
   until the column is added to it from the table that holds it.
+  Pinned by `tests/test_quality.py::test_a_condition_on_a_variable_of_another_table_needs_its_column`.
 - **A computed rule counts what the script says.** Nothing holds the rows the script hands
   over to what the rule `says`. Accepted.
 - **One count bound satisfies `quality-not-reported`.** Whether the Methods say what was
   found and what was done with it is the reader's to judge. Accepted.
 - **A name is compared as written.** `Age` in the analysis and `age` in the dictionary are
   two names, and `not-in-dictionary` says so; nothing suggests the near one.
+  Pinned by `tests/test_corruption.py::test_a_variable_named_in_other_capitals_is_another_name`.
 - **A Word table's rows stacked in one cell become one row.** A table that lists a
   characteristic's categories one paragraph to a line inside a single row, "Male" over
   "Female" and "36" over "24", is written by `init --from` as one row whose cells read "Male
@@ -26481,6 +26554,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **A Zenodo draft staged again keeps a file the new bundle no longer has.** The draft's list
   is held to the files sent, and a file left from an earlier staging stops it by name; the
   tool deletes nothing at the host, so the author deletes the file on the draft's page.
+  Pinned by `tests/test_deposit_remote.py::test_a_draft_staged_again_keeps_a_file_the_new_bundle_no_longer_has`.
 
 - **The hooks read commands and edits, not every way of running them.** `deposit --publish`
   is refused to an agent where its command is read exactly as an invocation of `deposit`,
@@ -26527,6 +26601,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **A receipt that cannot be read is not a receipt to G4.** `deposit-doi-differs` reads the
   receipts that parse and name their own target and bundle; one damaged by hand, which the
   write guard refuses to an agent, is passed over, and `deposit` itself refuses to act on it.
+  Pinned by `tests/test_corruption.py::test_a_receipt_that_cannot_be_read_is_passed_over_by_g4_and_refused_by_deposit`.
 
 - **"Preprint-related" is read as every release.** Decision 2(a) asks every author's current
   approval before a release related to a preprint is published. The tool asks it of every
@@ -26575,6 +26650,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   what is withheld, is never signed, as in `package`. And a restricted input that `\input`
   pulls into the LaTeX source is written into the `.tex` itself, where neither its name nor
   its bytes find it.
+  Pinned by `tests/test_corruption.py::test_the_release_manifest_is_not_what_the_custodian_signs`
+  and `tests/test_corruption.py::test_what_a_bundle_s_sign_off_leaves_out`.
 
 - **`next` is advice, and its order is a rule.** It puts what is upstream first, and a
   project whose author knows the journal's reviewers will read the figures first may want
@@ -27309,6 +27386,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     vault), is not followed. A Codex patch that writes into the folder is
     the write guard's, which does not read the vault. It is a guard against an agent's
     ordinary commands, not against a deliberate evasion, as the other shell guards are.
+    Pinned by `tests/test_hooks.py::test_the_shell_guard_reads_the_words_of_ordinary_commands_only`,
+    `tests/test_hooks.py::test_a_path_through_a_wsl_mount_of_the_drive_is_not_read_as_the_drive`,
+    `tests/test_hooks.py::test_a_bare_name_is_matched_to_a_link_by_its_spelling_as_the_system_folds_it`,
+    `tests/test_hooks.py::test_a_working_folder_through_a_link_into_another_project_guards_the_one_written`,
+    `tests/test_hooks.py::test_a_link_named_bare_beside_a_path_is_followed`
+    and `tests/test_hooks.py::test_a_codex_patch_into_the_vault_is_the_write_guard_s_which_does_not_read_it`.
   - *No hook on the agent's file-reading tools.* Read, Grep and Glob are held only by the agent
     tool's own deny rules, and by Claude Code's account those do not cover a command that
     reads files without naming them, or a script that opens a file itself, unless its sandbox
@@ -27327,6 +27410,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     readable by the agent; `docs/vault.md` names it as a trap. Accepted.
   - *WSL* mounts the Windows drives under `/mnt/` unless automount is turned off, and the
     guard does not read `/mnt/c/...` as `C:/...`.
+    Pinned by `tests/test_hooks.py::test_a_path_through_a_wsl_mount_of_the_drive_is_not_read_as_the_drive`.
   - *Records.* `design/vault.yaml` is an unsigned statement, as an approval is. A digest of a
     very small file could be matched by guessing its content. `registered_by` is the name
     given to `--as`, and nothing checks it against `authors.yaml`. Accepted.
@@ -27387,6 +27471,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     with no seconds the same. A time about one centile with one end of a range declared, or
     with no centile and both ends, is clamped to the range and so piles at its end rather
     than being drawn within it (#498).
+    Pinned by `tests/test_vault_synthesize.py::test_a_time_kept_within_its_range_is_kept_to_the_minute_and_piles_at_its_end`.
 - **The vault (Task F, part 2): what a run and its release do not hold.** Accepted.
   - *Encoded outputs.* A script run on the real data can put any value into anything it
     writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's
@@ -27435,6 +27520,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     records in the case the system compares names in; the shell guard reads a word from the
     folder the command is sent from, so `cd approvals && cp x vault-releases/` passes, as the
     guard's other `cd` limits do.
+    Pinned by `tests/test_vault_run.py::test_a_fragment_copied_from_the_outbox_by_hand_is_unreleased`,
+    `tests/test_vault_run.py::test_a_released_fragment_edited_afterwards_is_unreleased`,
+    `tests/test_hooks.py::test_a_vault_release_record_written_by_an_agent_is_put_to_the_person`,
+    `tests/test_hooks.py::test_a_shell_command_that_names_the_release_records_is_put_to_the_person`,
+    `tests/test_hooks.py::test_a_release_record_spelt_in_another_case_is_put_to_the_person`,
+    `tests/test_hooks.py::test_the_shell_guard_reads_the_release_records_folder_as_the_words_write_it`
+    and `tests/test_vault_run.py::test_a_run_made_with_the_vault_s_variable_set_by_hand_is_caught_only_as_unreleased`.
   - *A script run on the real data can write anywhere the account can.* The copy keeps the
     run away from the project by where it starts, not by any wall: a script can write into
     the project, the vault or elsewhere, and what it writes outside the copy is no output the
@@ -27448,14 +27540,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *What is listed is digested at the yes.* A file the project and the copy hold alike at
     that moment passes, though it changed and changed back meanwhile; what runs is the copy,
     the same bytes.
+    Pinned by `tests/test_vault_run.py::test_what_is_listed_is_digested_at_the_yes`.
   - *Only files that look like code are listed.* An input that runs and has another suffix,
     R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
     renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
     was copied.
+    Pinned by `tests/test_vault_run.py::test_only_files_that_look_like_code_are_listed_and_the_copy_holds_the_rest`.
   - *A link to a folder outside the project is kept in the copy.* The copy keeps symbolic
     links as links (`copytree(symlinks=True)`), and a runner follows one out of the copy to
     whatever it names, which is not listed. A run is not refused for one, since a virtual
     environment in the project holds links to the system's Python. A junction is not copied.
+    Pinned by `tests/test_vault_run.py::test_a_link_out_of_the_project_is_kept_in_the_copy_and_a_junction_is_not_copied`.
   - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
     `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy. A
     disk too full for the summary leaves it unwritten too, and the agent then reads the run
@@ -27466,13 +27561,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     path and the exit code, as a script that raised nothing. A library copied with the
     project (a `venv/` inside it) is inside the copy: a failure 20 or more frames deep in it
     keeps 20 of its frames, which the summary then drops as no script's, and names no frame.
+    Pinned by `tests/test_vault_run.py::test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary`
+    and `tests/test_vault_run.py::test_a_failure_deep_in_a_library_copied_with_the_project_names_no_frame`.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.
+    Pinned by `tests/test_vault_run.py::test_a_run_s_fragment_records_no_vcs_and_its_record_the_project_s_commit`.
   - *What is run.* With no script named, each file directly in `analysis/` that a runner here
     knows is run, in the order of its name; one that is meant to be imported, not run, is run
     too. A run has no time limit, and a script stopped at the terminal ends the run as a
     failure.
+    Pinned by `tests/test_vault_run.py::test_with_no_script_named_each_file_of_analysis_is_run_in_the_order_of_its_name`.
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's. Accepted.
 - **A paper's CI is not the author's machine.** The action `init --github-actions` names

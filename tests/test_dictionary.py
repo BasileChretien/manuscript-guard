@@ -9,6 +9,7 @@ them a wrong code, a wrong bound or another variable's entry.
 from __future__ import annotations
 
 import dataclasses
+import sys
 from pathlib import Path
 
 import pytest
@@ -488,6 +489,131 @@ def test_a_zone_written_z_reads_on_every_python(tmp_path: Path) -> None:
           "  - {name: seen, label: Seen, definition: When seen., type: datetime, "
           "range: {min: '2020-01-01T00:00:00Z', max: '2020-01-02T00:00:00+00:00'}}\n")
     assert load_dictionary(tmp_path)[1].findings == ()
+
+
+@pytest.mark.parametrize(
+    "condition, said",
+    [
+        ("[{variable: sex, in: [2]}, {variable: sex, in: [1]}]", "is not of type 'object'"),
+        ("{variable: sex, in: [2], and: {variable: sex, in: [1]}}",
+         "Additional properties are not allowed ('and' was unexpected)"),
+        ("{variable: alt_ratio, above: 5}", "'in' is a required property"),
+    ],
+    ids=["two conditions", "a condition and another", "a threshold"],
+)  # fmt: skip
+def test_a_condition_is_one_coded_variable_and_its_codes(
+    tmp_path: Path, condition: str, said: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data dictionary says one condition, and reads
+    its range by its type alone"): `applies_if` names one variable and the codes under which
+    the variable is recorded; two conditions, or a number past a threshold, cannot be said."""
+    messages = refused(tmp_path, edited("applies_if: {variable: sex, in: [2]}",
+                                        f"applies_if: {condition}"))  # fmt: skip
+    assert any(m.startswith("variables/2/applies_if: ") and said in m for m in messages), messages
+    # The other side of the rule: one variable and its codes read.
+    write(tmp_path, FULL)
+    dictionary, _report = load_dictionary(tmp_path)
+    assert dictionary.variable("pregnant").applies_if == Condition("sex", ("2",))
+
+
+def test_a_range_is_read_by_its_type_alone(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data dictionary says one condition, and reads
+    its range by its type alone"): a count's bounds are held to be numbers, not whole ones; a
+    datetime's bounds are compared only where both or neither carry a time zone; and a bound
+    in the basic ISO form, or with a fraction of a second of other than three or six digits,
+    reads on Python 3.11 and later and is refused on 3.10."""
+    counted = "    type: count\n    range: {min: 0.5, max: 10.5}\n"
+    write(tmp_path, edited("    type: count\n", counted))
+    dictionary, report = load_dictionary(tmp_path)
+    assert report.findings == ()
+    score = dictionary.variable("rucam_score")
+    assert (score.minimum, score.maximum) == (0.5, 10.5)
+    # The other side of the type: a count's bound in quotes is no number.
+    messages = refused(tmp_path, edited("    type: count\n",
+                                        "    type: count\n    range: {min: '0', max: 10}\n"))
+    assert messages == ["variable rucam_score: its range bound '0' is not a number"]
+
+    def seen(low: str, high: str) -> list[str]:
+        write(tmp_path, "schema: manuscript-guard/data-dictionary/1\nvariables:\n"
+              "  - {name: seen, label: Seen, definition: When seen., type: datetime, "
+              f"range: {{min: '{low}', max: '{high}'}}}}\n")  # fmt: skip
+        return [f.message for f in load_dictionary(tmp_path)[1].findings]
+
+    zone, plain = "2020-01-02T00:00:00+00:00", "2020-01-01T00:00:00"
+    assert seen(zone, plain) == [
+        "variable seen: its range gives one bound a time zone and the other none"
+    ]
+    above = ["variable seen: its range's min is above its max"]
+    assert seen(zone, plain + "+00:00") == above
+    assert seen("2020-01-02T00:00:00", plain) == above
+    assert seen(plain + ".500", plain + ".500000") == []
+    for odd in ("20200101T000000", "2020-01-01T00:00:00.5"):
+        wanted = [] if sys.version_info >= (3, 11) else [
+            f"variable seen: its range bound {odd!r} is not an ISO 8601 datetime"]  # fmt: skip
+        assert seen(odd, "2020-01-02T00:00:00") == wanted
+    write(tmp_path, edited("range: {min: 2015-01-01, max: 2024-12-31}",
+                           "range: {min: '20150101', max: '2024-12-31'}"))  # fmt: skip
+    wanted = [] if sys.version_info >= (3, 11) else [
+        "variable onset_date: its range bound '20150101' is not an ISO 8601 date"]  # fmt: skip
+    assert [f.message for f in load_dictionary(tmp_path)[1].findings] == wanted
+
+
+def test_an_order_takes_dates_and_datetimes_as_one_family_and_refuses_times(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data dictionary says one condition, and reads
+    its range by its type alone"): a rule's `order` between a date and a datetime reads, so the
+    data checks have to compare them by the date, and an order between two times is refused."""
+    text = ("schema: manuscript-guard/data-dictionary/1\nvariables:\n"
+            "  - {name: a, label: A, definition: A., type: {a}}\n"
+            "  - {name: b, label: B, definition: B., type: {b}}\n"
+            "rules:\n  - {id: a_then_b, says: A comes before B, order: [a, b]}\n")  # fmt: skip
+    write(tmp_path, text.replace("{a}", "date").replace("{b}", "datetime"))
+    assert load_dictionary(tmp_path)[1].findings == ()
+    assert refused(tmp_path, text.replace("{a}", "time").replace("{b}", "time")) == [
+        "rule a_then_b: order compares dates with dates, or numbers with numbers"
+    ]
+
+
+@pytest.mark.parametrize(
+    "old, new, misread",
+    [
+        ("{code: 9, label: not reported}", "{code: +9, label: not reported}", "+9"),
+        ("    item: total", "    item: +6", "+6"),
+        ("applies_if: {variable: sex, in: [2]}", "applies_if: {variable: sex, in: [+2]}", "+2"),
+        ('reporting: {STROBE: ["14a", 6]}', 'reporting: {STROBE: ["14a", +6]}', None),
+    ],
+    ids=["a code", "an item", "a condition's codes", "a reporting item"],
+)  # fmt: skip
+def test_a_sign_yaml_drops_is_a_misreading_except_in_a_reporting_item(
+    tmp_path: Path, old: str, new: str, misread: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data dictionary says one condition, and reads
+    its range by its type alone"): a sign YAML drops is a misreading in a code, an item and a
+    condition's codes, not in a reporting item, where `+6` reads as item 6."""
+    write(tmp_path, edited(old, new))
+    dictionary, report = load_dictionary(tmp_path)
+    if misread is None:
+        assert report.findings == ()
+        assert dict(dictionary.variable("alt_ratio").reporting) == {"STROBE": ("14a", "6")}
+    else:
+        [message] = [f.message for f in report.failures]
+        assert message.startswith(f"{misread} is read by YAML as the number {misread[1:]};")
+
+
+def test_a_value_yaml_reads_as_written_is_not_said_to_be_misread(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A data dictionary says one condition, and reads
+    its range by its type alone"): what YAML reads as another value is found only where it is
+    written plain; `'1.5'`, read as written where the author meant the item "1.50", is not."""
+    write(tmp_path, edited("    item: total", "    item: '1.5'"))
+    dictionary, report = load_dictionary(tmp_path)
+    assert report.findings == ()
+    assert dictionary.variable("rucam_score").item == "1.5"
+    # The other side: written plain, 1.50 is the number 1.5, and is refused.
+    assert refused(tmp_path, edited("    item: total", "    item: 1.50")) == [
+        "variables/6/item: 1.5 is not of type 'string', 'integer'; write it in quotes, as the "
+        "text it is"
+    ]
 
 
 def test_faults_of_the_whole_file_are_said_at_their_line(tmp_path: Path) -> None:

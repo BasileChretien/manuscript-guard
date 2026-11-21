@@ -1163,6 +1163,25 @@ def test_an_approval_given_by_an_agent_is_put_to_the_author(
     assert decision(run("guard-submission", payload, capsys)) == "deny"
 
 
+def test_a_search_naming_approve_is_asked_and_a_shell_copy_of_an_approval_is_not(
+    in_claude_code: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): the text
+    "manuscript-guard approve" in a search draws an extra prompt, and approvals are not
+    guarded against `cp` or `rm` from a shell."""
+    searched = 'grep -n "manuscript-guard approve" docs/commands.md'
+    result = run("guard-submission", _shell(in_claude_code, searched), capsys)
+    assert decision(result) == "ask"
+    assert "Only that author can say so" in reason(result)
+    for command in ("cp notes/ada.yaml approvals/ada-example.yaml",
+                    "rm approvals/ada-example.yaml"):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, command), capsys) is None, command
+    # The other side: an approval written as a file is put to the author.
+    path = in_claude_code / "approvals" / "ada-example.yaml"
+    payload = _writes(in_claude_code, file_path=str(path), content="author: Ada Example\n")
+    assert decision(run("guard-write", payload, capsys)) == "ask"
+
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -1396,6 +1415,24 @@ def test_a_shell_command_that_names_the_release_records_is_put_to_the_person(
     result = run("guard-submission", _shell(in_claude_code, command), capsys)
     assert decision(result) == "ask"
     assert "vault release" in reason(result)
+
+
+def test_the_shell_guard_reads_the_release_records_folder_as_the_words_write_it(
+    in_claude_code: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "Records"): a command
+    that only reads a record is asked too, and one that builds the folder's path at run time
+    is not seen; the shell guard reads a word from the folder the command is sent from, so
+    `cd approvals && cp x vault-releases/` passes."""
+
+    def said(command: str) -> str | None:
+        return decision(run("guard-submission", _shell(in_claude_code, command), capsys))
+
+    assert said("cat approvals/vault-releases/20261104-120000.json") == "ask"
+    assert said('cp x.json "$(printf approvals)/vault-releases/"') is None
+    assert said("cd approvals && cp x.json vault-releases/") is None
+    # The other side: the folder written from the project is put to the person.
+    assert said("cp x.json approvals/vault-releases/") == "ask"
 
 
 @pytest.mark.skipif(sys.platform not in ("win32", "darwin"),
@@ -4567,6 +4604,131 @@ def test_a_working_folder_reached_through_a_link_into_the_vault_refuses_a_bare_n
     cwd = in_claude_code / "extract"
     result = run("guard-submission", _shell(cwd, "cp cohort.csv /tmp/"), capsys)
     assert decision(result) == "deny", result
+
+
+def test_the_shell_guard_reads_the_words_of_ordinary_commands_only(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 1)", "The shell guard reads
+    the words of ordinary commands"): a path held in a variable of the agent's own, computed by
+    a script, globbed for the folder itself, or a folder above the vault read down into, passes;
+    a command sent from above the project names no vault; `cd ..` and a bare name beside it
+    pass; a command with no slash, backslash, `~` or `..` passes before any folder is looked at,
+    `ls extract` with `extract` a link into the vault and `cat cohort.csv` from a working folder
+    reached through one; and a link deeper in a folder named recursively is not followed."""
+    _register(in_claude_code, kept_apart)
+    above = kept_apart.parent.as_posix()
+
+    def said(command: str, cwd: Path = in_claude_code) -> str | None:
+        return decision(run("guard-submission", _shell(cwd, command), capsys))
+
+    for command in (f'd="{above}"; cat "$d/Data held/cohort.csv"',
+                    'cat "$(python analysis/where_it_is.py)/cohort.csv"',
+                    f'cat "{above}"/Data*/cohort.csv',
+                    f'grep -r id "{above}"',
+                    'cd .. && cat "Data held/cohort.csv"'):  # fmt: skip
+        assert said(command) is None, command
+    # The other side: the folder itself, written out, is refused.
+    assert said(f'cat "{kept_apart.as_posix()}/cohort.csv"') == "deny"
+    assert said(f'cat "{kept_apart.as_posix()}/cohort.csv"', in_claude_code.parent) is None
+    # The example has a folder `data`; the link into the vault is named `extract` here.
+    _linked(in_claude_code / "extract", kept_apart)
+    assert said("ls extract") is None
+    assert said("ls extract /tmp/x") == "deny", "with a slash, the link is followed"
+    assert said("cat cohort.csv", in_claude_code / "extract") is None
+    (in_claude_code / "notes").mkdir(exist_ok=True)
+    _linked(in_claude_code / "notes" / "held", kept_apart)
+    assert said("cp -r notes /tmp/out") is None
+
+
+def test_a_bare_name_is_matched_to_a_link_by_its_spelling_as_the_system_folds_it(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 1)", "The shell guard reads
+    the words of ordinary commands"): a bare name is matched to a link by its spelling,
+    case-folded on Windows and macOS and on Windows without trailing dots and spaces; so on
+    Windows a word that ends a sentence inside a quoted program matches a link of that name,
+    and the command is refused though it reads nothing."""
+    _register(in_claude_code, kept_apart)
+    _linked(in_claude_code / "extract", kept_apart)
+
+    def said(command: str) -> str | None:
+        return decision(run("guard-submission", _shell(in_claude_code, command), capsys))
+
+    folded = sys.platform in ("win32", "darwin")
+    assert said("cp -r EXTRACT /tmp/out") == ("deny" if folded else None)
+    printed = """python -c "print('Wrote the extract.')" > /tmp/log"""
+    assert said(printed) == ("deny" if os.name == "nt" else None)
+    assert said("""python -c "print('Wrote the extract')" > /tmp/log""") == "deny"
+
+
+def test_a_working_folder_through_a_link_into_another_project_guards_the_one_written(
+    in_claude_code: Path, kept_apart: Path, tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 1)", "The shell guard reads
+    the words of ordinary commands"): where the working folder is reached through a link and
+    both it and the link's target lie in projects, the project above the folder as written is
+    the one whose vault is guarded."""
+    _register(in_claude_code, kept_apart)
+    other = tmp_path / "other"
+    (other / "design").mkdir(parents=True)
+    (other / "analysis").mkdir()
+    (other / "paper.yaml").write_text("schema: manuscript-guard/paper/1\ntitle: \"O\"\n",
+                                      encoding="utf-8")  # fmt: skip
+    held = tmp_path / "Other held"
+    held.mkdir()
+    (held / "cases.csv").write_text("id\n1\n", encoding="utf-8")
+    _register(other, held, ("cases.csv",))
+    _linked(in_claude_code / "twin", other / "analysis")
+    cwd = in_claude_code / "twin"
+
+    def said(command: str) -> str | None:
+        return decision(run("guard-submission", _shell(cwd, command), capsys))
+
+    assert said(f'cat "{held.as_posix()}/cases.csv"') is None
+    assert said(f'cat "{kept_apart.as_posix()}/cohort.csv"') == "deny"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the drives WSL mounts are Windows drives")
+def test_a_path_through_a_wsl_mount_of_the_drive_is_not_read_as_the_drive(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 1)", "WSL", and "The shell
+    guard reads the words of ordinary commands"): the guard does not read `/mnt/c/...` as
+    `C:/...`, nor a path Git Bash writes through a mount other than a drive (`/tmp/...`); it
+    reads Git Bash's `/c/...` as the drive."""
+    _register(in_claude_code, kept_apart)
+    drive, rest = kept_apart.as_posix().split(":", 1)
+
+    def said(command: str) -> str | None:
+        return decision(run("guard-submission", _shell(in_claude_code, command), capsys))
+
+    assert said(f'cat "/mnt/{drive.lower()}{rest}/cohort.csv"') is None
+    # Git Bash's `/tmp` is a folder of the drive the guard does not read it as.
+    temp = Path(tempfile.gettempdir()).resolve()
+    if kept_apart.resolve().is_relative_to(temp):
+        inside = kept_apart.resolve().relative_to(temp).as_posix()
+        assert said(f'cat "/tmp/{inside}/cohort.csv"') is None
+    # The other side: Git Bash's own spelling of the drive is read as the drive.
+    assert said(f'cat "/{drive.lower()}{rest}/cohort.csv"') == "deny"
+
+
+def test_a_codex_patch_into_the_vault_is_the_write_guard_s_which_does_not_read_it(
+    project: Path, kept_apart: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 1)", "The shell guard reads
+    the words of ordinary commands"): a Codex patch that writes into the folder is the write
+    guard's, which does not read the vault."""
+    _register(project, kept_apart)
+    patch = "\n".join(["*** Begin Patch", f"*** Add File: {kept_apart.as_posix()}/notes.txt",
+                       "+a note", "*** End Patch"])  # fmt: skip
+    payload = {
+        "session_id": "019a-test", "transcript_path": None, "cwd": str(project),
+        "hook_event_name": "PreToolUse", "model": "gpt-test", "turn_id": "turn-1",
+        "permission_mode": "default", "tool_name": "apply_patch", "tool_use_id": "call-1",
+        "tool_input": {"command": patch},
+    }  # fmt: skip
+    assert run("guard-write", payload, capsys) is None
 
 
 def test_a_command_that_names_a_vault_this_session_cannot_reach_is_asked(

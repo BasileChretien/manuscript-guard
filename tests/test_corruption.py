@@ -2381,6 +2381,75 @@ def test_a_dry_run_of_a_restricted_manuscript_says_a_run_would_send_nothing(
     assert transport.requests == []
 
 
+def _stopped_by_custodian(root: Path, *models: str) -> list[str]:
+    """What stops a run calling these models, as `review --run` is told it, each message
+    with its hint."""
+    from manuscript_guard.panel.custodian import unauthorised
+    from manuscript_guard.panel.providers import configured_models
+
+    project, _ = load_project(root)
+    paper = {**project.paper, "review": {**project.paper["review"], "models": list(models)}}
+    return [f"{f.message}; {f.hint}" for f in unauthorised(project, configured_models(paper))]
+
+
+def _models_are(root: Path, *models: str) -> None:
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["models"] = list(models)
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_one_authorisation_is_given_per_provider(project: Path, monkeypatch) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): a model added later to
+    a provider already authorised goes unasked, and a `-cloud` model added to a local
+    provider voids the sign-off with the message of any other change."""
+    _keeps_data(project, monkeypatch, "lab/model-c")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["providers"]["relay"] = {"base_url": "http://localhost:4000/v1",
+                                                "key_env": "LAB_API_KEY"}  # fmt: skip
+    document["review"]["models"] = ["lab/model-c", "relay/model-m"]
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _authorise(project, "lab") == 0 and _authorise(project, "relay") == 0
+    assert _stopped_by_custodian(project, "lab/model-c", "relay/model-m") == []
+    _models_are(project, "lab/model-c", "lab/model-d", "relay/model-m")
+    assert _stopped_by_custodian(project, "lab/model-c", "lab/model-d", "relay/model-m") == []
+    _models_are(project, "lab/model-c", "relay/model-m", "relay/model-n-cloud")
+    [void] = _stopped_by_custodian(project, "lab/model-c", "relay/model-m", "relay/model-n-cloud")
+    changed = (", and it has changed since; if it still stands, they sign it again with "
+               '`manuscript-guard sign --as "Cora Keeper" --finding G11/custodian/send-to/')
+    assert "Cora Keeper signed it off on " in void and f"{changed}relay`" in void, void
+    # The message of any other change: the lab's address moved.
+    _models_are(project, "lab/model-c", "relay/model-m")
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "llm.lab.invalid", "elsewhere.invalid"), encoding="utf-8")  # fmt: skip
+    [moved] = _stopped_by_custodian(project, "lab/model-c", "relay/model-m")
+    assert "Cora Keeper signed it off on " in moved and f"{changed}lab`" in moved, moved
+
+
+def test_a_model_no_sign_off_stands_for_is_refused_by_the_backstop(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): the backstop refuses a
+    model that has no sign-off standing, one whose provider review.models does not name,
+    rather than sending to it."""
+    from manuscript_guard.panel.custodian import unauthorised
+    from manuscript_guard.panel.providers import configured_models
+
+    _keeps_data(project, monkeypatch, "lab/model-c")
+    assert _authorise(project, "lab") == 0
+    project_, _ = load_project(project)
+    assert unauthorised(project_, configured_models(project_.paper)) == []
+    paper = {**project_.paper, "review": {**project_.paper["review"],
+                                          "models": ["openai/gpt-test"]}}  # fmt: skip
+    [refused] = unauthorised(project_, configured_models(paper))
+    assert refused.code == "provider-not-authorised"
+    assert refused.message == ("the data custodian restricts where the manuscript may be sent, "
+                               "and api.openai.com is not one review.models names")
+    assert refused.hint == ("list the model in review.models, so that the custodian can "
+                            "authorise its provider")
+
+
 def _value_has(root: Path, key: str, **fields) -> None:
     """The results file with `fields` set on `key`, one set to None taken out, and its
     digest written again."""
@@ -2442,6 +2511,38 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" not in codes(report)
     report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
     assert "count-below-minimum" in codes(report)
+
+
+def test_a_small_count_is_found_where_it_is_bound_by_its_value(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A small count is found where it is bound, by its
+    value"): a count printed in an emitted table, a percentage that gives a small count away
+    with its denominator, and a count typed rather than bound are not read, and G2 fails the
+    typed count for being typed; a whole number with no unit that is no count of people fails
+    as one; and a count held back behind a bound is read where a word or nothing follows the
+    bound, so "<2 (cases)" and "<+2" pass, and "<2E1" is a bound of 2."""
+    _custodian(project, 5)
+    _two_by_two(project, "3")
+    _value_has(project, "case.pct_serious", value=0.7, display="0.7")
+    _add_to_results(project, "Of these, 3 reports were fatal.")
+    assert _small(project) == []
+    assert "unclassified-number" in codes(gate_report(project))
+    line = next(
+        n for n, text in enumerate(main_md(project).read_text(encoding="utf-8").splitlines(), 1)
+        if "{{results.case.n_serious}}" in text
+    )
+    _value_has(project, "cohort.n_years", value=3, display="3", unit=None)
+    years = next(
+        n for n, text in enumerate(main_md(project).read_text(encoding="utf-8").splitlines(), 1)
+        if "{{results.cohort.n_years}}" in text
+    )
+    assert _small(project) == [("results.cohort.n_years", years)]
+    _value_has(project, "cohort.n_years", value=3, display="3", unit="years")
+    for display, said in (("<2 (cases)", []), ("<+2", []),
+                          ("<2E1", [("results.case.n_serious", line)]),
+                          ("<2 patients", [("results.case.n_serious", line)]),
+                          ("<2", [("results.case.n_serious", line)])):  # fmt: skip
+        _value_has(project, "case.n_serious", value=1, display=display, unit=None, label=False)
+        assert _small(project) == said, display
 
 
 def _two_by_two(root: Path, first: str, total: str = "197") -> None:
@@ -3868,6 +3969,34 @@ def test_a_restricted_input_is_found_in_git_by_its_own_name(
     assert seen and all(env["LC_ALL"] == "C" and env["LANGUAGE"] == "C" for env in seen)
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A small count is found where it is bound, by its
+    value"): a restricted input that a person copies elsewhere is not seen, and one that was
+    committed and then removed stays in the history, which the check does not read."""
+    from manuscript_guard.gates import custodian
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "a@example.org")
+    _git(tmp_path, "config", "user.name", "A")
+    (tmp_path / "cohort.csv").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "cohort.csv")
+    assert custodian._tracked(tmp_path, "cohort.csv") is True
+    _git(tmp_path, "commit", "-q", "-m", "data")
+    _git(tmp_path, "rm", "-q", "--cached", "cohort.csv")
+    _git(tmp_path, "commit", "-q", "-m", "no data")
+    assert custodian._tracked(tmp_path, "cohort.csv") is False
+    import subprocess
+
+    shown = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", "HEAD~1:cohort.csv"],
+                           cwd=tmp_path, capture_output=True, text=True, timeout=60)  # fmt: skip
+    assert shown.stdout == "a\n"
+    (tmp_path.parent / "copy-of-cohort.csv").write_text("a\n", encoding="utf-8")
+    assert custodian._tracked(tmp_path, "../copy-of-cohort.csv") is False
+
+
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
     """`add_input(path, restricted=True)` is written into the provenance, and an
     input not so declared carries no such field."""
@@ -4063,6 +4192,57 @@ def test_a_simulated_control_s_own_data_make_no_other_result_synthetic(project: 
     write_digest(fragment)
     [(severity, message)] = _synthetic_said(project)
     assert severity == "warn" and "(data/simulated_control.csv)" in message
+
+
+def test_a_synthetic_input_is_followed_to_the_results_the_text_binds_and_no_further(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A synthetic input is followed to the results the
+    text binds, and no further"): a figure drawn from a synthetic run and placed with
+    `figure.` is not named, nor a result of a second script that reads the first one's
+    results file as its input; and an input that is synthetic and not declared so is found by
+    nothing."""
+    import re
+
+    _not_a_demonstration(project)
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    elided = re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]", text)
+    assert "{{figure." in elided
+    for other in (project / "manuscript").rglob("*.md"):
+        other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                                other.read_text(encoding="utf-8")), encoding="utf-8")
+    _alt(project, None)
+    assert _synthetic_said(project) == []
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    inputs = [{"path": "results/01_disproportionality.json", "sha256": "0" * 64}]
+    second = {"schema": document["schema"], "values": {"second.n_pairs": {
+        "value": 12, "display": "12"}}, "provenance": {**document["provenance"], "inputs": inputs}}
+    path = project / "results" / "02_second.json"
+    path.write_text(json.dumps(second, indent=2), encoding="utf-8")
+    write_digest(path)
+    main.write_text(main.read_text(encoding="utf-8") + "\n\nThere were "
+                    "{{results.second.n_pairs}} pairs.\n", encoding="utf-8")  # fmt: skip
+    loaded = load_namespace(load_project(project)[0])[1]
+    assert "second.n_pairs" in loaded.values, "the second script's results are read"
+    assert _synthetic_said(project) == []
+    # The other side: declared again in the second script, its result is named.
+    second["provenance"]["inputs"] = [{**inputs[0], "synthetic": True}]
+    path.write_text(json.dumps(second, indent=2), encoding="utf-8")
+    write_digest(path)
+    [(severity, message)] = _synthetic_said(project)
+    assert severity == "warn" and "results.second.n_pairs" in message
+    # Not declared at all, nothing finds it.
+    main.write_text(text, encoding="utf-8")
+    for record in document["provenance"]["inputs"]:
+        record.pop("synthetic", None)
+    first.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(first)
+    path.unlink()
+    path.with_name(path.name + ".sha256").unlink(missing_ok=True)
+    assert _synthetic_said(project) == []
+    assert "synthetic-input-quoted" not in codes(gate_report(project))
 
 
 def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
@@ -6505,6 +6685,50 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == []
 
 
+def test_an_approval_s_file_is_named_by_a_fold_two_authors_can_share(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): two authors of one name
+    with neither ORCID nor e-mail share a file, an e-mail differing only in characters
+    outside `[\\w.@-]` folds into another, a device name is a file name as it is, and a very
+    long name makes no file."""
+    from manuscript_guard.approvals import approve, slug_of
+
+    wei = {"given": "Wei", "family": "Zhang"}
+    assert slug_of(wei) == slug_of(dict(wei)) == "wei-zhang"
+    assert slug_of({**wei, "email": "a+b@x.org"}) == slug_of({**wei, "email": "a-b@x.org"}) == (
+        "a-b@x.org")
+    # The other side of the fold: characters inside `[\w.@-]` are kept.
+    assert slug_of({**wei, "email": "a.b@x.org"}) == "a.b@x.org"
+    assert [slug_of({"given": "", "family": name}) for name in ("Con", "Nul")] == ["con", "nul"]
+    with pytest.raises(OSError):
+        approve(load_project(project)[0], {"given": "A" * 300, "family": "Long"})
+    assert not (project / "approvals").exists() or not list((project / "approvals").iterdir())
+
+
+def test_an_orcid_two_authors_give_is_not_flagged(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): a duplicate ORCID is
+    not flagged; the two authors share one approval's file, and nothing says the iD is given
+    twice."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    assert "0000-0001-5109-3700" in text
+    authors.write_text(text.replace("0000-0001-5109-3700", "0000-0002-1825-0097"), "utf-8")
+    assert main(["approve", str(project), "--as", "Ada Example"]) == 0
+    assert sorted(p.name for p in (project / "approvals").iterdir()) == [
+        "0000-0002-1825-0097.yaml"]  # fmt: skip
+    project_, report = load_project(project)
+    found = [*report.findings, *gate_report(project).findings]
+    from manuscript_guard.approvals import check_approvals
+
+    found += check_approvals(project_).findings
+    # What names the iD says only that the shared file is the other author's.
+    assert [(f.code, f.message) for f in found if "0000-0002-1825-0097" in f.message
+            or "ORCID" in f.message] == [("approval-missing", "Blaise Sample has not approved "
+                                          "the manuscript: 0000-0002-1825-0097.yaml is Ada "
+                                          "Example's")]  # fmt: skip
+
+
 def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     project: Path,
 ) -> None:
@@ -6600,6 +6824,35 @@ def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> N
     capsys.readouterr()
     assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
     assert "approved" not in capsys.readouterr().out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_approval_that_cannot_be_read_stops_submit_after_the_pack_is_written(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): an approval that cannot
+    be parsed stops `submit` after the pack is written, and one that breaks the schema is
+    printed as a failure and not acted on."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    for author in ("0000-0002-1825-0097", "0000-0001-5109-3700"):
+        assert main(["approve", str(project), "--as", author]) == 0
+    ada = project / "approvals" / "0000-0002-1825-0097.yaml"
+    ada.write_text("author: [\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) != 0
+    said = capsys.readouterr()
+    assert "submission pack: " in said.out
+    pack = Path(said.out.split("submission pack: ", 1)[1].splitlines()[0])
+    assert (pack / "manuscript.docx").is_file()
+    assert "has not approved" not in said.out
+    ada.write_text("schema: manuscript-guard/approval/1\nauthor: Ada Example\n", "utf-8")
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    out = capsys.readouterr().out
+    assert "FAIL" in out and "0000-0002-1825-0097.yaml" in out, out
+    assert "Ada Example has not approved" not in out and "Ada Example approved" not in out
 
 
 # ------------------------------------------------- a co-author's answers and their page
@@ -8087,6 +8340,45 @@ def test_a_verbatim_copy_of_a_crlf_restricted_input_stops_the_deposit(project: P
     assert found() == ["deposit-restricted-input"]
 
 
+def test_what_a_bundle_s_sign_off_leaves_out(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a bundle's sign-off leaves out"): MANIFEST.yaml
+    is left out of every bundle's signed list by its name, so an arXiv source file of that
+    name goes unsigned; what MANIFEST.yaml says besides the files, the title, the DOI and the
+    list of what is withheld, is never signed; and a restricted input that `\\input` pulls
+    into the LaTeX source is written into the `.tex`, where neither its name nor its bytes
+    find it."""
+    from manuscript_guard.deposit.plan import generated
+    from manuscript_guard.deposit.preflight import restricted_entries, signable
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    loaded = load_project(project)[0]
+
+    def digest(target: str, bundle: str, manifest: str, other: str = "a") -> str:
+        entries = (generated("MANIFEST.yaml", manifest, "a file"),
+                   generated("main.tex", other, "the source"))  # fmt: skip
+        return signable(loaded, target, bundle, entries).digest
+
+    assert digest("arxiv", "preprint", "\\section{One}") == digest("arxiv", "preprint",
+                                                                   "\\section{Two}")
+    assert digest("arxiv", "preprint", "x", "a") != digest("arxiv", "preprint", "x", "b")
+    then = "title: A\ndoi: 10.5281/zenodo.1\nwithheld: []\n"
+    now = "title: B\ndoi: 10.5281/zenodo.2\nwithheld: [{path: data/held.csv}]\n"
+    assert digest("zenodo", "release", then) == digest("zenodo", "release", now)
+    held = (project / "data" / "event_terms.txt").read_text(encoding="utf-8")
+    _resign(project, _restricted)
+    loaded = load_project(project)[0]
+    results = load_namespace(loaded)[1]
+    pulled_in = generated("main.tex", f"\\begin{{document}}\n{held}\\end{{document}}\n", "tex")
+    assert restricted_entries(loaded, results, (pulled_in,)) == []
+    # The other side: the input as a file of its own in the bundle is found by its bytes.
+    alone = generated("terms.txt", held, "the source")
+    assert [f.code for f in restricted_entries(loaded, results, (alone,))] == [
+        "deposit-restricted-input"]  # fmt: skip
+
+
 def test_a_pdf_compiled_with_another_engine_is_signed_off_again(project: Path) -> None:
     """A LaTeX manuscript's PDF is signed by what it is compiled from, which is the engine
     as well as the folder: another engine is another PDF (round 2 of #460)."""
@@ -8237,6 +8529,33 @@ def test_a_package_doi_that_is_not_the_receipts_warns_then_fails_at_submission(
     _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
     assert said(submission=False) == {"deposit-doi-differs": "warn"}
     assert said(submission=True) == {"deposit-doi-differs": "fail"}
+
+
+def test_a_receipt_that_cannot_be_read_is_passed_over_by_g4_and_refused_by_deposit(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A receipt that cannot be read is not a receipt to
+    G4"): `deposit-doi-differs` reads the receipts that parse and name their own target and
+    bundle; one damaged by hand is passed over, and `deposit` itself refuses to act on it."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.deposit.remote import receipts
+
+    def said() -> set[str]:
+        report, _project, _stage, _deferred = _run_gates(project, submission=True)
+        return {f.code for f in report.findings}
+
+    _packable(project, doi="10.5281/zenodo.7654320")
+    _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
+    assert "deposit-doi-differs" in said()
+    path = receipts.receipt_path(load_project(project)[0], "zenodo", "release")
+    text = path.read_text(encoding="utf-8")
+    for damaged in (text.replace("doi:", "doi: [", 1), text.replace("bundle: release",
+                                                                   "bundle: preregistration")):
+        assert damaged != text
+        path.write_text(damaged, encoding="utf-8")
+        assert "deposit-doi-differs" not in said()
+        with pytest.raises(receipts.ReceiptError):
+            receipts.read(load_project(project)[0], "zenodo", "release")
 
 
 # ------------------------------------------------- what the data statement says
@@ -10371,6 +10690,63 @@ def test_the_kept_plan_is_never_written_again(project: Path) -> None:
     assert _plan_said(project) == [("plan-changed-after-results", "warn")]
 
 
+def test_a_frozen_plan_holds_the_plan_of_the_first_run_whenever_that_was(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A frozen plan holds the plan of the first run,
+    whenever that was"): a person can delete the copy, and the next run then freezes the plan
+    as it is, a plan written after the results among them, which cannot then be told from one
+    written first; and any change to the Deviations section satisfies the check."""
+    from conftest import run_analysis
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    frozen.unlink()
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    assert _plan_said(project) == [("plan-not-frozen", "info")]
+    run_analysis(project)
+    record = yaml.safe_load(frozen.read_text(encoding="utf-8"))
+    assert "A second outcome, chosen later." in record["plan"]
+    assert _plan_said(project) == []
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA third outcome, chosen later still.\n")
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+    _plan_edited(project, "No analysis was added", "No analysis was added, as of today")
+    assert _plan_said(project) == []
+
+
+def test_a_plan_not_in_utf8_or_holding_a_nul_is_not_frozen(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A frozen plan holds the plan of the first run,
+    whenever that was"): a plan that is not UTF-8 text, or that holds a NUL, is not frozen
+    until it is put right; one saved in UTF-16 with no byte-order mark decodes as UTF-8
+    where its text is ASCII, so G12 does not say it is not UTF-8, and the `plan-not-frozen`
+    hint, that the emitter keeps it on the next write, is not true of it. The 2026-11-09
+    triage planned a fix (F14), which will change this test."""
+    from manuscript_guard.emit import freeze_plan
+    from manuscript_guard.gates import check_design
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    frozen.unlink()
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    script = project / "analysis" / "01_disproportionality.py"
+    plan.write_bytes((text + "\nA note of the café.\n").encode("cp1252"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    assert ("plan-not-utf8", "warn") in _plan_said(project)
+    plan.write_bytes((text + "\nA NUL\x00.\n").encode("utf-8"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    ascii_text = text.encode("ascii", errors="ignore").decode("ascii")
+    plan.write_bytes(ascii_text.encode("utf-16-le"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    said = _plan_said(project)
+    assert ("plan-not-frozen", "info") in said and ("plan-not-utf8", "warn") not in said, said
+    [hint] = [f.hint for f in check_design(load_project(project)[0]).findings
+              if f.code == "plan-not-frozen"]  # fmt: skip
+    assert hint.startswith("the emitter keeps it on the next write")
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    # Put right, it is frozen on the next write.
+    plan.write_bytes(text.encode("utf-8"))
+    assert freeze_plan(project, script) == frozen
+
+
 # -------------------------------------- the controls and held-out data the plan declares
 
 _CONTROLS = (
@@ -11153,6 +11529,54 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+def test_a_planned_results_list_is_read_by_the_shape_of_its_code_spans(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Planned results"): a nested subsection also titled
+    "Planned results" is read twice, a dotted code span (`data.table`, `table1.csv`) is taken
+    for a key, a key copied with its braces is skipped, and at the analysis stage every
+    planned key not yet emitted warns."""
+    listed = ("- `data.table`: the package\n- `table1.csv`: the file\n"
+              "- `{{results.death.n_cases}}`: deaths, copied as bound\n- `case.pct_serious`")
+    _plan_edited(project, "- `case.pct_serious`", listed)
+    _plan_edited(project, "## Software", "### Planned results by subgroup\n\n"
+                 "- `death.n_women`: deaths among the women\n\n## Software")  # fmt: skip
+    nested = ("planned-result-missing", "- `death.n_women`: deaths among the women")
+    said = [("planned-result-missing", "- `data.table`: the package"),
+            ("planned-result-missing", "- `table1.csv`: the file"), nested, nested]
+    assert sorted(_planned_said(project, "analysis")) == sorted(said)
+    assert _planned_said(project, "design") == []
+    # The other side of the braces: the same key without them is read.
+    _plan_edited(project, "`{{results.death.n_cases}}`", "`results.death.n_cases`")
+    assert ("planned-result-missing", "- `results.death.n_cases`: deaths, copied as bound") in (
+        _planned_said(project, "analysis"))
+
+
+def test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Planned results"): a feasibility fragment that
+    fails its schema is dropped, and the warning says nothing was emitted."""
+    from manuscript_guard.gates import check_design
+
+    _without_counts(project)
+    source = json.loads((project / "results" / "01_disproportionality.json").read_text("utf-8"))
+    fragment = project / "results" / "00_feasibility.json"
+    document = {**source, "values": {"feasibility.n_reports": {"value": 4000,
+                                                               "display": "4000"}}}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _feasibility_said(project, "design") == []
+    document["values"]["feasibility.n_reports"]["shown_as"] = "four thousand"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    assert "feasibility.n_reports" not in results.values
+    [said] = [f.message for f in check_design(project_, results, "design").findings
+              if f.code == "feasibility-not-run"]  # fmt: skip
+    assert said == ("the plan sets out an analysis, and no result says what the data can "
+                    "answer: nothing is emitted under feasibility. or quality.")
+
+
 # ------------------------------------------------- the plan's Software section
 
 
@@ -11664,6 +12088,34 @@ def test_a_record_copied_by_hand_is_noted_and_held_like_another(project: Path) -
     assert said["registration-outcome-not-registered"] == "fail"
 
 
+def test_a_fetched_record_edited_and_marked_by_hand_is_read_as_a_copy(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A record copied by hand is the copier's word, and
+    has no digest"): a fetched record edited and then marked `source: by-hand`, with a name
+    and a day, is read as a copy: G12 notes it and holds the paper to what it says, and
+    `lookup` does not write over it."""
+    from manuscript_guard.lookup import registrations as lookup
+    from manuscript_guard.registrations import answers_digest, file_name
+
+    fetched = _ctgov_record()
+    fetched = {**fetched, "answers_sha256": answers_digest(fetched)}
+    secondary = {**fetched["sections"][1], "text": "Deaths at one year"}
+    edited = {**fetched, "sections": [fetched["sections"][0], secondary]}
+    _register(project, record=edited, digest=False)
+    # The other side: edited and not marked, the record is the registry's, and lookup asks.
+    assert "registration-by-hand" not in _registration(project, "submission")
+    [planned] = lookup.plan(load_project(project)[0])
+    assert planned.why == "its record was edited"
+    path = project / "design" / "registrations" / file_name(_NCT)
+    copy = {**edited, "source": "by-hand", "copied_on": "2026-10-02", "copied_by": "A. Author"}
+    path.write_text(yaml.safe_dump(copy, sort_keys=False), encoding="utf-8")
+    # Held to what the copy says: the outcome quoted is not in it, and its own is unquoted.
+    assert _registration(project, "submission") == {
+        "registration-by-hand": "info", "registration-outcome-not-registered": "fail",
+        "registration-secondary-unquoted": "warn"}  # fmt: skip
+    [planned] = lookup.plan(load_project(project)[0])
+    assert planned.skipped == lookup.BY_HAND
+
+
 def _register_again(root: Path, **changed) -> None:
     """The registration declared anew: paper.yaml's block replaced, the rest as it was."""
     paper = root / "paper.yaml"
@@ -11783,6 +12235,49 @@ def test_the_supplement_gives_a_registration_as_the_main_text_does(project: Path
 def test_an_identifier_given_only_in_the_supplement_is_read(project: Path) -> None:
     _in_the_supplement(project, "Its comparator came from trial NCT07654321.")
     assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
+def _undeclared_said(root: Path) -> list[str]:
+    from manuscript_guard.gates.registration import check_registration
+
+    return [f.message for f in check_registration(load_project(root)[0]).findings
+            if f.code == "registration-undeclared"]  # fmt: skip
+
+
+def test_the_identifiers_a_manuscript_gives_are_one_warning_until_one_is_listed(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Which identifiers in the manuscript are this
+    study's is the author's to say"): where `paper.yaml` lists no registration, every NCT,
+    ISRCTN, EU PAS or PROSPERO number the manuscript gives is one warning; an OSF link is not
+    looked for, Markdown's HTML comments are not read, and where it lists one, the others
+    are not reported."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text + "\n\n<!-- Compare NCT07654321. -->\n", encoding="utf-8")
+    assert _undeclared_said(project) == []
+    main.write_text(text + "\n\nOther studies: NCT07654321, ISRCTN17072692, EU PAS 12345 and "
+                    "CRD42020123456; the code is at https://osf.io/abcde.\n", "utf-8")  # fmt: skip
+    assert _undeclared_said(project) == [
+        "the manuscript gives CRD42020123456, EU PAS 12345, ISRCTN17072692, NCT07654321, and "
+        "paper.yaml lists no registration"
+    ]
+    _register(project)
+    assert _undeclared_said(project) == []
+    assert "registration-undeclared" not in _registration(project, "submission")
+
+
+def test_an_identifier_in_a_latex_comment_counts_as_given(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Which identifiers in the manuscript are this
+    study's is the author's to say"): a LaTeX manuscript's `%` comments are read with the rest
+    of it, so an identifier given only in one counts as given."""
+    entry = _as_latex(project)
+    assert _undeclared_said(project) == []
+    entry.write_text(entry.read_text(encoding="utf-8").replace(
+        "\\end{document}", "% Compare NCT07654321.\n\\end{document}"), "utf-8")  # fmt: skip
+    assert _undeclared_said(project) == [
+        "the manuscript gives NCT07654321, and paper.yaml lists no registration"
+    ]
 
 
 def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
@@ -12216,6 +12711,21 @@ def test_a_variable_the_analysis_uses_with_no_entry_warns(project: Path, name: s
         f"{name} is declared in results/01_disproportionality.json and has no entry in the "
         "data dictionary"
     )
+
+
+def test_a_variable_named_in_other_capitals_is_another_name(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A name is compared as written"): `sex` in the
+    analysis and `Sex` in the dictionary are two names, and `not-in-dictionary` says so;
+    nothing suggests the near one."""
+    from manuscript_guard.gates.data_quality import check_data_quality
+
+    _dictionary_edited(project, "  - name: sex\n", "  - name: Sex\n")
+    assert _g16(project, "analysis") == [("not-in-dictionary", "warn")]
+    project_, _ = load_project(project)
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
+    assert finding.message == ("sex is declared in results/01_disproportionality.json and has "
+                               "no entry in the data dictionary")
+    assert "Sex" not in f"{finding.message} {finding.hint}"
 
 
 @pytest.mark.parametrize(
@@ -31887,6 +32397,74 @@ def test_a_measure_s_section_numbered_or_qualified_is_found(project: Path, headi
     assert _plan_asked(project) == []
 
 
+def test_a_design_s_section_is_found_by_a_word_of_any_heading(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): a plan with "Choice of comparator drug" under its Exposure has the
+    comparator, and one that answers the question under a heading of its own words has not."""
+    _paper_has(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Outcome\n" in text
+    under = "### Choice of comparator drug\n\nEvery other drug in the database.\n\n## Outcome\n"
+    plan.write_text(text.replace("## Outcome\n", under, 1), encoding="utf-8")
+    assert "comparator" not in _plan_asked(project)
+    own = "## Reports it is set against\n\nEvery other drug in the database.\n\n## Outcome\n"
+    plan.write_text(text.replace("## Outcome\n", own, 1), encoding="utf-8")
+    assert "comparator" in _plan_asked(project)
+
+
+def test_seven_designs_are_named_and_another_is_other(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): seven designs are named, and a design outside them, a cross-sectional
+    study, is no `study_type` of its own; `other` keeps the seven sections."""
+    from manuscript_guard.gates.design import REQUIRED, required_for, study_types
+
+    assert sorted(study_types()) == sorted([
+        "trial", "cohort", "case-control", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])  # fmt: skip
+    assert required_for("other") == REQUIRED
+    _paper_has(project, study_type="cross-sectional")
+    _project, report = load_project(project)
+    assert any("study_type" in f.message and "cross-sectional" in f.message
+               for f in report.failures), report.render()  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("design", "heading", "section", "found"),
+    [
+        ("trial", "## Trial monitoring", "interim analyses", True),
+        ("disproportionality", "## Measures", "measure", True),
+        ("self-controlled", "## Risk interval", "risk windows", False),
+        ("disproportionality", "## Events of interest", "case definition", False),
+        ("disproportionality", "## Definition of cases", "case definition", False),
+        ("disproportionality", "## Case-finding", "case definition", False),
+        ("disproportionality", "## Comparison", "comparator", False),
+        ("disproportionality", "## Reference database", "comparator", False),
+        ("disproportionality", "## Control group", "comparator", False),
+        ("disproportionality", "## Background population", "comparator", False),
+        ("disproportionality", "## Signal definition", "measure", False),
+        ("case-control", "## Cases/controls", "controls", True),
+        ("case-control", "## Cases/controls", "cases", False),
+        ("case-control", "## Case/control selection", "cases", False),
+        ("case-control", "## Case/control selection", "controls", False),
+    ],
+)  # fmt: skip
+def test_a_design_s_section_is_found_by_some_headings_and_not_others(
+    project: Path, design: str, heading: str, section: str, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Study designs and their plan sections"): a
+    section is found by words of its heading, so "Trial monitoring" answers interim analyses
+    and a bare "Measures" the measure, and the other headings named are not found;
+    "Cases/controls" finds controls and not cases. The 2026-11-09 triage planned a fix (F14),
+    which will change this test."""
+    _paper_has(project, study_type=design)
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 def _guideline_said(root: Path) -> list[str]:
     from manuscript_guard.gates import check_reporting
 
@@ -31926,6 +32504,31 @@ def test_the_guidelines_a_paper_declares_are_named_as_it_writes_them(project: Pa
     _paper_has(project, reporting_guideline=["Consort"])
     [said] = _guideline_said(project)
     assert said.endswith("and paper.yaml declares Consort")
+
+
+@pytest.mark.parametrize(
+    ("design", "guidelines", "said"),
+    [
+        ("cohort", ["STROBE-anything"], None),
+        ("systematic-review", ["PRISMA-P"], None),
+        ("systematic-review", ["PRISMA-Abstracts"], None),
+        ("trial", ["SPIRIT 2025"],
+         "a randomised trial is reported with CONSORT, and paper.yaml declares SPIRIT 2025"),
+        ("trial", ["CONSORT"], None),
+    ],
+)  # fmt: skip
+def test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone(
+    project: Path, design: str, guidelines: list[str], said: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings", and "Study designs and their plan sections"): G5 holds the paper's
+    guidelines to the design, not the protocol's, and a guideline counts by the start of its
+    name: "STROBE-anything" for a cohort, PRISMA-P or an abstracts checklist for PRISMA, and a
+    trial protocol that declares SPIRIT 2025 is told to declare CONSORT. The 2026-11-09
+    triage planned a fix (F14), which will change this test."""
+    _paper_has(project, study_type=design)
+    _paper_has(project, reporting_guideline=guidelines)
+    assert _guideline_said(project) == ([said] if said else [])
 
 
 # --------------------------------------------------------------------------------------

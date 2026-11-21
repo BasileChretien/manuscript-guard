@@ -407,6 +407,120 @@ def test_anything_that_stops_the_page_leaves_the_rest_to_sign(
                  "PACKAGE/custodian/deposit-ro-crate"]) == 0  # fmt: skip
 
 
+def test_the_page_reads_a_caption_a_limitation_and_a_sentence_by_their_words() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The companion page shows what the records hold,
+    and no more"): a caption is read from a Markdown legend after the binding that opens with
+    "Figure" or "Fig.", and another is not; a section is the limitations only where its title
+    says "limitation"; a sentence of the abstract is cut after a stop and a space before a
+    capital; and the digest leaves out the six files made beside the page or after it."""
+    from manuscript_guard.deposit.companion import UNDIGESTED, limitations_of, sentences
+    from manuscript_guard.gates.figure_files import _legend_after
+
+    bound = "{{figure.forest}}"
+    for legend, read in (("Figure 1. The ratio.", True), ("Fig. 1 The ratio.", True),
+                         ("Panel A. The ratio.", False),
+                         ("The ratio, by drug.", False)):  # fmt: skip
+        said = _legend_after(f"{bound}\n\n{legend}\n\nMore.\n", len(bound))
+        assert said == (legend if read else None), legend
+    text = ("# Discussion\n\n## Study limitations\n\nA.\n\n## Strengths and weaknesses\n\nB.\n"
+            "\n## Caveats\n\nC.\n")  # fmt: skip
+    assert limitations_of(text) == [("Study limitations", "A.")]
+    assert sentences("The ratio was 3.8. It rose. it fell, 2.5 times.") == [
+        "The ratio was 3.8.", "It rose. it fell, 2.5 times."]  # fmt: skip
+    assert UNDIGESTED == ("ro-crate-preview.html", "index.html", "ro-crate-metadata.json",
+                          "RELATIONS.md", "MANIFEST.yaml", "SHA256SUMS")  # fmt: skip
+
+
+def test_the_page_shows_a_figure_as_its_svg_and_dates_what_the_records_date(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The companion page shows what the records hold,
+    and no more"): a figure drawn from a run whose input the package withholds is shown, as
+    no record says what it was drawn from; the history holds nothing of a deposit and the
+    version is one more than the revision rounds; and a figure drawn only as a raster is
+    described and not shown."""
+    ready(project)
+    with_package(project, share=[], request="Apply to the custodian.")
+    assert main(["respond", str(project), "--open"]) == 0
+    round_one = project / "revision" / "round-1.yaml"
+    document = yaml.safe_load(round_one.read_text(encoding="utf-8"))
+    document["received_on"] = "2027-02-01"
+    round_one.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    package(project, "--skip-checks")
+    text = page(project)
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                       section(text, "displays"), re.DOTALL)[1]  # fmt: skip
+    assert '<img src="data:image/svg+xml;base64,' in figure
+    said = plain(section(text, "overview"))
+    assert "Version 2:" in said and "revision round 1 received" in said
+    assert "deposit" not in said.casefold().replace("deposited", "")
+    (project / "figures" / "forest.svg").unlink()
+    assert (project / "figures" / "forest.png").is_file()
+    shutil.rmtree(project / "build" / "package")
+    package(project, "--skip-checks")
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                       section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+    assert "<img" not in figure
+    assert "Not shown: the package holds no SVG of it" in plain(figure)
+
+
+def test_a_key_finding_is_linked_to_a_passage_only_where_the_words_are_the_same(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The companion page shows what the records hold,
+    and no more"): a key finding is linked to a cited sentence's passage only where the two
+    are the same words. The passages are stood for, one cited sentence in the finding's
+    words and one in other words."""
+    from manuscript_guard.deposit import companion_evidence
+    from manuscript_guard.deposit.companion import (
+        abstract_of,
+        companion_html,
+        manuscript_texts,
+        sentences,
+    )
+    from manuscript_guard.literature.passages import statement_words
+
+    ready(project)
+    loaded, results, plan = _loaded(project)
+    abstract = abstract_of(manuscript_texts(loaded).main)
+    [said] = [s for p in abstract.split("\n\n") for s in sentences(p) if "ror.point" in s]
+    other = said.replace("The reporting odds ratio was", "The ratio was")
+    assert other != said
+
+    def cited(number: int, sentence: str) -> dict:
+        return {"id": f"passage-{number}", "file": "manuscript/main.md", "line": 3,
+                "sentence": sentence, "work": f"@work{number}", "locator": "p. 3",
+                "judged_on": "2026-01-01"}  # fmt: skip
+
+    rows = [cited(1, said), cited(2, other)]
+    by_words = {statement_words(said): [rows[0]], statement_words(other): [rows[1]]}
+    monkeypatch.setattr(companion_evidence, "supporting_passages", lambda page: (rows, by_words))
+    text = section(companion_html(loaded, results, list(plan.entries), list(plan.inputs)),
+                   "evidence")  # fmt: skip
+    findings = re.search(r"<ol>(.*?)</ol>", text, re.DOTALL)[1]
+    assert findings.count("Cited: ") == 1 and 'href="#passage-1"' in findings
+    assert "#passage-2" not in findings
+
+
+def test_a_latex_float_of_two_captions_gives_its_figure_none(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The companion page shows what the records hold,
+    and no more"): a figure's caption is read from the one caption of a LaTeX float that
+    holds that figure alone; a float of two captions gives none."""
+    ready(project)
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(LATEX, project / "manuscript")
+    entry = project / "manuscript" / "main.tex"
+    one = "\\caption{The estimate and its interval.}"
+    text = entry.read_text(encoding="utf-8")
+    assert one in text
+    entry.write_text(text.replace(one, one + "\\caption{And its bounds.}"), encoding="utf-8")
+    package(project, "--skip-checks")
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                       section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+    assert "The estimate and its interval." not in figure
+    assert "And its bounds." not in figure
+
+
 def test_a_hand_edited_render_record_is_no_match_and_no_crash(project: Path) -> None:
     ready(project)
     record = project / "figures" / "forest.render.json"

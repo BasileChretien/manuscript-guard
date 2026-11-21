@@ -260,6 +260,69 @@ def test_a_sentence_can_disclose_what_is_not_cited(project: Path) -> None:
     assert _found(_check(project, submission=True)) == []
 
 
+def test_a_sentence_that_explains_or_discloses_is_found_as_words_anywhere(
+    project: Path, earlier: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that explains or discloses is looked for
+    as text, not as a sentence"): `manuscript_says: "1987"` passes wherever the word is
+    printed, and a citation in the sentence is matched as the source writes it (`[@key]`),
+    not as printed."""
+    _set(earlier, "cohort.n_reports", 4012, "4012")
+    pair = {"earlier": "cohort.n_reports", "here": "cohort.n_reports",
+            "because": "a later cut-off", "manuscript_says": "1987"}  # fmt: skip
+    _declare(project, _entry(project="../earlier", pairs=[pair]))
+    _take(project)
+    assert _found(_check(project)) == [("related-reason-not-in-text", WARN)]
+    _append(project, "The first such reports date from 1987.")
+    assert _found(_check(project)) == [("related-number-explained", INFO)]
+    cited = "[@fictionalHepaticCohort2021] is the only population-level figure available"
+    printed = "(Fictional et al., 2021) is the only population-level figure available"
+    for says, found in ((cited, ("related-number-explained", INFO)),
+                        (printed, ("related-reason-not-in-text", WARN))):  # fmt: skip
+        _declare(project, _entry(project="../earlier", pairs=[{**pair, "manuscript_says": says}]))
+        assert _found(_check(project)) == [found], says
+
+
+def test_a_disclosing_sentence_is_found_as_words_anywhere(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that explains or discloses is looked for
+    as text, not as a sentence"): `disclosed_by: "abstract"` passes wherever the word is
+    printed."""
+    entry = _entry(shares=["data", "authors"], files_unavailable="lost", disclosed_by="abstract")
+    _declare(project, entry)
+    assert _found(_check(project)) == [("related-undisclosed", WARN)]
+    _append(project, "The abstract is short.")
+    assert _found(_check(project, submission=True)) == []
+
+
+def test_a_value_a_yaml_merge_key_brings_in_is_read_as_yaml_reads_it(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence that explains or discloses is looked for
+    as text, not as a sentence"): a value brought into an entry by a YAML merge key
+    (`<<: *common`) is read as YAML reads it, `1.50` as `1.5`, not as typed."""
+    quote = "an odds ratio of 1.50 (95% CI 1.50 to 1.90) in the abstract"
+    _source(project, quote)
+    (project / "literature" / "related.yaml").write_bytes(
+        b"schema: manuscript-guard/related/1\n"
+        b"outputs:\n"
+        b"  - id: abstract\n"
+        b"    kind: abstract\n"
+        b"    title: An abstract\n"
+        b"    shares: [data]\n"
+        b"    values:\n"
+        b"      - &common\n"
+        b"        here: ror.point\n"
+        b"        value: 1.50\n"
+        b"        source_file: sources/abstract2025.txt\n"
+        b"        quote: " + quote.encode() + b"\n"
+        b"      - <<: *common\n"
+        b"        here: ror.ci_low\n"
+    )
+    loaded, _ = load_related(load_project(project)[0])
+    (output,) = loaded.outputs
+    # The other side: the value typed in the entry itself is read as typed.
+    assert [(v.here, v.value) for v in output.values] == [("ror.point", "1.50"),
+                                                          ("ror.ci_low", "1.5")]  # fmt: skip
+
+
 def test_data_shared_without_authors_needs_no_disclosure(project: Path) -> None:
     _declare(project, _entry(citekey="someone2024", shares=["data"]))
     assert _found(_check(project, submission=True)) == []
@@ -606,6 +669,110 @@ def test_a_plan_with_an_appendix_is_matched_without_its_title() -> None:
     assert [found[0] for found in sections_compared(then, now)] == ["Exposure"]
 
 
+def _compared(then: str, now: str) -> list[str]:
+    return [found[0] for found in sections_compared(f"# Plan\n\n{then}", f"# Plan\n\n{now}")]
+
+
+def test_a_plan_s_section_is_compared_as_words_under_one_heading() -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's methods are compared as words
+    and cards, never as meaning"): a section reworded with nothing changed differs, and one
+    that keeps its words under another heading is compared with nothing; a word in emphasis by
+    underscores is read with them; a list marked `*` there and `-` here differs, and a
+    heading given an attribute is the same heading."""
+    assert _compared("## Outcome\n\nA serious event.\n",
+                     "## Outcome\n\nAn event that was serious.\n") == ["Outcome"]  # fmt: skip
+    assert _compared("## Outcome\n\nAn event.\n", "## Endpoint\n\nA serious event.\n") == []
+    assert _compared("## Outcome\n\nA _case_ of injury.\n",
+                     "## Outcome\n\nA case of injury.\n") == ["Outcome"]  # fmt: skip
+    # The other side of the underscores: emphasis by asterisks is read without them.
+    assert _compared("## Outcome\n\nA *case* of injury.\n",
+                     "## Outcome\n\nA case of injury.\n") == []  # fmt: skip
+    assert _compared("## Outcome\n\n* A.\n* B.\n", "## Outcome\n\n- A.\n- B.\n") == ["Outcome"]
+    assert _compared("## Outcome {#out}\n\nAn event.\n",
+                     "## Outcome\n\nA serious event.\n") == ["Outcome"]  # fmt: skip
+
+
+def test_a_heading_s_number_of_one_or_two_digits_is_dropped() -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's methods are compared as words
+    and cards, never as meaning"): a heading that opens with a number of one or two digits
+    loses it, so `12 months` and `24 months` are one heading: in one plan both stand twice,
+    and across the two they are compared as one section."""
+    assert folded_title("12 months") == folded_title("24 months")
+    assert _compared("## 12 months\n\nA.\n", "## 24 months\n\nB.\n") == ["24 months"]
+    both = "# Plan\n\n## 12 months\n\nA.\n\n## 24 months\n\nB.\n"
+    assert ambiguous_headings(both, both) == ["12 months"]
+    assert sections_compared(both, both.replace("B.", "C.")) == []
+    # The other side: a number of three digits is a word of the heading.
+    assert folded_title("120 months") != folded_title("240 months")
+    assert _compared("## 120 months\n\nA.\n", "## 240 months\n\nB.\n") == []
+
+
+def test_a_plan_with_a_second_top_level_heading_keeps_its_title_as_a_section() -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's methods are compared as words
+    and cards, never as meaning"): with an appendix in both plans, the words under the title
+    (a version, a date) are compared, and a title the Deviations rule matches ("amendment 2")
+    leaves the whole plan out."""
+    then = "# Analysis plan\n\nVersion 1.\n\n## Exposure\n\nA.\n\n# Appendix\n\nx\n"
+    assert [found[0] for found in sections_compared(then, then.replace("1.", "2."))] == [
+        "Analysis plan"]  # fmt: skip
+    # The other side: with no appendix, the title encloses the plan and is no section.
+    alone = "# Analysis plan\n\nVersion 1.\n\n## Exposure\n\nA.\n"
+    assert sections_compared(alone, alone.replace("1.", "2.")) == []
+    amended = then.replace("# Analysis plan", "# Analysis plan, amendment 2")
+    assert sections_compared(amended, amended.replace("A.", "B.")) == []
+    assert [found[0] for found in sections_compared(then, then.replace("A.", "B."))] == [
+        "Exposure"]  # fmt: skip
+
+
+def test_what_g8_does_not_compare_of_an_earlier_output_s_methods(
+    project: Path, earlier: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's methods are compared as words
+    and cards, never as meaning"): two Methods sections of the manuscripts are not compared,
+    tables are not compared, a count printed only in a table is compared with nothing, a
+    model renamed since is compared with nothing, and its engine's class is not compared."""
+    methods = earlier / "manuscript" / "main.md"
+    text = methods.read_text(encoding="utf-8")
+    assert "# Methods\n\n" in text
+    methods.write_bytes(text.replace("# Methods\n\n", "# Methods\n\nAll of it was done "
+                                     "otherwise. ", 1).encode("utf-8"))  # fmt: skip
+    path = earlier / FRAGMENT
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["tables"]["two_by_two"]["rows"][0][1] = "78"
+    document["models"]["adjusted"]["engine"]["class"] = "MixedLM"
+    renamed = {**document["models"]["adjusted"], "engine": {
+        **document["models"]["adjusted"]["engine"], "family": "Poisson"}}  # fmt: skip
+    document["models"]["adjusted_then"] = renamed
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project, submission=True)) == []
+    # The other side: the same family changed under the model's own key is said.
+    document["models"]["adjusted"] = renamed
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "model adjusted: its family is Poisson/Logit there and Binomial/Logit here" in (
+        finding.message)
+
+
+def test_a_reason_for_a_model_explains_a_later_change_to_it(project: Path, earlier: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's methods are compared as words
+    and cards, never as meaning"): a reason under `methods:` answers for its model, not for
+    one difference, so a later change to a model already explained is explained by the old
+    reason."""
+    _card(earlier, lambda card: card["engine"].update(family="Poisson"))
+    why = [{"model": "adjusted", "because": "counts were modelled then"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+    _card(earlier, lambda card: card["engine"].update(link="Probit"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert (finding.code, finding.severity) == ("related-method-explained", INFO)
+    assert "Poisson/Probit there" in finding.message
+
+
 def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys) -> None:
     _card(earlier, lambda card: card["engine"].update(link="Probit"))
     _declare(project, _entry(project="../earlier"))
@@ -786,6 +953,79 @@ def test_what_reads_the_same_is_not_said(project: Path, earlier: Path) -> None:
         ("label: Mild", "label: mild"),
     )
     assert _found(_check(project)) == []
+
+
+def test_a_dictionary_is_compared_by_variable_name_and_what_defines_and_codes_one(
+    project: Path, earlier: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's data dictionary is compared by
+    variable name, and by what defines and codes a variable"): a variable renamed, or whose
+    name changed case, is two variables compared with nothing; its label, question, missing
+    codes, condition, required, form, timing, recorder, source, dataset, instrument, item,
+    pattern and reporting items are not compared, nor the dictionary's forms, instruments,
+    datasets and rules; a list of codes is compared by its codes, never by its name."""
+    identifier = ("  - name: received\n", "  - name: report_id\n    label: Report\n"
+                  "    definition: The report's number.\n    type: identifier\n"
+                  "  - name: received\n")  # fmt: skip
+    _dictionaries(
+        project,
+        earlier,
+        identifier,
+        ("code_lists:\n  yes_no:", "datasets:\n  - {id: reports, label: Reports}\nforms:\n"
+         "  - {id: base, label: Baseline}\ninstruments:\n  - {id: scale, name: A scale, "
+         "version: '1', citation: x2020, licence: free}\ncode_lists:\n  binary_codes:"),
+        ("    type: binary\n    values: [{code: 1, label: \"Yes\"}, {code: 0, label: \"No\"}]",
+         "    type: binary\n    code_list: binary_codes"),
+        ("    label: Sex\n    definition: Sex as reported.\n",
+         "    label: Sex recorded\n    question: What is the sex?\n"
+         "    definition: Sex as reported.\n    missing: [{code: U, label: Unknown}]\n"
+         "    required: true\n    form: base\n    timing: at the report\n"
+         "    recorded_by: the reporter\n    source: the report\n    dataset: reports\n"
+         "    reporting: {STROBE: ['6a']}\n"),
+        ("    type: ordinal\n", "    type: ordinal\n    applies_if: {variable: hepatic, in: [1]}\n"
+         "    instrument: scale\n    item: '3'\n"),
+        ("    type: identifier\n", "    type: identifier\n    pattern: '^[0-9]+$'\n"),
+        ("  - name: age\n", "  - name: age_years\n"),
+        ("max: 110", "max: 120"),
+        ("  - name: start\n    label: Start\n    definition: The date the drug was started.",
+         "  - name: Start\n    label: Start\n    definition: The day the drug was begun."),
+    )
+    (earlier / "design" / "data_dictionary.yaml").write_bytes(
+        (earlier / "design" / "data_dictionary.yaml").read_bytes()
+        + b"rules:\n  - {id: one_row, says: One row per report, unique: [report_id]}\n")
+    _dictionary(project, identifier,
+                ("    type: binary\n    values: [{code: 1, label: \"Yes\"}, {code: 0, "
+                 "label: \"No\"}]", "    type: binary\n    code_list: yes_no"))  # fmt: skip
+    _take(project)
+    assert _found(_check(project, submission=True)) == []
+
+
+def test_a_unit_is_compared_as_written(project: Path, earlier: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's data dictionary is compared by
+    variable name, and by what defines and codes a variable"): `mg/dL` and `mg/dl` differ."""
+    _dictionaries(project, earlier, ("unit: years", "unit: mg/dL"))
+    _dictionary(project, ("unit: years", "unit: mg/dl"))
+    (finding,) = _check(project).findings
+    assert finding.message.endswith("variable age: its unit is mg/dL there and mg/dl here")
+    _dictionary(project, ("unit: years", "unit: mg/dL"))
+    assert _found(_check(project)) == []
+
+
+def test_a_reason_for_a_variable_explains_a_later_change_to_it(
+    project: Path, earlier: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An earlier output's data dictionary is compared by
+    variable name, and by what defines and codes a variable"): a reason under `methods:`
+    answers for the variable, not for one part of it, so a later change to a variable already
+    explained is explained by the old reason."""
+    why = [{"variable": "age", "because": "months were recorded then"}]
+    _dictionaries(project, earlier, ("unit: years", "unit: months"), methods=why)
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+    _dictionary(earlier, ("unit: years", "unit: months"), ("max: 110", "max: 1320"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert (finding.code, finding.severity) == ("related-method-explained", INFO)
+    assert "its range is 0 to 1320 there" in finding.message
 
 
 def test_a_time_bound_quoted_or_written_with_another_zone_is_the_same_bound(
@@ -1171,6 +1411,33 @@ def test_a_printed_value_is_read_as_the_number_it_prints(
 def test_a_printed_value_that_is_no_number_is_text() -> None:
     assert _printed("2.3 (1.9 to 2.8)") is None and _printed("1,23") is None
     assert _printed("-") is None and _printed("%") is None and _printed(".") is None
+
+
+def test_a_printed_value_is_compared_as_printed_and_paired_by_the_author(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a comparison read from a PDF cannot see"): a
+    printed value that is not one number is compared as text, a percentage there against a
+    proportion here (`12.5%` and `0.125`) is reported as a difference, and a pair of two
+    different quantities that happen to be equal passes."""
+    interval = Value(key="k", value=2.3, display="2.3 (1.9 to 2.8)", origin="results")
+    assert _same_printed("2.3 (1.9 to 2.8)", interval) is True
+    assert _same_printed("2.3 (1.9 to 2.9)", interval) is False
+    quote = "Of 4,012 reports, 12.5% were serious and 77 were fatal."
+    source = _source(project, f"Results. {quote} More text.")
+    from manuscript_guard.emit import write_digest
+
+    _set(project, "case.pct_serious", 0.125, "0.125")
+    write_digest(project / FRAGMENT)
+    share = {"here": "case.pct_serious", "value": "12.5%", "source_file": source, "quote": quote}
+    _declare(project, _entry(values=[share]))
+    (finding,) = _check(project).findings
+    assert finding.code == "related-number-differs"
+    assert "case.pct_serious is 12.5% there and 0.125 here" in finding.message
+    # The 77 there are deaths and the 77 here hepatic injuries: one number, paired, passes.
+    deaths = {**share, "here": "case.n_cases", "value": "77"}
+    _declare(project, _entry(values=[deaths]))
+    assert _found(_check(project)) == []
 
 
 # ---------------------------------------------------------------------- the record

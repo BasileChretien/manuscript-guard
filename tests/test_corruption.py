@@ -32674,6 +32674,96 @@ def test_a_number_typed_against_its_word_is_caught(project: Path) -> None:
     ]
 
 
+def test_a_number_typed_against_its_word_beside_a_lowered_index_is_caught(
+    project: Path,
+) -> None:
+    """A Word table's note converted to Markdown writes a symbol's index lowered,
+    "u~0school~", which is no space left out; "12patients" and "p=0.05and" in the same
+    paragraph are, each caught."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " The variance u~0school~ and k^12rep^ were small.")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == []
+    edited = text.replace(old, old + " The variance u~0school~ held in 12patients, p=0.05and "
+                          "more.")  # fmt: skip
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, message) for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        ("notation-space-missing",
+         "a number and a word run together 2 times: '12patients', '0.05and'"),
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("notes", [
+    " It was seen[^n1];12patients[^n2] later.\n\n[^n1]: One note.\n\n[^n2]: Another note.\n",
+    " It was seen^[Ibid.];12patients^[See the protocol for details.] later.",
+], ids=["anchors", "inline notes"])  # fmt: skip
+def test_a_number_typed_against_its_word_between_two_notes_is_caught(
+    project: Path, notes: str
+) -> None:
+    """Two notes with no blank between them raise nothing: a footnote's anchor is blanked
+    before notation reads the text, and an inline note's caret stands before a bracket, so
+    neither opens a raised piece, and "12patients" between them is caught (rounds 1 and 2 of
+    the review of #719)."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    main_md(project).write_text(text.replace(old, old + notes), encoding="utf-8")
+    assert [(code, message) for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        ("notation-space-missing", "a number and a word run together once: '12patients'"),
+    ]  # fmt: skip
+
+
+def test_a_number_typed_against_its_word_beside_a_latex_name_is_caught(project: Path) -> None:
+    """A LaTeX data table names its series with underscores, `RATE\\_12mth`: a name from
+    code, no space left out. "12patients" after the table is caught."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    table = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+             "\\begin{tabular}{ll}\nRATE\\_12mth & 0,532 \\\\\nGILT\\_5yrs\\_yld & 0,366 \\\\\n"
+             "\\end{tabular}\n\n")  # fmt: skip
+    (folder / "main.tex").write_text(table + "It held.\n\\end{document}\n", encoding="utf-8")
+    assert notation_findings(project) == []
+    (folder / "main.tex").write_text(table + "It held in 12patients.\n\\end{document}\n",
+                                     encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_number_typed_against_its_word_in_a_pdf_is_caught(tmp_path: Path, capsys) -> None:
+    """In a PDF's text pdftotext sets an index on the line, "tn+1", which is no word typed
+    against a signed number there (Basile, 2026-11-21); "12patients" in the same PDF is a
+    space left out, caught. The same words in Markdown are both read."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    def spaces(paper: Path) -> list[str]:
+        main(["audit", str(paper), "--json"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return [f["message"] for f in found if f["code"] == "notation-space-missing"]
+
+    lines = ["Methods", "Each count in tn was read against tn+1 later.", "Results",
+             "The counts held."]  # fmt: skip
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert spaces(paper) == []
+    lines[3] = "The counts held in 12patients."
+    paper.write_bytes(typeset(lines, columns=1))
+    assert spaces(paper) == ["a number and a word run together once: '12patients'"]
+    typed = tmp_path / "paper.md"
+    typed.write_text("# Methods\n\n" + lines[1] + "\n\n# Results\n\n" + lines[3] + "\n",
+                     encoding="utf-8")  # fmt: skip
+    assert spaces(typed) == ["a number and a word run together 2 times: 'tn+1', '12patients'"]
+
+
 def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(
     project: Path,
 ) -> None:

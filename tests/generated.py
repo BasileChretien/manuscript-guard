@@ -8259,16 +8259,30 @@ NOTATED = (
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
     # A space left out around a number, and lookalikes (`RUN_ON`, `NOT_RUN_ON`).
     "0.41points", "to+0.77", "2ndyear", "p53mutant", "30min",
+    # A number inside a piece raised or lowered and inside a name joined by underscores, and
+    # a tilde escaped, which lowers nothing.
+    "u~0school~", "k^12rep^", "12mth\\_rate", "\\~12cells\\~",
+    # An exponent and an index as pdftotext sets them on the line.
+    "40 cm\N{MINUS SIGN}3", "tn+1",
 )  # fmt: skip
 
 #: A space left out around a number, each counted once by `notation-space-missing`; and what
 #: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
 #: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
-#: scientific notation, a letter and a sign.
+#: scientific notation, a letter and a sign, a number inside a piece raised or lowered as
+#: pandoc writes one and inside a name joined by underscores. A tilde escaped lowers
+#: nothing, nor do a strikeout's two; two footnotes' anchors raise nothing (drawn with no
+#: definitions: the mask blanks an anchor whether or not one defines it), nor do two inline
+#: notes, which pandoc reads as notes (round 2 of #719).
 RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
-          "5mins", "rose to+0.5.", "to+{{results.high}}")  # fmt: skip
+          "5mins", "rose to+0.5.", "to+{{results.high}}", "tn+1", "\\~12cells\\~",
+          "~~3cells~~", "seen[^1];4cells[^2]", "seen^[Ibid.];6cells^[See it.]")  # fmt: skip
 NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
-              "5mg", "x+1")  # fmt: skip
+              "5mg", "x+1", "u~0school~", "k^12rep^", "12mth\\_rate",
+              "12mth\\_\\_rate")  # fmt: skip
+#: Of `RUN_ON`, the words typed against a signed number, which text read from a PDF does not
+#: count: pdftotext sets an exponent or an index on the line (Basile, 2026-11-21).
+SIGNED_RUN_ON = ("to+0.77", "rose to+0.5.", "to+{{results.high}}", "tn+1")
 
 
 @st.composite
@@ -18440,6 +18454,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "notation of a PDF's text": texts(NOTATED),
     "notation edits": st.one_of(
         texts(NOTATED), notation_edited().flatmap(lambda drawn: st.sampled_from(drawn)).map(
             lambda pair: pair[0])),

@@ -7940,6 +7940,24 @@ def test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is(
     assert report.counts["notation_units_closed"] == 2, drawn
 
 
+from generated import SIGNED_RUN_ON  # noqa: E402
+
+
+@holds(60, run_on_numbers())
+def test_a_word_against_a_signed_number_is_not_counted_in_a_pdf_s_text(drawn: str) -> None:
+    """The same manuscript read from a PDF: pdftotext sets an exponent or an index on the
+    line, so a word typed against a signed number is not counted there (Basile, 2026-11-21),
+    and every other space left out is, once; in another file of the same reading, all are."""
+    from manuscript_guard.gates.notation import judge_notation
+    from manuscript_guard.gates.vocabulary import Passage
+
+    pdf, typed = (_file(at, Path(name), drawn, [], False)
+                  for at, name in enumerate(("main.md", "supplement.md")))  # fmt: skip
+    passages = [Passage(read.path, read.text, read.printed, read.line_of) for read in (pdf, typed)]
+    report = judge_notation(passages, pdf=frozenset({pdf.path}))
+    assert report.counts["notation_spaces_missing"] == 2 * len(RUN_ON) - len(SIGNED_RUN_ON), drawn
+
+
 def _a_unit_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import notation
 
@@ -7959,6 +7977,42 @@ def _a_word_against_a_signed_number_is_no_space_left_out(patch: pytest.MonkeyPat
     from manuscript_guard.gates import notation
 
     patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile("(?!)"))
+
+
+def _a_pdf_s_text_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    real = notation._read
+    patch.setattr(notation, "_read", lambda passages, pdf=(): real(passages))
+
+
+def _a_raised_or_lowered_piece_is_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_RAISED_OR_LOWERED", re.compile("(?!)"))
+
+
+def _any_tildes_lower_a_piece(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_RAISED_OR_LOWERED", re.compile(r"~[^~\s]+~|\^[^\^\s]+\^"))
+
+
+def _an_inline_note_raises_a_piece(patch: pytest.MonkeyPatch) -> None:
+    """As at 9866fcc: an inline note's caret, `^[Ibid.]`, opened a raised piece that ran to
+    the next note's (round 2 of the review of #719)."""
+    from manuscript_guard.gates import notation
+
+    pattern = notation._RAISED_OR_LOWERED.pattern
+    assert pattern.count(r"\^(?![\^\[])") == 1
+    patch.setattr(notation, "_RAISED_OR_LOWERED",
+                  re.compile(pattern.replace(r"\^(?![\^\[])", r"\^(?!\^)")))  # fmt: skip
+
+
+def _a_name_joined_by_underscores_is_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names
+
+    patch.setattr(code_names, "joined_names", lambda text: iter(()))
 
 
 def _hexadecimal_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
@@ -8056,8 +8110,8 @@ def _a_sign_spaced_on_one_side_is_left(patch: pytest.MonkeyPatch) -> None:
 
     real = notation._read
 
-    def read(passages):
-        found = real(passages)
+    def read(passages, pdf=()):
+        found = real(passages, pdf)
         found.signs.forms.pop("lopsided", None)
         return found
 
@@ -28540,6 +28594,26 @@ BROKEN = {
     ),
     "a number in hexadecimal is a space left out": (
         _hexadecimal_is_a_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a PDF's text is read for a word against a signed number": (
+        _a_pdf_s_text_is_read_as_typed,
+        test_a_word_against_a_signed_number_is_not_counted_in_a_pdf_s_text,
+    ),
+    "a number inside a piece raised or lowered is a space left out": (
+        _a_raised_or_lowered_piece_is_prose,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "an escaped tilde or a strikeout's lowers a piece": (
+        _any_tildes_lower_a_piece,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "an inline note's caret raises a piece": (
+        _an_inline_note_raises_a_piece,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a number inside a name joined by underscores is a space left out": (
+        _a_name_joined_by_underscores_is_prose,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "the notation's edits keep the form used least": (

@@ -1543,6 +1543,28 @@ def _notation() -> Reading:
     return notation
 
 
+@reading("notation of a PDF's text")
+def _notation_of_a_pdf() -> Reading:
+    """The notation of a file the audit staged from a PDF, whose exponents and indices
+    pdftotext set on the line (`judge_notation`'s `pdf`)."""
+    import inspect
+
+    from manuscript_guard.gates.notation import judge_notation
+    from manuscript_guard.gates.vocabulary import Passage
+
+    if "pdf" not in inspect.signature(judge_notation).parameters:
+        raise ImportError("judge_notation reads no PDF's text",
+                          name="manuscript_guard.gates.notation")  # fmt: skip
+
+    def notation(text: str) -> dict[str, Any]:
+        file = _file(text)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        return _told(judge_notation([passage], pdf=frozenset({file.path})))
+
+    _file("")
+    return notation
+
+
 def _corrected(found: list) -> list[dict[str, Any]]:
     """Corrections as the two sides compare them: what each corrects, where, and how."""
     return [{"codes": list(one.codes), "line": one.line, "offset": one.offset,

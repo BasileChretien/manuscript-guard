@@ -542,29 +542,60 @@ def test_nothing_written_keeps_a_width_or_a_rule_as_long_as_the_line() -> None:
 
 
 @needs_pandoc
-def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote() -> None:
-    """A rule is written as raw Markdown, a line of hyphens (`from_word._unpadded`), and read
-    back it is what pandoc's own rule was: apart from the paragraphs about it, which a table
-    of one column would hold if no blank line stood between them, and apart from a plain
-    paragraph before it, which pandoc writes on the line straight above raw Markdown, where
-    the hyphens underlined it as a heading (round 1 of #732)."""
+def _para(word: str) -> dict:
+    return {"t": "Para", "c": [{"t": "Str", "c": word}]}
+
+
+_RULE = {"t": "HorizontalRule"}
+#: Where a rule stands, as Word's blocks put one: between paragraphs, a heading after the
+#: second; after a plain paragraph; after another rule; after raw HTML; in a list's item; in
+#: a table's cell. pandoc writes a plain paragraph and raw Markdown each with no blank line
+#: before raw Markdown, and the hyphens then underlined them as a heading (rounds 1 and 2 of
+#: #732).
+_RULES_STAND = {
+    "between paragraphs": [_RULE, _para("a"), _para("b"), _RULE,
+                           {"t": "Header", "c": [1, ["", [], []], [{"t": "Str", "c": "H"}]]}],
+    "after a plain paragraph": [_para("a"), *_plain("x"), _RULE, _para("y")],
+    "after a rule": [_para("a"), _RULE, _RULE, _para("b"), _RULE, _RULE],
+    "after raw HTML": [{"t": "RawBlock", "c": ["html", "<div>x</div>"]}, _RULE, _para("b")],
+    "in a list's item": [{"t": "BulletList", "c": [[*_plain("x"), _RULE], _plain("y")]}],
+    "in a table's cell": [_table([], [[_ATTR, [_cell([*_plain("x"), _RULE]), _cell(_plain("2"))]]],
+                                 [], columns=2), _para("b")],
+}  # fmt: skip
+
+
+@needs_pandoc
+@pytest.mark.parametrize("where", list(_RULES_STAND))
+def test_a_rule_written_short_reads_back_as_the_rule_pandoc_wrote(where: str) -> None:
+    """A rule is written as raw Markdown, a line of hyphens (`from_word._unpadded`), and the
+    Markdown reads back as pandoc's own did, wherever the rule stands (`_RULES_STAND`): the
+    same blocks, a table's widths aside, which are left to its cells now."""
     import subprocess
 
-    def pandoc(text: str) -> dict:
+    def read(text: str) -> list:
         done = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True,
                               input=text.encode("utf-8"), capture_output=True, timeout=60)
-        return json.loads(done.stdout)  # fmt: skip
+        return _widths_aside(json.loads(done.stdout)["blocks"])  # fmt: skip
 
-    def para(word: str) -> dict:
-        return {"t": "Para", "c": [{"t": "Str", "c": word}]}
-
-    rule = {"t": "HorizontalRule"}
-    blocks = [rule, para("a"), para("b"), *_plain("x"), rule, para("y"), rule]
-    tree = {"pandoc-api-version": pandoc("")["pandoc-api-version"]}
+    blocks = _RULES_STAND[where]
+    empty = subprocess.run(["pandoc", "-f", "markdown", "-t", "json"], check=True, input=b"",
+                           capture_output=True, timeout=60)  # fmt: skip
+    tree = {"pandoc-api-version": json.loads(empty.stdout)["pandoc-api-version"]}
     written = from_word._write(tree, blocks, Path("paper.docx"))
-    read = [block["t"] for block in pandoc(written)["blocks"]]
-    assert read == ["HorizontalRule", "Para", "Para", "Para", "HorizontalRule", "Para",
-                    "HorizontalRule"], written  # fmt: skip
+    document = json.dumps({**tree, "meta": {}, "blocks": blocks})
+    pandoc_s = from_word._pandoc(["-f", "json", *from_word.WRITER], document, Path("paper.docx"))
+    assert read(written) == read(pandoc_s), written
+
+
+def _widths_aside(node: object) -> object:
+    if isinstance(node, list):
+        return [_widths_aside(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    copied = {key: _widths_aside(value) for key, value in node.items()}
+    if copied.get("t") == "Table":
+        copied["c"][2] = [[spec[0], {"t": "ColWidthDefault"}] for spec in copied["c"][2]]
+    return copied
 
 
 def test_a_second_header_row_becomes_the_first_of_the_body() -> None:

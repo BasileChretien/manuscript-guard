@@ -113,14 +113,16 @@ def unreadable_said(path: Path) -> str | None:
 
 
 def set_aside(papers: list[Path], found: dict[Path, Path],
-              named: list[Path]) -> dict[Path, Notice]:  # fmt: skip
+              named: list[Path]) -> dict[Path, tuple[str, str]]:  # fmt: skip
     """Each Markdown or text file of a folder given that stands in the folder of a LaTeX
-    paper among `papers`, or in one under it, with the note that names it under "Passed
-    over": it is not read as a paper. An arXiv bundle keeps its data and its readme as text
-    beside the source, and the robustness sweep of 2026-11-21 found a 908 KB data transcript
-    audited as a paper, 141,923 numbers classified in most of a 120 s budget (Basile,
-    2026-11-22). `found` gives each file found in a folder the innermost folder given that
-    holds it, and one also in `named`, given on its own, is read. A LaTeX paper is a `.tex`
+    paper among `papers`, or in one under it, which is not read as a paper, with what the
+    note that names it under "Passed over" says and the file it is about, its subject: the
+    caller makes the `Notice` where it adds it (`tests/test_finding_keys_source.py`). An
+    arXiv bundle keeps its data and its readme as text beside the source, and the robustness
+    sweep of 2026-11-21 found a 908 KB data transcript audited as a paper, 141,923 numbers
+    classified in most of a 120 s budget (Basile, 2026-11-22). `found` gives each file found
+    in a folder the innermost folder given that holds it, and one also in `named`, given on
+    its own, is read. A LaTeX paper is a `.tex`
     with `\\documentclass` (`_sets_aside`), and sets aside only what a folder given that holds
     it holds: `audit main.tex supplement/` reads the supplement's Markdown (round 1 of #753)."""
     homes: dict[str, Path] = {}
@@ -128,15 +130,15 @@ def set_aside(papers: list[Path], found: dict[Path, Path],
         if paper.suffix.lower() == ".tex" and _sets_aside(paper):
             homes.setdefault(_absolute(paper.parent), paper)
     kept = {_absolute(path) for path in named}
-    aside: dict[Path, Notice] = {}
+    aside: dict[Path, tuple[str, str]] = {}
     for path, given in found.items():
         if path.suffix.lower() not in TEXT_SUFFIXES or _absolute(path) in kept:
             continue
         home = _home(path, given, homes)
         if home is not None:
-            aside[path] = Notice(f"{path.as_posix()}: it is in the folder of the LaTeX paper "
-                                 f"{_shown(home, given)}, so it was not read as a paper; name "
-                                 "it to audit it", _shown(path, given))  # fmt: skip
+            aside[path] = (f"{path.as_posix()}: it is in the folder of the LaTeX paper "
+                           f"{_shown(home, given)}, so it was not read as a paper; name it to "
+                           "audit it", _shown(path, given))  # fmt: skip
     return aside
 
 

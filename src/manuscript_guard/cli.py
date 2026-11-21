@@ -2881,7 +2881,8 @@ def _audit(args: argparse.Namespace, package) -> int:
                    design=args.design, cited=args.cited is not None,
                    answers=Answers(args.no_abstract, args.no_results,
                                    tuple(args.results)))  # fmt: skip
-    report.passed_over += [*aside.values(), *pdfs_said]
+    report.passed_over += [Notice(said, subject) for said, subject in aside.values()]
+    report.passed_over += pdfs_said
     report.package = package
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",

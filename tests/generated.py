@@ -8147,14 +8147,16 @@ def pdf_first_pages(draw: st.DrawFn) -> list[tuple[str, bool]]:
 
 #: What a PDF fetched for `PDF_WORK` may show of it, and how `matching.judged` keeps it: by
 #: its DOI, by its title, or not at all (None). The DOI printed, broken over a line, with a
-#: word `-layout` set against it, on the second page only, in the metadata alone, and there
-#: beside another; the title over lines, hyphenated at a break, with a footnote's mark, and
-#: under a reference on the second page that gives another DOI. Not kept: a longer DOI and a
-#: supplement's, each over the title; another DOI in the metadata over the work's printed;
+#: word `-layout` set against it, beside another on the first page, on the second page
+#: only, in the metadata alone, and there beside another; the title over lines, hyphenated at
+#: a break, with a footnote's mark, and over a reference on the second page that gives
+#: another DOI. Not kept: a longer DOI and a supplement's, each over the title; the title
+#: with another DOI on the first page; another DOI in the metadata over the work's printed;
 #: the title running on in a sentence, with a word after it, with three digits after it, and
 #: below the lines a title is looked for in.
 PDF_EVIDENCE = {
     "doi": "doi", "doi broken": "doi", "doi glued": "doi", "doi on page two": "doi",
+    "doi beside another on page one": "doi", "title beside another on page one": None,
     "doi in metadata": "doi", "doi beside another in metadata": "doi", "title": "title",
     "title hyphenated": "title", "title footnoted": "title", "reference on page two": "title",
     "longer doi": None, "supplement doi": None, "another doi in metadata": None,
@@ -8238,6 +8240,10 @@ def pdf_evidence(draw: st.DrawFn) -> list[tuple[str, str, str | None]]:
             second.insert(draw(st.integers(0, len(second))), link)
         elif kind == "reference on page two":
             second.append(f"1. Other A. Another work. {_pdf_link(draw, PDF_OTHER_DOI)}")
+        if kind == "doi beside another on page one":
+            shown.insert(draw(st.integers(0, len(shown))), link)
+        if kind.endswith("beside another on page one"):
+            shown.insert(draw(st.integers(0, len(shown))), _pdf_link(draw, PDF_OTHER_DOI))
         text = "\n".join(shown) + "\n\f" + "\n".join(second) + "\n\f"
         made.append(("%PDF-1.4\n" + meta, text, PDF_EVIDENCE[kind]))
     return made

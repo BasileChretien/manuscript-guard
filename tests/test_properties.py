@@ -4899,11 +4899,12 @@ def test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them(
     drawn: list[tuple[str, str, str | None]],
 ) -> None:
     """A PDF fetched for a work is kept by the work's DOI, printed however a page sets it,
-    broken over a line or run into a word, on its second page or in its metadata alone; or
-    by the work's title, making up whole lines near the top of a page, a footnote's mark
-    after it. Not by a DOI the work's begins, a supplement's, nor where its metadata names
-    another and not the work's; nor by the title in a sentence, with more after it, or
-    below the lines a title is looked for in. A reference's DOI on the second page refuses
+    broken over a line or run into a word, beside another on its first page, on its second
+    page or in its metadata alone; or by the work's title, making up whole lines near the
+    top of a page, a footnote's mark after it. Not by a DOI the work's begins, a
+    supplement's, nor where its metadata names another and not the work's; nor by the title
+    beside another DOI on the first page, in a sentence, with more after it, or below the
+    lines a title is looked for in. A reference's DOI on the second page refuses
     nothing (`literature/matching.py`, round 1 of #565)."""
     from manuscript_guard.literature.matching import judged
 
@@ -4948,6 +4949,22 @@ def _a_pdf_s_metadata_names_no_doi(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.literature import matching
 
     patch.setattr(matching, "metadata_dois", lambda raw: set())
+
+
+def _another_doi_on_page_one_refuses_the_work_s_beside_it(patch: pytest.MonkeyPatch) -> None:
+    """Any other DOI on the first page refuses the PDF, the work's own printed beside it."""
+    from manuscript_guard.literature import matching
+
+    real = matching.judged
+
+    def judged(raw: bytes, text: str | None, doi: str | None, title: str | None):
+        first = (text or "").split("\f")[0]
+        if any(not matching._own(one, doi) and not (doi and doi.startswith(one))
+               for one in matching._on_the_page(first)):  # fmt: skip
+            return matching.Shown(None, "its first page gives another DOI")
+        return real(raw, text, doi, title)
+
+    patch.setattr(matching, "judged", judged)
 
 
 # ------------------------------------------------------------- the vault a command names
@@ -5472,6 +5489,20 @@ def _a_harvested_cell_needs_a_digit_before_its_point(patch: pytest.MonkeyPatch) 
     from manuscript_guard.harvest import read as harvest_read
 
     patch.setattr(harvest_read, "_NUMERIC_DISPLAY", _no_leading_point())
+
+
+def _a_harvested_point_is_read_past(patch: pytest.MonkeyPatch) -> None:
+    """A number begun by its point read without it, in `harvest`'s own copy of the reader:
+    ".661" is 661."""
+    from manuscript_guard.harvest import read as harvest_read
+
+    real = harvest_read._number_of
+
+    def number_of(match: re.Match) -> tuple[str, str]:
+        text, exponent = real(match)
+        return re.sub(r"^(-?)\.", r"\g<1>", text), exponent
+
+    patch.setattr(harvest_read, "_number_of", number_of)
 
 
 def _a_rounded_cell_gets_back_its_leading_zero(patch: pytest.MonkeyPatch) -> None:
@@ -25441,6 +25472,10 @@ BROKEN = {
         _a_harvested_cell_needs_a_digit_before_its_point,
         test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
     ),
+    "a harvested cell's leading point is read past": (
+        _a_harvested_point_is_read_past,
+        test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
+    ),
     "a rounded cell gets back the leading zero its output left out": (
         _a_rounded_cell_gets_back_its_leading_zero,
         test_a_cell_of_an_output_reads_as_the_value_its_text_shows,
@@ -28284,6 +28319,10 @@ BROKEN = {
     ),
     "a PDF's metadata names no DOI": (
         _a_pdf_s_metadata_names_no_doi,
+        test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
+    ),
+    "another DOI on a PDF's first page refuses the work's beside it": (
+        _another_doi_on_page_one_refuses_the_work_s_beside_it,
         test_a_pdf_is_the_work_by_its_doi_or_its_title_and_by_nothing_near_them,
     ),
     "a cell counts by the digits it begins with": (

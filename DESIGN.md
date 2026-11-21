@@ -22969,6 +22969,12 @@ Open, recorded as each change landed:
     (finding 5; the reviewer found no real input of the kind).
     Pinned by `tests/test_emit.py::test_a_latex_binding_in_emitted_table_text_is_escaped_and_reported_by_nothing`
     and `tests/test_emit.py::test_a_latex_project_reports_nothing_of_a_latex_binding_in_an_emitted_table`.
+  - *A binding broken over a line is not read.* `tables._BINDING` stops at a line break, so a
+    caption or a cell holding `{{results.` with `x}}` on the next line is no
+    `binding-in-table`, and the braces print as typed; `roundtrip._BINDING`, with which an
+    import keeps a paragraph's bindings from a co-author's edit, reads the same text as one
+    binding. The two readings disagree (review of #762).
+    Pinned by `tests/test_properties.py::test_a_binding_left_in_a_table_s_text_is_found_wherever_the_table_has_text`.
   - *A literal brace.* `Composed.render` fills its template with `str.format`, which turns
     `{{` into `{`, while `tables.rebuilt` and the R emitter split the template on `{}` and
     keep `{{` as written. So in Python a template with a doubled brace never rebuilds to its
@@ -29272,8 +29278,8 @@ Closed since, and why each mattered (an open gap goes above this line):
     read `derive_display`. `point_displays` draws each beside a value within half a unit
     of its last place, one further off, one more by a whole, one of the other sign and one
     on either side of a comparator, and `HARVEST_KINDS` a cell written without its zero,
-    signed or not. A grammar that wants a digit before the point, in the emitter or in
-    `harvest`, a point read past, and a rounding that puts the zero back each fail a
+    signed or not. A grammar that wants a digit before the point and a point read past,
+    each in the emitter or in `harvest`, and a rounding that puts the zero back each fail a
     property. The R emitter is held by its cases still, an open point of its own above.
   - Under "A binding in emitted table text is found in its Markdown form only": no
     generated input held `binding-in-table` (round 1 of #557, finding 6). `table_braces`
@@ -29285,9 +29291,11 @@ Closed since, and why each mattered (an open gap goes above this line):
   - Under "What `sync-sources` fetches from the web is held to the work's DOI or title":
     `matching.py` had a property for the head over a title (#595) and none for the
     evidence. `pdf_evidence` draws a PDF for each way the work's DOI or title shows it and
-    each way a page near them does not; a DOI read by its letters anywhere, a printed DOI
-    taken for the work's where it begins with it, a title found inside a line, and no
-    metadata read each fail the property.
+    each way a page near them does not, the work's DOI and the title each beside another
+    DOI on the first page among them; a DOI read by its letters anywhere, a printed DOI
+    taken for the work's where it begins with it, a title found inside a line, no metadata
+    read, and another DOI on the first page refusing the work's beside it each fail the
+    property.
   The readings `point displays`, `table bindings` and `pdf evidence` put the same inputs
   to the base's source (`tests/readings.py`).
 

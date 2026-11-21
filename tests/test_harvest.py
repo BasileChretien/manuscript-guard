@@ -170,11 +170,14 @@ def test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested(project: Pa
     # At a site, the receipt of the wide table is written.
     (project / "harvest.yaml").unlink(missing_ok=True)
     _minimum(project, 5)
-    _site_output(project, ["group,2020,2021", "Drug,40,41"])
+    site = _site_output(project, ["group,2020,2021", "Drug,40,41"])
     path, _written, warned = make_receipt(load_project(project)[0], "site-a")
     assert path.is_file() and warned == []
     receipt = json.loads(path.read_text(encoding="utf-8"))
     assert [run["outputs"][0]["path"] for run in receipt["runs"]] == ["output/site.csv"]
+    # And the centre's harvest refuses the output the site wrote the receipt for.
+    with pytest.raises(HarvestError, match="is a number written as text"):
+        harvest_entry(project, site)
 
 
 def test_a_results_file_an_analysis_wrote_is_not_written_over(project: Path) -> None:

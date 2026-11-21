@@ -394,7 +394,7 @@ def test_the_optional_steps_are_those_the_tool_has(tmp_path: Path) -> None:
 
 
 def test_tier_10_offers_no_deposit_and_no_communication(
-    tmp_path: Path,
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "Tier 10 lists only the commands there are."):
     `deposit` and `communicate` are commands, and neither is among the optional steps at
@@ -410,34 +410,21 @@ def test_tier_10_offers_no_deposit_and_no_communication(
         "optional:review", "optional:checker", "optional:build", "optional:package",
         "optional:approve", "optional:submit", "optional:proof"}  # fmt: skip
     assert not [w for w in every_argv(actions) if w[:1] in (("deposit",), ("communicate",))]
-    state = settled(tmp_path, stage="internal-review", checker=Checker(10, 2, 1, 0))
-    assert to_dict(state, decide(state))["checker"] == {
-        "items": 10, "outstanding": 2, "stale": 1, "disagreements": 0}
-
-
-def test_at_submission_the_panel_comes_first_after_any_round(
-    project: Path,
-) -> None:
-    """A known gap (DESIGN.md, Known gaps, "At `submission` the line says \"Next: Have the
-    review panel read the paper\" every time."): the example, whose thirteen rounds are read,
-    with nothing failing at submission, is first offered the review panel, as a state with
-    no round at all is. The 2026-11-09 triage planned a fix (F16), which will change this
-    test."""
-    import dataclasses
-
-    assert len(list((project / "review").glob("panel-*.yaml"))) == 13
-    _paper(project, "schema: manuscript-guard/paper/1\n",
-           "schema: manuscript-guard/paper/1\nstage: submission\n")  # fmt: skip
-    read = guide.inspect(project)
-    assert read.stage == "submission" and read.declared_stage in (None, "submission")
-    clean = dataclasses.replace(read, findings=(), study_type="disproportionality")
-    for state in (clean, settled(project, stage="submission")):
-        first = decide(state)[0]
-        assert (first.id, first.tier) == ("optional:review", 10)
-        assert first.title == "Have the review panel read the paper"
-    # From internal-review the panel is the first of the optional steps, after moving on.
-    earlier = [a.id for a in decide(settled(project, stage="internal-review"))]
-    assert earlier[:2] == ["advance", "optional:review"]
+    # The checker's fields, beside what `checker status` says of the same round.
+    (project / "checks").mkdir()
+    (project / "checks" / "decisions.csv").write_text(
+        "when,by,id,group,title,status,note,digest,bundle\n"
+        "2026-10-28,Ada,gone,values,Gone,ok,,,\n", encoding="utf-8")  # fmt: skip
+    assert main(["next", str(project), "--json", "--stage", "internal-review"]) == 0
+    fields = json.loads(capsys.readouterr().out)["checker"]
+    assert main(["checker", "status", str(project)]) == 0
+    status = capsys.readouterr().out
+    counted = re.search(r"(\d+) item\(s\); (\d+) nobody has answered", status)
+    stale = re.search(r"(\d+) answer\(s\) are about text that has changed since", status)
+    assert counted is not None, status
+    assert fields == {"items": int(counted[1]), "outstanding": int(counted[2]),
+                      "stale": int(stale[1]) if stale else 0,
+                      "disagreements": status.count("disagreement on ")}  # fmt: skip
 
 
 # ------------------------------------------------------------------------- properties

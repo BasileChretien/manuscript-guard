@@ -819,12 +819,14 @@ def test_a_folder_s_last_backslash_continues_the_line(
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A submission build that names no stage is one the
     submission guard does not hold."): the guard reads on past a line that ends in a
-    backslash, as bash continues one, so a PowerShell build whose last word is a folder
-    takes the stage that the next line only mentions."""
+    backslash, as bash continues one, or in a backtick, as PowerShell does, so a PowerShell
+    build whose last word is a folder takes the stage that the next line only mentions."""
     _without_a_review(project)
     after = "\nWrite-Output '--stage submission'"
     command = "manuscript-guard build --offline ." + chr(92) + after
     assert _decided(project, command, capsys, "PowerShell") == "deny"
+    continued = "manuscript-guard build --offline .`" + after
+    assert _decided(project, continued, capsys, "PowerShell") == "deny"
     # The other side: the same two lines with no backslash at the end of the first, and with
     # an invocation before the stage on the second.
     assert _decided(project, "manuscript-guard build --offline ." + after, capsys,
@@ -2173,6 +2175,49 @@ def test_the_status_line_says_what_next_puts_first_from_one_run_of_the_gates(
     assert "0 failing" in text, "the counts come first, as they did"
 
 
+def test_at_submission_the_panel_comes_first_after_any_round(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "At `submission` the line says \"Next: Have the
+    review panel read the paper\" every time."): in the example, whose review rounds are
+    read, made clean at submission, the status line names the review panel at every session
+    start. The 2026-11-09 triage planned a fix (F16), which will change this test."""
+    import dataclasses
+
+    from manuscript_guard import cli
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+
+    def declared(stage: str) -> None:
+        paper.write_text(text.replace(
+            "schema: manuscript-guard/paper/1\n",
+            f"schema: manuscript-guard/paper/1\nstage: {stage}\nstudy_type: disproportionality\n",
+            1), encoding="utf-8")  # fmt: skip
+
+    declared("submission")
+    report = cli._run_gates(project)[0]
+    assert not [f for f in report.findings if f.gate == "G11" and f.severity == "fail"]
+    gate = cli._gate_run
+
+    def clean(*args, **kwargs):
+        """The gate run with nothing found: the paper as clean as the line can be told."""
+        found, read, stage, _deferred, namespace = gate(*args, **kwargs)
+        return dataclasses.replace(found, findings=()), read, stage, {}, namespace
+
+    monkeypatch.setattr(cli, "_gate_run", clean)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)  # no notice after the line
+    panel = "Next: Have the review panel read the paper (`manuscript-guard next`)."
+    for source in ("startup", "resume"):
+        said = context(run("session-start", {"cwd": str(project), "source": source}, capsys))
+        assert "stage 'submission'" in said and "0 failing, 0 warning(s)." in said, said
+        assert said.endswith(panel), said
+    # The other side: a stage before submission, where moving on comes first.
+    declared("internal-review")
+    said = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert said.endswith("Next: Move on to submission (`manuscript-guard next`)."), said
+
+
 def test_a_decision_that_fails_costs_the_next_part_and_not_the_line(
     project: Path, monkeypatch, capsys
 ) -> None:
@@ -2834,13 +2879,14 @@ def test_a_gate_s_own_file_keeps_the_older_wording(project: Path) -> None:
 
 
 def test_a_folder_named_like_a_source_fails_g11_and_review(
-    project: Path, capsys
+    project: Path, monkeypatch, capsys
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "The submission guard said nothing about a project
     it could not read."): a folder `manuscript/notes.md` is named by the gates that read text,
     and G11, which reads bytes for the digest, reports the error the system raises; `review`
-    ends on it in that error, with or without the dry run of a panel. The 2026-11-09 triage
-    planned a fix (F16), which will change this test."""
+    stops on it in one sentence of an error it did not expect and exits 2, a traceback only
+    under `MANUSCRIPT_GUARD_DEBUG`, with or without the dry run of a panel. The 2026-11-09
+    triage planned a fix (F16), which will change this test."""
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.cli import main as cli
 
@@ -2853,10 +2899,20 @@ def test_a_folder_named_like_a_source_fails_g11_and_review(
     assert g11.message.startswith(f"G11 could not run: {raised.__name__}:"), g11.message
     _with_models(project)
     shutil.rmtree(project / "review")
-    for argv in (["review", str(project)], ["review", str(project), "--run", "--dry-run"]):
-        with pytest.raises(raised):
+    runs = (["review", str(project)], ["review", str(project), "--run", "--dry-run"])
+    for argv in runs:
+        with pytest.raises(raised):  # the suite runs with MANUSCRIPT_GUARD_DEBUG set
             cli(argv)
     capsys.readouterr()
+    # Off the suite, as an author runs it: one sentence, and exit 2.
+    monkeypatch.delenv("MANUSCRIPT_GUARD_DEBUG", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    for argv in runs:
+        assert cli(argv) == 2, argv
+        said = capsys.readouterr().err
+        assert ("manuscript-guard: review stopped on an error from the system it did not "
+                f"expect: {raised.__name__}:") in said, said  # fmt: skip
+        assert "notes.md" in said and "Traceback" not in said, said
 
 
 def test_a_pattern_the_compiler_refuses_is_a_failing_check_and_not_silence(
@@ -2981,6 +3037,20 @@ def test_a_paths_entry_in_the_wrong_shape_blinds_the_hooks(
     assert written("output") is None
     assert "results/x.json is generated, not written" in reason(written("results"))
     assert run("after-edit", edited, capsys) is None
+
+    # The edit let through, a value of a fragment under `output/` typed over, is reported by
+    # G1 once the entry is put right.
+    from manuscript_guard.cli import _run_gates
+
+    fragment = next((project / "output").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"][next(iter(document["values"]))]["display"] = "9.99"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    paper.write_text(paper.read_text(encoding="utf-8").replace("  figures:\n", "", 1),
+                     encoding="utf-8")  # fmt: skip
+    found = _run_gates(project)[0].findings
+    assert [(f.gate, Path(f.path).name) for f in found if f.code == "results-edited"] == [
+        ("G1", fragment.name)]
 
 
 def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(
@@ -3321,19 +3391,30 @@ def test_a_path_that_reads_as_a_submission_by_itself_is_refused_again(
 
 
 def test_the_check_named_quotes_the_folder_in_double_quotes(
-    above: Path, capsys
+    above: Path, monkeypatch, capsys
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
     guard finds only a project the command spells out."): the folder is written in double
     quotes, where a shell expands `$`, so for a project in `big$money/` the check named is
-    sent to `big/`, which holds no project."""
+    sent to `big`, and finds no project."""
+    from manuscript_guard.cli import main as cli
+
     (above / "paper").rename(above / "big$money")
     result = sent('manuscript-guard submit "big$money"', above, capsys)
     assert decision(result) == "deny"
     (command,) = _named_commands(reason(result))
     assert command == f'{hooks.FULL_CHECK} "big$money"'
-    # What a shell hands the tool for that word: the folder without the variable's name.
-    assert not (above / "big").exists()
+    # The command as a shell hands it on: in double quotes `$money`, which is not set, is
+    # expanded to nothing. Run from the folder the refusal was given in, it finds no project.
+    monkeypatch.chdir(above)
+    monkeypatch.delenv("money", raising=False)
+    words = shlex.split(command.replace("$money", ""))
+    assert words[0] == "manuscript-guard" and words[-1] == "big"
+    assert cli(words[1:]) == 2
+    assert "no paper.yaml" in capsys.readouterr().err
+    # The other side: the folder handed on as it is named is the project, which fails.
+    assert cli([*words[1:-1], "big$money"]) == 1
+    capsys.readouterr()
 
 
 #: A long message as an agent writes one, through a heredoc, with a quotation in it.
@@ -3794,16 +3875,22 @@ def test_each_shell_escape_in_front_of_a_folder_loses_it(
     """A known gap (DESIGN.md, Known gaps, "From a folder with no project, the submission
     guard finds only a project the command spells out."): the rest of the characters named,
     `!`, `$`, `^` and the closing square bracket, lose the folder before a backslash and a
-    space, and a round bracket ends the word, with no space after the backslash as well."""
+    space, and a round bracket ends the word, with no space after the backslash as well. In
+    quotes, each is found."""
     (above / "paper").rename(above / folder)
     command = f'Copy-Item .{ESCAPE}{folder}{ESCAPE} "D:/sent/submission" -Recurse'
     assert sent(command, above, capsys) is None, command
-    inside = f"Copy-Item .{ESCAPE}{folder}{ESCAPE}build{ESCAPE}manuscript.docx sent"
+    at = f".{ESCAPE}{folder}{ESCAPE}build{ESCAPE}manuscript.docx"
+    inside = f"Copy-Item {at} sent"
     if folder.startswith("("):
         assert sent(inside, above, capsys) is None, inside
     else:
         # The other side: with no space after the backslash, the folder is found.
         assert decision(sent(inside, above, capsys)) == "deny", inside
+    # And in quotes, the folder alone or a file in it, it is found.
+    for quoted in (f"Copy-Item '{at}' sent", f'Copy-Item "{at}" sent',
+                   f"Copy-Item '.{ESCAPE}{folder}{ESCAPE}' 'D:/sent/submission' -Recurse"):
+        assert decision(sent(quoted, above, capsys)) == "deny", quoted
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

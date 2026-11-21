@@ -1294,13 +1294,18 @@ def test_the_wording_check_errs_both_ways_by_spelling():
     assert wording_problems(passes) == []
     fails = (
         "A panel of GPT-5, Claude and Gemini 2.5 Pro. Claude 4.5 Sonnet is one of the Claude\n"
-        "family. Gemini CLI reads them. Refresh in the LibreOffice plugin.\n"
+        "family. Gemini CLI reads them. Refresh in the LibreOffice plugin. OpenAI's Codex,\n"
+        "the Codex CLI, Mistral Vibe and Kimi Code read them too.\n"
     )
     assert wording_problems(fails) == [
         "'Claude' names one agent tool",
         "'Claude' names one agent tool",
         "'Claude' names one agent tool",
         "'Gemini CLI' names one agent tool",
+        "'Codex' names one agent tool",
+        "'Codex' names one agent tool",
+        "'Mistral Vibe' names one agent tool",
+        "'Kimi Code' names one agent tool",
         "'plugin' describes how one agent packages or invokes the skills",
     ]
 

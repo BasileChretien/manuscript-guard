@@ -20592,8 +20592,9 @@ Open, recorded as each change landed:
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
   it, but G11 reads bytes for the digest and reports "PermissionError" on Windows
-  ("IsADirectoryError" elsewhere), and `review` ends
-  in a traceback on it, as before, with or without the dry run of a panel. (A results
+  ("IsADirectoryError" elsewhere), and `review` stops on it with "stopped on an error
+  from the system it did not expect" and exits 2 (a traceback only under
+  `MANUSCRIPT_GUARD_DEBUG` or on CI), with or without the dry run of a panel. (A results
   fragment with the mark of UTF-8 in front is read now: see "Closed since".) Two more are of
   the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
   entry under `paths`, and were found in the review of #134. The write guard does not know
@@ -26731,7 +26732,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   at submission the status line names it at every session start, after the last round as
   before the first. It is `next`'s rule, which offers the optional steps without asking what
   is already done, and not the status line's.
-  Pinned by `tests/test_guide.py::test_at_submission_the_panel_comes_first_after_any_round`.
+  Pinned by `tests/test_hooks.py::test_at_submission_the_panel_comes_first_after_any_round`.
 
 - **That a script writes the output it is declared to is declared, until `verify` runs
   it.** `harvest` runs nothing; `harvest-declared` says so at every stage, and only a run of

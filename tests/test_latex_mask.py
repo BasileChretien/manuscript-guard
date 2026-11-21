@@ -71,6 +71,55 @@ def test_each_rule_reads_or_blanks_what_it_says(text: str, expected: str) -> Non
     assert shown(text) == expected
 
 
+_OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # In `\texttt`, where a typewriter font prints both as typed, the two are read as an
+        # opening and a closing mark; in `\verb` they are not read as marks.
+        ('\\texttt{``a"} b', f"········{_OPENS}·a{_CLOSES}· b"),
+        ('\\verb|``a"| b', '······``a"· b'),
+        # Babel's German shorthands `"-` and `"=` close an open quotation; a straight `"`
+        # before a letter never closes one, as in ``` ``Gr"une ```.
+        ('``a "-b c', f"{_OPENS}·a {_CLOSES}-b c"),
+        ('``a "=b c', f"{_OPENS}·a {_CLOSES}=b c"),
+        ('``a "a c', f'{_OPENS}·a "a c'),
+        # A `\par` a definition's body holds ends the quotation where the body is written,
+        # and not where the command prints it.
+        ('``a \\newcommand{\\brk}{\\par} b" c', f'{_OPENS}·a {"·" * 23} b" c'),
+        ('\\newcommand{\\brk}{\\par} ``a \\brk b" c', f"{'·' * 23} {_OPENS}·a ···· b{_CLOSES} c"),
+    ],
+)
+def test_a_straight_quote_after_an_open_one_closes_it_whatever_the_font(
+    text: str, expected: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "In LaTeX, a straight `"` after an open ``` `` ```
+    closes it, whatever the font"): what the reader takes for a closing mark in `\\texttt`,
+    after babel's shorthands, and across a `\\par` in a definition's body."""
+    assert shown(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('``a \\verb|\\par| b" c', f'{_OPENS}·a ······\\par· b" c'),
+        ('``a {\\par} b" c', f'{_OPENS}·a ······ b" c'),
+        ('``a \\verb|x| b" c', f"{_OPENS}·a ······x· b{_CLOSES} c"),
+        ('``a {x} b" c', f"{_OPENS}·a ·x· b{_CLOSES} c"),
+    ],
+)
+def test_a_par_inside_verb_or_a_group_ends_the_paragraph_for_the_quotation_marks(
+    text: str, expected: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452 (2026-10-28), to fix
+    later"): a `\\par` inside `\\verb`, which prints it as typed, or inside a group ends the
+    paragraph for the pairing of quotation marks, so the `"` after it closes nothing; with no
+    `\\par` there, it closes the quotation."""
+    assert shown(text) == expected
+
+
 def test_the_preamble_is_blanked_but_for_the_title_and_its_thanks() -> None:
     text = (
         "\\documentclass{article}\n\\newcommand{\\n}{4100}\n"

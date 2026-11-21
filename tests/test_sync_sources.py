@@ -801,8 +801,13 @@ def test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more(paper, tmp_p
     spells, at the places the harvester puts it"): a PDF named by its PMID or its citation
     key is counted as named for no cited DOI and not copied; a PDF with bytes before its
     `%PDF-` is refused; and any file that begins with it, the wrong paper, is copied."""
-    cite(paper, "smith2020", "late2021", "wrong2019")
-    bib(paper, smith2020="10.1000/smith", late2021="10.1000/late", wrong2019="10.1000/wrong")
+    cite(paper, "smith2020", "late2021", "wrong2019", "pubmed2018")
+    bib(paper, smith2020="10.1000/smith", late2021="10.1000/late", wrong2019="10.1000/wrong",
+        pubmed2018="10.1000/pubmed")  # fmt: skip
+    bibfile = paper / "literature" / "references.bib"
+    text = bibfile.read_text("utf-8")
+    bibfile.write_text(text.replace("@article{pubmed2018,\n", "@article{pubmed2018,\n"
+                                    "  pmid = {31000001},\n"), "utf-8")  # fmt: skip
     papers = tmp_path / "papers"
     put(papers, "31000001.pdf")
     put(papers, "smith2020.pdf")
@@ -814,9 +819,11 @@ def test_from_reads_a_name_and_a_pdf_s_first_bytes_and_nothing_more(paper, tmp_p
     out = capsys.readouterr().out
     assert "2 PDFs in the folder are named for no DOI the manuscript cites" in out
     assert not (sources(paper) / "smith2020.pdf").exists()
+    assert not (sources(paper) / "pubmed2018.pdf").exists(), "its PMID names the file"
     assert not (sources(paper) / "late2021.pdf").exists()
-    listed = out.split("No copy for 2 cited works:")[1]
+    listed = out.split("No copy for 3 cited works:")[1]
     assert "@late2021" in listed and "does not begin with %PDF-" in listed
+    assert "@pubmed2018: the folder has no PDF named for its DOI, 10.1000/pubmed" in listed
     assert (sources(paper) / "wrong2019.pdf").read_bytes() == another
 
 
@@ -845,6 +852,24 @@ def test_a_file_both_sources_hold_and_a_name_two_dois_spell_are_read_by_the_reco
     assert record(paper)["files"]["zot2020.pdf"]["from"] == "zotero"
     assert (sources(paper) / "colon2020.pdf").read_bytes() == semicolon
     assert record(paper)["files"]["colon2020.pdf"]["doi"] == "10.1000/a:b"
+
+
+def test_a_file_the_folder_copied_first_stays_the_folder_s_when_zotero_holds_it_too(
+    paper, tmp_path, monkeypatch
+):
+    """A known gap (DESIGN.md, Known gaps, "`sync-sources --from` matches only a name a DOI
+    spells, at the places the harvester puts it"), the other order: a file copied from the
+    folder that Zotero then gives in the same bytes stays recorded as the folder's."""
+    zotero = Storage(tmp_path)
+    cite(paper, "fold2019")
+    bib(paper, fold2019="10.1000/fold")
+    put(tmp_path / "papers", "10.1000_fold.pdf")
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert record(paper)["files"]["fold2019.pdf"]["from"] == "folder"
+
+    (same,) = sync(paper, monkeypatch, FakeBBT({1: {"fold2019": [zotero.file("f.pdf", PDF)]}}))
+    assert same.status == copies.UNCHANGED, same.said
+    assert record(paper)["files"]["fold2019.pdf"]["from"] == "folder"
 
 
 def test_two_pdfs_of_one_doi_that_differ_are_neither_copied(paper, tmp_path):

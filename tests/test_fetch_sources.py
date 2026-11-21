@@ -348,9 +348,10 @@ def test_a_version_openalex_did_not_label_is_kept_by_its_title(
     to the work's DOI or title, not read through"): a reprint with other page numbers, which
     OpenAlex calls the published version, is kept by its title while it prints no DOI of its
     own, and recorded as the published version; one that prints its own DOI is refused."""
-    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    # The work's pages are 101 to 109, and the reprint's nine pages are printed as 1-9.
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI, "pages": "101--109"})
     reprint = article("Reprinted in Examples Reprinted 3 (2023) 1-9",
-                      "Hepatic injury in a fictional", "national cohort", printed)
+                      "Hepatic injury in a fictional", "national cohort", printed, pages=9)
     table = Table({
         PLACES.openalex + DOI: openalex(pdf_url="https://repository.test/reprint.pdf"),
         "https://repository.test/reprint.pdf": pdf_answer(reprint),
@@ -406,14 +407,26 @@ def test_the_publishers_pdf_is_kept_where_this_computer_has_access(paper: Path) 
     assert wanted == []
 
 
-def test_a_paywall_page_is_not_kept_and_the_abstract_is_written(paper: Path) -> None:
+@pytest.mark.parametrize(
+    "publisher",
+    [page("<title>Purchase this article</title>"),
+     # A bot check (Known gaps, "What `sync-sources` fetches from the web is held to the
+     # work's DOI or title"): the challenge page this computer is answered with, not kept.
+     answer(403, "<html><head><title>Just a moment...</title></head><body>Checking your "
+            "browser before accessing publisher.test</body></html>",
+            Content_Type="text/html; charset=utf-8")],
+    ids=["paywall", "bot-check"],
+)  # fmt: skip
+def test_a_paywall_page_is_not_kept_and_the_abstract_is_written(
+    paper: Path, publisher: Response
+) -> None:
     cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
     abstract = ("<jats:title>Abstract</jats:title><jats:p>Liver injury was rare &amp; "
                 "mostly mild.</jats:p>")  # fmt: skip
     table = Table({
         PLACES.openalex + DOI: openalex(is_oa=False),
         PLACES.resolver + DOI: answer(302, Location="https://publisher.test/article/1"),
-        "https://publisher.test/article/1": page("<title>Purchase this article</title>"),
+        "https://publisher.test/article/1": publisher,
         PLACES.crossref + DOI: crossref(abstract),
     })  # fmt: skip
     (outcome,), wanted = sync(paper, table)
@@ -426,7 +439,8 @@ def test_a_paywall_page_is_not_kept_and_the_abstract_is_written(paper: Path) -> 
     assert entry["from"] == "abstract" and entry["url"] == PLACES.crossref + DOI
     (one,) = wanted
     assert one.abstract and one.link == f"https://doi.org/{DOI}"
-    assert any("gave a page, not the PDF" in why for why in one.why)
+    if publisher.status == 200:
+        assert any("gave a page, not the PDF" in why for why in one.why)
     lines = fetching.asked(wanted)
     assert "--inbox" in lines[0] and f"@hepatic2021: https://doi.org/{DOI}" in lines[1]
 
@@ -765,6 +779,7 @@ def test_a_title_in_the_running_text_is_not_the_title() -> None:
 
 
 def test_a_title_set_beside_a_running_head_is_not_found_and_an_unlisted_head_is_not_known(
+    paper: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "What `sync-sources` fetches from the web is held
     to the work's DOI or title, not read through"): a title on one line with a running head
@@ -775,6 +790,19 @@ def test_a_title_set_beside_a_running_head_is_not_found_and_an_unlisted_head_is_
     assert matching.judged(b"%PDF-1.4", beside, None, TITLE).by is None
     alone = "J Examples 12:101\nHepatic injury in a fictional national cohort\nA. Fictional"
     assert matching.judged(b"%PDF-1.4", alone, None, TITLE).by == "title"
+    # Fetched, such a copy is not kept, and the work is left as wanted.
+    cite(paper, nodoi2020={"title": TITLE, "pmcid": "PMC1234567"})
+    url = f"{PLACES.europepmc}?accid=PMC1234567&blobtype=pdf"
+    headed = pdf([[Piece(56, 780, "Hepatic injury in a fictional national cohort"),
+                   Piece(420, 780, "J Examples 12:101"), Piece(56, 768, "A. Fictional")]])
+    staged = paper / "headed.pdf"
+    staged.write_bytes(headed)
+    read = matching.first_pages(staged) or ""
+    assert any("cohort" in line and "J Examples" in line for line in read.splitlines()), read
+    staged.unlink()
+    (outcome,), wanted = sync(paper, Table({url: pdf_answer(headed)}))
+    assert outcome.status == copies.NO_COPY and not (sources(paper) / "nodoi2020.pdf").exists()
+    assert [one.key for one in wanted] == ["nodoi2020"]
     title = "Hepatic injury in a fictional\nnational cohort\n"
     for document in (f"Online Appendix\n{title}doi: {DOI}",
                      f"{title}Data Supplement\ndoi: {DOI}"):  # fmt: skip

@@ -16949,17 +16949,22 @@ def test_a_reference_s_identifiers_are_held_to_their_form_alone() -> None:
 @pytest.mark.parametrize(
     ("field", "word"),
     [("0-306-40615-2, reprint", "reprint"), ("0-306-40615-2; 2nd printing", "2nd printing"),
-     ("0-306-40615-2 reprint", "reprint"), ("0-306-40615-2", None)],
-    ids=["after-a-comma", "after-a-semicolon", "after-a-space", "the-isbn-alone"],
+     ("0-306-40615-2 reprint", "reprint"), ("0-306-40615-2/reprint", "reprint"),
+     ("reprint, 0-306-40615-2", "reprint"), ("reprint 0-306-40615-2", "reprint 0-306-40615-2"),
+     ("0-306-40615-2", None)],
+    ids=["after-a-comma", "after-a-semicolon", "after-a-space", "after-a-slash",
+         "before-a-comma", "before-a-space", "the-isbn-alone"],
 )  # fmt: skip
-def test_a_word_after_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
+def test_a_word_beside_an_isbn_is_read_as_an_isbn_with_a_bad_check_digit(
     field: str, word: str | None
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reference's identifiers are checked for their
-    form, not for what they name", its point "In an ISBN field, a word after the ISBN"): a
-    word that is no label or listed qualifier, parted from the ISBN by a space, a comma or
-    a semicolon, is read as an ISBN and reported as one whose check digit does not add up,
-    where the ISBN alone gives no finding."""
+    form, not for what they name", its point "In an ISBN field, a word beside the ISBN"): a
+    word that is no label or listed qualifier, before the ISBN or after it, parted from it
+    by a space, a comma, a semicolon or a slash, is read as an ISBN (with the ISBN, where a
+    space parts a word before it) and reported as one whose check digit does not add up,
+    where the ISBN alone gives no finding. An ISBN-10 opening 978 before a word is the
+    entry's own sentence (`test_an_isbn_10_opening_978_before_another_word_is_pinned`)."""
     from manuscript_guard.gates.identifiers import problems
 
     found = problems("k", {"type": "misc", "isbn": field})
@@ -17234,6 +17239,14 @@ _WARN = [("reference-title-duplicate", "warn")]
          None, []),
         (("incollection", "incollection"), {"doi": "10.5555/ch.1"}, {"doi": "10.5555/ch.1"},
          "A chapter on hepatic injury", _WARN),
+        # A conference paper cited twice, by its DOI: likewise.
+        (("inproceedings", "inproceedings"), {"doi": "10.5555/cp.1"}, {"doi": "10.5555/cp.1"},
+         None, []),
+        (("inproceedings", "inproceedings"), {"doi": "10.5555/cp.1"}, {"doi": "10.5555/cp.1"},
+         "A conference paper on hepatic injury", _WARN),
+        # A work and its translation: no identifier, and a title in another language.
+        (("", ""), {}, {}, ("Hepatic injury in a national cohort",
+                            "Les atteintes hépatiques dans une cohorte nationale"), []),
         # A book cited twice with a volume in one entry only, or "I" and "1".
         (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN}, None, []),
         (("book", "book"), {"isbn": _ISBN, "volume": "I"}, {"isbn": _ISBN, "volume": "1"},
@@ -17244,25 +17257,29 @@ _WARN = [("reference-title-duplicate", "warn")]
         (("", ""), {"doi": "10.5555/x%2Ey"}, {"doi": "10.5555/x.y"}, None, _FAIL),
     ],
     ids=["preprint-and-article", "title-of-three-words", "title-of-four-words",
-         "chapter-by-doi", "chapter-by-title", "volume-in-one", "volume-i-and-1",
+         "chapter-by-doi", "chapter-by-title", "conference-paper-by-doi",
+         "conference-paper-by-title", "a-translation", "volume-in-one", "volume-i-and-1",
          "volume-with-its-word", "percent-escape"],
 )  # fmt: skip
 def test_two_keys_for_one_work_are_found_by_an_identifier_or_a_title_alone(
-    project: Path, types: tuple[str, str], first: dict, second: dict, title: str | None,
-    said: list,
+    project: Path, types: tuple[str, str], first: dict, second: dict,
+    title: str | tuple[str, str] | None, said: list,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "Two keys for one work are found by an identifier
     or a title, and only among what is cited"): two entries of one work with no identifier
-    in common and titles that differ are not found, nor a title of fewer than four words;
-    a part of a book is found by its title alone, a warning; a volume is compared without
-    its word and otherwise as written; and a DOI's `%2E` is read as a full stop."""
+    in common and titles that differ, a preprint and its article or a translation, are not
+    found, nor a title of fewer than four words; a chapter or a conference paper is found by
+    its title alone, a warning; a volume is compared without its word and otherwise as
+    written; and a DOI's `%2E` is read as a full stop."""
     _both_have(project, first, second, types)
     if title is not None:
         bib = project / "literature" / "references.bib"
         text = bib.read_text(encoding="utf-8")
-        for written in ("Hepatic injury in a fictional national cohort, 2010--2019",
-                        "A disproportionality signal for a fictional drug class"):  # fmt: skip
-            text = text.replace(written, title, 1)
+        titles = (title, title) if isinstance(title, str) else title
+        for written, new in zip(("Hepatic injury in a fictional national cohort, 2010--2019",
+                                 "A disproportionality signal for a fictional drug class"),
+                                titles, strict=True):  # fmt: skip
+            text = text.replace(written, new, 1)
         bib.write_text(text, encoding="utf-8")
     assert [(code, severity) for code, severity, _ in _duplicate_findings(project)] == said
 

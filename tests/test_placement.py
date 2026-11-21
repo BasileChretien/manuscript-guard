@@ -101,9 +101,9 @@ def test_a_failed_quote_is_placed_by_its_words_and_not_by_its_meaning() -> None:
     """A known gap (DESIGN.md, Known gaps, "What a failed quote is said to nearly be is read
     by words, not by meaning"): a word is a run of letters and digits, so a number that
     differs in one digit is one word retyped; a footnote of more than twelve words leaves
-    the quote partly there; and of two places holding all the quote's words, the one with
-    the fewer interruptions, then the fewer words in them, is named, wherever it was
-    copied from."""
+    the quote partly there; and of two places holding the quote's words, the one with the
+    most of them, then the fewer interruptions, then the fewer words in them, is named,
+    wherever it was copied from."""
     source = OPENING + "A signal was found (ROR 2.6, 95% CI 2.1-3.2) for the class.\n"
     placement = place(source, "A signal was found (ROR 2.7, 95% CI 2.1-3.2) for the class.")
     assert placement is not None and said(placement) == (
@@ -121,6 +121,13 @@ def test_a_failed_quote_is_placed_by_its_words_and_not_by_its_meaning() -> None:
         footnoted = "the risk of liver\n" + " ".join(["note"] * notes) + "\ndisease was low\n"
         placement = place(footnoted, quote)
         assert placement is not None and said(placement) == expected
+    # First the most of the quote's words: five together, more than the gap before seven
+    # with one interruption, and the seven are named.
+    most = ("the risk of the disease\n" + " ".join(["note"] * (GAP + 1))
+            + "\nthe risk of the x disease was low\n")  # fmt: skip
+    placement = place(most, "the risk of the disease was low")
+    assert placement is not None and placement.found == 7 and placement.lines == (3, 3)
+    assert "the source has 'x' between 'the' and 'disease' (line 3)" in said(placement)
     # Where the author copied from, two interruptions; further on, one of four words.
     two_places = ("the risk 1 of the 2 disease was low\n"
                   "the risk of the long footnote words here disease was low\n")  # fmt: skip

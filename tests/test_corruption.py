@@ -21076,6 +21076,31 @@ def test_two_colours_a_deficiency_makes_one_are_a_warning(project: Path, svg: bo
     assert "deuteranopia" in found.message and _GREEN in found.message and _RED in found.message
 
 
+#: A pale blue that tritanopia brings within 10 of white, 12 apart to normal vision: a
+#: confidence band, or a map's lightest class, on the page.
+_PALE = "#d9e1f9"
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_pale_colour_on_the_white_page_is_no_pair(project: Path, svg: bool) -> None:
+    """Basile, 2026-11-21: white is taken for the page and paired with no colour; on real
+    papers 14 of 25 pairs judged false set a pale colour against it."""
+    _painted(project, "#ffffff", _PALE, svg=svg)
+    assert _colours_said(project) == []
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_two_colours_beside_white_are_still_compared(project: Path, svg: bool) -> None:
+    """White leaves only its own pairs: red and green painted with it still warn, and the
+    finding names neither as paired with white."""
+    _painted(project, "#ffffff", _PALE, _RED, _GREEN, svg=svg)
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    found = check_figure_colours(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == [("figure-colours-confused", "warn")]
+    assert "#ffffff" not in found[0].message and _RED in found[0].message
+
+
 def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) -> None:
     """Okabe and Ito's orange and sky blue are one grey: a note, and a warning where the
     journal prints its figures in grey or the figure's guard file asks."""

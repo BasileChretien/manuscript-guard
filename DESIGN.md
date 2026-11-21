@@ -21757,7 +21757,8 @@ Open, recorded as each change landed:
   abbreviation of either is not read.
 - **A reply is checked for what it holds, not for what it claims in prose.** A reply that
   says the Abstract "now reads" a sentence without a `text` entry is not checked for that
-  sentence: G13 says only that it names no change (`response-claims-nothing`). A quote
+  sentence: where its point has neither `changed` nor `rebutted`, G13 says only that it
+  names no change (`response-claims-nothing`), and with either says nothing. A quote
   is compared without Markdown's marks of emphasis and code and without its line breaks,
   but with its punctuation and quotation marks as typed. A section is found by the words of
   its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a

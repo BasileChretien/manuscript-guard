@@ -7659,15 +7659,20 @@ _QUOTE_CODES = ("quoted-text-absent", "quoted-text-not-new", "quoted-text-elsewh
            "quoted-text-unchecked")  # fmt: skip
 
 
-def test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked(project: Path) -> None:
+@pytest.mark.parametrize(("point", "said"), [
+    ({}, [("response-claims-nothing", "fail")]), ({"rebutted": "x"}, []),
+], ids=["neither changed nor rebutted", "rebutted"])  # fmt: skip
+def test_a_reply_that_says_a_section_now_reads_a_sentence_is_not_checked(
+    project: Path, point: dict, said: list
+) -> None:
     """A known gap (DESIGN.md, Known gaps, "A reply is checked for what it holds, not for
     what it claims in prose."): a reply that says the Abstract "now reads" a sentence the
     paper does not hold, with no `text` entry, is not checked for that sentence: of point 1.1
-    G13 says only that it names no change."""
+    G13 says only that it names no change, and with a rebuttal it says nothing."""
     _round_with(project, [_point(response='We revised the Abstract, which now reads "A sentence '
-                                 'the paper does not hold."')])  # fmt: skip
+                                 'the paper does not hold."', **point)])  # fmt: skip
     assert [(f.code, f.severity) for f in _g13(project).findings if "point 1.1" in f.message
-            ] == [("response-claims-nothing", "fail")]  # fmt: skip
+            ] == said  # fmt: skip
 
 
 @pytest.mark.parametrize(("typed", "found"), [

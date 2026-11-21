@@ -1977,9 +1977,27 @@ The result is compiled and packed by the code above, and checked three times:
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
   distribution's again (2026-10-23).
 - A file input past a refusal in the file that inputs it, from inside a definition, or from
-  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
-  message says no `\input` the reader follows names it, and is read under no heading (round 1
-  of #385).
+  `\AtBeginDocument{\input{x}}` is not followed. It is read under no heading (round 1 of
+  #385). One input from inside a definition or a hook is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it. One input past where the reader
+  stopped in a file, by a path written out in full, there or through a file input there, is
+  named once in that refusal's finding, "the 3 files its inputs past it reach, …, are read
+  as body under no heading", and not warned of again, by the rule `audit` follows to say it
+  was not followed (`structure.past_stops`; Basile, 2026-11-21, "Fold the warnings": a
+  paper refused at its preamble's `[latin1]` had 17 files warned of as named by no
+  `\input`, 15 of them judged false). So is one input only inside a block the reader
+  skipped, by `\input{...}` or `\include{...}`, in that block's finding, "the file an input
+  inside it names, …" (`structure.inside_blocks`; round 1 of #716). An input is looked for
+  among every `.tex` file of its own half of `manuscript/`, the main text's or the
+  supplement's, as `read_document` splits them, a document of its own and a class's among
+  them, and from the folder its file was imported from, as the tree looks for it (rounds 1
+  and 2 of #716). Warned of as before (Known gaps) are one whose path a command builds, one
+  a block holds without braces or by `\import` or `\subimport` (the block is read for
+  `\input` and `\include` alone), one that a file input only inside a block inputs in turn
+  (a block's inputs are not followed further), and one a file reached past a stop inputs
+  past that file's own stop. Past a stop in the author's package nothing is named: an `\input` the package
+  makes is the class's, there as before it, and one inside a definition is warned of as
+  one input from inside a definition is.
 - A file input from the preamble by a path with no folder that `manuscript/` lacks,
   `\input{settings.tex}` or `\input settings` too, is taken for the distribution's and
   passes; the compile finds it missing (step 9) (rounds 1 and 2 of #385). In the body,
@@ -17110,9 +17128,12 @@ been sorted yet.
   - What a block holds is read by no check, the branch TeX prints among it: a heading, a
     citation or a binding in it is not seen. A file the paper inputs only from inside a
     block, by `\input{...}` or `\include{...}`, is passed over and said to be (round 1 of
-    #674); one it inputs by `\input name`, without braces, or one that file inputs in turn,
-    is passed over with the advice for a file nothing inputs. `check` fails BUILD on the
-    block, so a project's paper is not built with it in the body. Accepted.
+    #674); one it inputs by `\input name`, without braces, or by `\import` or `\subimport`,
+    or one that file inputs in turn, is passed over with the advice for a file nothing
+    inputs. `check` fails BUILD on the block, so a project's paper is not built with it in
+    the body, and names in that finding each file the block inputs by `\input{...}` or
+    `\include{...}`, by the same rule, and warns of the others as `tex-not-input` (rounds 1
+    and 2 of #716). Accepted.
 - **A LaTeX paper is read only to its first use of a command its template defines again,
   but in two exact forms.** The reader accepts a known command's redefinition in the
   preamble, a file input from it or the author's package, and refuses each use where it
@@ -17127,18 +17148,22 @@ been sorted yet.
   is (above). Anything else, a font switch round `\@startsection`, a parameter, another
   section's name, a second command in the body, is refused at its first use, and nothing of
   the file past it is read, nor a file it inputs past there, which `audit` names as not
-  followed rather than as input by no file; `audit` says so.
+  followed rather than as input by no file; `audit` says so, and BUILD names each such file
+  of a project in the refusal's finding rather than warning of it as `tex-not-input`
+  (Basile, 2026-11-21, "Fold the warnings").
   Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
-  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
-  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
-  - A `\subimport{chapters/}{intro}` past a stop is followed without its folder, so what
-    chapters/intro.tex inputs, `\input{methods}`, is looked for at the manuscript's root,
-    and given the advice for a file nothing inputs (check of #637). Accepted.
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`,
+  `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`
+  and `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
   - A file input past the stops of two trees is named with the first stopped tree only,
     where each that inputs it could be (check of #637). Accepted.
   - A file reached past a stop that stops in turn has the inputs past its own stop left
-    unfollowed, and they are given the advice for a file nothing inputs (check of #637).
-    Accepted.
+    unfollowed, and they are given the advice for a file nothing inputs, in `audit` and in
+    BUILD's `tex-not-input` (check of #637). Accepted.
+  - A file input past a stop by a path a command builds, `\input{\dir/methods}`, is not
+    followed, since the reader cannot read the path exactly, and is warned of as named by
+    no `\input`, as a file nothing inputs is (Basile, 2026-11-21).
+    Pinned by `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
 - **A part placed by `\subfile` that defines a known command again in its own preamble has
   its uses refused.** The part's reading reads its own preamble, so a part that repeats
   main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
@@ -28516,6 +28541,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **An input past a stop was looked for beside the entry, not where its file was imported
+  from (round 1 of #716).** What a `\subimport{chapters/}{intro}` past a stop reached, and
+  what chapters/intro.tex inputs past its own stop, `\input{methods}`, was looked for at the
+  manuscript's root, so chapters/methods.tex was given the advice for a file nothing inputs
+  in `audit` and warned of as `tex-not-input` by BUILD (check of #637). Each input past a
+  stop, and each a skipped block holds, is looked for from the folder its file was
+  imported from, as the tree looks for it (`structure.past_stops`,
+  `structure.inside_blocks`).
 
 - **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
   section of another name was not found (2026-11-11).** Of the twelve numbers the audit

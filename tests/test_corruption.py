@@ -13651,6 +13651,175 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+@pytest.mark.parametrize("stop", ["latin1", "csname"])
+def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
+    project: Path, stop: str
+) -> None:
+    """A file input past where the reader stopped in the file that inputs it, there through
+    another, is named once in that refusal's finding, and not warned of as named by no
+    `\\input`, which it is. One nothing inputs, and one whose path a command builds, which
+    the reader cannot read exactly, are each warned of as before (Basile, 2026-11-21, "Fold
+    the warnings": a paper refused at its preamble's `[latin1]` had 17 files warned of as
+    named by no `\\input`, 15 of them judged false)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "parts").mkdir()
+    stops = {"latin1": "\\usepackage[latin1]{inputenc}\n", "csname": "\\csname x\\endcsname\n"}
+    entry.write_text(
+        "\\documentclass{article}\n" + stops[stop] + "\\newcommand{\\where}{parts}\n"
+        "\\begin{document}\nCaf\N{LATIN SMALL LETTER E WITH ACUTE}.\n\\input{intro}\n"
+        "\\input{parts/results}\n\\input{\\where/built}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "intro.tex").write_text("Of 4100.\n", encoding="utf-8")
+    (folder / "parts" / "results.tex").write_text("\\input{parts/nested}\n", encoding="utf-8")
+    for name in ("parts/nested", "parts/built", "notes"):
+        (folder / f"{name}.tex").write_text("Words.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    warned = sorted(f.path.name for f in report.findings if f.code == "tex-not-input")
+    assert warned == ["built.tex", "notes.tex"], report.render(project)
+    (refused,) = [f for f in report.failures
+                  if f.code == "tex-refused" and f.path.name == "main.tex"]  # fmt: skip
+    assert refused.line == 2, refused.message
+    assert "the 3 files its inputs past it reach" in refused.message, refused.message
+    for name in ("intro.tex", "parts/results.tex", "parts/nested.tex"):
+        assert f"manuscript/{name}" in refused.message, refused.message
+    assert "built.tex" not in refused.message and "notes.tex" not in refused.message
+
+
+def _build_said(project: Path) -> tuple[list[str], dict[str, str]]:
+    """The files BUILD warns of as named by no `\\input`, by their path in `manuscript/`, and
+    the message of each refusal, by its file's."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    folder = project / "manuscript"
+    warned = sorted(f.path.relative_to(folder).as_posix() for f in report.findings
+                    if f.code == "tex-not-input")  # fmt: skip
+    refused = {f.path.relative_to(folder).as_posix(): f.message for f in report.failures
+               if f.gate == "BUILD" and f.code == "tex-refused"}  # fmt: skip
+    return warned, refused
+
+
+def test_a_file_a_subimported_file_inputs_past_its_stop_is_looked_for_where_it_was_imported(
+    project: Path,
+) -> None:
+    """Round 1 of #716: an `\\input{methods}` past where the reader stopped in a file that
+    `\\subimport{chapters/}{intro}` reads was looked for beside the entry, so
+    chapters/methods.tex was warned of as named by no `\\input`. It is looked for in the
+    folder intro was imported from, as the tree looks for it, and named once, in the
+    one-file wording."""
+    entry = _as_latex(project)
+    chapters = entry.parent / "chapters"
+    chapters.mkdir()
+    entry.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n\\csname x\\endcsname\n\\input{methods}\n",
+                                        encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert refused["chapters/intro.tex"].endswith(
+        "; the file its inputs past it reach, manuscript/chapters/methods.tex, is read as "
+        "body under no heading"), refused
+
+
+def test_a_file_input_through_a_second_document_past_a_stop_is_named_by_the_stop(
+    project: Path,
+) -> None:
+    """Round 1 of #716: BUILD looked for an input past a stop among the files the document
+    reads, where `audit` looks among every `.tex` file of the folder, so a file input past
+    a stop through a document of its own was warned of as named by no `\\input`, and named
+    as not followed by `audit`. Both look among every `.tex` file now; the second document
+    keeps its own failure."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nWords.\n"
+                     "\\csname x\\endcsname\n\\input{other}\n\\end{document}\n", encoding="utf-8")
+    (folder / "other.tex").write_text("\\documentclass{article}\n\\begin{document}\n"
+                                      "\\input{inner}\n\\end{document}\n", encoding="utf-8")
+    (folder / "inner.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert "the file its inputs past it reach, manuscript/inner.tex," in refused["main.tex"]
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    assert [f.path.name for f in report.failures if f.code == "tex-second-document"] == [
+        "other.tex"]
+
+
+@pytest.mark.parametrize("block", ["\\makeatletter\n\\input{{{0}}}\n\\makeatother",
+                                   "\\if0\\blind\n\\input{{{0}}}\n\\fi"],
+                         ids=["makeatletter", "conditional"])  # fmt: skip
+def test_a_file_input_only_inside_a_skipped_block_is_named_by_the_block(
+    project: Path, block: str
+) -> None:
+    """Round 1 of #716: a file the paper inputs only inside a block the reader skipped, which
+    is a `tex-refused` of its own, was warned of as named by no `\\input`. The block's
+    finding names it, once a file or with how many; a file the block inputs without
+    braces is warned of as before, as `audit` gives it the advice for a file nothing
+    inputs."""
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     + block.format("names") + "\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    (folder / "names.tex").write_text("Ada Example.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == [], (warned, refused)
+    assert refused["main.tex"].endswith("; the file an input inside it names, "
+                                        "manuscript/names.tex, is read as body under no "
+                                        "heading"), refused  # fmt: skip
+    two = block.format("names}\n\\input{more").replace("\\fi", "\\input bare\n\\fi").replace(
+        "\\makeatother", "\\input bare\n\\makeatother")
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n" + two
+                     + "\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    for name in ("more", "bare"):
+        (folder / f"{name}.tex").write_text("Words.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == ["bare.tex"], (warned, refused)
+    assert ("the 2 files inputs inside it name, manuscript/more.tex, manuscript/names.tex, "
+            "are read") in refused["main.tex"], refused
+    # Round 2 of #716: in a file `\subimport` reads, the block's input is looked for in the
+    # folder it was imported from, as the tree looks for it.
+    (folder / "chapters").mkdir()
+    entry.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (folder / "chapters" / "intro.tex").write_text("Words.\n" + block.format("methods") + "\n",
+                                                   encoding="utf-8")  # fmt: skip
+    (folder / "chapters" / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert "chapters/methods.tex" not in warned, (warned, refused)
+    assert refused["chapters/intro.tex"].endswith(
+        "; the file an input inside it names, manuscript/chapters/methods.tex, is read as body "
+        "under no heading"), refused
+
+
+def test_a_stop_in_the_author_s_package_names_no_file_and_moves_no_warning(
+    project: Path,
+) -> None:
+    """Round 1 of #716: past a stop in the author's package, an `\\input` the package makes
+    is the class's, as before it, and not read; one inside a command's definition is printed
+    where the paper uses it, and warned of as named by no `\\input` the reader follows, as
+    before it. Neither is named in the package's refusal. This pins what held before the
+    change, since a class's file is never loose; it is no fix (round 2 of #716)."""
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text("\\documentclass{article}\n\\usepackage{mine}\n\\begin{document}\n"
+                     "\\abstracttext\n\\end{document}\n", encoding="utf-8")
+    (folder / "mine.sty").write_text(
+        "\\csname x\\endcsname\n\\input{theirs}\n"
+        "\\newcommand{\\abstracttext}{\\input{abstract}}\n", encoding="utf-8")
+    for name in ("theirs", "abstract"):
+        (folder / f"{name}.tex").write_text("Of 4100.\n", encoding="utf-8")
+    warned, refused = _build_said(project)
+    assert warned == ["abstract.tex"], (warned, refused)
+    assert "mine.sty" in refused and "reach" not in refused["mine.sty"], refused
+
+
 def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build(
     project: Path,
 ) -> None:

@@ -121,6 +121,20 @@ def test_a_file_input_only_from_a_skipped_block_is_said_so(tmp_path: Path) -> No
     (said,) = [one for one in audit([paper], None).passed_over if "names.tex" in one]
     assert "inside a block the reader skipped" in said and "paper.tex, lines 4-6" in said, said
     assert "\\input it" not in said, said
+    # Round 2 of #716: in a file `\subimport` reads, the block's input is looked for in the
+    # folder it was imported from, as the tree looks for it.
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    paper.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n\\makeatletter\n\\input{methods}\n"
+                                        "\\makeatother\n", encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("Of 4100.\n", encoding="utf-8")
+    found = [chapters / "intro.tex", chapters / "methods.tex", tmp_path / "names.tex"]
+    passed = audit([paper], None, found_tex=found).passed_over
+    (said,) = [one for one in passed if one.split(": ")[0].endswith("chapters/methods.tex")]
+    assert "inside a block the reader skipped" in said, said
+    assert "chapters/intro.tex, lines 2-4" in said, said
 
 
 def test_a_file_input_past_a_skipped_block_s_own_inputs_keeps_the_old_advice(
@@ -341,6 +355,33 @@ def test_an_input_on_the_line_of_a_stop_is_said_not_followed(tmp_path: Path) -> 
                      "\\catcode`\\@=11 \\input{sections}\n\\end{document}\n", encoding="utf-8")
     said = audit([paper], None, found_tex=[tmp_path / "sections.tex"]).passed_over
     assert any("paper.tex was not read past line 3" in one for one in said), said
+
+
+@pytest.mark.parametrize("stops", ["paper", "intro"])
+def test_an_input_past_a_stop_is_looked_for_where_its_file_was_imported(
+    tmp_path: Path, stops: str
+) -> None:
+    """Round 1 of #716 (and the check of #637, in Known gaps): an input past a stop was
+    looked for beside the entry, so `\\input{methods}` in chapters/intro.tex, reached by a
+    `\\subimport{chapters/}{intro}` past the paper's stop or read before intro's own stop,
+    had chapters/methods.tex given the advice for a file nothing inputs. It is looked for
+    in the folder intro was imported from, as the tree looks for it."""
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    stop = "\\csname x\\endcsname\n"
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n"
+                     + (stop if stops == "paper" else "")
+                     + "\\subimport{chapters/}{intro}\n\\end{document}\n", encoding="utf-8")
+    (chapters / "intro.tex").write_text("Words.\n" + (stop if stops == "intro" else "")
+                                        + "\\input{methods}\n", encoding="utf-8")  # fmt: skip
+    (chapters / "methods.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    found = [chapters / "intro.tex", chapters / "methods.tex"]
+    said = audit([paper], None, found_tex=found).passed_over
+    (note,) = [one for one in said if one.split(": ")[0].endswith("chapters/methods.tex")]
+    where = "paper.tex was not read past line 4" if stops == "paper" else (
+        "chapters/intro.tex was not read past line 2")
+    assert where in note and "no entry inputs it" not in note, note
 
 
 def test_a_declaration_past_a_stop_still_decodes_the_file(tmp_path: Path) -> None:

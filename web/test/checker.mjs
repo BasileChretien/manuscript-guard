@@ -207,14 +207,8 @@ try {
   expected[items[1].id] = { status: "ok", note: "" };
   now = await state(page);
   check(same(recorded(now.answers), expected) && now.pos === 2, `Y: ${JSON.stringify(now.answers)}`);
-  // C answers only where the item's group lists it; U does here.
   await note(page, "the page is hard to read");
   await away(page);
-  if (!statusesOf(items[2]).includes("code")) {
-    await page.keyboard.press("c");
-    now = await state(page);
-    check(same(recorded(now.answers), expected), `C outside the methods: ${JSON.stringify(now.answers)}`);
-  }
   await page.keyboard.press("u");
   expected[items[2].id] = { status: "unsure", note: "the page is hard to read" };
   now = await state(page);
@@ -271,9 +265,28 @@ try {
   await sent(page, false, "Close");
   console.log(`clipboard: ${pasted.startsWith("{") ? "the answers file" : pasted.slice(0, 60)}`);
   check(!one.errors.length, `the page's script failed: ${one.errors.join("; ")}`);
-  const elsewhere = one.asked.filter((url) => !url.startsWith(origin));
+  // Over the network only, as browser.mjs reads it: a data: or blob: address is no host.
+  const elsewhere = one.asked.filter((url) => /^(https?|wss?):/.test(url) &&
+    !url.startsWith(origin + "/"));
   check(!elsewhere.length, `the page asked ${elsewhere.join(", ")}`);
   await one.context.close();
+
+  // C answers only where the item's group lists it: on a literature item, with a note, it
+  // records nothing.
+  const plain = items.findIndex((item) => item.group === "literature");
+  if (check(plain >= 0 && !statusesOf(items[plain]).includes("code"),
+    "the page holds no literature item answered without C: C was not tried outside the methods")) {
+    const other = await open("C outside the methods");
+    for (let at = 0; at < plain; at += 1) await other.page.keyboard.press("ArrowRight");
+    await note(other.page, "the source is not this one");
+    await away(other.page);
+    await other.page.keyboard.press("c");
+    now = await state(other.page);
+    check(now.id === items[plain].id && same(now.answers, {}),
+      `C on ${now.id}, a literature item: ${JSON.stringify(now.answers)}`);
+    console.log(`C on a literature item: ${Object.keys(now.answers).length} answers recorded`);
+    await other.context.close();
+  }
 
   // The clipboard refused, and absent: the box holds the file all the same. Chrome refuses it
   // by its permission; Firefox writes on a click whatever its permissions say, so there a

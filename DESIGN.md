@@ -28908,8 +28908,10 @@ Closed since, and why each mattered (an open gap goes above this line):
   shutting it; Copy putting the file on the clipboard, and the box holding it where the
   clipboard is refused or absent; each status key recording its answer, an arrow moving
   between items, a key held with Ctrl, Alt or Meta recording nothing, and a key typed into
-  the note box staying the note's. It runs in CI's `web` job, on a ready pull request and on
-  main, and not in pytest.
+  the note box staying the note's. Chrome refuses the clipboard by its permission; Firefox
+  writes on a click whatever its permissions say, so there the refused clipboard is a
+  stand-in whose `writeText` rejects. It runs in CI's `web` job, on a ready pull request and
+  on main, and not in pytest.
 
 - **A colon before a long form that a bracket after it defines made a second definition
   (2026-11-21).** "the latest of the CAPs: Content Acquisition Podcasts Plus (CAP-P)", as an

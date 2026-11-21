@@ -1168,8 +1168,9 @@ def test_a_ledger_entry_that_cannot_be_read_is_reported(project: Path) -> None:
 
 def test_the_page_stamps_an_answer_with_its_offset() -> None:
     """`toISOString()` wrote UTC with no zone, so an answer given at 09:00 in Japan was recorded
-    at midnight, on the day before. No test runs this page's JavaScript; what is held here is
-    that the call is gone and the local stamp is there."""
+    at midnight, on the day before. `web/test/checker.mjs` runs the page in a browser in CI's
+    `web` job and does not read the time an answer carries; what is held here is that the call
+    is gone and the local stamp is there."""
     from manuscript_guard.checking.bundle import TEMPLATE
 
     page = TEMPLATE.read_text(encoding="utf-8")
@@ -1499,8 +1500,11 @@ def test_a_disagreement_is_named_by_the_item_and_build_counts_each_item_once(
 def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_alone() -> None:
     """Three ways the page recorded what the co-author did not mean: a note typed after "does not
     match" went into the next item's box; Space or Enter after a click pressed the button again,
-    on the next item; and Ctrl+U, the browser's view of the source, recorded "not sure". The page
-    has no runner of its own here, so what is held is that each guard is in it."""
+    on the next item; and Ctrl+U, the browser's view of the source, recorded "not sure".
+    `web/test/checker.mjs` presses the keys in a browser, in CI's `web` job: a note typed into
+    the box is the note's, and a key with Ctrl, Alt or Meta records nothing. It clicks no
+    answer button and presses no Space or Enter, so what is held here, in pytest, is that each
+    guard is in the template."""
     from manuscript_guard.checking.bundle import TEMPLATE
 
     page = TEMPLATE.read_text(encoding="utf-8")
@@ -1518,8 +1522,9 @@ def test_the_highlighter_marks_a_word_inside_an_escape_it_spells() -> None:
     """A known gap (DESIGN.md, Known gaps, "The highlighter can mark inside a character
     reference"): `marks` escapes the text and then marks each word in what it escaped, so a
     word that spells part of an escape, `amp` or `lt`, is marked inside `&amp;` or `&lt;`.
-    No test runs the page's script (the Known gap above it), so what is held is the function as
-    written, and what its steps, taken in the same order, make of such a text."""
+    `web/test/checker.mjs` runs the page in a browser, in CI's `web` job, and does not look at
+    what is marked, so what is held is the function as written, and what its steps, taken in
+    the same order, make of such a text."""
     from manuscript_guard.checking.bundle import TEMPLATE
 
     page = TEMPLATE.read_text(encoding="utf-8")

@@ -24215,6 +24215,11 @@ Open, recorded as each change landed:
     space, reads as before, KX92 a use, and so does a catalogue's name with no bracket, "KX92
     30".
     Pinned by `tests/test_language.py::test_a_catalogue_designation_is_no_short_form`.
+  - A definition in square brackets with a citation's number straight after it, as a PDF
+    or plain text flattens a superscript, "The C-reactive protein [CRP]12 was measured", is
+    a designation by its typing: it defines nothing, and CRP is asked about as undefined.
+    The same in round brackets, "(CRP)12", defines (review round 1 of #717).
+    Pinned by `tests/test_language.py::test_a_square_bracket_definition_before_a_flattened_citation_reads_as_a_designation`.
   - A name underscores join is no use of any part, so a short form the paper defines and
     then writes only inside such names, a table of series named so, is defined and not used
     again.

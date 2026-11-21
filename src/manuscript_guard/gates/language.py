@@ -2360,15 +2360,14 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             # A glossary's lines are its entries, and none of them is a use; nor is a word
             # of the title page, its departments, units and institutions.
             if (region.scope is None or _in_a_glossary(file, word.start())
-                    or _on_the_title_page(file, word.start())
-                    or _inside(file.apart, word.start())):  # fmt: skip
+                    or _on_the_title_page(file, word.start())):  # fmt: skip
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]
             undue = _undue(file, word.start(), region, front)
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
-                if (file.order, offset) in defining:
+                if (file.order, offset) in defining or _apart(file, word.start(), offset):
                     continue
                 if not is_defined and offset in people:
                     continue
@@ -2385,6 +2384,13 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     _Use(file.order, offset, region.quiet, undue)
                 )
     return scopes
+
+
+def _apart(file: _File, word: int, offset: int) -> bool:
+    """Whether the short form at `offset`, in the word that starts at `word`, is a part of a
+    designation or of a name underscores join (`_File.apart`): each part of a hyphenated
+    word on its own, so "anti-QMP_RATE", which opens with a word, holds no use of QMP."""
+    return _inside(file.apart, offset)
 
 
 def _undue(file: _File, offset: int, region: _Region, front: int) -> bool:

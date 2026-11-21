@@ -1011,6 +1011,9 @@ DESIGNATION_SENTENCES = (
 #: form one of their parts is: no use of it.
 JOINED_SHORT = ("quarterly market price", "QMP")
 JOINED_NAMES = ("QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "UK_QMP\\_ALL")
+#: Such a name with a word a hyphen joins before it, which every example holds one of: the
+#: hyphenated word opens before the name, and its short form is a part of the name still.
+HYPHENED_NAMES = ("anti-QMP_RATE", "pre-QMP\\_ALL", "non-IOS_QMP")
 #: A colon pair or an equals sign's whose long form a bracket after it defines a short form
 #: from, alone or in a list, round or square: the bracket's definition wins (Basile,
 #: 2026-11-21, "Bracket wins"), so the pair's short form is defined by nothing. `{s}` is the
@@ -1065,7 +1068,9 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
     pairs = zip(sentences, numbers, strict=False)
     designated = " ".join(sentence.format(form.format(number)) for sentence, number in pairs)
     joined_long, joined = JOINED_SHORT
-    names = draw(st.lists(st.sampled_from(JOINED_NAMES), min_size=1, max_size=3, unique=True))
+    names = draw(st.permutations([
+        *draw(st.lists(st.sampled_from(JOINED_NAMES), min_size=1, max_size=3, unique=True)),
+        draw(st.sampled_from(HYPHENED_NAMES))]))  # fmt: skip
     rows = "\n".join(f"| {name} | 0.{at + 1} |" for at, name in enumerate(names))
     joining = (f"| Series | Loading |\n|---|---|\n{rows}\n\nThe {joined_long} ({joined}) rose. "
                f"The {joined} fell.")  # fmt: skip

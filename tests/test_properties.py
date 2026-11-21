@@ -2180,7 +2180,8 @@ def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
     it; author-year citations typed after a long form in its bracket are no part of it, so a
     note that gives the long form again gives no other meaning; a catalogue's designation,
     "[KX92]30", typed or escaped, defines nothing and is no use; and a name whose parts
-    underscores join, bare or escaped, is no use of a short form that one of its parts is,
+    underscores join, bare or escaped, a word a hyphen joins before it or not, is no use of
+    a short form that one of its parts is,
     in a table above the definition; and where a bracket defines a short form after its long
     form, alone or in a list, round or square, a colon pair or an equals sign's the same
     words could make defines nothing (Basile, 2026-11-21, "Bracket wins")."""
@@ -2207,6 +2208,11 @@ def _a_designation_is_a_short_form(patch: pytest.MonkeyPatch) -> None:
 
 def _a_name_underscores_join_is_short_forms(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_JOINED_BY_UNDERSCORES", re.compile(r"(?!)"))
+
+
+def _a_hyphenated_word_is_apart_by_its_start_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_apart",
+                  lambda file, word, offset: language_gate._inside(file.apart, word))  # fmt: skip
 
 
 def _a_colon_pair_defines_beside_a_bracket(patch: pytest.MonkeyPatch) -> None:
@@ -27040,6 +27046,10 @@ BROKEN = {
     ),
     "a name underscores join is read as short forms": (
         _a_name_underscores_join_is_short_forms,
+        test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
+    ),
+    "a hyphenated word is set apart by where it starts alone": (
+        _a_hyphenated_word_is_apart_by_its_start_alone,
         test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once,
     ),
     "a colon pair defines beside the bracket that defines from its words": (

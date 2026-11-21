@@ -2569,17 +2569,23 @@ def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> N
     """A paper of the real-paper corpus defined one short form once in its text and with
     another long form in each of six table notes: six findings of one meaning. Each other
     meaning is reported once, where it is first given, and a third meaning is a finding of
-    its own; the text's own meaning given again is still "defined again"."""
+    its own; the text's own meaning given again is still "defined again". A meaning that
+    differs by an apostrophe alone, "Kids' Quiet Scale", is another meaning to
+    `_same_meaning`, reported once too, as DESIGN.md's Known gaps write down."""
     notes = "".join(f"| Item | n |\n|---|---|\n| one | {n} |\n\n*Note.* KQS = Kids Quiet Scale "
                     "short form.\n\n" for n in range(3))  # fmt: skip
+    possessive = "".join(f"| Item | n |\n|---|---|\n| two | {n} |\n\n*Note.* KQS = Kids' Quiet "
+                         "Scale.\n\n" for n in range(2))  # fmt: skip
     report = written(
         project,
         "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS held.\n\n" + notes
-        + "The Kids Quiet Scale Short Forms (KQS) were also given.\n\nThe kids quiet score "
-        "(KQS) was read.\n\nThe Kids Quiet Scale (KQS) was given again.\n",
+        + possessive + "The Kids Quiet Scale Short Forms (KQS) were also given.\n\nThe kids "
+        "quiet score (KQS) was read.\n\nThe Kids Quiet Scale (KQS) was given again.\n",
     )
     assert found(report, "abbreviation-redefined") == [
         "KQS is defined as 'Kids Quiet Scale short form' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined as 'Kids' Quiet Scale' here and as 'Kids Quiet Scale' at "
         "manuscript/main.md:3",
         "KQS is defined as 'kids quiet score' here and as 'Kids Quiet Scale' at "
         "manuscript/main.md:3",
@@ -2636,6 +2642,23 @@ def test_a_catalogue_designation_is_no_short_form(project: Path, designated: str
     assert "ZK92" in " ".join(found(spaced, "abbreviation-undefined")), found(spaced)
 
 
+def test_a_square_bracket_definition_before_a_flattened_citation_reads_as_a_designation(
+    project: Path,
+) -> None:
+    """The limit of the rule above, as DESIGN.md's Known gaps write it down (review round 1
+    of #717): a definition in square brackets with a citation's number flattened straight
+    after it, as a PDF or plain text prints a superscript, is a designation by its typing,
+    so it defines nothing and its short form is asked about as undefined. The same in round
+    brackets defines."""
+    square = written(project, "# Results\n\nThe C-reactive protein [CRP]12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert [f.message.split()[0] for f in square.findings] == ["CRP"], found(square)
+    assert found(square, "abbreviation-undefined"), found(square)
+    round_ = written(project, "# Results\n\nThe C-reactive protein (CRP)12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert not round_.findings, found(round_)
+
+
 def test_a_latex_catalogue_designation_is_no_short_form(tmp_path: Path) -> None:
     """In LaTeX, the brackets typed bare and typed in mathematics, `$[$ZK92$]$12`, which
     prints "[ZK92]12" and leaves only "ZK92" to read."""
@@ -2653,7 +2676,9 @@ def test_a_latex_catalogue_designation_is_no_short_form(tmp_path: Path) -> None:
     assert not report.findings, [f.message for f in report.findings]
 
 
-@pytest.mark.parametrize("joined", ["QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth"])
+@pytest.mark.parametrize(
+    "joined", ["QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "anti-QMP_RATE"]
+)
 def test_a_name_underscores_join_is_no_use_of_a_short_form(project: Path, joined: str) -> None:
     """A series' name in a table of an economics preprint of the real-paper corpus, a short
     form and a word joined by an underscore, was read as a use of the short form before the

@@ -23377,6 +23377,10 @@ Open, recorded as each change landed:
   missing (`_printed_otherwise`), or just before a paragraph left out of the comparison
   that did not come back (`_beside_lost`). The record could settle each; none is read
   from it yet.
+  Pinned by `tests/test_corruption.py::test_with_the_record_a_caption_edited_to_read_like_the_deleted_sentence_is_refused`,
+  `tests/test_corruption.py::test_with_the_record_a_rewording_past_most_words_beside_a_deleted_block_of_its_kind_is_refused`,
+  `tests/test_corruption.py::test_with_the_record_a_joined_up_line_with_text_typed_after_its_identifier_is_refused`
+  and `tests/test_corruption.py::test_with_the_record_the_refusals_that_rest_on_hashes_still_stand`.
 - **Where an identifier's bookmark sits is read for a block carrying one identifier the
   record holds.** A block carrying several, or one the record does not hold, is judged by
   its kind and its words as a document without the record is (`_off_headings`). Several
@@ -23387,10 +23391,13 @@ Open, recorded as each change landed:
   none with the same content, so one edited in place counts as gone too: the text beyond
   it is then weighed with the text under the paragraph, which can refuse a rewording and
   cannot merge one. And a block of the paragraph's own kind (a line block, the text beside
-  an equation) cut from elsewhere and pasted onto the line the paragraph's text was deleted
-  from is read as the paragraph reworded, as any text typed or pasted there is and as on
-  `main`: its text is written to the paragraph's slot, and its old place is reported as a
-  block that vanished, for the author to delete.
+  an equation) cut from elsewhere, pasted onto the line the paragraph's text was deleted
+  from and edited there, is read as the paragraph reworded, as any text typed or pasted
+  there is and as on `main`: its text is written to the paragraph's slot, and its old
+  place is reported as a block that vanished, for the author to delete.
+  Pinned by `tests/test_corruption.py::test_where_a_bookmark_sits_is_read_only_for_one_identifier_the_record_holds`,
+  `tests/test_corruption.py::test_with_the_record_a_table_edited_in_place_counts_as_gone`
+  and `tests/test_corruption.py::test_a_block_of_the_paragraphs_kind_pasted_onto_its_emptied_line_is_its_rewording`.
 - **The record is read as this release reads a document.** It holds each block's text as
   `docxtext.blocks` read it at the build. A release that reads a document otherwise - a
   symbol, a space - would find a paragraph's recorded text different from the text it
@@ -23405,6 +23412,8 @@ Open, recorded as each change landed:
   back in a forced import. One that gained less, as a word added, a word fixed or a clause
   cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
   another, as `_swallowed` lets one through: its words go into the source twice.
+  Pinned by `tests/test_corruption.py::test_a_rewording_that_gained_five_words_or_a_number_is_refused_beside_one_not_known`
+  and `tests/test_corruption.py::test_an_edit_merges_when_word_deletes_a_paragraph_the_author_also_changed`.
 - **An identifier Word left behind counts as the paragraph gone only where the text it holds
   says so.** This is the reading of a document without its record of what it printed; with
   the record, what the paragraph said is known, and the gaps of this entry are closed
@@ -23434,6 +23443,11 @@ Open, recorded as each change landed:
   bookmark is not known and one's paragraph is not. And a paragraph compared whose identifier
   came back on other text is refused itself (`_not_its_own`) but not looked for in the words
   another paragraph gained, as on `main`.
+  Pinned by `tests/test_corruption.py::test_without_the_record_an_identifier_left_behind_counts_as_gone_by_what_it_holds`,
+  `tests/test_corruption.py::test_without_the_record_a_paragraph_counted_reworded_is_not_looked_for_elsewhere`,
+  `tests/test_corruption.py::test_without_the_record_an_identifier_on_a_block_the_md_changed_counts_as_the_paragraph`,
+  `tests/test_corruption.py::test_without_the_record_a_known_paragraph_counts_as_gone_where_its_text_is_not_held`
+  and `tests/test_corruption.py::test_without_the_record_a_paragraph_on_other_text_is_not_looked_for_in_another`.
 - **The five-word rule is the rule for a document without its record.** The hashes of #56
   and #93 say whether a paragraph's source changed, not what it said, so what a paragraph
   deleted or cut in Word said is not known when the `.md` changed it since. The build now
@@ -23446,15 +23460,22 @@ Open, recorded as each change landed:
   the copy stays where it was, so nothing vanished, and `_swallowed` looks for a copy of
   five words or more. "...dates. 4000" merges, as on `main`, and `check` reports the typed
   number as unbound.
+  Pinned by `tests/test_corruption.py::test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number`.
+  - *A partial copy of five words or more merges too.* `_swallowed` looks for the whole of
+    a paragraph, so seven words copied from one ("Of 4000 reports screened, twelve were
+    duplicates") merge as four do, and `check` reports the typed number as unbound.
+    Pinned by `tests/test_corruption.py::test_a_partial_copy_of_five_words_or_more_merges_too`.
 - **A sentence cut from a paragraph the `.md` changed since, and pasted into another,
   merges.** The paragraph it went into gained it; the paragraph it left is not compared, so
   what it lost is not seen. The sentence is in the source twice, as on `main`, and with no
   number in it `check` cannot see it. This is the sibling of the tracked case below, where
   the paragraph the sentence left is refused because a binding went with it.
+  Pinned by `tests/test_corruption.py::test_a_sentence_cut_from_a_paragraph_the_md_changed_merges_where_it_was_pasted`.
 - **A paragraph cut from the supplement and pasted into the main text merges.** Each
   document is imported on its own and its record covers only itself, so the main text's
   import sees new words in a paragraph and the supplement's sees a deletion, which it
   reports and does not apply. As on `main`.
+  Pinned by `tests/test_roundtrip.py::test_a_paragraph_cut_from_the_supplement_into_the_paper_merges_there`.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still
@@ -23487,6 +23508,7 @@ Open, recorded as each change landed:
     the paragraph it arrived in merges it as typed text, numbers included, so the sentence is
     in the source twice until the author deletes one, and `check` reports the typed numbers
     as unbound. That is how any number typed in Word arrives, on `main` too.
+    Pinned by `tests/test_roundtrip.py::test_a_sentence_moved_with_track_changes_arrives_as_typed_text`.
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
     reported with the new text in that section and not applied. The search for the section
@@ -23501,8 +23523,10 @@ Open, recorded as each change landed:
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.
+    Pinned by `tests/test_roundtrip.py::test_a_rewording_that_gained_most_of_a_deleted_paragraphs_words_is_refused`.
   - *A paragraph moved beside a reworded one refuses the rewording*, as new text beside it
     would: it cannot be told from the second half of a split.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_moved_beside_a_reworded_one_refuses_the_rewording`.
   - *A paragraph typed in front of one that is then deleted*, with Track Changes on,
     reports the deletion and refuses a rewording of the paragraph after it, beside the new
     text. `main` merged the new text as a rewording of the deleted paragraph.
@@ -23511,9 +23535,11 @@ Open, recorded as each change landed:
     any other*: its neighbour keeps its identifier, and the new text is only counted among
     what was not compared. It used to be refused as a split of the neighbour, which at least
     named it. With Track Changes off it still is.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_started_in_front_of_another_leaves_it_its_identifier`.
   - *A comment's anchor is read from the markup only.* After a paste made without Track
     Changes at the start of a paragraph, a comment on the pasted text is attached to the
     paragraph it landed in front of.
+    Pinned by `tests/test_roundtrip.py::test_a_comment_on_text_pasted_at_a_paragraphs_start_is_that_paragraphs`.
   - *A heading is what its style says it is.* An identifier left on a heading, a caption or
     a reference entry - the paragraph before it deleted without Track Changes - names a
     paragraph that is gone, whatever the heading now says. A heading made by hand, bold and
@@ -23524,25 +23550,32 @@ Open, recorded as each change landed:
     their words, in order, which is read as that paragraph restyled: a short caption edited
     into mostly a deleted lead-in's words merges into the lead-in's slot, as on `main`, and
     the caption in the source stays as it was.
+    Pinned by `tests/test_roundtrip.py::test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text`,
+    `tests/test_roundtrip.py::test_a_heading_made_by_hand_and_retitled_is_the_deleted_paragraphs_wording`
+    and `tests/test_roundtrip.py::test_a_title_edited_into_mostly_a_deleted_lead_ins_words_merges_into_its_slot`.
   - *A heading joined into a short paragraph under it and retitled in the same round*, in a
     document without its record of what it printed (with the record the paragraph is
     refused and nothing is written: its identifier is behind the heading's text), is no
     longer known as a join once the heading's old title is gone from the block. When the new
-    title and the paragraph still share most of their words ("Ethics approval" with "Not
-    applicable."), the block merges into the paragraph's slot, title and all, and the
-    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted,
-    and Word's joined text listed as a changed heading ("Conflicts of interestNone
-    declared."). Read together, those two say to delete the paragraph and retype Word's copy
-    into the heading, and neither is meant: the paragraph is there. Undo the join in Word, or
-    make the retitle in the .md. A copy of the heading's old title standing elsewhere in the
-    document - typed as a heading of its own, say - hides the join in the same way, since
-    the join is known by that title going missing, and gives the same report.
+    title and the paragraph still share most of their words ("Ethics approval" with "Ethics
+    approval was not required."), the block merges into the paragraph's slot, title and
+    all, and the heading stays in the source, as on `main`; otherwise the paragraph is
+    reported deleted, and Word's joined text listed as a changed heading ("Conflicts of
+    interestNone declared."). Read together, those two say to delete the paragraph and
+    retype Word's copy into the heading, and neither is meant: the paragraph is there. Undo
+    the join in Word, or make the retitle in the .md. A copy of the heading's old title
+    standing elsewhere in the document - typed as a heading of its own, say - hides the join
+    in the same way, since the join is known by that title going missing, and gives the
+    same report.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_joined_into_its_paragraph_and_retitled_is_no_join_without_the_record`
+    and `tests/test_roundtrip.py::test_a_copy_of_a_joined_headings_title_hides_the_join`.
   - *A section deleted whole, with the heading after it retitled around the deleted title*
     ("Funding and competing interests", once the Funding heading and its paragraph are gone)
     is refused as a join with the deleted heading: its title gone from the document and
     turned up beside the deleted paragraph's identifier reads as one. Nothing is written,
     and the advice to undo a join points at one that was not made. Delete the section and
     retitle the heading in the .md.
+    Pinned by `tests/test_roundtrip.py::test_a_section_deleted_with_the_next_heading_retitled_around_it_is_refused_as_a_join`.
   - *A heading run into a paragraph that opens with the heading's own words* ("Statistical
     analysis" over "Statistical analysis used...", joined and edited into "Statistical
     analysis: we used...") merges, heading text and all, and the heading stays in the
@@ -23550,15 +23583,19 @@ Open, recorded as each change landed:
     did, and here it appears once before and once after. Check such a paragraph in the .md
     after an import. This too is of a document without its record: with it, the paragraph's
     identifier is behind the heading's text, and the paragraph is refused.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_run_into_a_paragraph_opening_with_its_words_merges_without_the_record`.
   - *A heading carrying a slid identifier, then joined into its paragraph* - the paragraph
     before the heading deleted without Track Changes, then Delete pressed at the end of the
     heading - comes back as one block with both identifiers, and is reported as those two
     paragraphs joined into one. The deletion is not reported, and the join named is not the
     one made. Nothing is written.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_with_a_slid_identifier_joined_into_its_paragraph_is_the_wrong_join`.
   - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
     identifier on a caption of that same style. Deleted without Track Changes just above a
-    table whose caption was edited, it has the caption's new text written over it, as on
-    `main`. Nothing in the toolkit writes such a div.
+    table whose caption was edited, in a document without its record of what it printed,
+    it has the caption's new text written over it, as on `main`. Nothing in the toolkit
+    writes such a div.
+    Pinned by `tests/test_roundtrip.py::test_a_note_in_a_captions_style_deleted_above_an_edited_caption_takes_its_text`.
   - *A paragraph restyled as a heading, a list item or a quotation, or given the style of
     any other block the build leaves without an identifier, and reworded past most of its
     words* is reported deleted, and the restyled block as new text, with the document's
@@ -23569,10 +23606,12 @@ Open, recorded as each change landed:
     most of its words merges its rewording, and the style change is dropped without a word,
     as on `main`. So does one given a style the build uses nowhere, however much of it was
     reworded.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_restyled_and_reworded_past_most_words_is_reported_deleted`.
   - *A subheading typed above a paragraph without Track Changes* takes that paragraph's
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its
     identifier back.
+    Pinned by `tests/test_roundtrip.py::test_a_subheading_typed_above_a_paragraph_reports_it_moved`.
 - **A join into a table is neither applied nor reported.** A paragraph whose mark was
   deleted just before a table runs on in Word into the table's first cell. Import folds a
   paragraph into the next only when no table stands between them, so it reads the paragraph
@@ -23580,6 +23619,7 @@ Open, recorded as each change landed:
   paragraph as a join would be the way to report it. Past a table deleted whole, whose rows
   import does not read, the two paragraphs are adjacent and the join is refused as any
   other.
+  Pinned by `tests/test_roundtrip.py::test_a_join_into_a_table_is_neither_applied_nor_reported`.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
@@ -23593,12 +23633,17 @@ Open, recorded as each change landed:
   sits is read against those blocks as the document was sent. An edited or deleted one is
   not among them, so a paragraph that crossed only that block is not seen to leave its
   section: with the order unchanged the move is not reported as a move, and with it changed
-  the paragraph goes to the edge of its own section. Since lists and quotations lost their
+  the paragraph goes to the edge of its own section, or, past an edited one, which is new
+  text there, is held where it was. Since lists and quotations lost their
   identifiers this is no rare case, so any block without an identifier that came back
   reworded, deleted or in a different order is now listed, import no longer says the
   document matches, and it exits 1 - but the move itself is still not named. A table or
   figure that cannot be found in the returned document is not among them either. That one is
   reported, but a move past it is not.
+  Pinned by `tests/test_roundtrip.py::test_a_move_past_what_bounds_a_section_is_reported_and_left_where_it_was`,
+  `tests/test_roundtrip.py::test_a_move_past_a_block_that_came_back_changed_is_not_seen_to_leave_its_section`,
+  `tests/test_roundtrip.py::test_an_edit_to_a_paragraph_without_an_identifier_is_not_called_a_match`
+  and `tests/test_roundtrip.py::test_reordered_list_items_are_not_called_a_match`.
 - **A paragraph is held in place by its source, not by what the co-author meant.** Since the
   tagging rules changed, most of what was held carries no identifier at all, so import
   neither moves nor rewords it, and an edit to it is listed with the paragraphs without an
@@ -23619,6 +23664,10 @@ Open, recorded as each change landed:
   spans and closed comments set aside, and a backtick in a link's address, an autolink,
   inline maths or an HTML attribute can still be taken for one that opens a code span; a
   comment opened after it and closed past a blank line is then not seen by that reading.
+  Pinned by `tests/test_roundtrip.py::test_a_paragraph_held_by_its_source_is_left_untagged_or_neither_reworded_nor_moved`,
+  `tests/test_roundtrip.py::test_a_comment_or_a_page_break_still_ends_a_section`,
+  `tests/test_roundtrip.py::test_a_held_paragraph_dragged_past_one_names_that_one`
+  and `tests/test_roundtrip.py::test_a_backtick_where_pandoc_reads_none_can_hide_a_comment_from_bare`.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -23629,6 +23678,8 @@ Open, recorded as each change landed:
   one, and the deletion is not reported. A figure pasted a second time into its own stretch
   matches neither copy and is reported as not found; a copy pasted into another section is
   new content, and is not reported at all.
+  Pinned by `tests/test_roundtrip.py::test_a_table_figure_or_equation_is_paired_by_its_place_within_its_stretch`
+  and `tests/test_roundtrip.py::test_a_figure_word_stored_differently_is_still_that_figure`.
 - **An identifier on a figure or an equation is read as one Word left there.** A paragraph
   cut or deleted with Track Changes off leaves its bookmark on the paragraph after it, and
   where that shows a picture or display maths and no text, the identifier is read as a
@@ -23675,6 +23726,7 @@ Open, recorded as each change landed:
   with its old text is pasted elsewhere reads as that heading dragged there, and is reported
   as moved: text cannot tell a drag from a rename and a paste, and a false report is the
   safer of the two mistakes.
+  Pinned by `tests/test_roundtrip.py::test_a_duplicated_heading_is_paired_only_where_that_is_unambiguous`.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
@@ -23784,6 +23836,7 @@ Open, recorded as each change landed:
     written on the line under it, with no empty line between, is never asked whether it
     runs on. Under a line holding only a no-break space, the paragraph below goes into the
     footnote, and is not compared. An empty line before the note avoids it.
+    Pinned by `tests/test_roundtrip.py::test_a_note_straight_under_a_heading_or_a_fence_is_never_asked_whether_it_runs_on`.
   - *Only a note left alone, or a label made a term, is read by itself.* Pandoc reads a
     note's text apart from the body. Directly under a label, a definition list's `:` or `~` -
     with text, a space or a tab, or alone, indented up to three spaces - makes a term and its
@@ -23810,6 +23863,10 @@ Open, recorded as each change landed:
     #54's eleventh round found hidden. And a code fence wrapped onto a note's second line,
     left alone or not, is still paired with the next fence below, so what lies between goes
     unmarked, or a marker lands inside a real code block. Both are so on `main`.
+    Pinned by `tests/test_roundtrip.py::test_a_note_over_a_line_it_may_end_at_hides_nothing_after_it`,
+    `tests/test_roundtrip.py::test_raw_content_followed_out_of_a_note_leaves_paragraphs_pandoc_prints_unmarked`,
+    `tests/test_roundtrip.py::test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed`
+    and `tests/test_roundtrip.py::test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next`.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below
@@ -23911,8 +23968,9 @@ Open, recorded as each change landed:
     Pinned by `tests/test_roundtrip.py::test_the_paragraph_under_a_heading_carries_the_identifier`.
   - *A reworded paragraph can take the link above it along.* One that comes back from Word
     opening with `(`, `"` or `'` could be the title of a link's definition written straight
-    above it, so the next build marks the whole block, as #54 does, and the definition
-    prints as text.
+    above it: the next build would mark the whole block, as #54 does, and print the
+    definition as text, so `import` refuses the rewording.
+    Pinned by `tests/test_roundtrip.py::test_a_rewording_opening_like_a_link_title_under_its_definition_is_refused`.
   - *Setext headings are not compared, as before.* On `main` since #25 a block holding an
     underline is left unmarked whole, so the paragraph under a setext heading had no
     identifier either; it has one now, and the heading still none. A revision round opened
@@ -23983,6 +24041,7 @@ Open, recorded as each change landed:
   an ordinary edit. A join that also rewrote most of the second paragraph still reads as a
   rewording of the first and a deletion of the second: the first is merged with the combined
   text, and the second is reported deleted and left in place for the author to remove.
+  Pinned by `tests/test_roundtrip.py::test_a_join_that_rewrote_most_of_the_second_paragraph_merges_as_a_rewording`.
 - **A paragraph that is not applied travels with the one before it.** Deleted in Word,
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in

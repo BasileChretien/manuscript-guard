@@ -84,6 +84,12 @@ def table_lines(text: str) -> frozenset[int]:
     return _Tables(text.split("\n")).lines()
 
 
+def table_spans(text: str) -> list[tuple[int, int]]:
+    """Each table `table_lines` reads, as its lines from 0, `[start, end)`, in order: a
+    multiline table's blank lines between its rows are its own."""
+    return _Tables(text.split("\n")).spans()
+
+
 #: A block quotation's marks at the start of a line, nested ones among them.
 _QUOTED = re.compile(r"^(?: {0,3}>[ \t]?)+")
 #: A list item's marker before the rest of its line.

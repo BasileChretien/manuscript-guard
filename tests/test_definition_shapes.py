@@ -186,13 +186,17 @@ def _judged(project: Path, text: str) -> list[tuple[str, str]]:
 def test_a_note_that_repeats_the_text_s_definition_restates_it(project: Path) -> None:
     """Basile, 2026-11-16 ("As a restatement"; docx-sport-A2, docx-psych-A3): journals ask a
     table to define its own short forms, so a note's "X = long form" that repeats the text's
-    definition restates it, as a caption does; one whose long form differs from the text's,
-    "Score" for "Scale", is still a second meaning."""
-    found = _judged(project,
-        "# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette Dependence "
-        "Scale (CDS).\n\n# Results\n\n| Score | n |\n|---|---|\n| 12 | 40 |\n\n*Note.* BDI = Beck "
-        "Depression Inventory; CDS = Cigarette Dependence Score.\n\nThe BDI and the CDS were "
-        "low.\n")  # fmt: skip
+    definition restates it, as a caption does. Since 2026-11-21 ("Table stands alone") a
+    table's note is compared with nothing in the text, so one whose long form differs from
+    the text's, "Score" for "Scale", is no second meaning either; the same note standing in
+    the text, under no table, still is."""
+    methods = ("# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette "
+               "Dependence Scale (CDS).\n\n# Results\n\n")  # fmt: skip
+    note = ("*Note.* BDI = Beck Depression Inventory; CDS = Cigarette Dependence Score.\n\nThe "
+            "BDI and the CDS were low.\n")  # fmt: skip
+    found = _judged(project, f"{methods}| Score | n |\n|---|---|\n| 12 | 40 |\n\n{note}")
+    assert found == [], found
+    found = _judged(project, f"{methods}The scores were read.\n\n{note}")
     assert found == [("abbreviation-redefined", "CDS")], found
 
 

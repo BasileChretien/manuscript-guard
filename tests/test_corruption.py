@@ -20307,10 +20307,15 @@ def test_a_figure_kept_as_png_and_tiff_is_held_to_the_journal_s_limits_twice(
     """A known gap (DESIGN.md, Known gaps, "A figure file is read for its pixels only where
     it is a PNG, JPEG or TIFF"): the build places the PNG, the first of the figure's files
     in its order, and G4 holds the TIFF beside it to the rules as well, so a resolution too
-    low is said of each."""
-    from manuscript_guard.build.assemble import FIGURE_PREFERENCE, find_figure
+    low is said of each. The TIFF is one of its own, of the PNG's 1950 by 660 pixels."""
+    from test_figure_files import tiff
 
-    shutil.copy(project / "figures" / "forest.png", project / "figures" / "forest.tif")
+    from manuscript_guard.build.assemble import FIGURE_PREFERENCE, find_figure
+    from manuscript_guard.gates.figure_files import raster_of
+
+    kept = project / "figures" / "forest.tif"
+    kept.write_bytes(tiff(1950, 660, 300, 2))
+    assert kept.read_bytes()[:4] == b"II*\x00" and raster_of(kept) is not None
     assert FIGURE_PREFERENCE[0] == ".png"
     assert find_figure(load_project(project)[0], "forest") == project / "figures" / "forest.png"
     assert _artwork_said(project, min_dpi={"halftone": 600}, widths_mm=[89]) == [
@@ -21112,9 +21117,10 @@ def test_a_value_quoted_in_the_alternative_text_alone_is_stamped_and_still_unquo
     project: Path,
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A figure's alternative text is checked for being
-    there, not for being right"): the document's stamp reads the text's bindings, so another
-    binding there is another stamp; but G2's coverage does not, and a result quoted there
-    alone is still one nothing quotes."""
+    there, not for being right"): the document's stamp hashes the text as written, its
+    bindings among its words and none of them resolved, so the text with another binding
+    in it is another stamp; and G2's coverage does not read the text, so a result quoted
+    there alone is still one nothing quotes."""
     from manuscript_guard.gates.review import document_digest
 
     main = main_md(project)
@@ -21529,54 +21535,99 @@ _SVG_HEAD = ('<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt
              'viewBox="0 0 100 80">')  # fmt: skip
 
 
-def _vector_file(folder: Path, body: str | bytes, **spaces: bytes) -> Path:
-    """An SVG of `body`, or, where `body` is bytes, a PDF of that content with these colour
-    spaces."""
+def _vector_file(folder: Path, body: str | bytes) -> Path:
+    """An SVG of `body`; or, where `body` is bytes, a PDF: `body` itself where it is a whole
+    PDF, else a page that draws it."""
     from generated import pdf_document
 
     if isinstance(body, bytes):
         path = folder / "figure.pdf"
-        path.write_bytes(pdf_document(body, spaces=spaces))
+        path.write_bytes(body if body.startswith(b"%PDF") else pdf_document(body))
         return path
     path = folder / "figure.svg"
     path.write_text(_SVG_HEAD + body + "</svg>", encoding="utf-8")
     return path
 
 
+def _red_png() -> str:
+    """A PNG of one red pixel, whole and decodable, as base64."""
+    import base64
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return (struct.pack(">I", len(body)) + kind + body
+                + struct.pack(">I", zlib.crc32(kind + body)))  # fmt: skip
+
+    data = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00")) + chunk(b"IEND", b""))  # fmt: skip
+    return base64.b64encode(data).decode("ascii")
+
+
+def _pdf_page(content: bytes, resources: bytes, *objects: bytes) -> bytes:
+    """A PDF of one page that draws `content` with `resources`, and `objects` after its
+    content stream, numbered from 5."""
+    bodies = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 100 80] >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << " + resources + b" >> /Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        *objects,
+    ]
+    return b"%PDF-1.7\n" + b"".join(
+        b"%d 0 obj\n" % number + body + b"\nendobj\n" for number, body in enumerate(bodies, 1)
+    ) + b"%%EOF\n"
+
+
+#: An image XObject of one red pixel, and an axial shading red at both ends.
+_RED_IMAGE = (b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB"
+              b" /BitsPerComponent 8 /Length 3 >>\nstream\n\xff\x00\x00\nendstream")  # fmt: skip
+_RED_SHADING = (b"<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 100 0] /Function <<"
+                b" /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [1 0 0] /N 1 >> >>")  # fmt: skip
+#: A spot colour whose tint transform takes a full tint to red.
+_SPOT = (b"/ColorSpace << /C [/Separation /Spot /DeviceRGB << /FunctionType 2 /Domain [0 1]"
+         b" /C0 [1 1 1] /C1 [1 0 0] /N 1 >>] >>")  # fmt: skip
+_FILLED_PATH = b"0 0 m 1 1 l 1 0 l f"
+
+
 @pytest.mark.parametrize(
-    ("body", "spaces", "read"),
+    ("body", "read"),
     [
-        (f'<rect width="10" height="10" fill="{_RED}"/>', {}, [_RED]),
+        (f'<rect width="10" height="10" fill="{_RED}"/>', [_RED]),
         (f'<linearGradient id="g"><stop offset="0" stop-color="{_RED}"/><stop offset="1" '
          f'stop-color="{_GREEN}"/></linearGradient><rect width="10" height="10" '
-         'fill="url(#g)"/>', {}, []),
+         'fill="url(#g)"/>', []),
         (f'<pattern id="p" width="2" height="2"><rect width="1" height="1" fill="{_RED}"/>'
-         '</pattern><rect width="10" height="10" fill="url(#p)"/>', {}, []),
-        ('<image width="10" height="10" href="data:image/png;base64,iVBORw0KGgo="/>', {}, []),
-        (b"q 10 0 0 10 0 0 cm /Im0 Do Q /Sh0 sh", {}, []),
-        (b"/C cs 1 sc 0 0 m 1 1 l 1 0 l f", {"C": b"[/Separation /Spot /DeviceRGB << >>]"}, []),
-        (b"/C cs 1 sc 0 0 m 1 1 l 1 0 l f", {"C": b"[/Indexed /DeviceRGB 1 <ff0000 00ff00>]"},
+         '</pattern><rect width="10" height="10" fill="url(#p)"/>', []),
+        ('<image width="10" height="10" href="data:image/png;base64,' + _red_png() + '"/>', []),
+        (_pdf_page(b"q 10 0 0 10 0 0 cm /Im0 Do Q", b"/XObject << /Im0 5 0 R >>", _RED_IMAGE),
          []),
-        (b"/C cs 50 60 40 sc 0 0 m 1 1 l 1 0 l f",
-         {"C": b"[/Lab << /WhitePoint [0.9505 1 1.089] >>]"}, []),
+        (_pdf_page(b"/Sh0 sh", b"/Shading << /Sh0 5 0 R >>", _RED_SHADING), []),
+        (_pdf_page(b"/C cs 1 sc " + _FILLED_PATH, _SPOT), []),
+        (_pdf_page(b"/C cs 0 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/Indexed /DeviceRGB 1 <ff0000 00ff00>] >>"), []),
+        (_pdf_page(b"/C cs 50 60 40 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/Lab << /WhitePoint [0.9505 1 1.089] >>] >>"), []),
         # CMYK without its profile, and any space of three numbers as sRGB.
-        (b"0 1 1 0 K 0 0 m 1 1 l S", {}, ["#ff0000"]),
-        (b"/C cs 1 0 0 sc 0 0 m 1 1 l 1 0 l f",
-         {"C": b"[/CalRGB << /WhitePoint [0.9505 1 1.089] >>]"}, ["#ff0000"]),
+        (b"0 1 1 0 K 0 0 m 1 1 l S", ["#ff0000"]),
+        (_pdf_page(b"/C cs 1 0 0 sc " + _FILLED_PATH,
+                   b"/ColorSpace << /C [/CalRGB << /WhitePoint [0.9505 1 1.089] >>] >>"),
+         ["#ff0000"]),
     ],
-    ids=["a fill", "a gradient", "a pattern", "an image", "a pdf's image and shading",
+    ids=["a fill", "a gradient", "a pattern", "an image", "a pdf's image", "a pdf's shading",
          "a separation", "an indexed colour", "a lab colour", "cmyk", "a calibrated rgb"],
 )  # fmt: skip
 def test_a_colour_in_an_image_a_gradient_a_pattern_or_a_shading_is_not_read(
-    tmp_path: Path, body: str | bytes, spaces: dict, read: list[str]
+    tmp_path: Path, body: str | bytes, read: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A figure's colours are read from its SVG or PDF,
-    and compared all with all"): what a figure paints through an image, a gradient, a
-    pattern, a shading or a separation, indexed or Lab colour space is not read; a PDF's
-    CMYK is taken to RGB without its profile, and a calibrated RGB is read as sRGB."""
+    and compared all with all"): what a figure paints red through an image of a red pixel,
+    a gradient, a pattern, an axial shading, or a separation, indexed or Lab colour space
+    whose colour is red, is not read; a PDF's CMYK is taken to RGB without its profile, and
+    a calibrated RGB is read as sRGB."""
     from manuscript_guard.gates.figure_colours import painted
 
-    assert painted(_vector_file(tmp_path, body, **spaces)) == read
+    assert painted(_vector_file(tmp_path, body)) == read
 
 
 def _over_white(code: str, alpha: float) -> str:

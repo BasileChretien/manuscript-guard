@@ -240,3 +240,7 @@ reads:
   - where: tests/test_methods.py::test_touching_a_file_without_changing_it_is_not_drift
     kind: timestamp
     why: Sets a file's modification time a hundred seconds ahead. Times nothing.
+
+  - where: tests/test_verify.py::test_a_helper_the_script_imports_is_not_followed
+    kind: timestamp
+    why: Sets two helpers' modification times ten seconds ahead. Times nothing.

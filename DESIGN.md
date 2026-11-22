@@ -17591,6 +17591,7 @@ been sorted yet.
   to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
   change an `input-changed` failure. `verify`, which runs the analysis again and compares
   every value, sees the change either way. Imports are not followed.
+  Pinned by `tests/test_verify.py::test_a_helper_the_script_imports_is_not_followed`.
 - **The environment is the lockfiles at the project root, and only a warning.** Both
   emitters record the digest of each of `renv.lock`, `uv.lock`, `poetry.lock`,
   `environment.yml` and `requirements*.txt` found at the root, and G1 warns
@@ -17604,6 +17605,14 @@ been sorted yet.
   nothing. When a
   re-run differs, `verify` says whether the analysis declares a seed: a parameter whose key
   holds "seed".
+  Pinned by `tests/test_r_emitter.py::test_both_emitters_record_the_lockfiles_alike`,
+  `tests/test_corruption.py::test_a_lockfile_changed_since_the_results_is_said`,
+  `tests/test_corruption.py::test_a_lockfile_gone_or_new_since_the_results_is_said`,
+  `tests/test_corruption.py::test_a_lockfile_in_a_subfolder_or_one_unlike_what_is_installed_is_not_seen`,
+  `tests/test_corruption.py::test_a_lockfile_checked_out_with_other_line_endings_is_unchanged`,
+  `tests/test_r_emitter.py::test_a_lockfile_that_links_elsewhere_is_recorded_by_r_where_it_points`,
+  `tests/test_corruption.py::test_a_fragment_written_before_the_environment_was_recorded_says_nothing`
+  and `tests/test_verify.py::test_a_difference_says_whether_the_analysis_declares_a_seed`.
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:", "Figure S1.", "Fig. 1." or "eFigure 1."; the stop or colon has to come right
@@ -17823,6 +17832,8 @@ been sorted yet.
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
   "%", "years" and "y"), is no longer reported as written two ways.
+  Pinned by `tests/test_corruption.py::test_a_count_and_a_percentage_that_coincide_are_not_one_quantity`
+  and `tests/test_corruption.py::test_one_quantity_whose_unit_is_written_two_ways_is_not_said`.
 - **G8 tells a count from a measure at nought and one by how each is written.** At 0, 1 and
   −1 a value is keyed by its kind as well as its value and unit: written whole ("0", "1") or
   with decimals ("0.00", "1.0"), as its display shows it (2026-11-06: a count of none
@@ -17902,6 +17913,10 @@ been sorted yet.
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
+  Pinned by `tests/test_relations.py::test_a_display_that_is_no_rounding_is_left_out_of_the_printed_arithmetic`,
+  `tests/test_relations.py::test_a_bound_is_no_rounding_even_within_half_a_unit`,
+  `tests/test_relations.py::test_the_last_digits_of_decimal_arithmetic_are_no_rounding`
+  and `tests/test_relations.py::test_shares_printed_as_percentages_that_miss_100_warn`.
 - **A flow's record is checked step by step, and nothing more.** "One study, several
   reports" (PRISMA 2020) is not a subtraction, so a flow stops at the reports and the studies
   are an `at_most` of them. Where one record can be excluded for several reasons, the step is
@@ -17915,10 +17930,18 @@ been sorted yet.
   that is no results key. Python takes NumPy's whole numbers and its single truth values as
   its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
   any numeric vector of whole values, or a single number, for those steps.
+  Pinned by `tests/test_relations.py::test_overlapping_reasons_waive_their_sum_and_keep_the_total`,
+  `tests/test_relations.py::test_a_flow_two_fragments_record_is_the_first_s`,
+  `tests/test_relations.py::test_the_emitter_refuses_a_relation_it_cannot_write`,
+  `tests/test_r_emitter.py::test_r_refuses_the_flows_and_relations_python_refuses`,
+  `tests/test_r_emitter.py::test_r_and_python_write_the_same_flows_and_relations`,
+  `tests/test_relations.py::test_numpy_s_whole_numbers_and_truth_values_are_taken`
+  and `tests/test_r_emitter.py::test_r_takes_any_numeric_vector_of_whole_values_for_the_overlapping_steps`.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
   UTF-16 carry a BOM; a file without one is taken for 8-bit text.
+  Pinned by `tests/test_input_digests.py::test_utf16_without_a_bom_is_normalised_as_8_bit_text`.
 - **A blind document is read for the names `authors.yaml` gives, as they are written
   there.** A name written another way is not found: a nickname, a given name of several
   words reduced to its first, a family name alone, a name in a language's other script, or a
@@ -18167,10 +18190,10 @@ been sorted yet.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:
-  its words count, and its closing `---` underlines the line above it into a heading. A
-  block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
-  Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
-  chosen in advance.
+  its words count. It heads nothing: a block of `note: |` over an indented `Methods`,
+  placed under `## Results`, leaves the `p < 0.001` after it under Results, where it fails.
+  Pinned by `tests/test_corruption.py::test_a_yaml_block_later_in_a_file_is_counted_as_prose`
+  and `tests/test_corruption.py::test_a_yaml_block_in_the_body_heads_nothing`.
 - **Nothing asks for a design round before the analysis stage.** One that was never
   held says nothing. A design round's request carries the plan and the feasibility results
   only: the reporting guideline and the journal's profile are not sent, and a plan's
@@ -19264,6 +19287,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   ("2025" in "Global B3 March 2025") draws a second finding. A slug with a doubled or
   trailing underscore ("MedDRA®") is never found. A `release_file` is an input, and R
   looks for a relative one where it looks for any (see "The emitters").
+  Pinned by `tests/test_corruption.py::test_a_typed_release_is_read_by_its_text_within_60_characters_of_the_name`,
+  `tests/test_emit.py::test_a_dictionary_is_its_release_as_the_analysis_has_it`
+  and `tests/test_r_emitter.py::test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write`.
 - **The year of a citation typed as text is read in the author-year forms only.** G2's hint
   names the key for "(Name, 2018)", "(Name 2018)", "(Name et al., 2018)", "(Name & Other,
   2018)", "(Name, Other, & Third, 2018)", each part of a group, and "Name (2018)" with "et
@@ -19406,8 +19432,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `old_string` uses curly quotes may pass unasked (not confirmed live).
   Pinned by `tests/test_hooks.py::test_an_unreadable_or_curly_quoted_attester_is_not_asked`.
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
-  seen); an empty lockfile's digest has not been compared between R and Python, nor R's
-  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
+  seen); an empty lockfile is digested alike by R and Python, and R's `validUTF8` refuses a
+  plan's overlong, surrogate and out-of-range forms as Python's decoder does. R reads
   a relative input from its working directory where a file of that name is there, and
   Python always from the project root, so an analysis run from another folder that holds
   one may read and record another file in R; and on Windows `~` is R's home (Documents) and
@@ -19421,6 +19447,15 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
+  Pinned by `tests/test_r_emitter.py::test_r_lists_lockfiles_in_their_case_on_windows`,
+  `tests/test_r_emitter.py::test_both_emitters_digest_an_empty_lockfile_alike`,
+  `tests/test_r_emitter.py::test_r_s_validutf8_and_python_s_decoder_refuse_the_same_plans`,
+  `tests/test_r_emitter.py::test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write`,
+  `tests/test_emit.py::test_a_path_through_a_link_is_collapsed_as_text`,
+  `tests/test_emit.py::test_python_expands_a_tilde_and_a_name_where_r_reads_its_own_home`,
+  `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
+  `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
+  and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -19431,9 +19466,11 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `authors.yaml` costs it the project's terms and conventions, as it did before #544.
   Closed by saying the project could not be loaded, or by reading the terms and
   conventions from `paper.yaml` alone.
+  Pinned by `tests/test_emit.py::test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml`.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
+  Pinned by `tests/test_corruption.py::test_an_input_kept_by_git_lfs_is_misjudged_at_its_edges`.
 - **Assurance and verify.** A gate stopped by an unreadable manuscript is said to have read
   nothing rather than not to have run, and G0's and the build's findings fall in no
   dimension. Verification is stale against results fragments only, not scripts or data;
@@ -19441,6 +19478,12 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   named with a superscript digit raises, and an error writing `build/verify.json` is a
   traceback after `verify` printed. A results fragment whose `values` is a list raises
   after the report, which its schema check fails already.
+  Pinned by `tests/test_assurance.py::test_a_gate_stopped_by_an_unreadable_manuscript_is_said_to_have_read_nothing`,
+  `tests/test_assurance.py::test_the_findings_of_g0_and_the_build_fall_in_no_dimension`,
+  `tests/test_assurance.py::test_a_run_of_verify_is_not_stale_when_the_scripts_or_the_data_change`,
+  `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
+  `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
+  and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
@@ -19569,6 +19612,7 @@ Open, recorded as each change landed:
     其中一百二十三份为肝损伤，比值比约为三点四", are not read as numbers, and nothing is
     found in that sentence. Full-width digits in English prose ("Of ４０００ reports") are
     read as digits and caught.
+    Pinned by `tests/test_corruption.py::test_g2_reads_chinese_prose_as_unspaced_tokens_and_its_numerals_as_words`.
   - G4: words are counted between spaces, so six short Chinese paragraphs added 18 to
     `main_text_words`. A journal that publishes in Chinese counts characters, and the limits
     mean nothing for Chinese text. Accepted.
@@ -21608,6 +21652,9 @@ Open, recorded as each change landed:
   other gates read it as prose: a `# Methods` in it heads a section, and the audit of a
   Markdown paper starts its reference list at a `# References` in it and names the cut
   under "Not audited".
+  Pinned by `tests/test_corruption.py::test_a_header_pandoc_cannot_read_stops_check_and_the_build`,
+  `tests/test_corruption.py::test_a_header_pandoc_cannot_read_is_read_as_prose_by_the_other_gates`
+  and `tests/test_corruption.py::test_the_audit_cuts_a_reference_list_at_a_heading_in_a_header_pandoc_cannot_read`.
 - **A heading under a header that is never closed can be read as a YAML comment.** Pandoc
   reads the header to the first `---` or `...` line, so `---`, `title: x`, a blank line,
   `# Introduction`, a blank line and a rule make a valid mapping with a comment in it. The
@@ -21707,9 +21754,12 @@ Open, recorded as each change landed:
   - *In text that is not Markdown.* A string in a listing or a figure script,
     `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
     Escapes should be read only where the source is Markdown.
+    Pinned by `tests/test_corruption.py::test_an_escaped_comparison_in_a_listing_is_read_as_the_threshold`
+    and `tests/test_corruption.py::test_an_escaped_comparison_in_a_figure_script_is_read_as_the_threshold`.
   - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
     read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word. Atoms
     should be found in the printed text and mapped back, as the rules already are.
+    Pinned by `tests/test_corruption.py::test_an_escaped_comparison_is_split_where_the_printed_text_is_not`.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
     backslash there counts as an escape. Runs are paired across the front matter's edge,
@@ -21893,8 +21943,9 @@ Open, recorded as each change landed:
   references alone fixed that and let five misread shapes pass in Results (review of #77);
   a number is never judged in fewer places than before. Moving the definition into Methods,
   or binding the value, clears it.
+  Pinned by `tests/test_corruption.py::test_a_methods_note_defined_at_the_end_of_the_paper_fails_where_it_stands`.
 - **The end of a footnote's text is read short of pandoc's in places.** A lazy line pandoc
-  keeps in a note after one that may start a block (`# Heading` straight under the
+  keeps in a note after one that may start a block (`> A quotation` straight under the
   definition, which pandoc prints as note text), or an unindented line continuing an
   indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
   note defined under Methods and referenced from Results, still passes as the alpha, as on
@@ -21902,11 +21953,16 @@ Open, recorded as each change landed:
   section a number must pass in. A line shaped like a heading that pandoc prints as text
   refuses a definition and ends a note's text only where `main` read a heading: a setext
   title does, and an empty heading's title, or a title starting `#`, `>` or `|`, does not.
+  Pinned by `tests/test_corruption.py::test_the_end_of_a_note_s_text_is_read_short_of_pandoc_s`,
+  `tests/test_corruption.py::test_a_note_marker_in_inline_code_counts_as_a_reference`,
+  `tests/test_corruption.py::test_a_footnote_is_read_where_it_is_referenced`
+  and `tests/test_corruption.py::test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced`.
 - **A footnote defined in one file and referenced from another is read where it stands.**
   Notes are indexed a file at a time, and the build joins the files, so a Results sentence
   in main.md referencing `[^n]`, defined under a Methods heading in `appendix.md`, prints
   the note's `p < 0.001` under Results while G2 reads it under Methods, as the alpha, as on
   `main` (the fix-only review of #77). Indexing notes over the joined text would close it.
+  Pinned by `tests/test_corruption.py::test_a_note_defined_under_methods_in_another_file_is_read_there`.
 - **A note's text the gates misread is judged where it stands, and can fail there.** A
   number must pass where it stands as well as at each reference, which is what keeps a
   misread note from passing a Results claim; the other side is an alpha in Methods failing
@@ -21938,6 +21994,7 @@ Open, recorded as each change landed:
   escaped. Where the old comment rule hid the start of such a match, text read again now
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
+  Pinned by `tests/test_corruption.py::test_a_masked_pattern_covers_a_number_printed_beside_it`.
 - **A link's target is read in the shapes pandoc writes most, not in all of them.** A
   target that is an address is masked after its `(` up to its own `)` when the address holds
   brackets one deep at most and a title holds no escaped quote. Two deep,
@@ -22075,6 +22132,19 @@ Open, recorded as each change landed:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+  Pinned by `tests/test_corruption.py::test_a_count_at_a_wrap_point_is_not_list_numbering`,
+  `tests/test_corruption.py::test_audit_compares_a_count_at_a_wrap_point`,
+  `tests/test_corruption.py::test_audit_still_reads_typed_numbering_in_word_as_numbering`,
+  `tests/test_figures.py::test_numbered_labels_in_a_figure_are_still_numbering`,
+  `tests/test_corruption.py::test_a_count_ending_a_table_cell_is_not_list_numbering`,
+  `tests/test_corruption.py::test_a_keyword_reading_a_count_and_a_stop_is_compared`,
+  `tests/test_corruption.py::test_a_string_value_ending_in_a_count_is_refused`,
+  `tests/test_corruption.py::test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering`,
+  `tests/test_corruption.py::test_a_plain_text_paper_a_paragraph_per_line_reads_as_one_paragraph`,
+  `tests/test_corruption.py::test_a_nested_number_indented_with_a_tab_is_list_numbering`,
+  `tests/test_pandoc_agreement.py::test_a_numbered_title_under_a_page_break_is_still_a_heading`,
+  `tests/test_corruption.py::test_a_count_opening_a_heading_is_not_its_numbering`
+  and `tests/test_corruption.py::test_list_and_heading_numbering_are_read_in_their_shapes_only`.
 - **A live document's citations are known by their codes, as the build recorded them.** The
   record is a file beside the build: on another machine, or with `build/` cleaned, every
   citation Zotero has refreshed reads as changed and its paragraph is refused. Two citations
@@ -22813,6 +22883,10 @@ Open, recorded as each change landed:
   figure typed against a letter is part of a name, so a threshold typed against the word
   before it with no space, `power80%` or `caliper0.2`, is read as a name and neither rule
   sees it either.
+  Pinned by `tests/test_corruption.py::test_a_changed_parameter_reaches_the_methods_and_a_typed_copy_is_named`,
+  `tests/test_corruption.py::test_a_typed_threshold_unlike_every_parameter_is_warned_only_where_some_are_declared`,
+  `tests/test_corruption.py::test_only_an_equal_typed_copy_of_a_figure_is_read_for_a_parameter`
+  and `tests/test_corruption.py::test_a_figure_typed_against_a_letter_is_part_of_a_name`.
 - **Download links rot.** Each recipe's worked when it was written, the first thirteen and
   SANRA verified by a clean-room fetch and transcribe, but two needed a second attempt and
   none of these addresses is stable. The

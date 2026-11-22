@@ -42,8 +42,11 @@ jobs:
     name: test (ubuntu-latest, 3.13)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    # The slowest healthy run of this job took 30 minutes.
-    timeout-minutes: 60
+    # The same limit as the matrix's Ubuntu jobs. From 21 to 22 November 2026 this job's
+    # healthy runs on main took 33 to 54 minutes. At the 60 it had before, #767's run was
+    # stopped a second after its last test passed, and main's run for 0.2.500 was stopped
+    # too, so that version was never released: a cancelled run on main releases nothing.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
       # pip keeps what it downloads between runs, as every job here does, and starts afresh

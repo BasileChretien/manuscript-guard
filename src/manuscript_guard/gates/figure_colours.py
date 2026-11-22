@@ -28,7 +28,7 @@ makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE2000):
 
 A text's colour is left out: text rarely tells one series from another, and black text
 beside a dark mark is no confusion of data. So is a pair already close to normal vision,
-which no deficiency made so.
+which no deficiency made so, and a pair with white (`PAGE`), which is taken for the page.
 """
 
 from __future__ import annotations
@@ -58,6 +58,12 @@ NAMED = 3
 #: More distinct colours than this, and a figure's colours are not compared: finding a scale
 #: among them, and comparing them, take time in their square.
 MANY = 300
+#: White, taken for the page a figure is drawn on: a pale colour beside it is a mark on the
+#: page, not two marks a reader could confuse. On real papers 14 of the 25 pairs judged false
+#: paired a colour with it (Basile, 2026-11-21). Exactly this colour: a near-white is still
+#: paired. White still counts towards `MANY` (it never counted towards a scale, which takes
+#: no grey).
+PAGE = "#ffffff"
 #: The palette a hint offers, where its own colours stay apart the way the finding is about
 #: (`_offered`); where they do not, the hint names no palette and points to the table.
 OFFERED = "okabe-ito"
@@ -188,7 +194,7 @@ def _judged(
     if shades:
         return [_scale(name, vector, len(shades))]
     findings = []
-    found = confusions([parse(code)[0] for code in colours])
+    found = confusions([parse(code)[0] for code in colours if code != PAGE])
     for way in (*DEFICIENCIES, GREYSCALE):
         pairs = [c for c in found if c.seen == way]
         if not pairs:

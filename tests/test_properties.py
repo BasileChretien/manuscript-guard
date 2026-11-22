@@ -12384,6 +12384,42 @@ def _a_quote_closes_only_on_its_line(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_closed", lambda lines, at: None)
 
 
+def _a_word_against_an_escaped_bracket_makes_a_placeholder(patch: pytest.MonkeyPatch) -> None:
+    """As at 5ff5855ef: the lookbehind stood before the escape, so `n\\<max_len\\> m` was a
+    placeholder (#768 round 1)."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_PLACEHOLDER", re.compile(
+        rf"(?<![\w\\])[\\\x00]?<{gate._PART}(?:{gate._UNDERSCORES}{gate._PART})+"
+        r"[\\\x00]?>(?!\w)"))
+
+
+def _a_number_opens_a_section(patch: pytest.MonkeyPatch) -> None:
+    """As at 5ff5855ef: a section's key could be all digits, so `[1]` opened one."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_SECTION", re.compile(
+        rf"(\*\*|__)?\\?\[{gate._KEY}(?:\.{gate._KEY})*\\?\](?(1)\1)"))
+
+
+def _a_quoted_value_runs_on_over_a_heading(patch: pytest.MonkeyPatch) -> None:
+    """As at 5ff5855ef: a quoted value ran on over a heading to a closing quote after it."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_HEADING", re.compile("(?!)"))
+
+
+def _the_machine_text_is_out_of_the_code_spans_too(patch: pytest.MonkeyPatch) -> None:
+    """As at 5ff5855ef: a key in a code span inside a quoted value was not read."""
+    from manuscript_guard.gates import code_names as gate
+
+    def views(prose):
+        aside = [*prose.tables, *gate._machine_text(prose.printed, prose.text)]
+        return gate._celled(prose.printed, aside), gate._celled(prose.code, aside)
+
+    patch.setattr(gate, "_views", views)
+
+
 def _a_quote_left_open_closes_on_the_next_line(patch: pytest.MonkeyPatch) -> None:
     """The quotes did not have to pair: a value left open ran on to the next line."""
     from manuscript_guard.gates import code_names as gate
@@ -28266,6 +28302,22 @@ BROKEN = {
     ),
     "a value quoted over two paragraphs ends the configuration": (
         _a_quote_closes_only_on_its_line,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a word against an escaped bracket makes a placeholder": (
+        _a_word_against_an_escaped_bracket_makes_a_placeholder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a bracketed number opens a configuration's section": (
+        _a_number_opens_a_section,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a quoted value runs on over a heading": (
+        _a_quoted_value_runs_on_over_a_heading,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "the machine text is set aside from the code spans too": (
+        _the_machine_text_is_out_of_the_code_spans_too,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "a quote that never closes pairs with the next line": (

@@ -6115,17 +6115,21 @@ file). A name standing alone in angle brackets is a placeholder that a program f
 name the reader has to know: `<PAPER_TEXT>` bare in Markdown, which pandoc reads as an HTML
 tag and prints nothing of, `\<PAPER_TEXT\>` as pandoc writes it from a .docx, and
 `<PAPER\_TEXT>` in LaTeX, on a line of its own or in a sentence. Nothing of a word may stand
-against either bracket and no blank inside them, so `n < max_len > m` is a comparison and
-is read. A line that is only `name = value` is a configuration's line where the value is a
-quoted string (its quotes escaped as pandoc writes them from a .docx, `\"secret key\"`, or
-not), a literal string, a number, `true` or `false` or a list in brackets, and a line that
-is only a `[section]` header, bold as Word writes it or not (`**\[app\]**`), stands above it
-with only such lines or blank ones between. A value whose quote does not close on its line,
+against either bracket, an escaped one too (`n\<max_len\> m`), and no blank inside them, so
+`n < max_len > m` is a comparison and is read. A line that is only `name = value` is a
+configuration's line where the value is a quoted string (its quotes escaped as pandoc writes
+them from a .docx, `\"secret key\"`, or not), a literal string, a number, `true` or `false`
+or a list in brackets, and a line that is only a `[section]` header, bold as Word writes it
+or not (`**\[app\]**`), its key starting with a letter so that a reference's `[1]` alone on
+a line is none, stands above it with only such lines or blank ones between. The line is set
+aside from the sentences only: a key or a variable in a code span inside its value is read
+as in any code span (#768 round 1). A value whose quote does not close on its line,
 one the Word conversion broke over paragraphs, runs on to the paragraph that ends with its
 closing quote, and those paragraphs are that line's; the configuration goes on after it
 (Basile, 2026-11-22, "Quote may close later"). The quotes must pair: a value that does not
-close before the next `name = value` line, the next `[section]` line or the end of the text,
-or a paragraph between with a quote in it that does not end it, is no configuration line,
+close before the next `name = value` line, the next `[section]` line, a Markdown heading or
+the end of the text, or a paragraph between with a quote in it that does not end it, is no
+configuration line,
 and the configuration ends where it opened. A `name = value` line with no such header above
 it, or with a sentence between, is prose, and so is a value quoted over paragraphs there. A
 boxed environment, a `tcolorbox`, is not set aside as such: what is in it is read as before.
@@ -25608,8 +25612,14 @@ Open, recorded as each change landed:
     Pinned by `tests/test_code_names.py::test_a_latex_prompt_s_placeholders_are_not_read_and_the_box_is`.
   - A configuration's value whose quote never closes, or closes only after another setting,
     a `[section]` line or a paragraph with another quote in it, ends the configuration where
-    it opened: its name and the names after it are read up to the next `[section]` line.
-    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`.
+    it opened: its name and the names after it are read up to the next `[section]` line. A
+    Markdown heading ends it too.
+    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`
+    and `tests/test_code_names.py::test_a_heading_ends_a_quoted_value_that_runs_on`.
+  - Values TOML allows that are none of the exact shapes end the configuration, so the
+    settings after them are read, a warning on each: curly quotes, `1e-3`, `1_000`, an inline
+    table, a date, a `#` comment after the value. Conservative, as decided.
+    Pinned by `tests/test_code_names.py::test_a_value_toml_allows_and_this_reading_does_not_ends_the_configuration`.
   - In Markdown, "1<max_len>2" is read, though pandoc takes `<max_len>` for an HTML tag and
     prints nothing of it: a tag is set aside only where its name has no underscore, and a
     digit against a bracket makes no placeholder. Accepted.

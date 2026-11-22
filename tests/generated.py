@@ -3674,6 +3674,15 @@ CODE_NAME_PLACES = (
      "\n\n[app]\n\n{e} = \"never closed\n\n", "prose"),
     ("snake", "\n\n{n} = \\\"a long\n\nvalue\\\"\n\n", "\n\n{e} = \"a long\n\nvalue\"\n\n",
      "prose"),
+    # Read too (#768 round 1): a word against an escaped bracket, a setting under a
+    # reference's number alone on a line, and a quoted value a heading cuts off before its
+    # closing quote; and a key in a code span inside a configuration's quoted value.
+    ("snake", "n\\<{n}\\> m ", "a<{e}> m ", "prose"),
+    ("snake", "\n\n[1]\n\n{n} = 12\n\n", "\n\n[1]\n\n{e} = 12\n\n", "prose"),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\n## Heading\n\nwords of 24\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"never closed\n\n", "prose"),
+    ("key", "\n\n[app]\n\nprompt = \"use `{n}`\"\n\n",
+     "\n\n[app]\n\nprompt = \"use \\texttt{{{e}}}\"\n\n", "code"),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
 #: writes one and `doseQab` as camelCase.

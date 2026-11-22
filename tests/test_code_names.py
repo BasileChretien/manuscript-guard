@@ -500,6 +500,8 @@ def test_a_name_alone_in_angle_brackets_is_a_placeholder(text: str) -> None:
     [
         "When n < max_len > m, it stops.",
         "When n \\< max_len \\> m, it stops.",
+        # a word against the escaped bracket, as pandoc writes it from a .docx (#768 round 1)
+        "When n\\<max_len\\> m, it stops.",
         "The bound a<max_len held.",
         "The pair <max_len, min_len> holds.",
         "Placeholder < max_len > here.",
@@ -514,10 +516,61 @@ def test_a_name_beside_a_comparison_sign_is_read(text: str) -> None:
 
 
 def test_a_name_between_comparison_signs_in_latex_is_read(project: Path) -> None:
-    """In LaTeX "1<max\\_len>2" has a digit against each bracket: a comparison, read."""
-    report = _latex(project, OPEN + "When 1<max\\_len>2 and n < min\\_len > m, it stops.\n"
-                    + CLOSE)  # fmt: skip
-    assert [message.split("'")[1] for _name, message in coded(report)] == ["max_len", "min_len"]
+    """In LaTeX "1<max\\_len>2" has a digit against each bracket, and "a<b\\_c> d" a word
+    against the left one: comparisons, read."""
+    report = _latex(project, OPEN + "When 1<max\\_len>2 and n < min\\_len > m, it stops; "
+                    "so does a<b\\_c> d.\n" + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "max_len", "min_len", "b_c"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["[1]", "[12.3]", "**[2]**", "**\\[2\\]**"],
+)
+def test_a_bracketed_number_alone_on_a_line_opens_no_section(header: str) -> None:
+    """A section's key starts with a letter: "[1]" alone on a line, a reference's number,
+    opens no configuration, and the setting under it is read (#768 round 1)."""
+    assert named(f"# Methods\n\n{header}\n\nn_total = 12\n") == ["n_total"]
+
+
+def test_a_latex_line_break_with_its_space_opens_no_section(project: Path) -> None:
+    """`\\\\[6pt]` alone on a line is a line break and its space, which the view does not
+    print: no section, and the setting under it is read."""
+    report = _latex(project, OPEN + "Line one\\\\[6pt]\n\\\\[6pt]\n\nn\\_total = 12\n" + CLOSE)
+    assert [message.split("'")[1] for _name, message in coded(report)] == ["n_total"]
+
+
+def test_a_heading_ends_a_quoted_value_that_runs_on() -> None:
+    """A heading ends the paragraphs a quoted value runs on over, as a `[section]` line
+    does: the value is then unpaired, and its line no configuration's (#768 round 1)."""
+    text = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\n# Results\n\n"
+            "The hr_adj_main rose on a screen of 24\\\"\n")  # fmt: skip
+    assert named(text) == ["greet_text", "hr_adj_main"]
+
+
+def test_a_key_in_a_code_span_in_a_quoted_value_is_read() -> None:
+    """The machine text is set aside from the sentences only: a key of the results in a code
+    span inside a configuration's quoted value is still one the reader cannot know (#768
+    round 1)."""
+    findings = read("# Methods\n\n[app]\n\nprompt = \"use `ckd_flag`\"\n", keys={"ckd_flag"})
+    assert [(f.message.split("'")[1], f.message.endswith("first in a code span"))
+            for f in findings] == [("ckd_flag", True)]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["“fast”", "1e-3", "1_000", "{ a = 1 }", "1979-05-27", "\"fast\" # a comment"],
+    ids=["curly quotes", "exponent", "underscored number", "inline table", "date",
+         "comment"],
+)  # fmt: skip
+def test_a_value_toml_allows_and_this_reading_does_not_ends_the_configuration(
+    value: str,
+) -> None:
+    """Values TOML allows that are none of the exact shapes end the configuration, so the
+    settings after them are read: conservative (DESIGN.md, Known gaps)."""
+    text = f"# Methods\n\n[app]\n\nrun_mode = {value}\n\nseen_codes = 12\n"
+    assert named(text) == ["run_mode", "seen_codes"]
 
 
 #: A configuration file in TOML as pandoc writes it from a .docx that holds it as

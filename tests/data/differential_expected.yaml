@@ -152,7 +152,9 @@ expected:
       running on to its closing quote ("Quote may close later"); the generated inputs now
       hold these, which the base reports, and a name between two signs of a comparison, a
       setting with no section above it or with a sentence between, a quote that never
-      closes and one closed later with no section above it, which both report; the entry it
+      closes and one closed later with no section above it, a word against an escaped
+      bracket, a setting under `[1]`, a quoted value a heading cuts off and a key in a code
+      span inside a quoted value, which both report; the entry it
       replaces, for a name in a table's cell, is spent
   - reading: audit code names
     why: >-

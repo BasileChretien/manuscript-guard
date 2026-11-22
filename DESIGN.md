@@ -17123,11 +17123,11 @@ is written: a change that closes the gap or moves it fails one of them, and the 
 then rewritten, or moved below the "Closed since" line. A point with points of its own ends
 its text in a tag before them, and each of them then ends in one; or it goes on after them,
 at its own indent, and ends there in the tag that covers them all. A paragraph between
-groups, and what an entry goes on to say after its points, is no item's, so a limit stated
-there is not checked: it is written as a point. `tests/test_docs.py` fails on an open item
-with neither tag, on a line of this section it cannot give to an item or a paragraph, and
-on a tag that names a test pytest does not collect. A limit that is a defect to fix is
-pinned until the fix lands, and the fix changes its test.
+groups, and what an entry goes on to say after its points, is no item's, and a limit stated
+there is not checked; written as a point, it would be. `tests/test_docs.py` fails on an
+open item with neither tag, on a line of this section it cannot give to an item or a
+paragraph, and on a tag that names a test pytest does not collect. A limit that is a defect
+to fix is pinned until the fix lands, and the fix changes its test.
 
 - **The corpus tool finds a judged finding again only by its gate and code, by its line in
   the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A

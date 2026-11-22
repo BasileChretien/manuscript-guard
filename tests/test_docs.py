@@ -624,13 +624,15 @@ def known_gap_items(text: str) -> list[dict[str, list]]:
     entries: list[dict[str, list]] = []
     entry = point = part = None
     blank, paragraph = True, False
-    for number, line in enumerate(text[start:end].splitlines()[2:], 3):
+    first = text.count("\n", 0, start) + 3  # the line of the text after the heading's
+    for number, line in enumerate(text[start:end].splitlines()[2:], first):
         depth = len(line) - len(line.lstrip(" "))
         marker = line[depth:].startswith("- ")
+        stray = marker and (depth not in (0, 2, 4) or depth == 4 and point is None)
         if not line.strip():
             point = part = None
-        elif line[depth] == "\t" or marker and depth not in (0, 2, 4) and part is None:
-            raise ValueError(f"cannot place line {number} of Known gaps: {line!r}")
+        elif line[depth] == "\t" or stray:
+            raise ValueError(f"cannot place line {number}: {line!r}")
         elif depth == 0 and marker:
             entry, point, part, paragraph = {"own": [line], "points": []}, None, None, False
             entries.append(entry)
@@ -652,7 +654,7 @@ def known_gap_items(text: str) -> list[dict[str, list]]:
                 entry["own"].append(line)
             point = part = None
         else:
-            raise ValueError(f"cannot place line {number} of Known gaps: {line!r}")
+            raise ValueError(f"cannot place line {number}: {line!r}")
         blank = not line.strip()
     return entries
 
@@ -747,7 +749,11 @@ def test_an_item_s_own_text_stops_at_its_first_point_or_its_paragraph() -> None:
     "- **A.** x.\n  - a point\n   that goes on at three. Accepted.\n",
     "- **A.** x.\n  - a point:\n    - and its point\n     indented by five. Accepted.\n",
     "A group.\n\n  - a point under no entry. Accepted.\n",
-], ids=["lazy", "tab", "three spaces", "point at three", "five spaces", "no entry"])  # fmt: skip
+    "- **A.** x.\n  - a point:\n    - its point\n      - and a point of that. Accepted.\n",
+    "- **A.** x, untagged\n    - a point four deep under no point. Accepted.\n",
+    "- **A.** x. Accepted.\n  - a point. Accepted.\n\n    - four deep past a blank line\n",
+], ids=["lazy", "tab", "three spaces", "point at three", "five spaces", "no entry",
+        "six deep", "four deep", "four deep past a blank"])  # fmt: skip
 def test_a_line_of_known_gaps_the_reading_cannot_place_is_refused(lines: str) -> None:
     """A line the reading of items cannot give to an item, a group's paragraph or what an
     entry says after its points fails the test that reads them, rather than being passed

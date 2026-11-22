@@ -17145,13 +17145,18 @@ sentence only, each beside a broken rule in `BROKEN`.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-Once sorted, an open entry ends its own text, before any points under it, in one of two
-tags, and so does each point under one. `Accepted.` marks a limit that stays as it is
-written. ``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the
-limit as it is written: a change that closes the gap or moves it fails one of them, and the
-entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
-only that each test a tag names is one pytest collects. An entry with neither has not
-been sorted yet.
+An open entry ends its own text, before any points under it, in one of two tags, and so
+does each point under one. `Accepted.` marks a limit that stays as it is written.
+``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the limit as it
+is written: a change that closes the gap or moves it fails one of them, and the entry is
+then rewritten, or moved below the "Closed since" line. A point with points of its own ends
+its text in a tag before them, and each of them then ends in one; or it goes on after them,
+at its own indent, and ends there in the tag that covers them all. A paragraph between
+groups, and what an entry goes on to say after its points, is no item's, and a limit stated
+there is not checked; written as a point, it would be. `tests/test_docs.py` fails on an
+open item with neither tag, on a line of this section it cannot give to an item or a
+paragraph, and on a tag that names a test pytest does not collect. A limit that is a defect
+to fix is pinned until the fix lands, and the fix changes its test.
 
 - **`journal-format-not-in-quote` reads a format's name, not the sentence around it**
   (`gates/journal_quotes.py`, `_FORMAT_WORDS`). It proves a format is named in the quote, not

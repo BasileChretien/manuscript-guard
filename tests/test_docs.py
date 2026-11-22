@@ -605,12 +605,175 @@ def test_every_test_a_known_gap_is_pinned_by_is_there() -> None:
     """An open entry of DESIGN.md's Known gaps, or a point under one, that a test holds ends
     in `Pinned by` and the names of the tests that hold the limit as it is written. A test
     renamed or deleted would leave the entry trusted on the word of a test that no longer
-    runs. That every entry ends in this or in `Accepted.` is not held yet: the triage of
-    2026-11-09 tags them a group at a time."""
+    runs."""
     names, garbled = pins_of(open_gaps(text_of(DESIGN)))
     assert garbled == [], "a Pinned by names its tests in backticks, path::name"
     assert names, "no open entry names a test: has the form of the tag changed?"
     assert unfound(names, REPO) == []
+
+
+def known_gap_items(text: str) -> list[dict[str, list]]:
+    """The open entries of DESIGN.md's Known gaps as written, each with its own lines and
+    its points, each point with its own lines, its points and what it goes on to say after
+    them at its own indent. An entry's own lines run to its first point, past blank lines; a
+    point's, and a point's point's, to the next one, a blank line or a line indented less. A
+    group's paragraph and what an entry goes on to say after its points, blank line or not,
+    are no item's. A line that is none of these is refused, not passed over."""
+    start = text.index("\n## Known gaps\n")
+    end = text.index(f"\n{CLOSED_SINCE}\n", start)
+    entries: list[dict[str, list]] = []
+    entry = point = part = None
+    blank, paragraph = True, False
+    first = text.count("\n", 0, start) + 3  # the line of the text after the heading's
+    for number, line in enumerate(text[start:end].splitlines()[2:], first):
+        depth = len(line) - len(line.lstrip(" "))
+        marker = line[depth:].startswith("- ")
+        stray = marker and (depth not in (0, 2, 4) or depth == 4 and point is None)
+        if not line.strip():
+            point = part = None
+        elif line[depth] == "\t" or stray:
+            raise ValueError(f"cannot place line {number}: {line!r}")
+        elif depth == 0 and marker:
+            entry, point, part, paragraph = {"own": [line], "points": []}, None, None, False
+            entries.append(entry)
+        elif depth == 0 and (blank or paragraph):  # a group's paragraph
+            entry, point, part, paragraph = None, None, None, True
+        elif entry is not None and depth == 2 and marker:
+            point, part = {"own": [line], "parts": [], "after": []}, None
+            entry["points"].append(point)
+        elif point is not None and depth == 4 and marker:
+            part = [line]
+            point["parts"].append(part)
+        elif part is not None and depth >= 6:
+            part.append(line)
+        elif point is not None and (depth == 4 or depth > 4 and not point["parts"]):
+            point["after" if point["parts"] else "own"].append(line)
+            part = None
+        elif entry is not None and depth >= 2 and (point is None or depth == 2):
+            if not entry["points"]:  # else what the entry goes on to say after its points
+                entry["own"].append(line)
+            point = part = None
+        else:
+            raise ValueError(f"cannot place line {number}: {line!r}")
+        blank = not line.strip()
+    return entries
+
+
+def own_texts(text: str) -> list[tuple[str, str]]:
+    """Each open item of DESIGN.md's Known gaps: its first line, and its own text on one
+    line. The items are the entries, their points, and a point's own points where the
+    point's text stops before them; where it goes on after them, what it says there ends
+    its own text, and they are its parts, no items of their own (`known_gap_items`)."""
+    def flat(lines: list[str]) -> str:
+        return " ".join(" ".join(lines).split())
+
+    items = []
+    for entry in known_gap_items(text):
+        items.append((entry["own"][0].strip(), flat(entry["own"])))
+        for point in entry["points"]:
+            items.append((point["own"][0].strip(), flat(point["own"] + point["after"])))
+            if not point["after"]:
+                items.extend((part[0].strip(), flat(part)) for part in point["parts"])
+    return items
+
+
+def tagged(own: str) -> bool:
+    """Whether an item's own text ends in `Accepted.` or in a whole `Pinned by` tag, each
+    read as a word, as `pins_of` reads the tag."""
+    if re.search(r"(?<!\S)Accepted\.\Z", own):
+        return True
+    starts = [at.start() for at in re.finditer(r"\bPinned by\b", own)]
+    pin = PINNED.match(own, starts[-1]) if starts else None
+    return pin is not None and pin.end() == len(own)
+
+
+def test_an_item_s_own_text_stops_at_its_first_point_or_its_paragraph() -> None:
+    """An entry's lead text and each point's lines are told apart. A point's own points are
+    items of their own where its text stops before them, and are covered by its tag where
+    its text goes on after them. A point stops at a blank line, and neither a group's
+    paragraph nor what an entry says after its points counts as an item; so a tag is looked
+    for where the preamble of Known gaps says it stands, and only a whole tag counts."""
+    text = (
+        "# D\n\n## Known gaps\n\nWhat the tags\nmean. Accepted.\n\n"
+        "- **One.** Its lead\n  text, two lines.\n\n  A second paragraph. Accepted.\n"
+        "  - A point\n    of two lines. Pinned by `tests/a.py::test_a`.\n"
+        "  - A point tagged before its points. Accepted.\n"
+        "    - a tagged one. Accepted.\n    - an untagged one.\n"
+        "  - A point with no tag:\n    - a tagged one. Accepted.\n"
+        "  - A point whose text goes on:\n    - a part,\n    - another part,\n"
+        "    and after them. Pinned by `tests/a.py::test_a`.\n"
+        "  - A point cut\n    by a blank line.\n\n    Accepted.\n\n"
+        "  - A point ended by a line indented less.\n"
+        "  What the entry goes on to say. Accepted.\n\nA group,\nof two lines.\n\n"
+        "- **Two.** Accepted. And more.\n"
+        "- **Three.** Pinned by `tests/a.py::test_a` and\n  `tests/b.py::test_b`.\n"
+        "- **Four.** Pinned by test_a.\n"
+        "- **Five.** Pinned by `tests/a.py::test_a`. And more.\n"
+        "- **Six.** UnPinned by `tests/a.py::test_a`.\n- **Seven.** NotAccepted.\n"
+        f"\n{CLOSED_SINCE}\n\n- **Closed.**\n"
+    )
+    assert own_texts(text) == [
+        ("- **One.** Its lead",
+         "- **One.** Its lead text, two lines. A second paragraph. Accepted."),
+        ("- A point", "- A point of two lines. Pinned by `tests/a.py::test_a`."),
+        ("- A point tagged before its points. Accepted.",
+         "- A point tagged before its points. Accepted."),
+        ("- a tagged one. Accepted.", "- a tagged one. Accepted."),
+        ("- an untagged one.", "- an untagged one."),
+        ("- A point with no tag:", "- A point with no tag:"),
+        ("- a tagged one. Accepted.", "- a tagged one. Accepted."),
+        ("- A point whose text goes on:",
+         "- A point whose text goes on: and after them. Pinned by `tests/a.py::test_a`."),
+        ("- A point cut", "- A point cut by a blank line."),
+        ("- A point ended by a line indented less.", "- A point ended by a line indented less."),
+        ("- **Two.** Accepted. And more.", "- **Two.** Accepted. And more."),
+        ("- **Three.** Pinned by `tests/a.py::test_a` and",
+         "- **Three.** Pinned by `tests/a.py::test_a` and `tests/b.py::test_b`."),
+        ("- **Four.** Pinned by test_a.", "- **Four.** Pinned by test_a."),
+        ("- **Five.** Pinned by `tests/a.py::test_a`. And more.",
+         "- **Five.** Pinned by `tests/a.py::test_a`. And more."),
+        ("- **Six.** UnPinned by `tests/a.py::test_a`.",
+         "- **Six.** UnPinned by `tests/a.py::test_a`."),
+        ("- **Seven.** NotAccepted.", "- **Seven.** NotAccepted."),
+    ]  # fmt: skip
+    assert [tagged(own) for _, own in own_texts(text)] == [
+        True, True, True, True, False, False, True, True, False, False,
+        False, True, False, False, False, False,
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("lines", [
+    "- **A.** x.\nat the margin, straight after it. Accepted.\n",
+    "- **A.** x.\n\t- a point indented by a tab. Accepted.\n",
+    "- **A.** x.\n   - a point indented by three spaces. Accepted.\n",
+    "- **A.** x.\n  - a point\n   that goes on at three. Accepted.\n",
+    "- **A.** x.\n  - a point:\n    - and its point\n     indented by five. Accepted.\n",
+    "A group.\n\n  - a point under no entry. Accepted.\n",
+    "- **A.** x.\n  - a point:\n    - its point\n      - and a point of that. Accepted.\n",
+    "- **A.** x, untagged\n    - a point four deep under no point. Accepted.\n",
+    "- **A.** x. Accepted.\n  - a point. Accepted.\n\n    - four deep past a blank line\n",
+], ids=["lazy", "tab", "three spaces", "point at three", "five spaces", "no entry",
+        "six deep", "four deep", "four deep past a blank"])  # fmt: skip
+def test_a_line_of_known_gaps_the_reading_cannot_place_is_refused(lines: str) -> None:
+    """A line the reading of items cannot give to an item, a group's paragraph or what an
+    entry says after its points fails the test that reads them, rather than being passed
+    over with the tag it may hold."""
+    text = f"# D\n\n## Known gaps\n\nWhat the tags mean.\n\n{lines}\n{CLOSED_SINCE}\n"
+    with pytest.raises(ValueError, match="cannot place line"):
+        own_texts(text)
+
+
+def test_every_open_known_gap_ends_in_accepted_or_pinned_by() -> None:
+    """Every open item of DESIGN.md's Known gaps (an entry, a point under one, and a point's
+    point where the point's text stops before it) ends its own text in `Accepted.` (a limit
+    that stays as written) or in `Pinned by` and the tests that hold it as written (Basile,
+    2026-11-09; every item was sorted by 2026-11-21). An item with neither is a limit nobody
+    has decided on, which is how a gate comes to be trusted beyond it."""
+    untagged = [first for first, own in own_texts(text_of(DESIGN)) if not tagged(own)]
+    assert not untagged, (
+        "end each of these items of Known gaps in `Accepted.` or in Pinned by and the tests "
+        "that hold it (DESIGN.md, the preamble of Known gaps):\n" + "\n".join(untagged)
+    )
 
 
 # ------------------------------------------------------------------------------ citation

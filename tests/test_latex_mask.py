@@ -1263,6 +1263,51 @@ def test_a_helper_of_the_author_kit_defined_again_in_another_file_is_not_seen() 
     assert [heading.title for heading in part.reading.headings][0] == "Introduction"
 
 
+#: jmlr2e.sty's and dnd.sty's `\@sict`, cut short: the reader stops in the file at its
+#: `\csname`, on line 118 of the one and line 79 of the other.
+_STOPS = "\\def\\@sict#1{\\edef\\@svsec{\\csname the#1\\endcsname}}\n"
+
+
+@pytest.mark.parametrize(
+    ("defined", "body", "titles"),
+    [
+        # jmlr2e.sty's line 182, JMLR's own `\@startsiction`.
+        ("\\def\\section{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+         "             {\\large\\bf\\raggedright}}\n",
+         "\\section{Introduction}\nOf 4100 reports, 12 were fatal.\n", ["Introduction"]),
+        # dnd.sty's line 327, an appendix heading that prints "Appendix" in each title.
+        ("\\renewcommand{\\appendix}{\\par\n"
+         "\\def\\section{\\@ifnextchar*{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}%\n"
+         "             {\\large\\bf\\raggedright}}%\n"
+         "{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
+         "             {\\large\\bf\\raggedright Appendix\\ }}}}\n",
+         "\\section{Introduction}\nOf 4100 reports.\n\\appendix\n\\section{Proofs}\n"
+         "Then 77 died.\n", ["Introduction", "Proofs"]),
+    ],
+    ids=["jmlr2e", "dnd"],
+)  # fmt: skip
+def test_a_heading_a_package_defines_again_past_where_the_reader_stopped_is_read_as_latex_s(
+    defined: str, body: str, titles: list[str]
+) -> None:
+    """Known gap (robustness sweep of 2026-11-21; Basile, 2026-11-22): a definition in a
+    package of the paper's own past where the reader stopped in that file is never seen. The
+    `.sty` is refused at its `\\csname`, and the heading it defines again below is read as
+    LaTeX's where the body uses it, dnd's without the word "Appendix" it prints. Read on, the
+    same file has the heading refused where it first prints."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    main = _HEAD + "\\usepackage{kit}\n\\begin{document}\n" + body + "\\end{document}\n"
+    document = read_tree({"main.tex": main}, packages={"kit.sty": _STOPS + defined})
+    ((path, refusal),) = document.refusals
+    assert (path, refusal.offset) == ("kit.sty", _STOPS.index("\\csname"))
+    (source,) = [source for source in document.sources if source.path == "main.tex"]
+    headings = [(heading.level, heading.title) for heading in source.reading.headings]
+    assert headings == [(1, title) for title in titles]
+    assert body.splitlines()[-1] in source.reading.masked
+    ((path, refusal),) = read_tree({"main.tex": main}, packages={"kit.sty": defined}).refusals
+    assert (path, refusal.offset) == ("main.tex", main.index("\\section"))
+
+
 def test_nothing_found_past_an_unclosed_construct_is_kept() -> None:
     """Round 1 of #637, finding 4: a construct left open is refused where it opens, found at
     the end of the run, and the text past it blanked; but the headings, citations, bindings

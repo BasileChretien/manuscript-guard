@@ -28,7 +28,10 @@ is an extension; a table's cells, a Markdown table's and a LaTeX `tabular`'s, wh
 label its rows and columns (decision 13, 2026-11-13); and in Markdown the opening line of a
 fenced div, an HTML tag, a pandoc attribute with an `=` in it, a TeX command, a reference
 link's definition and the label of a reference link the file defines, none of which is
-printed in the document.
+printed in the document. Machine text a paper quotes is set aside in two exact shapes and no
+other: a name alone in angle brackets, a placeholder, `<PAPER_TEXT>`; and a `name = value`
+line under a line that is only a `[section]` header (Basile, 2026-11-22, "Exact shapes
+only").
 
 **The finding is a warning, and a failure at submission** (D12.2): the version a journal
 receives has no word its reader cannot know. A word that is right with its underscores, a
@@ -89,6 +92,33 @@ _UNPRINTED = re.compile(
 # whatever its case (rounds 1 and 2 of #575).
 _DEFINITION = re.compile(r"^[ ]{0,3}\[([^\]\n\x00]+)\]:[^\n]*", re.MULTILINE)
 _LABEL = re.compile(r"(?<=\])\[([^\[\]\n]*)\]")
+# Machine text a paper quotes, in two exact shapes and no other, read in the view G14 reads
+# (Basile, 2026-11-22, "Exact shapes only"). A name standing alone in angle brackets is a
+# placeholder a program fills: `<PAPER_TEXT>` as Markdown takes it bare, which pandoc reads
+# as an HTML tag and prints nothing of, `\<PAPER_TEXT\>` as pandoc writes it from a .docx,
+# whose escapes the view holds as NULs, and `<PAPER\_TEXT>` as LaTeX writes it. Nothing of a
+# word against either bracket and no blank inside, so a sign of a comparison, `n < max_len >
+# m`, `1<max_len>2`, is none.
+_PLACEHOLDER = re.compile(
+    rf"(?<![\w\\])[\\\x00]?<{_PART}(?:{_UNDERSCORES}{_PART})+[\\\x00]?>(?!\w)"
+)
+# A key of a TOML file as typed: parts of letters and digits joined by underscores, bare or
+# escaped, or by hyphens.
+_KEY = rf"[^\W_]+(?:(?:{_UNDERSCORES}|-)[^\W_]+)*"
+# A line that is only a section's header, `[bot.settings]`, its brackets escaped as Markdown
+# escapes them, bold as Word writes it or not: `**\[app\]**`.
+_SECTION = re.compile(rf"(\*\*|__)?\\?\[{_KEY}(?:\.{_KEY})*\\?\](?(1)\1)")
+# A line that is only `name = value`, the value a quoted string, its quotes escaped as pandoc
+# writes them from a .docx or not, a literal string, a number, true or false, or a list in
+# brackets.
+_SETTING = re.compile(
+    rf"{_KEY}[ \t]*=[ \t]*"
+    r"""(?:\\?"(?:\\[^"\n]|[^"\\\n])*\\?"|'[^'\n]*'|[-+]?\d+(?:\.\d+)?|true|false"""
+    r"|\\?\[[^\[\]\n]*\\?\])"
+)
+_LINE = re.compile(r"[^\n]+")
+# What a line of the view may hold besides its text: blanks, and NULs where nothing prints.
+_BLANK = " \t\r" + NUL
 
 KEY = "key"
 VARIABLE = "variable"
@@ -251,10 +281,32 @@ def _unprinted(printed: str, defined: set[str]) -> str:
     return _UNPRINTED.sub(_blank, printed)
 
 
+def _machine_text(printed: str) -> list[tuple[int, int]]:
+    """Where `printed`, the view G14 reads, quotes machine text: each placeholder
+    (`_PLACEHOLDER`), and each `name = value` line (`_SETTING`) under a line that is only a
+    `[section]` header (`_SECTION`), with only such lines or blank ones between; a line of
+    nothing printed is blank. A boxed environment as such is not set aside (Basile,
+    2026-11-22, "Exact shapes only")."""
+    spans = [found.span() for found in _PLACEHOLDER.finditer(printed)]
+    under_a_section = False
+    for line in _LINE.finditer(printed):
+        typed = line.group()
+        bare = typed.strip(_BLANK)
+        if _SECTION.fullmatch(bare):
+            under_a_section = True
+        elif under_a_section and _SETTING.fullmatch(bare):
+            start = line.start() + len(typed) - len(typed.lstrip(_BLANK))
+            spans.append((start, start + len(bare)))
+        elif bare:
+            under_a_section = False
+    return spans
+
+
 def _celled(view: str, tables: Iterable[tuple[int, int]]) -> str:
     """`view` with each table's text NUL, its line breaks kept: a name in a cell labels a
     row or a column, and is no word of a sentence (decision 13, 2026-11-13: 98 findings in
-    one paper's tabulars, all false)."""
+    one paper's tabulars, all false). The machine text a paper quotes is set aside so too
+    (`_machine_text`)."""
     out = list(view)
     for start, end in tables:
         out[start:end] = [char if char == "\n" else NUL for char in view[start:end]]
@@ -271,7 +323,8 @@ def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None 
     # hidden, or in another file, which the build joins to this one (round 3 of #575).
     defined = {_label(hit[1]) for prose in passages for hit in _DEFINITION.finditer(prose.text)}
     for place, prose in enumerate(passages):
-        printed, code = (_celled(view, prose.tables) for view in (prose.printed, prose.code))
+        aside = [*prose.tables, *_machine_text(prose.printed)]
+        printed, code = (_celled(view, aside) for view in (prose.printed, prose.code))
         uses = [
             (offset, length, name, kind, label, in_code)
             for text, in_code in ((_unprinted(printed, defined), False), (code, True))

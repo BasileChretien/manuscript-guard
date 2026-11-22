@@ -39557,6 +39557,41 @@ def test_a_code_name_beside_a_table_is_caught_and_one_in_its_cells_is_not(
     assert code_name_findings(project) == [("warn", line, "CPI_ALL"), ("warn", line, "hr_adj_main")]
 
 
+def test_a_code_name_beside_a_quoted_prompt_and_configuration_is_caught(project: Path) -> None:
+    """An appendix quotes an LLM's prompt, its placeholders `<PAPER_TEXT>` bare and escaped,
+    and a TOML file as Word flattens it, a `name = value` line under a bold `[section]` line:
+    machine text, not read (Basile, 2026-11-22, "Exact shapes only"). A name in the prose
+    beside each, a setting with no section above it and a name between comparison signs are
+    caught."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    quoted = (" The placeholder \\<PAPER_TEXT\\> and <SYNTHESIS_TEXT> are replaced, as "
+              "hr_adj_main was.\n\n**\\[app\\]**\n\nsecret_key = \\\"secret key\\\"\n\n"
+              "html_mode = true\n\nThe file sets age_band too.\n\n")  # fmt: skip
+    main_md(project).write_text(text.replace(old, old + quoted), encoding="utf-8")
+    assert [name for _s, _l, name in code_name_findings(project)] == ["hr_adj_main", "age_band"]
+    prose = quoted + "run_mode = \\\"fast\\\"\n\nWhen n < max_len > m it stops.\n\n"
+    main_md(project).write_text(text.replace(old, old + prose), encoding="utf-8")
+    assert [name for _s, _l, name in code_name_findings(project)] == [
+        "hr_adj_main", "age_band", "run_mode", "max_len"]  # fmt: skip
+
+
+def test_a_code_name_beside_a_latex_prompt_s_placeholder_is_caught(project: Path) -> None:
+    """In LaTeX, `<PAPER\\_TEXT>` in a `tcolorbox` and in the sentence after it is a
+    placeholder; the box is read, and a name in it is caught, as is one beside it."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\usepackage{tcolorbox}\n\\begin{document}\n"
+        "\\section{Results}\n\\begin{tcolorbox}\nRead the text by its run\\_id.\\\\\n"
+        "<PAPER\\_TEXT>\n\\end{tcolorbox}\n\n"
+        "The placeholder <PAPER\\_TEXT> is replaced, as hr\\_adj\\_main was.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert [name for _s, _l, name in code_name_findings(project)] == ["run_id", "hr_adj_main"]
+
+
 # --------------------------------------------------------------------------------------
 # A language pass that changed more than the words. `check` passes each of these: both
 # bounds are bindings that resolve, a sentence with one citation fewer is a sentence, and a

@@ -3651,6 +3651,19 @@ CODE_NAME_PLACES = (
      "prose"),
     ("snake", "{n} ",
      "\n\\begin{{tabular}}{{ll}}\na\\footnote{{The {e}.}} & 2 \\\\\n\\end{{tabular}}\n", "prose"),
+    # Machine text quoted in two exact shapes, not read (Basile, 2026-11-22, "Exact shapes
+    # only"): a name alone in angle brackets, a placeholder, bare, as pandoc writes it from
+    # a .docx and on a line of its own in LaTeX; a `name = value` line under a `[section]`
+    # line, bold as Word writes it. Read: a name between two signs of a comparison, a
+    # setting with no section above it, and one with a sentence between.
+    ("snake", "<{n}> ", "<{e}> ", None),
+    ("snake", "\\<{n}\\> ", "\n<{e}>\\\\\n", None),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"a value\\\"\n\nalso_{n} = true\n\n",
+     "\n\n[app]\n\n{e} = 12\n\n", None),
+    ("snake", "n < {n} > m ", "n < {e} > m ", "prose"),
+    ("snake", "\n\n{n} = \\\"a value\\\"\n\n", "\n\n{e} = 12\n\n", "prose"),
+    ("snake", "\n\n[app]\n\nThe file sets it.\n\n{n} = 12\n\n",
+     "\n\n[app]\n\nThe file sets it.\n\n{e} = 12\n\n", "prose"),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
 #: writes one and `doseQab` as camelCase.

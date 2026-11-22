@@ -12346,6 +12346,36 @@ def _optidef_s_problems_are_prose(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(mask, "MATHS", mask.MATHS - commands.OPTIMISATION)
 
 
+def _a_placeholder_is_a_name(patch: pytest.MonkeyPatch) -> None:
+    """As at 3061704e9: `<PAPER_TEXT>` was read as a name from the code."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_PLACEHOLDER", re.compile("(?!)"))
+
+
+def _a_comparison_makes_a_placeholder(patch: pytest.MonkeyPatch) -> None:
+    """Blanks inside the brackets allowed: `n < max_len > m` was taken for a placeholder."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_PLACEHOLDER", re.compile(
+        rf"[\\\x00]?<\s*{gate._PART}(?:{gate._UNDERSCORES}{gate._PART})+\s*[\\\x00]?>"))
+
+
+def _a_configuration_s_line_is_prose(patch: pytest.MonkeyPatch) -> None:
+    """As at 3061704e9: a `name = value` line under its `[section]` was read as prose."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_SETTING", re.compile("(?!)"))
+
+
+def _any_line_opens_a_section(patch: pytest.MonkeyPatch) -> None:
+    """A `name = value` line was set aside with no `[section]` line above it, or with a
+    sentence between."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_SECTION", re.compile(rf"(?!(?:{gate._SETTING.pattern})\Z)[^\n]*"))
+
+
 @holds(40, code_names())
 def test_the_audit_says_the_names_from_the_code_in_one_finding(
     planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
@@ -28201,6 +28231,22 @@ BROKEN = {
     ),
     "optidef's problems are prose": (
         _optidef_s_problems_are_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a placeholder in angle brackets is read as a name from the code": (
+        _a_placeholder_is_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a name between two signs of a comparison is a placeholder": (
+        _a_comparison_makes_a_placeholder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a configuration's line under its section is read as prose": (
+        _a_configuration_s_line_is_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a setting is set aside with no section above it": (
+        _any_line_opens_a_section,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "the audit reads only a word with underscores for a name from the code": (

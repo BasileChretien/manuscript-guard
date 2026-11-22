@@ -6109,6 +6109,21 @@ is a `\footnote` typed in a cell, which LaTeX prints at the foot of the page (ro
 #673). An RRID's accession,
 `RRID:SCR_006571`, is an identifier, and G14 reads it nowhere (#663).
 
+**Machine text a paper quotes is set aside in two exact shapes, and no other** (Basile,
+2026-11-22, "Exact shapes only"; two papers' appendices quoting an LLM's prompt and a TOML
+file). A name standing alone in angle brackets is a placeholder that a program fills, not a
+name the reader has to know: `<PAPER_TEXT>` bare in Markdown, which pandoc reads as an HTML
+tag and prints nothing of, `\<PAPER_TEXT\>` as pandoc writes it from a .docx, and
+`<PAPER\_TEXT>` in LaTeX, on a line of its own or in a sentence. Nothing of a word may stand
+against either bracket and no blank inside them, so `n < max_len > m` is a comparison and
+is read. A line that is only `name = value` is a configuration's line where the value is a
+quoted string (its quotes escaped as pandoc writes them from a .docx, `\"secret key\"`, or
+not), a literal string, a number, `true` or `false` or a list in brackets, and a line that
+is only a `[section]` header, bold as Word writes it or not (`**\[app\]**`), stands above it
+with only such lines or blank ones between. A `name = value` line with no such header above
+it, or with a sentence between, is prose. A boxed environment, a `tcolorbox`, is not set
+aside as such: what is in it is read as before.
+
 **The audit says them in one finding** (decision 13). `audit` makes G14's warnings on a
 paper's names from the code one finding, as it makes the short forms left undefined one
 (#640, `auditing.undefined`), by the same grouping (`auditing.code_names`): the names in
@@ -25579,6 +25594,19 @@ Open, recorded as each change landed:
     of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
     reported though the document prints the entry's text and not the key.
     Pinned by `tests/test_code_names.py::test_an_unknown_latex_command_s_argument_is_prose`.
+  - Machine text a paper quotes is set aside in two exact shapes only, a placeholder in
+    angle brackets and a configuration's `name = value` line under its `[section]` line
+    (Basile, 2026-11-22, "Exact shapes only"). A prompt in a `tcolorbox` is read as prose
+    otherwise, so a vocabulary term quoted in it, `"matprov:length\_thickness"`, reports
+    `length_thickness`, and the all-caps word IMPORTANT in it is read by G14's short forms.
+    Pinned by `tests/test_code_names.py::test_a_latex_prompt_s_placeholders_are_not_read_and_the_box_is`.
+  - A quoted value that the Word conversion broke over two paragraphs is no `name = value`
+    line: the configuration ends at it, and the names after it are read up to the next
+    `[section]` line.
+    Pinned by `tests/test_code_names.py::test_a_value_quoted_over_two_paragraphs_ends_the_configuration`.
+  - In Markdown, "1<max_len>2" is read, though pandoc takes `<max_len>` for an HTML tag and
+    prints nothing of it: a tag is set aside only where its name has no underscore, and a
+    digit against a bracket makes no placeholder. Accepted.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14's vocabulary is a list of words, and reads them as words.** Accepted.

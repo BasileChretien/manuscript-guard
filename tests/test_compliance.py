@@ -705,6 +705,27 @@ def test_a_journal_checklist_whose_sign_off_cannot_be_read_says_it_is_not_signed
     assert checklist.endswith("\nNot signed off yet by the corresponding author.\n")
 
 
+def test_the_pack_s_checklist_says_alike_a_sign_off_void_and_one_never_made(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): the unsigned checklist
+    in the pack does not say whether a sign-off was void or never made."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+
+    never = journal_checklist(load_project(project)[0])
+    assert never.endswith("\nNot signed off yet by the corresponding author.\n")
+    key = "G4/journal-manual/demo-journal"
+    assert main(["sign", str(project), "--as", "Example", "--finding", key]) == 0
+    signed = journal_checklist(load_project(project)[0])
+    assert "\nSigned off by Ada Example, the corresponding author, on " in signed
+    edit_yaml(project / JOURNAL, lambda d: d["manual"][0].update(rule="covering letter"))
+    [void] = _manual(project)
+    assert void.severity == "warn" and "changed since" in void.hint
+    voided = journal_checklist(load_project(project)[0])
+    assert voided == never.replace("| cover letter |", "| covering letter |")
+
+
 def test_with_no_corresponding_author_the_hint_says_to_mark_one(project: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

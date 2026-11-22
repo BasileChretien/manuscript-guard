@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from manuscript_guard.assurance import DIMENSIONS, assurance, record_verified
 from manuscript_guard.contracts import load_project
 from manuscript_guard.findings import Finding, Report
@@ -109,6 +111,77 @@ def test_a_gate_that_did_not_run_or_read_nothing_is_said(project: Path) -> None:
     report = Report((stopped,), {"analysis_files": 2, "design_sections": 0})
     [line] = [line for line in _said(project, report) if "G9, G12, G15" in line]
     assert line.endswith("G9, G12, G15: 1 failing, 0 warnings; G15 did not run; G12 read nothing")
+
+
+def test_a_gate_stopped_by_an_unreadable_manuscript_is_said_to_have_read_nothing(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): with the manuscript not
+    UTF-8, G2 and G7 stop on it, and `check` says they read nothing, not that they did not
+    run."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    path.write_bytes(path.read_bytes() + b"\nThe caf\xe9 saw 4321 patients.\n")
+    main(["check", str(project), "--json"])
+    lines = json.loads(capsys.readouterr().out)["assurance"]
+    [line] = [line for line in lines if "G2, G3, G7, G8:" in line]
+    assert line.endswith("G2, G3, G7, G8: 0 failing, 0 warnings; G2, G7 read nothing")
+    assert not [line for line in lines if "did not run" in line]
+
+
+def test_the_findings_of_g0_and_the_build_fall_in_no_dimension(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): a failure of G0 or of the
+    build is counted under no dimension, where one of G1 is counted under its own."""
+    report = Report((Finding(gate="G0", code="schema-violation", message="paper.yaml"),
+                     Finding(gate="BUILD", code="rule-opens-a-block", message="a rule"),
+                     Finding(gate="G1", code="input-changed", message="data")))  # fmt: skip
+    checked = [line for line in _said(project, report) if "checked:" in line
+               and "not checked" not in line]  # fmt: skip
+    assert [line.split(": ")[2].split(";")[0] for line in checked] == [
+        "1 failing, 0 warnings", *["0 failing, 0 warnings"] * (len(DIMENSIONS) - 1)
+    ]  # fmt: skip
+
+
+def test_a_run_of_verify_is_not_stale_when_the_scripts_or_the_data_change(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): verification is stale
+    against the results fragments only, so an edited script and edited data leave it said as
+    it was (`test_a_run_of_verify_is_said_until_the_results_change` holds the other side)."""
+    from manuscript_guard.verify import Comparison, VerifyReport
+
+    loaded, _ = load_project(project)
+    record_verified(loaded, VerifyReport([Comparison("01.json", agreed=("a",))]))
+    [before] = [line for line in _said(project) if "`verify` re-ran" in line]
+    script = project / "analysis" / "01_disproportionality.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n# edited\n", encoding="utf-8")
+    (project / "data" / "reports.csv").write_text("id\n1\n", encoding="utf-8")
+    assert [line for line in _said(project) if "`verify` re-ran" in line] == [before]
+    assert before.endswith(": 1 of 1 values reproduced")
+
+
+def test_panel_rounds_are_counted_without_their_panel_and_never_said_stale(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Assurance and verify"): a round folder is counted
+    with no panel beside it, the last round is not said stale when G11 finds it stale, and a
+    folder named with a superscript digit raises."""
+    from manuscript_guard.cli import _run_gates
+
+    said = "    recorded:    13 panel rounds read; the last, round 13, by Claude Code on 2026-11-10"
+    assert said in _said(project)
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace("Several limitations",
+                                                             "Many limitations"),
+                    encoding="utf-8")  # fmt: skip
+    report, *_ = _run_gates(project)
+    assert "review-stale" in {f.code for f in report.findings}, report.render(project)
+    assert said in _said(project)
+    for panel in (project / "review").glob("panel-*.yaml"):
+        panel.unlink()
+    assert said in _said(project)
+    folder = project / "review" / "round-\N{SUPERSCRIPT TWO}"
+    folder.mkdir()
+    (folder / "a.yaml").write_text("reviewed_by: A\nreviewed_on: 2026-01-01\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        _said(project)
 
 
 def test_a_project_with_no_panel_says_so(project: Path) -> None:

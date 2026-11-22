@@ -208,6 +208,29 @@ def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(
     assert ("[@k]" in said) is (key is not None), said
 
 
+def test_a_field_s_doi_no_entry_has_is_matched_to_an_entry_without_one_by_its_title() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Word citation field with a DOI no entry has is
+    matched to an entry with no DOI by its title"): the paper's field is taken for a
+    conference abstract filed without its DOI, a title of one letter is enough, and the year
+    and first author are compared only where both give them."""
+    from manuscript_guard.citationfields import Work
+    from manuscript_guard.cli import _said_inserted
+
+    paper = Work(doi="10.1/paper", title="Hepatic injury", year="2021", author="Fictional")
+    abstract = {"title": "Hepatic Injury", "year": "2021", "author": "Fictional, Anne"}
+    assert "[@abstract]" in _said_inserted(paper, {"abstract": abstract})
+    # The other side: an entry with a DOI of its own is never matched by its title.
+    assert "[@" not in _said_inserted(paper, {"other": {**abstract, "doi": "10.1/other"}})
+    # No minimum length to the title.
+    assert "[@x]" in _said_inserted(Work(doi="10.9/x", title="X"), {"x": {"title": "X"}})
+    # A year or an author on one side only is no difference; on both sides it is.
+    undated = Work(doi="10.1/paper", title="Hepatic injury")
+    assert "[@abstract]" in _said_inserted(undated, {"abstract": abstract})
+    assert "[@abstract]" in _said_inserted(paper, {"abstract": {"title": "Hepatic injury"}})
+    assert "[@" not in _said_inserted(paper, {"abstract": {**abstract, "year": "2019"}})
+    assert "[@" not in _said_inserted(paper, {"abstract": {**abstract, "author": "Other, Ola"}})
+
+
 def test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one() -> None:
     """Round 1 of #350: a Zotero duplicate with no DOI, above the entry that has it, matched
     by its title first, and the import named the duplicate's key."""

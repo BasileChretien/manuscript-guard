@@ -535,10 +535,90 @@ def test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out(
         "notation_spaces_missing"] == 0, written  # fmt: skip
     report = read(f"# Results\n\nThe series {written} held for 12patients.\n")
     assert report.counts["notation_spaces_missing"] == 1, written
-    # A number joined by a hyphen stands outside the name, as `code-name-in-prose` reads it
-    # (DESIGN.md, Known gaps).
-    hyphen = read("# Results\n\nThe series RATE\\_6-12mth held.\n")
-    assert hyphen.counts["notation_spaces_missing"] == 1
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth", "12mth-RATE\\_x", "RATE\\_x-to+0.5",
+     "DOSE\\_6-5mg", "(UNEMP\\_DURA\\_6-12mth)"],
+    ids=["bare", "escaped", "before the name", "a signed number", "a unit", "in brackets"],
+)  # fmt: skip
+def test_no_space_is_left_out_anywhere_in_a_run_that_holds_a_name(written: str) -> None:
+    """A series named `UNEMP\\_DURA\\_6-12mth` ends its name at the hyphen, and "12mth" is
+    still the series' name: no space is read as left out, nor a unit as closed up, anywhere
+    in a run of characters with no blank in it that holds a word joined by underscores, as
+    `code-name-in-prose` reads a path (Basile, 2026-11-22, "Skip the whole token"). A number
+    typed against its word in the next run, in the same sentence, is read."""
+    clean = read(f"# Results\n\nThe series {written} held.\n")
+    assert clean.counts["notation_spaces_missing"] == 0, written
+    assert clean.counts["notation_units_closed"] == 0, written
+    report = read(f"# Results\n\nThe series {written} 12patients held for 5mg.\n")
+    assert told(report) == [
+        ("notation-unit", "a number runs into its unit once: '5mg'"),
+        ("notation-space-missing", "a number and a word run together once: '12patients'"),
+    ], written
+
+
+@pytest.mark.parametrize("written", ["RATE\\_x;12patients", "(RATE\\_x)12patients",
+                                     "RATE\\_x:12patients"])  # fmt: skip
+def test_a_space_left_out_in_the_run_of_a_name_passes(written: str) -> None:
+    """The run is read whole, so a space truly left out in it passes, where any mark but a
+    blank or "=" joins the name to the number typed against its word: a semicolon, a
+    bracket, a colon (DESIGN.md, Known gaps). With a blank in place of the name's
+    underscore, it is reported."""
+    assert read(f"# Results\n\nThe series {written} held.\n").counts[
+        "notation_spaces_missing"] == 0, written  # fmt: skip
+    apart = written.replace("\\_", " ")
+    assert read(f"# Results\n\nThe series {apart} held.\n").counts[
+        "notation_spaces_missing"] == 1, apart  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("written", "told_of"),
+    [("The C_max=12mg was reached.",
+      [("notation-unit", "a number runs into its unit once: '12mg'")]),
+     ("The half-life (t_1/2=5h) was short.",
+      [("notation-unit", "a number runs into its unit once: '5h'")]),
+     ("The C\\_max=12patients held.",
+      [("notation-space-missing", "a number and a word run together once: '12patients'")]),
+     ("The 12mg=C_max held.", [("notation-unit", "a number runs into its unit once: '12mg'")]),
+     ("The UNEMP\\_DURA\\_6-12mth=x held.", [])],
+    ids=["unit after", "half-life", "word after", "unit before", "a hyphen ends nothing"],
+)  # fmt: skip
+def test_an_equals_sign_ends_the_run_of_a_name(written: str, told_of: list) -> None:
+    """The run of a name stops at "=", so the value after it is read unless it runs on into
+    another name: "C_max=12mg" is a unit closed up, as it was before the run was read whole
+    (Basile, 2026-11-22, "'=' ends the token"). A hyphen ends nothing."""
+    assert told(read(f"# Results\n\n{written}\n")) == told_of, written
+
+
+@pytest.mark.parametrize(
+    ("written", "told_of"),
+    [
+        # a value after one "=" joined to the next name falls into that name's run
+        ("The C_max=12mg;t_max=2h was seen.",
+         [("notation-unit", "a number runs into its unit once: '2h'")]),
+        ("The pair (t_1/2=5h,C_max=12mg) was seen.",
+         [("notation-unit", "a number runs into its unit once: '12mg'")]),
+        # only "=" ends the run
+        ("The C_max>12mg was seen.", []),
+        ("The C_max<12mg was seen.", []),
+        ("The t_1/2\N{ALMOST EQUAL TO}5h was seen.", []),
+        ("The C_max\N{LESS-THAN OR EQUAL TO}12mg was seen.", []),
+        ("The C_max\N{GREATER-THAN OR EQUAL TO}12mg was seen.", []),
+        # a code's name=level is split at "="
+        ("The level DURA\\_CAT=6-12mth was seen.",
+         [("notation-space-missing", "a number and a word run together once: '12mth'")]),
+    ],
+    ids=["semicolon", "comma", ">", "<", "approximately", "at most", "at least",
+         "name=level"],
+)  # fmt: skip
+def test_what_the_equals_sign_leaves_in_the_run_of_a_name(written: str, told_of: list) -> None:
+    """The limits of "'=' ends the token" as decided (Basile, 2026-11-22; DESIGN.md, Known
+    gaps): a value joined to the next name by a semicolon or a comma falls into its run and
+    passes; another sign of comparison ends nothing; and a code's `name=level` is split at
+    "=", its level read."""
+    assert told(read(f"# Results\n\n{written}\n")) == told_of, written
 
 
 def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> None:
@@ -556,6 +636,24 @@ def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> Non
     report = check_language(load_project(project)[0])
     (finding,) = (f for f in report.findings if f.code == "notation-space-missing")
     assert finding.message == "a number and a word run together once: '12patients'"
+
+
+def test_a_number_after_a_hyphen_in_a_latex_name_is_no_space_left_out(project: Path) -> None:
+    """A LaTeX data table's series `UNEMP\\_DURA\\_6-12mth`: the name ends at the hyphen and
+    "12mth" stands in its run, which is not read (Basile, 2026-11-22, "Skip the whole
+    token"). The sentence after the table is."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+        "\\begin{tabular}{ll}\nUNEMP\\_DURA\\_6-12mth & 0,532 \\\\\n\\end{tabular}\n\n"
+        "It rose by 12patients after the table.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    report = check_language(load_project(project)[0])
+    assert [f.message for f in report.findings if f.code.startswith("notation-")] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
 
 
 def test_forms_used_as_often_show_the_later_one_and_say_so() -> None:

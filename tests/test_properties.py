@@ -8453,15 +8453,17 @@ def test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is(
     """G14's `notation-space-missing` counts each number typed against a word, a bound one
     among them, an ordinal's included, and each word typed against a signed number, once;
     not a unit closed up, which `notation-unit` counts, nor a name a number stands inside,
-    an ordinal or a decade alone, a number in hexadecimal or in scientific notation, or a
-    letter and a sign."""
+    an ordinal or a decade alone, a number in hexadecimal or in scientific notation, a
+    letter and a sign, or anything in the run of a name joined by underscores, whose units
+    `notation-unit` does not count either; what stands past an "=" in that run is read,
+    its unit closed up counted."""
     from manuscript_guard.gates.notation import judge_notation
     from manuscript_guard.gates.vocabulary import Passage
 
     read = _file(0, Path("main.md"), drawn, [], False)
     report = judge_notation([Passage(read.path, read.text, read.printed, read.line_of)])
     assert report.counts["notation_spaces_missing"] == len(RUN_ON), drawn
-    assert report.counts["notation_units_closed"] == 2, drawn
+    assert report.counts["notation_units_closed"] == 3, drawn
 
 
 from generated import SIGNED_RUN_ON  # noqa: E402
@@ -8537,6 +8539,31 @@ def _a_name_joined_by_underscores_is_prose(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import code_names
 
     patch.setattr(code_names, "joined_names", lambda text: iter(()))
+
+
+def _only_the_name_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    """As at 3061704e9: the notation passed over the name itself, so "12mth" after the
+    hyphen in `UNEMP\\_DURA\\_6-12mth` was a space left out, and it passed over no unit
+    and no signed number (Basile, 2026-11-22, "Skip the whole token")."""
+    from manuscript_guard.gates import code_names
+
+    patch.setattr(code_names, "joined_runs", code_names.joined_names)
+
+
+def _the_run_of_a_name_runs_over_blanks(patch: pytest.MonkeyPatch) -> None:
+    """The run of a name ran on over its line's blanks, and passed over "12cells" in
+    "RATE\\_6 12cells"."""
+    from manuscript_guard.gates import code_names
+
+    patch.setattr(code_names, "_runs_on", lambda text, at: text[at] != "\n")
+
+
+def _the_run_of_a_name_runs_over_an_equals_sign(patch: pytest.MonkeyPatch) -> None:
+    """As at 908310d41: the run of a name ran on past "=", and passed over "12cells" in
+    "C\\_max=12cells" (Basile, 2026-11-22, "'=' ends the token")."""
+    from manuscript_guard.gates import code_names
+
+    patch.setattr(code_names, "_RUN_ENDS", "")
 
 
 def _hexadecimal_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
@@ -29401,6 +29428,18 @@ BROKEN = {
     ),
     "a number inside a name joined by underscores is a space left out": (
         _a_name_joined_by_underscores_is_prose,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "the notation passes over a name joined by underscores and not its run": (
+        _only_the_name_is_passed_over,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "the run of a name joined by underscores runs over blanks": (
+        _the_run_of_a_name_runs_over_blanks,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "the run of a name joined by underscores runs over an equals sign": (
+        _the_run_of_a_name_runs_over_an_equals_sign,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "the notation's edits keep the form used least": (

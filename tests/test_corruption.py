@@ -39576,6 +39576,45 @@ def test_a_number_typed_against_its_word_beside_a_latex_name_is_caught(project: 
         "a number and a word run together once: '12patients'"]  # fmt: skip
 
 
+@pytest.mark.parametrize("series", ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth"],
+                         ids=["bare", "escaped"])  # fmt: skip
+def test_a_number_typed_against_its_word_beside_a_series_name_is_caught(
+    project: Path, series: str
+) -> None:
+    """A series named with underscores ends its name at a hyphen, `UNEMP_DURA_6-12mth`, and
+    "12mth" is still the series' name: no space left out anywhere in its run (Basile,
+    2026-11-22, "Skip the whole token"). "12patients" in the next run is caught."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    main_md(project).write_text(text.replace(old, f"{old} The series {series} held."),
+                                encoding="utf-8")  # fmt: skip
+    assert notation_findings(project) == []
+    main_md(project).write_text(text.replace(old, f"{old} The series {series} 12patients held."),
+                                encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
+def test_a_number_typed_against_its_word_beside_a_latex_series_name_is_caught(
+    project: Path,
+) -> None:
+    """In a LaTeX data table, `UNEMP\\_DURA\\_6-12mth`: no space left out in its run; the
+    sentence after the table, "12patients", is caught."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    table = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+             "\\begin{tabular}{ll}\nUNEMP\\_DURA\\_6-12mth & 0,532 \\\\\n\\end{tabular}\n\n")
+    (folder / "main.tex").write_text(table + "It held.\n\\end{document}\n", encoding="utf-8")
+    assert notation_findings(project) == []
+    (folder / "main.tex").write_text(table + "It held in 12patients.\n\\end{document}\n",
+                                     encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
 @pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
 def test_a_number_typed_against_its_word_in_a_pdf_is_caught(tmp_path: Path, capsys) -> None:
     """In a PDF's text pdftotext sets an index on the line, "tn+1", which is no word typed

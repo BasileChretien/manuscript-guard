@@ -73,6 +73,10 @@ _EXTENSION = re.compile(r"(?=[0-9]*[A-Za-z])[A-Za-z0-9]{1,10}")
 _FOLDER = re.compile(r"\\(?=[^\W_])")
 # How far either side of a word its run of characters is looked at for a path.
 _REACH = 200
+# What ends the run of a name for G14's notation, besides a blank: the value after `=` is read,
+# unless it runs on into the run of another name; no other sign ends it (Basile, 2026-11-22,
+# "'=' ends the token"; DESIGN.md, Known gaps).
+_RUN_ENDS = "="
 # In Markdown, what is not printed: the opening or closing line of a fenced div, an HTML
 # tag, a pandoc attribute holding an `=` (`{custom-style="Body_Text"}`) and a TeX command
 # with its arguments.
@@ -148,10 +152,21 @@ def code_shaped(name: str) -> bool:
 def joined_names(text: str) -> Iterator[tuple[int, int]]:
     """Where each word joined by underscores stands in `text`, `(start, end)`, its
     underscores typed as this reading reads them: bare, escaped, or as the LaTeX reader
-    writes `\\_`. G14's notation reads no space left out inside one (`notation`)."""
+    writes `\\_`."""
     for found in _NAME.finditer(text):
         if "_" in found.group():
             yield found.span()
+
+
+def joined_runs(text: str) -> Iterator[tuple[int, int]]:
+    """Where each run of characters with no blank in it that holds a word joined by
+    underscores stands in `text`, `(start, end)`, taken as a path is looked for around a
+    word (`_run`), but ended by `_RUN_ENDS` too: `UNEMP\\_DURA\\_6-12mth` whole, whose name
+    ends at the hyphen, and `C_max` alone in `C_max=12mg`. G14's notation reads no space left
+    out anywhere in one (`notation`; Basile, 2026-11-22, "Skip the whole token", "'=' ends
+    the token")."""
+    for start, end in joined_names(text):
+        yield _run(text, start, end, _RUN_ENDS)
 
 
 def _exact(name: str, names: Names) -> tuple[str, str | None] | None:
@@ -176,15 +191,24 @@ def _runs_on(text: str, at: int) -> bool:
     return not char.isspace()
 
 
+def _run(text: str, start: int, end: int, ends: str = "") -> tuple[int, int]:
+    """Where the run of characters the word from `start` to `end` stands in begins and ends,
+    looked at no further than `_REACH` either side; a character of `ends` ends it too."""
+    left = start
+    while (left > max(0, start - _REACH) and _runs_on(text, left - 1)
+           and text[left - 1] not in ends):  # fmt: skip
+        left -= 1
+    right = end
+    while (right < min(len(text), end + _REACH) and _runs_on(text, right)
+           and text[right] not in ends):  # fmt: skip
+        right += 1
+    return left, right
+
+
 def _in_a_path(text: str, start: int, end: int) -> bool:
     """Whether the word from `start` to `end` is part of a path or an address: its run of
     characters holds a slash, an `@` or a backslash between two folders."""
-    left = start
-    while left > max(0, start - _REACH) and _runs_on(text, left - 1):
-        left -= 1
-    right = end
-    while right < min(len(text), end + _REACH) and _runs_on(text, right):
-        right += 1
+    left, right = _run(text, start, end)
     run = text[left:right]
     return "/" in run or "@" in run or bool(_FOLDER.search(run))
 

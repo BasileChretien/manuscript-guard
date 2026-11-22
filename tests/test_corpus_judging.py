@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -511,6 +512,152 @@ def test_the_first_verdicts_are_paired_before_a_batch_s_by_the_matcher(corpus: P
     assert first_rows({"findings": after}) == before
     twin = [r for r in after if r["batch"] and r["message"].startswith("'color'")]
     assert [(r["by_key"], r["state"]) for r in twin] == [(False, "gone")]
+
+
+# --- a batch tied to a keyed run of another scheme (Basile, 2026-11-21) -----------------
+
+
+def rekeyed(reports: dict, digest: str = "k3") -> dict:
+    """The reports as a build of another scheme gives them: the same findings, other keys."""
+    return {where: [{**f, "key": f["key"].rsplit("|", 1)[0] + f"|{digest}"} if "key" in f
+                    else f for f in found] for where, found in reports.items()}  # fmt: skip
+
+
+def reworded(reports: dict, slug: str, report: str, index: int) -> dict:
+    """The reports with one finding's message changed and its key kept."""
+    found = list(reports[(slug, report)])
+    found[index] = {**found[index], "message": f"{found[index]['message']}, said otherwise"}
+    return {**reports, (slug, report): found}
+
+
+def b1_row(rows: list[dict], report: str, index: int) -> dict:
+    return next(r for r in rows if r["batch"] == "b1" and (r["report"], r["index"]) == (
+        report, index))  # fmt: skip
+
+
+def test_a_batch_tied_to_a_run_of_another_scheme_is_paired_by_its_tied_key(
+        corpus: Path) -> None:  # fmt: skip
+    agreed(corpus)  # b1, from r1, of scheme 2; its check 0 is the G3 finding on fig1.png
+    k3 = rekeyed(R1)
+    write_run(corpus, "k3", k3, scheme=3)
+    write_run(corpus, "pr", reworded(k3, "paper-a", "check", 2), scheme=3)  # its key kept
+    lost = tool.gate(corpus, "k3", "pr")["lost"]
+    assert [(r["batch"], r["report"], r["index"]) for r in lost] == [("b1", "check", 0)]
+    said = tool.tie(corpus, "r1", "k3")
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    batch = document["batches"]["b1"]
+    assert (batch["judged_run"], batch["scheme"]) == ("r1", 2)
+    assert ("check", 0, k3[("paper-a", "check")][2]["key"]) in {
+        (t["report"], t["index"], t["key"]) for t in batch["ties"]}
+    assert said["batches"]["b1"]["tied"] == len(batch["ties"]) == 4  # its four agreements
+    assert "b1 (scheme 2, judged in r1): 4 tied" in tool.corpus_keys.render_tie(said)
+    # The first verdicts are tied as before, beside the batch's.
+    assert len(document["ties"]) == said["tied"]
+    result = tool.gate(corpus, "k3", "pr")
+    assert result["ok"] and not result["lost"]
+    row = b1_row(tool.measure(corpus, "pr")["findings"], "check", 0)
+    assert (row["by_key"], row["state"]) == (True, "reported")
+
+
+def test_a_batch_verdict_no_rule_ties_goes_to_the_author_and_is_decided(corpus: Path) -> None:
+    agreed(corpus)  # b1's audit 0 is the G14 'behavior' finding
+    k3 = rekeyed(R1)
+    audit = k3[("paper-a", "audit")]
+    twin = {**audit[12], "key": "G14|spelling-variant|behaviour|k3"}
+    write_run(corpus, "k3", {**k3, ("paper-a", "audit"): [*audit, twin]}, scheme=3)
+    said = tool.tie(corpus, "r1", "k3")
+    assert said["batches"]["b1"]["ambiguous"] == 1
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    tied = {(t["report"], t["index"]) for t in document["batches"]["b1"]["ties"]}
+    assert ("audit", 0) not in tied
+    told = (corpus / "report" / "ties-ambiguous.md").read_text("utf-8")
+    assert "- **b1 paper-a audit 0** (true, G14/spelling-variant" in told
+    assert "`batch: B`" in told
+    assert "to tie: 1: 0 of the first verdicts, 1 of batches" in told
+    assert "judged in its batch's run against the same keyed run: b1 in r1." in told
+    untied = (corpus / "report" / "ties-untied.md").read_text("utf-8")
+    # No batch's verdict is left untied: that file's counts are as they always were.
+    assert untied.startswith("# Judged findings left untied: 0\n") and "b1" not in untied
+    decided = corpus / "report" / "ties-decided.yaml"
+    entry = {"slug": "paper-a", "report": "audit", "index": 0, "batch": "b1",
+             "key": audit[12]["key"], "by": "the author", "date": "2026-11-21"}
+    decided.write_text(yaml.safe_dump([entry]), "utf-8")
+    rows = tool.measure(corpus, "k3")["findings"]
+    row = b1_row(rows, "audit", 0)
+    assert (row["by_key"], row["state"]) == (True, "reported")
+    # The decision names the batch's verdict, not the first verdict at that place.
+    assert set(tool.corpus_keys.load_decided(corpus)) == {("paper-a", "audit", 0, "b1")}
+    first = next(r for r in rows if not r["batch"] and (r["report"], r["index"]) == ("audit", 0))
+    assert (first["code"], first["state"]) == ("G6/vague-attribution", "reported")
+    decided.write_text(yaml.safe_dump([{**entry, "batch": "b9"}]), "utf-8")
+    with pytest.raises(tool.CorpusError, match="paper-a audit 0 b9 is no judged finding"):
+        tool.measure(corpus, "k3")
+
+
+def test_a_batch_of_the_keyed_run_s_scheme_is_not_tied(corpus: Path) -> None:
+    agreed(corpus)
+    write_run(corpus, "k2", reworded(R1, "paper-a", "check", 2), scheme=2)
+    before = [r for r in tool.measure(corpus, "k2")["findings"] if r["batch"]]
+    said = tool.tie(corpus, "r1", "k2")
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    assert "batches" not in document and said["batches"] == {}
+    assert said["own_scheme"] == ["b1"]
+    assert "b1 keys by the keyed run's scheme 2: paired by its own keys" in (
+        tool.corpus_keys.render_tie(said))
+    after = [r for r in tool.measure(corpus, "k2")["findings"] if r["batch"]]
+    assert after == before
+    assert (b1_row(after, "check", 0)["by_key"], b1_row(after, "check", 0)["state"]) == (
+        True, "reported")
+    # A decision on such a batch's verdict would be read nowhere: it is refused.
+    (corpus / "report" / "ties-decided.yaml").write_text(yaml.safe_dump([
+        {"slug": "paper-a", "report": "check", "index": 0, "batch": "b1",
+         "key": R1[("paper-a", "check")][2]["key"], "by": "the author",
+         "date": "2026-11-22"}]), "utf-8")  # fmt: skip
+    with pytest.raises(tool.CorpusError, match="names batch b1, which keys by the ties' own"):
+        tool.measure(corpus, "k2")
+
+
+def test_a_batch_whose_run_is_gone_is_left_for_the_matcher(corpus: Path) -> None:
+    agreed(corpus)
+    write_run(corpus, "k3", rekeyed(R1), scheme=3)
+    (corpus / "runs" / "r1").rename(corpus.parent / "r1-moved")
+    said = tool.tie(corpus, "r0", "k3")
+    assert (said["no_run"], said["batches"], said["tied"]) == (["b1"], {}, len(FIRST))
+    assert "- b1 not tied: its run is neither at the folder its packet names" in (
+        tool.corpus_keys.render_tie(said))
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    assert "batches" not in document and len(document["ties"]) == len(FIRST)
+    # The list of those left untied names it, its four verdicts counted with the batches'.
+    untied = (corpus / "report" / "ties-untied.md").read_text("utf-8")
+    assert untied.startswith("# Judged findings left untied: 4: 0 of the first verdicts, "
+                             "4 of batches\n")  # fmt: skip
+    assert ("- Batch b1, 4 verdicts: not tied, as its run is neither at the folder its packet "
+            "names nor under runs/; the matcher pairs them.") in untied
+    assert "Batch b1" not in (corpus / "report" / "ties-ambiguous.md").read_text("utf-8")
+    rows = [r for r in tool.measure(corpus, "k3")["findings"] if r["batch"]]
+    assert rows and not any(r["by_key"] for r in rows)
+
+
+def test_a_batch_s_ties_are_refused_where_its_packet_names_another_run(corpus: Path) -> None:
+    agreed(corpus)
+    write_run(corpus, "k3", rekeyed(R1), scheme=3)
+    tool.tie(corpus, "r1", "k3")
+    path = corpus / "report" / "packets" / "b1.json"
+    papers = json.loads(path.read_text("utf-8"))
+    for changed, says in (({"run": "r9"}, "names run r9 at scheme 2"),
+                          ({"scheme": 1}, "names run r1 at scheme 1")):
+        path.write_text(json.dumps([{**p, **changed} for p in papers]), "utf-8")
+        with pytest.raises(tool.CorpusError, match=f"made from run r1 at scheme 2, .*{says}"):
+            tool.measure(corpus, "k3")
+    path.write_text(json.dumps(papers), "utf-8")
+    assert any(r["by_key"] for r in tool.measure(corpus, "k3")["findings"] if r["batch"])
+
+
+def test_a_malformed_batch_entry_in_the_ties_is_refused(corpus: Path) -> None:
+    (corpus / "report" / "ties.yaml").write_text(yaml.safe_dump(
+        {"run": "k3", "scheme": 3, "ties": [], "batches": {"b1": {"ties": "x"}}}), "utf-8")
+    with pytest.raises(tool.CorpusError, match="a batch's ties are"):
+        tool.corpus_keys.load_ties(corpus)
 
 
 # --- the gate and the output ------------------------------------------------------------

@@ -136,13 +136,22 @@ def _rejudge(decision: Decision, body: object, where: str) -> None:
         raise CorpusError(f"{where}: rejudge holds verdict, findings and match only")
     decision.verdict = _verdict(body.get("verdict"), where)
     for key in body.get("findings") or []:
-        if not isinstance(key, dict) or set(key) != {"slug", "report", "index"}:
-            raise CorpusError(f"{where}: a finding is named by slug, report and index")
+        if not isinstance(key, dict) or set(key) - {"batch"} != {"slug", "report", "index"}:
+            raise CorpusError(f"{where}: a finding is named by slug, report and index, and a "
+                              "batch's verdict by its batch too")  # fmt: skip
+        # Read as the ties' decided file reads it (`str`), so that a name YAML takes for a
+        # number or a date is the same name; it must be one `unjudged` could have given.
+        batch = "" if key.get("batch") in (None, "") else str(key["batch"])
+        if "batch" in key and not corpus_run.SLUG.fullmatch(batch):
+            raise CorpusError(f"{where}: a batch is named by its name, letters, digits, '.', "
+                              f"'_' and '-', not {key['batch']!r}")  # fmt: skip
         try:
-            decision.keys.add((str(key["slug"]), str(key["report"]), int(key["index"])))
+            place = (str(key["slug"]), str(key["report"]), int(key["index"]))
         except (TypeError, ValueError):
             raise CorpusError(f"{where}: a finding's index is a number, not {key['index']!r}"
                               ) from None  # fmt: skip
+        # As `Judged.key`: a batch's verdict is told from the first verdict at its place.
+        decision.keys.add((*place, batch) if batch else place)
     for matcher in body.get("match") or []:
         if not isinstance(matcher, dict) or not matcher or set(matcher) - MATCHER_KEYS:
             raise CorpusError(f"{where}: a matcher holds {sorted(MATCHER_KEYS)} only")

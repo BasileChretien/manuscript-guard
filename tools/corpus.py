@@ -302,8 +302,9 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
     held to, a tied finding is paired by its key alone and the rest by #705's matcher, among
     the findings no key took; without, all by the matcher, as #705 had it. A batch's verdict
     is paired by its finding's key where `run` keys by its packet's scheme, its count held to
-    `held` where that keys so too and to the batch's run otherwise, and by the matcher where
-    not; the first verdicts are paired first, so that no batch changes their fates."""
+    `held` where that keys so too and to the batch's run otherwise; where not, by the key
+    `tie` tied it to where the ties hold one, as a first verdict is, and by the matcher
+    otherwise. The first verdicts are paired first, so that no batch changes their fates."""
     successors = [d for d in decisions if d.successor_from]
     ties, base = keyed if keyed is not None and run.keyed else ({}, run)
     scheme = run.scheme if run.keyed else None
@@ -311,7 +312,9 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
     sources: dict[Path, Run] = {}
 
     def tie_of(item: Judged) -> tuple[corpus_keys.Tie | None, Run]:
-        if not item.batch:
+        if not item.batch or (scheme != item.scheme and item.key in ties):
+            # A first verdict, or a batch's of another scheme `tie` tied in a run of this
+            # one: by its tied key, its count held as a first verdict's.
             return ties.get(item.key), base
         key = item.finding.get("key")
         counts = held if held_scheme == item.scheme else (
@@ -416,15 +419,19 @@ def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     if len({tied_scheme, *schemes}) > 1:
         return corpus_keys.scheme_note(tied_scheme, schemes)
     tied = Run(run_folder(root, ties["run"]))
-    return {**ties["ties"], **decided(root, tied)}, tied
+    judged = load_judged(root)[0]
+    corpus_keys.check_batches(ties["batches"], {item.batch: (item.run, item.scheme)
+                                                for item in judged if item.batch})
+    return {**ties["ties"], **decided(root, judged, tied, tied_scheme)}, tied
 
 
-def decided(root: Path, tied: Run) -> dict:
-    """`report/ties-decided.yaml`, each decision checked against the judged set and the run
-    of the ties (`corpus_keys.check_decided`)."""
-    judged = {item.key for item in load_judged(root)[0]}
-    return corpus_keys.check_decided(corpus_keys.load_decided(root), judged, tied.name,
-                                     lambda slug, report: tied.keys(slug, report))  # fmt: skip
+def decided(root: Path, judged: list[Judged], tied: Run, scheme: int) -> dict:
+    """`report/ties-decided.yaml`, each decision checked against the judged set, the run of
+    the ties and the batches of their scheme (`corpus_keys.check_decided`)."""
+    own = frozenset(item.batch for item in judged if item.batch and item.scheme == scheme)
+    return corpus_keys.check_decided(corpus_keys.load_decided(root), {i.key for i in judged},
+                                     tied.name, lambda slug, report: tied.keys(slug, report),
+                                     own)  # fmt: skip
 
 
 def _table(rows: list[dict]) -> dict:
@@ -621,21 +628,13 @@ def render_gate(result: dict) -> str:
 # --- tie -------------------------------------------------------------------------------
 
 
-def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
-    """Tie each judged finding to its key in a keyed run of the same papers, once: where
-    #705's matcher pairs it one to one by the same message or context at its place
-    (`corpus_keys.tie_group`). Writes `report/ties.yaml` and, for the author to settle by
-    hand, `report/ties-ambiguous.md`. The verdicts and the ledger are not touched."""
-    judged = [item for item in load_judged(root)[0] if not item.batch]  # a batch's are keyed
-    run_folder(root, judged_run)
-    run = Run(run_folder(root, keyed_run))
-    if not run.keyed:
-        raise CorpusError(f"{keyed_run} carries no keys: tie to a run of a build from #706 on")
+def _tie_set(judged: list[Judged], run: Run, before: Run) -> tuple[list[dict], list[dict]]:
+    """One judged set's ties to `run`, report by report, the judged run `before`, and the
+    judged findings not tied, a batch's with its name."""
     groups: dict[tuple[str, str], list[Judged]] = collections.defaultdict(list)
     for item in judged:
         groups[(item.slug, item.report)].append(item)
     ties, ambiguous = [], []
-    before = Run(run_folder(root, judged_run))
     for (slug, report), members in groups.items():
         alone = frozenset(k for k, item in enumerate(members) if item.alone)
         said = corpus_keys.tie_group([item.finding for item in members],
@@ -648,22 +647,76 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
                 family = {"family": True} if how == "key family" else {}
                 ties.append({**where, "key": candidates[0]["key"], "how": how, **family})
             else:
-                ambiguous.append({**where, "kind": kind, "how": how, "verdict": item.verdict,
+                ambiguous.append({**where, **({"batch": item.batch} if item.batch else {}),
+                                  "kind": kind, "how": how, "verdict": item.verdict,
                                   "code": item.code, "candidates": candidates[:5],
                                   "message": norm(item.finding.get("message"))[:200]})
+    return ties, ambiguous
+
+
+def _tie_batches(batches: list[Judged], run: Run) -> tuple[dict, list[dict], dict[str, int]]:
+    """Each batch's verdicts of another scheme than `run`'s tied to it as the first ones are,
+    the batch's own run, where its packet found it, standing for the judged run; and the
+    batches whose run is not there, left untied, for the matcher."""
+    by_batch: dict[str, list[Judged]] = collections.defaultdict(list)
+    for item in batches:
+        by_batch[item.batch].append(item)
+    tied, ambiguous, no_run = {}, [], {}
+    for name, items in sorted(by_batch.items()):
+        sources = {item.source for item in items}
+        if None in sources or len(sources) != 1:
+            no_run[name] = len(items)
+            continue
+        ties, left = _tie_set(items, run, Run(sources.pop()))
+        to_decide = sum(row["kind"] in corpus_keys.TO_DECIDE for row in left)
+        tied[name] = {"judged_run": items[0].run, "scheme": items[0].scheme, "ties": ties,
+                      "ambiguous": len(left), "to_decide": to_decide}  # fmt: skip
+        ambiguous += left
+    return tied, ambiguous, no_run
+
+
+def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
+    """Tie each judged finding to its key in a keyed run of the same papers, once: where
+    #705's matcher pairs it one to one by the same message or context at its place
+    (`corpus_keys.tie_group`); and each batch's verdicts the same way where the batch keys
+    by another scheme than the keyed run, its own run standing for the judged run (Basile,
+    2026-11-21). Writes `report/ties.yaml`, a batch's ties under `batches` by its name, and,
+    for the author to settle by hand, `report/ties-ambiguous.md`. The verdicts and the
+    ledger are not touched."""
+    every = load_judged(root)[0]
+    judged = [item for item in every if not item.batch]
+    run_folder(root, judged_run)
+    run = Run(run_folder(root, keyed_run))
+    if not run.keyed:
+        raise CorpusError(f"{keyed_run} carries no keys: tie to a run of a build from #706 on")
+    batches, by_batch, no_run = _tie_batches([item for item in every if item.batch
+                                              and item.scheme != run.scheme], run)  # fmt: skip
+    own = sorted({item.batch for item in every if item.batch and item.scheme == run.scheme})
+    ties, ambiguous = _tie_set(judged, run, Run(run_folder(root, judged_run)))
     document = {"judged_run": judged_run, "run": keyed_run, "scheme": run.scheme, "ties": ties}
+    if batches:
+        document["batches"] = {name: {k: b[k] for k in ("judged_run", "scheme", "ties")}
+                               for name, b in batches.items()}  # fmt: skip
+    kinds = collections.Counter(row["kind"] for row in ambiguous)
+    ambiguous += by_batch
     (root / corpus_keys.TIES).write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True, width=100), "utf-8")
+    runs = {name: b["judged_run"] for name, b in batches.items()}
     (root / corpus_keys.AMBIGUOUS).write_text(
-        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run), "utf-8")
+        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, batches=runs), "utf-8")
     untied = tuple(k for k in corpus_keys.KINDS if k not in corpus_keys.TO_DECIDE)
     (root / corpus_keys.UNTIED).write_text(
-        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, untied), "utf-8")
-    kinds = collections.Counter(row["kind"] for row in ambiguous)
-    return {"judged_run": judged_run, "run": keyed_run, "tied": len(ties),
-            "by_pass": dict(collections.Counter(row["how"] for row in ties)),
-            "ambiguous": len(ambiguous), "by_kind": {k: kinds[k] for k in corpus_keys.KINDS},
-            "fallback": sum(corpus_keys.from_context(row["key"]) for row in ties)}  # fmt: skip
+        corpus_keys.render_ambiguous(ambiguous, judged_run, keyed_run, untied, runs, no_run),
+        "utf-8")
+    return {"judged_run": judged_run, "run": keyed_run, "scheme": run.scheme,
+            "tied": len(ties), "by_pass": dict(collections.Counter(row["how"] for row in ties)),
+            "ambiguous": len(ambiguous) - len(by_batch),
+            "by_kind": {k: kinds[k] for k in corpus_keys.KINDS},
+            "fallback": sum(corpus_keys.from_context(row["key"]) for row in ties),
+            "batches": {name: {"judged_run": b["judged_run"], "scheme": b["scheme"],
+                               "tied": len(b["ties"]), "ambiguous": b["ambiguous"],
+                               "to_decide": b["to_decide"]} for name, b in batches.items()},
+            "own_scheme": own, "no_run": list(no_run)}  # fmt: skip
 
 
 # --- the command line -------------------------------------------------------------------

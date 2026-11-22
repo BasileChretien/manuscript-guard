@@ -605,7 +605,7 @@ def test_the_note_names_each_scheme_where_only_the_ties_differ(corpus: Path) -> 
 def test_the_ties_error_names_every_key_allowed_and_the_count_rule_its_exception(
         corpus: Path) -> None:  # fmt: skip
     (corpus / "report" / "ties.yaml").write_text("run: tied\nties: []\nwho: x\n", "utf-8")
-    with pytest.raises(tool.CorpusError, match="`judged_run` and `scheme`"):
+    with pytest.raises(tool.CorpusError, match="`judged_run`, `scheme` and `batches`"):
         keys.load_ties(corpus)
     exception = "unless none is left and it stands elsewhere"
     assert exception in (REPO / "docs" / "corpus.md").read_text("utf-8")

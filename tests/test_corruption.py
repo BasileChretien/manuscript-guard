@@ -24649,6 +24649,19 @@ def test_a_pale_colour_on_the_white_page_is_no_pair(project: Path, svg: bool) ->
 
 
 @pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_near_white_page_is_still_paired(project: Path, svg: bool) -> None:
+    """Only exactly #ffffff is the page (Known gaps): a near-white beside the same pale blue
+    is still compared, and tritanopia makes the two one."""
+    _painted(project, "#fefefe", _PALE, svg=svg)
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    found = [f for f in check_figure_colours(load_project(project)[0]).findings
+             if f.code == "figure-colours-confused"]
+    assert [f.severity for f in found] == ["warn"]
+    assert "tritanopia" in found[0].message and "#fefefe" in found[0].message
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
 def test_two_colours_beside_white_are_still_compared(project: Path, svg: bool) -> None:
     """White leaves only its own pairs: red and green painted with it still warn, and the
     finding names neither as paired with white."""

@@ -860,10 +860,11 @@ a warning and never a failure; `figure-greyscale-confused` for grey, a note, and
 where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
 the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
 already less than 10 apart to normal vision is not said, since no deficiency made it so.
-White, #ffffff, is taken for the page and paired with no colour: on real papers 14 of the 25
-pairs judged false set a pale band, a map's lightest class or a panel's fill against the
-white around it, which tells no two marks apart (Basile, 2026-11-21, item 5 of the corpus
-plan, `docs/corpus.md`).
+White, exactly #ffffff, is taken for the page and paired with no colour: on real papers 14 of
+the 25 pairs judged false set a pale band, a map's lightest class or a panel's fill against
+the white around it, which tells no two marks apart (Basile, 2026-11-21, item 5 of the corpus
+plan, `docs/corpus.md`). Where white is a mark of its own, a map's "no data" class against its
+lightest class, the pair is not said either; a near-white page is still paired (Known gaps).
 
 **A figure that draws a continuous scale is not compared.** A colormap, or points coloured
 by a variable, has neighbours just over 10 apart, and grey, which keeps lightness alone, or a
@@ -18846,7 +18847,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum`,
   `tests/test_corruption.py::test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data`
   and `tests/test_corruption.py::test_a_value_quoted_in_the_alternative_text_alone_is_stamped_and_still_unquoted`.
-- **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
+- **A figure's colours are read from its SVG or PDF, and compared all with all but white.** A raster
   figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
   nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
   colour space. A figure that draws a continuous scale is not compared at all, its series
@@ -18860,9 +18861,11 @@ Added by the adversarial review, verified and **not** fixed:
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other but
-  white, #ffffff, which is taken for the page and compared with none (Basile, 2026-11-21): a
-  series drawn in white, white bars with dark outlines, is not compared with the colours
-  beside it. A background of another colour and the grid's are compared: the check does not
+  white, exactly #ffffff, which is taken for the page and compared with none (Basile,
+  2026-11-21): a series drawn in white, white bars with dark outlines, or a map's white "no
+  data" class is not compared with the colours beside it, so a lightest class a deficiency
+  makes one with that white is not said. A near-white page (#fefefe, a PDF grey of 0.998) is
+  not taken for the page, and its pale neighbours are still paired with it. A background of another colour and the grid's are compared: the check does not
   know which colours encode data, so a series and a grid line made one by a deficiency are
   said, and `allow_colours` is how a figure says that pair does not matter. A colour laid at an opacity is laid over white, not
   over what is under it. A PDF's CMYK is taken to RGB without its profile, and any colour
@@ -18877,6 +18880,8 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_figure_is_taken_to_draw_a_scale_by_the_chain_of_its_shades`,
   `tests/test_corruption.py::test_a_text_drawn_as_glyphs_is_known_only_where_matplotlib_or_cairo_draws_it`,
   `tests/test_corruption.py::test_a_texts_colour_is_not_a_series`,
+  `tests/test_corruption.py::test_a_pale_colour_on_the_white_page_is_no_pair`,
+  `tests/test_corruption.py::test_a_near_white_page_is_still_paired`,
   `tests/test_corruption.py::test_every_colour_a_figure_paints_is_compared_its_background_among_them`
   and `tests/test_corruption.py::test_a_colour_at_an_opacity_is_laid_over_white_and_not_over_what_is_under_it`.
 - **A marker or a line style is not seen.** The check reads the colours a figure paints and

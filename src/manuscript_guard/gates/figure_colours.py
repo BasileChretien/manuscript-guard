@@ -60,7 +60,9 @@ NAMED = 3
 MANY = 300
 #: White, taken for the page a figure is drawn on: a pale colour beside it is a mark on the
 #: page, not two marks a reader could confuse. On real papers 14 of the 25 pairs judged false
-#: paired a colour with it (Basile, 2026-11-21). It still counts towards a scale and `MANY`.
+#: paired a colour with it (Basile, 2026-11-21). Exactly this colour: a near-white is still
+#: paired. White still counts towards `MANY` (it never counted towards a scale, which takes
+#: no grey).
 PAGE = "#ffffff"
 #: The palette a hint offers, where its own colours stay apart the way the finding is about
 #: (`_offered`); where they do not, the hint names no palette and points to the table.

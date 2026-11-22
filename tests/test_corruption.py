@@ -13653,6 +13653,9 @@ _NOT_THE_MANUSCRIPT = (
     "check_data_quality",
     # G4's DOI held to the receipts: it reads paper.yaml and deposit/receipts/.
     "check_deposit_doi",
+    # G4's main document: it reads the profile and the pack's MANIFEST.yaml, or predicts the
+    # pack from the manuscript's format, a LaTeX one's PDF and source among them (#724).
+    "check_main_document",
     # G1's of the vault: it reads the results, design/vault.yaml and the release records.
     "check_vault_results",
     "check_datasets", "check_declared_datasets",

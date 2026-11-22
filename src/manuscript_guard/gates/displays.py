@@ -53,12 +53,13 @@ def markdown_displays(
     prose: str,
     captions: Iterable[tuple[int, int]],
     noted: Callable[[int, int], bool],
+    headings: Iterable[tuple[int, int]] = (),
 ) -> tuple[tuple[int, int], ...]:
     """Each display of a Markdown file. `prose` is the text G14 reads, of `text`'s length,
     what it does not read spaces; `captions` where its captions and legends run
     (`glossary.markdown_captions`); `noted(start, end)` whether the paragraph there is a
-    note."""
-    blocks = _blocks(text, prose, tuple(captions))
+    note; `headings` where its headings run."""
+    blocks = _blocks(text, prose, tuple(captions), tuple(sorted(headings)))
     units: list[list[int]] = [[at] for at, block in enumerate(blocks) if block.kind == TABLE]
     owner = {unit[0]: unit for unit in units}
     taken: set[int] = set(owner)
@@ -121,13 +122,15 @@ def _kind(blocks: list[_Block], at: int) -> str:
     return blocks[at].kind if 0 <= at < len(blocks) else BARRIER
 
 
-def _blocks(text: str, prose: str, captions: tuple[tuple[int, int], ...]) -> list[_Block]:
+def _blocks(text: str, prose: str, captions: tuple[tuple[int, int], ...],
+            headings: tuple[tuple[int, int], ...] = ()) -> list[_Block]:  # fmt: skip
     """The file as blocks, in order: each table whole, and each paragraph outside the
     tables, a caption, a legend or a paragraph of text, read line by line from where its
-    first line starts. A blank line ends a paragraph, and so does a table's line. A line G14
-    reads nothing of, a hidden heading's, is a barrier of its own, blank lines around it or
-    none: a heading glued to the paragraph under it ends a display all the same (round 1 of
-    #759)."""
+    first line starts. A blank line ends a paragraph, and so does a table's line. A heading's
+    line is a barrier of its own, blank lines around it or none: a heading glued to the
+    paragraph under it ends a display all the same (round 1 of #759). Another line G14 reads
+    nothing of, a line of code or an image, belongs to the paragraph it stands in and ends
+    nothing (round 2); a paragraph of nothing but such lines is a barrier."""
     tables = _table_offsets(text)
     found: list[_Block] = [_Block(start, end, TABLE) for start, end in tables]
     captions = tuple(sorted(captions))
@@ -135,7 +138,10 @@ def _blocks(text: str, prose: str, captions: tuple[tuple[int, int], ...]) -> lis
 
     def close() -> None:
         if run:
-            found.append(_paragraph(text, prose, run[0][0], run[-1][1], captions))
+            low, high = run[0][0], run[-1][1]
+            read = prose[low:high].strip()
+            found.append(_paragraph(text, prose, low, high, captions) if read
+                         else _Block(low, high, BARRIER))  # fmt: skip
             run.clear()
 
     at = 0
@@ -144,7 +150,7 @@ def _blocks(text: str, prose: str, captions: tuple[tuple[int, int], ...]) -> lis
         at = end + 1
         if _near(tables, start, max(end, start + 1)) or not line.strip():
             close()
-        elif not prose[start:end].strip():
+        elif _near(headings, start, max(end, start + 1)):
             close()
             found.append(_Block(start, end, BARRIER))
         else:

@@ -1874,7 +1874,7 @@ def _file(
         order, path, text, hidden, prose, regions,
         captions=captions,
         displayed=lambda paired: markdown_displays(text, prose, captions,
-                                                   _noted(text, paired)),
+                                                   _noted(text, paired), spans),
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
@@ -2567,9 +2567,11 @@ def _given_again_apart(
         groups.setdefault(mark.display, []).append(mark)
     found = [(*each, False) for group in groups.values()
              for each in _given_again(short, group, said)]  # fmt: skip
-    # A definition its own display already gives another meaning to is warned of there, and
-    # not asked about besides (round 1 of #759).
-    warned = frozenset(id(mark) for mark, *_rest in found)
+    # A definition its own display already gives another meaning to is warned of there, or
+    # was where that meaning was first given in it, and is not asked about besides (rounds 1
+    # and 2 of #759).
+    warned = frozenset(id(mark) for display, group in groups.items() if display is not None
+                       for mark in group[1:] if not _same_meaning(group[0].long, mark.long))
     found += [(*each, True) for each in _asked_of_displays(short, definitions, said, warned)]
     return sorted(found, key=lambda each: each[0].key)
 
@@ -2582,8 +2584,9 @@ def _asked_of_displays(
     a display, once (Basile, 2026-11-22, "Ask, don't drop"). A display that gives the text's
     meaning again says nothing, and two displays are not compared with each other, so where
     the text defines the form nowhere nothing is asked. `definitions` are in order; one
-    whose `id` is in `warned` is warned of in its own display, and is passed over here, so
-    the next display to give its meaning is asked about. `said(mark, here, beside)` names
+    whose `id` is in `warned` gives another meaning than its own display's first, which
+    that display is warned of, and is passed over here, so the next display to give its
+    meaning is asked about. `said(mark, here, beside)` names
     where `mark` stands, seen from `here`, with `beside` for the same line."""
     text = [mark for mark in definitions if mark.display is None]
     if not text:

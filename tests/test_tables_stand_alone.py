@@ -285,3 +285,32 @@ def test_the_question_says_the_text_s_definition_stands_later_on_the_same_line(
     report = _judge(_latex_read(tmp_path, None), NOTHING, tmp_path)
     (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
     assert asked.question and "later on the same line" in asked.message, asked.message
+
+
+# ------------------------------------------------------------------------- round 2 of #759
+
+
+def test_a_meaning_warned_of_in_its_display_and_given_again_there_is_not_asked() -> None:
+    text = ("# Methods\n\nWe used the reporting odds ratio (ROR), and the ROR was read.\n\n"
+            "# Results\n\n**Table 1.** The reporting odds ratio (ROR) by drug.\n\n| Drug | ROR |\n"
+            "|---|---|\n| one | 3 |\n\n^a^ ROR: relative outcome ratio.\n\n^b^ ROR: relative "
+            "outcome ratio.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "ROR", WARNED)]
+
+
+def test_a_note_giving_its_legend_s_meaning_again_says_nothing() -> None:
+    """Within one display, the same meaning given again by a caption or a legend and a
+    note's pair restates, as in the text."""
+    text = ("# Results\n\n**Table 1.** The reporting odds ratio (ROR) by drug.\n\n| Drug | ROR |\n"
+            "|---|---|\n| one | 3 |\n\nROR: reporting odds ratio.\n")  # fmt: skip
+    assert _found(text) == []
+
+
+def test_a_line_of_a_note_that_g14_reads_nothing_of_ends_nothing() -> None:
+    """A line of code alone inside a note is part of the note, so the pair on its next line
+    is the note's and asked about."""
+    text = ("# Methods\n\nWe read the intra-class correlation coefficient (ICC), and the ICC "
+            "held.\n\n# Results\n\n| Group | ICC |\n|---|---|\n| one | 0.7 |\n\n*Note.* Values are "
+            "means of\n`score_total`\nacross sites; ICC: intraclass correlation.\n\nThe ICC was "
+            "low.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "ICC", ASKED)]

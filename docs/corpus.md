@@ -141,8 +141,8 @@ ties hold one (Pairing by key, below), as a first verdict is; otherwise by the m
 batch's run is found at its `folder`, else at `runs/<run>`; where neither is there, the count
 is held to the run measured. The first verdicts are paired before a batch's, so that no batch
 changes their fates. A ledger's matcher re-judges a batch's verdict
-as it does a first one; a ledger's `findings`, by slug, report and index, name first verdicts
-only.
+as it does a first one; a ledger's `findings`, by slug, report and index, name first verdicts,
+and with `batch: <its name>` beside them a batch's verdict, never the first verdict at its place.
 
 The stock of the codes not settled is judged once. After that, each pull request's gate says
 how many loud findings of its run have a key not loud in the base run and no verdict, and the

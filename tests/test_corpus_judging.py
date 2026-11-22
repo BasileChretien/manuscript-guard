@@ -594,6 +594,32 @@ def test_a_batch_verdict_no_rule_ties_goes_to_the_author_and_is_decided(corpus: 
         tool.measure(corpus, "k3")
 
 
+def test_a_ledger_names_a_batch_verdict_by_its_batch(corpus: Path) -> None:
+    """A ledger's finding names a batch's verdict by its batch as well as its slug, report
+    and index; without one it names the first verdict at that place, and never the batch's
+    (Basile, 2026-11-22: a decision covered a batch's verdict the ledger could not name)."""
+    agreed(corpus)
+
+    def verdicts(*findings: dict) -> list[tuple[str, int, str, str]]:
+        ledger = {"decisions": [{"id": "d", "date": "2026-11-22", "by": "the author",
+                                 "what": "w", "source": "s",
+                                 "rejudge": {"verdict": "false", "findings": list(findings)}}]}
+        (corpus / "report" / "ledger.yaml").write_text(yaml.safe_dump(ledger), "utf-8")
+        rows = tool.measure(corpus, "r1")["findings"]
+        return sorted((r["batch"], r["index"], r["verdict"], r["rejudged_by"]) for r in rows
+                      if (r["slug"], r["report"], r["index"]) == ("paper-a", "audit", 0))
+
+    place = {"slug": "paper-a", "report": "audit", "index": 0}
+    assert verdicts({**place, "batch": "b1"}) == [("", 0, "true", ""), ("b1", 0, "false", "d")]
+    assert verdicts(place) == [("", 0, "false", "d"), ("b1", 0, "true", "")]
+    for bad in ("", None, 3):
+        (corpus / "report" / "ledger.yaml").write_text(yaml.safe_dump({"decisions": [
+            {"id": "d", "date": "2026-11-22", "by": "a", "what": "w", "source": "s",
+             "rejudge": {"verdict": "false", "findings": [{**place, "batch": bad}]}}]}), "utf-8")
+        with pytest.raises(tool.CorpusError, match="a batch is named by its name"):
+            tool.measure(corpus, "r1")
+
+
 def test_a_batch_of_the_keyed_run_s_scheme_is_not_tied(corpus: Path) -> None:
     agreed(corpus)
     write_run(corpus, "k2", reworded(R1, "paper-a", "check", 2), scheme=2)

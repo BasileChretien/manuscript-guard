@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from manuscript_guard.emit import (
     input_digest_matches,
     sha256_of,
     source_digest,
+    write_digest,
 )
 from manuscript_guard.gates import check_freshness
 
@@ -193,6 +195,56 @@ def test_a_format_that_can_carry_a_cr_inside_a_value_is_byte_exact(
     assert input_digest(a) != input_digest(b)
 
 
+def _g1_after(tmp_path: Path, name: str, written: bytes, now: bytes) -> set[str]:
+    """G1's codes for a project whose analysis read `name` holding `written`, once the file
+    holds `now`."""
+    (tmp_path / "paper.yaml").write_text(
+        'schema: manuscript-guard/paper/1\ntitle: "t"\nenglish_variant: en-GB\n', encoding="utf-8"
+    )
+    (tmp_path / "analysis").mkdir()
+    script = tmp_path / "analysis" / "run.py"
+    script.write_text("# x\n", encoding="utf-8")
+    data = tmp_path / "data" / name
+    data.parent.mkdir()
+    data.write_bytes(written)
+    em = Emitter(script, root=tmp_path, inputs=[f"data/{name}"])
+    em.value("k.v", 1)
+    em.write()
+    data.write_bytes(now)
+    project, _, results, _literature = _loaded(tmp_path)
+    return codes(check_freshness(project, results))
+
+
+@pytest.mark.parametrize(("name", "said"), [("notes.txt", {"input-changed"}), ("notes.csv", set())])
+def test_a_txt_input_checked_out_with_crlf_reads_as_changed(
+    tmp_path: Path, name: str, said: set[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): a `.txt` input is digested as
+    its bytes, so the same text checked out with CRLF line ends is `input-changed`, where a
+    `.csv` of the same bytes passes. The 2026-11-09 triage planned a fix (F07), which will
+    change this test."""
+    assert _g1_after(tmp_path, name, b"a\nb\n", b"a\r\nb\r\n") == said
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="a file system that tells case apart")
+@pytest.mark.parametrize(("spelt", "said"), [("DATA/X.csv", {"input-missing"}),
+                                             ("data/x.csv", set())])
+def test_a_path_recorded_in_another_case_names_no_file_on_linux(
+    tmp_path: Path, spelt: str, said: set[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): Windows records a path in the case
+    it was written in, so results written there from `DATA/X.csv`, cloned on Linux where the
+    file is `data/x.csv`, name no file: `input-missing`. Spelt as on the disk, nothing."""
+    _g1_after(tmp_path, "x.csv", b"a\n1\n", b"a\n1\n")
+    fragment = tmp_path / "results" / "run.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["provenance"]["inputs"][0]["path"] = spelt
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    project, _, results, _literature = _loaded(tmp_path)
+    assert codes(check_freshness(project, results)) == said
+
+
 def test_utf16_is_not_normalised(tmp_path: Path) -> None:
     """In UTF-16, 0x0D and 0x0A are bytes of ordinary characters. Rewriting them corrupts
     text rather than reformatting it: U+340D and U+340A would become the same file. Excel's
@@ -201,6 +253,18 @@ def test_utf16_is_not_normalised(tmp_path: Path) -> None:
     a.write_bytes(b"\xff\xfe" + "\u340d".encode("utf-16-le"))
     b.write_bytes(b"\xff\xfe" + "\u340a".encode("utf-16-le"))
     assert input_digest(a) != input_digest(b)
+
+
+@pytest.mark.parametrize(("bom", "said"), [(b"", set()), (b"\xff\xfe", {"input-changed"})])
+def test_utf16_without_a_bom_is_normalised_as_8_bit_text(
+    tmp_path: Path, bom: bytes, said: set[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A UTF-16 input without a BOM is normalised as if
+    it were 8-bit text"): with no BOM, U+4E0D (bytes 0D 4E) swapped for U+4E0A (0A 4E) leaves
+    the digest unchanged and passes G1. With a BOM the same edit is `input-changed`."""
+    written = bom + "\u4e0d,1\n".encode("utf-16-le")
+    now = bom + "\u4e0a,1\n".encode("utf-16-le")
+    assert _g1_after(tmp_path, "export.csv", written, now) == said
 
 
 def test_a_utf16_file_does_not_crash_and_is_stable(tmp_path: Path) -> None:

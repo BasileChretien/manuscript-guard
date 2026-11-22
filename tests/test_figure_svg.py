@@ -139,6 +139,93 @@ def test_a_text_anchored_outside_the_view_box_is_cut_off(
     assert [mark.text for mark in clipped(_svg(tmp_path, body))] == cut
 
 
+@pytest.mark.parametrize(
+    ("body", "sizes"),
+    [
+        ('<style>.fig > text{font-size:3px}</style><g class="fig"><text>a</text></g>',
+         {"a": 3.0}),
+        ('<style>g#p text.t{font-size:3px}</style><g id="p"><text class="t">a</text></g>',
+         {"a": 3.0}),
+        ('<style>text:first-child{font-size:3px}</style><g><text>a</text></g>', {"a": 16.0}),
+        ('<style>text[x]{font-size:3px}</style><text x="1">a</text>', {"a": 16.0}),
+        ('<style>g + text{font-size:3px}</style><g/><text>a</text>', {"a": 16.0}),
+        ('<style>g ~ text{font-size:3px}</style><g/><text>a</text>', {"a": 16.0}),
+        ('<style>.s{font-size:5px !important}</style><text class="s" style="font-size: 7px">a'
+         "</text>", {"a": 7.0}),
+    ],
+    ids=["child", "types, ids and classes", "pseudo-class", "attribute", "sibling",
+         "general sibling", "important"],  # fmt: skip
+)  # fmt: skip
+def test_a_style_rule_is_read_only_where_its_selector_is_types_classes_and_ids(
+    tmp_path: Path, body: str, sizes: dict[str, float]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An SVG's text and lines are read from its
+    elements, not drawn"): a rule whose selector has a pseudo-class, an attribute or a
+    sibling does not apply, and the text is read at SVG's default; `!important` does not put
+    a rule over the element's own `style`."""
+    svg = _svg(tmp_path, body)
+    assert {mark.text: mark.units for mark in svg.texts} == sizes
+
+
+@pytest.mark.parametrize(
+    ("body", "cut", "at"),
+    [
+        ('<text x="395" y="50">a label far longer than the figure is wide</text>', [],
+         (395.0, 50.0)),
+        ('<clipPath id="c"><rect width="10" height="10"/></clipPath>'
+         '<text x="50" y="50" clip-path="url(#c)">a</text>', [], (50.0, 50.0)),
+        ('<text x="50" y="50" dx="400" dy="300">a</text>', [], (50.0, 50.0)),
+        ('<text x="405" y="50" text-anchor="end">a</text>', ["a"], (405.0, 50.0)),
+    ],
+    ids=["runs past the edge", "clipped", "dx and dy", "text-anchor"],
+)  # fmt: skip
+def test_a_text_is_cut_off_only_where_its_anchor_is_outside(
+    tmp_path: Path, body: str, cut: list[str], at: tuple[float, float]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An SVG's text and lines are read from its
+    elements, not drawn"): a text that starts inside and runs past the edge, or that a
+    `clipPath` hides, is not said to be cut off; `dx` and `dy` do not move its anchor, so
+    one drawn outside is not said; and a text anchored outside is said though `text-anchor`
+    draws it inside."""
+    svg = _svg(tmp_path, body)
+    assert [mark.at for mark in svg.texts] == [at]
+    assert [mark.text for mark in clipped(svg)] == cut
+
+
+@pytest.mark.parametrize(
+    ("body", "widths"),
+    [
+        ('<g transform="scale(3)"><path d="M0 0L1 1" stroke="black" stroke-width="0.5" '
+         'vector-effect="non-scaling-stroke"/></g>', [1.5]),
+        ('<g transform="scale(3)"><path d="M0 0L1 1" style="stroke: black; stroke-width: '
+         '0.5; vector-effect: non-scaling-stroke"/></g>', [1.5]),
+        ('<marker id="m"><path d="M0 0L1 1" stroke="black" stroke-width="0.1"/></marker>'
+         '<path d="M0 0L5 5" stroke="black" stroke-width="0.5" marker-end="url(#m)"/>', [0.5]),
+        ('<g font-size="10"><path d="M0 0L1 1" stroke="black" stroke-width="10%"/></g>', [1.0]),
+    ],
+    ids=["non-scaling-stroke", "non-scaling-stroke in style", "marker", "percent"],
+)  # fmt: skip
+def test_a_line_is_read_from_its_element_and_not_as_it_is_drawn(
+    tmp_path: Path, body: str, widths: list[float]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An SVG's text and lines are read from its
+    elements, not drawn"): a line that is not to scale is widened by its transform all the
+    same; a `<marker>`'s line is not read; and a width in percent is taken of the font size,
+    10% of 10 units, and not of the figure's 400 by 200."""
+    svg = _svg(tmp_path, body)
+    assert [round(mark.units, 6) for mark in svg.lines] == widths
+
+
+def test_a_use_that_refers_to_itself_is_followed_sixteen_deep(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An SVG's text and lines are read from its
+    elements, not drawn"): the group draws its text and then itself, and the text is read
+    once where it stands and once for each of sixteen `<use>`s."""
+    from manuscript_guard.gates.figure_svg import DEPTH
+
+    looped = _svg(tmp_path, '<g id="g"><text x="1" y="1">a</text><use href="#g"/></g>')
+    assert DEPTH == 16 and len(looped.texts) == 17
+
+
 def test_a_figure_that_is_not_xml_or_refers_to_itself_is_read_safely(tmp_path: Path) -> None:
     broken = tmp_path / "broken.svg"
     broken.write_text("<svg><text>", encoding="utf-8")

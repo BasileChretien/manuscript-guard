@@ -211,8 +211,13 @@ artefacts:
   # paragraph a line can start in the middle of a sentence, and "The analysis reported /
   # here is the third protocol" failed (the athlete-leakage study, 2026-11-06), where it
   # would not have unwrapped. After anything else, markup or a sentence's end, it is read.
+  # From the start of the words' own line, not through the blank lines above them: read
+  # from every line's start to the end of the blank stretch below it, `^\s*` was quadratic
+  # in a stretch's lines, and the LaTeX reader blanks a file past a construct it refuses
+  # (36 s for a paper of 187,000 characters, in the robustness sweep of 2026-11-21). Each
+  # opener it found, it finds.
   - id: assistant-voice
-    pattern: '(?i)^\s*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an)\b)'
+    pattern: '(?i)^[^\S\n]*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an)\b)'
     why: Chat-assistant register, left in the manuscript
     paragraph_start: true
 

@@ -196,11 +196,12 @@ def _placed(reading: Reading, text: str) -> Reading:
     def inside(at: int) -> bool:
         return start <= at < end
 
-    if reading.delimited or reading.own or reading.literal:
+    if reading.delimited or reading.own or reading.literal or reading.no_short:
         # The body, in its places, with the preamble and what follows it as spaces.
         body = read("".join(ch if ch == "\n" or inside(at) else " "
                             for at, ch in enumerate(text)), body=True)  # fmt: skip
-        defined = {"delimited": body.delimited, "own": body.own, "literal": body.literal}
+        defined = {"delimited": body.delimited, "own": body.own, "literal": body.literal,
+                   "no_short": body.no_short}  # fmt: skip
     else:
         defined = {}
     return replace(
@@ -301,14 +302,15 @@ def read_tree(
                           for name in source.reading.delimited)  # fmt: skip
     own = frozenset(name for source in tree for name in source.reading.own)
     literal = tuple(pair for source in tree for pair in source.reading.literal)
-    if not delimited and not own and not literal:
+    no_short = frozenset(name for source in tree for name in source.reading.no_short)
+    if not delimited and not own and not literal and not no_short:
         return replace(_encoded(document), files=files)
     # A package's command a file defines is the author's only where no file loads the
     # package: one loaded in another file makes it defined again (2026-10-23).
     loaded = frozenset(name for source in tree for _at, name in source.reading.packages)
     own = frozenset(name for name in own
                     if not set(PACKAGE_COMMANDS.get(name, ())) & loaded)  # fmt: skip
-    told = _Told(delimited, own, literal, loaded)
+    told = _Told(delimited, own, literal, loaded, no_short)
     document = _read_tree(files, entry, styles, unreadable, told)
     # A package's command a file defined as the author's is the reader's where another file
     # loads the package, and so defined again there: its uses are refused in every file, so
@@ -316,7 +318,7 @@ def read_tree(
     again = frozenset(name for source in document.sources if not source.loose
                       for name in source.reading.delimited) - delimited  # fmt: skip
     if again:
-        told = _Told(delimited | again, own, literal, loaded)
+        told = _Told(delimited | again, own, literal, loaded, no_short)
         document = _read_tree(files, entry, styles, unreadable, told)
     return replace(_encoded(document), files=files)
 
@@ -325,16 +327,18 @@ def read_tree(
 class _Told:
     """What each file of a tree is told of the others: the commands they define with
     delimited parameters, the commands that are the author's, those defined with a parameter
-    text and no parameter, and the packages they load."""
+    text and no parameter, the packages they load, and the headings they define as the CVPR
+    and ICCV author kit does, which take no short title."""
 
     delimited: frozenset[str] = frozenset()
     own: frozenset[str] = frozenset()
     literal: tuple[tuple[str, str], ...] = ()
     loaded: frozenset[str] = frozenset()
+    no_short: frozenset[str] = frozenset()
 
     def read(self, text: str, **given) -> Reading:
         return read(text, delimited=self.delimited, own=self.own, literal=self.literal,
-                    loaded=self.loaded, **given)  # fmt: skip
+                    loaded=self.loaded, no_short=self.no_short, **given)  # fmt: skip
 
 
 def _past_token(text: str, at: int) -> int:

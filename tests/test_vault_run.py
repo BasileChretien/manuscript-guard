@@ -10,8 +10,10 @@ deposit's `ask_at_terminal`; without the patch, standard input under pytest is n
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -276,6 +278,42 @@ def test_a_run_works_in_the_vault_and_writes_nothing_to_the_project_but_its_summ
     summary = _summary(paper)
     assert summary["run"] == run and summary["failed"] is None and summary["outbox"] is True
     assert summary["scripts"] == [{"path": "analysis/01_model.py", "exit_code": 0}]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_run_s_fragment_records_no_vcs_and_its_record_the_project_s_commit(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "What a run records of
+    git"): the copy leaves `.git` out, so a fragment written in a run records no `vcs`; the
+    run records the project's commit, which says nothing of uncommitted changes."""
+    _script(paper)
+    _committed(paper)
+    head = subprocess.run(["git", "-c", "core.fsmonitor=false", "rev-parse", "HEAD"], cwd=paper,
+                          capture_output=True, text=True).stdout.strip()  # fmt: skip
+    (paper / "analysis" / "01_model.py").write_text(SCRIPT.format(extra="print('later')"),
+                                                    encoding="utf-8")  # fmt: skip
+    status = subprocess.run(["git", "-c", "core.fsmonitor=false", "status", "--porcelain"],
+                            cwd=paper, capture_output=True, text=True).stdout  # fmt: skip
+    assert "analysis/01_model.py" in status, "the project is dirty when the run is made"
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    fragment = json.loads((vault / "outbox" / run / "results" / "01_model.json")
+                          .read_text(encoding="utf-8"))  # fmt: skip
+    assert fragment["provenance"]["vcs"] == {}
+    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
+    assert record["commit"] == head
+    # The commit alone: nothing in the record says the tree held uncommitted changes.
+    said = json.dumps(record).casefold()
+    assert not {"dirty", "uncommitted", "clean", "status"} & set(record)
+    assert "dirty" not in said and "uncommitted" not in said
+    # The other side: outside a run, the project's own repository is recorded.
+    em = Emitter(paper / "analysis" / "01_model.py", root=paper)
+    em.value("cohort.n", 1)
+    vcs = json.loads(em.write().read_text(encoding="utf-8"))["provenance"]["vcs"]
+    assert vcs["sha"] == head and vcs["dirty"] is True
 
 
 def test_a_failed_run_tells_the_agent_where_and_never_what(
@@ -693,6 +731,24 @@ def test_a_fragment_copied_from_the_outbox_by_hand_is_unreleased(
     assert "input-missing" not in {f.code for f in report.findings}
 
 
+def test_a_run_made_with_the_vault_s_variable_set_by_hand_is_caught_only_as_unreleased(
+    paper: Path, vault: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "Records"): a run made
+    with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault run`, writes into the project and
+    is caught only as unreleased."""
+    monkeypatch.setenv(VARIABLE, str(vault))
+    monkeypatch.delenv(RUN_VARIABLE, raising=False)
+    script = _script(paper)
+    out = subprocess.run([sys.executable, str(script)], cwd=paper, capture_output=True,
+                         text=True)  # fmt: skip
+    assert out.returncode == 0, out.stderr
+    written = json.loads((paper / "results" / "01_model.json").read_text(encoding="utf-8"))
+    assert written["values"]["cohort.n"]["value"] == 12
+    monkeypatch.delenv(VARIABLE)
+    assert _vault_codes(paper, "drafting") == {"vault-result-unreleased": "warn"}
+
+
 def test_a_released_fragment_edited_afterwards_is_unreleased(
     paper: Path, vault: Path, terminal
 ) -> None:
@@ -903,6 +959,69 @@ def test_the_scripts_listed_and_recorded_are_every_one_the_run_can_run(
         one["path"] for one in record["scripts"]}
 
 
+def test_with_no_script_named_each_file_of_analysis_is_run_in_the_order_of_its_name(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "What is run"): with no
+    script named, each file directly in `analysis/` that a runner here knows is run, in the
+    order of its name, one meant to be imported too; a run has no time limit, and a script
+    stopped at the terminal ends the run as a failure."""
+    from manuscript_guard import verify
+    from manuscript_guard.vault import run as running
+
+    folder = paper / "analysis"
+    (folder / "lib").mkdir()
+    for name in ("02_fit.py", "01_clean.py", "helpers.py"):
+        (folder / name).write_text(f"print('ran {name}')\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("not run\n", encoding="utf-8")
+    (folder / "lib" / "util.py").write_text("print('ran util.py')\n", encoding="utf-8")
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    order = ["analysis/01_clean.py", "analysis/02_fit.py", "analysis/helpers.py"]
+    assert [one["path"] for one in _summary(paper)["scripts"]] == order
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    log = (vault / ".runs" / run / "log.txt").read_text(encoding="utf-8")
+    ran = [line for line in log.splitlines() if line.startswith("ran ")]
+    assert ran == ["ran 01_clean.py", "ran 02_fit.py", "ran helpers.py"]
+
+    # A script stopped at the terminal: the wait, which has no time limit, is broken by the
+    # interrupt, the script's tree is ended, and the run ends as a failure.
+    waited: list[dict] = []
+    killed: list[object] = []
+    real_execute = running.execute
+
+    def stopped(command, cwd, env, log):
+        real = running.subprocess.Popen
+
+        class Stopping(real):
+            def wait(self, *args, **kwargs):
+                waited.append(kwargs)
+                if len(waited) == 1:
+                    raise KeyboardInterrupt
+                return super().wait(*args, **kwargs)
+
+        running.subprocess.Popen = Stopping
+        try:
+            return real_execute(command, cwd, env, log)
+        finally:
+            running.subprocess.Popen = real
+
+    def ended(process) -> None:
+        killed.append(process)
+        process.kill()
+
+    monkeypatch.setattr(running, "execute", stopped)
+    monkeypatch.setattr(verify, "_kill_tree", ended)
+    (folder / "01_clean.py").write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    summary = _summary(paper)
+    assert summary["failed"]["path"] == "analysis/01_clean.py"
+    assert summary["failed"]["exit_code"] not in (0, None) and len(killed) == 1
+    assert waited[0] == {}, "no time limit is given to the wait"
+
+
 def test_a_release_does_not_write_through_a_link(
     paper: Path, vault: Path, terminal, tmp_path: Path
 ) -> None:
@@ -1025,6 +1144,96 @@ def test_an_edit_of_the_project_while_the_person_reads_refuses_the_run(
     assert f"{paper.name}/analysis/01_model.py" in captured.out.replace("\\", "/")
     assert not (vault / "outbox").exists()
     assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+def _staged(paper: Path, vault: Path):
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.vault import run as running
+
+    project, _ = load_project(paper)
+    return project, running.prepare(project, vault, ["analysis/01_model.py"])
+
+
+def test_what_is_listed_is_digested_at_the_yes(paper: Path, vault: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "What is listed is
+    digested at the yes"): a file the project and the copy hold alike at that moment passes,
+    though it changed and changed back meanwhile; what runs is the copy, the same bytes."""
+    from manuscript_guard.vault import run as running
+
+    script = _script(paper)
+    kept = script.read_bytes()
+    project, staged = _staged(paper, vault)
+    try:
+        script.write_bytes(kept + b"print('meanwhile')\n")
+        assert running.differs(project, staged) == ["analysis/01_model.py"]
+        script.write_bytes(kept)
+        assert running.differs(project, staged) == []
+        assert (staged.work / "analysis" / "01_model.py").read_bytes() == kept
+    finally:
+        running.discard(staged)
+
+
+def test_only_files_that_look_like_code_are_listed_and_the_copy_holds_the_rest(
+    paper: Path, vault: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "Only files that look
+    like code are listed"): an input that runs and has another suffix, R's
+    `source("steps.txt")`, is neither listed nor checked at the yes; the copy holds it."""
+    from manuscript_guard.vault import run as running
+
+    _script(paper)
+    steps = paper / "analysis" / "steps.txt"
+    steps.write_text("x <- 1\n", encoding="utf-8")
+    project, staged = _staged(paper, vault)
+    try:
+        assert "analysis/01_model.py" in staged.sources
+        assert "analysis/steps.txt" not in staged.sources
+        assert (staged.work / "analysis" / "steps.txt").read_text(encoding="utf-8") == "x <- 1\n"
+        steps.write_text("x <- 2\n", encoding="utf-8")
+        assert running.differs(project, staged) == []
+    finally:
+        running.discard(staged)
+
+
+def test_a_link_out_of_the_project_is_kept_in_the_copy_and_a_junction_is_not_copied(
+    paper: Path, vault: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "A link to a folder
+    outside the project is kept in the copy"): the copy keeps symbolic links as links, which
+    a runner follows to whatever they name, not listed, and the run is not refused for one;
+    a junction is not copied."""
+    from manuscript_guard.vault import run as running
+
+    _script(paper)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "helper.py").write_text("X = 1\n", encoding="utf-8")
+    try:
+        (paper / "linked").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        linked = False
+    else:
+        linked = True
+    if os.name == "nt":
+        _junction(paper / "joined", outside)
+    if not linked and os.name != "nt":
+        pytest.skip("this system makes no symbolic link without a privilege")
+    _project, staged = _staged(paper, vault)
+    try:
+        if linked:
+            assert (staged.work / "linked").is_symlink()
+            assert (staged.work / "linked" / "helper.py").read_text(encoding="utf-8") == "X = 1\n"
+        if os.name == "nt":
+            assert not os.path.lexists(staged.work / "joined")
+        assert not [path for path in staged.sources if "helper.py" in path]
+    finally:
+        running.discard(staged)
+        for name in ("linked", "joined"):
+            link = paper / name
+            if link.is_symlink():
+                link.unlink()
+            elif os.path.lexists(link):
+                os.rmdir(link)
 
 
 @pytest.mark.parametrize(("extra", "kind"), [("raise KeyError('x')", "KeyError"),
@@ -1226,6 +1435,36 @@ def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
         assert set(failed) == {"path", "exit_code"}
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
     assert not (vault / ".runs" / run / "copy").exists()
+
+
+def test_a_failure_deep_in_a_library_copied_with_the_project_names_no_frame(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The vault (Task F, part 2)", "The summary file is
+    read up to 64 KiB"): the wrapper writes the last 20 frames in the copy; a library copied
+    with the project (a `venv/` inside it) is inside the copy, and a failure 20 or more
+    frames deep in it keeps 20 of its frames, which the summary drops as no script's, and
+    names no frame."""
+    deep = "def down(n):\n    return down(n - 1) if n else 1 / 0\n"
+    (paper / "venv" / "lib").mkdir(parents=True)
+    (paper / "venv" / "lib" / "deep.py").write_text(deep, encoding="utf-8")
+    (paper / "analysis" / "deep.py").write_text(deep, encoding="utf-8")
+    answers, _asked = terminal
+    into_the_venv = ("import os, sys\nsys.path.insert(0, os.path.join(os.path.dirname("
+                     "os.path.abspath(__file__)), '..', 'venv', 'lib'))\n")  # fmt: skip
+    _script(paper, into_the_venv + "import deep\ndeep.down(30)")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed == {"path": "analysis/01_model.py", "exit_code": 1,
+                      "class": "ZeroDivisionError"}  # fmt: skip
+    # The other side: the same depth in the project's own code keeps the wrapper's last 20.
+    (paper / "venv" / "lib" / "deep.py").unlink()
+    _script(paper, "import deep\ndeep.down(30)")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed["frames"] == [{"path": "analysis/deep.py", "line": 2, "function": "down"}] * 20
 
 
 @pytest.mark.parametrize("where", ["analysis/sub/build/helper.py", "analysis/cpp/build/model.so",

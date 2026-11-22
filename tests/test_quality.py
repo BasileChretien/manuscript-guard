@@ -290,6 +290,28 @@ def test_a_variable_that_does_not_apply_is_not_missing(tmp_path: Path) -> None:
     assert got["pregnant.not_applicable"] == [3]
 
 
+def test_a_condition_on_a_variable_of_another_table_needs_its_column(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A condition on a variable of another table needs
+    its column"): `applies_if` may name a variable of another dataset, which the loader
+    accepts; `check_data` then refuses the table until the column is added to it."""
+    split = build(
+        tmp_path,
+        [
+            {"name": "sex", "type": "binary", "dataset": "demo",
+             "values": [{"code": 1, "label": "m"}, {"code": 2, "label": "f"}]},
+            {"name": "pregnant", "type": "binary", "dataset": "preg",
+             "values": [{"code": 0, "label": "n"}, {"code": 1, "label": "y"}],
+             "applies_if": {"variable": "sex", "in": [2]}},
+        ],
+        datasets=[{"id": "demo", "label": "D"}, {"id": "preg", "label": "P"}],
+    )  # fmt: skip
+    with pytest.raises(ValueError, match="the table has no column sex: add it to the table"):
+        quality.check(split, {"pregnant": ["1", "0"]}, dataset="preg")
+    _total, counts = quality.check(split, {"pregnant": ["1", "0"], "sex": ["1", "2"]},
+                                   dataset="preg")  # fmt: skip
+    assert found(counts)["pregnant.not_applicable"] == [0]
+
+
 # ---------------------------------------------------------------- rules
 
 
@@ -306,6 +328,23 @@ def test_an_order_rule_over_a_date_and_a_date_and_time_compares_days() -> None:
     start, end = var("start", type="date"), var("end", type="datetime")
     columns = [["2016-02-01", "2016-02-02"], ["2016-02-01 08:00", "2016-02-01 23:00"]]
     assert quality.check_order([start, end], columns) == [1]
+
+
+def test_an_order_rule_compares_a_date_and_time_as_the_clock_it_was_written_with() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A date and time is compared as the clock it was
+    written with"): an offset after it, `Z` or `+02:00`, is read and not applied, and an
+    object that carries a time zone is read as its own local time: two values from two time
+    zones compare as their clocks do, not as the instants they are."""
+    start, end = var("start", type="datetime"), var("end", type="datetime")
+    paris = timezone(timedelta(hours=2))
+    columns = [
+        # 08:00 at +02:00 is 06:00 UTC, before 07:00 UTC; its clock, 08:00, is after 07:00.
+        ["2016-02-01T08:00+02:00", datetime(2016, 2, 1, 8, 0, tzinfo=paris),
+         "2016-02-01T07:00Z"],
+        ["2016-02-01T07:00Z", datetime(2016, 2, 1, 7, 0, tzinfo=timezone.utc),
+         "2016-02-01T08:00+02:00"],
+    ]  # fmt: skip
+    assert quality.check_order([start, end], columns) == [0, 1]
 
 
 def test_an_order_rule_over_two_families_is_refused() -> None:
@@ -436,6 +475,23 @@ def test_check_data_checks_a_table_once(scratch: Path) -> None:
     em.check_data({"age": ["34"]})
     with pytest.raises(ValueError, match="emitted twice"):
         em.check_data({"age": ["34"]})
+
+
+def test_a_table_checked_by_two_scripts_is_a_duplicate_key(scratch: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A table is checked once in a project"): a key has
+    one owner, so the same table checked before and after cleaning is refused in one script
+    (`test_check_data_checks_a_table_once`) and `duplicate-key` from two."""
+    from manuscript_guard.contracts import load_namespace, load_project
+
+    (scratch / "analysis" / "clean.py").write_text("# cleaning\n", encoding="utf-8")
+    for script, ages in (("run.py", ["34", "150"]), ("clean.py", ["34"])):
+        em = Emitter(scratch / "analysis" / script, root=scratch)
+        em.check_data({"age": ages})
+        em.write()
+    project, _ = load_project(scratch)
+    _namespace, _results, _literature, report = load_namespace(project)
+    duplicated = [f for f in report.findings if f.code == "duplicate-key"]
+    assert duplicated and all("quality." in f.message for f in duplicated), report.findings
 
 
 def test_a_dictionary_that_does_not_read_is_refused_with_its_line(scratch: Path) -> None:

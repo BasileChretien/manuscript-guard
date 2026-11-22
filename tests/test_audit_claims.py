@@ -494,6 +494,66 @@ def test_numbers_in_brackets_beside_an_unnumbered_list_are_said_not_listed(
     assert "No citation was read." in table.read_text(encoding="utf-8")
 
 
+def _listed(capsys, tmp_path: Path, *papers: Path) -> tuple[list[str], list[str]]:
+    """The rows of the cited-sentences table, and what the audit notes of it."""
+    table = tmp_path / "cited.md"
+    table.unlink(missing_ok=True)
+    _code, report, _err = audited(capsys, *map(str, papers), "--cited", str(table))
+    rows = [line for line in table.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| ") and not line.startswith("| #")]  # fmt: skip
+    return rows, [f["message"] for f in section(report, "Cited sentences")]
+
+
+def _cited_docx(path: Path, runs: str) -> Path:
+    paragraphs = [f"<w:p>{runs}</w:p>", "<w:p><w:r><w:t>References</w:t></w:r></w:p>",
+                  "<w:p><w:r><w:t>1. Author1 A. A study. J. 2019;1:1-2.</w:t></w:r></w:p>"]
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", (2020, 1, 1, 0, 0, 0)), (
+            f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body>{''.join(paragraphs)}"
+            "</w:body></w:document>"))  # fmt: skip
+    return path
+
+
+def test_what_the_cited_sentences_table_does_not_list(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    citation by author and year, a pandoc key, a .docx's superscript number and Word's
+    Zotero or EndNote field are not listed, but where the field prints a number in brackets;
+    a citation that opens a paragraph is its first sentence's; and a supplement citing the
+    main document's list by number has them said not listed."""
+    text = ("## Discussion\n\nTea was common [@smith2019]. Salt was common (Smith et al., 2019)."
+            "\n\n[2] Diet was poor. Sugar was high.\n\n" + REFERENCES)  # fmt: skip
+    rows, notes = _listed(capsys, tmp_path, paper_md(tmp_path, text))
+    assert [row.split(" | ")[1:5] for row in rows] == [
+        ["paper.md:5", "Discussion", "[2] Diet was poor.", "[2]"]]
+    assert notes[0].endswith("not listed: 1 citation(s) by author and year, 1 pandoc "
+                             "citation(s) by key"), notes
+    supplement = paper_md(tmp_path, "## Supplementary methods\n\nDiet was common [1].\n",
+                          "supplement.md")  # fmt: skip
+    main_text = paper_md(tmp_path, "## Discussion\n\nSalt was common [1].\n\n" + REFERENCES)
+    rows, notes = _listed(capsys, tmp_path, main_text, supplement)
+    assert [row.split(" | ")[1] for row in rows] == ["paper.md:3"]
+    assert notes[1:] == ["1 number in brackets not listed: no reference list was found under a "
+                         "heading in this file, so none can be held to one"]
+    superscript = _cited_docx(tmp_path / "superscript.docx", (
+        "<w:r><w:t>Smoking was common.</w:t></w:r><w:r><w:rPr><w:vertAlign w:val='superscript'/>"
+        "</w:rPr><w:t>1</w:t></w:r>"))  # fmt: skip
+    assert _listed(capsys, tmp_path, superscript)[0] == []
+    common = "<w:r><w:t xml:space='preserve'>Smoking was common </w:t></w:r>"
+    fields = {
+        "zotero": common + "<w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText "
+        "xml:space='preserve'> ADDIN ZOTERO_ITEM CSL_CITATION {} </w:instrText></w:r><w:r>"
+        "<w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>PRINTED</w:t></w:r><w:r>"
+        "<w:fldChar w:fldCharType='end'/></w:r><w:r><w:t>.</w:t></w:r>",
+        "endnote": common + "<w:fldSimple w:instr=' ADDIN EN.CITE &lt;EndNote&gt;&lt;/EndNote"
+        "&gt;'><w:r><w:t>PRINTED</w:t></w:r></w:fldSimple><w:r><w:t>.</w:t></w:r>",
+    }  # fmt: skip
+    for name, runs in fields.items():
+        for printed, listed in (("(Author1, 2019)", []), ("[1]", ["Smoking was common [1]."])):
+            paper = _cited_docx(tmp_path / f"{name}.docx", runs.replace("PRINTED", printed))
+            rows, _notes = _listed(capsys, tmp_path, paper)
+            assert [row.split(" | ")[3] for row in rows] == listed, (name, printed)
+
+
 # ------------------------------------------------------------- the registries, on loopback
 
 
@@ -791,6 +851,42 @@ def test_a_citation_after_an_abbreviation_s_stop_stays_in_its_sentence(
     ]
 
 
+@pytest.mark.parametrize(
+    ("sentence", "warned"),
+    [
+        # The causation rung only: a cause in other words passes.
+        ("Exercise protects against falls.", False),
+        ("Statins reduced the risk of death.", False),
+        # A causal word that claims no cause warns, a method's name among them.
+        ("We demonstrated that the method works.", True),
+        ("These are the causes of death.", True),
+        ("We used causal mediation analysis.", True),
+        # A hedge or a negation anywhere in the sentence passes it.
+        ("Not all patients were seen; smoking causes cancer.", False),
+        ("Tea may be harmless; smoking causes cancer.", False),
+        # A narrative citation carries no citation the reading sees.
+        ("Smith et al. showed that smoking causes cancer.", True),
+        # A stop of an abbreviation the list does not hold ends the sentence before the
+        # citation; one of the list does not.
+        ("Smoking causes cancer, see p. [3] showed.", True),
+        *[(f"Smoking causes cancer, as {abbreviation} [3] showed.", False)
+          for abbreviation in ("i.e.", "vs.", "viz.", "ref.", "Eq.", "approx.", "ca.",
+                               "suppl.")],
+    ],
+)  # fmt: skip
+def test_causal_words_are_read_as_the_causation_rung_of_a_sentence(
+    tmp_path: Path, capsys, sentence: str, warned: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Causal words read the causation rung only."):
+    each sentence of the entry in the Discussion, and whether `audit --design observational`
+    warns of it; a method's name warns in the Abstract as well."""
+    text = f"## Discussion\n\n{sentence}\n\n{REFERENCES}"
+    assert _causal(capsys, paper_md(tmp_path, text)) == ([(3, "Discussion")] if warned else [])
+    if sentence.startswith("We used causal"):
+        text = f"## Abstract\n\n{sentence}\n\n## Methods\n\nWe drew it.\n\n{REFERENCES}"
+        assert _causal(capsys, paper_md(tmp_path, text)) == [(3, "Abstract")]
+
+
 @pytest.mark.parametrize("tie", [" ", "~", ""])
 def test_a_latex_cite_after_et_al_stays_in_its_sentence(tmp_path: Path, capsys, tie: str) -> None:
     paper = tmp_path / "paper.tex"
@@ -926,6 +1022,30 @@ def test_a_journal_s_subtitle_after_a_colon_is_no_part_of_its_name() -> None:
                         "Journal of Examples")  # fmt: skip
     assert same_journal("The Journal of Examples", "Journal of Examples")
     assert not same_journal("Journal of Other Examples", "Journal of Examples")
+
+
+def test_a_journal_s_abbreviation_is_not_matched() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): a
+    journal's name is matched folded, whole, before PubMed's " : " subtitle or with a
+    qualifier in brackets at its end left out; Crossref's short container title is never
+    read, so a reference recorded under the abbreviation alone is not counted."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.selfcite import count, same_journal
+    from manuscript_guard.lookup.sources import work
+
+    named = "Journal of Examples"
+    for recorded in ("journal of examples", "Journal of Examples : official journal",
+                     "Journal of Examples (Online)"):  # fmt: skip
+        assert same_journal(recorded, named), recorded
+    for abbreviated in ("J Ex", "J. Examples", "Jnl of Examples"):
+        assert not same_journal(abbreviated, named), abbreviated
+    message = {"DOI": "10.5555/x", "container-title": [], "short-container-title": [named]}
+    assert "container" not in work(message)
+    looked = [SimpleNamespace(came=True, answers={"crossref": {"container": one}})
+              for one in ("J Ex", named)]  # fmt: skip
+    said = count(looked, 2, None, named, dry_run=False)
+    assert said.in_journal == [looked[1]]
 
 
 def test_a_closing_summary_is_the_conclusion(tmp_path: Path, capsys) -> None:

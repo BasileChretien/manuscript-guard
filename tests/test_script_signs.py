@@ -369,6 +369,22 @@ def test_two_terms_with_nothing_between_count_in_either_order() -> None:
     assert _terms_covering("MERS-COVID-19", ("mers-cov", "covid-19")) == ["covid-19"]
 
 
+def test_a_term_counts_directly_after_one_with_no_digit() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A term counts directly after any other"): with
+    MeSH among the shipped terms, "meshd2" is `mesh` and `d2`, the second counting where the
+    first ends, though `mesh` holds no digit; and "MESHD2" is `d2` after a capital in any
+    case, as "CCR2" is `r2`."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert {"mesh", "d2", "r2"} <= set(Classifier.load().terms)
+    assert _terms_covering("meshd2", ("mesh", "d2")) == ["mesh", "d2"]
+    assert _terms_covering("MESHD2", ("d2",)) == ["d2"]
+    assert _terms_covering("CCR2", ("r2",)) == ["r2"]
+    # The other side: after a word that is no term, `d2` opens nothing.
+    assert _terms_covering("freshd2", ("mesh", "d2")) is None
+    assert unbound("The meshd2, MESHD2 and freshd2 terms.") == ["freshd2"]
+
+
 def _atom_of(text: str, word: str) -> Atom:
     """The atom `word` of `text`, built over its span as the tokenizer builds one."""
     start = text.index(word)
@@ -437,6 +453,15 @@ def test_a_declared_term_with_a_subscript_after_capitals_is_a_name() -> None:
     assert _names_covering("HR2", frozenset(), ("r2",), sunk=sunk, declared=frozenset({"r2"}))
     assert _names_covering("aBR2", frozenset(), ("r2",), sunk=frozenset({3}),
                            declared=frozenset({"r2"})) is None  # fmt: skip
+
+
+def test_declaring_r2_makes_a_ratio_with_a_subscript_a_term() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Left by round 2 of #452"): declaring R2 makes
+    "HR~2~" and "OR~2~" terms, as on main, where with `r2` built in alone their numbers are
+    reported."""
+    text = "An HR~2~ and an OR~2~ were sought."
+    assert unbound(text) == ["HR~2", "OR~2"]
+    assert unbound(text, ("R2",)) == []
 
 
 #: What the child process of the test below runs: the atoms of its first argument that

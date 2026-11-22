@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: latex documents
+    why: >-
+      a heading defined as the CVPR and ICCV author kit defines it, `\@ifstar` between two
+      helpers that hand their argument on to the `\@startsection` of its name, is read as
+      before (Basile, 2026-11-22), so its uses are no longer refused; a use with a short title
+      in brackets is refused where it stands, in the file input, rather than at the heading's
+      first use in the entry file
   - reading: finding keys
     why: >-
       the keys are as they were, and the order of the findings is not: in `audit` and
@@ -248,13 +255,6 @@ expected:
     why: >-
       read from the `hidden` text, which keeps a carriage return in the front matter and a
       listing of a file with CRLF line ends where it was NUL
-  - reading: latex documents
-    why: >-
-      a `subfiles` part the paper places by `\subfile` and a `standalone` picture it places
-      by `\includestandalone` are read where the command stands, past their preambles, and
-      are no longer loose, and the preamble's `\input name` without braces is followed; the
-      inputs now hold placed parts and pictures, inside a figure and under headings
-      (Known gaps, 2026-10-27)
   - reading: spelling
     why: >-
       a reference list under the headings "Literature cited" and "Reference list", or under

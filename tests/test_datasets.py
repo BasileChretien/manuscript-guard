@@ -271,6 +271,24 @@ def test_what_a_dataset_cannot_be_is_refused(scratch: Path, given: dict, says: s
         declared(scratch, **given)
 
 
+def test_after_today_is_the_machine_s_today(monkeypatch) -> None:
+    """A known gap (DESIGN.md, Known gaps, "'After today' is the machine's today"): an
+    extraction dated today in a timezone ahead of the machine's, tomorrow there, is refused
+    on the machine that runs the analysis. The 2026-11-09 triage planned a fix (F14), which
+    will change this test."""
+    from manuscript_guard import datasets
+
+    class Machine(date):
+        @classmethod
+        def today(cls) -> date:
+            return date(2026, 11, 21)
+
+    monkeypatch.setattr(datasets, "date", Machine)
+    declare("x", extracted="2026-11-21", covers=None, version=None, dates=None)
+    with pytest.raises(ValueError, match=re.escape("extracted 2026-11-22 is after today")):
+        declare("x", extracted="2026-11-22", covers=None, version=None, dates=None)
+
+
 def test_a_date_after_the_extraction_is_refused_where_the_period_is_not_stated() -> None:
     with pytest.raises(ValueError, match="1 of 2 dates are after the extraction on 2024-03-01"):
         declare("x", extracted="2024-03-01", covers=None, version=None,
@@ -469,6 +487,20 @@ def test_a_dataset_date_printed_in_another_english_is_warned() -> None:
     assert found.code == "dataset-date-english" and "'March 1, 2024'" in found.message
 
 
+def test_a_dataset_date_in_another_english_warns_and_never_fails() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The English a dataset's date is printed in is read
+    when the analysis runs"): a `paper.yaml` changed afterwards is warned of
+    (`dataset-date-english`), not failed, at submission too."""
+    from manuscript_guard.policy import apply_stage
+
+    namespace = dict([_value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset")])
+    report = dates_in_english(namespace, "en-US")
+    for stage in ("drafting", "submission"):
+        staged, _deferred = apply_stage(report, stage)
+        assert [(f.code, f.severity) for f in staged.findings] == [
+            ("dataset-date-english", "warn")], stage  # fmt: skip
+
+
 def test_a_paper_that_declares_no_english_is_held_to_day_month_year() -> None:
     printed = dict([_value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset")])
     assert not dates_in_english(printed, None).findings
@@ -522,6 +554,44 @@ def test_a_date_in_figures_is_read_as_its_date(value: str, display: str, says) -
     reader, and its value was dropped."""
     problem = display_problem(value, display)
     assert (problem is None) if says is None else (says in (problem or "")), problem
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "says"),
+    [
+        ("2024-03-01", "01/03/24", "is not a date"),
+        ("2024-03-01", "Friday 1 March 2024", "is not a date"),
+        ("2024-03-01", "1 mars 2024", "is not a date"),
+        ("2024-03-01", "on 1 March 2024", "is not a date"),
+        ("2024-03", "03/24", None),
+        ("2024-03", "Friday, March 2024", None),
+        ("2024-03", "mars 2024", None),
+        ("2024", "in 2024", None),
+        ("2024", "Spring 2025", None),
+        # The other side: a display that reads as another date is held to it.
+        ("2024", "2025", "is 2025, and the value is 2024"),
+    ],
+)  # fmt: skip
+def test_a_display_that_is_no_date_is_refused_for_a_day_and_unread_for_a_year_or_month(
+    value: str, display: str, says: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A display is read in English, in three orders, or
+    in figures"): a two-digit year, a day of the week, a month in another language and a date
+    with words around it are no dates: as the display of an ISO day they are refused, and as
+    the display of a year or a month they pass unread; "Spring 2025" for the value "2024"
+    passes so."""
+    problem = display_problem(value, display)
+    assert (problem is None) if says is None else (says in (problem or "")), problem
+
+
+def test_a_year_is_of_four_digits_in_the_gregorian_calendar() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A display is read in English, in three orders, or
+    in figures"): years are of four digits, 0001 to 9999, in the Gregorian calendar."""
+    assert read_written("1 March 0001").iso == "0001-03-01"
+    assert read_written("31 December 9999").iso == "9999-12-31"
+    assert read_written("1 March 10000") is None and read_written("1 March 0000") is None
+    assert read_written("29 February 2000").iso == "2000-02-29"
+    assert read_written("29 February 1900") is None
 
 
 def test_a_role_dataset_value_no_record_holds_is_caught(scratch: Path) -> None:

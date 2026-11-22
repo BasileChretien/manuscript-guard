@@ -34,6 +34,34 @@ def test_a_binding_or_a_citation_is_never_cut() -> None:
         assert inner.count("(") == inner.count(")")
 
 
+def test_what_is_one_word_is_shown_whole_and_a_long_or_nested_group_is_cut() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The dry run of `import` shows each change by its
+    words"): a run with no space in it, Chinese or Japanese among them, and a parenthesis of
+    up to 160 characters holding no other are one word, shown whole however far they run; a
+    longer parenthesis, and a bracket or a parenthesis with another inside it, are cut
+    between their words, so a stretch beside one opens inside it."""
+    from manuscript_guard.preview import PARENTHESIS
+
+    def around(group: str) -> tuple[str, str]:
+        was = f"{_FILLER} {group} the old word {_FILLER}"
+        ((removed, added),), _more = changes(was, was.replace("old", "new"))
+        return removed, added
+
+    run = "患者" * 120
+    removed, added = around(run)
+    assert f"word39 {run} the old word" in removed and f"{run} the new word" in added
+    inside = " ".join(["word"] * 20)
+    for short in (f"({inside})", f"[{inside}]"):
+        assert f"word39 {short} the old" in around(short)[0], short
+    long = f"({'note ' * PARENTHESIS})"
+    removed, _added = around(long)
+    assert removed.startswith("... note note note ") and removed.endswith(" ...")
+    assert removed.count("(") == 0 and removed.count(")") == 1
+    for nested in (f"(one {inside} (two) three)", f"[one {inside} [two] three]"):
+        removed, _added = around(nested)
+        assert removed.count(nested[0]) < removed.count(nested[-1]), (nested, removed)
+
+
 def test_a_paragraph_rewritten_whole_is_shown_whole() -> None:
     """Every word changed is shown, however many: shown by its two ends, a rewrite hid the
     words between them."""

@@ -304,6 +304,37 @@ def test_a_design_record_that_is_a_link_goes_by_the_inputs_rule(
     assert "design/data_dictionary.yaml" not in _entries(project)
 
 
+def test_a_design_record_declared_in_other_capitals_is_data_where_names_are_not_folded(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design record declared as an input in other
+    capitals is not known for it on macOS"): declared paths are compared in the case the
+    system compares names in, which Python folds only on Windows, so on a case-insensitive
+    macOS volume `Design/data_dictionary.yaml` is withheld as data, and the package refused.
+    macOS is stood for by comparing the names unfolded on this volume."""
+    import ntpath
+    import posixpath
+
+    from manuscript_guard.deposit import plan
+
+    ready(project)
+    if not (project / "Design" / "data_dictionary.yaml").exists():
+        pytest.skip("this file system tells the two names apart")
+
+    def recased(document: dict) -> None:
+        for record in document["provenance"]["inputs"]:
+            if record["path"] == "design/data_dictionary.yaml":
+                record["path"] = "Design/data_dictionary.yaml"
+
+    edit_fragment(project, recased)
+    monkeypatch.setattr(plan, "_key", lambda path: posixpath.normcase(plan.canonical(path)))
+    assert "package-request-missing" in refused(project)
+    assert not {"design/data_dictionary.yaml", "Design/data_dictionary.yaml"} & _entries(project)
+    # The other side: folded as on Windows, it is the record, and the package goes.
+    monkeypatch.setattr(plan, "_key", lambda path: ntpath.normcase(plan.canonical(path)))
+    assert refused(project) == set()
+
+
 def test_a_withheld_input_with_no_way_to_request_it_is_refused(project: Path, capsys) -> None:
     ready(project)
     with_package(project, share=[])
@@ -974,6 +1005,66 @@ def test_a_cell_is_read_with_its_footnote_marks_and_its_share_behind_a_bound(
     from manuscript_guard.deposit.counts import count_in_cell
 
     assert count_in_cell(cell) == count
+
+
+@pytest.mark.parametrize(
+    ("cell", "count"),
+    [
+        ("3", 3), ("3/412", 3), ("3 (0.7%)", 3), ("3/412 [0.7%]", 3), ("3 (<1%)", 3),
+        ("3 (0.7%)*", 3), ("3\N{MODIFIER LETTER SMALL A}", 3),
+        ("3\N{MODIFIER LETTER SMALL E}", 3), ("3\N{DAGGER}", 3), ("3\N{DOUBLE DAGGER}", 3),
+        ("3\N{SECTION SIGN}", 3), ("3\N{PILCROW SIGN}", 3), ("3\N{SUPERSCRIPT ONE}", 3),
+        ("3^1^", 3),
+        ("3 of 412", None), ("3 (0.7% to 1.2%)", None), ("1,234", None), ("1 234", None),
+        ("3#", None), ("3\N{DOUBLE VERTICAL LINE}", None), ("3\N{MODIFIER LETTER SMALL F}", None),
+        ("10\N{SUPERSCRIPT THREE}", 10), ("10^3^", 10),
+        ("4 (2,7)", 4), ("2 (2020)", 2), ("1 (<0.001)", 1), ("1", 1),
+    ],
+)  # fmt: skip
+def test_a_cell_is_read_for_a_count_only_in_the_shapes_count_in_cell_knows(
+    cell: str, count: int | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The custodian's minimum is read in the fragments,
+    not in the figures"): a cell states a count in the shapes listed, and "3 of 412", a share
+    as an interval, thousands separators and a footnote mark other than `*†‡§¶`, ᵃ to ᵉ, the
+    superscript digits and `^…^` are not read; a power is read as the count 10, a decimal
+    comma as a share, a year in brackets as one, an estimate with its P and a bare 1 as
+    counts. The 2026-11-09 triage planned a fix (F14), which will change this test."""
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    assert count_in_cell(cell) == count
+
+
+def test_the_custodian_s_minimum_is_read_in_the_fragments_past_the_first_column(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The custodian's minimum is read in the fragments,
+    not in the figures"): a cell in the first column, which names the rows, is not read; a
+    figure drawn from a small count shows it in the package, and a dataset's own file
+    deposited by `package.share` is read for no small cell."""
+    from manuscript_guard.deposit.counts import small_in
+
+    table = {"tables": {"t": {"columns": ["", "n"], "rows": [["2", "40"], ["Other", "2"]]}}}
+    assert [(s.where, s.count) for s in small_in(table, "results/x.json", 5)] == [
+        ("table t, row 2, column 2", 2)]  # fmt: skip
+    ready(project)
+    document = paper(project)
+    document["custodian"] = {"minimum_cell_count": 5}
+    set_paper(project, document)
+    assert "package-small-count" not in refused(project)
+    figure = next((project / "figures").glob("*.svg"))
+    figure.write_bytes(figure.read_bytes().replace(b"</svg>", b"<text>n = 2</text></svg>"))
+    # The example shares its list of event terms; here it gives a count of two.
+    assert paper(project)["package"]["share"] == ["data/event_terms.txt"]
+    counted = b"term,n\nhepatitis,2\n"
+    (project / "data" / "event_terms.txt").write_bytes(counted)
+    digest = hashlib.sha256(counted).hexdigest()
+    declare_input(project, "data/event_terms.txt", sha256=digest, raw_sha256=digest,
+                  bytes=len(counted))  # fmt: skip
+    assert "package-small-count" not in refused(project)
+    assert main(["package", str(project), "--skip-checks"]) == 0
+    held = contents(built(project))
+    assert f"figures/{figure.name}" in held and "data/event_terms.txt" in held
 
 
 def test_a_folder_that_leads_to_the_project_itself_is_refused(project: Path) -> None:

@@ -736,8 +736,12 @@ def judging(root: Path, args: argparse.Namespace) -> str:
     if args.command == "agree":
         return corpus_judging.render_agree(corpus_judging.agree(root, args.batch))
     base = Run(run_folder(root, args.base)) if args.base else None
+    # A corpus judged for the first time, a held-out set, holds no verdict to measure: no code
+    # is settled, and every loud finding is packed (Basile, 2026-11-23, item 6).
+    measured = (_measured(root, args.run) if corpus_judging.has_verdicts(root)
+                else (Run(run_folder(root, args.run)), []))  # fmt: skip
     return corpus_judging.render_pack(corpus_judging.pack(
-        root, *_measured(root, args.run), args.name, base, args.settled, args.min_judged))
+        root, *measured, args.name, base, args.settled, args.min_judged))
 
 
 def _measured(root: Path, name: str) -> tuple[Run, list[dict]]:

@@ -8344,6 +8344,110 @@ def pdf_first_pages(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return pages
 
 
+#: What a PDF fetched for `PDF_WORK` may show of it, and how `matching.judged` keeps it: by
+#: its DOI, by its title, or not at all (None). The DOI printed, broken over a line, with a
+#: word `-layout` set against it, beside another on the first page, on the second page
+#: only, in the metadata alone, and there beside another; the title over lines, hyphenated at
+#: a break, with a footnote's mark, and over a reference on the second page that gives
+#: another DOI. Not kept: a longer DOI and a supplement's, each over the title; the title
+#: with another DOI on the first page; another DOI in the metadata over the work's printed;
+#: the title running on in a sentence, with a word after it, with three digits after it, and
+#: below the lines a title is looked for in.
+PDF_EVIDENCE = {
+    "doi": "doi", "doi broken": "doi", "doi glued": "doi", "doi on page two": "doi",
+    "doi beside another on page one": "doi", "title beside another on page one": None,
+    "doi in metadata": "doi", "doi beside another in metadata": "doi", "title": "title",
+    "title hyphenated": "title", "title footnoted": "title", "reference on page two": "title",
+    "longer doi": None, "supplement doi": None, "another doi in metadata": None,
+    "title in a sentence": None, "title with more": None, "title three digits": None,
+    "title too low": None,
+}  # fmt: skip
+#: Another work's DOI, as a reference or a PDF's metadata names it.
+PDF_OTHER_DOI = "10.5555/other.2020.9"
+
+
+def _pdf_link(draw: st.DrawFn, doi: str) -> str:
+    """A DOI as a page prints it: as a link, after a label, or in capitals."""
+    return draw(st.sampled_from((f"https://doi.org/{doi}", f"doi: {doi}", f"DOI {doi}",
+                                 f"https://dx.doi.org/{doi}", f"doi:{doi}.",
+                                 f"DOI: {doi.upper()}")))  # fmt: skip
+
+
+def _pdf_title(draw: st.DrawFn, kind: str) -> list[str]:
+    """`PDF_WORK`'s title over the lines drawn, in capitals or as written, as `kind` sets it."""
+    words = PDF_WORK[1].split()
+    cuts = sorted(draw(st.sets(st.integers(1, len(words) - 1), max_size=2)))
+    lines = [" ".join(words[a:b]) for a, b in zip([0, *cuts], [*cuts, len(words)], strict=True)]
+    if kind == "title hyphenated":
+        joined = " ".join(words)
+        at = draw(st.sampled_from([index for index in range(2, len(joined) - 1)
+                                   if joined[index - 1].isalpha() and joined[index].isalpha()]))
+        lines = [joined[:at] + "-", joined[at:]]  # fmt: skip
+    if draw(st.booleans()):
+        lines = [line.upper() for line in lines]
+    after = {"title footnoted": draw(st.sampled_from(("1", "12", "*", "\N{DAGGER}"))),
+             "title with more": " study", "title three digits": "123"}.get(kind, "")  # fmt: skip
+    return [*lines[:-1], lines[-1] + after]
+
+
+def _pdf_filler(draw: st.DrawFn, least: int, most: int) -> list[str]:
+    """Lines of running text, each of words that are nobody's."""
+    line = st.lists(st.sampled_from(FILLER), min_size=3, max_size=8).map(" ".join)
+    return draw(st.lists(line, min_size=least, max_size=most))
+
+
+@st.composite
+def pdf_evidence(draw: st.DrawFn) -> list[tuple[str, str, str | None]]:
+    """The metadata and the first two pages of a PDF for every kind of `PDF_EVIDENCE`, in an
+    order drawn, each with how `matching.judged` keeps it for `PDF_WORK`."""
+    doi, title = PDF_WORK
+    made = []
+    for kind in draw(st.permutations(list(PDF_EVIDENCE))):
+        journal = draw(st.sampled_from(([], ["Journal of Examples 12 (2021) 101-109"])))
+        authors = ["A. Fictional and B. Fictional"]
+        meta, second = "", _pdf_filler(draw, 1, 4)
+        if kind.startswith("title") or kind in ("longer doi", "supplement doi",
+                                                "reference on page two"):
+            above = _pdf_filler(draw, 40, 44) if kind == "title too low" else _pdf_filler(
+                draw, 0, 20)
+            named = _pdf_title(draw, kind)
+            if kind == "title in a sentence":
+                named = [f"We reviewed {title.lower()} with each reader."]
+            shown = [*journal, *above, *named, *authors]
+        else:
+            shown = [*journal, *authors, *_pdf_filler(draw, 1, 6)]
+        link = _pdf_link(draw, doi)
+        if kind == "doi broken":
+            at = draw(st.integers(len("10.5555/") + 1, len(doi) - 1))
+            link = link.replace(doi, doi[:at] + "\n" + doi[at:]).replace(
+                doi.upper(), doi.upper()[:at] + "\n" + doi.upper()[at:])
+        elif kind == "doi glued":
+            link = link.rstrip(".") + draw(st.sampled_from(("deffner", "Smith")))
+        elif kind == "longer doi":
+            link = _pdf_link(draw, doi + str(draw(st.integers(0, 9))))
+        elif kind == "supplement doi":
+            link = _pdf_link(draw, doi + ".s001")
+        if kind in ("doi in metadata", "doi beside another in metadata", "another doi in metadata"):
+            names = {"doi in metadata": [doi], "another doi in metadata": [PDF_OTHER_DOI],
+                     "doi beside another in metadata": draw(st.permutations([doi, PDF_OTHER_DOI]))}
+            meta = "".join(draw(st.sampled_from((f"<prism:doi>{one}</prism:doi>", f"/doi({one})")))
+                           for one in names[kind])  # fmt: skip
+        if kind in ("doi", "doi broken", "doi glued", "longer doi", "supplement doi",
+                    "another doi in metadata"):
+            shown.insert(draw(st.integers(0, len(shown))), link)
+        elif kind == "doi on page two":
+            second.insert(draw(st.integers(0, len(second))), link)
+        elif kind == "reference on page two":
+            second.append(f"1. Other A. Another work. {_pdf_link(draw, PDF_OTHER_DOI)}")
+        if kind == "doi beside another on page one":
+            shown.insert(draw(st.integers(0, len(shown))), link)
+        if kind.endswith("beside another on page one"):
+            shown.insert(draw(st.integers(0, len(shown))), _pdf_link(draw, PDF_OTHER_DOI))
+        text = "\n".join(shown) + "\n\f" + "\n".join(second) + "\n\f"
+        made.append(("%PDF-1.4\n" + meta, text, PDF_EVIDENCE[kind]))
+    return made
+
+
 #: Table cells that state one count, as `{n}` is filled with it; and cells that hold a whole
 #: number and state no count: a decimal, a bound, a label, a range, a share, an interval, a
 #: sign. What the reading of a cell for a count must tell apart.
@@ -15504,12 +15608,22 @@ def _harvest_cell(draw: st.DrawFn, kind: str, digits: int | None) -> tuple[str, 
     if kind == "text":
         word = draw(st.sampled_from(_CELL_WORDS))
         return word, ["str", word, word, None]
+    if kind == "point":
+        # Without its leading zero, as APA prints a p or an r, signed or not: its first digit
+        # 6 or more, so that no digits drawn show it as nought.
+        sign = draw(st.sampled_from(("", "-", "\N{MINUS SIGN}")))
+        decimals = draw(st.integers(1, 3))
+        written = f".{draw(st.integers(6 * 10 ** (decimals - 1), 10**decimals - 1))}"
+        value = -float(written) if sign else float(written)
+        magnitude = f"{abs(value):.{digits}f}" if places else written
+        shown = sign + (magnitude[1:] if magnitude.startswith("0.") else magnitude)
+        return sign + written, ["float", value, shown, None]
     return draw(st.sampled_from(("", " ", "\t"))), None
 
 
 #: Every kind of cell `harvest` reads, each drawn in every example with and without digits.
 HARVEST_KINDS = ("whole", "decimal", "percent", "thousands", "spaced", "negative", "exponent",
-                 "unit", "held", "text", "empty")  # fmt: skip
+                 "unit", "held", "text", "point", "empty")  # fmt: skip
 
 
 @st.composite
@@ -15625,6 +15739,102 @@ def harvest_tables(draw: st.DrawFn) -> tuple[list[dict], dict[str, list]]:
          "read": None},
     ]
     return draw(st.permutations(forms)), expected
+
+
+# ------------------------------------------------- a display without its leading zero
+
+#: Displays with a point and no digit before it that are no number: two points, a space
+#: after the point, a point alone, a second decimal part, and a sign with nothing after.
+POINT_MALFORMED = ("..5", ". 5", ".", ".5.5", "0..5", "-.")
+
+
+@st.composite
+def point_displays(draw: st.DrawFn) -> list[tuple[float, str, bool]]:
+    """A display written without its leading zero, as APA prints a p or an r, beside each
+    kind of value, one of every kind in an order drawn, and whether the emitter takes the
+    display for the value: one within half a unit of its last place, the same display with
+    its zero, one further off, one more by a whole, the display signed for a value under
+    nought and unsigned for it, a comparator below and above it with a value on its side
+    and one on the other, and a display that is no number."""
+    kinds = ("point", "zero", "off", "over one", "signed", "sign lost", "below", "not below",
+             "above", "not above", "malformed")  # fmt: skip
+    out = []
+    for kind in draw(st.permutations(kinds)):
+        decimals = draw(st.integers(1, 3))
+        unit = 10.0**-decimals
+        number = draw(st.integers(1, 10**decimals - 1))
+        digits = f"{number:0{decimals}d}"
+        shown = number * unit
+        near = shown + draw(st.integers(-4, 4)) * unit / 10
+        space = draw(st.sampled_from(("", " ")))
+        if kind == "point":
+            out.append((near, f".{digits}", True))
+        elif kind == "zero":
+            out.append((near, f"0.{digits}", True))
+        elif kind == "off":
+            out.append((shown + draw(st.integers(2, 9)) * unit, f".{digits}", False))
+        elif kind == "over one":
+            out.append((1 + near, f".{digits}", False))
+        elif kind in ("signed", "sign lost"):
+            sign = draw(st.sampled_from(("-", "\N{MINUS SIGN}"))) if kind == "signed" else ""
+            out.append((-near, f"{sign}.{digits}", kind == "signed"))
+        elif kind in ("below", "not below"):
+            compare = draw(st.sampled_from(("<", "<=", "\N{LESS-THAN OR EQUAL TO}")))
+            value = (shown * draw(st.integers(0, 9)) / 10 if kind == "below"
+                     else shown + draw(st.integers(1, 9)) * unit)  # fmt: skip
+            out.append((value, f"{compare}{space}.{digits}", kind == "below"))
+        elif kind in ("above", "not above"):
+            compare = draw(st.sampled_from((">", ">=", "\N{GREATER-THAN OR EQUAL TO}")))
+            value = (shown + (1 - shown) * draw(st.integers(1, 9)) / 10 if kind == "above"
+                     else shown * draw(st.integers(0, 9)) / 10)  # fmt: skip
+            out.append((value, f"{compare}{space}.{digits}", kind == "above"))
+        else:
+            out.append((draw(st.sampled_from((0.5, 0.05, 5.0))),
+                        draw(st.sampled_from(POINT_MALFORMED)), False))  # fmt: skip
+    return out
+
+
+# ------------------------------------------------------ a binding left in emitted table text
+
+#: Text with braces a table may hold, and the binding `binding-in-table` names in it, or None
+#: where it holds none: a binding, an empty one, one of a space, one inside a third pair of
+#: braces, one with spaces inside; one never closed, one broken over a line, one a brace
+#: short on either side, braces apart, and the closing pair before the opening one.
+TABLE_BRACES = (
+    ("{{results.or_ratio}}", "{{results.or_ratio}}"), ("{{}}", "{{}}"), ("{{ }}", "{{ }}"),
+    ("{{{x}}}", "{{x}}"), ("{{ results.n }}", "{{ results.n }}"), ("{{a", None),
+    ("{{a\nb}}", None), ("{{x}", None), ("{x}}", None), ("{ {x} }", None), ("}}x{{", None),
+)  # fmt: skip
+
+
+@st.composite
+def table_braces(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, str]]:
+    """An emitted table `t`, its caption, three headers and twelve cells, every text of
+    `TABLE_BRACES` in one of them among words drawn and the rest words alone; and the
+    binding each place holding one holds, by the place `tables.places_in` names. In every
+    example a binding is in the caption, in a header and in a cell, the rest where drawn."""
+    places = [
+        "caption of table 't'", *(f"table 't' column {column} header" for column in range(3)),
+        *(f"table 't' row {row} column {column}" for row in range(4) for column in range(3)),
+    ]  # fmt: skip
+    bindings = draw(st.permutations([one for one in TABLE_BRACES if one[1] is not None]))
+    others = draw(st.permutations([one for one in TABLE_BRACES if one[1] is None]))
+    first = [places[0], draw(st.sampled_from(places[1:4])), draw(st.sampled_from(places[4:]))]
+    rest = draw(st.permutations([place for place in places if place not in first]))
+    planted = dict(zip(first, bindings[:3], strict=True))
+    planted |= dict(zip(rest, [*bindings[3:], *others], strict=False))
+
+    def text(place: str) -> str:
+        least = 0 if place in planted else 1
+        words = [" ".join(draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=3)))
+                 for _side in range(2)]  # fmt: skip
+        typed = planted[place][0] if place in planted else ""
+        return " ".join(one for one in (words[0], typed, words[1]) if one) or "data"
+
+    written = [text(place) for place in places]
+    spec = {"caption": written[0], "columns": written[1:4],
+            "rows": [written[4 + 3 * row:7 + 3 * row] for row in range(4)]}  # fmt: skip
+    return spec, {place: found for place, (_typed, found) in planted.items() if found}
 
 
 # ------------------------------------------------------- claims of novelty or absence, G7
@@ -18840,6 +19050,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),  # fmt: skip
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),
+    "pdf evidence": pdf_evidence().map(
+        lambda drawn: [{"meta": meta, "text": text} for meta, text, _by in drawn]
+    ),
     "vault named": vault_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),
@@ -18851,6 +19064,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "harvest cells": harvest_cells().map(
         lambda drawn: [[text, digits] for text, digits, _read in drawn]
     ),
+    "point displays": point_displays().map(
+        lambda drawn: [[value, display] for value, display, _taken in drawn]
+    ),
+    "table bindings": table_braces().map(lambda drawn: drawn[0]),
     "harvest counted": counted_tables().map(
         lambda drawn: [{"text": made["text"], "counts": made["counts"]} for made in drawn]
     ),

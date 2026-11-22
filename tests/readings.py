@@ -939,6 +939,21 @@ def _pdf_shown() -> Reading:
     return read
 
 
+@reading("pdf evidence")
+def _pdf_evidence() -> Reading:
+    from manuscript_guard.literature.matching import judged
+
+    def read(pdfs: list[dict[str, str]]) -> list[list[str | None]]:
+        """How each PDF, its metadata and its first two pages, shows it is the cited work
+        10.5555/fictional.2021.001, "Hepatic injury in a fictional national cohort", by its
+        DOI or its title, or why it does not."""
+        doi, title = "10.5555/fictional.2021.001", "Hepatic injury in a fictional national cohort"
+        shown = [judged(pdf["meta"].encode("latin-1"), pdf["text"], doi, title) for pdf in pdfs]
+        return [[one.by, one.why] for one in shown]
+
+    return read
+
+
 #: Where "vault named" keeps the folders it renders a command against: made once in a process,
 #: and taken away when it ends.
 _VAULT_PLACE: list[Path] = []
@@ -1070,6 +1085,38 @@ def _harvest_cells() -> Reading:
         display and its unit, or nothing."""
         found = [cell(text, digits) for text, digits in cells]
         return [None if one is None else [one.value, one.display, one.unit] for one in found]
+
+    return read
+
+
+@reading("point displays")
+def _point_displays() -> Reading:
+    from manuscript_guard.contracts.values import DisplayError, derive_display
+
+    def read(pairs: list[list[Any]]) -> list[str]:
+        """What the emitter makes of each display given for its value, as `em.value(key,
+        value, display=...)` asks it: the display, or why it is refused."""
+        said = []
+        for value, display in pairs:
+            try:
+                said.append(derive_display("p", value, display, None))
+            except DisplayError as refused:
+                said.append(f"refused: {refused}")
+        return said
+
+    return read
+
+
+@reading("table bindings")
+def _table_bindings() -> Reading:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.tables import problems_in
+
+    def read(spec: dict[str, Any]) -> list[list[str]]:
+        """What is wrong with each place of an emitted table, its caption, headers and cells,
+        as the emitter and G2 read it: where, the code and the message."""
+        found = problems_in("t", spec, set(), Classifier.load())
+        return [[one.where, one.code, one.message] for one in found]
 
     return read
 

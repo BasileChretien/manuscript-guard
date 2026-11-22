@@ -5984,10 +5984,14 @@ left to it; its plural, "5mins", which `notation-unit` does not read, is a space
 read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
 by the letter before it; a number in hexadecimal, "0xff", is left alone. Nor is a number
 read inside a piece raised or lowered as pandoc writes one, `~…~` or `^…^`, where a Word
-table's note converted to Markdown writes a symbol's index, "u~0school~"; nor inside a word
-joined by underscores, `RATE\_12mth` in a LaTeX data table, which is a name from code as
-`code-name-in-prose` reads one (`code_names.joined_names`), so the two readings agree on
-what a name is. In text the audit read from a PDF a word typed against a signed number is
+table's note converted to Markdown writes a symbol's index, "u~0school~"; nor anywhere in a
+run of characters with no blank in it that holds a word joined by underscores, a name from
+code as `code-name-in-prose` reads one (`code_names.joined_names`), so the two readings
+agree on what a name is. The run is taken as `code-name-in-prose` takes it to look for a
+path (`code_names.joined_runs`), so `UNEMP\_DURA\_6-12mth` in a LaTeX data table, whose
+name ends at the hyphen, is no "12mth" typed against its number; nor is a unit closed up in
+such a run, `DOSE\_6-5mg`, nor a word against a signed number, `RATE\_x-to+0.5` (Basile,
+2026-11-22, "Skip the whole token"). In text the audit read from a PDF a word typed against a signed number is
 not read at all: pdftotext sets a superscript or a subscript on the line, so "cm−3",
 "yr−1", "cos−1" and "tn+1" are exponents and indices there, and on the real-paper corpus
 every such finding was one (Basile, 2026-11-21, "Skip in PDF text"). The audit says which
@@ -25505,11 +25509,13 @@ Open, recorded as each change landed:
     Pinned by `tests/test_notation.py::test_a_word_against_a_signed_number_is_not_read_in_a_pdf_s_text`
     and `tests/test_corruption.py::test_a_number_typed_against_its_word_in_a_pdf_is_caught`.
   - A number inside a piece raised or lowered, `~…~` or `^…^` with no blank in it but an
-    escaped one, is not read, so a space left out inside a subscript passes; one inside a
-    word joined by underscores, a name from code, is not read either. A number joined by a
-    hyphen to such a name, `RATE\_6-12mth`, stands outside the name and is read.
+    escaped one, is not read, so a space left out inside a subscript passes; nor is
+    anything in the run of characters with no blank in it that holds a word joined by
+    underscores, a name from code, so a space truly left out in that run passes,
+    "RATE\_6,12patients", where nothing but a comma stands between the name and the words
+    after it.
     Pinned by `tests/test_notation.py::test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out`
-    and `tests/test_notation.py::test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out`.
+    and `tests/test_notation.py::test_a_space_left_out_in_the_run_of_a_name_passes`.
   - A tilde for "approximately" pairs with the next tilde where no blank stands between
     them, "(~3days,~5days)", and the stretch between is taken for a subscript, as pandoc
     prints it: "3days" passes and "5days" is reported (round 1 of #719).

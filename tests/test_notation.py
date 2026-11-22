@@ -535,10 +535,37 @@ def test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out(
         "notation_spaces_missing"] == 0, written  # fmt: skip
     report = read(f"# Results\n\nThe series {written} held for 12patients.\n")
     assert report.counts["notation_spaces_missing"] == 1, written
-    # A number joined by a hyphen stands outside the name, as `code-name-in-prose` reads it
-    # (DESIGN.md, Known gaps).
-    hyphen = read("# Results\n\nThe series RATE\\_6-12mth held.\n")
-    assert hyphen.counts["notation_spaces_missing"] == 1
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth", "6-12mth\\_DURA", "RATE\\_x-to+0.5",
+     "DOSE\\_6-5mg", "(UNEMP\\_DURA\\_6-12mth)"],
+    ids=["bare", "escaped", "before the name", "a signed number", "a unit", "in brackets"],
+)  # fmt: skip
+def test_no_space_is_left_out_anywhere_in_a_run_that_holds_a_name(written: str) -> None:
+    """A series named `UNEMP\\_DURA\\_6-12mth` ends its name at the hyphen, and "12mth" is
+    still the series' name: no space is read as left out, nor a unit as closed up, anywhere
+    in a run of characters with no blank in it that holds a word joined by underscores, as
+    `code-name-in-prose` reads a path (Basile, 2026-11-22, "Skip the whole token"). A number
+    typed against its word in the next run, in the same sentence, is read."""
+    clean = read(f"# Results\n\nThe series {written} held.\n")
+    assert clean.counts["notation_spaces_missing"] == 0, written
+    assert clean.counts["notation_units_closed"] == 0, written
+    report = read(f"# Results\n\nThe series {written} 12patients held for 5mg.\n")
+    assert told(report) == [
+        ("notation-unit", "a number runs into its unit once: '5mg'"),
+        ("notation-space-missing", "a number and a word run together once: '12patients'"),
+    ], written
+
+
+def test_a_space_left_out_in_the_run_of_a_name_passes() -> None:
+    """The run is read whole, so a space truly left out in it, with no blank between the
+    name and the words after it, passes: "RATE\\_6,12patients" (DESIGN.md, Known gaps)."""
+    assert read("# Results\n\nThe series RATE\\_6,12patients held.\n").counts[
+        "notation_spaces_missing"] == 0  # fmt: skip
+    assert read("# Results\n\nThe series RATE 6,12patients held.\n").counts[
+        "notation_spaces_missing"] == 1  # fmt: skip
 
 
 def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> None:
@@ -556,6 +583,24 @@ def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> Non
     report = check_language(load_project(project)[0])
     (finding,) = (f for f in report.findings if f.code == "notation-space-missing")
     assert finding.message == "a number and a word run together once: '12patients'"
+
+
+def test_a_number_after_a_hyphen_in_a_latex_name_is_no_space_left_out(project: Path) -> None:
+    """A LaTeX data table's series `UNEMP\\_DURA\\_6-12mth`: the name ends at the hyphen and
+    "12mth" stands in its run, which is not read (Basile, 2026-11-22, "Skip the whole
+    token"). The sentence after the table is."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+        "\\begin{tabular}{ll}\nUNEMP\\_DURA\\_6-12mth & 0,532 \\\\\n\\end{tabular}\n\n"
+        "It rose by 12patients after the table.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    report = check_language(load_project(project)[0])
+    assert [f.message for f in report.findings if f.code.startswith("notation-")] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
 
 
 def test_forms_used_as_often_show_the_later_one_and_say_so() -> None:

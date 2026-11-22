@@ -379,11 +379,17 @@ expected:
       (the bug found building #691)
   - reading: notation
     why: >-
-      `notation-space-missing` reads no number inside a piece raised or lowered as pandoc
-      writes one, "u~0school~", nor inside a word joined by underscores, "12mth\_rate", a name
-      from code as `code-name-in-prose` reads one; the inputs now hold both, which the base
-      reports as spaces left out; the entry it replaces, for the hint of a form written two
-      ways (2026-11-10), is spent
+      `notation-space-missing` and `notation-unit` read nothing anywhere in a run of
+      characters with no blank in it that holds a word joined by underscores (Basile,
+      2026-11-22, "Skip the whole token"): the inputs now hold "UNEMP\_DURA\_6-12mth",
+      "RATE\_x-to+0.5" and "DOSE\_6-5mg", whose number, signed number and unit stand after
+      the name's hyphen, and which the base reports as a space left out or a unit closed up;
+      the entry it replaces, for a number inside a piece raised or lowered or inside the name
+      itself, is spent
+  - reading: notation of a PDF's text
+    why: >-
+      the same, in a file the audit staged from a PDF
   - reading: notation edits
     why: >-
-      the same: no space is put inside "u~0school~" or "12mth\_rate", where the base put one
+      the same: no space is put after the hyphen in "UNEMP\_DURA\_6-12mth" nor in
+      "DOSE\_6-5mg", where the base put one; the entry it replaces is spent

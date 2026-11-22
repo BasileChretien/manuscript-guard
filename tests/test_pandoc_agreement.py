@@ -2262,7 +2262,7 @@ TAG_SHAPES = sorted(
     | {f"Samples <LLOQ {one} {other} and >ULOQ were redone.\n"
        for one, other in zip(TAG_PIECES, TAG_PIECES[7:] + TAG_PIECES[:7], strict=True)}
     | {"Samples <LLOQ in\nplasma and\n>ULOQ were redone.\n", "a<b c>d and more.\n",
-       "Samples `<LLOQ` in and >ULOQ were redone.\n", "Samples \<LLOQ in and >ULOQ.\n",
+       "Samples `<LLOQ` in and >ULOQ were redone.\n", "Samples \\<LLOQ in and >ULOQ.\n",
        "Samples <!-- in and --> were redone.\n", "Samples <https://e.org/x> and >ULOQ.\n"}
 )  # fmt: skip
 

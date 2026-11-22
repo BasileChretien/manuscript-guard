@@ -1810,6 +1810,9 @@ class _File:
     #: it defines covers its own uses, and another meaning there than the text's is asked
     #: about (Basile, 2026-11-21, "Table stands alone"; `_asked_of_displays`).
     displays: tuple[tuple[int, int], ...] = ()
+    #: Where each heading runs, in order: Markdown's as `find_headings` finds them, a setext
+    #: heading's underline with it, and LaTeX's as its reader does.
+    headings: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1880,7 +1883,7 @@ def _file(
         tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
         title_page=title_page, front=_front(hidden, headings, abstract_title), undue=undue,
-        titles=_titles(hidden, spans, named),
+        titles=_titles(hidden, spans, named), headings=tuple(sorted(spans)),
     )  # fmt: skip
 
 
@@ -2112,6 +2115,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 front=_latex_front(source, whole.regions, start, end),
                 undue=tuple(span for span in whole.undue if span[0] < end and span[1] > start),
                 titles=tuple(title for title in whole.titles if start <= title[0] < end),
+                headings=tuple(span for span in whole.headings if start <= span[0] < end),
             ))  # fmt: skip
     return files
 
@@ -2165,6 +2169,8 @@ class _LatexFile:
     titles: tuple[tuple[int, str], ...] = ()
     #: Where each table's own text runs (`gates.displays.latex_displays`).
     displays: tuple[tuple[int, int], ...] = ()
+    #: Where each heading runs, in order, as the reader finds them.
+    headings: tuple[tuple[int, int], ...] = ()
 
 
 #: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
@@ -2229,6 +2235,7 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         captions=captions,
         cells=_latex_cells(source, captions),
         displays=latex_displays(source),
+        headings=tuple(titles),
         glossaries=tuple(glossary.sections(titled, len(source.text))),
         initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
@@ -2925,7 +2932,8 @@ def check_language(
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     root = project.path("manuscript")
     from_pdf = frozenset(file.path for file in files if _staged_as(pdf, root, file.path))
-    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
+                   file.headings)
              for file in files]  # fmt: skip
     # A contributions statement names its roles as CRediT spells them and a funding
     # statement is worded by the funder, so the spelling is read without those sections.

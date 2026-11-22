@@ -6127,8 +6127,9 @@ as in any code span (#768 round 1). A value whose quote does not close on its li
 one the Word conversion broke over paragraphs, runs on to the paragraph that ends with its
 closing quote, and those paragraphs are that line's; the configuration goes on after it
 (Basile, 2026-11-22, "Quote may close later"). The quotes must pair: a value that does not
-close before the next `name = value` line, the next `[section]` line, a Markdown heading or
-the end of the text, or a paragraph between with a quote in it that does not end it, is no
+close before the next `name = value` line, the next `[section]` line, a heading as the
+reading finds headings (Markdown's ATX and setext, LaTeX's sectioning commands; a `# x` line
+in a listing is none) or the end of the text, or a paragraph between with a quote in it that does not end it, is no
 configuration line,
 and the configuration ends where it opened. A `name = value` line with no such header above
 it, or with a sentence between, is prose, and so is a value quoted over paragraphs there. A
@@ -25613,9 +25614,15 @@ Open, recorded as each change landed:
   - A configuration's value whose quote never closes, or closes only after another setting,
     a `[section]` line or a paragraph with another quote in it, ends the configuration where
     it opened: its name and the names after it are read up to the next `[section]` line. A
-    Markdown heading ends it too.
-    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`
-    and `tests/test_code_names.py::test_a_heading_ends_a_quoted_value_that_runs_on`.
+    heading the reading finds ends it too, in every format.
+    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`,
+    `tests/test_code_names.py::test_a_heading_ends_a_quoted_value_that_runs_on`,
+    `tests/test_code_names.py::test_a_setext_heading_ends_a_quoted_value_and_a_fenced_hash_does_not`
+    and `tests/test_code_names.py::test_a_latex_heading_ends_a_quoted_value`.
+  - Something the view does not print, a code span, a citation key or a binding, right before
+    `<` or its escape counts as standing against the bracket, so the name after it is read:
+    "Run `tool`\<INPUT_FILE\> now." warns on `INPUT_FILE`, the shape as decided.
+    Pinned by `tests/test_code_names.py::test_something_unprinted_against_the_bracket_makes_no_placeholder`.
   - Values TOML allows that are none of the exact shapes end the configuration, so the
     settings after them are read, a warning on each: curly quotes, `1e-3`, `1_000`, an inline
     table, a date, a `#` comment after the value. Conservative, as decided.

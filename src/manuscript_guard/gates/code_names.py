@@ -44,7 +44,8 @@ name is reported once, where it first stands, with how often it does.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Iterator
+from bisect import bisect_left
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,8 +112,6 @@ _KEY = rf"[^\W_]+(?:(?:{_UNDERSCORES}|-)[^\W_]+)*"
 # escapes them, bold as Word writes it or not: `**\[app\]**`. Its key starts with a letter, so
 # that a reference's number alone on a line, `[1]`, opens no section (#768 round 1).
 _SECTION = re.compile(rf"(\*\*|__)?\\?\[(?=[^\W\d_]){_KEY}(?:\.{_KEY})*\\?\](?(1)\1)")
-# A heading of Markdown, which ends a quoted value's run over paragraphs (#768 round 1).
-_HEADING = re.compile(r"#{1,6}(?:[ \t].*)?")
 # A line that is only `name = value`, the value a quoted string, its quotes escaped as pandoc
 # writes them from a .docx or not, a literal string, a number, true or false, or a list in
 # brackets.
@@ -144,7 +143,8 @@ class Prose:
     elsewhere. Both have the file's length, so an offset is the file's. `tables` are where
     its tables' cells run, which are not read: a Markdown table's lines, of the four kinds
     pandoc reads, and a LaTeX `tabular` and its kin less its captions and footnotes
-    (`language._File.tables`)."""
+    (`language._File.tables`). `headings` are where its headings run, in order, as the
+    reading finds them (`language._File.headings`)."""
 
     path: Path
     text: str
@@ -152,6 +152,7 @@ class Prose:
     code: str
     line_of: Callable[[int], int]
     tables: tuple[tuple[int, int], ...] = ()
+    headings: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -293,19 +294,26 @@ def _unprinted(printed: str, defined: set[str]) -> str:
     return _UNPRINTED.sub(_blank, printed)
 
 
-def _machine_text(printed: str, text: str) -> list[tuple[int, int]]:
+def _in_a_heading(start: int, end: int, headings: Sequence[tuple[int, int]]) -> bool:
+    """Whether the line from `start` to `end` holds part of one of `headings`, in order and
+    apart: the last that starts before `end` reaches past `start`."""
+    at = bisect_left(headings, (end, -1)) - 1
+    return at >= 0 and max(headings[at][1], headings[at][0] + 1) > start
+
+
+def _machine_text(printed: str, headings: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
     """Where `printed`, the view G14 reads, quotes machine text: each placeholder
     (`_PLACEHOLDER`), and each `name = value` line (`_SETTING`) under a line that is only a
     `[section]` header (`_SECTION`), with only such lines or blank ones between; a line of
     nothing printed is blank. A value whose quote does not close on its line runs on to the
-    line that closes it (`_closed`). A boxed environment as such is not set aside (Basile,
-    2026-11-22, "Exact shapes only", "Quote may close later"). `text` is the file as the
-    view has it, of the same length, where a Markdown heading keeps its `#`."""
+    line that closes it (`_closed`), a heading the reading finds ending it (`headings`,
+    where each runs, in order). A boxed environment as such is not set aside (Basile,
+    2026-11-22, "Exact shapes only", "Quote may close later")."""
     spans = [found.span() for found in _PLACEHOLDER.finditer(printed)]
     lines = []  # each line's text without its blanks, where that starts, and if a heading
     for line in _LINE.finditer(printed):
         typed = line.group()
-        heading = bool(_HEADING.fullmatch(text[line.start() : line.end()].strip()))
+        heading = _in_a_heading(line.start(), line.end(), headings)
         lines.append((line.start() + len(typed) - len(typed.lstrip(_BLANK)),
                       typed.strip(_BLANK), heading))  # fmt: skip
     under_a_section, at = False, 0
@@ -354,7 +362,7 @@ def _views(prose: Prose) -> tuple[str, str]:
     cells out of both, and the machine text it quotes out of the sentences only, since a key
     or a variable in a code span inside it is still one the reader cannot know (#768 round
     1)."""
-    aside = [*prose.tables, *_machine_text(prose.printed, prose.text)]
+    aside = [*prose.tables, *_machine_text(prose.printed, prose.headings)]
     return _celled(prose.printed, aside), _celled(prose.code, prose.tables)
 
 

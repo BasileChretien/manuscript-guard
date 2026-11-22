@@ -1670,13 +1670,15 @@ def _code_names() -> Reading:
 def _code_name_passages(prose: Any, given: dict[str, Any]) -> dict[str, list[Any]]:
     """The Markdown file and the LaTeX file of `given` as the code names are read in them:
     `Prose`, with where its tables run where the source has them (decision 13; the base's
-    `Prose` has no tables). The LaTeX file is read from a folder made for this one run, as
-    G14 reads a LaTeX manuscript, and is named `main.tex`."""
+    `Prose` has no tables), and where its headings run where `Prose` takes them (#768 round
+    2). The LaTeX file is read from a folder made for this one run, as G14 reads a LaTeX
+    manuscript, and is named `main.tex`."""
     from manuscript_guard.gates.language import _latex_read
 
     def made(path: Path, read: Any) -> Any:
-        tables = {"tables": read.tables} if hasattr(read, "tables") else {}
-        return prose(path, read.text, read.printed, read.code, read.line_of, **tables)
+        more = {name: getattr(read, name) for name in ("tables", "headings")
+                if hasattr(read, name) and name in prose.__dataclass_fields__}  # fmt: skip
+        return prose(path, read.text, read.printed, read.code, read.line_of, **more)
 
     file = _file(given["markdown"])
     folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))

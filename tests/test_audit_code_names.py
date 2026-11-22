@@ -161,7 +161,8 @@ def test_the_finding_reads_what_g14_writes_of_each_kind_of_name(tmp_path: Path) 
     from manuscript_guard.gates.language import _file
 
     file = _file(0, Path("main.md"), "The hr_adj rose by age_group and ror.point.\n", [], False)
-    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)]
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
+                   file.headings)]
     names = Names(frozenset({"ror.point"}), {"age_group": "Age group"})
     found = list(judge_code_names(prose, names).findings)
     (one,) = code_names.one_finding(found)

@@ -12406,7 +12406,20 @@ def _a_quoted_value_runs_on_over_a_heading(patch: pytest.MonkeyPatch) -> None:
     """As at 5ff5855ef: a quoted value ran on over a heading to a closing quote after it."""
     from manuscript_guard.gates import code_names as gate
 
-    patch.setattr(gate, "_HEADING", re.compile("(?!)"))
+    patch.setattr(gate, "_in_a_heading", lambda start, end, headings: False)
+
+
+def _a_hash_line_ends_a_quoted_value(patch: pytest.MonkeyPatch) -> None:
+    """As at d95c4550b: a line that read as `# x` in the raw text ended a quoted value's run,
+    one in a listing too, and a setext or a LaTeX heading did not (#768 round 2)."""
+    from manuscript_guard.gates import code_names as gate
+
+    def views(prose):
+        hashes = [line.span() for line in re.finditer(r"(?m)^#{1,6}[ \t][^\n]*", prose.text)]
+        aside = [*prose.tables, *gate._machine_text(prose.printed, hashes)]
+        return gate._celled(prose.printed, aside), gate._celled(prose.code, prose.tables)
+
+    patch.setattr(gate, "_views", views)
 
 
 def _the_machine_text_is_out_of_the_code_spans_too(patch: pytest.MonkeyPatch) -> None:
@@ -28314,6 +28327,10 @@ BROKEN = {
     ),
     "a quoted value runs on over a heading": (
         _a_quoted_value_runs_on_over_a_heading,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a line of hashes ends a quoted value, and a setext or LaTeX heading does not": (
+        _a_hash_line_ends_a_quoted_value,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "the machine text is set aside from the code spans too": (

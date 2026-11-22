@@ -3680,7 +3680,14 @@ CODE_NAME_PLACES = (
     ("snake", "n\\<{n}\\> m ", "a<{e}> m ", "prose"),
     ("snake", "\n\n[1]\n\n{n} = 12\n\n", "\n\n[1]\n\n{e} = 12\n\n", "prose"),
     ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\n## Heading\n\nwords of 24\\\"\n\n",
-     "\n\n[app]\n\n{e} = \"never closed\n\n", "prose"),
+     "\n\n[app]\n\n{e} = \"open\n\n\\section{{Heading}}\n\nwords of 24\"\n\n", "prose"),
+    # A setext heading ends it too, and a `# x` line in a listing, which is no heading, does
+    # not (#768 round 2).
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\nHeading\n-------\n\nwords of 24\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"open\n\n\\subsection{{Heading}}\n\nwords of 24\"\n\n", "prose"),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\n```\n# x\n```\n\nclosed\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"open\n\n\\begin{{verbatim}}\n# x\n\\end{{verbatim}}\n\nclosed\"\n\n",
+     None),
     ("key", "\n\n[app]\n\nprompt = \"use `{n}`\"\n\n",
      "\n\n[app]\n\nprompt = \"use \\texttt{{{e}}}\"\n\n", "code"),
 )  # fmt: skip

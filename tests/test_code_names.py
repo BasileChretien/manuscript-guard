@@ -30,7 +30,8 @@ CLOSE = "\\end{document}\n"
 def read(text: str, *, keys=(), labels=None, kept=(), stage=None):
     """The findings of the reading on one Markdown file."""
     file = _file(0, MAIN, text, [], False)
-    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
+    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
+                  file.headings)
     names = Names(frozenset(keys), dict(labels or {}), frozenset(kept))
     return judge_code_names([prose], names, stage).findings
 
@@ -547,6 +548,34 @@ def test_a_heading_ends_a_quoted_value_that_runs_on() -> None:
     text = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\n# Results\n\n"
             "The hr_adj_main rose on a screen of 24\\\"\n")  # fmt: skip
     assert named(text) == ["greet_text", "hr_adj_main"]
+
+
+def test_a_setext_heading_ends_a_quoted_value_and_a_fenced_hash_does_not() -> None:
+    """The headings that end a value's run are those the reading finds (`find_headings`): a
+    setext heading does, and a line `# x` inside a fenced block, which is no heading, does
+    not (#768 round 2)."""
+    setext = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\nResults\n-------\n\n"
+              "The hr_adj_main rose on a screen of 24\\\"\n")  # fmt: skip
+    assert named(setext) == ["greet_text", "hr_adj_main"]
+    fenced = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\n```\n# x\n```\n\nGoodbye.\\\"\n\n"
+              "The hr_adj_main rose.\n")  # fmt: skip
+    assert named(fenced) == ["hr_adj_main"]
+
+
+def test_a_latex_heading_ends_a_quoted_value(project: Path) -> None:
+    """In LaTeX a `\\section` ends a quoted value's run as a Markdown heading does: both
+    names are read (#768 round 2)."""
+    report = _latex(project, OPEN + "[app]\n\ngreet\\_text = \"Hello\n\n\\section{Results}\n\n"
+                    "The hr\\_adj\\_main rose 24\"\n" + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "greet_text", "hr_adj_main"]  # fmt: skip
+
+
+def test_something_unprinted_against_the_bracket_makes_no_placeholder() -> None:
+    """What the view does not print, a code span, a citation key or a binding, counts as
+    standing against `<` or its escape, so the name is read: the shape as decided (DESIGN.md,
+    Known gaps)."""
+    assert named("Run `tool`\\<INPUT_FILE\\> now.\n") == ["INPUT_FILE"]
 
 
 def test_a_key_in_a_code_span_in_a_quoted_value_is_read() -> None:

@@ -22,6 +22,12 @@ table. Expanding the abbreviation again at its first use in the text, as journal
 not a second definition, and a table's caption or a figure's legend may restate one too.
 An entry nothing else uses is reported as unused.
 
+A table or a figure stands alone: what its caption, legend or note defines covers that
+display. Spelling a form out there as the text does says nothing; spelling it another way
+is a question (`abbreviation-redefined` as a note): give the text's long form, or another
+short form where it means something else. Its uses are its own too: a header the note
+under it defines is not used before its definition.
+
 ## No headings
 
 A manuscript with no headings at all, its sections typed as bold lines, is read as one

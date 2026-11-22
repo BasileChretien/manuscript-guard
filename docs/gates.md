@@ -59,7 +59,12 @@ or the supplement's; one in the Abstract's headings, a title, and any heading wi
 section over it define nothing. A caption, a heading, and the shape a note is written in, "X =
 long form" or "X: long form", wherever it stands, a sentence of the text among them, may
 restate the text's definition, as tables are asked to define their own short forms; one
-that gives the form another long form is reported. A short form followed by a
+in the text that gives the form another long form is reported. A table or a figure stands
+alone: its caption, legend and notes define for it, and cover its own uses wherever they
+stand in it, a header over its note among them. A meaning there that the text gives says
+nothing; another is a question, not a warning, unless the same display gives the form
+another meaning already, which is a warning as in the text; two displays are never
+compared. A short form followed by a
 number with a decimal point, an equals sign and a number, or more than one word gives a
 statistic or a phrase and defines nothing: "(HR 1.32, 95% CI ...)", "OR = 1.52", "(MDD 40
 mg)". What these shapes miss is in DESIGN.md's Known gaps.

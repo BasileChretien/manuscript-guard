@@ -969,13 +969,14 @@ def titled_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
             text = (f"{text[:cut]}{ABSTRACT_HEADING[0]}\n\nThe {ABSTRACT_HEADING[1]} was "
                     f"read.\n\n{text[cut:]}")  # fmt: skip
             undefined.append(ABSTRACT_HEADING[1])
-        # The text defines the heading's form again, and a table's note the text's: each
-        # restates (Basile, 2026-11-16).
+        # The text defines the heading's form again, and a note's shape in the text the
+        # text's: each restates (Basile, 2026-11-16). Under a table the note would be the
+        # table's own, compared with nothing ("Table stands alone", 2026-11-21).
         # A second section's heading defines a form only it defines (round 2 of #698).
         text += (f"{draw(between)} The {titled} was read.\n\n# Methods\n\n{heading}\n\n"
                  f"{draw(between)} The grip and {HEADING_RESTATED} ({headed}) was read, and the "
-                 f"{headed} held. The {NOTED[0]} ({NOTED[1]}) was read.\n\n| Grip | n |\n|---|"
-                 f"---|\n| 12 | 40 |\n\n*Note.* {NOTED[1]} = {NOTED[0]}.\n\nThe {NOTED[1]} "
+                 f"{headed} held. The {NOTED[0]} ({NOTED[1]}) was read.\n\n"
+                 f"*Note.* {NOTED[1]} = {NOTED[0]}.\n\nThe {NOTED[1]} "
                  f"held.\n\n{ONLY_HEADED[0]}\n\n{draw(between)} The {ONLY_HEADED[1]} was "
                  "read.\n")  # fmt: skip
         papers.append((text, sorted(undefined)))
@@ -983,15 +984,17 @@ def titled_papers(draw: st.DrawFn) -> list[tuple[str, list[str]]]:
 
 
 #: The long form the text gives the section heading's short form again, and a definition a
-#: table's note gives again; and a heading whose form nothing but the heading defines.
+#: note in the text gives again; and a heading whose form nothing but the heading defines.
 HEADING_RESTATED = "electromyography"
 NOTED = ("hand grip strength", "HGS")
 ONLY_HEADED = ("## Knee extension torque (KET)", "KET")
 
 
 #: What `apart_forms` plants, each kind with its own short form (the real-paper corpus, round
-#: of 2026-11-21). A short form the text defines, then gives other meanings in table notes,
-#: each meaning in one note or several: each other meaning is one finding, at its first note.
+#: of 2026-11-21). A short form the text defines, then gives other meanings in notes in the
+#: text, each meaning in one note or several: each other meaning is one finding, at its first
+#: note. A note under a table is the table's, and compared with nothing in the text (Basile,
+#: 2026-11-21, "Table stands alone"; `displays_alone`).
 REPEATED_SHORT = ("brisk walking test", "BWT")
 REPEATED_MEANINGS = ("brisk walking time", "brief walking trial", "brisk walk task")
 #: A long form with author-year citations typed after it in its bracket, which are no part
@@ -1055,8 +1058,7 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
     again = draw(st.lists(st.sampled_from(meanings), min_size=1, max_size=3))
     notes = draw(st.permutations([*meanings, *again]))
     repeated = f"The {long} ({short}) was run. The {short} held.\n\n" + "\n\n".join(
-        f"| Walk | n |\n|---|---|\n| one | {at + 3} |\n\n*Note.* {short} = {meaning}."
-        for at, meaning in enumerate(notes))
+        f"*Note.* {short} = {meaning}." for meaning in notes)
     told = list(dict.fromkeys(notes))
     cited_long, cited = CITED_SHORT
     citing = (f"The {cited} ({cited_long}; {draw(st.sampled_from(TYPED_AFTER))}) was read. The "
@@ -1752,6 +1754,97 @@ def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+# ------------------------------------------------------- a table or a figure stands alone
+
+#: What the text defines, and uses after, that the displays of `displays_alone` define again
+#: with another meaning each (Basile, 2026-11-21, "Table stands alone").
+DISPLAYS_TEXT = (
+    "We used the Beck Depression Inventory (BDI) and the reporting odds ratio (ROR); the dose "
+    "was the low daily dose (LD) or the high daily dose (HD), and the proportional reporting "
+    "ratio (PRR) was computed. The BDI, the ROR, the LD, the HD and the PRR were kept, and the "
+    "EBGM was read."
+)
+#: What a note opens with: a note's word, with a colon or a stop, a footnote's mark, or
+#: nothing, the pairs it holds making it a note.
+NOTE_OPENINGS = ("*Note.* ", "Note: ", "^a^ ", "")
+#: The displays, each with a form of its own its cells use before its note or its caption
+#: under it defines it, and a definition of the text's form with another meaning: `{n}` its
+#: number, `{note}` its note's opening, `{caption}` pandoc's caption, above or under it. A
+#: caption or a legend above its table defines a form the table uses and the text defines
+#: only later, in the Discussion, so a caption that captioned nothing would leave the table's
+#: use before the text's definition (round 1 of #759); and the figure's legend defines one
+#: the Results then use, before the Discussion does, which the text's own definition rules.
+DISPLAY_KINDS = {
+    # A table, pandoc's caption, and a note that pairs its forms.
+    "pandoc": "{above}| Score | n |\n|---|---|\n| BDI | 12 |\n| ICC | 0.7 |\n| UMC | 3 |\n\n"
+              "{below}{note}BDI = Beck Depression Index; ICC: intraclass correlation.",
+    # APA's number alone, its title, the table and its note.
+    "apa": "Table {n}.\n\n*Scores at the lowest dose (LD) given.*\n\n| Variable | Mean |\n"
+           "|---|---|\n| KQS | 62 |\n\n{note}KQS: Kids Quiet Scale.",
+    # A legend above its table, with no note.
+    "legend": "**Table {n}.** The relative odds ratio (ROR) and the mean dwell time (MDT) by "
+              "drug.\n\n| Drug | ROR | MDT |\n|---|---|---|\n| one | 3 | 4 |",
+    # Pandoc's caption above its table.
+    "titled": "Table: The total risk score (TRS) by group, table {n}.\n\n| Group | TRS |\n"
+              "|---|---|\n| one | 2 |",
+    # A figure's legend.
+    "figure": "Figure {n}. The dose was a high dose (HD) in each session, and the pooled signal "
+              "ratio (PSR) by week.",
+}
+#: What the text then gives, each a warning: a paragraph right after a table that is no note
+#: and defines ROR another way; a second meaning of PRR; EBGM, used before it; and PSR,
+#: which the Results use after the figure's legend and before the Discussion defines it.
+DISPLAYS_AFTER = "In short, the rank order ratio (ROR) was low, and the ROR fell."
+DISPLAYS_USED = "The PSR rose in each week."
+DISPLAYS_DISCUSSION = (
+    "The pooled relative risk (PRR) was high, the empirical Bayes geometric mean (EBGM) was "
+    "low, and the PRR and the EBGM were read. The mean dwell time (MDT), the total risk score "
+    "(TRS) and the pooled signal ratio (PSR) were read, and the MDT, the TRS and the PSR held."
+)
+#: The displays as blocks of the pool `ABBREVIATION_BLOCKS` draws from, a note of each opening.
+DISPLAY_PIECES = tuple(
+    written.format(n=number, note=NOTE_OPENINGS[number % len(NOTE_OPENINGS)], above="",
+                   below=f": Scores {number}.\n\n")
+    for number, written in enumerate(DISPLAY_KINDS.values(), start=1)
+)
+#: What G14 says of it: the text's own findings, warnings, and each display's meaning
+#: another than every one the text gives, a question (Basile, 2026-11-22, "Ask, don't drop").
+DISPLAYS_FOUND = sorted([
+    ("abbreviation-redefined", "ROR", "warned"), ("abbreviation-redefined", "PRR", "warned"),
+    ("abbreviation-used-before-defined", "EBGM", "warned"),
+    ("abbreviation-used-before-defined", "PSR", "warned"),
+    ("abbreviation-undefined", "UMC", "warned"),
+    *(("abbreviation-redefined", short, "asked") for short in ("BDI", "LD", "ROR", "HD")),
+])
+
+
+@st.composite
+def displays_alone(draw: st.DrawFn) -> dict[str, Any]:
+    """A manuscript whose Results hold one display of every kind of `DISPLAY_KINDS`, in an
+    order drawn, each note opening as drawn and pandoc's caption above or under its table;
+    the text's paragraph that is no note right after the legend's table; and after them the
+    use of the figure's form, which the Discussion defines. What G14 reports
+    of it is `DISPLAYS_FOUND`: the text's own findings, as warnings; each display's
+    definition of a text's form in another way, as a question; nothing of the displays'
+    own forms that they use before their notes define them; and UMC, which a table uses and
+    nothing defines, in the question on the forms never defined."""
+    kinds = draw(st.permutations(sorted(DISPLAY_KINDS)))
+    pieces = []
+    for number, kind in enumerate(kinds, start=1):
+        caption = f"Table: Scores by group, table {number}.\n\n"
+        above = draw(st.booleans())
+        piece = DISPLAY_KINDS[kind].format(
+            n=number, note=draw(st.sampled_from(NOTE_OPENINGS)),
+            above=caption if above else "", below="" if above else f": Scores {number}.\n\n")
+        pieces.append(f"{piece}\n\n{DISPLAYS_AFTER}" if kind == "legend" else piece)
+    results, _starts = _paragraphs(draw, [*pieces, DISPLAYS_USED])
+    methods, _starts = _paragraphs(draw, [DISPLAYS_TEXT])
+    discussion, _starts = _paragraphs(draw, [DISPLAYS_DISCUSSION])
+    text = f"# Methods\n\n{methods}# Results\n\n{results}# Discussion\n\n{discussion}"
+    return {"text": text, "found": DISPLAYS_FOUND}
+
+
+
 #: A contributions statement and the initials it names in brackets in the paper, which
 #: every input of the `abbreviations` reading ends with, under a heading of its own so that
 #: no section before it hides it: drawn as one block among the pool's, it was in none of
@@ -1778,6 +1871,9 @@ ABBREVIATION_BLOCKS = tuple(
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
         GLOSSARY_OPENED,
         *APART_PIECES,
+        *DISPLAY_PIECES,
+        DISPLAYS_TEXT,
+        DISPLAYS_AFTER,
     )
 )
 

@@ -183,17 +183,31 @@ def _judged(project: Path, text: str) -> list[tuple[str, str]]:
     return sorted((f.code, f.message.split()[0]) for f in unasked(list(report.findings)))
 
 
+def _asked(project: Path, text: str) -> list[tuple[str, str, bool]]:
+    """As `_judged`, with whether each finding is a question."""
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
+    (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
+    report = check_language(load_project(project)[0])
+    return sorted((f.code, f.message.split()[0], getattr(f, "question", False))
+                  for f in unasked(list(report.findings)))  # fmt: skip
+
+
 def test_a_note_that_repeats_the_text_s_definition_restates_it(project: Path) -> None:
     """Basile, 2026-11-16 ("As a restatement"; docx-sport-A2, docx-psych-A3): journals ask a
     table to define its own short forms, so a note's "X = long form" that repeats the text's
-    definition restates it, as a caption does; one whose long form differs from the text's,
-    "Score" for "Scale", is still a second meaning."""
-    found = _judged(project,
-        "# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette Dependence "
-        "Scale (CDS).\n\n# Results\n\n| Score | n |\n|---|---|\n| 12 | 40 |\n\n*Note.* BDI = Beck "
-        "Depression Inventory; CDS = Cigarette Dependence Score.\n\nThe BDI and the CDS were "
-        "low.\n")  # fmt: skip
-    assert found == [("abbreviation-redefined", "CDS")], found
+    definition restates it, as a caption does. Since 2026-11-21 ("Table stands alone") a
+    table's note defines for its table, so one whose long form differs from the text's,
+    "Score" for "Scale", is asked about, a question and no warning (2026-11-22, "Ask, don't
+    drop"); the same note standing in the text, under no table, is a second meaning, a
+    warning."""
+    methods = ("# Methods\n\nWe used the Beck Depression Inventory (BDI) and the Cigarette "
+               "Dependence Scale (CDS).\n\n# Results\n\n")  # fmt: skip
+    note = ("*Note.* BDI = Beck Depression Inventory; CDS = Cigarette Dependence Score.\n\nThe "
+            "BDI and the CDS were low.\n")  # fmt: skip
+    found = _asked(project, f"{methods}| Score | n |\n|---|---|\n| 12 | 40 |\n\n{note}")
+    assert found == [("abbreviation-redefined", "CDS", True)], found
+    found = _asked(project, f"{methods}The scores were read.\n\n{note}")
+    assert found == [("abbreviation-redefined", "CDS", False)], found
 
 
 def test_a_heading_that_the_text_defines_again_is_restated(project: Path) -> None:

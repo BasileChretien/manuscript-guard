@@ -33,7 +33,9 @@ without the paper, so what it uses it must define. The main text does not inheri
 abstract. The supplement is read after the paper, so it inherits the main text's
 definitions and is otherwise held to its own. The title page that opens either is not read
 for abbreviations at all (`text/title_page.py`): its units and institutions need no
-defining.
+defining. And a table or a figure stands alone (Basile, 2026-11-21): what its caption,
+legend or note defines covers its own uses, wherever they stand in it (`gates/displays.py`),
+and a meaning there other than the text's is a question, not a warning (2026-11-22).
 
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
@@ -62,6 +64,7 @@ from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import INFO, WARN, Finding, Question, Report
 from manuscript_guard.gates import glossary
 from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
+from manuscript_guard.gates.displays import latex_displays, markdown_displays
 from manuscript_guard.gates.notation import judge_notation, notation_edits
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
@@ -412,6 +415,9 @@ class _Mark:
     order: int
     offset: int
     quiet: bool = False
+    #: The table or the figure whose own text it stands in, its file's path and the display's
+    #: place among the file's (`_File.displays`); None in the text.
+    display: tuple[str, int] | None = None
 
     @property
     def key(self) -> tuple[int, int]:
@@ -1800,6 +1806,10 @@ class _File:
     #: Where a word stands whose letters are no short form, a catalogue's designation's and a
     #: name's that underscores join, in order (`_no_short_forms`): no use and no definition.
     apart: tuple[tuple[int, int], ...] = ()
+    #: Where each table's and each figure's own text runs, in order (`gates.displays`): what
+    #: it defines covers its own uses, and another meaning there than the text's is asked
+    #: about (Basile, 2026-11-21, "Table stands alone"; `_asked_of_displays`).
+    displays: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1813,6 +1823,13 @@ class _File:
 
     def line_of(self, offset: int) -> int:
         return bisect_left(self.breaks, offset) + 1
+
+    def display_of(self, offset: int) -> tuple[str, int] | None:
+        """The display whose own text `offset` stands in, as `_Mark.display` names it."""
+        at = bisect_right(self.displays, (offset, len(self.text) + 1)) - 1
+        if at < 0 or offset >= self.displays[at][1]:
+            return None
+        return (str(self.path), at)
 
 
 def _file(
@@ -1852,9 +1869,12 @@ def _file(
     # paper typed in Word has it with no title: "List of abbreviations and acronyms used".
     glossaries = glossary.united([*glossary.sections(titled, len(text)),
                                   *glossary.opened(prose, text, titled, _may_be_defined)])
+    captions = tuple(glossary.markdown_captions(prose))
     return _assembled(
         order, path, text, hidden, prose, regions,
-        captions=tuple(glossary.markdown_captions(prose)),
+        captions=captions,
+        displayed=lambda paired: markdown_displays(text, prose, captions,
+                                                   _noted(text, paired), spans),
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
@@ -1862,6 +1882,20 @@ def _file(
         title_page=title_page, front=_front(hidden, headings, abstract_title), undue=undue,
         titles=_titles(hidden, spans, named),
     )  # fmt: skip
+
+
+def _noted(text: str, paired: list[int]) -> Callable[[int, int], bool]:
+    """Whether the paragraph `[start, end)` of `text` is a display's note: it opens with a
+    note's mark (`auditing.adjusted.NOTE_MARK`: "Note", "Abbreviations", a footnote's), or
+    pairs a short form with its long form, "ICC: intraclass correlation", at one of
+    `paired`, in order."""
+    from manuscript_guard.auditing.adjusted import NOTE_MARK
+
+    def noted(start: int, end: int) -> bool:
+        at = bisect_left(paired, start)
+        return NOTE_MARK.match(text, start) is not None or (at < len(paired) and paired[at] < end)
+
+    return noted
 
 
 def _titles(
@@ -2020,13 +2054,18 @@ def _assembled(
     entries = {at for at, _short, _long in listed}
     headed = _in_titles(titles)
     sentences = [*_definitions(prose, raw), *headed]
+    paired = _paired(prose, raw)
     # A designation and a name underscores join define nothing, whatever stands beside them.
     apart = _no_short_forms(raw)
     definitions = [each for each in (*(each for each in sentences if each[0] not in entries),
                                      *listed) if not _inside(apart, each[0])]  # fmt: skip
     # A heading's definition and a note's, "X = long form", may restate the text's, as a
     # caption's may (Basile, 2026-11-16, "As a restatement"; round 1 of #698).
-    restated = {at for at, _short, _long in (*headed, *_paired(prose, raw))}
+    restated = {at for at, _short, _long in (*headed, *paired)}
+    # Where each table's and figure's own text runs, its notes found by the pairs they hold.
+    displayed = more.pop("displayed", None)
+    if displayed is not None:
+        more["displays"] = displayed(sorted(at for at, _short, _long in paired))
     restating = frozenset(at for at, _short, _long in definitions
                           if at in restated or _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)
@@ -2069,7 +2108,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
-                tables=whole.cells, initials=whole.initials,
+                tables=whole.cells, initials=whole.initials, displays=whole.displays,
                 front=_latex_front(source, whole.regions, start, end),
                 undue=tuple(span for span in whole.undue if span[0] < end and span[1] > start),
                 titles=tuple(title for title in whole.titles if start <= title[0] < end),
@@ -2124,6 +2163,8 @@ class _LatexFile:
     undue: tuple[tuple[int, int], ...] = ()
     #: Its headings' texts, where each starts (`_titles`).
     titles: tuple[tuple[int, str], ...] = ()
+    #: Where each table's own text runs (`gates.displays.latex_displays`).
+    displays: tuple[tuple[int, int], ...] = ()
 
 
 #: A note's text, `\\footnote` or `\\tablefootnote`, which a table's cell prints at the foot.
@@ -2187,6 +2228,7 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         unread=unread,
         captions=captions,
         cells=_latex_cells(source, captions),
+        displays=latex_displays(source),
         glossaries=tuple(glossary.sections(titled, len(source.text))),
         initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
@@ -2350,7 +2392,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             defined.add(short)
             defining.add((file.order, offset))
             scopes[region.scope].defined.setdefault(short, []).append(
-                _Definition(file.order, offset, region.quiet, long, offset in file.restating)
+                _Definition(file.order, offset, region.quiet, file.display_of(offset), long,
+                            offset in file.restating)
             )
 
     # The authors' initials a contributions statement names, which are people in a bracket
@@ -2391,7 +2434,7 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     if count is not None and _formula(short + count.group(1)):
                         continue
                 scopes[region.scope].used.setdefault(short, []).append(
-                    _Use(file.order, offset, region.quiet, undue)
+                    _Use(file.order, offset, region.quiet, file.display_of(offset), undue)
                 )
     return scopes
 
@@ -2489,6 +2532,89 @@ def _given_again(
     return found
 
 
+#: Whether a table's or a figure's definition counts for a use outside it where the text
+#: defines the form nowhere, as a definition there did before "Table stands alone": it does
+#: (Basile, 2026-11-22, "Still counts"), so a use in the text whose only definition is a
+#: table's note is defined, or used before it is defined, and not asked about.
+_DISPLAYS_DEFINE_FOR_THE_TEXT = True
+
+
+def _covering(definitions: Iterable[_Definition]) -> list[_Definition]:
+    """The definitions of one form, in order, that a use outside a display defining it is
+    held to: the text's, and where the text gives none, the displays'
+    (`_DISPLAYS_DEFINE_FOR_THE_TEXT`)."""
+    definitions = list(definitions)
+    text = [mark for mark in definitions if mark.display is None]
+    return text if text or not _DISPLAYS_DEFINE_FOR_THE_TEXT else definitions
+
+
+def _loose(uses: Iterable[_Use], definitions: Iterable[_Definition]) -> list[_Use]:
+    """The uses no definition of their own table or figure covers: those in the text, and
+    those in a display that does not define the form."""
+    defining = {mark.display for mark in definitions if mark.display is not None}
+    return [use for use in uses if use.display is None or use.display not in defining]
+
+
+def _given_again_apart(
+    short: str, definitions: list[_Definition], said
+) -> list[tuple[_Definition, str, str, bool]]:
+    """`_given_again` on the text's definitions of `short` together, and on each table's
+    or figure's apart (Basile, 2026-11-21, "Table stands alone"), each a warning; and the
+    displays' other meanings than the text's, each a question (`_asked_of_displays`). The
+    findings in the order their definitions stand, each with whether it is asked."""
+    groups: dict[tuple[str, int] | None, list[_Definition]] = {}
+    for mark in definitions:
+        groups.setdefault(mark.display, []).append(mark)
+    found = [(*each, False) for group in groups.values()
+             for each in _given_again(short, group, said)]  # fmt: skip
+    # A definition its own display already gives another meaning to is warned of there, or
+    # was where that meaning was first given in it, and is not asked about besides (rounds 1
+    # and 2 of #759).
+    warned = frozenset(id(mark) for display, group in groups.items() if display is not None
+                       for mark in group[1:] if not _same_meaning(group[0].long, mark.long))
+    found += [(*each, True) for each in _asked_of_displays(short, definitions, said, warned)]
+    return sorted(found, key=lambda each: each[0].key)
+
+
+def _asked_of_displays(
+    short: str, definitions: list[_Definition], said, warned: frozenset[int] = frozenset()
+) -> list[tuple[_Definition, str, str]]:
+    """Each definition of `short` in a table's or a figure's own text that gives another
+    meaning than every one the text gives, asked about where that meaning is first given in
+    a display, once (Basile, 2026-11-22, "Ask, don't drop"). A display that gives the text's
+    meaning again says nothing, and two displays are not compared with each other, so where
+    the text defines the form nowhere nothing is asked. `definitions` are in order; one
+    whose `id` is in `warned` gives another meaning than its own display's first, which
+    that display is warned of, and is passed over here, so the next display to give its
+    meaning is asked about. `said(mark, here, beside)` names
+    where `mark` stands, seen from `here`, with `beside` for the same line."""
+    text = [mark for mark in definitions if mark.display is None]
+    if not text:
+        return []
+    told: list[str] = []
+    found = []
+    for mark in definitions:
+        if (mark.display is None or id(mark) in warned
+                or any(_same_meaning(mark.long, each.long) for each in text)):  # fmt: skip
+            continue
+        if _told_before(mark.long, told):
+            continue
+        told.append(mark.long)
+        # The text's definition may stand later on this line, a LaTeX float typed on one line
+        # before the sentence (round 1 of #759).
+        beside = "earlier on the same line" if text[0].key < mark.key else "later on the same line"
+        found.append((
+            mark,
+            f"{short} is defined as '{mark.long}' here, in a table's or a figure's own text, "
+            f"and as '{text[0].long}' {said(text[0], mark, beside)} in the text: is it the "
+            "same thing?",
+            "a table or a figure may define a form for itself; where it means what the text "
+            "does, give the text's long form there too, and where it means something else, "
+            "give it another short form",
+        ))  # fmt: skip
+    return found
+
+
 def _headless(files: list[_File]) -> Finding | None:
     """The note that the main text of a Markdown manuscript has no heading at all, so that
     its abstract and its sections are read as one text; None where it has one."""
@@ -2544,15 +2670,17 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         the list at the end, and "write '...' out and drop the short form" of its entries)."""
         return _in_a_glossary(files[mark.order], mark.offset)
 
-    def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
-        """G14's warning on `short` at `mark`, in the scope read now: its key's subject is
-        the form and the scope, "HR@abstract" (`keys`), and its sentence the one `mark`
-        stands in, which only a definition given again keeps (`keys.PAPER_LEVEL`)."""
+    def finding(code: str, mark: _Mark, short: str, message: str, hint: str,
+                asked: bool = False) -> Finding:  # fmt: skip
+        """G14's warning on `short` at `mark`, in the scope read now, or its question where
+        `asked`: its key's subject is the form and the scope, "HR@abstract" (`keys`), and its
+        sentence the one `mark` stands in, which only a definition given again keeps
+        (`keys.PAPER_LEVEL`)."""
         file = files[mark.order]
-        return Finding(
+        return (Question if asked else Finding)(
             gate=GATE,
             code=code,
-            severity=WARN,
+            severity=INFO if asked else WARN,
             message=message,
             path=file.path,
             line=file.line_of(mark.offset),
@@ -2584,10 +2712,14 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
             # A use where no definition is owed, a title page's or a statement's, is no
-            # use before the definition (Basile, 2026-11-16, decision 28).
-            owed = [use for use in uses if not use.undue]
+            # use before the definition (Basile, 2026-11-16, decision 28); nor is a use in a
+            # table or a figure that defines the form itself, wherever it does (Basile,
+            # 2026-11-21, "Table stands alone"). The others are held to the text's.
+            owed = [use for use in _loose(uses, definitions) if not use.undue]
+            covering = _covering(definitions)
+            before = bool(covering) and bool(owed) and owed[0].key < covering[0].key
 
-            if owed and owed[0].key < first.key and all(listed(mark) for mark in definitions):
+            if before and all(listed(mark) for mark in covering):
                 # Defined only in the list of abbreviations, after this use: the text owes
                 # the long form at first use as well, as most journals ask. Where the text
                 # spells it out too, after the list, it is defined later there, as before
@@ -2599,19 +2731,19 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         short,
                         f"{short} is used here and not spelt out; only the list of "
                         "abbreviations defines it, "
-                        + placed(first, owed[0], "at", "on the same line"),
+                        + placed(covering[0], owed[0], "at", "on the same line"),
                         "spell it out where it first appears, the long form then the short "
                         "form in brackets: most journals ask for that besides the list",
                     )
                 )
-            elif owed and owed[0].key < first.key:
+            elif before:
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
                         owed[0],
                         short,
                         f"{short} is used here, and defined "
-                        + placed(first, owed[0], "later at", "later on the same line"),
+                        + placed(covering[0], owed[0], "later at", "later on the same line"),
                         "define an abbreviation where it first appears: the long form, then "
                         "the short form in brackets",
                     )
@@ -2619,14 +2751,16 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
 
             # Without headings nothing tells the abstract from the main text, so a
             # definition the abstract repeats would be reported as one given twice.
-            for again, message, hint in [] if headless and scope.name == BODY else (
-                _given_again(
+            for again, message, hint, asked in [] if headless and scope.name == BODY else (
+                _given_again_apart(
                     short,
                     definitions,
-                    lambda mark, here: placed(mark, here, "at", "earlier on the same line"),
+                    lambda mark, here, beside="earlier on the same line": placed(
+                        mark, here, "at", beside),
                 )
             ):
-                findings.append(finding("abbreviation-redefined", again, short, message, hint))
+                findings.append(finding("abbreviation-redefined", again, short, message, hint,
+                                        asked))
 
             # A funder or a society named in full with its acronym, once, is how those
             # statements are written; nothing later is expected to use it.
@@ -2666,14 +2800,16 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                 )
 
         for short, uses in scope.used.items():
-            if short in scope.defined or short in known:
+            if short in known or _covering(scope.defined.get(short, ())):
                 continue
-            if scope.name == SUPPLEMENT and short in scopes[BODY].defined:
+            if scope.name == SUPPLEMENT and _covering(scopes[BODY].defined.get(short, ())):
                 continue
             # A use among the acknowledgements, on the title page, in a keywords line or a
             # PDF's running line counts as a use, and is not where a reader is owed the
-            # definition (Basile, 2026-11-16, decision 28).
-            uses = sorted((use for use in uses if not use.undue), key=lambda mark: mark.key)
+            # definition (Basile, 2026-11-16, decision 28); a use in a table or a figure
+            # that defines the form is defined there.
+            uses = sorted((use for use in _loose(uses, scope.defined.get(short, ()))
+                           if not use.undue), key=lambda mark: mark.key)  # fmt: skip
             if not uses:
                 continue
             times = "once" if len(uses) == 1 else f"{len(uses)} times"

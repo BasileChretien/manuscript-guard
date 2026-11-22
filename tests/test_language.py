@@ -1808,11 +1808,22 @@ def test_a_caption_may_restate_a_definition(project: Path, caption: str) -> None
     assert not report.findings, found(report)
 
 
-def test_a_caption_that_means_something_else_is_still_two_meanings(project: Path) -> None:
+def test_a_caption_that_means_something_else_is_asked_about(project: Path) -> None:
+    """A legend defines for its own figure: another meaning there than the text's is a
+    question, never a warning (Basile, 2026-11-21, "Table stands alone"; 2026-11-22, "Ask,
+    don't drop"); the same words in the text are two meanings, a warning."""
     report = written(
         project,
         "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
         "Figure 1. The relative odds ratio (ROR) by year.\n",
+    )
+    (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
+    assert asked.question and asked.severity == "info", asked
+    assert "relative odds ratio" in asked.message, asked.message
+    report = written(
+        project,
+        "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
+        "In Figure 1, the relative odds ratio (ROR) by year.\n",
     )
     (message,) = found(report, "abbreviation-redefined")
     assert "relative odds ratio" in message
@@ -2853,11 +2864,11 @@ def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> N
     meaning is reported once, where it is first given, and a third meaning is a finding of
     its own; the text's own meaning given again is still "defined again". A meaning that
     differs by an apostrophe alone, "Kids' Quiet Scale", is another meaning to
-    `_same_meaning`, reported once too, as DESIGN.md's Known gaps write down."""
-    notes = "".join(f"| Item | n |\n|---|---|\n| one | {n} |\n\n*Note.* KQS = Kids Quiet Scale "
-                    "short form.\n\n" for n in range(3))  # fmt: skip
-    possessive = "".join(f"| Item | n |\n|---|---|\n| two | {n} |\n\n*Note.* KQS = Kids' Quiet "
-                         "Scale.\n\n" for n in range(2))  # fmt: skip
+    `_same_meaning`, reported once too, as DESIGN.md's Known gaps write down. The notes stand
+    in the text here, under no table: a table's own note is compared with nothing outside it
+    (Basile, 2026-11-21, "Table stands alone"), which the end of this test holds."""
+    notes = "*Note.* KQS = Kids Quiet Scale short form.\n\n" * 3
+    possessive = "*Note.* KQS = Kids' Quiet Scale.\n\n" * 2
     report = written(
         project,
         "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS held.\n\n" + notes
@@ -2874,7 +2885,13 @@ def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> N
         "KQS is defined again; it was defined at manuscript/main.md:3",
     ], found(report)
     lines = [f.line for f in report.findings if f.code == "abbreviation-redefined"]
-    assert lines[0] == 9, "the other meaning is reported where it is first given"
+    assert lines[0] == 5, "the other meaning is reported where it is first given"
+    tabled = "".join(f"| Item | n |\n|---|---|\n| one | {n} |\n\n*Note.* KQS = Kids Quiet Scale "
+                     "short form.\n\n" for n in range(3))  # fmt: skip
+    report = written(project, "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS "
+                              "held.\n\n" + tabled)
+    (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
+    assert asked.question and asked.line == 9, asked
 
 
 @pytest.mark.parametrize(

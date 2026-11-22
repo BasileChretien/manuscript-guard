@@ -2267,7 +2267,7 @@ def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
     drawn: tuple[str, list[tuple[str, str, str]]],
 ) -> None:
     """The real-paper corpus's round of 2026-11-21: a short form given another meaning in
-    several table notes is reported once for each other meaning, at the first note to give
+    several notes in the text is reported once for each other meaning, at the first note to give
     it; author-year citations typed after a long form in its bracket are no part of it, so a
     note that gives the long form again gives no other meaning; a catalogue's designation,
     "[KX92]30", typed or escaped, defines nothing and is no use; and a name whose parts
@@ -3538,6 +3538,73 @@ def test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them(
 
     assert findings(drawn["headed"]) == drawn["found"], drawn["headed"]
     assert findings(drawn["headless"]) == drawn["found"], drawn["headless"]
+
+
+from generated import displays_alone  # noqa: E402
+
+
+@holds(60, displays_alone())
+def test_a_table_or_a_figure_stands_alone(drawn: dict[str, Any]) -> None:
+    """Basile, 2026-11-21, "Table stands alone", and 2026-11-22, "Ask, don't drop": a
+    table's caption, legend and note, and a figure's legend, define for their own display
+    only. A definition there of a text's form in another way than the text's is asked about,
+    never warned of, and never compared with another display's; a use in a display that
+    defines the form is no use before its definition, a header above its note among them,
+    and is a use of it. The text is read as before: a paragraph after a table that is no
+    note is the text's, a second meaning there is a warning, a use before the text's
+    definition is a warning, and a form a table uses and nothing defines is asked about."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    read = [_file(0, Path("main.md"), drawn["text"], [], False)]
+    report = _g14_warned(read, nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0],
+                    "asked" if getattr(f, "question", False) else "warned")
+                   for f in report.findings)  # fmt: skip
+    assert found == drawn["found"], (found, drawn["text"])
+
+
+def _a_display_is_compared_with_the_text(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._given_again
+    patch.setattr(language_gate, "_given_again_apart", lambda short, definitions, said: [
+        (*each, False) for each in real(short, definitions, said)])
+
+
+def _a_display_s_other_meaning_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_asked_of_displays",
+                  lambda short, definitions, said, warned=frozenset(): [])
+
+
+def _a_display_s_definition_covers_the_text_beside_the_text_s(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_covering", lambda definitions: list(definitions))
+
+
+def _a_caption_above_its_table_captions_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import displays
+
+    real = displays._placed
+
+    def placed(blocks, at, owner, taken):
+        if displays._kind(blocks, at + 1) == displays.TABLE:
+            return None
+        return real(blocks, at, owner, taken)
+
+    patch.setattr(displays, "_placed", placed)
+
+
+def _a_display_s_own_definition_covers_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_loose", lambda uses, definitions: list(uses))
+
+
+def _a_note_is_never_a_display_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_noted", lambda text, paired: lambda start, end: False)
+
+
+def _a_number_alone_takes_no_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import displays
+
+    patch.setattr(displays, "_bare", lambda legend: False)
+
 
 
 def _a_glossary_with_no_title_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -27757,6 +27824,34 @@ BROKEN = {
     "G14 asks of a short form the project knows": (
         _a_known_form_is_still_asked,
         test_the_short_forms_never_defined_are_one_question,
+    ),
+    "G14 compares a table's or a figure's definitions with the text's": (
+        _a_display_is_compared_with_the_text,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a table's or a figure's other meaning than the text's is dropped": (
+        _a_display_s_other_meaning_is_dropped,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a display's definition covers a text use where the text gives one": (
+        _a_display_s_definition_covers_the_text_beside_the_text_s,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a caption or a legend above its table captions nothing": (
+        _a_caption_above_its_table_captions_nothing,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a table's own definition does not cover its uses": (
+        _a_display_s_own_definition_covers_nothing,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a note under a table is never its own": (
+        _a_note_is_never_a_display_s,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "APA's number alone above a table takes no title": (
+        _a_number_alone_takes_no_title,
+        test_a_table_or_a_figure_stands_alone,
     ),
     "the audit lists the short forms left undefined last first": (
         _the_short_forms_are_listed_last_first,

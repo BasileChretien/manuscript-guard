@@ -5582,6 +5582,39 @@ with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**
 the text gave; another meaning is reported. A Markdown figure's caption, the text of its
 image, is not read at all.
 
+**A table or a figure stands alone (Basile, 2026-11-21, "Table stands alone").** "A caption,
+legend or note defines for its own table or figure only: its definitions cover the uses in
+that table, and are never compared with the text's." In the real-paper corpus about 104
+judged false findings came from reading a display's text as the paper's: a legend restating a
+form with a slightly different long form, a table's header defined in its own note below it.
+A display's own text is found by its shape (`gates.displays`): in Markdown, a table's lines,
+its caption (pandoc's, or a legend that opens with its number, above it or under it; APA's
+number alone above the title, "Table 1." then its title), and each paragraph under it that
+opens with a note's mark ("Note", "Abbreviations", a footnote's) or pairs a short form with
+its long form ("ICC: intraclass correlation"); a legend with no table beside it, a figure's
+or a supplementary table's, "**S1 Table.** ...", is a display with the notes under it; a
+heading, and anything G14 does not read, ends one. In LaTeX it is a table's float whole, or a
+`tabular` and its kin in none. A definition there that gives a meaning the text gives says
+nothing, so a display may define its forms again as the text does. One that gives another
+meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
+drop"): a question, `abbreviation-redefined` at INFO, never a warning, where that meaning is
+first given in a display and once, naming the display's long form and the text's. A slip in a
+note's long form, "Score" for "Scale", is then still before the author, and a display's own
+wording costs no warning. Two displays are never compared with each other, so where the text
+defines a form nowhere nothing is asked; within one display, its caption and its note giving
+one form two meanings is still a warning, as in the text, and that definition is not asked
+about besides, though its meaning is not the text's either (round 1 of #759). A use in a
+display that the same
+display defines is no use before the definition, wherever that stands in it, a header over
+its note among them; and since a use there is a use, a definition used only in its display is
+not unused. Everything else is read as before: a use in a display that does not define the
+form is held to the text's definitions, and a form defined nowhere is asked about. Where the
+text defines a form nowhere, a display's definition still counts for a use in the text, as
+before (Basile, 2026-11-22, "Still counts"; `language._DISPLAYS_DEFINE_FOR_THE_TEXT`): a use
+after it is defined, a use before it is used before it is defined. Covering its display alone
+would have turned 18 true warnings of the corpus into questions or nothing, for 16 false
+ones.
+
 **Each other meaning is reported once.** A paper of the real-paper corpus gave one short form
 another long form in each of six table notes, and G14 said so six times. A definition whose
 meaning differs from the first is reported where that meaning is first given; a later one
@@ -17110,6 +17143,33 @@ been sorted yet.
   `tests/test_corpus_tool.py::test_a_lost_finding_is_not_kept_by_another_of_its_form_in_another_part`
   and `tests/test_corpus_tool.py::test_a_finding_with_no_file_is_not_at_the_place_of_one_with_a_file`.
 
+- **G14 finds a table's or a figure's own text by its shape.** What stands beside a table
+  and is its own is read by the rules of "A table or a figure stands alone", with no guess
+  at what a paragraph says. Accepted.
+  - A note under a table that opens with no note's mark and pairs no short form, "Values
+    are means; the intraclass correlation coefficient (ICC) is given", is the text's, and
+    is compared with the text's definitions as before. A paragraph of the text right under
+    a table that opens with a note's mark or pairs a form, "Note: we ...", is taken for the
+    table's note.
+    Pinned by `tests/test_tables_stand_alone.py::test_a_paragraph_after_a_table_that_is_no_note_is_the_text_s`
+    and `tests/test_tables_stand_alone.py::test_a_paragraph_of_the_text_under_a_table_that_opens_on_note_is_taken_for_its_note`.
+  - A legend captions only the table beside it, above it or under it with a blank line
+    between, or across one paragraph where it holds its number alone, APA's title. A legend
+    with any other paragraph between it and its table is a display of its own, and the
+    table another. Accepted.
+  - A PDF's text holds no table that G14 can find, so a PDF's tables, captions and notes
+    are read as the text's, as before. Accepted.
+  - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
+  - Where the text defines a form nowhere, a display's definition counts for a use outside
+    it: the use after it is defined, the use before it is used before it is defined, as
+    before "Table stands alone" (Basile, 2026-11-22, "Still counts"). So a text that leans
+    on a table's note for a form it never spells out is not asked about it.
+    Pinned by `tests/test_tables_stand_alone.py::test_a_use_in_the_text_only_a_table_defines_is_held_to_the_table_s_definition`.
+  - A display's meaning is asked about only where it differs from every meaning the text
+    gives: a note that gives the text's second meaning, itself warned of, says nothing of
+    its own.
+    Pinned by `tests/test_tables_stand_alone.py::test_a_second_definition_in_the_text_is_still_warned_of_beside_a_table`.
+
 - **A short form that needs its definition and is never given one is asked about, not
   warned of.** G14's one question on the short forms never defined lists it beside the
   names, designations and everyday forms it cannot tell it from, and a project's `check`
@@ -25143,12 +25203,12 @@ Open, recorded as each change landed:
   bracket's short form, and a bracket that lists short forms; "X = long form" and "X: long
   form"; "known as X" and its kin, and a heading; a LaTeX citation's note), each read through
   the letter rule above, which no shape widens. Accepted.
-  - A table's or a figure's note may restate the text's definition, as a caption may
-    (Basile, 2026-11-16, "As a restatement"), and so may a heading the text defines again;
-    one whose long form differs is still a second meaning. A note is known by its shape,
-    "X = long form" or "X: long form", not by where it stands, so that shape in a sentence
-    restates too, and a note written "Beck Depression Inventory (BDI)" under a table is a
-    second definition.
+  - A note's shape, "X = long form" or "X: long form", may restate the text's definition
+    wherever it stands, as a caption may (Basile, 2026-11-16, "As a restatement"), and so
+    may a heading the text defines again; in the text, one whose long form differs is still
+    a second meaning. Under a table it is the table's own note, and another meaning there
+    than the text's is a question (Basile, 2026-11-21, "Table stands alone"; 2026-11-22,
+    "Ask, don't drop").
     Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
   - A heading defines only where a heading over it names a section by the closed list
     (`section_name_alone`), "## Force and electromyography (EMG)" under the Methods, in a

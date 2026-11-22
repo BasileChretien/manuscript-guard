@@ -17446,9 +17446,6 @@ been sorted yet.
   the letter. A command it does not know, `{\IJ}ssel`, is dropped with the letters run on
   into it.
   Pinned by `tests/test_names.py::test_a_dotless_i_no_accent_is_on_before_a_t_is_pinned`.
-- **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
-  built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
-  keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
 - **"Any browser" means a current one.** The page uses `??` and `<dialog>`, so a browser older
   than about 2022 shows it wrongly or not at all. What a co-author sees then is untested.
   Accepted.
@@ -29971,6 +29968,22 @@ Closed since, and why each mattered (an open gap goes above this line):
   built line as a heading too, and the document builds; found while pinning the entry.
   Held by `tests/test_corruption.py::test_a_setext_title_whose_value_starts_with_a_hash_is_built`
   and `tests/test_corruption.py::test_a_setext_title_whose_bound_value_starts_with_a_hash_builds_as_a_heading`.
+
+- **No test ran the checker page's JavaScript (Known gaps F20, 2026-11-21).** The page a
+  co-author is sent was checked by reading its template and by opening a built page in a
+  browser by hand, so its storage, its download, its dialog, its clipboard and its keys were
+  held by nothing, and a defect there would have reached a co-author and not the suite.
+  `web/test/checker.mjs` drives a page built from the worked example in Chrome and in
+  Firefox, served over loopback: an answer kept across a reload, and the page drawn and
+  answering where storage throws; Save downloading the file of the page's name, holding the
+  answers given; Save and Copy opening the dialog with that file in its box, and Close
+  shutting it; Copy putting the file on the clipboard, and the box holding it where the
+  clipboard is refused or absent; each status key recording its answer, an arrow moving
+  between items, a key held with Ctrl, Alt or Meta recording nothing, and a key typed into
+  the note box staying the note's. Chrome refuses the clipboard by its permission; Firefox
+  writes on a click whatever its permissions say, so there the refused clipboard is a
+  stand-in whose `writeText` rejects. It runs in CI's `web` job, on a ready pull request and
+  on main, and not in pytest.
 
 - **A paragraph written straight under a heading went without an identifier (closed by #62,
   9211f9391; moved here 2026-11-21).** `# Methods\nWe did X.` is a heading and a paragraph

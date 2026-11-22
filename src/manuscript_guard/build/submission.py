@@ -822,6 +822,9 @@ def assemble_pack(
 
     from manuscript_guard.gates.journal_quotes import journal_checklist
 
+    # The main document, held to the format the journal takes it in: a .docx went to Royal
+    # Society Open Science, which asks for a PDF, and nothing said so.
+    main_document, wrong_format = _main_document(project, document, [name for _p, name in extra])
     generated = [
         ("title-page.md", title_page(project)),
         ("credit-statement.md", credit_statement(project)),
@@ -834,7 +837,7 @@ def assemble_pack(
         # and the clipboard make of it; this is the checked numbers and nothing else.
         ("abstract.txt", abstract),
         # The journal's rules no gate checks, for the corresponding author to tick and sign.
-        ("journal-checklist.md", journal_checklist(project)),
+        ("journal-checklist.md", journal_checklist(project, wrong_format)),
         # For the portal's box for each figure's alternative text, where it has one.
         ("alt-text.md", alt_texts(project)),
         # What each co-author checked, item by item, with the record's chain head (Task 1).
@@ -893,9 +896,24 @@ def assemble_pack(
                 shutil.copy2(path, target)
                 files.append(target)
 
-    manifest = _write_manifest(project, directory, files, checked=checked)
-    notes = (left_out,) if left_out else ()
+    manifest = _write_manifest(project, directory, files, checked=checked,
+                               main_document=main_document)  # fmt: skip
+    notes = tuple(note for note in (left_out, wrong_format) if note)
     return Pack(directory=directory, files=tuple(files), manifest=manifest, notes=notes)
+
+
+def _main_document(project: Project, document: Path, packed_names: list[str]
+                   ) -> tuple[dict, str | None]:  # fmt: skip
+    """What the manifest records of the main document, and the sentence that says the
+    journal does not take it, where its profile says what it takes (`gates/main_document`)."""
+    from manuscript_guard.gates.journal import _profile
+    from manuscript_guard.gates.main_document import gap
+    from manuscript_guard.gates.revision import rounds
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    latex = manuscript_format(project.path("manuscript")) == LATEX
+    return gap(_profile(project), document, packed_names, latex_manuscript=latex,
+               revision=bool(rounds(project)))  # fmt: skip
 
 
 #: The longest `git` is waited for. A repository on a network drive, or one with a file
@@ -970,7 +988,8 @@ def _retrieved_on(path: Path | None) -> str:
 
 
 def _write_manifest(
-    project: Project, directory: Path, files: list[Path], *, checked: bool = True
+    project: Project, directory: Path, files: list[Path], *, checked: bool = True,
+    main_document: dict | None = None,
 ) -> Path:
     from manuscript_guard.gates.review import manuscript_digest, overrides
 
@@ -1017,6 +1036,10 @@ def _write_manifest(
         ],
         "overrides": overrides(project),
         "manuscript_sha256": manuscript_digest(project),
+        # Which file is the paper, in what format, and whether the journal takes it: G4
+        # reads it back (`main-document-format`), so that a pack `submit --latex` made of
+        # the PDF the journal asks for is not warned of as the .docx a plain `submit` packs.
+        **({"main_document": main_document} if main_document else {}),
         "files": entries,
     }
     path = directory / "MANIFEST.yaml"

@@ -10369,6 +10369,167 @@ def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> 
     assert warned()
 
 
+# ------------------------------------------------------- the main document's format
+
+_MAIN_QUOTE = "Please submit a PDF as your main document."
+_EITHER_QUOTE = "Upload the manuscript as a Word file or as a PDF."
+_WORD_QUOTE = "Upload the manuscript as a Word document."
+#: Each format a quote names, in the forms a journal's page writes it.
+_NAMING = [
+    (["pdf"], "Submit the main document as a pdf file."),
+    (["docx"], "Upload the manuscript as a .docx file."),
+    (["doc", "rtf"], "The manuscript may be sent as a .doc or Rich Text Format file."),
+    (["odt"], "OpenDocument text files are accepted."),
+    (["tex"], "LaTeX submissions are welcome."),
+    # Round 2 of #724: LaTeX2e had no boundary after LaTeX, and these names were not read.
+    (["tex"], "Manuscripts prepared in LaTeX2e are welcome."),
+    (["tex"], "Manuscripts prepared in LaTeX2ε are welcome."),
+    (["tex"], "Manuscripts prepared in LaTeX 2e are welcome."),
+    (["pdf"], "Send it in Portable Document Format."),
+    (["rtf", "odt"], "A rich-text or Open-Document file is accepted."),
+    (["odt"], "Files from OpenOffice or LibreOffice (ODF) are accepted."),
+]
+
+
+def _main_document_codes(root: Path, formats: list[str] | None, stage: str, *,
+                         quoted: bool = True, packed: list[str] | None = None,
+                         quote: str = _MAIN_QUOTE) -> list[tuple[str, str]]:  # fmt: skip
+    """G4's findings on the main document's format, and on the quotes, at `stage`, for the
+    example whose journal takes its main document in `formats` (None: the profile says
+    nothing of it), quoted as `quote` from its stored page or not, with a pack already made
+    whose manifest records its main document in `packed`, or none made."""
+    from manuscript_guard.gates import check_journal, check_main_document
+    from manuscript_guard.gates.journal_quotes import page_digest
+    from manuscript_guard.policy import apply_stage
+
+    stored = root / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    text = stored.read_text(encoding="utf-8") + f"\n{quote}\n"
+    stored.write_text(text, encoding="utf-8")
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["page_sha256"] = page_digest(text)
+    if formats is not None:
+        document["submission"] = {"main_document": formats}
+        if quoted:
+            document["quotes"]["submission.main_document"] = quote
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if packed is not None:
+        pack = root / "build" / "submission"
+        pack.mkdir(parents=True, exist_ok=True)
+        main = {"docx": "manuscript.docx"}.get(packed[0], "manuscript.pdf")
+        (pack / "MANIFEST.yaml").write_text(yaml.safe_dump(
+            {"main_document": {"file": main, "formats": packed}}), encoding="utf-8")  # fmt: skip
+    project, _ = load_project(root)
+    report, _ = apply_stage(check_main_document(project, stage).merge(check_journal(project)),
+                            stage)  # fmt: skip
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.code in {"main-document-format", "journal-rule-unquoted",
+                                "journal-format-not-in-quote"})  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("formats", "stage", "kwargs", "said"),
+    [
+        # Royal Society Open Science's rule, and the .docx `submit` packs a Markdown paper as:
+        # a warning at submission, a note before.
+        (["pdf"], "submission", {}, [("main-document-format", "warn")]),
+        (["pdf"], "drafting", {}, [("main-document-format", "info")]),
+        # A journal that takes either, and a profile that says nothing of it: nothing.
+        (["docx", "pdf"], "submission", {"quote": _EITHER_QUOTE}, []),
+        (None, "submission", {}, []),
+        # Unquoted, it is a rule like any other with no words of the page behind it.
+        (["pdf"], "submission", {"quoted": False},
+         [("journal-rule-unquoted", "warn"), ("main-document-format", "warn")]),
+        # Once a pack is made, its manifest says what it holds: the PDF `submit --latex`
+        # packed, and the warning is gone; the .docx a plain `submit` packed, and it stays.
+        (["pdf"], "submission", {"packed": ["pdf", "tex"]}, []),
+        (["pdf"], "submission", {"packed": ["docx"]}, [("main-document-format", "warn")]),
+        # A journal that takes Word only, and a pack of the PDF and its LaTeX source.
+        (["docx"], "submission", {"packed": ["pdf", "tex"], "quote": _WORD_QUOTE},
+         [("main-document-format", "warn")]),
+    ],
+)  # fmt: skip
+def test_a_main_document_in_a_format_the_journal_does_not_take_is_warned_of(
+    project: Path, formats, stage: str, kwargs: dict, said: list
+) -> None:
+    assert _main_document_codes(project, formats, stage, **kwargs) == said
+
+
+@pytest.mark.parametrize(
+    ("formats", "quote", "packed", "said"),
+    [
+        # Round 1 of #724: Word typed for a page that asks for a PDF passed, and silenced the
+        # warning a PDF-only journal's paper should get.
+        (["docx"], _MAIN_QUOTE, ["docx"], [("journal-format-not-in-quote", "fail")]),
+        (["docx", "pdf"], _MAIN_QUOTE, ["docx"], [("journal-format-not-in-quote", "fail")]),
+        (["pdf"], _WORD_QUOTE, None, [("journal-format-not-in-quote", "fail"),
+                                      ("main-document-format", "warn")]),
+        # Round 2: "word" in a word count or limit is no Word file.
+        *[(["docx"], f"Submit a PDF of the main document; {limit}.", ["docx"],
+           [("journal-format-not-in-quote", "fail")])
+          for limit in ("8,000-word limit", "8000 words at most", "a word count of 8000",
+                        "a word limit applies")],
+        # Each format named as a page names it, in capitals or not, with its dot or by name.
+        *[(formats, quote, formats[:1], []) for formats, quote in _NAMING],
+    ],
+)  # fmt: skip
+def test_a_main_document_format_its_quote_does_not_name_fails(
+    project: Path, formats: list[str], quote: str, packed, said: list
+) -> None:
+    """Each format the profile says the journal takes is named by its quote: a format typed
+    wrong is a rule the page does not state, as a limit typed wrong is."""
+    assert _main_document_codes(project, formats, "submission", quote=quote,
+                                packed=packed) == said  # fmt: skip
+
+
+def test_the_warning_of_a_pack_on_disk_says_another_route_may_pack_another(
+    project: Path,
+) -> None:
+    """Round 1 of #724: G4 reads the pack on disk, made before this `submit` replaces it,
+    and said "the pack's" as though it were the one about to be sent."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+
+    _main_document_codes(project, ["pdf"], SUBMISSION, packed=["docx"])
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert said.message == ("the journal takes its main document as PDF, and the pack on "
+                            "disk, manuscript.docx, is Word (.docx)")  # fmt: skip
+    assert "the next `submit` by the other route packs another" in said.hint
+
+
+def test_a_latex_paper_s_pack_on_disk_is_offered_no_other_route(
+    project: Path, monkeypatch
+) -> None:
+    """Round 2 of #724: a LaTeX manuscript has one route, its PDF and source, and was told
+    the other would pack another."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+    from manuscript_guard.text import reader
+
+    _main_document_codes(project, ["docx"], SUBMISSION, packed=["pdf", "tex"], quote=_WORD_QUOTE)
+    monkeypatch.setattr(reader, "manuscript_format", lambda _folder: reader.LATEX)
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert "other route" not in said.hint
+
+
+def test_the_main_document_warning_says_what_the_journal_takes_and_how_to_make_it(
+    project: Path,
+) -> None:
+    """The finding names the format the journal takes, in its own words, and the two ways
+    to it a Markdown paper has: `submit --latex`, or the .docx saved as PDF once its
+    citations are refreshed."""
+    from manuscript_guard.gates import check_main_document
+    from manuscript_guard.policy import SUBMISSION
+
+    _main_document_codes(project, ["pdf"], SUBMISSION)
+    [said] = check_main_document(load_project(project)[0], SUBMISSION).findings
+    assert said.gate == "G4"
+    assert said.message == ("the journal takes its main document as PDF, and `submit` packs "
+                            "this manuscript as Word (.docx)")  # fmt: skip
+    assert "manuscript-guard submit --latex" in said.hint
+    assert "refresh" in said.hint and _MAIN_QUOTE in said.hint
+
+
 _BOX_QUOTE = "Include 3 to 4 highlights of no more than 60 characters each."
 _POLICY_QUOTE = "The accepted manuscript may be deposited after 12 months."
 
@@ -16278,6 +16439,9 @@ _NOT_THE_MANUSCRIPT = (
     "check_data_quality",
     # G4's DOI held to the receipts: it reads paper.yaml and deposit/receipts/.
     "check_deposit_doi",
+    # G4's main document: it reads the profile and the pack's MANIFEST.yaml, or predicts the
+    # pack from the manuscript's format, a LaTeX one's PDF and source among them (#724).
+    "check_main_document",
     # G1's of the vault: it reads the results, design/vault.yaml and the release records.
     "check_vault_results",
     "check_datasets", "check_declared_datasets",
@@ -39403,6 +39567,45 @@ def test_a_number_typed_against_its_word_beside_a_latex_name_is_caught(project: 
     table = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
              "\\begin{tabular}{ll}\nRATE\\_12mth & 0,532 \\\\\nGILT\\_5yrs\\_yld & 0,366 \\\\\n"
              "\\end{tabular}\n\n")  # fmt: skip
+    (folder / "main.tex").write_text(table + "It held.\n\\end{document}\n", encoding="utf-8")
+    assert notation_findings(project) == []
+    (folder / "main.tex").write_text(table + "It held in 12patients.\n\\end{document}\n",
+                                     encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
+@pytest.mark.parametrize("series", ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth"],
+                         ids=["bare", "escaped"])  # fmt: skip
+def test_a_number_typed_against_its_word_beside_a_series_name_is_caught(
+    project: Path, series: str
+) -> None:
+    """A series named with underscores ends its name at a hyphen, `UNEMP_DURA_6-12mth`, and
+    "12mth" is still the series' name: no space left out anywhere in its run (Basile,
+    2026-11-22, "Skip the whole token"). "12patients" in the next run is caught."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    main_md(project).write_text(text.replace(old, f"{old} The series {series} held."),
+                                encoding="utf-8")  # fmt: skip
+    assert notation_findings(project) == []
+    main_md(project).write_text(text.replace(old, f"{old} The series {series} 12patients held."),
+                                encoding="utf-8")  # fmt: skip
+    assert [message for code, _line, message in notation_findings(project)
+            if code == "notation-space-missing"] == [
+        "a number and a word run together once: '12patients'"]  # fmt: skip
+
+
+def test_a_number_typed_against_its_word_beside_a_latex_series_name_is_caught(
+    project: Path,
+) -> None:
+    """In a LaTeX data table, `UNEMP\\_DURA\\_6-12mth`: no space left out in its run; the
+    sentence after the table, "12patients", is caught."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    table = ("\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe model held.\n"
+             "\\begin{tabular}{ll}\nUNEMP\\_DURA\\_6-12mth & 0,532 \\\\\n\\end{tabular}\n\n")
     (folder / "main.tex").write_text(table + "It held.\n\\end{document}\n", encoding="utf-8")
     assert notation_findings(project) == []
     (folder / "main.tex").write_text(table + "It held in 12patients.\n\\end{document}\n",

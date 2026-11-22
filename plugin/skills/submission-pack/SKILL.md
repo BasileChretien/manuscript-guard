@@ -37,7 +37,7 @@ the check: the pack is the version you send anywhere.
 | `response-to-reviewers.md` | the point-by-point response, when a revision round has been opened |
 | `manuscript-marked-up.docx`, `supplementary-marked-up.docx` | at a revision: the revision with every change since the document the round kept shown as tracked changes (`-highlighted` with `submit --highlight`); left out, with the reason, where the round kept no document |
 | `figures/` | the `.png`, `.pdf`, `.tif`, `.tiff` and `.eps` files in `figures/`; an `.svg` is not copied |
-| `MANIFEST.yaml` | every file with its sha256; the version of manuscript-guard that checked it, the commit and whether the tree differed from it, when the journal profile and the checklists were read, and every review finding left as it was, with the reason and who decided |
+| `MANIFEST.yaml` | every file with its sha256; the version of manuscript-guard that checked it, the commit and whether the tree differed from it, when the journal profile and the checklists were read, every review finding left as it was, with the reason and who decided, and the main document with its format and whether the journal takes it |
 
 The manifest matters more than it looks. Six months later, "which version did the journal
 actually get" has no reliable answer without one.
@@ -160,6 +160,12 @@ Do not summarise the abstract. The editor has it.
 
 ## Before you send
 
+- Send the main document in a format the journal takes. Where the profile says
+  (`submission: main_document:`) and the pack's is in none of them, `submit` says so, and
+  `journal-checklist.md` carries it as an item to tick; G4 warns at submission
+  (`main-document-format`). For a journal that takes a PDF, run `submit --latex`, which
+  packs the PDF LaTeX makes with its source in latex/; or refresh the .docx's citations,
+  save it as PDF from Word and send that, which the manifest's checksums do not cover.
 - Read the pack, not the source. It is a different document once it is assembled.
 - The submission check counts only where the copies of the cited works are, not in CI
   alone. A new project keeps `literature/sources/` out of git, so CI notes each quote,

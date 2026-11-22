@@ -27,9 +27,13 @@ Two findings are not about consistency:
 * `notation-space-missing`: a number typed against the word after it, "0.41points",
   "10hours", "2ndyear", or a word typed against a signed number, "to+0.77". No house style
   writes these: a space was left out (the author's Abstract, 2026-11-10, eight times). Not
-  inside a piece raised or lowered as pandoc writes one, "u~0school~", nor inside a name
-  joined by underscores, `RATE\\_12mth`; and in text the audit read from a PDF, no word
-  against a signed number, since pdftotext sets an exponent or an index on the line.
+  inside a piece raised or lowered as pandoc writes one, "u~0school~", nor anywhere in a run
+  of characters with no blank in it that holds a name joined by underscores,
+  `UNEMP\\_DURA\\_6-12mth`, where no unit is closed up either (Basile, 2026-11-22, "Skip the
+  whole token"), an "=" and nothing else ending the run, so that "C_max=12mg" is read
+  where no other name's run takes the value in ("'=' ends the token"); and in text the
+  audit read from a PDF, no word against a signed number, since pdftotext sets an exponent
+  or an index on the line.
 
 **A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
 bindings, `{{results.ror.point}}`, so the notation is read with each binding that stands in
@@ -488,7 +492,12 @@ def _read(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> _Read:
                        (found.span("gap"),))  # fmt: skip
             percents.add("spaced" if found["gap"] else "closed", use)
 
+        named: list[tuple[int, int]] | None = None
         for found in _UNIT.finditer(text):
+            if named is None:
+                named = _named(text)
+            if _within(named, found):
+                continue  # "DOSE\_6-5mg": in the run of a name from code
             unit = found["unit"]
             if len(unit) == 1 and _a_name(text, found.start(), found.end()):
                 continue  # "Figure 3g" is a panel and "compound 3g" a compound
@@ -509,8 +518,8 @@ def _read(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> _Read:
                 continue  # "0xff", a number written in hexadecimal
             if not_prose is None:
                 not_prose = _not_prose(text)
-            if any(start <= found.start() and found.end() <= end for start, end in not_prose):
-                continue  # "u~0school~", "RATE\_12mth": an index, a name from code
+            if _within(not_prose, found):
+                continue  # "u~0school~", "RATE\_6-12mth": an index, the run of a name
             between = found.start("word")
             run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
                                ((between, between),)))  # fmt: skip
@@ -519,6 +528,10 @@ def _read(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> _Read:
         # number (Basile, 2026-11-21, "Skip in PDF text").
         signed = () if passage.path in pdf else _WORD_THEN_NUMBER.finditer(text)
         for found in signed:
+            if named is None:
+                named = _named(text)
+            if _within(named, found):
+                continue  # "RATE\_x-to+0.5": in the run of a name from code
             between = _letters_before(found)
             run_on.append(_Use(place, found.start(), passage, found.end() - found.start(),
                                ((between, between),)))  # fmt: skip
@@ -527,13 +540,24 @@ def _read(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> _Read:
 
 def _not_prose(text: str) -> list[tuple[int, int]]:
     """Where no space can be left out in `text`: a piece raised or lowered as pandoc writes
-    one, and a word joined by underscores, a name from code as `code-name-in-prose` reads
-    one (`code_names.joined_names`)."""
-    from manuscript_guard.gates.code_names import joined_names
+    one, and the run of characters with no blank in it that holds a word joined by
+    underscores, a name from code as `code-name-in-prose` reads one
+    (`code_names.joined_runs`)."""
+    return [found.span() for found in _RAISED_OR_LOWERED.finditer(text)] + _named(text)
 
-    return [found.span() for found in _RAISED_OR_LOWERED.finditer(text)] + list(
-        joined_names(text)
-    )
+
+def _named(text: str) -> list[tuple[int, int]]:
+    """Where each run of characters that holds a name from code stands in `text`: no space
+    is left out, nor a unit closed up, anywhere in one (Basile, 2026-11-22, "Skip the whole
+    token")."""
+    from manuscript_guard.gates import code_names
+
+    return list(code_names.joined_runs(text))
+
+
+def _within(spans: Iterable[tuple[int, int]], found: re.Match[str]) -> bool:
+    """Whether what `found` matched stands wholly inside one of `spans`."""
+    return any(start <= found.start() and found.end() <= end for start, end in spans)
 
 
 def judge_notation(passages: Iterable[Passage], pdf: Collection[Path] = ()) -> Report:

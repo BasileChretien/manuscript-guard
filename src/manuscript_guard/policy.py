@@ -243,6 +243,7 @@ BINDS_AT = {
     # A rule of the profile read wrong, or never on the journal's page.
     "journal-quote-not-on-page": INTERNAL_REVIEW,
     "journal-limit-not-in-quote": INTERNAL_REVIEW,
+    "journal-format-not-in-quote": INTERNAL_REVIEW,
     "missing-required-section": INTERNAL_REVIEW,
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,

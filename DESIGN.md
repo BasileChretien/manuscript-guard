@@ -5984,10 +5984,18 @@ left to it; its plural, "5mins", which `notation-unit` does not read, is a space
 read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
 by the letter before it; a number in hexadecimal, "0xff", is left alone. Nor is a number
 read inside a piece raised or lowered as pandoc writes one, `~…~` or `^…^`, where a Word
-table's note converted to Markdown writes a symbol's index, "u~0school~"; nor inside a word
-joined by underscores, `RATE\_12mth` in a LaTeX data table, which is a name from code as
-`code-name-in-prose` reads one (`code_names.joined_names`), so the two readings agree on
-what a name is. In text the audit read from a PDF a word typed against a signed number is
+table's note converted to Markdown writes a symbol's index, "u~0school~"; nor anywhere in a
+run of characters with no blank in it that holds a word joined by underscores, a name from
+code as `code-name-in-prose` reads one (`code_names.joined_names`), so the two readings
+agree on what a name is. The run is taken as `code-name-in-prose` takes it to look for a
+path (`code_names.joined_runs`), so `UNEMP\_DURA\_6-12mth` in a LaTeX data table, whose
+name ends at the hyphen, is no "12mth" typed against its number; nor is a unit closed up in
+such a run, `DOSE\_6-5mg`, nor a word against a signed number, `RATE\_x-to+0.5` (Basile,
+2026-11-22, "Skip the whole token"). An "=" ends the run, so the value after it is read
+unless it runs on into the run of another name: "C_max=12mg" is a unit closed up, and
+"(t_1/2=5h)" reports "5h" ("'=' ends the token"); a hyphen ends nothing, nor does any other
+sign (Known gaps). `code-name-in-prose` looks for a path in the run as before, past
+an "=" too. In text the audit read from a PDF a word typed against a signed number is
 not read at all: pdftotext sets a superscript or a subscript on the line, so "cm−3",
 "yr−1", "cos−1" and "tn+1" are exponents and indices there, and on the real-paper corpus
 every such finding was one (Basile, 2026-11-21, "Skip in PDF text"). The audit says which
@@ -7920,6 +7928,35 @@ below it.
 
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
+
+The main document goes in a format the journal takes. Royal Society Open Science says
+"Please submit a PDF as your main document", and the pack offered the .docx the build makes:
+a profile had no field to say it, and the paper that found it could only list the rule under
+`manual:`. A profile now says it as `submission: {main_document: [pdf]}`, the formats the
+journal takes (pdf, docx, doc, rtf, odt, and tex for the LaTeX source), quoted under
+`quotes.submission.main_document` and held to the stored page as every rule is; each format
+must be named in the quote ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument",
+"LaTeX"), or G4 fails `journal-format-not-in-quote` from internal review, since `[docx]`
+quoted as RSOS's sentence would silence the warning below (round 1 of #724). The manifest
+records the main document, its formats (a .docx; or a PDF and, where latex/ holds the
+source, tex), and, where the profile says, what the journal takes and whether the pack meets
+it. Where it does not, `submit` says so with the pack and `journal-checklist.md` carries it
+under a heading of its own, "The main document", beside "The rules no check holds" (the
+page's title is the rules to check before sending), written even where the profile has no
+`manual:` rule, each with how to make the one the journal takes: `submit --latex` for a
+Markdown paper's PDF or LaTeX source, or the .docx saved as PDF from Word once its
+citations are refreshed, where the journal takes a PDF; `submit` without `--latex` where it
+takes Word; and at a revision, that the LaTeX route packs no marked-up copy. `submit` does
+not take the LaTeX route by itself: it needs a TeX installation, packs no marked-up Word copy
+at a revision, and is the author's choice of document. G4 says it too,
+`main-document-format`: a warning at submission, a note before. It reads the pack on disk,
+as its manifest records it, a pack for another journal set aside, and predicts the pack
+`submit` will make where there is none. The pack on disk is the last one made, and G4 runs
+before `submit` replaces it, so the next `submit` by the other route (`--latex` or not) packs
+another: that pack's own note then says what it holds, and the hint says so. A warning, as a
+figure in a format the journal does not take is (`figure-format`), and not a failure: the
+pack refuses while the check fails, and `submit --latex`, which makes the PDF, runs the same
+check, so a failure would refuse the remedy with the fault.
 
 The covering letter is deliberately not generated. It is the one part addressed to a
 particular editor about a particular paper at a particular moment, and a generated one reads
@@ -17142,13 +17179,27 @@ sentence only, each beside a broken rule in `BROKEN`.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-Once sorted, an open entry ends its own text, before any points under it, in one of two
-tags, and so does each point under one. `Accepted.` marks a limit that stays as it is
-written. ``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the
-limit as it is written: a change that closes the gap or moves it fails one of them, and the
-entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
-only that each test a tag names is one pytest collects. An entry with neither has not
-been sorted yet.
+An open entry ends its own text, before any points under it, in one of two tags, and so
+does each point under one. `Accepted.` marks a limit that stays as it is written.
+``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the limit as it
+is written: a change that closes the gap or moves it fails one of them, and the entry is
+then rewritten, or moved below the "Closed since" line. A point with points of its own ends
+its text in a tag before them, and each of them then ends in one; or it goes on after them,
+at its own indent, and ends there in the tag that covers them all. A paragraph between
+groups, and what an entry goes on to say after its points, is no item's, and a limit stated
+there is not checked; written as a point, it would be. `tests/test_docs.py` fails on an
+open item with neither tag, on a line of this section it cannot give to an item or a
+paragraph, and on a tag that names a test pytest does not collect. A limit that is a defect
+to fix is pinned until the fix lands, and the fix changes its test.
+
+- **`journal-format-not-in-quote` reads a format's name, not the sentence around it**
+  (`gates/journal_quotes.py`, `_FORMAT_WORDS`). It proves a format is named in the quote, not
+  that it is the one taken, and some wordings slip past it: "a 250 word abstract", "an
+  8k-word manuscript" and "word-processing files" still name Word, so `[docx]` passes on a
+  page that asks for a PDF; "PDF or Word – limit 20 MB" fails, the dash read as a hyphen before
+  "limit"; "Open Office" written apart fails `[odt]`; "rich text" in advice about a form passes
+  `[rtf]`; "pdfLaTeX" or "XeLaTeX" alone does not name LaTeX (rounds 2 and 3 of #724).
+  Accepted.
 
 - **The corpus tool finds a judged finding again only by its gate and code, by its line in
   the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A
@@ -25531,11 +25582,24 @@ Open, recorded as each change landed:
     Pinned by `tests/test_notation.py::test_a_word_against_a_signed_number_is_not_read_in_a_pdf_s_text`
     and `tests/test_corruption.py::test_a_number_typed_against_its_word_in_a_pdf_is_caught`.
   - A number inside a piece raised or lowered, `~…~` or `^…^` with no blank in it but an
-    escaped one, is not read, so a space left out inside a subscript passes; one inside a
-    word joined by underscores, a name from code, is not read either. A number joined by a
-    hyphen to such a name, `RATE\_6-12mth`, stands outside the name and is read.
+    escaped one, is not read, so a space left out inside a subscript passes; nor is
+    anything in the run of characters with no blank in it that holds a word joined by
+    underscores, a name from code, so a space truly left out in that run passes: a number
+    typed against its word, a word against a signed number or a unit closed up, joined to
+    the name by any mark but a blank or an "=", a semicolon, a colon, a bracket, a hyphen,
+    as in "RATE\_x;12patients", "(RATE\_x)12patients" and "12mth-RATE\_x", each of which a
+    blank in the name's place shows reported. The run is looked at no further than 200
+    characters either side of the name.
     Pinned by `tests/test_notation.py::test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out`
-    and `tests/test_notation.py::test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out`.
+    and `tests/test_notation.py::test_a_space_left_out_in_the_run_of_a_name_passes`.
+  - "=" alone ends the run of a name (Basile, 2026-11-22, "'=' ends the token"), and that
+    leaves three limits. A value after one "=" that is joined to the next name by a
+    semicolon or a comma falls into that name's run and passes: "C_max=12mg;t_max=2h"
+    reports only "2h", and "(t_1/2=5h,C_max=12mg)" passes "5h". Another sign of comparison
+    ends nothing, so "C_max>12mg", "C_max<12mg", "t_1/2≈5h", "C_max≤12mg" and "C_max≥12mg"
+    pass in silence. And a code's `name=level` is split at "=", its level read:
+    "DURA\_CAT=6-12mth" reports "12mth".
+    Pinned by `tests/test_notation.py::test_what_the_equals_sign_leaves_in_the_run_of_a_name`.
   - A tilde for "approximately" pairs with the next tilde where no blank stands between
     them, "(~3days,~5days)", and the stretch between is taken for a subscript, as pandoc
     prints it: "3days" passes and "5days" is reported (round 1 of #719).

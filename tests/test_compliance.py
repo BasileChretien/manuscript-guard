@@ -528,6 +528,7 @@ PAGE = Path("profiles") / "journals" / "sources" / "demo-journal.txt"
 QUOTED = {
     "journal-quote-not-on-page",
     "journal-limit-not-in-quote",
+    "journal-format-not-in-quote",
     "journal-rule-unquoted",
     "journal-quote-names-no-rule",
     "journal-page-not-stored",

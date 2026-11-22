@@ -145,13 +145,20 @@ expected:
       constraints
   - reading: code names
     why: >-
-      a name in a table's cell is no name in the prose: a Markdown table of the four kinds
-      pandoc reads, and a LaTeX tabular, tabularx, tabulary or longtable, are not read; and
-      optidef's problems, mini, maxi, argmini and argmaxi with their starred, `!` and `e`
-      forms, are maths (decision 13, 2026-11-13, after tex-econ-em-A2's 98 findings in its
-      tabulars and tex-qbio-pe-A2's `w_{min}`); the generated inputs now hold a name in a
-      pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports;
-      a table's caption and a footnote in a tabular's cell are read still (round 1 of #673)
+      machine text a paper quotes is no prose, in two exact shapes (Basile, 2026-11-22,
+      "Exact shapes only"): a name alone in angle brackets, a placeholder, `<PAPER_TEXT>`,
+      `\<PAPER_TEXT\>` and `<PAPER\_TEXT>`; and a `name = value` line under a `[section]`
+      line with only such lines or blank ones between, a value quoted over paragraphs
+      running on to its closing quote ("Quote may close later"); the generated inputs now
+      hold these, which the base reports, and a name between two signs of a comparison, a
+      setting with no section above it or with a sentence between, a quote that never
+      closes and one closed later with no section above it, a word against an escaped
+      bracket, a setting under `[1]`, a quoted value a heading cuts off and a key in a code
+      span inside a quoted value, which both report; the entry it
+      replaces, for a name in a table's cell, is spent
+  - reading: audit code names
+    why: >-
+      the same, in the audit's one finding on the names from the code
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

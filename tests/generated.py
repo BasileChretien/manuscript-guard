@@ -3651,6 +3651,45 @@ CODE_NAME_PLACES = (
      "prose"),
     ("snake", "{n} ",
      "\n\\begin{{tabular}}{{ll}}\na\\footnote{{The {e}.}} & 2 \\\\\n\\end{{tabular}}\n", "prose"),
+    # Machine text quoted in two exact shapes, not read (Basile, 2026-11-22, "Exact shapes
+    # only"): a name alone in angle brackets, a placeholder, bare, as pandoc writes it from
+    # a .docx and on a line of its own in LaTeX; a `name = value` line under a `[section]`
+    # line, bold as Word writes it. Read: a name between two signs of a comparison, a
+    # setting with no section above it, and one with a sentence between.
+    ("snake", "<{n}> ", "<{e}> ", None),
+    ("snake", "\\<{n}\\> ", "\n<{e}>\\\\\n", None),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"a value\\\"\n\nalso_{n} = true\n\n",
+     "\n\n[app]\n\n{e} = 12\n\n", None),
+    ("snake", "n < {n} > m ", "n < {e} > m ", "prose"),
+    ("snake", "\n\n{n} = \\\"a value\\\"\n\n", "\n\n{e} = 12\n\n", "prose"),
+    ("snake", "\n\n[app]\n\nThe file sets it.\n\n{n} = 12\n\n",
+     "\n\n[app]\n\nThe file sets it.\n\n{e} = 12\n\n", "prose"),
+    # A value quoted over two paragraphs is one line of its configuration, which goes on
+    # after it; a quote that never closes ends the configuration, its line read; and one
+    # closed later with no section above it is prose (Basile, 2026-11-22, "Quote may close
+    # later").
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"a long\n\nvalue\\\"\n\nalso_{n} = true\n\n",
+     "\n\n[app]\n\n{e} = \"a long\n\nvalue\"\n\nalso\\_{e} = 12\n\n", None),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"never closed\n\n",
+     "\n\n[app]\n\n{e} = \"never closed\n\n", "prose"),
+    ("snake", "\n\n{n} = \\\"a long\n\nvalue\\\"\n\n", "\n\n{e} = \"a long\n\nvalue\"\n\n",
+     "prose"),
+    # Read too (#768 round 1): a word against an escaped bracket, a setting under a
+    # reference's number alone on a line, and a quoted value a heading cuts off before its
+    # closing quote; and a key in a code span inside a configuration's quoted value.
+    ("snake", "n\\<{n}\\> m ", "a<{e}> m ", "prose"),
+    ("snake", "\n\n[1]\n\n{n} = 12\n\n", "\n\n[1]\n\n{e} = 12\n\n", "prose"),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\n## Heading\n\nwords of 24\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"open\n\n\\section{{Heading}}\n\nwords of 24\"\n\n", "prose"),
+    # A setext heading ends it too, and a `# x` line in a listing, which is no heading, does
+    # not (#768 round 2).
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\nHeading\n-------\n\nwords of 24\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"open\n\n\\subsection{{Heading}}\n\nwords of 24\"\n\n", "prose"),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"open\n\n```\n# x\n```\n\nclosed\\\"\n\n",
+     "\n\n[app]\n\n{e} = \"open\n\n\\begin{{verbatim}}\n# x\n\\end{{verbatim}}\n\nclosed\"\n\n",
+     None),
+    ("key", "\n\n[app]\n\nprompt = \"use `{n}`\"\n\n",
+     "\n\n[app]\n\nprompt = \"use \\texttt{{{e}}}\"\n\n", "code"),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
 #: writes one and `doseQab` as camelCase.

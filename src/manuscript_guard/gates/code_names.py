@@ -28,7 +28,11 @@ is an extension; a table's cells, a Markdown table's and a LaTeX `tabular`'s, wh
 label its rows and columns (decision 13, 2026-11-13); and in Markdown the opening line of a
 fenced div, an HTML tag, a pandoc attribute with an `=` in it, a TeX command, a reference
 link's definition and the label of a reference link the file defines, none of which is
-printed in the document.
+printed in the document. Machine text a paper quotes is set aside in two exact shapes and no
+other: a name alone in angle brackets, a placeholder, `<PAPER_TEXT>`; and a `name = value`
+line under a line that is only a `[section]` header, its quoted value running on to the
+paragraph that closes it (Basile, 2026-11-22, "Exact shapes only", "Quote may close
+later").
 
 **The finding is a warning, and a failure at submission** (D12.2): the version a journal
 receives has no word its reader cannot know. A word that is right with its underscores, a
@@ -40,7 +44,8 @@ name is reported once, where it first stands, with how often it does.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Iterator
+from bisect import bisect_left
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -93,6 +98,42 @@ _UNPRINTED = re.compile(
 # whatever its case (rounds 1 and 2 of #575).
 _DEFINITION = re.compile(r"^[ ]{0,3}\[([^\]\n\x00]+)\]:[^\n]*", re.MULTILINE)
 _LABEL = re.compile(r"(?<=\])\[([^\[\]\n]*)\]")
+# Machine text a paper quotes, in two exact shapes and no other, read in the view G14 reads
+# (Basile, 2026-11-22, "Exact shapes only"). A name standing alone in angle brackets is a
+# placeholder a program fills: `<PAPER_TEXT>` as Markdown takes it bare, which pandoc reads
+# as an HTML tag and prints nothing of, `\<PAPER_TEXT\>` as pandoc writes it from a .docx,
+# whose escapes the view holds as NULs, and `<PAPER\_TEXT>` as LaTeX writes it. Nothing of a
+# word against either bracket, an escaped one too, `n\<max_len\> m`, and no blank inside, so a
+# sign of a comparison, `n < max_len > m`, `1<max_len>2`, is none.
+_PLACEHOLDER = re.compile(
+    rf"(?:(?<![\w\\\x00])[\\\x00]|(?<![\w\\\x00]))<{_PART}(?:{_UNDERSCORES}{_PART})+"
+    r"[\\\x00]?>(?!\w)"
+)
+# A key of a TOML file as typed: parts of letters and digits joined by underscores, bare or
+# escaped, or by hyphens.
+_KEY = rf"[^\W_]+(?:(?:{_UNDERSCORES}|-)[^\W_]+)*"
+# A line that is only a section's header, `[bot.settings]`, its brackets escaped as Markdown
+# escapes them, bold as Word writes it or not: `**\[app\]**`. Its key starts with a letter, so
+# that a reference's number alone on a line, `[1]`, opens no section (#768 round 1).
+_SECTION = re.compile(rf"(\*\*|__)?\\?\[(?=[^\W\d_]){_KEY}(?:\.{_KEY})*\\?\](?(1)\1)")
+# A line that is only `name = value`, the value a quoted string, its quotes escaped as pandoc
+# writes them from a .docx or not, a literal string, a number, true or false, or a list in
+# brackets.
+# What a quoted string holds: no quote, and an escaped character other than a quote.
+_QUOTED = r'(?:\\[^"\n]|[^"\\\n])*'
+_SETTING = re.compile(
+    rf"{_KEY}[ \t]*=[ \t]*"
+    rf"""(?:\\?"{_QUOTED}\\?"|'[^'\n]*'|[-+]?\d+(?:\.\d+)?|true|false"""
+    r"|\\?\[[^\[\]\n]*\\?\])"
+)
+# A `name = value` line whose quote does not close on it, and the line that closes it: a
+# value the Word conversion broke over paragraphs (Basile, 2026-11-22, "Quote may close
+# later").
+_OPENED = re.compile(rf'{_KEY}[ \t]*=[ \t]*\\?"{_QUOTED}')
+_CLOSING = re.compile(rf'{_QUOTED}\\?"')
+_LINE = re.compile(r"[^\n]+")
+# What a line of the view may hold besides its text: blanks, and NULs where nothing prints.
+_BLANK = " \t\r" + NUL
 
 KEY = "key"
 VARIABLE = "variable"
@@ -106,7 +147,8 @@ class Prose:
     elsewhere. Both have the file's length, so an offset is the file's. `tables` are where
     its tables' cells run, which are not read: a Markdown table's lines, of the four kinds
     pandoc reads, and a LaTeX `tabular` and its kin less its captions and footnotes
-    (`language._File.tables`)."""
+    (`language._File.tables`). `headings` are where its headings run, in order, as the
+    reading finds them (`language._File.headings`)."""
 
     path: Path
     text: str
@@ -114,6 +156,7 @@ class Prose:
     code: str
     line_of: Callable[[int], int]
     tables: tuple[tuple[int, int], ...] = ()
+    headings: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -275,14 +318,76 @@ def _unprinted(printed: str, defined: set[str]) -> str:
     return _UNPRINTED.sub(_blank, printed)
 
 
+def _in_a_heading(start: int, end: int, headings: Sequence[tuple[int, int]]) -> bool:
+    """Whether the line from `start` to `end` holds part of one of `headings`, in order and
+    apart: the last that starts before `end` reaches past `start`."""
+    at = bisect_left(headings, (end, -1)) - 1
+    return at >= 0 and max(headings[at][1], headings[at][0] + 1) > start
+
+
+def _machine_text(printed: str, headings: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Where `printed`, the view G14 reads, quotes machine text: each placeholder
+    (`_PLACEHOLDER`), and each `name = value` line (`_SETTING`) under a line that is only a
+    `[section]` header (`_SECTION`), with only such lines or blank ones between; a line of
+    nothing printed is blank. A value whose quote does not close on its line runs on to the
+    line that closes it (`_closed`), a heading the reading finds ending it (`headings`,
+    where each runs, in order). A boxed environment as such is not set aside (Basile,
+    2026-11-22, "Exact shapes only", "Quote may close later")."""
+    spans = [found.span() for found in _PLACEHOLDER.finditer(printed)]
+    lines = []  # each line's text without its blanks, where that starts, and if a heading
+    for line in _LINE.finditer(printed):
+        typed = line.group()
+        heading = _in_a_heading(line.start(), line.end(), headings)
+        lines.append((line.start() + len(typed) - len(typed.lstrip(_BLANK)),
+                      typed.strip(_BLANK), heading))  # fmt: skip
+    under_a_section, at = False, 0
+    while at < len(lines):
+        start, bare, _heading = lines[at]
+        last = _closed(lines, at) if under_a_section and _OPENED.fullmatch(bare) else None
+        if _SECTION.fullmatch(bare):
+            under_a_section = True
+        elif under_a_section and _SETTING.fullmatch(bare):
+            spans.append((start, start + len(bare)))
+        elif last is not None:
+            spans.append((start, lines[last][0] + len(lines[last][1])))
+            at = last
+        elif bare:
+            under_a_section = False
+        at += 1
+    return spans
+
+
+def _closed(lines: list[tuple[int, str, bool]], at: int) -> int | None:
+    """The index of the line that closes the quote the line at `at` opens: the first after
+    it with a quote in it, where that quote ends the line and nothing between is a
+    `[section]` or a `name = value` line or a heading; None where the quotes do not pair so."""
+    for index in range(at + 1, len(lines)):
+        _start, bare, heading = lines[index]
+        if heading or any(shape.fullmatch(bare) for shape in (_SECTION, _SETTING, _OPENED)):
+            return None
+        if '"' in bare:
+            return index if _CLOSING.fullmatch(bare) else None
+    return None
+
+
 def _celled(view: str, tables: Iterable[tuple[int, int]]) -> str:
     """`view` with each table's text NUL, its line breaks kept: a name in a cell labels a
     row or a column, and is no word of a sentence (decision 13, 2026-11-13: 98 findings in
-    one paper's tabulars, all false)."""
+    one paper's tabulars, all false). The machine text a paper quotes is set aside so too
+    (`_machine_text`)."""
     out = list(view)
     for start, end in tables:
         out[start:end] = [char if char == "\n" else NUL for char in view[start:end]]
     return "".join(out)
+
+
+def _views(prose: Prose) -> tuple[str, str]:
+    """The sentences and the code spans of `prose` as this reading reads them: the tables'
+    cells out of both, and the machine text it quotes out of the sentences only, since a key
+    or a variable in a code span inside it is still one the reader cannot know (#768 round
+    1)."""
+    aside = [*prose.tables, *_machine_text(prose.printed, prose.headings)]
+    return _celled(prose.printed, aside), _celled(prose.code, prose.tables)
 
 
 def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None = None) -> Report:
@@ -295,7 +400,7 @@ def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None 
     # hidden, or in another file, which the build joins to this one (round 3 of #575).
     defined = {_label(hit[1]) for prose in passages for hit in _DEFINITION.finditer(prose.text)}
     for place, prose in enumerate(passages):
-        printed, code = (_celled(view, prose.tables) for view in (prose.printed, prose.code))
+        printed, code = _views(prose)
         uses = [
             (offset, length, name, kind, label, in_code)
             for text, in_code in ((_unprinted(printed, defined), False), (code, True))

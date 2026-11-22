@@ -161,7 +161,8 @@ def test_the_finding_reads_what_g14_writes_of_each_kind_of_name(tmp_path: Path) 
     from manuscript_guard.gates.language import _file
 
     file = _file(0, Path("main.md"), "The hr_adj rose by age_group and ror.point.\n", [], False)
-    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)]
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
+                   file.headings)]
     names = Names(frozenset({"ror.point"}), {"age_group": "Age group"})
     found = list(judge_code_names(prose, names).findings)
     (one,) = code_names.one_finding(found)
@@ -208,3 +209,31 @@ def test_a_docx_s_names_are_placed_and_the_comment_stands_on_the_first(
     over = [ranges.get(one.identifier) for one in word_comments(target)
             if "names are written the way names in code are" in one.text]  # fmt: skip
     assert over == ["community_action_importance"], over
+
+
+#: An appendix that quotes a prompt's placeholders and a TOML file, each a paragraph of the
+#: .docx, its sections bold, its quotes straight, one value over two paragraphs (Basile,
+#: 2026-11-22, "Quote may close later"); a setting with no section above it, a
+#: name in a sentence and one between two comparison signs.
+QUOTED = (
+    "# Methods\n\nThe text replaces \\<PAPER_TEXT\\> in the prompt, and trust_in_science was "
+    "asked.\n\n# Appendix\n\n**\\[app\\]**\n\nsecret_key = \\\"secret key\\\"\n\n"
+    "**\\[chat\\]**\n\ninitial_message = \\\"\\_The interview begins.\\_\\\"\n\n"
+    "stop_response = \\\"Thank you. The interview is over.\n\nPlease close it.\\\"\n\n"
+    "protocol_process = true\n\nThe study set run_mode = \\\"fast\\\" too.\n\n"
+    "When n \\< max_len \\> m it stops.\n"
+)
+
+
+@needs_pandoc
+def test_a_docx_s_quoted_prompt_and_configuration_are_no_names(tmp_path: Path, capsys) -> None:
+    """In a .docx, a placeholder and the lines of a configuration under their section are
+    machine text, as pandoc writes them in Markdown (Basile, 2026-11-22, "Exact shapes
+    only"); the names in the sentences are listed."""
+    written(tmp_path, QUOTED)
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
+                   timeout=120)  # fmt: skip
+    report = _json(tmp_path / "paper.docx", capsys)
+    (found,) = [f for f in report["findings"] if f["code"] == code_names.CODE]
+    assert [form["form"] for form in found["forms"]] == [
+        "trust_in_science", "run_mode", "max_len"], found["forms"]  # fmt: skip

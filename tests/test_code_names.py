@@ -30,7 +30,8 @@ CLOSE = "\\end{document}\n"
 def read(text: str, *, keys=(), labels=None, kept=(), stage=None):
     """The findings of the reading on one Markdown file."""
     file = _file(0, MAIN, text, [], False)
-    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
+    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
+                  file.headings)
     names = Names(frozenset(keys), dict(labels or {}), frozenset(kept))
     return judge_code_names([prose], names, stage).findings
 
@@ -469,3 +470,243 @@ def test_a_name_right_after_rrid_is_a_resource_s_identifier(typed: str) -> None:
     """pdf-med-B2 named its software by RRID, `RRID:SCR_006571`: an identifier, no name from
     the code (#663 hid the accession from G14, and so from this reading)."""
     assert named(f"PsychoPy ({typed}) ran it, and hr_adj_main rose.\n") == ["hr_adj_main"]
+
+
+# ------------------------------------------- machine text quoted: two exact shapes
+# Basile, 2026-11-22, "Exact shapes only": a name alone in angle brackets is a placeholder,
+# and a `name = value` line under a `[section]` line is a configuration's. Nothing broader:
+# a boxed environment as such is read.
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # pandoc reads it bare as an HTML tag and prints nothing of it (3.9.0.2).
+        "The placeholder <PAPER_TEXT> is replaced.",
+        # as pandoc writes it from a .docx
+        "The placeholder \\<PAPER_TEXT\\> is replaced.",
+        "The placeholder <PAPER\\_TEXT> is replaced.",
+        "The prompt ends:\n\n\\<IN_CONTEXT_EXAMPLE\\>\n\n\\<SYNTHESIS_TEXT\\>\n\nIt is sent.",
+        "Placeholders (<PAPER_TEXT>, <synthesis_text>) are replaced.",
+    ],
+)
+def test_a_name_alone_in_angle_brackets_is_a_placeholder(text: str) -> None:
+    """A prompt's placeholder, `<PAPER_TEXT>`, is replaced by what the program puts there:
+    no name the reader has to know. A name in the prose beside it is read."""
+    assert named(text + " The hr_adj_main rose.\n") == ["hr_adj_main"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "When n < max_len > m, it stops.",
+        "When n \\< max_len \\> m, it stops.",
+        # a word against the escaped bracket, as pandoc writes it from a .docx (#768 round 1)
+        "When n\\<max_len\\> m, it stops.",
+        "The bound a<max_len held.",
+        "The pair <max_len, min_len> holds.",
+        "Placeholder < max_len > here.",
+    ],
+)
+def test_a_name_beside_a_comparison_sign_is_read(text: str) -> None:
+    """`<` and `>` as signs of a comparison, or a bracket that holds more than the name, are
+    no placeholder: the name is read. Each case is printed as typed by `pandoc -t plain`
+    (3.9.0.2); "1<max_len>2" is not, pandoc reading `<max_len>` as an HTML tag, so it is
+    tried in LaTeX (`test_a_name_between_comparison_signs_in_latex_is_read`)."""
+    assert "max_len" in named(text + "\n")
+
+
+def test_a_name_between_comparison_signs_in_latex_is_read(project: Path) -> None:
+    """In LaTeX "1<max\\_len>2" has a digit against each bracket, and "a<b\\_c> d" a word
+    against the left one: comparisons, read."""
+    report = _latex(project, OPEN + "When 1<max\\_len>2 and n < min\\_len > m, it stops; "
+                    "so does a<b\\_c> d.\n" + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "max_len", "min_len", "b_c"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["[1]", "[12.3]", "**[2]**", "**\\[2\\]**"],
+)
+def test_a_bracketed_number_alone_on_a_line_opens_no_section(header: str) -> None:
+    """A section's key starts with a letter: "[1]" alone on a line, a reference's number,
+    opens no configuration, and the setting under it is read (#768 round 1)."""
+    assert named(f"# Methods\n\n{header}\n\nn_total = 12\n") == ["n_total"]
+
+
+def test_a_latex_line_break_with_its_space_opens_no_section(project: Path) -> None:
+    """`\\\\[6pt]` alone on a line is a line break and its space, which the view does not
+    print: no section, and the setting under it is read."""
+    report = _latex(project, OPEN + "Line one\\\\[6pt]\n\\\\[6pt]\n\nn\\_total = 12\n" + CLOSE)
+    assert [message.split("'")[1] for _name, message in coded(report)] == ["n_total"]
+
+
+def test_a_heading_ends_a_quoted_value_that_runs_on() -> None:
+    """A heading ends the paragraphs a quoted value runs on over, as a `[section]` line
+    does: the value is then unpaired, and its line no configuration's (#768 round 1)."""
+    text = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\n# Results\n\n"
+            "The hr_adj_main rose on a screen of 24\\\"\n")  # fmt: skip
+    assert named(text) == ["greet_text", "hr_adj_main"]
+
+
+def test_a_setext_heading_ends_a_quoted_value_and_a_fenced_hash_does_not() -> None:
+    """The headings that end a value's run are those the reading finds (`find_headings`): a
+    setext heading does, and a line `# x` inside a fenced block, which is no heading, does
+    not (#768 round 2)."""
+    setext = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\nResults\n-------\n\n"
+              "The hr_adj_main rose on a screen of 24\\\"\n")  # fmt: skip
+    assert named(setext) == ["greet_text", "hr_adj_main"]
+    fenced = ("**\\[chat\\]**\n\ngreet_text = \\\"Hello\n\n```\n# x\n```\n\nGoodbye.\\\"\n\n"
+              "The hr_adj_main rose.\n")  # fmt: skip
+    assert named(fenced) == ["hr_adj_main"]
+
+
+def test_a_latex_heading_ends_a_quoted_value(project: Path) -> None:
+    """In LaTeX a `\\section` ends a quoted value's run as a Markdown heading does: both
+    names are read (#768 round 2)."""
+    report = _latex(project, OPEN + "[app]\n\ngreet\\_text = \"Hello\n\n\\section{Results}\n\n"
+                    "The hr\\_adj\\_main rose 24\"\n" + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "greet_text", "hr_adj_main"]  # fmt: skip
+
+
+def test_something_unprinted_against_the_bracket_makes_no_placeholder() -> None:
+    """What the view does not print, a code span, a citation key or a binding, counts as
+    standing against `<` or its escape, so the name is read: the shape as decided (DESIGN.md,
+    Known gaps)."""
+    assert named("Run `tool`\\<INPUT_FILE\\> now.\n") == ["INPUT_FILE"]
+
+
+def test_a_key_in_a_code_span_in_a_quoted_value_is_read() -> None:
+    """The machine text is set aside from the sentences only: a key of the results in a code
+    span inside a configuration's quoted value is still one the reader cannot know (#768
+    round 1)."""
+    findings = read("# Methods\n\n[app]\n\nprompt = \"use `ckd_flag`\"\n", keys={"ckd_flag"})
+    assert [(f.message.split("'")[1], f.message.endswith("first in a code span"))
+            for f in findings] == [("ckd_flag", True)]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["“fast”", "1e-3", "1_000", "{ a = 1 }", "1979-05-27", "\"fast\" # a comment"],
+    ids=["curly quotes", "exponent", "underscored number", "inline table", "date",
+         "comment"],
+)  # fmt: skip
+def test_a_value_toml_allows_and_this_reading_does_not_ends_the_configuration(
+    value: str,
+) -> None:
+    """Values TOML allows that are none of the exact shapes end the configuration, so the
+    settings after them are read: conservative (DESIGN.md, Known gaps)."""
+    text = f"# Methods\n\n[app]\n\nrun_mode = {value}\n\nseen_codes = 12\n"
+    assert named(text) == ["run_mode", "seen_codes"]
+
+
+#: A configuration file in TOML as pandoc writes it from a .docx that holds it as
+#: paragraphs, a section's header bold; a name in the sentence after it.
+CONFIGURATION = (
+    "# Appendix\n\n**\\[app\\]**\n\nsecret_key = \\\"secret key\\\"\n\n**\\[bot\\]**\n\n"
+    "api_key = \\\"API key\\\"\n\n**\\[bot.settings\\]**\n\nmodel = \\\"gpt-4o\\\"\n\n"
+    "**\\[chat\\]**\n\ninitial_message = \\\"\\_The interview will begin.\\_\\\"\n\n"
+    "resume_message = \\\"\\_It resumes.\\_\\\"\n\n[study]\n\nprotocol_process = true\n\n"
+    "max_turns = 12\n\nstop_words = ['end', 'stop']\n\nseen_codes = \\[\"a\", \"b\"\\]\n\n"
+    "plain_text = 'kept as typed'\n\nThe hr_adj_main rose.\n"
+)
+
+
+def test_a_line_of_a_configuration_under_its_section_is_no_prose() -> None:
+    """Each `name = value` line under a `[section]` line, with only such lines or blank ones
+    between, its value quoted, a number, true or false or a bracketed list: the paper quotes
+    a file, and its names are the file's. The sentence after it is read."""
+    assert named(CONFIGURATION) == ["hr_adj_main"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # no section above it
+        "# Methods\n\nrun_mode = \"fast\"\n",
+        # a sentence between the section and the line
+        "# Methods\n\n[app]\n\nThe file sets a key.\n\nrun_mode = \"fast\"\n",
+        # a value that is words, not a quoted string
+        "# Methods\n\n[app]\n\nrun_mode = fast and safe\n",
+        # more than the line in its paragraph
+        "# Methods\n\n[app]\n\nWe set run_mode = \"fast\" for all.\n",
+        # a header that is no section's
+        "# Methods\n\n[app] is the section.\n\nrun_mode = \"fast\"\n",
+    ],
+)
+def test_a_line_shaped_as_a_setting_in_prose_is_read(text: str) -> None:
+    """Only the exact shape: a `name = value` line with no `[section]` line above it, or
+    with prose between, or a value of words, is read as prose."""
+    assert named(text) == ["run_mode"]
+
+
+def test_a_value_quoted_over_several_paragraphs_is_one_configuration_line() -> None:
+    """A quoted value that the Word conversion broke into paragraphs runs on to the one
+    that ends with its closing quote, and the configuration goes on after it (Basile,
+    2026-11-22, "Quote may close later"). The sentence after it is read."""
+    text = ("**\\[chat\\]**\n\ninitial_message = \\\"Hello.\\\"\n\n"
+            "stop_response = \\\"Thank you. The interview is over.\n\n"
+            "Please close the window.\\\"\n\nstop_text = \\\"It looks like you stopped the\n\n"
+            "interview. Close it\n\nnow.\\\"\n\nstop_label = \\\"Close.\\\"\n\n"
+            "**\\[study\\]**\n\nprotocol_process = true\n\nThe hr_adj_main rose.\n")  # fmt: skip
+    assert named(text) == ["hr_adj_main"]
+
+
+@pytest.mark.parametrize(
+    ("after", "found"),
+    [
+        # never closed before the end of the text
+        ("Please close the window.\n", ["stop_response"]),
+        # never closed before the next setting
+        ("Please close the window.\n\nstop_label = \\\"Close.\\\"\n\nIt ends.\\\"\n",
+         ["stop_response", "stop_label"]),
+        # never closed before the next section
+        ("Please close.\n\n**\\[study\\]**\n\nprotocol_process = true\n\nIt ends.\\\"\n",
+         ["stop_response"]),
+        # a quote in a paragraph between that does not close it
+        ("Say \"stop\" and close it.\\\"\n\nstop_label = \\\"Close.\\\"\n",
+         ["stop_response", "stop_label"]),
+    ],
+    ids=["the end", "a setting", "a section", "a quote between"],
+)  # fmt: skip
+def test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened(
+    after: str, found: list[str]
+) -> None:
+    """The quotes must pair: a value whose quote does not close before the next `name =
+    value` line, the next `[section]` line or the end of the text is no configuration line,
+    and the configuration ends at it (Basile, 2026-11-22, "Quote may close later")."""
+    text = ("**\\[chat\\]**\n\ninitial_message = \\\"Hello.\\\"\n\n"
+            "stop_response = \\\"Thank you.\n\n" + after)  # fmt: skip
+    assert named(text) == found
+
+
+def test_a_quote_that_closes_later_outside_a_configuration_changes_nothing() -> None:
+    """With no `[section]` line above it, a value quoted over two paragraphs is prose."""
+    text = "# Methods\n\nstop_response = \\\"Thank you.\n\nPlease close it.\\\"\n"
+    assert named(text) == ["stop_response"]
+
+
+#: An appendix that quotes an LLM's prompt in a `tcolorbox`, its placeholders on their own
+#: lines and in the sentence after it, a vocabulary term quoted in it.
+PROMPT = OPEN + (
+    "\\begin{tcolorbox}[title=Prompt]\n"
+    "IMPORTANT:\\hspace{0.3em}Record every value.\\\\\n"
+    "-- Example:\\hspace{0.3em}\"matprov:length\\_thickness\"\\\\\n"
+    "<IN\\_CONTEXT\\_EXAMPLE>\\\\\n\n<PAPER\\_TEXT>\n\\end{tcolorbox}\n\n"
+    "The placeholder <PAPER\\_TEXT> is dynamically replaced, and hr\\_adj\\_main rose.\n"
+) + CLOSE
+
+
+def test_a_latex_prompt_s_placeholders_are_not_read_and_the_box_is(project: Path) -> None:
+    """In LaTeX `<PAPER\\_TEXT>` is a placeholder too, on its own line or in a sentence. The
+    box is no setting-aside: the quoted vocabulary term in it, `length_thickness`, is read
+    as before, and the all-caps word IMPORTANT is read as a short form, here one never
+    defined (DESIGN.md, Known gaps)."""
+    report = _latex(project, PROMPT)
+    assert [message.split("'")[1] for _name, message in coded(report)] == [
+        "length_thickness", "hr_adj_main"]  # fmt: skip
+    assert [f.code for f in report.findings
+            if f.code.startswith("abbreviation-") and "IMPORTANT" in f.message] == [
+        "abbreviation-undefined"], report.findings  # fmt: skip

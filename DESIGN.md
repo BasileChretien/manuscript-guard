@@ -6117,6 +6117,32 @@ is a `\footnote` typed in a cell, which LaTeX prints at the foot of the page (ro
 #673). An RRID's accession,
 `RRID:SCR_006571`, is an identifier, and G14 reads it nowhere (#663).
 
+**Machine text a paper quotes is set aside in two exact shapes, and no other** (Basile,
+2026-11-22, "Exact shapes only"; two papers' appendices quoting an LLM's prompt and a TOML
+file). A name standing alone in angle brackets is a placeholder that a program fills, not a
+name the reader has to know: `<PAPER_TEXT>` bare in Markdown, which pandoc reads as an HTML
+tag and prints nothing of, `\<PAPER_TEXT\>` as pandoc writes it from a .docx, and
+`<PAPER\_TEXT>` in LaTeX, on a line of its own or in a sentence. Nothing of a word may stand
+against either bracket, an escaped one too (`n\<max_len\> m`), and no blank inside them, so
+`n < max_len > m` is a comparison and is read. A line that is only `name = value` is a
+configuration's line where the value is a quoted string (its quotes escaped as pandoc writes
+them from a .docx, `\"secret key\"`, or not), a literal string, a number, `true` or `false`
+or a list in brackets, and a line that is only a `[section]` header, bold as Word writes it
+or not (`**\[app\]**`), its key starting with a letter so that a reference's `[1]` alone on
+a line is none, stands above it with only such lines or blank ones between. The line is set
+aside from the sentences only: a key or a variable in a code span inside its value is read
+as in any code span (#768 round 1). A value whose quote does not close on its line,
+one the Word conversion broke over paragraphs, runs on to the paragraph that ends with its
+closing quote, and those paragraphs are that line's; the configuration goes on after it
+(Basile, 2026-11-22, "Quote may close later"). The quotes must pair: a value that does not
+close before the next `name = value` line, the next `[section]` line, a heading as the
+reading finds headings (Markdown's ATX and setext, LaTeX's sectioning commands; a `# x` line
+in a listing is none) or the end of the text, or a paragraph between with a quote in it that does not end it, is no
+configuration line,
+and the configuration ends where it opened. A `name = value` line with no such header above
+it, or with a sentence between, is prose, and so is a value quoted over paragraphs there. A
+boxed environment, a `tcolorbox`, is not set aside as such: what is in it is read as before.
+
 **The audit says them in one finding** (decision 13). `audit` makes G14's warnings on a
 paper's names from the code one finding, as it makes the short forms left undefined one
 (#640, `auditing.undefined`), by the same grouping (`auditing.code_names`): the names in
@@ -25643,6 +25669,31 @@ Open, recorded as each change landed:
     of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
     reported though the document prints the entry's text and not the key.
     Pinned by `tests/test_code_names.py::test_an_unknown_latex_command_s_argument_is_prose`.
+  - Machine text a paper quotes is set aside in two exact shapes only, a placeholder in
+    angle brackets and a configuration's `name = value` line under its `[section]` line
+    (Basile, 2026-11-22, "Exact shapes only"). A prompt in a `tcolorbox` is read as prose
+    otherwise, so a vocabulary term quoted in it, `"matprov:length\_thickness"`, reports
+    `length_thickness`, and the all-caps word IMPORTANT in it is read by G14's short forms.
+    Pinned by `tests/test_code_names.py::test_a_latex_prompt_s_placeholders_are_not_read_and_the_box_is`.
+  - A configuration's value whose quote never closes, or closes only after another setting,
+    a `[section]` line or a paragraph with another quote in it, ends the configuration where
+    it opened: its name and the names after it are read up to the next `[section]` line. A
+    heading the reading finds ends it too, in every format.
+    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`,
+    `tests/test_code_names.py::test_a_heading_ends_a_quoted_value_that_runs_on`,
+    `tests/test_code_names.py::test_a_setext_heading_ends_a_quoted_value_and_a_fenced_hash_does_not`
+    and `tests/test_code_names.py::test_a_latex_heading_ends_a_quoted_value`.
+  - Something the view does not print, a code span, a citation key or a binding, right before
+    `<` or its escape counts as standing against the bracket, so the name after it is read:
+    "Run `tool`\<INPUT_FILE\> now." warns on `INPUT_FILE`, the shape as decided.
+    Pinned by `tests/test_code_names.py::test_something_unprinted_against_the_bracket_makes_no_placeholder`.
+  - Values TOML allows that are none of the exact shapes end the configuration, so the
+    settings after them are read, a warning on each: curly quotes, `1e-3`, `1_000`, an inline
+    table, a date, a `#` comment after the value. Conservative, as decided.
+    Pinned by `tests/test_code_names.py::test_a_value_toml_allows_and_this_reading_does_not_ends_the_configuration`.
+  - In Markdown, "1<max_len>2" is read, though pandoc takes `<max_len>` for an HTML tag and
+    prints nothing of it: a tag is set aside only where its name has no underscore, and a
+    digit against a bracket makes no placeholder. Accepted.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14's vocabulary is a list of words, and reads them as words.** Accepted.

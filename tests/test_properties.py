@@ -8557,6 +8557,14 @@ def _the_run_of_a_name_runs_over_blanks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(code_names, "_runs_on", lambda text, at: text[at] != "\n")
 
 
+def _the_run_of_a_name_runs_over_an_equals_sign(patch: pytest.MonkeyPatch) -> None:
+    """As at 908310d41: the run of a name ran on past "=", and passed over "12cells" in
+    "C\\_max=12cells" (Basile, 2026-11-22, "'=' ends the token")."""
+    from manuscript_guard.gates import code_names
+
+    patch.setattr(code_names, "_RUN_ENDS", "")
+
+
 def _hexadecimal_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import notation
 
@@ -29427,6 +29435,10 @@ BROKEN = {
     ),
     "the run of a name joined by underscores runs over blanks": (
         _the_run_of_a_name_runs_over_blanks,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "the run of a name joined by underscores runs over an equals sign": (
+        _the_run_of_a_name_runs_over_an_equals_sign,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "the notation's edits keep the form used least": (

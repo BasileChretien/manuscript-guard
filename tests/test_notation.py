@@ -539,7 +539,7 @@ def test_a_number_inside_a_name_joined_by_underscores_is_no_space_left_out(
 
 @pytest.mark.parametrize(
     "written",
-    ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth", "6-12mth\\_DURA", "RATE\\_x-to+0.5",
+    ["UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth", "12mth-RATE\\_x", "RATE\\_x-to+0.5",
      "DOSE\\_6-5mg", "(UNEMP\\_DURA\\_6-12mth)"],
     ids=["bare", "escaped", "before the name", "a signed number", "a unit", "in brackets"],
 )  # fmt: skip
@@ -559,13 +559,37 @@ def test_no_space_is_left_out_anywhere_in_a_run_that_holds_a_name(written: str) 
     ], written
 
 
-def test_a_space_left_out_in_the_run_of_a_name_passes() -> None:
-    """The run is read whole, so a space truly left out in it, with no blank between the
-    name and the words after it, passes: "RATE\\_6,12patients" (DESIGN.md, Known gaps)."""
-    assert read("# Results\n\nThe series RATE\\_6,12patients held.\n").counts[
-        "notation_spaces_missing"] == 0  # fmt: skip
-    assert read("# Results\n\nThe series RATE 6,12patients held.\n").counts[
-        "notation_spaces_missing"] == 1  # fmt: skip
+@pytest.mark.parametrize("written", ["RATE\\_x;12patients", "(RATE\\_x)12patients",
+                                     "RATE\\_x:12patients"])  # fmt: skip
+def test_a_space_left_out_in_the_run_of_a_name_passes(written: str) -> None:
+    """The run is read whole, so a space truly left out in it passes, where any mark but a
+    blank or "=" joins the name to the number typed against its word: a semicolon, a
+    bracket, a colon (DESIGN.md, Known gaps). With a blank in place of the name's
+    underscore, it is reported."""
+    assert read(f"# Results\n\nThe series {written} held.\n").counts[
+        "notation_spaces_missing"] == 0, written  # fmt: skip
+    apart = written.replace("\\_", " ")
+    assert read(f"# Results\n\nThe series {apart} held.\n").counts[
+        "notation_spaces_missing"] == 1, apart  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("written", "told_of"),
+    [("The C_max=12mg was reached.",
+      [("notation-unit", "a number runs into its unit once: '12mg'")]),
+     ("The half-life (t_1/2=5h) was short.",
+      [("notation-unit", "a number runs into its unit once: '5h'")]),
+     ("The C\\_max=12patients held.",
+      [("notation-space-missing", "a number and a word run together once: '12patients'")]),
+     ("The 12mg=C_max held.", [("notation-unit", "a number runs into its unit once: '12mg'")]),
+     ("The UNEMP\\_DURA\\_6-12mth=x held.", [])],
+    ids=["unit after", "half-life", "word after", "unit before", "a hyphen ends nothing"],
+)  # fmt: skip
+def test_an_equals_sign_ends_the_run_of_a_name(written: str, told_of: list) -> None:
+    """The run of a name stops at "=", so the value after it is read: "C_max=12mg" is a
+    unit closed up, as it was before the run was read whole (Basile, 2026-11-22, "'=' ends
+    the token"). A hyphen ends nothing."""
+    assert told(read(f"# Results\n\n{written}\n")) == told_of, written
 
 
 def test_a_number_inside_a_latex_name_is_no_space_left_out(project: Path) -> None:

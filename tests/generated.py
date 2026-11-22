@@ -8713,15 +8713,15 @@ NOTATED = (
 #: notes, which pandoc reads as notes (round 2 of #719). Nor is anything in the run of
 #: characters with no blank in it that holds a name joined by underscores, a number, a
 #: signed number or a unit (Basile, 2026-11-22, "Skip the whole token"); the run after it
-#: is read.
+#: is read, and so is what stands past an "=" in it ("'=' ends the token").
 RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
           "5mins", "rose to+0.5.", "to+{{results.high}}", "tn+1", "\\~12cells\\~",
           "~~3cells~~", "seen[^1];4cells[^2]", "seen^[Ibid.];6cells^[See it.]",
-          "RATE\\_6 12cells")  # fmt: skip
+          "RATE\\_6 12cells", "C\\_max=12cells", "14cells=C\\_max")  # fmt: skip
 NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
               "5mg", "x+1", "u~0school~", "k^12rep^", "12mth\\_rate",
               "12mth\\_\\_rate", "UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth",
-              "RATE\\_x-to+0.5", "DOSE\\_6-5mg")  # fmt: skip
+              "12mth-RATE\\_x", "RATE\\_x-to+0.5", "DOSE\\_6-5mg")  # fmt: skip
 #: Of `RUN_ON`, the words typed against a signed number, which text read from a PDF does not
 #: count: pdftotext sets an exponent or an index on the line (Basile, 2026-11-21).
 SIGNED_RUN_ON = ("to+0.77", "rose to+0.5.", "to+{{results.high}}", "tn+1")

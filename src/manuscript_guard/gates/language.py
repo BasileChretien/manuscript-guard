@@ -2567,34 +2567,44 @@ def _given_again_apart(
         groups.setdefault(mark.display, []).append(mark)
     found = [(*each, False) for group in groups.values()
              for each in _given_again(short, group, said)]  # fmt: skip
-    found += [(*each, True) for each in _asked_of_displays(short, definitions, said)]
+    # A definition its own display already gives another meaning to is warned of there, and
+    # not asked about besides (round 1 of #759).
+    warned = frozenset(id(mark) for mark, *_rest in found)
+    found += [(*each, True) for each in _asked_of_displays(short, definitions, said, warned)]
     return sorted(found, key=lambda each: each[0].key)
 
 
 def _asked_of_displays(
-    short: str, definitions: list[_Definition], said
+    short: str, definitions: list[_Definition], said, warned: frozenset[int] = frozenset()
 ) -> list[tuple[_Definition, str, str]]:
     """Each definition of `short` in a table's or a figure's own text that gives another
     meaning than every one the text gives, asked about where that meaning is first given in
     a display, once (Basile, 2026-11-22, "Ask, don't drop"). A display that gives the text's
     meaning again says nothing, and two displays are not compared with each other, so where
-    the text defines the form nowhere nothing is asked. `definitions` are in order."""
+    the text defines the form nowhere nothing is asked. `definitions` are in order; one
+    whose `id` is in `warned` is warned of in its own display, and is passed over here, so
+    the next display to give its meaning is asked about. `said(mark, here, beside)` names
+    where `mark` stands, seen from `here`, with `beside` for the same line."""
     text = [mark for mark in definitions if mark.display is None]
     if not text:
         return []
     told: list[str] = []
     found = []
     for mark in definitions:
-        if mark.display is None or any(_same_meaning(mark.long, each.long) for each in text):
+        if (mark.display is None or id(mark) in warned
+                or any(_same_meaning(mark.long, each.long) for each in text)):  # fmt: skip
             continue
         if _told_before(mark.long, told):
             continue
         told.append(mark.long)
+        # The text's definition may stand later on this line, a LaTeX float typed on one line
+        # before the sentence (round 1 of #759).
+        beside = "earlier on the same line" if text[0].key < mark.key else "later on the same line"
         found.append((
             mark,
             f"{short} is defined as '{mark.long}' here, in a table's or a figure's own text, "
-            f"and as '{text[0].long}' {said(text[0], mark)} in the text: is it the same "
-            "thing?",
+            f"and as '{text[0].long}' {said(text[0], mark, beside)} in the text: is it the "
+            "same thing?",
             "a table or a figure may define a form for itself; where it means what the text "
             "does, give the text's long form there too, and where it means something else, "
             "give it another short form",
@@ -2742,7 +2752,8 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                 _given_again_apart(
                     short,
                     definitions,
-                    lambda mark, here: placed(mark, here, "at", "earlier on the same line"),
+                    lambda mark, here, beside="earlier on the same line": placed(
+                        mark, here, "at", beside),
                 )
             ):
                 findings.append(finding("abbreviation-redefined", again, short, message, hint,

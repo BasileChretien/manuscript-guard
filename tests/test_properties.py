@@ -3569,7 +3569,27 @@ def _a_display_is_compared_with_the_text(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_display_s_other_meaning_is_dropped(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_asked_of_displays", lambda short, definitions, said: [])
+    patch.setattr(language_gate, "_asked_of_displays",
+                  lambda short, definitions, said, warned=frozenset(): [])
+
+
+def _a_display_s_definition_covers_the_text_beside_the_text_s(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_covering", lambda definitions: list(definitions))
+
+
+def _a_caption_above_its_table_captions_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import displays
+
+    real = displays._placed
+
+    def placed(blocks, at, owner, taken):
+        if displays._kind(blocks, at + 1) == displays.TABLE:
+            return None
+        return real(blocks, at, owner, taken)
+
+    patch.setattr(displays, "_placed", placed)
 
 
 def _a_display_s_own_definition_covers_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -27811,6 +27831,14 @@ BROKEN = {
     ),
     "a table's or a figure's other meaning than the text's is dropped": (
         _a_display_s_other_meaning_is_dropped,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a display's definition covers a text use where the text gives one": (
+        _a_display_s_definition_covers_the_text_beside_the_text_s,
+        test_a_table_or_a_figure_stands_alone,
+    ),
+    "a caption or a legend above its table captions nothing": (
+        _a_caption_above_its_table_captions_nothing,
         test_a_table_or_a_figure_stands_alone,
     ),
     "a table's own definition does not cover its uses": (

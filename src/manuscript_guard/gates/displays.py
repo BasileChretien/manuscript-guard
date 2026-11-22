@@ -27,8 +27,6 @@ from dataclasses import dataclass
 from manuscript_guard.text.masking import kept_breaks, mask
 from manuscript_guard.text.tables import table_spans
 
-#: A blank line, which ends a paragraph.
-_BLANK = re.compile(r"\n[ \t\r]*\n")
 #: Pandoc's caption line of a table: `Table: ...`, or `: ...`.
 _PANDOC = re.compile(r"[ ]{0,3}(?:[Tt]able:|:(?![^\w\s]))")
 #: A legend PLOS writes, its number before the display's name: "**S1 Table.** ...", "S2 Fig.".
@@ -125,25 +123,38 @@ def _kind(blocks: list[_Block], at: int) -> str:
 
 def _blocks(text: str, prose: str, captions: tuple[tuple[int, int], ...]) -> list[_Block]:
     """The file as blocks, in order: each table whole, and each paragraph outside the
-    tables, a caption, a legend, a paragraph of text, or a barrier where G14 reads nothing of
-    it, which a hidden heading leaves."""
+    tables, a caption, a legend or a paragraph of text, read line by line from where its
+    first line starts. A blank line ends a paragraph, and so does a table's line. A line G14
+    reads nothing of, a hidden heading's, is a barrier of its own, blank lines around it or
+    none: a heading glued to the paragraph under it ends a display all the same (round 1 of
+    #759)."""
     tables = _table_offsets(text)
     found: list[_Block] = [_Block(start, end, TABLE) for start, end in tables]
     captions = tuple(sorted(captions))
-    start = 0
-    for gap in (*_BLANK.finditer(prose), None):
-        end = len(prose) if gap is None else gap.start()
-        for low, high in _outside(start, end, _near(tables, start, end)):
-            found.append(_paragraph(text, prose, low, high, captions))
-        if gap is not None:
-            start = gap.end()
+    run: list[tuple[int, int]] = []
+
+    def close() -> None:
+        if run:
+            found.append(_paragraph(text, prose, run[0][0], run[-1][1], captions))
+            run.clear()
+
+    at = 0
+    for line in text.split("\n"):
+        start, end = at, at + len(line)
+        at = end + 1
+        if _near(tables, start, max(end, start + 1)) or not line.strip():
+            close()
+        elif not prose[start:end].strip():
+            close()
+            found.append(_Block(start, end, BARRIER))
+        else:
+            run.append((start, end))
+    close()
     return sorted(found, key=lambda block: block.start)
 
 
 def _paragraph(text: str, prose: str, start: int, end: int,
                captions: tuple[tuple[int, int], ...]) -> _Block:  # fmt: skip
-    if not prose[start:end].strip():
-        return _Block(start, end, BARRIER)
     if _near(captions, start, end):
         if _PANDOC.match(text, start):
             return _Block(start, end, CAPTION)
@@ -171,20 +182,6 @@ def _near(spans, start: int, end: int) -> list[tuple[int, int]]:
             found.append(spans[at])
         at += 1
     return found
-
-
-def _outside(start: int, end: int, spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """The pieces of `[start, end)` that no span of `spans` covers, each holding a word."""
-    pieces, at = [], start
-    for low, high in spans:
-        if high <= at or low >= end:
-            continue
-        if low > at:
-            pieces.append((at, low))
-        at = max(at, high)
-    if at < end:
-        pieces.append((at, end))
-    return pieces
 
 
 def _table_offsets(text: str) -> list[tuple[int, int]]:

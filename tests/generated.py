@@ -1769,7 +1769,11 @@ DISPLAYS_TEXT = (
 NOTE_OPENINGS = ("*Note.* ", "Note: ", "^a^ ", "")
 #: The displays, each with a form of its own its cells use before its note or its caption
 #: under it defines it, and a definition of the text's form with another meaning: `{n}` its
-#: number, `{note}` its note's opening, `{caption}` pandoc's caption, above or under it.
+#: number, `{note}` its note's opening, `{caption}` pandoc's caption, above or under it. A
+#: caption or a legend above its table defines a form the table uses and the text defines
+#: only later, in the Discussion, so a caption that captioned nothing would leave the table's
+#: use before the text's definition (round 1 of #759); and the figure's legend defines one
+#: the Results then use, before the Discussion does, which the text's own definition rules.
 DISPLAY_KINDS = {
     # A table, pandoc's caption, and a note that pairs its forms.
     "pandoc": "{above}| Score | n |\n|---|---|\n| BDI | 12 |\n| ICC | 0.7 |\n| UMC | 3 |\n\n"
@@ -1778,17 +1782,24 @@ DISPLAY_KINDS = {
     "apa": "Table {n}.\n\n*Scores at the lowest dose (LD) given.*\n\n| Variable | Mean |\n"
            "|---|---|\n| KQS | 62 |\n\n{note}KQS: Kids Quiet Scale.",
     # A legend above its table, with no note.
-    "legend": "**Table {n}.** The relative odds ratio (ROR) by drug.\n\n| Drug | ROR |\n"
-              "|---|---|\n| one | 3 |",
+    "legend": "**Table {n}.** The relative odds ratio (ROR) and the mean dwell time (MDT) by "
+              "drug.\n\n| Drug | ROR | MDT |\n|---|---|---|\n| one | 3 | 4 |",
+    # Pandoc's caption above its table.
+    "titled": "Table: The total risk score (TRS) by group, table {n}.\n\n| Group | TRS |\n"
+              "|---|---|\n| one | 2 |",
     # A figure's legend.
-    "figure": "Figure {n}. The dose was a high dose (HD) in each session.",
+    "figure": "Figure {n}. The dose was a high dose (HD) in each session, and the pooled signal "
+              "ratio (PSR) by week.",
 }
 #: What the text then gives, each a warning: a paragraph right after a table that is no note
-#: and defines ROR another way; a second meaning of PRR; and EBGM, used before it.
+#: and defines ROR another way; a second meaning of PRR; EBGM, used before it; and PSR,
+#: which the Results use after the figure's legend and before the Discussion defines it.
 DISPLAYS_AFTER = "In short, the rank order ratio (ROR) was low, and the ROR fell."
+DISPLAYS_USED = "The PSR rose in each week."
 DISPLAYS_DISCUSSION = (
     "The pooled relative risk (PRR) was high, the empirical Bayes geometric mean (EBGM) was "
-    "low, and the PRR and the EBGM were read."
+    "low, and the PRR and the EBGM were read. The mean dwell time (MDT), the total risk score "
+    "(TRS) and the pooled signal ratio (PSR) were read, and the MDT, the TRS and the PSR held."
 )
 #: The displays as blocks of the pool `ABBREVIATION_BLOCKS` draws from, a note of each opening.
 DISPLAY_PIECES = tuple(
@@ -1801,6 +1812,7 @@ DISPLAY_PIECES = tuple(
 DISPLAYS_FOUND = sorted([
     ("abbreviation-redefined", "ROR", "warned"), ("abbreviation-redefined", "PRR", "warned"),
     ("abbreviation-used-before-defined", "EBGM", "warned"),
+    ("abbreviation-used-before-defined", "PSR", "warned"),
     ("abbreviation-undefined", "UMC", "warned"),
     *(("abbreviation-redefined", short, "asked") for short in ("BDI", "LD", "ROR", "HD")),
 ])
@@ -1810,7 +1822,8 @@ DISPLAYS_FOUND = sorted([
 def displays_alone(draw: st.DrawFn) -> dict[str, Any]:
     """A manuscript whose Results hold one display of every kind of `DISPLAY_KINDS`, in an
     order drawn, each note opening as drawn and pandoc's caption above or under its table;
-    the text's paragraph that is no note right after the legend's table. What G14 reports
+    the text's paragraph that is no note right after the legend's table; and after them the
+    use of the figure's form, which the Discussion defines. What G14 reports
     of it is `DISPLAYS_FOUND`: the text's own findings, as warnings; each display's
     definition of a text's form in another way, as a question; nothing of the displays'
     own forms that they use before their notes define them; and UMC, which a table uses and
@@ -1824,7 +1837,7 @@ def displays_alone(draw: st.DrawFn) -> dict[str, Any]:
             n=number, note=draw(st.sampled_from(NOTE_OPENINGS)),
             above=caption if above else "", below="" if above else f": Scores {number}.\n\n")
         pieces.append(f"{piece}\n\n{DISPLAYS_AFTER}" if kind == "legend" else piece)
-    results, _starts = _paragraphs(draw, pieces)
+    results, _starts = _paragraphs(draw, [*pieces, DISPLAYS_USED])
     methods, _starts = _paragraphs(draw, [DISPLAYS_TEXT])
     discussion, _starts = _paragraphs(draw, [DISPLAYS_DISCUSSION])
     text = f"# Methods\n\n{methods}# Results\n\n{results}# Discussion\n\n{discussion}"

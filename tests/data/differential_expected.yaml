@@ -57,9 +57,10 @@ expected:
     why: >-
       a table or a figure stands alone (Basile, 2026-11-21, "Table stands alone";
       2026-11-22, "Ask, don't drop"): a definition in a table's caption, a legend or a note
-      under a table that gives the text's meaning, or a second definition there, says
-      nothing, and one that gives another meaning than the text's is a question at INFO,
-      once for each such meaning, where it was a warning; two displays are not compared; a
+      under a table that gives the text's meaning says nothing against the text, and one
+      that gives another meaning than the text's is a question at INFO, once for each such
+      meaning, where it was a warning; within one display a second definition, of the same
+      meaning or another, is a warning as in the text; two displays are not compared; a
       use in a display that defines the form is no use before the definition, wherever it
       stands in it; and a use in the text is held to the text's definitions where the text
       gives one, so one between a legend's definition and the text's later one is used

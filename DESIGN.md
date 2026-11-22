@@ -5597,7 +5597,9 @@ first given in a display and once, naming the display's long form and the text's
 note's long form, "Score" for "Scale", is then still before the author, and a display's own
 wording costs no warning. Two displays are never compared with each other, so where the text
 defines a form nowhere nothing is asked; within one display, its caption and its note giving
-one form two meanings is still a warning, as in the text. A use in a display that the same
+one form two meanings is still a warning, as in the text, and that definition is not asked
+about besides, though its meaning is not the text's either (round 1 of #759). A use in a
+display that the same
 display defines is no use before the definition, wherever that stands in it, a header over
 its note among them; and since a use there is a use, a definition used only in its display is
 not unused. Everything else is read as before: a use in a display that does not define the
@@ -17144,7 +17146,8 @@ been sorted yet.
     is compared with the text's definitions as before. A paragraph of the text right under
     a table that opens with a note's mark or pairs a form, "Note: we ...", is taken for the
     table's note.
-    Pinned by `tests/test_tables_stand_alone.py::test_a_paragraph_after_a_table_that_is_no_note_is_the_text_s`.
+    Pinned by `tests/test_tables_stand_alone.py::test_a_paragraph_after_a_table_that_is_no_note_is_the_text_s`
+    and `tests/test_tables_stand_alone.py::test_a_paragraph_of_the_text_under_a_table_that_opens_on_note_is_taken_for_its_note`.
   - A legend captions only the table beside it, above it or under it with a blank line
     between, or across one paragraph where it holds its number alone, APA's title. A legend
     with any other paragraph between it and its table is a display of its own, and the

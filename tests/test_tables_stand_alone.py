@@ -224,3 +224,64 @@ def test_a_use_in_the_text_only_a_table_defines_is_held_to_the_table_s_definitio
     assert _found(f"# Results\n\n{table}The PSR was high.\n") == []
     assert _found(f"# Methods\n\nThe PSR was high.\n\n# Results\n\n{table}") == [
         ("abbreviation-used-before-defined", "PSR", WARNED)]
+
+
+# ------------------------------------------------------------------------- round 1 of #759
+
+
+def test_a_meaning_warned_of_in_its_own_display_is_not_asked_about_too() -> None:
+    """The note's ROR differs from its legend's and from the text's: one finding, the
+    warning of its own display. (Round 1's "ROR: rank ratio" holds no O, so the letter rule
+    reads no definition in it; "relative outcome ratio" is one.)"""
+    text = ("# Methods\n\nWe used the reporting odds ratio (ROR), and the ROR was read.\n\n"
+            "# Results\n\n**Table 1.** The reporting odds ratio (ROR) by drug.\n\n| Drug | ROR |\n"
+            "|---|---|\n| one | 3 |\n\n*Note.* ROR: relative outcome ratio.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "ROR", WARNED)]
+
+
+def test_a_text_use_after_a_legend_and_before_the_text_s_definition_is_used_before_it() -> None:
+    """Where the text defines the form, a use in the text is held to the text's definition
+    alone: one between a legend's definition and the text's later one is used before it."""
+    text = ("# Results\n\nFigure 1. The pooled signal ratio (PSR) by week.\n\nThe PSR rose.\n\n"
+            "# Discussion\n\nThe pooled signal ratio (PSR) was high, and the PSR "
+            "held.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-used-before-defined", "PSR", WARNED)]
+
+
+def test_a_note_typed_on_the_line_under_its_table_is_its_note() -> None:
+    text = ("# Methods\n\nThe Cigarette Dependence Scale (CDS) was given, and the CDS held.\n\n"
+            "# Results\n\n| a | CDS |\n|---|---|\n| 1 | 2 |\n^a^ Cigarette Dependence Score (CDS)."
+            "\n\nThe CDS was low.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "CDS", ASKED)]
+
+
+@pytest.mark.parametrize("between", ["\n## Discussion\n", "\n\n## Discussion\n\n"])
+def test_a_heading_after_a_table_ends_it_glued_to_the_paragraph_or_not(between: str) -> None:
+    """The paragraph under a heading after a table is the text's, though it pairs a form."""
+    text = ("# Methods\n\nThe Cigarette Dependence Scale (CDS) was given, and the CDS held.\n\n"
+            f"# Results\n\n| a | CDS |\n|---|---|\n| 1 | 2 |\n{between}*Note.* CDS = Cigarette "
+            "Dependence Score.\n\nThe CDS was low.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "CDS", WARNED)]
+
+
+def test_a_paragraph_of_the_text_under_a_table_that_opens_on_note_is_taken_for_its_note() -> None:
+    """The other half of the Known gap: "Note that ..." under a table is read as its note, so
+    another meaning there is asked about and not warned of."""
+    text = ("# Methods\n\nWe read the heart rate (HR), and the HR held.\n\n# Results\n\n| Group "
+            "| HR |\n|---|---|\n| one | 2 |\n\nNote that the hazard ratio (HR) was adjusted.\n\n"
+            "The HR was low.\n")  # fmt: skip
+    assert _found(text) == [("abbreviation-redefined", "HR", ASKED)]
+
+
+def test_the_question_says_the_text_s_definition_stands_later_on_the_same_line(
+    tmp_path: Path,
+) -> None:
+    body = ("\\section{Methods}\n\\begin{table}\\begin{tabular}{l}ROR\\end{tabular}\\caption{The "
+            "relative odds ratio (ROR).}\\end{table} The reporting odds ratio (ROR) was read, and "
+            "the ROR held.\n")  # fmt: skip
+    (tmp_path / "main.tex").write_text(
+        f"\\documentclass{{article}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n",
+        encoding="utf-8")  # fmt: skip
+    report = _judge(_latex_read(tmp_path, None), NOTHING, tmp_path)
+    (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
+    assert asked.question and "later on the same line" in asked.message, asked.message

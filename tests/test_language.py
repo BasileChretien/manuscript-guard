@@ -1808,16 +1808,18 @@ def test_a_caption_may_restate_a_definition(project: Path, caption: str) -> None
     assert not report.findings, found(report)
 
 
-def test_a_caption_that_means_something_else_is_not_compared(project: Path) -> None:
-    """A legend defines for its own figure, and is compared with nothing in the text
-    (Basile, 2026-11-21, "Table stands alone"); the same words in the text are two
-    meanings."""
+def test_a_caption_that_means_something_else_is_asked_about(project: Path) -> None:
+    """A legend defines for its own figure: another meaning there than the text's is a
+    question, never a warning (Basile, 2026-11-21, "Table stands alone"; 2026-11-22, "Ask,
+    don't drop"); the same words in the text are two meanings, a warning."""
     report = written(
         project,
         "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
         "Figure 1. The relative odds ratio (ROR) by year.\n",
     )
-    assert not found(report, "abbreviation-redefined"), found(report)
+    (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
+    assert asked.question and asked.severity == "info", asked
+    assert "relative odds ratio" in asked.message, asked.message
     report = written(
         project,
         "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
@@ -2888,7 +2890,8 @@ def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> N
                      "short form.\n\n" for n in range(3))  # fmt: skip
     report = written(project, "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS "
                               "held.\n\n" + tabled)
-    assert not found(report, "abbreviation-redefined"), found(report)
+    (asked,) = [f for f in report.findings if f.code == "abbreviation-redefined"]
+    assert asked.question and asked.line == 9, asked
 
 
 @pytest.mark.parametrize(

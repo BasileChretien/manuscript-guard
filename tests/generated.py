@@ -1783,9 +1783,9 @@ DISPLAY_KINDS = {
     # A figure's legend.
     "figure": "Figure {n}. The dose was a high dose (HD) in each session.",
 }
-#: What the text then gives, each a finding: a paragraph right after a table that is no note
-#: and defines BDI another way; a second meaning of PRR; and EBGM, used before it.
-DISPLAYS_AFTER = "In short, the Beck Depression Index (BDI) was low, and the BDI fell."
+#: What the text then gives, each a warning: a paragraph right after a table that is no note
+#: and defines ROR another way; a second meaning of PRR; and EBGM, used before it.
+DISPLAYS_AFTER = "In short, the rank order ratio (ROR) was low, and the ROR fell."
 DISPLAYS_DISCUSSION = (
     "The pooled relative risk (PRR) was high, the empirical Bayes geometric mean (EBGM) was "
     "low, and the PRR and the EBGM were read."
@@ -1796,9 +1796,14 @@ DISPLAY_PIECES = tuple(
                    below=f": Scores {number}.\n\n")
     for number, written in enumerate(DISPLAY_KINDS.values(), start=1)
 )
-DISPLAYS_FOUND = sorted([("abbreviation-redefined", "BDI"), ("abbreviation-redefined", "PRR"),
-                         ("abbreviation-used-before-defined", "EBGM"),
-                         ("abbreviation-undefined", "UMC")])  # fmt: skip
+#: What G14 says of it: the text's own findings, warnings, and each display's meaning
+#: another than every one the text gives, a question (Basile, 2026-11-22, "Ask, don't drop").
+DISPLAYS_FOUND = sorted([
+    ("abbreviation-redefined", "ROR", "warned"), ("abbreviation-redefined", "PRR", "warned"),
+    ("abbreviation-used-before-defined", "EBGM", "warned"),
+    ("abbreviation-undefined", "UMC", "warned"),
+    *(("abbreviation-redefined", short, "asked") for short in ("BDI", "LD", "ROR", "HD")),
+])
 
 
 @st.composite
@@ -1806,9 +1811,10 @@ def displays_alone(draw: st.DrawFn) -> dict[str, Any]:
     """A manuscript whose Results hold one display of every kind of `DISPLAY_KINDS`, in an
     order drawn, each note opening as drawn and pandoc's caption above or under its table;
     the text's paragraph that is no note right after the legend's table. What G14 reports
-    of it is the text's alone, `DISPLAYS_FOUND`: the displays redefine the text's forms
-    another way, and use their own forms before their notes define them, and none of that
-    is said; UMC, which a table uses and nothing defines, is asked about."""
+    of it is `DISPLAYS_FOUND`: the text's own findings, as warnings; each display's
+    definition of a text's form in another way, as a question; nothing of the displays'
+    own forms that they use before their notes define them; and UMC, which a table uses and
+    nothing defines, in the question on the forms never defined."""
     kinds = draw(st.permutations(sorted(DISPLAY_KINDS)))
     pieces = []
     for number, kind in enumerate(kinds, start=1):

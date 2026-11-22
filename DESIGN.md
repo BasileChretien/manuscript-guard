@@ -5589,17 +5589,24 @@ opens with a note's mark ("Note", "Abbreviations", a footnote's) or pairs a shor
 its long form ("ICC: intraclass correlation"); a legend with no table beside it, a figure's
 or a supplementary table's, "**S1 Table.** ...", is a display with the notes under it; a
 heading, and anything G14 does not read, ends one. In LaTeX it is a table's float whole, or a
-`tabular` and its kin in none. A definition there is compared with nothing outside its
-display, the text's or another display's, so neither "defined again" nor "defined as X here
-and as Y" is said across them; within one display, its caption and its note giving one form
-two meanings is still two. A use in a display that the same display defines is no use before
-the definition, wherever that stands in it, a header over its note among them; and since a
-use there is a use, a definition used only in its display is not unused. Everything else is
-read as before: a use in a display that does not define the form is held to the text's
-definitions, and a form defined nowhere is asked about. Where the text defines a form
-nowhere, a display's definition still counts for a use outside it, as before; whether it
-should cover its display alone, the text's use then undefined, is the author's question
-(`language._DISPLAYS_DEFINE_FOR_THE_TEXT`).
+`tabular` and its kin in none. A definition there that gives a meaning the text gives says
+nothing, so a display may define its forms again as the text does. One that gives another
+meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
+drop"): a question, `abbreviation-redefined` at INFO, never a warning, where that meaning is
+first given in a display and once, naming the display's long form and the text's. A slip in a
+note's long form, "Score" for "Scale", is then still before the author, and a display's own
+wording costs no warning. Two displays are never compared with each other, so where the text
+defines a form nowhere nothing is asked; within one display, its caption and its note giving
+one form two meanings is still a warning, as in the text. A use in a display that the same
+display defines is no use before the definition, wherever that stands in it, a header over
+its note among them; and since a use there is a use, a definition used only in its display is
+not unused. Everything else is read as before: a use in a display that does not define the
+form is held to the text's definitions, and a form defined nowhere is asked about. Where the
+text defines a form nowhere, a display's definition still counts for a use in the text, as
+before (Basile, 2026-11-22, "Still counts"; `language._DISPLAYS_DEFINE_FOR_THE_TEXT`): a use
+after it is defined, a use before it is used before it is defined. Covering its display alone
+would have turned 18 true warnings of the corpus into questions or nothing, for 16 false
+ones.
 
 **Each other meaning is reported once.** A paper of the real-paper corpus gave one short form
 another long form in each of six table notes, and G14 said so six times. A definition whose
@@ -17147,9 +17154,13 @@ been sorted yet.
   - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
   - Where the text defines a form nowhere, a display's definition counts for a use outside
     it: the use after it is defined, the use before it is used before it is defined, as
-    before "Table stands alone". Whether the display's definition covers its display
-    alone is the author's to choose.
+    before "Table stands alone" (Basile, 2026-11-22, "Still counts"). So a text that leans
+    on a table's note for a form it never spells out is not asked about it.
     Pinned by `tests/test_tables_stand_alone.py::test_a_use_in_the_text_only_a_table_defines_is_held_to_the_table_s_definition`.
+  - A display's meaning is asked about only where it differs from every meaning the text
+    gives: a note that gives the text's second meaning, itself warned of, says nothing of
+    its own.
+    Pinned by `tests/test_tables_stand_alone.py::test_a_second_definition_in_the_text_is_still_warned_of_beside_a_table`.
 
 - **A short form that needs its definition and is never given one is asked about, not
   warned of.** G14's one question on the short forms never defined lists it beside the
@@ -25066,8 +25077,9 @@ Open, recorded as each change landed:
   - A note's shape, "X = long form" or "X: long form", may restate the text's definition
     wherever it stands, as a caption may (Basile, 2026-11-16, "As a restatement"), and so
     may a heading the text defines again; in the text, one whose long form differs is still
-    a second meaning. Under a table it is the table's own note, compared with nothing in the
-    text (Basile, 2026-11-21, "Table stands alone").
+    a second meaning. Under a table it is the table's own note, and another meaning there
+    than the text's is a question (Basile, 2026-11-21, "Table stands alone"; 2026-11-22,
+    "Ask, don't drop").
     Pinned by `tests/test_definition_shapes.py::test_a_note_that_repeats_the_text_s_definition_restates_it`.
   - A heading defines only where a heading over it names a section by the closed list
     (`section_name_alone`), "## Force and electromyography (EMG)" under the Methods, in a

@@ -34,8 +34,8 @@ abstract. The supplement is read after the paper, so it inherits the main text's
 definitions and is otherwise held to its own. The title page that opens either is not read
 for abbreviations at all (`text/title_page.py`): its units and institutions need no
 defining. And a table or a figure stands alone (Basile, 2026-11-21): what its caption,
-legend or note defines covers its own uses, wherever they stand in it, and is compared with
-nothing outside it (`gates/displays.py`).
+legend or note defines covers its own uses, wherever they stand in it (`gates/displays.py`),
+and a meaning there other than the text's is a question, not a warning (2026-11-22).
 
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
@@ -1807,8 +1807,8 @@ class _File:
     #: name's that underscores join, in order (`_no_short_forms`): no use and no definition.
     apart: tuple[tuple[int, int], ...] = ()
     #: Where each table's and each figure's own text runs, in order (`gates.displays`): what
-    #: it defines covers it alone and is compared with nothing outside it (Basile,
-    #: 2026-11-21, "Table stands alone").
+    #: it defines covers its own uses, and another meaning there than the text's is asked
+    #: about (Basile, 2026-11-21, "Table stands alone"; `_asked_of_displays`).
     displays: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
@@ -2533,9 +2533,9 @@ def _given_again(
 
 
 #: Whether a table's or a figure's definition counts for a use outside it where the text
-#: defines the form nowhere, as a definition there did before "Table stands alone" (Basile,
-#: 2026-11-21). The author's to choose: a use in the text whose only definition is a table's
-#: note is then neither used before defined nor asked about, where it is otherwise.
+#: defines the form nowhere, as a definition there did before "Table stands alone": it does
+#: (Basile, 2026-11-22, "Still counts"), so a use in the text whose only definition is a
+#: table's note is defined, or used before it is defined, and not asked about.
 _DISPLAYS_DEFINE_FOR_THE_TEXT = True
 
 
@@ -2557,15 +2557,49 @@ def _loose(uses: Iterable[_Use], definitions: Iterable[_Definition]) -> list[_Us
 
 def _given_again_apart(
     short: str, definitions: list[_Definition], said
-) -> list[tuple[_Definition, str, str]]:
+) -> list[tuple[_Definition, str, str, bool]]:
     """`_given_again` on the text's definitions of `short` together, and on each table's
-    or figure's apart, which is compared with nothing outside it (Basile, 2026-11-21,
-    "Table stands alone"); the findings in the order their definitions stand."""
+    or figure's apart (Basile, 2026-11-21, "Table stands alone"), each a warning; and the
+    displays' other meanings than the text's, each a question (`_asked_of_displays`). The
+    findings in the order their definitions stand, each with whether it is asked."""
     groups: dict[tuple[str, int] | None, list[_Definition]] = {}
     for mark in definitions:
         groups.setdefault(mark.display, []).append(mark)
-    found = [each for group in groups.values() for each in _given_again(short, group, said)]
+    found = [(*each, False) for group in groups.values()
+             for each in _given_again(short, group, said)]  # fmt: skip
+    found += [(*each, True) for each in _asked_of_displays(short, definitions, said)]
     return sorted(found, key=lambda each: each[0].key)
+
+
+def _asked_of_displays(
+    short: str, definitions: list[_Definition], said
+) -> list[tuple[_Definition, str, str]]:
+    """Each definition of `short` in a table's or a figure's own text that gives another
+    meaning than every one the text gives, asked about where that meaning is first given in
+    a display, once (Basile, 2026-11-22, "Ask, don't drop"). A display that gives the text's
+    meaning again says nothing, and two displays are not compared with each other, so where
+    the text defines the form nowhere nothing is asked. `definitions` are in order."""
+    text = [mark for mark in definitions if mark.display is None]
+    if not text:
+        return []
+    told: list[str] = []
+    found = []
+    for mark in definitions:
+        if mark.display is None or any(_same_meaning(mark.long, each.long) for each in text):
+            continue
+        if _told_before(mark.long, told):
+            continue
+        told.append(mark.long)
+        found.append((
+            mark,
+            f"{short} is defined as '{mark.long}' here, in a table's or a figure's own text, "
+            f"and as '{text[0].long}' {said(text[0], mark)} in the text: is it the same "
+            "thing?",
+            "a table or a figure may define a form for itself; where it means what the text "
+            "does, give the text's long form there too, and where it means something else, "
+            "give it another short form",
+        ))  # fmt: skip
+    return found
 
 
 def _headless(files: list[_File]) -> Finding | None:
@@ -2623,15 +2657,17 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         the list at the end, and "write '...' out and drop the short form" of its entries)."""
         return _in_a_glossary(files[mark.order], mark.offset)
 
-    def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
-        """G14's warning on `short` at `mark`, in the scope read now: its key's subject is
-        the form and the scope, "HR@abstract" (`keys`), and its sentence the one `mark`
-        stands in, which only a definition given again keeps (`keys.PAPER_LEVEL`)."""
+    def finding(code: str, mark: _Mark, short: str, message: str, hint: str,
+                asked: bool = False) -> Finding:  # fmt: skip
+        """G14's warning on `short` at `mark`, in the scope read now, or its question where
+        `asked`: its key's subject is the form and the scope, "HR@abstract" (`keys`), and its
+        sentence the one `mark` stands in, which only a definition given again keeps
+        (`keys.PAPER_LEVEL`)."""
         file = files[mark.order]
-        return Finding(
+        return (Question if asked else Finding)(
             gate=GATE,
             code=code,
-            severity=WARN,
+            severity=INFO if asked else WARN,
             message=message,
             path=file.path,
             line=file.line_of(mark.offset),
@@ -2702,14 +2738,15 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
 
             # Without headings nothing tells the abstract from the main text, so a
             # definition the abstract repeats would be reported as one given twice.
-            for again, message, hint in [] if headless and scope.name == BODY else (
+            for again, message, hint, asked in [] if headless and scope.name == BODY else (
                 _given_again_apart(
                     short,
                     definitions,
                     lambda mark, here: placed(mark, here, "at", "earlier on the same line"),
                 )
             ):
-                findings.append(finding("abbreviation-redefined", again, short, message, hint))
+                findings.append(finding("abbreviation-redefined", again, short, message, hint,
+                                        asked))
 
             # A funder or a society named in full with its acronym, once, is how those
             # statements are written; nothing later is expected to use it.

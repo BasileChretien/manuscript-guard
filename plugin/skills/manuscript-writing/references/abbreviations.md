@@ -23,9 +23,10 @@ not a second definition, and a table's caption or a figure's legend may restate 
 An entry nothing else uses is reported as unused.
 
 A table or a figure stands alone: what its caption, legend or note defines covers that
-display only, and is compared with nothing in the text, so a note may spell a form out in
-its own words. Its uses are its own too: a header the note under it defines is not used
-before its definition. Define each form in the text as well where the text uses it.
+display. Spelling a form out there as the text does says nothing; spelling it another way
+is a question (`abbreviation-redefined` as a note): give the text's long form, or another
+short form where it means something else. Its uses are its own too: a header the note
+under it defines is not used before its definition.
 
 ## No headings
 

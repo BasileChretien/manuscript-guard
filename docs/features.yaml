@@ -436,6 +436,7 @@ features:
     skills: [manuscript-writing]
     tests:
       - tests/test_language.py
+      - tests/test_tables_stand_alone.py
       - tests/test_spelling.py
       - tests/test_vocabulary.py
       - tests/test_notation.py

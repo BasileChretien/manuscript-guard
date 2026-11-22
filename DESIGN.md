@@ -17591,6 +17591,7 @@ been sorted yet.
   to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
   change an `input-changed` failure. `verify`, which runs the analysis again and compares
   every value, sees the change either way. Imports are not followed.
+  Pinned by `tests/test_verify.py::test_a_helper_the_script_imports_is_not_followed`.
 - **The environment is the lockfiles at the project root, and only a warning.** Both
   emitters record the digest of each of `renv.lock`, `uv.lock`, `poetry.lock`,
   `environment.yml` and `requirements*.txt` found at the root, and G1 warns
@@ -17604,6 +17605,14 @@ been sorted yet.
   nothing. When a
   re-run differs, `verify` says whether the analysis declares a seed: a parameter whose key
   holds "seed".
+  Pinned by `tests/test_r_emitter.py::test_both_emitters_record_the_lockfiles_alike`,
+  `tests/test_corruption.py::test_a_lockfile_changed_since_the_results_is_said`,
+  `tests/test_corruption.py::test_a_lockfile_gone_or_new_since_the_results_is_said`,
+  `tests/test_corruption.py::test_a_lockfile_in_a_subfolder_or_one_unlike_what_is_installed_is_not_seen`,
+  `tests/test_corruption.py::test_a_lockfile_checked_out_with_other_line_endings_is_unchanged`,
+  `tests/test_r_emitter.py::test_a_lockfile_that_links_elsewhere_is_recorded_by_r_where_it_points`,
+  `tests/test_corruption.py::test_a_fragment_written_before_the_environment_was_recorded_says_nothing`
+  and `tests/test_verify.py::test_a_difference_says_whether_the_analysis_declares_a_seed`.
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:", "Figure S1.", "Fig. 1." or "eFigure 1."; the stop or colon has to come right
@@ -17823,6 +17832,8 @@ been sorted yet.
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
   "%", "years" and "y"), is no longer reported as written two ways.
+  Pinned by `tests/test_corruption.py::test_a_count_and_a_percentage_that_coincide_are_not_one_quantity`
+  and `tests/test_corruption.py::test_one_quantity_whose_unit_is_written_two_ways_is_not_said`.
 - **G8 tells a count from a measure at nought and one by how each is written.** At 0, 1 and
   −1 a value is keyed by its kind as well as its value and unit: written whole ("0", "1") or
   with decimals ("0.00", "1.0"), as its display shows it (2026-11-06: a count of none
@@ -17902,6 +17913,10 @@ been sorted yet.
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
+  Pinned by `tests/test_relations.py::test_a_display_that_is_no_rounding_is_left_out_of_the_printed_arithmetic`,
+  `tests/test_relations.py::test_a_bound_is_no_rounding_even_within_half_a_unit`,
+  `tests/test_relations.py::test_the_last_digits_of_decimal_arithmetic_are_no_rounding`
+  and `tests/test_relations.py::test_shares_printed_as_percentages_that_miss_100_warn`.
 - **A flow's record is checked step by step, and nothing more.** "One study, several
   reports" (PRISMA 2020) is not a subtraction, so a flow stops at the reports and the studies
   are an `at_most` of them. Where one record can be excluded for several reasons, the step is
@@ -17915,10 +17930,18 @@ been sorted yet.
   that is no results key. Python takes NumPy's whole numbers and its single truth values as
   its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
   any numeric vector of whole values, or a single number, for those steps.
+  Pinned by `tests/test_relations.py::test_overlapping_reasons_waive_their_sum_and_keep_the_total`,
+  `tests/test_relations.py::test_a_flow_two_fragments_record_is_the_first_s`,
+  `tests/test_relations.py::test_the_emitter_refuses_a_relation_it_cannot_write`,
+  `tests/test_r_emitter.py::test_r_refuses_the_flows_and_relations_python_refuses`,
+  `tests/test_r_emitter.py::test_r_and_python_write_the_same_flows_and_relations`,
+  `tests/test_relations.py::test_numpy_s_whole_numbers_and_truth_values_are_taken`
+  and `tests/test_r_emitter.py::test_r_takes_any_numeric_vector_of_whole_values_for_the_overlapping_steps`.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
   UTF-16 carry a BOM; a file without one is taken for 8-bit text.
+  Pinned by `tests/test_input_digests.py::test_utf16_without_a_bom_is_normalised_as_8_bit_text`.
 - **A blind document is read for the names `authors.yaml` gives, as they are written
   there.** A name written another way is not found: a nickname, a given name of several
   words reduced to its first, a family name alone, a name in a language's other script, or a
@@ -18167,10 +18190,10 @@ been sorted yet.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:
-  its words count, and its closing `---` underlines the line above it into a heading. A
-  block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
-  Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
-  chosen in advance.
+  its words count. It heads nothing: a block of `note: |` over an indented `Methods`,
+  placed under `## Results`, leaves the `p < 0.001` after it under Results, where it fails.
+  Pinned by `tests/test_corruption.py::test_a_yaml_block_later_in_a_file_is_counted_as_prose`
+  and `tests/test_corruption.py::test_a_yaml_block_in_the_body_heads_nothing`.
 - **Nothing asks for a design round before the analysis stage.** One that was never
   held says nothing. A design round's request carries the plan and the feasibility results
   only: the reporting guideline and the journal's profile are not sent, and a plan's
@@ -18202,6 +18225,11 @@ been sorted yet.
   on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
   a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
   (round 3 of #382).
+  Pinned by `tests/test_dictionary.py::test_a_condition_is_one_coded_variable_and_its_codes`,
+  `tests/test_dictionary.py::test_a_range_is_read_by_its_type_alone`,
+  `tests/test_dictionary.py::test_an_order_takes_dates_and_datetimes_as_one_family_and_refuses_times`,
+  `tests/test_dictionary.py::test_a_sign_yaml_drops_is_a_misreading_except_in_a_reporting_item`
+  and `tests/test_dictionary.py::test_a_value_yaml_reads_as_written_is_not_said_to_be_misread`.
 - **The plan names a variable by its backticks, and nothing else.** A covariate the plan
   writes in words, "adjusted for age", is not read, and an entry for it is said to be
   unused until the plan writes `age`. A name in backticks that is code and not a variable,
@@ -18397,6 +18425,8 @@ been sorted yet.
   the field's DOI is always taken first, each DOI read as the gates read one: without the
   dressing `normal_doi` takes off (`doi:`, a resolver's address, a stop after it), in one
   case.
+  Pinned by `tests/test_citation_fields.py::test_a_field_s_doi_no_entry_has_is_matched_to_an_entry_without_one_by_its_title`
+  and `tests/test_citation_fields.py::test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one`.
 - **A ledger value is taken out of its quote once.** G7 counts the words beside a quoted
   value with its first match alone taken out (`literature.sources.words_beside`). A number
   quoted again is no word, so it counts as it should; a value with letters quoted again,
@@ -18990,6 +19020,11 @@ Added by the adversarial review, verified and **not** fixed:
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
   exists.
+  Pinned by `tests/test_roundtrip.py::test_a_number_corrected_in_a_table_is_only_counted_and_a_heading_reworded_is_listed`,
+  `tests/test_roundtrip.py::test_a_document_that_ran_a_list_into_a_paragraph_comes_back_listing_it_untouched`,
+  `tests/test_roundtrip.py::test_a_block_that_is_not_a_paragraph_carries_no_marker`,
+  `tests/test_roundtrip.py::test_a_deleted_paragraph_without_an_identifier_is_named`
+  and `tests/test_roundtrip.py::test_a_heading_dragged_above_a_reversed_list_is_still_named`.
 - **The dry run of `import` shows each change by its words, not by what it means.** Under
   "would merge into" and "NOT merged into" it prints each stretch whose words differ, with
   five words either side, at most three stretches a paragraph (`preview.py`); the rest are
@@ -19010,6 +19045,16 @@ Added by the adversarial review, verified and **not** fixed:
   changed beside the co-author's edit. The generated edits (`previewed_edits`) never pass
   the three stretches a paragraph shows, and hold no binding, no parenthesis inside another
   and no refusal. A run of `{{` never closed takes time in the square of its length.
+  Pinned by `tests/test_preview.py::test_a_change_is_shown_with_a_few_words_either_side`,
+  `tests/test_preview.py::test_changes_past_the_most_shown_are_counted`,
+  `tests/test_preview.py::test_no_changed_word_is_left_out_of_a_sentence_copy_edited_word_by_word`,
+  `tests/test_preview.py::test_nothing_is_shown_where_the_words_are_the_same`,
+  `tests/test_preview.py::test_a_binding_or_a_citation_is_never_cut`,
+  `tests/test_preview.py::test_what_is_one_word_is_shown_whole_and_a_long_or_nested_group_is_cut`,
+  `tests/test_roundtrip.py::test_a_spacing_change_inside_a_parenthesis_prints_two_equal_lines`,
+  `tests/test_roundtrip.py::test_a_bracket_is_printed_whole_however_long`,
+  `tests/test_roundtrip.py::test_a_nested_parenthesis_is_cut_and_a_line_opens_inside_it`
+  and `tests/test_roundtrip.py::test_a_refusal_is_shown_against_the_build_s_record_or_else_the_fresh_build`.
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
@@ -19022,6 +19067,12 @@ Added by the adversarial review, verified and **not** fixed:
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
+  Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
+  `tests/test_corruption.py::test_seven_designs_are_named_and_another_is_other`,
+  `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
+  `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
+  `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`
+  and `tests/test_corruption.py::test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone`.
 - **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
@@ -19083,6 +19134,7 @@ Added by the adversarial review, verified and **not** fixed:
   such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
   to it in Word is reported as not compared and not applied, so it can be edited only in
   the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
+  Pinned by `tests/test_roundtrip.py::test_a_brace_an_earlier_version_wrote_back_leaves_its_paragraph_uncompared`.
 - **A rewording that splits a brace pair across a number or citation is refused.** A brace
   from Word is written escaped, so where a rewording leaves a bare brace from the `.md` on
   one side of a number or citation and its partner comes back from Word - edited, moved or
@@ -19112,17 +19164,23 @@ Added by the adversarial review, verified and **not** fixed:
   source. A `---` that opens mid-block, straight after a code fence, straight under a
   table's closing rule or inside a fenced div with no blank line before it, fails the build
   when its YAML holds a blank line. An attempt that opens in one source file
-  and stops in the next - each file is tagged on its own and the build joins them - builds,
-  with the second file's paragraphs read into a table whose bookmarks `import` ignores, so
-  their edits go uncompared.
+  and stops in the next - each file is tagged on its own and the build joins them - would
+  read the second file's paragraphs into a table whose bookmarks `import` ignores; the build
+  refuses its opening line, as it does a line of dashes with a line above or under it,
+  outside a quotation, code, a comment or the front matter (`rule-opens-a-block`).
+  Pinned by `tests/test_roundtrip.py::test_no_marker_inside_a_table_or_yaml_across_blank_lines`,
+  `tests/test_roundtrip.py::test_yaml_opened_mid_block_is_not_followed_and_its_marker_fails_the_build`
+  and `tests/test_roundtrip.py::test_yaml_opened_in_one_file_and_stopped_in_the_next_is_tagged_apart_and_refused`.
 - **A block that opens on a line of dashes is taken for a table whatever surrounds it.**
   When the line has text straight under it, `tag` leaves everything up to the table's
   closing line of dashes unmarked; with a blank line under it, the line is a rule and opens
   nothing. Pandoc reads no table there when the line continues a list item, sits inside a
   fenced div after a blank line, or follows a no-break-space line inside a paragraph. The
-  paragraphs in between then go uncompared although pandoc reads them as paragraphs, and
-  nothing is corrupted. Lines of three dashes or more had these cases already; since two
-  dashes can open a table, `--` has them too.
+  paragraphs in between would go uncompared although pandoc reads them as paragraphs, and
+  nothing is corrupted; `check` and the build refuse such a line (`rule-opens-a-block`).
+  Lines of three dashes or more had these cases already; since two dashes can open a
+  table, `--` has them too.
+  Pinned by `tests/test_roundtrip.py::test_a_block_opening_on_dashes_hides_paragraphs_pandoc_reads_as_paragraphs`.
 - **A table that opens mid-block is followed only under the lines it was seen to open
   under.** Pandoc 3.9 opens one straight under a code or div fence, a whole line of
   block-level HTML, a setext underline, a grid table's border, a pipe-table row, a line
@@ -19159,11 +19217,6 @@ Added by the adversarial review, verified and **not** fixed:
   (`unclear-fence`) or by the build's comparison of listings, so no document is built from
   one; the entry stands because `tag` still pairs fences itself.
   Pinned by `tests/test_corruption.py::test_an_r_markdown_chunk_is_refused_by_check_and_the_build`.
-- **A heading with its first paragraph directly under it is one block, left unmarked.**
-  `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
-  with `#` the paragraph never carries an identifier and its edits are never compared.
-  Marking it would mean placing the identifier after the heading line. This was already so
-  before identifiers moved off lists.
 - **A review point anchored to a list or a quote before identifiers moved off them names
   nothing.** A `where:` recorded from a document built earlier can hold the identifier the
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
@@ -19208,8 +19261,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   and `tests/test_review_design_run.py::test_the_plan_sent_and_its_digest_come_from_two_reads`.
 - **Sign-offs and approvals.** One authorisation is given per provider, so a cloud model
   added later to a provider already authorised goes unasked, and a `-cloud` model added to
-  a local provider voids the sign-off with the message of any other change. No test calls
-  the backstop with a model that has no sign-off standing. The text "manuscript-guard
+  a local provider voids the sign-off with the message of any other change. The backstop
+  refuses a model that has no sign-off standing. The text "manuscript-guard
   approve" in a search draws an extra prompt. An approval that cannot be parsed stops
   `submit` after the pack is written, and one that breaks the schema is printed as a
   failure and not acted on. Approvals are not guarded against `cp` or `rm` from a shell.
@@ -19217,6 +19270,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   only in characters outside `[\w.@-]` folds into another, a duplicate ORCID is not
   flagged, and a very long name or a device name (`Con`, `Nul`) can make no file. The
   unsigned checklist in the pack does not say whether a sign-off was void or never made.
+  Pinned by `tests/test_corruption.py::test_one_authorisation_is_given_per_provider`,
+  `tests/test_corruption.py::test_a_model_no_sign_off_stands_for_is_refused_by_the_backstop`,
+  `tests/test_hooks.py::test_a_search_naming_approve_is_asked_and_a_shell_copy_of_an_approval_is_not`,
+  `tests/test_corruption.py::test_an_approval_that_cannot_be_read_stops_submit_after_the_pack_is_written`,
+  `tests/test_corruption.py::test_an_approval_s_file_is_named_by_a_fold_two_authors_can_share`,
+  `tests/test_corruption.py::test_an_orcid_two_authors_give_is_not_flagged`
+  and `tests/test_compliance.py::test_the_pack_s_checklist_says_alike_a_sign_off_void_and_one_never_made`.
 - **The literature and its lookups.** Citation keys that differ only in case are filed
   apart or not found, by the file system. `[x?]+` in pages takes Roman page numbers for a
   placeholder; a Crossref `component` always fails, a cited supplementary item included;
@@ -19246,6 +19306,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   ("2025" in "Global B3 March 2025") draws a second finding. A slug with a doubled or
   trailing underscore ("MedDRA®") is never found. A `release_file` is an input, and R
   looks for a relative one where it looks for any (see "The emitters").
+  Pinned by `tests/test_corruption.py::test_a_typed_release_is_read_by_its_text_within_60_characters_of_the_name`,
+  `tests/test_emit.py::test_a_dictionary_is_its_release_as_the_analysis_has_it`
+  and `tests/test_r_emitter.py::test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write`.
 - **The year of a citation typed as text is read in the author-year forms only.** G2's hint
   names the key for "(Name, 2018)", "(Name 2018)", "(Name et al., 2018)", "(Name & Other,
   2018)", "(Name, Other, & Third, 2018)", each part of a group, and "Name (2018)" with "et
@@ -19302,11 +19365,15 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   selection" are not found. A guideline counts by its name's start, so PRISMA-P or an
   abstracts checklist counts for PRISMA, and a trial protocol that declares SPIRIT 2025 is
   told to declare CONSORT.
+  Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_some_headings_and_not_others`
+  and `tests/test_corruption.py::test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone`.
 - **Planned results.** A nested subsection also titled "Planned results" is read twice, a
   dotted code span (`data.table`, `table1.csv`) is taken for a key, and a key copied with
   its braces is skipped. At the analysis stage every planned key not yet emitted warns, by
   design. A feasibility fragment that fails its schema is dropped, and the warning says
   nothing was emitted.
+  Pinned by `tests/test_corruption.py::test_a_planned_results_list_is_read_by_the_shape_of_its_code_spans`
+  and `tests/test_corruption.py::test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing`.
 - **Checklists transcribed from a paper.** A `jats-table` recipe with no `rows_sha256`
   transcribes unchecked; `table:` is read for a Word recipe too; an `.xml` fetch accepts a
   page with `<article` in its first 4096 bytes; a recipe's name is matched in its case on
@@ -19384,8 +19451,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `old_string` uses curly quotes may pass unasked (not confirmed live).
   Pinned by `tests/test_hooks.py::test_an_unreadable_or_curly_quoted_attester_is_not_asked`.
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
-  seen); an empty lockfile's digest has not been compared between R and Python, nor R's
-  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
+  seen); an empty lockfile is digested alike by R and Python, and R's `validUTF8` refuses a
+  plan's overlong, surrogate and out-of-range forms as Python's decoder does. R reads
   a relative input from its working directory where a file of that name is there, and
   Python always from the project root, so an analysis run from another folder that holds
   one may read and record another file in R; and on Windows `~` is R's home (Documents) and
@@ -19399,6 +19466,15 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
+  Pinned by `tests/test_r_emitter.py::test_r_lists_lockfiles_in_their_case_on_windows`,
+  `tests/test_r_emitter.py::test_both_emitters_digest_an_empty_lockfile_alike`,
+  `tests/test_r_emitter.py::test_r_s_validutf8_and_python_s_decoder_refuse_the_same_plans`,
+  `tests/test_r_emitter.py::test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write`,
+  `tests/test_emit.py::test_a_path_through_a_link_is_collapsed_as_text`,
+  `tests/test_emit.py::test_python_expands_a_tilde_and_a_name_where_r_reads_its_own_home`,
+  `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
+  `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
+  and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -19409,9 +19485,11 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `authors.yaml` costs it the project's terms and conventions, as it did before #544.
   Closed by saying the project could not be loaded, or by reading the terms and
   conventions from `paper.yaml` alone.
+  Pinned by `tests/test_emit.py::test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml`.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
+  Pinned by `tests/test_corruption.py::test_an_input_kept_by_git_lfs_is_misjudged_at_its_edges`.
 - **Assurance and verify.** A gate stopped by an unreadable manuscript is said to have read
   nothing rather than not to have run, and G0's and the build's findings fall in no
   dimension. Verification is stale against results fragments only, not scripts or data;
@@ -19419,6 +19497,12 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   named with a superscript digit raises, and an error writing `build/verify.json` is a
   traceback after `verify` printed. A results fragment whose `values` is a list raises
   after the report, which its schema check fails already.
+  Pinned by `tests/test_assurance.py::test_a_gate_stopped_by_an_unreadable_manuscript_is_said_to_have_read_nothing`,
+  `tests/test_assurance.py::test_the_findings_of_g0_and_the_build_fall_in_no_dimension`,
+  `tests/test_assurance.py::test_a_run_of_verify_is_not_stale_when_the_scripts_or_the_data_change`,
+  `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
+  `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
+  and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
@@ -19547,6 +19631,7 @@ Open, recorded as each change landed:
     其中一百二十三份为肝损伤，比值比约为三点四", are not read as numbers, and nothing is
     found in that sentence. Full-width digits in English prose ("Of ４０００ reports") are
     read as digits and caught.
+    Pinned by `tests/test_corruption.py::test_g2_reads_chinese_prose_as_unspaced_tokens_and_its_numerals_as_words`.
   - G4: words are counted between spaces, so six short Chinese paragraphs added 18 to
     `main_text_words`. A journal that publishes in Chinese counts characters, and the limits
     mean nothing for Chinese text. Accepted.
@@ -19843,6 +19928,8 @@ Open, recorded as each change landed:
   one, the others are not reported. A LaTeX manuscript's `%` comments are read with the rest
   of it, so an identifier given only in one counts as given; Markdown's HTML comments are
   not read.
+  Pinned by `tests/test_corruption.py::test_the_identifiers_a_manuscript_gives_are_one_warning_until_one_is_listed`
+  and `tests/test_corruption.py::test_an_identifier_in_a_latex_comment_counts_as_given`.
 - **The first results are dated by the plan's frozen copy.** A study analysed before the
   project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
   first results, is held to that later date, and a registration made in between is not seen
@@ -19852,6 +19939,7 @@ Open, recorded as each change landed:
   notes it and holds the paper to what it says, and `lookup` does not write over it. That is
   an edit made on purpose, as running the digest again is, and the note is what shows it
   (round 1 of #390).
+  Pinned by `tests/test_corruption.py::test_a_fetched_record_edited_and_marked_by_hand_is_read_as_a_copy`.
 - **Only all-synthetic first results are set aside.** A first run on simulated data marks
   the frozen plan, and the real data's first results, which come later, are dated by nobody:
   such a project's registration is held to the registry's own start dates only. A first run
@@ -21365,12 +21453,22 @@ Open, recorded as each change landed:
   import that loses the co-author's insertion, and where Word writes text already in the
   source that way, `--apply` deletes it from the source. A second choice, which the format
   allows and Word does not write, would be read as well as the first.
+  Pinned by `tests/test_roundtrip.py::test_word_text_reads_every_choice_and_no_fallback_whatever_the_choice_requires`,
+  `tests/test_roundtrip.py::test_source_text_word_writes_only_in_a_fallback_is_deleted_by_apply`,
+  `tests/test_roundtrip.py::test_an_emoji_word_saves_as_a_choice_is_no_edit`,
+  `tests/test_audit.py::test_the_audit_reads_every_choice_and_no_fallback_whatever_the_choice_requires`
+  and `tests/test_audit.py::test_an_emoji_word_inserted_is_read_from_the_choice`.
 - **A symbol with no text refuses its paragraph in the import, and reads as a space in the
   audit.** A Wingdings check box, or the smiley AutoCorrect makes of `:)`, that a co-author
   adds to a sentence costs a manual edit in the .md, and so does Symbol-font text whose font
   a style, the defaults or the theme sets: it is read, but a style's font is not taken as
   exact. The audit reads the style's font the same way and cannot refuse, so its reading of
   such text is as good as the resolution.
+  Pinned by `tests/test_roundtrip.py::test_a_symbol_with_no_text_is_refused_and_named`,
+  `tests/test_roundtrip.py::test_a_new_paragraph_holding_only_a_symbol_is_new_text_beside_its_neighbour`,
+  `tests/test_roundtrip.py::test_text_whose_symbol_font_a_style_sets_is_refused_as_read`,
+  `tests/test_audit.py::test_a_symbol_with_no_text_reads_as_a_space`
+  and `tests/test_audit.py::test_the_symbol_font_is_read_as_what_it_draws`.
 - **Fonts are resolved as far as the run, its styles, the defaults and the theme.** A table
   style's font, the complex-script font (`w:cs`, with `w:rtl` or `w:cs` on the run) and an
   East Asian font of Symbol drawing CJK text are not considered: such text is read as the
@@ -21381,6 +21479,11 @@ Open, recorded as each change landed:
   that code than it was sent with. One deleted and another of the same code typed elsewhere
   in the paragraph count as no change, and merge as the character moved, which the build
   draws in the body font as before.
+  Pinned by `tests/test_roundtrip.py::test_a_font_past_the_run_styles_defaults_and_theme_is_not_considered`,
+  `tests/test_roundtrip.py::test_a_table_style_s_font_is_not_considered`,
+  `tests/test_roundtrip.py::test_a_private_use_character_in_the_source_is_kept`,
+  `tests/test_roundtrip.py::test_a_second_private_use_character_of_a_code_already_sent_is_refused`
+  and `tests/test_roundtrip.py::test_a_private_use_character_moved_in_its_paragraph_merges_as_moved`.
 - **The import refuses a document whose styles, theme, font table or document relationships
   it cannot read safely.** Without them it cannot tell which font a run is in. Word does not
   write such parts; the audit, which cannot refuse, reads only the fonts a run names itself,
@@ -21403,9 +21506,10 @@ Open, recorded as each change landed:
   model is compared under its key only, so a model renamed since is compared with nothing;
   its engine's class is not compared (a GLM and a mixed model of one family and link read
   alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
-  `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
-  under `methods:` answers for its model or section, not for one difference, so a later
-  change to a model already explained is explained by the old reason. A heading that stands
+  `-` here differs. A heading's attribute (`{#id}`) is stripped, so the heading is the same
+  heading. A reason under `methods:` answers for its model or section, not for one
+  difference, so a later change to a model already explained is explained by the old
+  reason. A heading that stands
   twice in a plan is not compared at all, though one of the two may have changed. A heading
   that opens with a number of one or two digits loses it, so `12 months` and `24 months` are
   one heading: in one plan both stand twice, and across the two they are compared as one
@@ -21414,6 +21518,15 @@ Open, recorded as each change landed:
   a date) are compared, and a title the Deviations rule matches ("amendment 2") leaves the
   whole plan out. The generator draws only titled plans; the untitled one is held by a unit
   test (the second post-budget round).
+  Pinned by `tests/test_related.py::test_a_plan_s_section_is_compared_as_words_under_one_heading`,
+  `tests/test_related.py::test_a_section_of_the_plan_worded_otherwise_is_a_method`,
+  `tests/test_related.py::test_what_g8_does_not_compare_of_an_earlier_output_s_methods`,
+  `tests/test_related.py::test_a_value_printed_by_one_paper_only_is_not_compared`,
+  `tests/test_related.py::test_a_reason_for_a_model_explains_a_later_change_to_it`,
+  `tests/test_related.py::test_a_heading_that_stands_twice_is_said_and_not_guessed`,
+  `tests/test_related.py::test_a_heading_s_number_of_one_or_two_digits_is_dropped`,
+  `tests/test_related.py::test_a_plan_with_a_second_top_level_heading_keeps_its_title_as_a_section`
+  and `tests/test_related.py::test_a_plan_with_no_title_has_its_first_section_compared`.
 - **An earlier output's data dictionary is compared by variable name, and by what defines
   and codes a variable.** A variable renamed since, or whose name changed case, is two
   variables, each compared with nothing, and nothing says that one is gone or new. A
@@ -21426,6 +21539,10 @@ Open, recorded as each change landed:
   already explained is explained by the old reason. A copied dictionary the loader of this
   version refuses, one written under an earlier shape of the schema among them, is not
   compared, though it read when the earlier output was made.
+  Pinned by `tests/test_related.py::test_a_dictionary_is_compared_by_variable_name_and_what_defines_and_codes_one`,
+  `tests/test_related.py::test_a_unit_is_compared_as_written`,
+  `tests/test_related.py::test_a_reason_for_a_variable_explains_a_later_change_to_it`
+  and `tests/test_related.py::test_a_dictionary_that_cannot_be_read_is_said_and_compares_nothing`.
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one
@@ -21435,6 +21552,9 @@ Open, recorded as each change landed:
   quantities that happen to be equal passes. Which earlier outputs exist is the author's
   word: an abstract nobody records is compared with nothing and its overlap is not asked
   about.
+  Pinned by `tests/test_related.py::test_a_printed_value_is_read_as_the_number_it_prints`,
+  `tests/test_related.py::test_a_printed_value_is_compared_as_printed_and_paired_by_the_author`
+  and `tests/test_related.py::test_a_project_with_no_record_is_told_nothing`.
 - **The copy holds the earlier project's results as they were, unprinted ones included.**
   `related --take` copies every results fragment, so values the earlier paper did not print,
   and counts its custodian may forbid outside the team, are committed with this paper. The
@@ -21447,6 +21567,9 @@ Open, recorded as each change landed:
   citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
   A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
   `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
+  Pinned by `tests/test_related.py::test_a_sentence_that_explains_or_discloses_is_found_as_words_anywhere`,
+  `tests/test_related.py::test_a_disclosing_sentence_is_found_as_words_anywhere`
+  and `tests/test_related.py::test_a_value_a_yaml_merge_key_brings_in_is_read_as_yaml_reads_it`.
 - **A disclosure is a citation or a sentence, and the covering letter is not read.** An
   overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
   or the declared sentence is printed anywhere: neither is checked to say that the two share
@@ -21563,6 +21686,9 @@ Open, recorded as each change landed:
   other gates read it as prose: a `# Methods` in it heads a section, and the audit of a
   Markdown paper starts its reference list at a `# References` in it and names the cut
   under "Not audited".
+  Pinned by `tests/test_corruption.py::test_a_header_pandoc_cannot_read_stops_check_and_the_build`,
+  `tests/test_corruption.py::test_a_header_pandoc_cannot_read_is_read_as_prose_by_the_other_gates`
+  and `tests/test_corruption.py::test_the_audit_cuts_a_reference_list_at_a_heading_in_a_header_pandoc_cannot_read`.
 - **A heading under a header that is never closed can be read as a YAML comment.** Pandoc
   reads the header to the first `---` or `...` line, so `---`, `title: x`, a blank line,
   `# Introduction`, a blank line and a rule make a valid mapping with a comment in it. The
@@ -21662,9 +21788,12 @@ Open, recorded as each change landed:
   - *In text that is not Markdown.* A string in a listing or a figure script,
     `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
     Escapes should be read only where the source is Markdown.
+    Pinned by `tests/test_corruption.py::test_an_escaped_comparison_in_a_listing_is_read_as_the_threshold`
+    and `tests/test_corruption.py::test_an_escaped_comparison_in_a_figure_script_is_read_as_the_threshold`.
   - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
     read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word. Atoms
     should be found in the printed text and mapped back, as the rules already are.
+    Pinned by `tests/test_corruption.py::test_an_escaped_comparison_is_split_where_the_printed_text_is_not`.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
     backslash there counts as an escape. Runs are paired across the front matter's edge,
@@ -21848,8 +21977,9 @@ Open, recorded as each change landed:
   references alone fixed that and let five misread shapes pass in Results (review of #77);
   a number is never judged in fewer places than before. Moving the definition into Methods,
   or binding the value, clears it.
+  Pinned by `tests/test_corruption.py::test_a_methods_note_defined_at_the_end_of_the_paper_fails_where_it_stands`.
 - **The end of a footnote's text is read short of pandoc's in places.** A lazy line pandoc
-  keeps in a note after one that may start a block (`# Heading` straight under the
+  keeps in a note after one that may start a block (`> A quotation` straight under the
   definition, which pandoc prints as note text), or an unindented line continuing an
   indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
   note defined under Methods and referenced from Results, still passes as the alpha, as on
@@ -21857,11 +21987,16 @@ Open, recorded as each change landed:
   section a number must pass in. A line shaped like a heading that pandoc prints as text
   refuses a definition and ends a note's text only where `main` read a heading: a setext
   title does, and an empty heading's title, or a title starting `#`, `>` or `|`, does not.
+  Pinned by `tests/test_corruption.py::test_the_end_of_a_note_s_text_is_read_short_of_pandoc_s`,
+  `tests/test_corruption.py::test_a_note_marker_in_inline_code_counts_as_a_reference`,
+  `tests/test_corruption.py::test_a_footnote_is_read_where_it_is_referenced`
+  and `tests/test_corruption.py::test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced`.
 - **A footnote defined in one file and referenced from another is read where it stands.**
   Notes are indexed a file at a time, and the build joins the files, so a Results sentence
   in main.md referencing `[^n]`, defined under a Methods heading in `appendix.md`, prints
   the note's `p < 0.001` under Results while G2 reads it under Methods, as the alpha, as on
   `main` (the fix-only review of #77). Indexing notes over the joined text would close it.
+  Pinned by `tests/test_corruption.py::test_a_note_defined_under_methods_in_another_file_is_read_there`.
 - **A note's text the gates misread is judged where it stands, and can fail there.** A
   number must pass where it stands as well as at each reference, which is what keeps a
   misread note from passing a Results claim; the other side is an alpha in Methods failing
@@ -21893,6 +22028,7 @@ Open, recorded as each change landed:
   escaped. Where the old comment rule hid the start of such a match, text read again now
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
+  Pinned by `tests/test_corruption.py::test_a_masked_pattern_covers_a_number_printed_beside_it`.
 - **A link's target is read in the shapes pandoc writes most, not in all of them.** A
   target that is an address is masked after its `(` up to its own `)` when the address holds
   brackets one deep at most and a title holds no escaped quote. Two deep,
@@ -22030,6 +22166,19 @@ Open, recorded as each change landed:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+  Pinned by `tests/test_corruption.py::test_a_count_at_a_wrap_point_is_not_list_numbering`,
+  `tests/test_corruption.py::test_audit_compares_a_count_at_a_wrap_point`,
+  `tests/test_corruption.py::test_audit_still_reads_typed_numbering_in_word_as_numbering`,
+  `tests/test_figures.py::test_numbered_labels_in_a_figure_are_still_numbering`,
+  `tests/test_corruption.py::test_a_count_ending_a_table_cell_is_not_list_numbering`,
+  `tests/test_corruption.py::test_a_keyword_reading_a_count_and_a_stop_is_compared`,
+  `tests/test_corruption.py::test_a_string_value_ending_in_a_count_is_refused`,
+  `tests/test_corruption.py::test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering`,
+  `tests/test_corruption.py::test_a_plain_text_paper_a_paragraph_per_line_reads_as_one_paragraph`,
+  `tests/test_corruption.py::test_a_nested_number_indented_with_a_tab_is_list_numbering`,
+  `tests/test_pandoc_agreement.py::test_a_numbered_title_under_a_page_break_is_still_a_heading`,
+  `tests/test_corruption.py::test_a_count_opening_a_heading_is_not_its_numbering`
+  and `tests/test_corruption.py::test_list_and_heading_numbering_are_read_in_their_shapes_only`.
 - **A live document's citations are known by their codes, as the build recorded them.** The
   record is a file beside the build: on another machine, or with `build/` cleaned, every
   citation Zotero has refreshed reads as changed and its paragraph is refused. Two citations
@@ -22044,10 +22193,15 @@ Open, recorded as each change landed:
   "a work it does not name". Its key is found in `references.bib` by DOI or by title, as
   written, and only there. One in a paragraph without an identifier (a heading, a table, a
   caption) is not reported, as nothing there is compared.
+  Pinned by `tests/test_roundtrip.py::test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose`,
+  `tests/test_citation_fields.py::test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work`
+  and `tests/test_roundtrip.py::test_a_citation_inserted_where_nothing_is_compared_is_not_named`.
 - **A document built with `--csl` is compared in the style its digest names.** Where that
   style is not where the build found it, or has changed, `import` says so and compares in
   the default style, refusing every paragraph that cites, until `--csl` names it. Line
   endings changed by a checkout are not a change of style; any other edit is.
+  Pinned by `tests/test_roundtrip.py::test_a_style_moved_since_the_build_is_asked_for`
+  and `tests/test_roundtrip.py::test_a_style_edited_where_the_build_found_it_is_a_change_and_its_line_endings_are_not`.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later
@@ -22382,6 +22536,8 @@ Open, recorded as each change landed:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
+  Pinned by `tests/test_corruption.py::test_a_frozen_plan_holds_the_plan_of_the_first_run_whenever_that_was`
+  and `tests/test_corruption.py::test_a_plan_not_in_utf8_or_holding_a_nul_is_not_frozen`.
 - **The residue of a revision is found by its words, in English, in the manuscript's prose
   only.** A reply worded otherwise passes: "Reviewer 2 was right that", "we agree with the
   reviewer", "this point is now made". Writing Guard's list in Chinese was not taken. A
@@ -22449,12 +22605,16 @@ Open, recorded as each change landed:
   and "<2E1" as a bound of 2 (round 2 of #341). A restricted input that git ignores but that
   a person copies elsewhere is not seen, and one that was committed and then removed stays
   in the history, which only a rewrite takes out.
+  Pinned by `tests/test_corruption.py::test_a_small_count_is_found_where_it_is_bound_by_its_value`
+  and `tests/test_corruption.py::test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen`.
 - **A synthetic input is followed to the results the text binds, and no further.** G1 names
   a result of a run that read a synthetic input where the manuscript or the supplement binds
   it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is
   not named, nor a result of a second script that reads the first one's results file as its
   input: the declaration belongs to the run that made it. Declare the input again in the
   second script. Nothing finds an input that is synthetic and not declared so.
+  Pinned by `tests/test_corruption.py::test_a_result_quoted_from_synthetic_data_fails_at_submission`
+  and `tests/test_corruption.py::test_a_synthetic_input_is_followed_to_the_results_the_text_binds_and_no_further`.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed
@@ -22482,6 +22642,8 @@ Open, recorded as each change landed:
   Pinned by `tests/test_steps.py::test_a_step_marked_where_there_is_no_script_says_that_is_why`.
 - **An anchor inside a paragraph stops the round trip for that paragraph.** An edit made in
   Word to a paragraph with an anchor before its end is refused, and has to be made in the .md.
+  Pinned by `tests/test_steps.py::test_a_reworded_paragraph_with_an_anchor_inside_it_is_refused_and_says_why`
+  and `tests/test_steps.py::test_a_reworded_paragraph_keeps_the_anchor_that_ends_it`.
 - **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
   claims all five, and the gate cannot tell whether the step backs them all. Accepted.
 - **An anchor on a heading's line is not judged.** `## Statistical analysis {{method.typo}}`
@@ -22762,6 +22924,10 @@ Open, recorded as each change landed:
   figure typed against a letter is part of a name, so a threshold typed against the word
   before it with no space, `power80%` or `caliper0.2`, is read as a name and neither rule
   sees it either.
+  Pinned by `tests/test_corruption.py::test_a_changed_parameter_reaches_the_methods_and_a_typed_copy_is_named`,
+  `tests/test_corruption.py::test_a_typed_threshold_unlike_every_parameter_is_warned_only_where_some_are_declared`,
+  `tests/test_corruption.py::test_only_an_equal_typed_copy_of_a_figure_is_read_for_a_parameter`
+  and `tests/test_corruption.py::test_a_figure_typed_against_a_letter_is_part_of_a_name`.
 - **Download links rot.** Each recipe's worked when it was written, the first thirteen and
   SANRA verified by a clean-room fetch and transcribe, but two needed a second attempt and
   none of these addresses is stable. The
@@ -23109,13 +23275,17 @@ Open, recorded as each change landed:
   identifier, which import lists but does not apply. Two or more bring the later ones'
   identifiers, and the whole document is refused. Either way, the author makes the move
   in the .md.
+  Pinned by `tests/test_roundtrip.py::test_one_paragraph_pasted_from_the_paper_into_the_supplement_is_listed_not_applied`
+  and `tests/test_roundtrip.py::test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_refused`.
 - **A supplement of headings, tables and figures cannot be imported.** It carries no
   paragraph identifier, so its document is refused as one that could be either, even when
   it comes back untouched. It holds nothing import compares.
+  Pinned by `tests/test_roundtrip.py::test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper`.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
   through one API and renders one through another.
+  Pinned by `tests/test_corruption.py::test_a_transposed_interval_composed_into_a_cell_passes`.
 - **A binding in emitted table text is found in its Markdown form only, and a composed
   template cannot hold a literal brace.** Since #557 `tables.problems_in` refuses a `{{...}}`
   in a caption, header or cell as `binding-in-table`, at emit time and in G2, and a caption
@@ -23140,9 +23310,12 @@ Open, recorded as each change landed:
     A composed cell had this before #557; a composed caption, which #557 made possible,
     has it too. Closed by filling the template the way `rebuilt` splits it, in both
     emitters.
+    Pinned by `tests/test_emit.py::test_a_doubled_brace_in_a_template_never_rebuilds_its_own_cell`
+    and `tests/test_r_emitter.py::test_r_refuses_a_binding_left_in_table_text`.
   - *A hint meant for a typed number.* Every finding of `problems_in` gets G2's hint "a
     cell nothing published is a number with no origin", which is false for a binding
     (finding 2).
+    Pinned by `tests/test_corruption.py::test_a_binding_left_in_a_fragment_table_gets_the_hint_for_a_typed_number`.
   - *A bare float caption or header.* The table's `digits=` reaches the body's cells only:
     the caption and the headers go through `_cell` with no digits (`emit.py`, and R passes
     `NULL`), so `Emitter.table(..., caption=3.84, digits=2)` is refused with "Pass `digits=`
@@ -23154,6 +23327,7 @@ Open, recorded as each change landed:
     inside `em.cell` with `(x, digits)`, so an agent who copies it is not caught. Closed by
     the message naming `em.cell(...)` for a caption or a header, or by the sentence saying
     that the table's `digits=` covers the body only.
+    Pinned by `tests/test_emit.py::test_a_bare_float_caption_or_header_is_told_to_pass_digits_it_cannot_take`.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone
@@ -23179,10 +23353,13 @@ Open, recorded as each change landed:
 - **An atom cut at a bracket keeps what the trimming leaves.** `@key [p. 3]/9.99` is read as
   the locator 3 and the atom `/9.99`, reported with its slash; a `-4.2` cut the same way
   keeps its sign, which may have been a dash, while `+1.5` and `<0.05` lose theirs as any
-  atom does. The value is caught either way. A `]` closing a bracket opened earlier cuts the
-  run wherever it stands, so an identifier written across one, `x]y2`, would be read as
-  `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
-  its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
+  atom does. The value is caught either way. A `]` that closes no bracket the run opened
+  cuts the run wherever it stands, so an identifier written across one, `x]y2`, would be
+  read as `y2`; none has been met. A locator with no space inside its bracket,
+  `@key [p.3]/…`, opens its own run, so it is not cut and still fails G2 as `p.3]/`;
+  `[p. 3]` passes.
+  Pinned by `tests/test_corruption.py::test_an_atom_cut_at_a_locator_s_bracket_keeps_what_the_trimming_leaves`
+  and `tests/test_text.py::test_a_bracket_closed_from_outside_cuts_the_run_wherever_it_stands`.
 - **The audit tells a Vancouver marker from a value by shape and position.** The
   `numbered-citation` rule spans the word before a marker, since an atom runs to the next
   space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
@@ -23257,6 +23434,7 @@ Open, recorded as each change landed:
   - *A run of Chinese or Japanese is one word.* Kana and kanji written without spaces are
     compared as one word, so any edit in the run writes the whole run from Word's text,
     and emphasis inside it is lost; the loss is listed.
+    Pinned by `tests/test_roundtrip.py::test_a_run_of_chinese_or_japanese_is_one_word_and_loses_its_emphasis_when_edited`.
   - *Any edit in inline code writes the code plain*, since words from Word's text would be
     written escaped inside it, and an escape or an entity an edit runs into is written as
     the character, which prints the same.
@@ -23274,13 +23452,22 @@ Open, recorded as each change landed:
     `>` of the source after it, can turn what pandoc read as text into a tag. A paragraph
     whose prose has a bare brace is not written word by word at all, so the refusals of a
     brace pair split across a value (#90) stand as they were. So too a stretch while a
-    straight quote opened before it is still open, one whose source does not line up with
-    what the build printed of it, and any paragraph whose merge does not read back as
-    Word's text.
+    straight quote opened before it is still open, and any paragraph whose merge does not
+    read back as Word's text. A stretch whose source does not line up with what the build
+    printed of it refuses its whole paragraph, as one whose "numbers, citations and markup
+    could not be told apart from its prose"; so does a citation in a note style, for which
+    pandoc drops the space before the note.
+    Pinned by `tests/test_roundtrip.py::test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain`,
+    `tests/test_roundtrip.py::test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain`,
+    `tests/test_roundtrip.py::test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain`,
+    `tests/test_roundtrip.py::test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written`,
+    `tests/test_roundtrip.py::test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word`
+    and `tests/test_roundtrip.py::test_a_brace_pair_split_across_a_value_is_refused`.
   - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
     the words up, and of "very **very**" from "**very**" it keeps the bold on the second;
     the words are right either way, and only the formatting of a repeated word can differ
     from what the co-author meant.
+    Pinned by `tests/test_roundtrip.py::test_of_two_equal_words_the_comparison_chooses_which_was_typed`.
   - *The generated inputs draw the simple shapes only.* The property over Word's edits
     never edits a paragraph's first word (the bold lead-in this was written for), draws
     distinct ASCII words only (no repeated word, CJK, quote, `&`, `<`, entity or
@@ -23311,6 +23498,7 @@ Open, recorded as each change landed:
     lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
+    Pinned by `tests/test_roundtrip.py::test_a_link_read_otherwise_than_pandoc_reads_it_refuses_the_edit`.
   - *A tag left open by the paragraph before is not seen.* A rewording is read for the tags
     pandoc would read in it once its values are in (`roundtrip._tag_made`), one paragraph at
     a time. A paragraph that ends after the `=` of a would-be tag, or inside its quoted
@@ -23345,6 +23533,7 @@ Open, recorded as each change landed:
     `\ ` or `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
+    Pinned by `tests/test_roundtrip.py::test_text_written_from_word_loses_the_source_s_way_of_writing_a_character`.
   - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
     again.* Pandoc puts one after an abbreviation on its list ("e.g.", "et al.", "p.",
     "vs."), where the source has a plain space, before anything but a citation, a footnote
@@ -23377,6 +23566,7 @@ Open, recorded as each change landed:
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
     without its own, so a no-break space the co-author added there is dropped: silently,
     when it is the only change to the paragraph.
+    Pinned by `tests/test_roundtrip.py::test_a_no_break_space_added_at_either_end_of_a_paragraph_is_dropped`.
 - **Two protected tokens with nothing between them cannot be aligned.** The marked build
   knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
   '1' and '2' come back as '12'. The paragraph is refused. A rewording that deletes
@@ -23387,9 +23577,14 @@ Open, recorded as each change landed:
 - **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
   punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
   stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
-  closes it is written straight. Where that rule and pandoc disagree, one quote prints
-  the wrong way round, and no word changes. A space typed just before that closing quote is
-  lost: pandoc trims it from inside the quotation, so "3.84 ’" prints as "3.84’".
+  closes it is written straight. The rule and pandoc agree in every placement tried: after
+  a space, a bracket, a hyphen, a dash or a colon, before or after a binding, around
+  emphasis, beside a decade's or a possessive's apostrophe. A source where they disagreed
+  would print one quote the wrong way round, with no word changed. A space typed just
+  before that closing quote is lost: pandoc trims it from inside the quotation, so
+  "3.84 ’" prints as "3.84’".
+  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight`
+  and `tests/test_roundtrip.py::test_a_quote_the_rule_opens_prints_as_word_s_text_read`.
 - **A straight quote from Word is typeset like one in the source.** Word's text is written
   back with its quotes as they are, and pandoc curls a straight one. So a co-author who
   types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
@@ -23404,11 +23599,14 @@ Open, recorded as each change landed:
   read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
   it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
   the source opened itself after a `<` of its own, `Values <LOD in {{unit}} were
-  coded="HR {{x}} or LOD" in all.`, stays open if its stretch is edited, since Word's closing
-  `”` is written back curly and closes nothing: with `"d was >0.5"` in the next paragraph,
-  the two print as "Values 0.5” in all.".
+  coded="HR {{x}} or LOD" in all.`, keeps its straight closing quote when its stretch is
+  edited, and an edit beside that quote is refused. Written back as Word's curly `”`, it
+  closed nothing: with `"d was >0.5"` in the next paragraph, the two printed as "Values 0.5”
+  in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
+  Pinned by `tests/test_roundtrip.py::test_a_straight_quote_from_word_is_written_as_typed_and_may_pair_across_a_token`
+  and `tests/test_roundtrip.py::test_curly_quotes_turned_straight_in_word_come_back_as_nothing`.
 - **A document from before paragraphs were recorded is judged by the front-matter rules
   only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
   and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
@@ -23434,6 +23632,9 @@ Open, recorded as each change landed:
   a paragraph that reads word for word like another in its file once the block before it
   changed, and to the paragraph before one that is left out of the comparison and did not
   come back, which may be a join.
+  Pinned by `tests/test_corruption.py::test_an_edit_to_a_paragraph_the_source_changed_is_left_even_under_force`,
+  `tests/test_corruption.py::test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same`
+  and `tests/test_corruption.py::test_an_edit_before_a_paragraph_not_compared_that_did_not_come_back_is_left`.
 - **A paragraph whose identifier shifted is followed only where nothing beside it
   changed.** Below a paragraph the source added or removed since the build, identifiers
   moved by a block and name their neighbours; a paragraph is followed to where it stands now
@@ -23472,6 +23673,15 @@ Open, recorded as each change landed:
   deleting the second from the `.md` as told, without carrying the first's Word text over
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
+  Pinned by `tests/test_corruption.py::test_a_join_retyped_from_a_paragraph_not_compared_reads_as_a_deletion`.
+- **An edit to a repeated paragraph whose copy was added above it since the build can be
+  reported as a join.** "None." under "# Funding" in two places, a copy of both added
+  above them in the `.md`, and the second edited in Word: the import says "2 paragraphs
+  came back joined into one", naming the edited "None." by its text as sent and, beside
+  it, an identifier "not compared" that no paragraph of the returned document carries; the
+  co-author's words are printed nowhere. Nothing is written, and the edit is
+  carried over by hand only if the author sees that it was one.
+  Pinned by `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`.
 - **A document built before the record held the blocks around each paragraph is read as
   it was.** Its record hashes only each paragraph's text and the block before it. So a
   heading beside a paragraph removed from the `.md` since the build goes unseen, and a
@@ -23487,19 +23697,17 @@ Open, recorded as each change landed:
   - the run of blocks without an identifier around the paragraph, up to the paragraphs on
     either side, changed in the `.md` since the build. That includes a paragraph added or
     removed at the far end of the run, which joins it to the next run or splits it, while
-    the block beside the paragraph stays as it was;
+    the block beside the paragraph stays as it was. A plain paragraph added or removed
+    before the paragraph also shifts its identifier, so its edit is refused as not
+    compared;
+    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_run_of_blocks_changed_at_its_far_end_is_refused_under_force`.
   - in a document built from other inputs, a block without an identifier beside it, other
     than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
     a caption, a list item, a quotation, an entry of the reference list.
-- **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
-  looks only at the block directly beside a paragraph as the source has it. A co-author who
-  deletes `### Design` and runs `## Methods`, above it, into the paragraph writes
-  "MethodsPapa..." even in an import of an unchanged document.
-- **Two paragraphs that read the same after blocks that read the same are told apart by
-  position alone.** The record hashes each paragraph's text and the block before it, so
-  "None." under a "# Funding" heading repeated in two places, with a copy of both added
-  above them since the build, would pass for the paragraph the co-author edited, and the
-  edit would land in the copy.
+    Pinned by `tests/test_corruption.py::test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs`,
+    `tests/test_corruption.py::test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun`,
+    `tests/test_corruption.py::test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_inputs`
+    and `tests/test_corruption.py::test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_import`.
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not
   changes nothing in their order. The import names the paragraphs left out and exits 1, and
@@ -23507,6 +23715,9 @@ Open, recorded as each change landed:
   passed one left out is named as not applied, with every other move in its section; it
   used to be applied, and the moved paragraph landed on the other side of the one it
   passed.
+  Pinned by `tests/test_corruption.py::test_a_move_past_only_a_paragraph_not_compared_is_not_reported_as_moved`,
+  `tests/test_corruption.py::test_every_move_in_a_section_where_one_passed_a_paragraph_not_compared_is_withheld`
+  and `tests/test_corruption.py::test_a_move_past_a_paragraph_not_compared_is_not_applied`.
 - **Without its record of what it printed, a document is read by the older rules**, as one
   built before the record is: the entries below on the five-word rule and on an identifier
   Word left behind describe them. The record is a file beside the
@@ -24272,6 +24483,7 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
+  Pinned by `tests/test_corruption.py::test_a_structured_abstract_cannot_state_its_own_signal_threshold`.
 - **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
   or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
   tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
@@ -24381,6 +24593,7 @@ Open, recorded as each change landed:
     ladder. So does a number written in words: "three" made "four". "Did not differ" made
     "differed" passes with a warning, as every move of a claim's words does (the next
     entry).
+    Pinned by `tests/test_reworded.py::test_a_unit_a_direction_and_a_number_in_words_are_not_held`.
   - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
     0.05" fails as a sign gone, though the sentence says the same; "less than" made
     "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
@@ -24388,10 +24601,12 @@ Open, recorded as each change landed:
     the end of the tag and is no sign there, escaped `\>` or not. A block quotation
     directly under a heading or a closing fence, with no blank line between, has its ">"
     read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
-    of a folded value in the front matter, `abstract: >`, is read as the sign of the first
-    number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
-    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes, and
-    so do the full-width "＝＞" and "=＞".
+    of a folded value in the front matter, `abstract: >`, is read as the sign of a number
+    that opens the value; G2 asks for the abstract under a heading instead. "=>" is the
+    head of an arrow, though some authors type it for "≥": "age => 18" made "age 18"
+    passes, and so do the full-width "＝＞" and "=＞".
+    Pinned by `tests/test_reworded.py::test_a_sign_of_comparison_is_held_only_as_a_sign`
+    and `tests/test_reworded.py::test_a_sign_of_comparison_gone_new_or_turned_round_fails`.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
     Pinned by `tests/test_reworded.py::test_a_number_is_read_as_it_is_typed`.
@@ -24417,8 +24632,10 @@ Open, recorded as each change landed:
     subtitle, short and running title, abstract, summary, keywords) and under no other.
     Bindings and citations are read in all of it, so a key under `nocite:` is held, and
     so is an `author: '@handle'`.
+    Pinned by `tests/test_reworded.py::test_the_front_matter_holds_a_number_only_under_a_key_the_build_prints`.
   - The title and the keywords the build prints are in `paper.yaml`, which is not
     compared: a figure changed in the title there passes.
+    Pinned by `tests/test_reworded.py::test_a_figure_changed_in_the_title_paper_yaml_holds_passes`.
   - In a listing every figure is held, a figure in a name there too. A binding or a
     citation in a listing is held as one, though pandoc prints it as typed.
     Pinned by `tests/test_reworded.py::test_a_listing_is_printed_and_its_numbers_are_held`
@@ -24441,6 +24658,7 @@ Open, recorded as each change landed:
     it is a sign for sure and one where it joins: "about -3" closed up to "about-3",
     "Day-1" opened to "Day -1", and a range typed with a space on one side after a
     word or a unit, "5 mg -10 mg" made "5 mg-10 mg".
+    Pinned by `tests/test_reworded.py::test_a_dash_left_where_it_stood_fails_when_the_edit_moves_its_place`.
   - Where the same figures stand in several places, a sign fails only where the counts
     say it is gone or new and one place of the number, taken in order, lost or gained
     it. A sure sign gone at one place while a dash that may be one is new at another is
@@ -24455,6 +24673,7 @@ Open, recorded as each change landed:
     and `tests/test_reworded.py::test_a_sure_sign_that_goes_fails_beside_a_dash_that_may_be_one`.
   - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
     made "0.3", passes, and so does "-$5" made "$5".
+    Pinned by `tests/test_reworded.py::test_a_sign_set_apart_from_its_number_is_not_read_with_it`.
   - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a
     square metre typed with the raised character made `m^2^`, or "CO2" given a lowered 2.
     Pinned by `tests/test_reworded.py::test_a_number_is_read_as_it_is_typed`.
@@ -25492,6 +25711,7 @@ Open, recorded as each change landed:
   folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
   is not taken as the data dictionary: it is withheld as data, and the package refused, as
   before the design records were taken as such (round on c4c78959 of #389).
+  Pinned by `tests/test_package.py::test_a_design_record_declared_in_other_capitals_is_data_where_names_are_not_folded`.
 - **A deposited package is not checked against the results once it is deposited.** After the
   DOI exists, the analysis can be run again and the paper's numbers change, and the statement
   still names a deposit of the old ones. Nothing records what was deposited for `check` to
@@ -25510,6 +25730,8 @@ Open, recorded as each change landed:
   and the
   custodian signs it off. A dataset's own file deposited by `package.share` is the author's
   declaration, and nothing reads it for small cells.
+  Pinned by `tests/test_package.py::test_a_cell_is_read_for_a_count_only_in_the_shapes_count_in_cell_knows`
+  and `tests/test_package.py::test_the_custodian_s_minimum_is_read_in_the_fragments_past_the_first_column`.
 - **What a file is, the package takes from its folder and its name.** A file of `analysis/`
   that is data, committed beside the scripts, goes in as a script would; only a declared
   input is held to the declaration. Outside a git repository there is no record of what the
@@ -25584,6 +25806,13 @@ Open, recorded as each change landed:
   results file or an input the package withholds is shown unless a record says so (its
   `*.render.json`'s `inputs`, or a run of its script), since what a figure script reads is
   otherwise recorded nowhere.
+  Pinned by `tests/test_companion.py::test_figures_tables_and_models_are_shown_from_their_records`,
+  `tests/test_companion.py::test_the_page_shows_a_figure_as_its_svg_and_dates_what_the_records_date`,
+  `tests/test_companion.py::test_the_page_reads_a_caption_a_limitation_and_a_sentence_by_their_words`,
+  `tests/test_companion.py::test_a_latex_float_of_two_captions_gives_its_figure_none`,
+  `tests/test_companion.py::test_a_key_finding_is_linked_to_a_passage_only_where_the_words_are_the_same`,
+  `tests/test_companion.py::test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown`
+  and `tests/test_package.py::test_the_custodian_s_minimum_is_read_in_the_fragments_past_the_first_column`.
 - **The page reads no typed number for a small count.** The custodian's check of the
   package reads the results files, and the page shows their values only through it; a count
   typed into the abstract or a limitation is printed as the authors wrote it. G2's
@@ -26344,6 +26573,10 @@ Open, recorded as each change landed:
   display of a year or a month they pass unread, since "2010-12" is also a period written
   short. "Spring 2025" for the value "2024" passes so. Years are of four digits, 0001 to
   9999, in the Gregorian calendar.
+  Pinned by `tests/test_datasets.py::test_a_date_is_read_in_each_way_it_is_written`,
+  `tests/test_datasets.py::test_a_date_in_figures_is_read_as_its_date`,
+  `tests/test_datasets.py::test_a_display_that_is_no_date_is_refused_for_a_day_and_unread_for_a_year_or_month`
+  and `tests/test_datasets.py::test_a_year_is_of_four_digits_in_the_gregorian_calendar`.
 - **R counts the data's dates from one.** A refusal of `dates` names the first entries that
   lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
   Accepted.
@@ -26352,6 +26585,8 @@ Open, recorded as each change landed:
   `english_variant` from its own line of `paper.yaml`, not as YAML, and takes no English
   where it finds none there, printing day, month, year: a value in a flow mapping is not
   seen, so an American paper that declares itself so prints "1 March 2024" from R.
+  Pinned by `tests/test_datasets.py::test_a_dataset_date_in_another_english_warns_and_never_fails`
+  and `tests/test_r_emitter.py::test_r_reads_the_english_from_its_own_line_and_not_from_a_flow_mapping`.
 - **A chosen source's coverage is not compared with a dataset's.** The record says what a
   candidate covers in words (`covers.period`, "1968 to present", "2004 Q1 onwards"), and
   `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
@@ -26365,6 +26600,7 @@ Open, recorded as each change landed:
   Pinned by `tests/test_corruption.py::test_a_second_dataset_of_the_chosen_source_is_warned_of_until_chosen`.
 - **"After today" is the machine's today.** An extraction dated today in one timezone may be
   tomorrow on the machine that runs the analysis, and is refused there.
+  Pinned by `tests/test_datasets.py::test_after_today_is_the_machine_s_today`.
 
 - **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
   and none is reached by a document Word 16 saves from a build: Accepted.
@@ -26426,6 +26662,8 @@ Open, recorded as each change landed:
   `Z` or `+02:00`, is read and not applied, and an object that carries a time zone is read
   as its own local time: two values from two time zones compare as their clocks do, not as
   the instants they are.
+  Pinned by `tests/test_quality.py::test_an_order_rule_compares_a_date_and_time_as_the_clock_it_was_written_with`
+  and `tests/test_quality.py::test_a_value_as_a_date_and_time`.
 - **A pattern is read by Python's `re` and by R's PCRE.** Both are told to read `\d` and
   `\w` as ASCII, and they agree on what a pattern for a code usually holds; a construct
   only one of them knows (a possessive quantifier before Python 3.11, `\h`) is refused by
@@ -26436,8 +26674,10 @@ Open, recorded as each change landed:
   never taken in silence, but `em$check_data()` itself makes them.
   Pinned by `tests/test_corruption.py::test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage`.
 - **A table is checked once in a project.** A key has one owner, so the same table checked
-  before and after cleaning, by one script or two, is `duplicate-key`. Check the table as
-  read; what was dropped after is the script's to count.
+  before and after cleaning is refused in one script and `duplicate-key` from two. Check the
+  table as read; what was dropped after is the script's to count.
+  Pinned by `tests/test_quality.py::test_check_data_checks_a_table_once`
+  and `tests/test_quality.py::test_a_table_checked_by_two_scripts_is_a_duplicate_key`.
 - **An identifier read as a number is read as one.** A whole number held as a double is
   written to fifteen significant digits from 2 to the 53rd (about 9 x 10^15), so two
   identifiers from there up that `read.csv`, or pandas with one blank in the column, reads
@@ -26451,12 +26691,14 @@ Open, recorded as each change landed:
 - **A condition on a variable of another table needs its column.** `applies_if` may name a
   variable of another dataset, which the loader accepts; `check_data` then refuses the table
   until the column is added to it from the table that holds it.
+  Pinned by `tests/test_quality.py::test_a_condition_on_a_variable_of_another_table_needs_its_column`.
 - **A computed rule counts what the script says.** Nothing holds the rows the script hands
   over to what the rule `says`. Accepted.
 - **One count bound satisfies `quality-not-reported`.** Whether the Methods say what was
   found and what was done with it is the reader's to judge. Accepted.
 - **A name is compared as written.** `Age` in the analysis and `age` in the dictionary are
   two names, and `not-in-dictionary` says so; nothing suggests the near one.
+  Pinned by `tests/test_corruption.py::test_a_variable_named_in_other_capitals_is_another_name`.
 - **A Word table's rows stacked in one cell become one row.** A table that lists a
   characteristic's categories one paragraph to a line inside a single row, "Male" over
   "Female" and "36" over "24", is written by `init --from` as one row whose cells read "Male
@@ -26894,8 +27136,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
   to a first that itself opened a word or at a capital changes nothing for it, "mesh"
   opening its word; and "MESHD2" is `d2` after a capital in any case, as "CCR2" is `r2`.
-- **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
+  Pinned by `tests/test_script_signs.py::test_a_term_counts_directly_after_one_with_no_digit`.
+- **An e-mail address is one whose domain ends in letters.** "name2@host" with no dot, or an
   address at a bare IP number, is read as a number.
+  Pinned by `tests/test_corruption.py::test_an_e_mail_address_whose_domain_ends_in_no_letters_is_a_number`.
 - **`set` writes five settings, and only as values.** It cannot take a key out, so a stage,
   a journal or an English once set is changed and never unset; that is an edit by hand. It
   refuses a whole file for an anchor or an alias anywhere in it, even one in a setting it
@@ -26954,6 +27198,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
     Pinned by `tests/test_latex_mask.py::test_a_par_inside_verb_or_a_group_ends_the_paragraph_for_the_quotation_marks`.
   - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
+    Pinned by `tests/test_script_signs.py::test_declaring_r2_makes_a_ratio_with_a_subscript_a_term`.
   - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
     names an undeclared guideline can be joined to another's claim.
     Pinned by `tests/test_compliance.py::test_the_rows_of_a_simple_or_multiline_table_are_read_as_one_sentence`.
@@ -27341,6 +27586,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **A Zenodo draft staged again keeps a file the new bundle no longer has.** The draft's list
   is held to the files sent, and a file left from an earlier staging stops it by name; the
   tool deletes nothing at the host, so the author deletes the file on the draft's page.
+  Pinned by `tests/test_deposit_remote.py::test_a_draft_staged_again_keeps_a_file_the_new_bundle_no_longer_has`.
 
 - **The hooks read commands and edits, not every way of running them.** `deposit --publish`
   is refused to an agent where its command is read exactly as an invocation of `deposit`,
@@ -27388,6 +27634,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **A receipt that cannot be read is not a receipt to G4.** `deposit-doi-differs` reads the
   receipts that parse and name their own target and bundle; one damaged by hand, which the
   write guard refuses to an agent, is passed over, and `deposit` itself refuses to act on it.
+  Pinned by `tests/test_corruption.py::test_a_receipt_that_cannot_be_read_is_passed_over_by_g4_and_refused_by_deposit`.
 
 - **"Preprint-related" is read as every release.** Decision 2(a) asks every author's current
   approval before a release related to a preprint is published. The tool asks it of every
@@ -27436,6 +27683,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   what is withheld, is never signed, as in `package`. And a restricted input that `\input`
   pulls into the LaTeX source is written into the `.tex` itself, where neither its name nor
   its bytes find it.
+  Pinned by `tests/test_corruption.py::test_the_release_manifest_is_not_what_the_custodian_signs`
+  and `tests/test_corruption.py::test_what_a_bundle_s_sign_off_leaves_out`.
 
 - **`next` is advice, and its order is a rule.** It puts what is upstream first, and a
   project whose author knows the journal's reviewers will read the figures first may want
@@ -27563,14 +27812,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
   in a column it names otherwise is printed unchecked; without it, every whole number with no
   unit is a count, "1.0" among them, so a degrees-of-freedom column of 3 or an odds ratio of
   1.0 under a minimum of 5 refuses a receipt until `counts` leaves it out.
+  Pinned by `tests/test_harvest.py::test_without_counts_a_whole_number_with_no_unit_is_a_count_at_the_site`,
+  `tests/test_harvest.py::test_only_the_columns_an_entry_counts_are_held_to_the_minimum`
+  and `tests/test_harvest.py::test_a_column_the_entry_does_not_take_in_is_held_to_the_minimum_at_the_site`.
 - **A centre's copy at an input's path is compared with the site's data.** Where the centre
   keeps a synthetic copy where the site's input is, G1 compares it with the receipt's digest
   and fails `input-changed`, which nothing at the centre can put right; only an input that is
   not there is `input-at-site`.
-- **A year as a header is refused.** A column named "2020" makes no key part a binding can
-  start with, so a wide table by year cannot be harvested; write it long, a row a year.
+  Pinned by `tests/test_harvest.py::test_a_centre_s_copy_at_an_input_s_path_is_compared_with_the_site_s_data`.
+- **A year as a header is refused.** `harvest` refuses a column named "2020" as a number
+  written as text, the emitter's check on a header, so a wide table by year cannot be
+  harvested; write it long, a row a year. Reading the output and a site's receipt take the
+  header, so a site writes a receipt for an output the centre's harvest refuses.
+  Pinned by `tests/test_harvest.py::test_a_year_as_a_header_is_refused_and_a_row_a_year_is_harvested`.
 - **An output's digest leaves its line endings out.** As an input's does: a carriage return
   inside a quoted cell that becomes a line feed is not seen as a change.
+  Pinned by `tests/test_harvest.py::test_a_carriage_return_in_a_quoted_cell_made_a_line_feed_is_no_change`.
 - **A receipt is unsigned.** Anyone who can write `receipts/` can write a receipt; it proves
   that a file with these digests was written, not who wrote it, that the run took place, or
   when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
@@ -27578,12 +27835,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **Deposit reads a harvested "<2" as nothing.** It is held to the minimum only where the
   manuscript binds it (G2) and at the site (the receipt); `deposit` skips it as a value,
   which has none, and as a table cell, which `count_in_cell` reads as no count.
+  Pinned by `tests/test_harvest.py::test_deposit_reads_a_harvested_held_back_count_as_nothing`
+  and `tests/test_harvest.py::test_a_count_held_back_or_written_with_a_point_is_a_count`.
 - **A header that states a count is only ever a warning.** "Deaths (n=2)" as a column's
   header gives a count to `recoverable_cells`, which warns; nothing refuses a receipt for
   the count a header states.
+  Pinned by `tests/test_harvest.py::test_a_header_that_states_a_count_only_ever_warns`.
 - **Text with a digit is refused at a site where `counts` names none.** Every column is then
   a count column, so a confidence interval written in one cell or a date refuses the
   receipt: name the count columns.
+  Pinned by `tests/test_harvest.py::test_text_with_a_digit_is_refused_at_a_site_where_counts_names_none`.
 - **A receipt is never refused for a count given away by subtraction.**
   `recoverable_cells` fails a count held back only where the analysis declares the sum that
   gives it away; a harvested output declares no sum, so its total rows and header counts
@@ -28267,6 +28528,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     vault), is not followed. A Codex patch that writes into the folder is
     the write guard's, which does not read the vault. It is a guard against an agent's
     ordinary commands, not against a deliberate evasion, as the other shell guards are.
+    Pinned by `tests/test_hooks.py::test_the_shell_guard_reads_the_words_of_ordinary_commands_only`,
+    `tests/test_hooks.py::test_a_path_through_a_wsl_mount_of_the_drive_is_not_read_as_the_drive`,
+    `tests/test_hooks.py::test_a_bare_name_is_matched_to_a_link_by_its_spelling_as_the_system_folds_it`,
+    `tests/test_hooks.py::test_a_working_folder_through_a_link_into_another_project_guards_the_one_written`,
+    `tests/test_hooks.py::test_a_link_named_bare_beside_a_path_is_followed`
+    and `tests/test_hooks.py::test_a_codex_patch_into_the_vault_is_the_write_guard_s_which_does_not_read_it`.
   - *No hook on the agent's file-reading tools.* Read, Grep and Glob are held only by the agent
     tool's own deny rules, and by Claude Code's account those do not cover a command that
     reads files without naming them, or a script that opens a file itself, unless its sandbox
@@ -28285,6 +28552,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     readable by the agent; `docs/vault.md` names it as a trap. Accepted.
   - *WSL* mounts the Windows drives under `/mnt/` unless automount is turned off, and the
     guard does not read `/mnt/c/...` as `C:/...`.
+    Pinned by `tests/test_hooks.py::test_a_path_through_a_wsl_mount_of_the_drive_is_not_read_as_the_drive`.
   - *Records.* `design/vault.yaml` is an unsigned statement, as an approval is. A digest of a
     very small file could be matched by guessing its content. `registered_by` is the name
     given to `--as`, and nothing checks it against `authors.yaml`. Accepted.
@@ -28345,6 +28613,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     with no seconds the same. A time about one centile with one end of a range declared, or
     with no centile and both ends, is clamped to the range and so piles at its end rather
     than being drawn within it (#498).
+    Pinned by `tests/test_vault_synthesize.py::test_a_time_kept_within_its_range_is_kept_to_the_minute_and_piles_at_its_end`.
 - **The vault (Task F, part 2): what a run and its release do not hold.** Accepted.
   - *Encoded outputs.* A script run on the real data can put any value into anything it
     writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's
@@ -28393,6 +28662,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     records in the case the system compares names in; the shell guard reads a word from the
     folder the command is sent from, so `cd approvals && cp x vault-releases/` passes, as the
     guard's other `cd` limits do.
+    Pinned by `tests/test_vault_run.py::test_a_fragment_copied_from_the_outbox_by_hand_is_unreleased`,
+    `tests/test_vault_run.py::test_a_released_fragment_edited_afterwards_is_unreleased`,
+    `tests/test_hooks.py::test_a_vault_release_record_written_by_an_agent_is_put_to_the_person`,
+    `tests/test_hooks.py::test_a_shell_command_that_names_the_release_records_is_put_to_the_person`,
+    `tests/test_hooks.py::test_a_release_record_spelt_in_another_case_is_put_to_the_person`,
+    `tests/test_hooks.py::test_the_shell_guard_reads_the_release_records_folder_as_the_words_write_it`
+    and `tests/test_vault_run.py::test_a_run_made_with_the_vault_s_variable_set_by_hand_is_caught_only_as_unreleased`.
   - *A script run on the real data can write anywhere the account can.* The copy keeps the
     run away from the project by where it starts, not by any wall: a script can write into
     the project, the vault or elsewhere, and what it writes outside the copy is no output the
@@ -28406,14 +28682,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *What is listed is digested at the yes.* A file the project and the copy hold alike at
     that moment passes, though it changed and changed back meanwhile; what runs is the copy,
     the same bytes.
+    Pinned by `tests/test_vault_run.py::test_what_is_listed_is_digested_at_the_yes`.
   - *Only files that look like code are listed.* An input that runs and has another suffix,
     R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
     renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
     was copied.
+    Pinned by `tests/test_vault_run.py::test_only_files_that_look_like_code_are_listed_and_the_copy_holds_the_rest`.
   - *A link to a folder outside the project is kept in the copy.* The copy keeps symbolic
     links as links (`copytree(symlinks=True)`), and a runner follows one out of the copy to
     whatever it names, which is not listed. A run is not refused for one, since a virtual
     environment in the project holds links to the system's Python. A junction is not copied.
+    Pinned by `tests/test_vault_run.py::test_a_link_out_of_the_project_is_kept_in_the_copy_and_a_junction_is_not_copied`.
   - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
     `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy. A
     disk too full for the summary leaves it unwritten too, and the agent then reads the run
@@ -28424,13 +28703,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     path and the exit code, as a script that raised nothing. A library copied with the
     project (a `venv/` inside it) is inside the copy: a failure 20 or more frames deep in it
     keeps 20 of its frames, which the summary then drops as no script's, and names no frame.
+    Pinned by `tests/test_vault_run.py::test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary`
+    and `tests/test_vault_run.py::test_a_failure_deep_in_a_library_copied_with_the_project_names_no_frame`.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.
+    Pinned by `tests/test_vault_run.py::test_a_run_s_fragment_records_no_vcs_and_its_record_the_project_s_commit`.
   - *What is run.* With no script named, each file directly in `analysis/` that a runner here
     knows is run, in the order of its name; one that is meant to be imported, not run, is run
     too. A run has no time limit, and a script stopped at the terminal ends the run as a
     failure.
+    Pinned by `tests/test_vault_run.py::test_with_no_script_named_each_file_of_analysis_is_run_in_the_order_of_its_name`.
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's. Accepted.
 - **A paper's CI is not the author's machine.** The action `init --github-actions` names
@@ -29566,6 +29849,35 @@ Closed since, and why each mattered (an open gap goes above this line):
     property.
   The readings `point displays`, `table bindings` and `pdf evidence` put the same inputs
   to the base's source (`tests/readings.py`).
+
+- **A paragraph written straight under a heading went without an identifier (closed by #62,
+  9211f9391; moved here 2026-11-21).** `# Methods\nWe did X.` is a heading and a paragraph
+  to pandoc, and since the block started with `#` the paragraph carried no identifier, so a
+  co-author's edits to it were never compared. `tag` now places the identifier after the
+  heading line, and the import merges such a paragraph's rewording, as
+  `tests/test_roundtrip.py::test_the_paragraph_under_a_heading_carries_the_identifier` and
+  `tests/test_roundtrip.py::test_import_merges_a_paragraph_written_straight_under_a_heading`
+  hold.
+
+- **A farther heading run in after the nearer one was deleted in Word was merged (closed by
+  #121, 3d53de0b7; moved here 2026-11-21).** `import` looked only at the block directly
+  beside a paragraph as the source had it, so a co-author who deleted `### Design` and ran
+  `## Methods`, above it, into the paragraph wrote "MethodsPapa..." even in an import of an
+  unchanged document: a heading in the source as prose. The paragraph's identifier now
+  comes back behind the heading's text, which is never the paragraph's own, and the
+  paragraph is refused, as
+  `tests/test_corruption.py::test_a_farther_heading_run_in_after_the_nearer_one_was_deleted_is_not_merged`
+  holds; it merged at #119 (6fc8eeb21) and #120 (21b36d1be), and not from #121 on.
+
+- **Two paragraphs that read the same after blocks that read the same were told apart by
+  position alone (closed by #93, 59891a9f9; moved here 2026-11-21).** The record hashed
+  each paragraph's text and the block before it, so "None." under a "# Funding" heading
+  repeated in two places, with a copy of both added above them since the build, passed for
+  the paragraph the co-author edited, and the edit landed in the copy. The record also
+  hashes the blocks without an identifier around each paragraph now, and the edit is
+  written nowhere, as
+  `tests/test_corruption.py::test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it`
+  holds; it landed in the copy at #89 (a2452911e) and not at #93.
 
 - **What is written to a pipe is UTF-8 unless Python was told otherwise, and two readers
   forgot that (2026-11-21).** `tools/panel_measure.py` read the command line's output as

@@ -108,6 +108,33 @@ def test_a_value_written_hard_after_a_citation_locator_is_still_caught(project: 
 
 
 @pytest.mark.parametrize(
+    ("after", "said"),
+    [
+        ("[p. 3]/9.99", ["'/9.99'"]),  # reported with its slash
+        ("[p. 3]-4.2", ["'-4.2'"]),  # the dash kept as a sign
+        ("[p. 3]+1.5", ["'1.5'"]),  # a plus lost, as any atom loses it
+        ("[p. 3]<0.05", ["'0.05'"]),  # and a sign of comparison
+        # No space inside the bracket: it opens its own run, which is not cut.
+        ("[p.3]/{{results.ror.point}}", ["'p.3]/'"]),
+        # The other side of that rule: with the space, the run is cut, and the locator passes.
+        ("[p. 3]/{{results.ror.point}}", []),
+    ],
+)
+def test_an_atom_cut_at_a_locator_s_bracket_keeps_what_the_trimming_leaves(
+    project: Path, after: str, said: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An atom cut at a bracket keeps what the trimming
+    leaves"): after `@key [p. 3]` the value is caught with what trimming leaves of its
+    sign, and a locator with no space inside its bracket fails G2 whole."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = f"As @fictionalClassSignal2019 {after} overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    found = [(f.code, f.message.split()[0]) for f in report.failures]
+    assert found == [("unclassified-number", quoted) for quoted in said], report.render(project)
+
+
+@pytest.mark.parametrize(
     "link",
     [
         "[the repository](https://example.org/a/b)",
@@ -140,6 +167,41 @@ def test_a_value_typed_after_a_link_in_the_supplement_is_still_caught(project: P
     failed = [(f.message, f.path) for f in report.failures if f.gate == "G2"]
     assert any("'1213'" in message and "S1_code_lists" in str(where)
                for message, where in failed), failed  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("written", "caught"),
+    [
+        ("Code at https://x.org/a`b`9.99 here.", False),
+        ("Code at [^a`b`9.99] here.", False),
+        ("Code at {.a`b`9.99} here.", False),
+        ("Code at {{a`b`9.99}} here.", False),
+        ("Code at \\[^a`b`9.99] here.", False),
+        ("Code at \\{.a`b`9.99} here.", False),
+        ("Code at \\{{a`b`9.99}} here.", False),
+        ("We strip `<!--` see https://x.org/a`-->`9.99 here.", False),
+        # The other side: past the space that ends the address, or the bracket that ends
+        # the label, the number is read.
+        ("Code at https://x.org/a`b` 9.99 here.", True),
+        ("Code at [^a`b`]9.99 here.", True),
+    ],
+    ids=["url", "footnote label", "attribute", "placeholder", "escaped label",
+         "escaped attribute", "escaped placeholder", "url after a comment's start",
+         "after the url", "after the label"],
+)
+def test_a_masked_pattern_covers_a_number_printed_beside_it(
+    project: Path, written: str, caught: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The other masked patterns match greedily, and can
+    cover a number printed beside them"): a bare URL runs to the next space, and a footnote
+    label, an attribute and a placeholder to their closing bracket, escaped or not, so the
+    9.99 pandoc prints after a code span inside them is never read."""
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text.replace("\n# Discussion", f"\n{written}\n\n# Discussion", 1),
+                                encoding="utf-8")  # fmt: skip
+    unbound = [f.message for f in gate_report(project).failures
+               if f.code == "unclassified-number" and "'9.99'" in f.message]  # fmt: skip
+    assert bool(unbound) is caught
 
 
 # --------------------------------------------------------------------------------------
@@ -339,6 +401,68 @@ def test_a_small_input_that_is_the_data_is_hashed_as_before(project: Path) -> No
     assert [f.code for f in gate_report(project).findings if f.code.startswith("input")] == []
     terms.write_bytes(terms.read_bytes() + b"x")
     assert "input-changed" in codes(gate_report(project))
+
+
+def test_an_input_kept_by_git_lfs_is_misjudged_at_its_edges(project: Path, monkeypatch) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Inputs kept by Git LFS or git-annex"): results
+    written from an analysis run on an unfetched pointer read as `input-changed`; a
+    pointer's size written as "²" raises; and a large input is hashed twice when the
+    results are written."""
+    import hashlib
+
+    from manuscript_guard.emit import Emitter
+
+    def written_from(name: str, data: bytes) -> None:
+        (project / "data" / name).write_bytes(data)
+        script = project / "analysis" / "02_more.py"
+        script.write_text("# more\n", encoding="utf-8")
+        em = Emitter(script, root=project, inputs=[f"data/{name}"])
+        em.value("more.n", 1, quoted=False)
+        em.write()
+
+    # Run on the pointer, the analysis recorded the pointer's bytes, which the pointer's own
+    # oid is not.
+    written_from("big.csv", _lfs("a" * 64, 5000).encode("utf-8"))
+    changed = [f.message for f in gate_report(project).findings if f.code == "input-changed"]
+    assert changed == ["input data/big.csv is a Git LFS pointer to other content than these "
+                       "results were written from"]  # fmt: skip
+    # The other side: the reports' own pointer, which names what was read, is no change. The
+    # fragment is read by its name: results/ now holds 02_more.json too.
+    example = project / "results" / "01_disproportionality.json"
+    record = next(i for i in json.loads(example.read_text(encoding="utf-8"))["provenance"][
+        "inputs"] if i["path"] == "data/reports.csv")  # fmt: skip
+    (project / "data" / "reports.csv").write_bytes(
+        _lfs(record["raw_sha256"], record["bytes"]).encode("utf-8")
+    )
+    said = [(f.code, f.severity) for f in gate_report(project).findings
+            if "data/reports.csv" in f.message]  # fmt: skip
+    assert said == [("input-by-pointer", "info")]
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        _not_fetched(project, _lfs(record["raw_sha256"], "\N{SUPERSCRIPT TWO}"))  # type: ignore[arg-type]
+
+    mark = b"large input, first block\n"
+    passes: list[bool] = []
+    real = hashlib.sha256
+
+    class Counted:
+        def __init__(self, data: bytes = b"", **options) -> None:
+            self.digest, self.first = real(data, **options), bytes(data[: len(mark)])
+
+        def update(self, block: bytes) -> None:
+            self.first = self.first or bytes(block[: len(mark)])
+            self.digest.update(block)
+
+        def hexdigest(self) -> str:
+            passes.append(self.first == mark)
+            return self.digest.hexdigest()
+
+        def __getattr__(self, name: str):
+            return getattr(self.digest, name)
+
+    monkeypatch.setattr(hashlib, "sha256", Counted)
+    written_from("large.csv", mark + b"1,2\n" * 600_000)
+    monkeypatch.undo()
+    assert passes.count(True) == 2
 
 
 def test_modified_analysis_script_is_caught(project: Path) -> None:
@@ -678,6 +802,26 @@ def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
         encoding="utf-8",
     )
     assert "figure-script-ignores-results" in codes(gate_report(project))
+
+
+def test_an_escaped_comparison_in_a_figure_script_is_read_as_the_threshold(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G2 reads an escaped comparison by a pattern, not
+    as pandoc does", "In text that is not Markdown"): a string in a figure script prints its
+    backslash, and `"Signal if ROR \\> 2"` is read as the threshold all the same; the other
+    side of the threshold rule, `\\> 7`, which no rule names, is found."""
+    script = project / "figures" / "forest.py"
+    text = script.read_text(encoding="utf-8")
+    script.write_text(text.replace(
+        "def main() -> None:\n",
+        'def main() -> None:\n    print("Signal if ROR \\> 2")\n    print("Signal if ROR \\> 7")\n',
+        1,
+    ), encoding="utf-8")  # fmt: skip
+    projekt, _ = load_project(project)
+    found = [f.message.split()[0] for f in check_figures(projekt, load_namespace(projekt)[1])
+             .findings if f.code == "figure-source-text-number"]  # fmt: skip
+    assert found == ["'7'"]
 
 
 def _estimates_said(project: Path) -> list[str]:
@@ -1311,6 +1455,32 @@ def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Pa
     # Verified to fail without the unit key: with G8 grouping on the bare value, this
     # fragment reports divergent-display and the build stops.
     assert "divergent-display" not in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("%", None), ("percent", "%"), ("years", "y")],
+    ids=["once with no unit", "percent spelt two ways", "years spelt two ways"],
+)
+def test_one_quantity_whose_unit_is_written_two_ways_is_not_said(
+    project: Path, first: str, second: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G8 compares only values whose units agree"): one
+    quantity emitted once with a unit and once with none, or with its unit spelt two ways,
+    is no longer reported as written two ways. With the one unit on both, the pair is said."""
+
+    def said(other: str | None) -> list[str]:
+        _add_keys(project, {
+            "share.text": {"value": 41.7, "display": "41.7", "digits": 1, "unit": first},
+            "share.table": {"value": 41.7, "display": "41.7", "digits": 1,
+                            **({"unit": other} if other else {})},
+        })  # fmt: skip
+        return [f.code for f in gate_report(project).findings if "share.text" in f.message
+                and f.code in ("duplicate-quantity", "divergent-display")]  # fmt: skip
+
+    assert said(second) == []
+    # The other side of G8's keying on the unit: the same unit twice is one quantity.
+    assert said(first) == ["duplicate-quantity"]
 
 
 @pytest.mark.parametrize("value", [0, 1, -1])
@@ -1986,6 +2156,30 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     assert codes(report) == {"typed-parameter"}, report.render(project)
 
 
+@pytest.mark.parametrize("where", ["abstract", "methods"])
+def test_a_structured_abstract_cannot_state_its_own_signal_threshold(
+    project: Path, where: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A structured abstract cannot state its own signal
+    threshold"): `methods_only` rules need a Methods heading, and the abstract's chain is
+    `("Abstract",)`, so a threshold its **Methods.** part states is an unbound number, where
+    the same sentence under the Methods heading is a convention."""
+    sentence = "Signals were those with IC025 > 0."
+    if where == "methods":
+        _in_methods(project, sentence)
+    else:
+        path = main_md(project)
+        text = path.read_text(encoding="utf-8")
+        anchor = "against all other drugs.\n**Results.**"
+        assert anchor in text
+        path.write_text(text.replace(anchor, anchor.replace(".\n", f". {sentence}\n"), 1),
+                        encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    found = [(f.code, f.message.split()[0]) for f in report.failures]
+    expected = [("unclassified-number", "'0'")] if where == "abstract" else []
+    assert found == expected, report.render(project)
+
+
 def test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention(
     project: Path,
 ) -> None:
@@ -2022,6 +2216,55 @@ def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written:
     both characters, and `ROR \\> 2` there is not the threshold."""
     _in_methods(project, written)
     assert "unclassified-number" in codes(gate_report(project))
+
+
+#: A fenced listing of Python in the Methods, around one line.
+_TICKS_LISTING = "`" * 3 + "python\n{}\n" + "`" * 3 + "\n"
+
+
+def _g2_failed(project: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.message.split()[0]) for f in gate_report(project).failures
+            if f.gate == "G2"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("written", "failed"),
+    [
+        (r"A signal needed n\>3 cases here.", [("typed-parameter", "'3'")]),
+        # The other side: unescaped, `n>3` is one word, and unbound.
+        ("A signal needed n>3 cases here.", [("unclassified-number", "'n>3'")]),
+    ],
+    ids=["escaped", "printed as typed"],
+)
+def test_an_escaped_comparison_is_split_where_the_printed_text_is_not(
+    project: Path, written: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G2 reads an escaped comparison by a pattern, not
+    as pandoc does", "Split where the printed text is not"): the backslash is blanked, so
+    `n\\>3 cases` is read as `n` and a count of `>3 cases`, a typed copy of the example's
+    case threshold, where `n>3 cases`, which pandoc prints for both, is one unbound word."""
+    _in_methods(project, written)
+    assert _g2_failed(project) == failed
+
+
+@pytest.mark.parametrize(
+    ("written", "failed"),
+    [
+        (_TICKS_LISTING.format(r'print("Signal if ROR \> 2")'), []),
+        # The other side of the threshold rule: a value no rule names is still found.
+        (_TICKS_LISTING.format(r'print("Signal if ROR \> 7")'), [("code-block-text-number",
+                                                                  "'7'")]),
+    ],
+    ids=["a conventional threshold", "no conventional value"],
+)
+def test_an_escaped_comparison_in_a_listing_is_read_as_the_threshold(
+    project: Path, written: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G2 reads an escaped comparison by a pattern, not
+    as pandoc does", "In text that is not Markdown"): a listing prints its backslash, and
+    `print("Signal if ROR \\> 2")` is read as the threshold `ROR > 2` all the same."""
+    _in_methods(project, written)
+    assert _g2_failed(project) == failed
 
 
 @pytest.mark.parametrize(
@@ -2397,6 +2640,72 @@ def test_a_count_ending_a_table_cell_is_not_list_numbering(project: Path, cell: 
     assert "unemitted-table-number" in codes
 
 
+_DASHED = "-----------  -----------\nAge          Years\n{}\n-----------  -----------\n\nText.\n"
+
+
+@pytest.mark.parametrize(
+    ("snippet", "number", "reported"),
+    [
+        # Never numbering: an item indented four spaces, an item in a definition's lines.
+        ("1. Adults\n    7. aged over 65 years\n2. Children\n", "'7'", True),
+        ("Criteria\n:   7. Age over 65 years\n", "'7'", True),
+        # Under a bare `\newpage`, at the start of a block, the digits are the raw block's.
+        ("\\newpage\n412. Of these.\n", "'412'", True),
+        # Inside a list item's lines, an indented "1." under it is numbering still.
+        ("- Item\n  \\newpage\n  1. First\n", "'1'", False),
+        # Numbering's shape on a heading, and its other side.
+        ("## 2.1 Statistical analysis\n\nText.\n", "'2.1'", False),
+        ("## 2.1 *Sensitivity analyses*\n\nText.\n", "'2.1'", False),
+        ("## 12 ##\n\nText.\n", "'12'", False),
+        ("2. Further results\n------------------\n\nText.\n", "'2'", False),
+        ("## 3.84 times higher\n\nText.\n", "'3.84'", True),
+        ("2.1 Further results\n-------------------\n\nText.\n", "'2.1'", True),
+        ("####### 2 Further\n\nText.\n", "'2'", True),
+        ("## 2 further results\n\nText.\n", "'2'", True),
+        ("## 2 \N{LATIN CAPITAL LETTER E WITH ACUTE}valuation\n\nText.\n", "'2'", True),
+        # The last row of a table written with dashes is read as a setext title.
+        (_DASHED.format("12. Patients  9"), "'12'", False),
+        (_DASHED.format("12 Patients  9"), "'12'", True),
+        (_DASHED.format("3.84         9"), "'3.84'", True),
+        # A numbered line pandoc reads as a table's header row over a spaced rule.
+        ("12. Patients  Years\n-----------  -----\nA            b\n\nText.\n", "'12'", False),
+        # And one pandoc reads as a second term under a definition.
+        ("Term\n:   Definition\n\n12. Patients\n:   Definition two\n", "'12'", False),
+    ],
+    ids=["indented four", "in a definition", "under a page break", "page break in an item",
+         "two components", "emphasis before the capital", "closing hashes", "setext numbering",
+         "a count on a heading", "setext two components", "seven hashes", "lower case",
+         "capital outside A to Z", "dashed table cell numbered", "dashed table cell count",
+         "dashed table cell decimal", "header row", "second term"],
+)
+def test_list_and_heading_numbering_are_read_in_their_shapes_only(
+    project: Path, snippet: str, number: str, reported: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "List numbering is read where pandoc starts a list
+    item, and only in Markdown"): where a number at the start of a line or a title is taken
+    for numbering, and where it is reported as a number no source backs."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", f"\n\n{snippet}\n# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    found = [f for f in report.failures
+             if f.code == "unclassified-number" and f.message.startswith(number + " ")]
+    assert bool(found) is reported, report.render(project)
+
+
+def test_a_keyword_reading_a_count_and_a_stop_is_compared(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "List numbering is read where pandoc starts a list
+    item, and only in Markdown"): a marker must be followed by a space, a tab or a line
+    break, so a keyword reading "412." is a number, not numbering."""
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["keywords"] = ["412.", "hepatic injury"]
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert [f.message for f in gate_report(project).failures] == [
+        "'412' in paper.yaml `keywords` is not bound to any source"
+    ]
+
+
 @pytest.mark.parametrize("value", ["412.", "412)"])
 def test_a_string_value_ending_in_a_count_is_refused(value: str) -> None:
     """The same `$`: an emitted string holding only "412." passed as a list number."""
@@ -2613,6 +2922,75 @@ def test_a_dry_run_of_a_restricted_manuscript_says_a_run_would_send_nothing(
     assert transport.requests == []
 
 
+def _stopped_by_custodian(root: Path, *models: str) -> list[str]:
+    """What stops a run calling these models, as `review --run` is told it, each message
+    with its hint."""
+    from manuscript_guard.panel.custodian import unauthorised
+    from manuscript_guard.panel.providers import configured_models
+
+    project, _ = load_project(root)
+    paper = {**project.paper, "review": {**project.paper["review"], "models": list(models)}}
+    return [f"{f.message}; {f.hint}" for f in unauthorised(project, configured_models(paper))]
+
+
+def _models_are(root: Path, *models: str) -> None:
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["models"] = list(models)
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_one_authorisation_is_given_per_provider(project: Path, monkeypatch) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): a model added later to
+    a provider already authorised goes unasked, and a `-cloud` model added to a local
+    provider voids the sign-off with the message of any other change."""
+    _keeps_data(project, monkeypatch, "lab/model-c")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["providers"]["relay"] = {"base_url": "http://localhost:4000/v1",
+                                                "key_env": "LAB_API_KEY"}  # fmt: skip
+    document["review"]["models"] = ["lab/model-c", "relay/model-m"]
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _authorise(project, "lab") == 0 and _authorise(project, "relay") == 0
+    assert _stopped_by_custodian(project, "lab/model-c", "relay/model-m") == []
+    _models_are(project, "lab/model-c", "lab/model-d", "relay/model-m")
+    assert _stopped_by_custodian(project, "lab/model-c", "lab/model-d", "relay/model-m") == []
+    _models_are(project, "lab/model-c", "relay/model-m", "relay/model-n-cloud")
+    [void] = _stopped_by_custodian(project, "lab/model-c", "relay/model-m", "relay/model-n-cloud")
+    changed = (", and it has changed since; if it still stands, they sign it again with "
+               '`manuscript-guard sign --as "Cora Keeper" --finding G11/custodian/send-to/')
+    assert "Cora Keeper signed it off on " in void and f"{changed}relay`" in void, void
+    # The message of any other change: the lab's address moved.
+    _models_are(project, "lab/model-c", "relay/model-m")
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "llm.lab.invalid", "elsewhere.invalid"), encoding="utf-8")  # fmt: skip
+    [moved] = _stopped_by_custodian(project, "lab/model-c", "relay/model-m")
+    assert "Cora Keeper signed it off on " in moved and f"{changed}lab`" in moved, moved
+
+
+def test_a_model_no_sign_off_stands_for_is_refused_by_the_backstop(
+    project: Path, monkeypatch
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): the backstop refuses a
+    model that has no sign-off standing, one whose provider review.models does not name,
+    rather than sending to it."""
+    from manuscript_guard.panel.custodian import unauthorised
+    from manuscript_guard.panel.providers import configured_models
+
+    _keeps_data(project, monkeypatch, "lab/model-c")
+    assert _authorise(project, "lab") == 0
+    project_, _ = load_project(project)
+    assert unauthorised(project_, configured_models(project_.paper)) == []
+    paper = {**project_.paper, "review": {**project_.paper["review"],
+                                          "models": ["openai/gpt-test"]}}  # fmt: skip
+    [refused] = unauthorised(project_, configured_models(paper))
+    assert refused.code == "provider-not-authorised"
+    assert refused.message == ("the data custodian restricts where the manuscript may be sent, "
+                               "and api.openai.com is not one review.models names")
+    assert refused.hint == ("list the model in review.models, so that the custodian can "
+                            "authorise its provider")
+
+
 def _value_has(root: Path, key: str, **fields) -> None:
     """The results file with `fields` set on `key`, one set to None taken out, and its
     digest written again."""
@@ -2674,6 +3052,38 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" not in codes(report)
     report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
     assert "count-below-minimum" in codes(report)
+
+
+def test_a_small_count_is_found_where_it_is_bound_by_its_value(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A small count is found where it is bound, by its
+    value"): a count printed in an emitted table, a percentage that gives a small count away
+    with its denominator, and a count typed rather than bound are not read, and G2 fails the
+    typed count for being typed; a whole number with no unit that is no count of people fails
+    as one; and a count held back behind a bound is read where a word or nothing follows the
+    bound, so "<2 (cases)" and "<+2" pass, and "<2E1" is a bound of 2."""
+    _custodian(project, 5)
+    _two_by_two(project, "3")
+    _value_has(project, "case.pct_serious", value=0.7, display="0.7")
+    _add_to_results(project, "Of these, 3 reports were fatal.")
+    assert _small(project) == []
+    assert "unclassified-number" in codes(gate_report(project))
+    line = next(
+        n for n, text in enumerate(main_md(project).read_text(encoding="utf-8").splitlines(), 1)
+        if "{{results.case.n_serious}}" in text
+    )
+    _value_has(project, "cohort.n_years", value=3, display="3", unit=None)
+    years = next(
+        n for n, text in enumerate(main_md(project).read_text(encoding="utf-8").splitlines(), 1)
+        if "{{results.cohort.n_years}}" in text
+    )
+    assert _small(project) == [("results.cohort.n_years", years)]
+    _value_has(project, "cohort.n_years", value=3, display="3", unit="years")
+    for display, said in (("<2 (cases)", []), ("<+2", []),
+                          ("<2E1", [("results.case.n_serious", line)]),
+                          ("<2 patients", [("results.case.n_serious", line)]),
+                          ("<2", [("results.case.n_serious", line)])):  # fmt: skip
+        _value_has(project, "case.n_serious", value=1, display=display, unit=None, label=False)
+        assert _small(project) == said, display
 
 
 def _two_by_two(root: Path, first: str, total: str = "197") -> None:
@@ -4100,6 +4510,69 @@ def test_a_restricted_input_is_found_in_git_by_its_own_name(
     assert seen and all(env["LC_ALL"] == "C" and env["LANGUAGE"] == "C" for env in seen)
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_restricted_input_copied_elsewhere_or_removed_from_git_is_not_seen(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A small count is found where it is bound, by its
+    value"): a restricted input that git ignores but that a person copies elsewhere is not
+    seen, and one that was committed and then removed stays in the history, which the check
+    does not read: G1 says nothing of either."""
+    import subprocess
+
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.custodian import check_restricted_inputs
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    # The list of event terms, which no other finding of G1 names (the simulated reports are
+    # named by the demonstration's note that its results come from synthetic data).
+    data = "data/event_terms.txt"
+    for record in document["provenance"]["inputs"]:
+        if record["path"] == data:
+            record["restricted"] = True
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    def said() -> list[tuple[str, str]]:
+        loaded, _ = load_project(project)
+        _, results, _, _ = load_namespace(loaded)
+        return [(f.code, f.message) for f in check_restricted_inputs(loaded, results).findings]
+
+    def gates() -> list:
+        report, _project, _chosen, _deferred = _run_gates(project, stage="design")
+        return list(report.findings)
+
+    _git(project, "init", "-q")
+    _git(project, "config", "user.email", "a@example.org")
+    _git(project, "config", "user.name", "A")
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "with the data")
+    # The other side: committed and still tracked, it is said.
+    assert said() == [("restricted-input-tracked",
+                       f"{data} is declared restricted, and git tracks it")]  # fmt: skip
+    _git(project, "rm", "-q", "--cached", data)
+    ignored = project / ".gitignore"
+    kept = ignored.read_bytes() if ignored.is_file() else b""
+    ignored.write_bytes(kept + f"\n{data}\n".encode())
+    # A copy under another name, committed, and one outside the project.
+    copy = project / "notes" / "copy-of-the-data.csv"
+    copy.parent.mkdir(exist_ok=True)
+    copy.write_bytes((project / data).read_bytes())
+    (project.parent / "copy-of-the-data.csv").write_bytes((project / data).read_bytes())
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "the data taken out")
+    shown = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", f"HEAD~1:{data}"],
+                           cwd=project, capture_output=True, timeout=60)  # fmt: skip
+    assert shown.returncode == 0 and shown.stdout, "the history still holds the data"
+    assert said() == []
+    found = gates()
+    assert "restricted-input-tracked" not in {f.code for f in found}
+    names = (Path(data).name, "copy-of-the-data.csv")
+    assert [(f.code, f.message) for f in found if f.gate == "G1" and any(
+        name in f"{f.message} {f.path}" for name in names)] == []  # fmt: skip
+
+
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
     """`add_input(path, restricted=True)` is written into the provenance, and an
     input not so declared carries no such field."""
@@ -4295,6 +4768,57 @@ def test_a_simulated_control_s_own_data_make_no_other_result_synthetic(project: 
     write_digest(fragment)
     [(severity, message)] = _synthetic_said(project)
     assert severity == "warn" and "(data/simulated_control.csv)" in message
+
+
+def test_a_synthetic_input_is_followed_to_the_results_the_text_binds_and_no_further(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A synthetic input is followed to the results the
+    text binds, and no further"): a figure drawn from a synthetic run and placed with
+    `figure.` is not named, nor a result of a second script that reads the first one's
+    results file as its input; and an input that is synthetic and not declared so is found by
+    nothing."""
+    import re
+
+    _not_a_demonstration(project)
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    elided = re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]", text)
+    assert "{{figure." in elided
+    for other in (project / "manuscript").rglob("*.md"):
+        other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                                other.read_text(encoding="utf-8")), encoding="utf-8")
+    _alt(project, None)
+    assert _synthetic_said(project) == []
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    inputs = [{"path": "results/01_disproportionality.json", "sha256": "0" * 64}]
+    second = {"schema": document["schema"], "values": {"second.n_pairs": {
+        "value": 12, "display": "12"}}, "provenance": {**document["provenance"], "inputs": inputs}}
+    path = project / "results" / "02_second.json"
+    path.write_text(json.dumps(second, indent=2), encoding="utf-8")
+    write_digest(path)
+    main.write_text(main.read_text(encoding="utf-8") + "\n\nThere were "
+                    "{{results.second.n_pairs}} pairs.\n", encoding="utf-8")  # fmt: skip
+    loaded = load_namespace(load_project(project)[0])[1]
+    assert "second.n_pairs" in loaded.values, "the second script's results are read"
+    assert _synthetic_said(project) == []
+    # The other side: declared again in the second script, its result is named.
+    second["provenance"]["inputs"] = [{**inputs[0], "synthetic": True}]
+    path.write_text(json.dumps(second, indent=2), encoding="utf-8")
+    write_digest(path)
+    [(severity, message)] = _synthetic_said(project)
+    assert severity == "warn" and "results.second.n_pairs" in message
+    # Not declared at all, nothing finds it.
+    main.write_text(text, encoding="utf-8")
+    for record in document["provenance"]["inputs"]:
+        record.pop("synthetic", None)
+    first.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(first)
+    path.unlink()
+    path.with_name(path.name + ".sha256").unlink(missing_ok=True)
+    assert _synthetic_said(project) == []
+    assert "synthetic-input-quoted" not in codes(gate_report(project))
 
 
 def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
@@ -7166,6 +7690,65 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == []
 
 
+def test_an_approval_s_file_is_named_by_a_fold_two_authors_can_share(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): two authors of one name
+    with neither ORCID nor e-mail share a file, an e-mail differing only in characters
+    outside `[\\w.@-]` folds into another, a device name is a file name as it is, and a very
+    long name makes no file."""
+    from manuscript_guard.approvals import approve, authors_of, slug_of
+
+    # Two authors named Wei Zhang, with neither an ORCID nor an e-mail.
+    authors = project / "authors.yaml"
+    document = yaml.safe_load(authors.read_text(encoding="utf-8"))
+    for author in document["authors"]:
+        author.update(given="Wei", family="Zhang")
+        author.pop("orcid", None)
+        author.pop("email", None)
+    authors.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")] * 2
+    first, _second = authors_of(load_project(project)[0])
+    approve(load_project(project)[0], first)
+    assert sorted(p.name for p in (project / "approvals").iterdir()) == ["wei-zhang.yaml"]
+    # The second has approved nothing, and the first's approval stands for both.
+    assert _approvals_said(project) == []
+    for name in (project / "approvals").iterdir():
+        name.unlink()
+    wei = {"given": "Wei", "family": "Zhang"}
+    assert slug_of({**wei, "email": "a+b@x.org"}) == slug_of({**wei, "email": "a-b@x.org"}) == (
+        "a-b@x.org")
+    # The other side of the fold: characters inside `[\w.@-]` are kept.
+    assert slug_of({**wei, "email": "a.b@x.org"}) == "a.b@x.org"
+    assert [slug_of({"given": "", "family": name}) for name in ("Con", "Nul")] == ["con", "nul"]
+    with pytest.raises(OSError):
+        approve(load_project(project)[0], {"given": "A" * 300, "family": "Long"})
+    assert not (project / "approvals").exists() or not list((project / "approvals").iterdir())
+
+
+def test_an_orcid_two_authors_give_is_not_flagged(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): a duplicate ORCID is
+    not flagged; the two authors share one approval's file, and nothing says the iD is given
+    twice."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    assert "0000-0001-5109-3700" in text
+    authors.write_text(text.replace("0000-0001-5109-3700", "0000-0002-1825-0097"), "utf-8")
+    assert main(["approve", str(project), "--as", "Ada Example"]) == 0
+    assert sorted(p.name for p in (project / "approvals").iterdir()) == [
+        "0000-0002-1825-0097.yaml"]  # fmt: skip
+    project_, report = load_project(project)
+    found = [*report.findings, *gate_report(project).findings]
+    from manuscript_guard.approvals import check_approvals
+
+    found += check_approvals(project_).findings
+    # What names the iD says only that the shared file is the other author's.
+    assert [(f.code, f.message) for f in found if "0000-0002-1825-0097" in f.message
+            or "ORCID" in f.message] == [("approval-missing", "Blaise Sample has not approved "
+                                          "the manuscript: 0000-0002-1825-0097.yaml is Ada "
+                                          "Example's")]  # fmt: skip
+
+
 def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     project: Path,
 ) -> None:
@@ -7261,6 +7844,35 @@ def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> N
     capsys.readouterr()
     assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
     assert "approved" not in capsys.readouterr().out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_approval_that_cannot_be_read_stops_submit_after_the_pack_is_written(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Sign-offs and approvals"): an approval that cannot
+    be parsed stops `submit` after the pack is written, and one that breaks the schema is
+    printed as a failure and not acted on."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    for author in ("0000-0002-1825-0097", "0000-0001-5109-3700"):
+        assert main(["approve", str(project), "--as", author]) == 0
+    ada = project / "approvals" / "0000-0002-1825-0097.yaml"
+    ada.write_text("author: [\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) != 0
+    said = capsys.readouterr()
+    assert "submission pack: " in said.out
+    pack = Path(said.out.split("submission pack: ", 1)[1].splitlines()[0])
+    assert (pack / "manuscript.docx").is_file()
+    assert "has not approved" not in said.out
+    ada.write_text("schema: manuscript-guard/approval/1\nauthor: Ada Example\n", "utf-8")
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    out = capsys.readouterr().out
+    assert "FAIL" in out and "0000-0002-1825-0097.yaml" in out, out
+    assert "Ada Example has not approved" not in out and "Ada Example approved" not in out
 
 
 # ------------------------------------------------- a co-author's answers and their page
@@ -7825,6 +8437,32 @@ def test_a_transposed_interval_typed_into_a_fragment_is_caught(project: Path) ->
     assert "typed-composite-cell" in codes
 
 
+def test_a_transposed_interval_composed_into_a_cell_passes(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A transposed interval passes inside a composed
+    table cell"): `em.interval()` refuses bounds that do not bracket the estimate, and
+    `em.cell()` renders the same three numbers transposed, which the fragment records as
+    ordered parts that rebuild the template exactly, so every gate passes the table."""
+    from manuscript_guard.contracts.values import DisplayError
+    from manuscript_guard.emit import Emitter
+
+    script = project / "analysis" / "09_probe.py"
+    script.write_text("# probe\n", encoding="utf-8")
+    with pytest.raises(DisplayError, match="does not bracket the estimate"):
+        Emitter(script, root=project).interval("probe", 3.84, 7.02, 2.10, digits=2)
+
+    em = Emitter(script, root=project)
+    for key, value in (("probe.point", 3.84), ("probe.low", 2.10), ("probe.high", 7.02)):
+        em.value(key, value, digits=2, quoted=False)
+    transposed = em.cell("{} ({} to {})", (3.84, 2), (7.02, 2), (2.10, 2))
+    em.table("probe", ["Group", "ROR"], [["Exposed", transposed]], quoted=False)
+    document = json.loads(em.write().read_text(encoding="utf-8"))
+    assert document["tables"]["probe"]["rows"] == [["Exposed", "3.84 (7.02 to 2.10)"]]
+    assert document["tables"]["probe"]["composed"][0]["parts"] == ["3.84", "7.02", "2.10"]
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert not [f for f in report.findings if "'probe'" in f.message], report.render(project)
+
+
 def test_claiming_a_cell_was_composed_does_not_launder_it(project: Path) -> None:
     """The exemption records what the emitter formatted; the literal is still checked.
 
@@ -7936,6 +8574,39 @@ def test_a_binding_left_in_a_fragment_table_is_caught(project: Path, where: str)
     said = [f for f in gate_report(project).failures if f.code == "binding-in-table"]
     assert len(said) == 1, said
     assert binding in said[0].message
+
+
+def test_a_binding_left_in_a_fragment_table_gets_the_hint_for_a_typed_number(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A binding in emitted table text is found in its
+    Markdown form only", *A hint meant for a typed number*): every finding of
+    `tables.problems_in` gets G2's one hint, so a binding left in a cell is told that a cell
+    nothing published is a number with no origin, as a number typed there is. The
+    2026-11-09 triage planned a fix (F07), which will change this test."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    table = document["tables"][key]
+    table["rows"][0][0] = "Exposed {{rv10.bootstrap.n}}"
+    table["rows"][0][2] = "9999"
+    table["composed"] = [
+        entry
+        for entry in table.get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    hints = {f.code: f.hint for f in gate_report(project).failures}
+    hint = ("emit the table from the analysis rather than editing the fragment; a cell "
+            "nothing published is a number with no origin")  # fmt: skip
+    assert hints["binding-in-table"] == hint
+    assert hints["unemitted-table-number"] == hint
 
 
 def test_a_composed_caption_must_rebuild_the_caption_it_is_attached_to(project: Path) -> None:
@@ -8863,6 +9534,45 @@ def test_a_verbatim_copy_of_a_crlf_restricted_input_stops_the_deposit(project: P
     assert found() == ["deposit-restricted-input"]
 
 
+def test_what_a_bundle_s_sign_off_leaves_out(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "What a bundle's sign-off leaves out"): MANIFEST.yaml
+    is left out of every bundle's signed list by its name, so an arXiv source file of that
+    name goes unsigned; what MANIFEST.yaml says besides the files, the title, the DOI and the
+    list of what is withheld, is never signed; and a restricted input that `\\input` pulls
+    into the LaTeX source is written into the `.tex`, where neither its name nor its bytes
+    find it."""
+    from manuscript_guard.deposit.plan import generated
+    from manuscript_guard.deposit.preflight import restricted_entries, signable
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    loaded = load_project(project)[0]
+
+    def digest(target: str, bundle: str, manifest: str, other: str = "a") -> str:
+        entries = (generated("MANIFEST.yaml", manifest, "a file"),
+                   generated("main.tex", other, "the source"))  # fmt: skip
+        return signable(loaded, target, bundle, entries).digest
+
+    assert digest("arxiv", "preprint", "\\section{One}") == digest("arxiv", "preprint",
+                                                                   "\\section{Two}")
+    assert digest("arxiv", "preprint", "x", "a") != digest("arxiv", "preprint", "x", "b")
+    then = "title: A\ndoi: 10.5281/zenodo.1\nwithheld: []\n"
+    now = "title: B\ndoi: 10.5281/zenodo.2\nwithheld: [{path: data/held.csv}]\n"
+    assert digest("zenodo", "release", then) == digest("zenodo", "release", now)
+    held = (project / "data" / "event_terms.txt").read_text(encoding="utf-8")
+    _resign(project, _restricted)
+    loaded = load_project(project)[0]
+    results = load_namespace(loaded)[1]
+    pulled_in = generated("main.tex", f"\\begin{{document}}\n{held}\\end{{document}}\n", "tex")
+    assert restricted_entries(loaded, results, (pulled_in,)) == []
+    # The other side: the input as a file of its own in the bundle is found by its bytes.
+    alone = generated("terms.txt", held, "the source")
+    assert [f.code for f in restricted_entries(loaded, results, (alone,))] == [
+        "deposit-restricted-input"]  # fmt: skip
+
+
 def test_a_pdf_compiled_with_another_engine_is_signed_off_again(project: Path) -> None:
     """A LaTeX manuscript's PDF is signed by what it is compiled from, which is the engine
     as well as the folder: another engine is another PDF (round 2 of #460)."""
@@ -9013,6 +9723,33 @@ def test_a_package_doi_that_is_not_the_receipts_warns_then_fails_at_submission(
     _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
     assert said(submission=False) == {"deposit-doi-differs": "warn"}
     assert said(submission=True) == {"deposit-doi-differs": "fail"}
+
+
+def test_a_receipt_that_cannot_be_read_is_passed_over_by_g4_and_refused_by_deposit(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A receipt that cannot be read is not a receipt to
+    G4"): `deposit-doi-differs` reads the receipts that parse and name their own target and
+    bundle; one damaged by hand is passed over, and `deposit` itself refuses to act on it."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.deposit.remote import receipts
+
+    def said() -> set[str]:
+        report, _project, _stage, _deferred = _run_gates(project, submission=True)
+        return {f.code for f in report.findings}
+
+    _packable(project, doi="10.5281/zenodo.7654320")
+    _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
+    assert "deposit-doi-differs" in said()
+    path = receipts.receipt_path(load_project(project)[0], "zenodo", "release")
+    text = path.read_text(encoding="utf-8")
+    for damaged in (text.replace("doi:", "doi: [", 1), text.replace("bundle: release",
+                                                                   "bundle: preregistration")):
+        assert damaged != text
+        path.write_text(damaged, encoding="utf-8")
+        assert "deposit-doi-differs" not in said()
+        with pytest.raises(receipts.ReceiptError):
+            receipts.read(load_project(project)[0], "zenodo", "release")
 
 
 # ------------------------------------------------- what the data statement says
@@ -10718,6 +11455,23 @@ def test_a_lockfile_gone_or_new_since_the_results_is_said(project: Path) -> None
     assert "renv.lock was not there when these results were written" in said
 
 
+def test_a_lockfile_in_a_subfolder_or_one_unlike_what_is_installed_is_not_seen(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The environment is the lockfiles at the project
+    root, and only a warning"): a lockfile in a subfolder is not recorded, so its change
+    goes unsaid, and one at the root that pins a version nobody installed is not compared
+    with what is (`test_a_lockfile_changed_since_the_results_is_said` holds the root's
+    change)."""
+    (project / "analysis" / "requirements.txt").write_text("pandas==2.2.2\n", encoding="utf-8")
+    _rerun_with(project, {"requirements.txt": "pandas==0.0.1\n"})
+    recorded = json.loads(next((project / "results").glob("*.json")).read_text(
+        encoding="utf-8"))["provenance"]["environment"]  # fmt: skip
+    assert [entry["path"] for entry in recorded] == ["requirements.txt"]
+    (project / "analysis" / "requirements.txt").write_text("pandas==2.1.0\n", encoding="utf-8")
+    assert _environment_said(project) == []
+
+
 def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
     project: Path,
 ) -> None:
@@ -11942,6 +12696,63 @@ def test_the_kept_plan_is_never_written_again(project: Path) -> None:
     assert _plan_said(project) == [("plan-changed-after-results", "warn")]
 
 
+def test_a_frozen_plan_holds_the_plan_of_the_first_run_whenever_that_was(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A frozen plan holds the plan of the first run,
+    whenever that was"): a person can delete the copy, and the next run then freezes the plan
+    as it is, a plan written after the results among them, which cannot then be told from one
+    written first; and any change to the Deviations section satisfies the check."""
+    from conftest import run_analysis
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    frozen.unlink()
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    assert _plan_said(project) == [("plan-not-frozen", "info")]
+    run_analysis(project)
+    record = yaml.safe_load(frozen.read_text(encoding="utf-8"))
+    assert "A second outcome, chosen later." in record["plan"]
+    assert _plan_said(project) == []
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA third outcome, chosen later still.\n")
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+    _plan_edited(project, "No analysis was added", "No analysis was added, as of today")
+    assert _plan_said(project) == []
+
+
+def test_a_plan_not_in_utf8_or_holding_a_nul_is_not_frozen(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A frozen plan holds the plan of the first run,
+    whenever that was"): a plan that is not UTF-8 text, or that holds a NUL, is not frozen
+    until it is put right; one saved in UTF-16 with no byte-order mark decodes as UTF-8
+    where its text is ASCII, so G12 does not say it is not UTF-8, and the `plan-not-frozen`
+    hint, that the emitter keeps it on the next write, is not true of it. The 2026-11-09
+    triage planned a fix (F14), which will change this test."""
+    from manuscript_guard.emit import freeze_plan
+    from manuscript_guard.gates import check_design
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    frozen.unlink()
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    script = project / "analysis" / "01_disproportionality.py"
+    plan.write_bytes((text + "\nA note of the café.\n").encode("cp1252"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    assert ("plan-not-utf8", "warn") in _plan_said(project)
+    plan.write_bytes((text + "\nA NUL\x00.\n").encode("utf-8"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    ascii_text = text.encode("ascii", errors="ignore").decode("ascii")
+    plan.write_bytes(ascii_text.encode("utf-16-le"))
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    said = _plan_said(project)
+    assert ("plan-not-frozen", "info") in said and ("plan-not-utf8", "warn") not in said, said
+    [hint] = [f.hint for f in check_design(load_project(project)[0]).findings
+              if f.code == "plan-not-frozen"]  # fmt: skip
+    assert hint.startswith("the emitter keeps it on the next write")
+    assert freeze_plan(project, script) is None and not frozen.exists()
+    # Put right, it is frozen on the next write.
+    plan.write_bytes(text.encode("utf-8"))
+    assert freeze_plan(project, script) == frozen
+
+
 # -------------------------------------- the controls and held-out data the plan declares
 
 _CONTROLS = (
@@ -12724,6 +13535,54 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+def test_a_planned_results_list_is_read_by_the_shape_of_its_code_spans(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Planned results"): a nested subsection also titled
+    "Planned results" is read twice, a dotted code span (`data.table`, `table1.csv`) is taken
+    for a key, a key copied with its braces is skipped, and at the analysis stage every
+    planned key not yet emitted warns."""
+    listed = ("- `data.table`: the package\n- `table1.csv`: the file\n"
+              "- `{{results.death.n_cases}}`: deaths, copied as bound\n- `case.pct_serious`")
+    _plan_edited(project, "- `case.pct_serious`", listed)
+    _plan_edited(project, "## Software", "### Planned results by subgroup\n\n"
+                 "- `death.n_women`: deaths among the women\n\n## Software")  # fmt: skip
+    nested = ("planned-result-missing", "- `death.n_women`: deaths among the women")
+    said = [("planned-result-missing", "- `data.table`: the package"),
+            ("planned-result-missing", "- `table1.csv`: the file"), nested, nested]
+    assert sorted(_planned_said(project, "analysis")) == sorted(said)
+    assert _planned_said(project, "design") == []
+    # The other side of the braces: the same key without them is read.
+    _plan_edited(project, "`{{results.death.n_cases}}`", "`results.death.n_cases`")
+    assert ("planned-result-missing", "- `results.death.n_cases`: deaths, copied as bound") in (
+        _planned_said(project, "analysis"))
+
+
+def test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Planned results"): a feasibility fragment that
+    fails its schema is dropped, and the warning says nothing was emitted."""
+    from manuscript_guard.gates import check_design
+
+    _without_counts(project)
+    source = json.loads((project / "results" / "01_disproportionality.json").read_text("utf-8"))
+    fragment = project / "results" / "00_feasibility.json"
+    document = {**source, "values": {"feasibility.n_reports": {"value": 4000,
+                                                               "display": "4000"}}}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _feasibility_said(project, "design") == []
+    document["values"]["feasibility.n_reports"]["shown_as"] = "four thousand"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    assert "feasibility.n_reports" not in results.values
+    [said] = [f.message for f in check_design(project_, results, "design").findings
+              if f.code == "feasibility-not-run"]  # fmt: skip
+    assert said == ("the plan sets out an analysis, and no result says what the data can "
+                    "answer: nothing is emitted under feasibility. or quality.")
+
+
 # ------------------------------------------------- the plan's Software section
 
 
@@ -13290,6 +14149,34 @@ def test_a_record_copied_by_hand_is_noted_and_held_like_another(project: Path) -
     assert said["registration-outcome-not-registered"] == "fail"
 
 
+def test_a_fetched_record_edited_and_marked_by_hand_is_read_as_a_copy(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A record copied by hand is the copier's word, and
+    has no digest"): a fetched record edited and then marked `source: by-hand`, with a name
+    and a day, is read as a copy: G12 notes it and holds the paper to what it says, and
+    `lookup` does not write over it."""
+    from manuscript_guard.lookup import registrations as lookup
+    from manuscript_guard.registrations import answers_digest, file_name
+
+    fetched = _ctgov_record()
+    fetched = {**fetched, "answers_sha256": answers_digest(fetched)}
+    secondary = {**fetched["sections"][1], "text": "Deaths at one year"}
+    edited = {**fetched, "sections": [fetched["sections"][0], secondary]}
+    _register(project, record=edited, digest=False)
+    # The other side: edited and not marked, the record is the registry's, and lookup asks.
+    assert "registration-by-hand" not in _registration(project, "submission")
+    [planned] = lookup.plan(load_project(project)[0])
+    assert planned.why == "its record was edited"
+    path = project / "design" / "registrations" / file_name(_NCT)
+    copy = {**edited, "source": "by-hand", "copied_on": "2026-10-02", "copied_by": "A. Author"}
+    path.write_text(yaml.safe_dump(copy, sort_keys=False), encoding="utf-8")
+    # Held to what the copy says: the outcome quoted is not in it, and its own is unquoted.
+    assert _registration(project, "submission") == {
+        "registration-by-hand": "info", "registration-outcome-not-registered": "fail",
+        "registration-secondary-unquoted": "warn"}  # fmt: skip
+    [planned] = lookup.plan(load_project(project)[0])
+    assert planned.skipped == lookup.BY_HAND
+
+
 def _register_again(root: Path, **changed) -> None:
     """The registration declared anew: paper.yaml's block replaced, the rest as it was."""
     paper = root / "paper.yaml"
@@ -13409,6 +14296,49 @@ def test_the_supplement_gives_a_registration_as_the_main_text_does(project: Path
 def test_an_identifier_given_only_in_the_supplement_is_read(project: Path) -> None:
     _in_the_supplement(project, "Its comparator came from trial NCT07654321.")
     assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
+def _undeclared_said(root: Path) -> list[str]:
+    from manuscript_guard.gates.registration import check_registration
+
+    return [f.message for f in check_registration(load_project(root)[0]).findings
+            if f.code == "registration-undeclared"]  # fmt: skip
+
+
+def test_the_identifiers_a_manuscript_gives_are_one_warning_until_one_is_listed(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Which identifiers in the manuscript are this
+    study's is the author's to say"): where `paper.yaml` lists no registration, every NCT,
+    ISRCTN, EU PAS or PROSPERO number the manuscript gives is one warning; an OSF link is not
+    looked for, Markdown's HTML comments are not read, and where it lists one, the others
+    are not reported."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text + "\n\n<!-- Compare NCT07654321. -->\n", encoding="utf-8")
+    assert _undeclared_said(project) == []
+    main.write_text(text + "\n\nOther studies: NCT07654321, ISRCTN17072692, EU PAS 12345 and "
+                    "CRD42020123456; the code is at https://osf.io/abcde.\n", "utf-8")  # fmt: skip
+    assert _undeclared_said(project) == [
+        "the manuscript gives CRD42020123456, EU PAS 12345, ISRCTN17072692, NCT07654321, and "
+        "paper.yaml lists no registration"
+    ]
+    _register(project)
+    assert _undeclared_said(project) == []
+    assert "registration-undeclared" not in _registration(project, "submission")
+
+
+def test_an_identifier_in_a_latex_comment_counts_as_given(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Which identifiers in the manuscript are this
+    study's is the author's to say"): a LaTeX manuscript's `%` comments are read with the rest
+    of it, so an identifier given only in one counts as given."""
+    entry = _as_latex(project)
+    assert _undeclared_said(project) == []
+    entry.write_text(entry.read_text(encoding="utf-8").replace(
+        "\\end{document}", "% Compare NCT07654321.\n\\end{document}"), "utf-8")  # fmt: skip
+    assert _undeclared_said(project) == [
+        "the manuscript gives NCT07654321, and paper.yaml lists no registration"
+    ]
 
 
 def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
@@ -13842,6 +14772,21 @@ def test_a_variable_the_analysis_uses_with_no_entry_warns(project: Path, name: s
         f"{name} is declared in results/01_disproportionality.json and has no entry in the "
         "data dictionary"
     )
+
+
+def test_a_variable_named_in_other_capitals_is_another_name(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A name is compared as written"): `sex` in the
+    analysis and `Sex` in the dictionary are two names, and `not-in-dictionary` says so;
+    nothing suggests the near one."""
+    from manuscript_guard.gates.data_quality import check_data_quality
+
+    _dictionary_edited(project, "  - name: sex\n", "  - name: Sex\n")
+    assert _g16(project, "analysis") == [("not-in-dictionary", "warn")]
+    project_, _ = load_project(project)
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
+    assert finding.message == ("sex is declared in results/01_disproportionality.json and has "
+                               "no entry in the data dictionary")
+    assert "Sex" not in f"{finding.message} {finding.hint}"
 
 
 @pytest.mark.parametrize(
@@ -27081,6 +28026,57 @@ def test_a_header_pandoc_cannot_read_stops_check_and_the_build(
 
 
 @pytest.mark.parametrize(
+    "header",
+    ["---\n<!-- keep in step -->\ntitle: A study\n\n# Methods\n\n---\n",
+     "---\ntitle: A study\n\n# Methods\n\nCases were compared with non-cases.\n\n---\n"],
+    ids=["a comment on its first line", "never closed before a rule"],
+)  # fmt: skip
+def test_a_header_pandoc_cannot_read_is_read_as_prose_by_the_other_gates(
+    project: Path, header: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A header pandoc cannot read is read as prose until
+    it is fixed"): while G2 names the YAML's error, the `# Methods` in the header heads the
+    first section the other gates read, and its words are counted as the main text's."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.sections import headings
+
+    words = _run_gates(project)[0].counts["main_text_words"]
+    source = main_md(project)
+    body = source.read_text(encoding="utf-8").split("\n---\n", 1)[1]
+    source.write_text(header + body, encoding="utf-8")
+    report = _run_gates(project)[0]
+    assert "front-matter-unreadable" in codes(report)
+    assert headings(source.read_text(encoding="utf-8"))[:2] == ["Methods", "Abstract"]
+    assert report.counts["main_text_words"] > words
+
+
+@pytest.mark.parametrize(
+    ("header", "cut"),
+    [("---\n<!-- keep in step -->\ntitle: A study\n\n# References\n\n---\n", "lines 5-6"),
+     ("---\ntitle: A study\n\n# References\n\nSmith J.\n\n---\n", "lines 4-7")],
+    ids=["a comment on its first line", "never closed before a rule"],
+)  # fmt: skip
+def test_the_audit_cuts_a_reference_list_at_a_heading_in_a_header_pandoc_cannot_read(
+    tmp_path: Path, header: str, cut: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A header pandoc cannot read is read as prose until
+    it is fixed"): the audit of a Markdown paper starts its reference list at a
+    `# References` in such a header, and names the cut under "Not audited"; with a header
+    pandoc reads, nothing is cut."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    body = "\n# Results\n\nWe saw 77 and 9.99.\n"
+    paper.write_text(header + body, encoding="utf-8")
+    assert audit([paper], [outputs]).not_audited == [
+        f"paper.md: {cut}, read as the reference list"
+    ]
+    paper.write_text("---\ntitle: A study\n---\n" + body, encoding="utf-8")
+    assert audit([paper], [outputs]).not_audited == []
+
+
+@pytest.mark.parametrize(
     ("paper", "shown"),
     [
         ('---\ntitle: "Risk <!-- draft"\n---\n\n## Methods\n\nThe ROR was 9.99. -->\n', {"9.99"}),
@@ -27413,6 +28409,50 @@ def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("edited", [0, 1], ids=["first", "second"])
+def test_an_edit_to_a_repeated_none_does_not_land_in_a_copy_added_above_it(
+    project: Path, tmp_path: Path, edited: int
+) -> None:
+    """Closed by #93 (DESIGN.md, Closed since, "Two paragraphs that read the same after blocks
+    that read the same were told apart by position alone"): "None." under "# Funding" in two
+    places, a copy of both added above them since the build, and one of the two edited in
+    Word. Hashing the text and the block before it, the record took the copy for the
+    paragraph edited and the edit landed in it; nothing is written now. The second case also
+    holds the open point "An edit to a repeated paragraph whose copy was added above it since
+    the build can be reported as a join"."""
+    blocks = ("# Intro", _ALPHA, "# Funding", "None.", _PAPA, _ROMEO, "# Funding", "None.",
+              _BRAVO)
+    now = (*blocks[:2], *("# Funding", "None.") * 2, *blocks[2:])
+
+    sent: list[str] = []
+
+    def change(xml: str) -> str:
+        nones = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+                 if "mg-p-" in p and _shown(p) == "None."]
+        sent.extend(re.findall(r'w:name="(mg-p-[^"]+)"', xml))
+        return xml.replace(nones[edited], nones[edited].replace("None.", "None at all."), 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before, "the edit landed in a copy"
+    blocks_said = [" ".join(block.split()) for block in out.split("\n\n")]
+    if edited == 0:
+        # The first is refused by name: the block beside it is not the one sent.
+        [refused] = [b for b in blocks_said if b.startswith("NOT merged into")]
+        assert "- None. + None at all." in refused, out
+        assert "a heading or other block beside it is not the one the document was sent" in refused
+    else:
+        # The second is read as "None." joined with an identifier not compared that no
+        # paragraph of the returned document carries, and left as it was; the co-author's
+        # words are printed nowhere.
+        [joined] = [b for b in blocks_said if "came back joined into one" in b]
+        assert joined.startswith("2 paragraphs came back joined into one"), out
+        [other] = re.findall(r"None\. \((mg-p-[^,)]+), not compared\)", joined)
+        assert other not in sent, (other, sent)
+        assert "Not applied" in joined, out
+        assert "None at all" not in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize("lost", [False, True], ids=["bookmark kept", "bookmark lost"])
 def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
     project: Path, tmp_path: Path, lost: bool
@@ -27551,6 +28591,37 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("block", "words"),
+    [("", 0), ("\n---\nnote: |\n  Methods\n---\n", 2),
+     ("\n---\nnote: |\n  Methods zebra quokka\n---\n", 4)],
+    ids=["no block", "a block over an indented Methods", "a block of several words"],
+)  # fmt: skip
+def test_a_yaml_block_later_in_a_file_is_counted_as_prose(
+    project: Path, block: str, words: int
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A YAML block later in a file is read as prose"):
+    pandoc prints none of the block, and the gates count its words. Its closing `---` heads
+    nothing: over an indented `Methods` alone, no Methods heading is read, and the
+    `p < 0.001` after the block, under Results, is unbound either way."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.sections import headings
+
+    before = _run_gates(project)[0].counts["main_text_words"]
+    claim = "\nThe excess was significant (p < 0.001).\n"
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", f"\n{block}{claim}\n# Discussion", 1),
+                    encoding="utf-8")  # fmt: skip
+    report = _run_gates(project)[0]
+    # The claim's own words are six.
+    assert report.counts["main_text_words"] - before == 6 + words
+    assert headings(path.read_text(encoding="utf-8")).count("Methods") == 1
+    assert [f.message for f in report.failures if f.gate == "G2"] == [
+        "'0.001' is not bound to any source"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -28606,6 +29677,27 @@ def test_audit_still_reads_typed_numbering_in_word_as_numbering(tmp_path: Path) 
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
+@pytest.mark.parametrize("name", ["paper.txt", "paper.docx"])
+def test_a_plain_text_paper_a_paragraph_per_line_reads_as_one_paragraph(
+    tmp_path: Path, name: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "List numbering is read where pandoc starts a list
+    item, and only in Markdown"): a plain-text paper is read as Markdown, so one exported a
+    paragraph per line with no blank lines between is a single paragraph, and its typed
+    numbering after the first line is compared; the same paragraphs in Word are numbering."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    lines = ["Criteria were applied in turn.", "2. The second criterion.", "3. The third."]
+    if name.endswith(".txt"):
+        paper = tmp_path / name
+        paper.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    else:
+        paper = _docx(tmp_path / name, "".join(_p(line) for line in lines))
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert unmatched == (["2", "3"] if name.endswith(".txt") else [])
+
+
 def test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering(
     tmp_path: Path,
 ) -> None:
@@ -29642,6 +30734,32 @@ def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None
     assert "unclassified-number" in codes(gate_report(project))
 
 
+@pytest.mark.parametrize(("where", "failed"), [
+    ("appendix.md", []),
+    # The other side: defined under the main text's own Methods, it is judged at the
+    # Results reference.
+    ("main.md", [("unclassified-number", "'0.001'")]),
+], ids=["defined in another file", "defined in the same file"])  # fmt: skip
+def test_a_note_defined_under_methods_in_another_file_is_read_there(
+    project: Path, where: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A footnote defined in one file and referenced
+    from another is read where it stands"): notes are indexed a file at a time, so a Results
+    sentence in main.md referencing `[^n]`, defined under a Methods heading in appendix.md,
+    has the note's `p < 0.001` read under Methods, as the alpha."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8").replace(_IN_RESULTS, _IN_RESULTS + "[^n]", 1)
+    if where == "main.md":
+        text = text.replace(_IN_METHODS, f"{_IN_METHODS}\n\n[^n]: {_CLAIM}\n", 1)
+    else:
+        (project / "manuscript" / "appendix.md").write_text(
+            f"# Methods\n\nThe threshold was fixed in advance.\n\n[^n]: {_CLAIM}\n",
+            encoding="utf-8",
+        )
+    path.write_text(text, encoding="utf-8")
+    assert _g2_failed(project) == failed
+
+
 @pytest.mark.parametrize(
     ("referenced", "defined", "note"),
     [
@@ -29664,6 +30782,81 @@ def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
 ) -> None:
     _with_footnote(project, referenced, defined, note)
     assert not gate_report(project).failures, codes(gate_report(project))
+
+
+_ALPHA_NOTE = "[^n]: Significance was set at p < 0.01.\n"
+
+
+@pytest.mark.parametrize(
+    ("defined", "note", "failed"),
+    [
+        (_AT_END, _ALPHA_NOTE, [("unclassified-number", "'0.01'")]),
+        # The other side: defined in the Methods, the note's alpha passes there.
+        (_IN_METHODS, _ALPHA_NOTE, []),
+        # And bound, it passes where it stands.
+        (_AT_END, "[^n]: Significance was set at p < {{results.param.alpha}}.\n", []),
+    ],
+    ids=["defined at the end", "defined in the Methods", "bound"],
+)
+def test_a_methods_note_defined_at_the_end_of_the_paper_fails_where_it_stands(
+    project: Path, defined: str, note: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Methods footnote defined outside Methods is
+    read as a finding"): a note referenced from Methods and defined at the end of the paper
+    has its alpha reported as unbound in the last section, on the definition's line. The
+    alpha is 0.01 here because the example declares 0.05, whose typed copy fails anyway."""
+    _with_footnote(project, (_IN_METHODS,), defined, note)
+    assert _g2_failed(project) == failed
+    if failed:
+        text = main_md(project).read_text(encoding="utf-8")
+        line = text[: text.index(note)].count("\n") + 1
+        [found] = [f for f in gate_report(project).failures if f.gate == "G2"]
+        assert found.line == line
+        assert "\n# " not in text[text.index(note):], "the definition is in the last section"
+
+
+@pytest.mark.parametrize(
+    ("note", "failed"),
+    [
+        # A lazy line pandoc keeps in the note after a line that may start a block.
+        ("[^n]: A note\n> A quotation\nThe excess was significant (p < 0.001).\n", []),
+        # An unindented line continuing an indented paragraph of the note.
+        ("[^n]: A note.\n\n    The excess was\nsignificant (p < 0.001).\n", []),
+        # A setext title ends the note's text.
+        ("[^n]: A note\nThe excess was significant (p < 0.001).\n---\n", []),
+        # The other side: on the definition's own line it is judged at the reference.
+        ("[^n]: The excess was significant (p < 0.001).\n", [("unclassified-number", "'0.001'")]),
+    ],
+    ids=["lazy line after a quotation", "lazy line of an indented paragraph", "setext title",
+         "on the definition line"],
+)
+def test_the_end_of_a_note_s_text_is_read_short_of_pandoc_s(
+    project: Path, note: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The end of a footnote's text is read short of
+    pandoc's in places"): in a note defined under Methods and referenced from Results, a
+    line pandoc prints as the note's text but the gates do not is judged only where it sits,
+    and its `p < 0.001` passes as the alpha."""
+    _with_footnote(project, (_IN_RESULTS,), _IN_METHODS, note)
+    assert _g2_failed(project) == failed
+
+
+@pytest.mark.parametrize(("marker", "failed"), [
+    (" See `[^n]`.", [("unclassified-number", "'0.001'")]),
+    # The other side: with no marker in the Results the note is judged in the Methods alone.
+    ("", []),
+], ids=["a marker in inline code", "no marker"])  # fmt: skip
+def test_a_note_marker_in_inline_code_counts_as_a_reference(
+    project: Path, marker: str, failed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The end of a footnote's text is read short of
+    pandoc's in places"): `` `[^n]` `` in the Results counts as a reference, which adds the
+    Results to the sections the note's number must pass in."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8").replace(_IN_RESULTS, _IN_RESULTS + marker, 1)
+    path.write_text(text.replace(_IN_METHODS, f"{_IN_METHODS}[^n]\n\n[^n]: {_CLAIM}\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    assert _g2_failed(project) == failed
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
@@ -31425,6 +32618,34 @@ def test_a_heading_run_into_its_paragraph_and_edited_is_not_merged_into_it(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_farther_heading_run_in_after_the_nearer_one_was_deleted_is_not_merged(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Closed by #121 (DESIGN.md, Closed since, "A farther heading run in after the nearer
+    one was deleted in Word was merged"): `### Design` deleted in Word and `## Methods`,
+    above it, run into Papa. The import looked only at the block beside Papa and wrote
+    "MethodsPapa..." into an unchanged document; Papa's identifier is behind the heading's
+    text, so the paragraph is refused, and the farther run-in with it."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, "# Intro", _ALPHA, "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def change(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        design = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == "Design")
+        return _run_into_papa("Methods", below=False)(xml.replace(design, "", 1))
+
+    returned = _sent_back(project, tmp_path, change, document=_UNCHECKED)
+    before = path.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == before, "MethodsPapa was written"
+    assert "came back inside another block, behind 'Methods'" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
     ("above", "gone"),
     [
@@ -31683,6 +32904,313 @@ def test_a_move_beside_a_paragraph_not_compared_that_does_not_pass_it_is_applied
     now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
     after, before, _out = _forced_import(project, tmp_path, blocks, now, swapped)
     assert after == before.replace(f"{_BRAVO}\n\n{delta}", f"{delta}\n\n{_BRAVO}", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_move_past_only_a_paragraph_not_compared_is_not_reported_as_moved(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paragraph moved in Word past one left out of
+    the comparison may not be reported as moved"): Romeo moved above Papa, which the author
+    reworded since the build, passes no paragraph compared, so no move is reported; the
+    import names Papa as not compared, says a move past it may not be reported, exits 1 and
+    applies nothing. A move that passes one compared is named (the tests above)."""
+    from manuscript_guard.cli import main
+
+    def moved(xml: str) -> str:
+        romeo = _word_paragraph(xml, "Romeo paragraph")
+        papa = _word_paragraph(xml, "Papa paragraph")
+        return xml.replace(romeo, "", 1).replace(papa, romeo + papa, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, moved)
+    assert after == before, "a move was applied"
+    assert "came back in a different place" not in out, out
+    assert "were not compared" in out, out
+    assert "A paragraph moved past one of them in Word may not be reported as moved." in out
+    assert main(["import", str(tmp_path / "back.docx"), str(project), "--force"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_every_move_in_a_section_where_one_passed_a_paragraph_not_compared_is_withheld(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paragraph moved in Word past one left out of
+    the comparison may not be reported as moved"): with Bravo moved above Papa, which is not
+    compared, the other move in its section, Delta and Echo swapped, which is read as Echo
+    moved up, is named as not applied with it: Bravo and Echo are withheld."""
+    delta = "Delta paragraph closes the section after Bravo."
+    echo = "Echo paragraph comes last of all here."
+
+    def two(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        papa = _word_paragraph(xml, "Papa paragraph")
+        xml = xml.replace(bravo, "", 1).replace(papa, bravo + papa, 1)
+        delta_ = _word_paragraph(xml, "Delta paragraph")
+        echo_ = _word_paragraph(xml, "Echo paragraph")
+        return xml.replace(delta_, "", 1).replace(echo_, echo_ + delta_, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO, delta, echo)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, two)
+    assert after == before, "a move was applied"
+    withheld = out[out.index("came back in a different place, not applied:") :]
+    assert f"    {_BRAVO}\n    {echo}\n" in withheld, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_to_a_paragraph_the_source_changed_is_left_even_under_force(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paragraph the source changed since the build
+    takes no co-author edit, even under `--force`"): Papa, reworded in the `.md` since the
+    build, is named as not compared and its clean edit left, while the edits beside it in
+    paragraphs that did not change merge."""
+
+    def edited(xml: str) -> str:
+        for was, now in (("missing dates", "absent dates"), ("duplicates were removed",
+                         "duplicates were dropped"), ("cohort of patients", "cohort of adults")):
+            xml = xml.replace(was, now, 1)
+        return xml  # fmt: skip
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, edited)
+    assert after == before.replace("cohort of patients", "cohort of adults", 1).replace(
+        "duplicates were removed", "duplicates were dropped", 1
+    )
+    assert "were not compared, because their identifier no longer names" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_before_a_paragraph_not_compared_that_did_not_come_back_is_left(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paragraph the source changed since the build
+    takes no co-author edit, even under `--force`"): Papa, not compared, deleted in Word, may
+    have been joined into Alpha above it, so Alpha's clean edit is refused and named; with
+    Papa back, the same edit merges (the test above)."""
+
+    def edited(xml: str) -> str:
+        xml = xml.replace(_word_paragraph(xml, "Papa paragraph"), "", 1)
+        return xml.replace("cohort of patients", "cohort of adults", 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, edited)
+    assert after == before
+    assert "NOT merged into" in out and "whether it was joined into this one" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_join_retyped_from_a_paragraph_not_compared_reads_as_a_deletion(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A join retyped from a paragraph left out of the
+    comparison into the next reads as a deletion"): Papa, reworded since the build, and
+    Romeo joined into it by retyping across the break, which takes Romeo's bookmark: Romeo
+    is reported deleted in Word and Papa not compared, and nothing is written."""
+
+    def joined(xml: str) -> str:
+        papa = _word_paragraph(xml, "Papa paragraph")
+        romeo = _word_paragraph(xml, "Romeo paragraph")
+        runs = _paragraph_runs(romeo).replace("Romeo paragraph explains", "omeo paragraph explains")
+        head = papa[: -len("</w:p>")].replace("missing dates.", "missing dates", 1)
+        glue = '<w:r><w:t xml:space="preserve">; and r</w:t></w:r>'
+        return xml.replace(romeo, "", 1).replace(papa, head + glue + runs + "</w:p>", 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, joined)
+    assert after == before
+    assert f"deleted in Word, left in place here: {_ROMEO}" in out, out
+    assert "were not compared, because their identifier no longer names" in out, out
+
+
+#: The main text as built, for the run of blocks around Papa, and as the `.md` has it since.
+_RUN_BUILT = ("# Intro", _ALPHA, "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO)
+_RUN_NOW = {
+    "far-heading-changed": ("# Intro", _ALPHA, "## Approach", "### Design", _PAPA, _ROMEO, _BRAVO),
+    # A paragraph put between the headings splits the run; Alpha written straight under
+    # `# Intro` keeps Papa's identifier and those after it where they were (Alpha's own
+    # goes from 2 to 0).
+    "split": ("# Intro\n" + _ALPHA, "## Methods", "A paragraph put between the headings.",
+              "### Design", _PAPA, _ROMEO, _BRAVO),
+    # Alpha removed joins the run to the one above it; a heading in its place keeps every
+    # identifier where it was.
+    "join": ("# Intro", "## Extra", "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO),
+    # The same two without the identifiers kept: Papa's has moved, and it is not compared.
+    "split-shifting": ("# Intro", _ALPHA, "## Methods", "A paragraph put between the headings.",
+                       "### Design", _PAPA, _ROMEO, _BRAVO),
+    "join-shifting": ("# Intro", "## Methods", "### Design", _PAPA, _ROMEO, _BRAVO),
+    "unchanged": _RUN_BUILT,
+}  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("now", sorted(_RUN_NOW))
+def test_an_edit_beside_a_run_of_blocks_changed_at_its_far_end_is_refused_under_force(
+    project: Path, tmp_path: Path, now: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", the run of blocks without an identifier around the paragraph): with
+    `### Design`, beside Papa, as it was, Papa's clean edit is refused where the run changed
+    at its far end since the build: `## Methods` renamed, a paragraph put between the two
+    headings, which splits the run, or Alpha removed, which joins it to the one above. With
+    the run unchanged it merges."""
+    after, before, out = _forced_import(
+        project, tmp_path, _RUN_BUILT, _RUN_NOW[now],
+        lambda xml: xml.replace("missing dates", "absent dates", 1),
+    )  # fmt: skip
+    if now == "unchanged":
+        assert after == before.replace("missing dates", "absent dates", 1)
+        return
+    assert after == before, "an edit beside a changed run was merged"
+    if now.endswith("-shifting"):
+        assert "were not compared, because their identifier no longer names" in out, out
+        return
+    refusal = next(b for b in out.split("\n\n") if "NOT merged into" in b and "absent dates" in b)
+    said = " ".join(refusal.split())
+    assert "a heading or other block beside it is not the one the document was sent with" in said
+
+
+#: What `import` says of Papa's edit refused beside a block that is not the one sent.
+_NOT_THE_ONE = "a heading or other block beside it is not the one the document was sent with"
+
+
+def _papa_refused(out: str) -> str:
+    """The refusal `import` printed for Papa's edit, its lines joined."""
+    block = next(b for b in out.split("\n\n") if "NOT merged into" in b and "absent dates" in b)
+    return " ".join(block.split())
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("beside", "shown", "rerun", "deleted"),
+    [
+        ("## Methods", "Methods", True, True),
+        ("- An item of the list.", "An item of the list.", True, True),
+        ("> A quoted line.", "A quoted line.", True, True),
+        ("## Methods", "Methods", False, True),
+        ("- An item of the list.", "An item of the list.", False, True),
+        ("> A quoted line.", "A quoted line.", False, True),
+        ("## Methods", "Methods", True, False),
+        ("- An item of the list.", "An item of the list.", True, False),
+        ("> A quoted line.", "A quoted line.", True, False),
+    ],
+    ids=["heading", "list-item", "quotation", "heading-same-inputs", "list-item-same-inputs",
+         "quotation-same-inputs", "heading-kept", "list-item-kept", "quotation-kept"],
+)  # fmt: skip
+def test_an_edit_beside_a_block_deleted_in_word_is_refused_in_a_document_from_other_inputs(
+    project: Path, tmp_path: Path, beside: str, shown: str, rerun: bool, deleted: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", a block deleted in Word in a document built from other inputs): with the
+    analysis re-run since the build, Papa's clean edit beside a heading, a list item or a
+    quotation the co-author deleted is refused, and says why; from the same inputs, or with
+    the block kept, it merges."""
+
+    def change(xml: str) -> str:
+        if deleted:
+            paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            found = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == shown)
+            xml = xml.replace(found, "", 1)
+        return xml.replace("missing dates", "absent dates", 1)
+
+    blocks = ("# Intro", _ALPHA, beside, _PAPA, _ROMEO, _BRAVO)
+    after, before, out = _forced_import(
+        project, tmp_path, blocks, blocks, change, reports=4100 if rerun else None
+    )
+    if rerun and deleted:
+        assert after == before, "an edit beside a deleted block was merged"
+        assert _NOT_THE_ONE in _papa_refused(out), out
+    else:
+        assert after == before.replace("missing dates", "absent dates", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("rerun", [True, False], ids=["re-run", "same-inputs"])
+def test_an_edit_beside_a_table_deleted_in_word_merges_in_a_document_from_other_inputs(
+    project: Path, tmp_path: Path, rerun: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", a block deleted in Word in a document built from other inputs, other
+    than a table): a table with no caption, so that it stands directly under Papa in Word,
+    deleted there with the analysis re-run since the build, and Papa's clean edit still
+    merges, as it does from the same inputs."""
+
+    def change(xml: str) -> str:
+        table = re.search(r"<w:tbl>.*?</w:tbl>", xml, re.DOTALL)
+        assert table, "the build has the table"
+        return xml.replace(table.group(0), "", 1).replace("missing dates", "absent dates", 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _TABLE, _ROMEO, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks, change, reports=4100 if rerun else None
+    )
+    assert after == before.replace("missing dates", "absent dates", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("heading", ["## Results in {{results.cohort.n_reports}} reports",
+                                     "## Results"], ids=["prints-otherwise", "prints-the-same"])
+def test_an_edit_beside_a_heading_that_prints_otherwise_is_refused_in_a_forced_import(
+    project: Path, tmp_path: Path, heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", a block that prints otherwise now): with the analysis re-run, a heading
+    holding the count it changed prints otherwise, and Papa's clean edit beside it is
+    refused; beside a heading that prints the same it merges."""
+    blocks = ("# Intro", _ALPHA, heading, _PAPA, _ROMEO, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks,
+        lambda xml: xml.replace("missing dates", "absent dates", 1), reports=4100,
+    )  # fmt: skip
+    if "{{" in heading:
+        assert after == before, "an edit beside a heading that prints otherwise was merged"
+        assert _NOT_THE_ONE in _papa_refused(_out), _out
+    else:
+        assert after == before.replace("missing dates", "absent dates", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("beside", "style", "deleted"),
+    [
+        ("{{table.baseline}}", "TableCaption", True),
+        ("{{table.baseline}}", "TableCaption", False),
+        ("[@fictionalClassSignal2019]", "Bibliography", True),
+        ("[@fictionalClassSignal2019]", "Bibliography", False),
+    ],
+    ids=["caption", "caption-kept", "reference-entry", "reference-entry-kept"],
+)
+def test_an_edit_beside_a_caption_or_reference_entry_deleted_in_word_is_refused_when_rerun(
+    project: Path, tmp_path: Path, beside: str, style: str, deleted: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An edit beside a changed block is refused in a
+    forced import", a block deleted in Word in a document built from other inputs): with the
+    analysis re-run since the build, Papa's clean edit is refused where the co-author deleted
+    the caption Word shows under it, or the entry of the reference list after it; with the
+    caption or the entry kept, the same edit merges."""
+    if style == "TableCaption":
+        blocks = ("# Intro", _ALPHA, _PAPA, beside, _ROMEO, _BRAVO)
+    else:
+        blocks = ("# Intro", f"{_ALPHA[:-1]} {beside}.", _ROMEO, _PAPA)
+
+    def change(xml: str) -> str:
+        if deleted:
+            paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            found = next(p for p in paragraphs if f'w:val="{style}"' in p)
+            xml = xml.replace(found, "", 1)
+        return xml.replace("missing dates", "absent dates", 1)
+
+    after, before, _out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
+    if deleted:
+        assert after == before, "an edit beside a deleted block was merged"
+        assert _NOT_THE_ONE in _papa_refused(_out), _out
+    else:
+        assert after == before.replace("missing dates", "absent dates", 1)
 
 
 @pytest.mark.parametrize("left", [(), ("Wingdings character F04A",)], ids=["nothing", "symbol"])
@@ -35630,6 +37158,74 @@ def test_a_measure_s_section_numbered_or_qualified_is_found(project: Path, headi
     assert _plan_asked(project) == []
 
 
+def test_a_design_s_section_is_found_by_a_word_of_any_heading(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): a plan with "Choice of comparator drug" under its Exposure has the
+    comparator, and one that answers the question under a heading of its own words has not."""
+    _paper_has(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Outcome\n" in text
+    under = "### Choice of comparator drug\n\nEvery other drug in the database.\n\n## Outcome\n"
+    plan.write_text(text.replace("## Outcome\n", under, 1), encoding="utf-8")
+    assert "comparator" not in _plan_asked(project)
+    own = "## Reports it is set against\n\nEvery other drug in the database.\n\n## Outcome\n"
+    plan.write_text(text.replace("## Outcome\n", own, 1), encoding="utf-8")
+    assert "comparator" in _plan_asked(project)
+
+
+def test_seven_designs_are_named_and_another_is_other(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): seven designs are named, and a design outside them, a cross-sectional
+    study, is no `study_type` of its own; `other` keeps the seven sections."""
+    from manuscript_guard.gates.design import REQUIRED, required_for, study_types
+
+    assert sorted(study_types()) == sorted([
+        "trial", "cohort", "case-control", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])  # fmt: skip
+    assert required_for("other") == REQUIRED
+    _paper_has(project, study_type="cross-sectional")
+    _project, report = load_project(project)
+    assert any("study_type" in f.message and "cross-sectional" in f.message
+               for f in report.failures), report.render()  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("design", "heading", "section", "found"),
+    [
+        ("trial", "## Trial monitoring", "interim analyses", True),
+        ("disproportionality", "## Measures", "measure", True),
+        ("self-controlled", "## Risk interval", "risk windows", False),
+        ("disproportionality", "## Events of interest", "case definition", False),
+        ("disproportionality", "## Definition of cases", "case definition", False),
+        ("disproportionality", "## Case-finding", "case definition", False),
+        ("disproportionality", "## Comparison", "comparator", False),
+        ("disproportionality", "## Reference database", "comparator", False),
+        ("disproportionality", "## Control group", "comparator", False),
+        ("disproportionality", "## Background population", "comparator", False),
+        ("disproportionality", "## Signal definition", "measure", False),
+        ("case-control", "## Cases/controls", "controls", True),
+        ("case-control", "## Cases/controls", "cases", False),
+        ("case-control", "## Case/control selection", "cases", False),
+        ("case-control", "## Case/control selection", "controls", False),
+    ],
+)  # fmt: skip
+def test_a_design_s_section_is_found_by_some_headings_and_not_others(
+    project: Path, design: str, heading: str, section: str, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Study designs and their plan sections"): a
+    section is found by words of its heading, so "Trial monitoring" answers interim analyses
+    and a bare "Measures" the measure, and the other headings named are not found;
+    "Cases/controls" finds controls and not cases. The 2026-11-09 triage planned a fix (F14),
+    which will change this test."""
+    _paper_has(project, study_type=design)
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 def _guideline_said(root: Path) -> list[str]:
     from manuscript_guard.gates import check_reporting
 
@@ -35669,6 +37265,31 @@ def test_the_guidelines_a_paper_declares_are_named_as_it_writes_them(project: Pa
     _paper_has(project, reporting_guideline=["Consort"])
     [said] = _guideline_said(project)
     assert said.endswith("and paper.yaml declares Consort")
+
+
+@pytest.mark.parametrize(
+    ("design", "guidelines", "said"),
+    [
+        ("cohort", ["STROBE-anything"], None),
+        ("systematic-review", ["PRISMA-P"], None),
+        ("systematic-review", ["PRISMA-Abstracts"], None),
+        ("trial", ["SPIRIT 2025"],
+         "a randomised trial is reported with CONSORT, and paper.yaml declares SPIRIT 2025"),
+        ("trial", ["CONSORT"], None),
+    ],
+)  # fmt: skip
+def test_a_guideline_counts_by_its_name_s_start_and_the_paper_s_alone(
+    project: Path, design: str, guidelines: list[str], said: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings", and "Study designs and their plan sections"): G5 holds the paper's
+    guidelines to the design, not the protocol's, and a guideline counts by the start of its
+    name: "STROBE-anything" for a cohort, PRISMA-P or an abstracts checklist for PRISMA, and a
+    trial protocol that declares SPIRIT 2025 is told to declare CONSORT. The 2026-11-09
+    triage planned a fix (F14), which will change this test."""
+    _paper_has(project, study_type=design)
+    _paper_has(project, reporting_guideline=guidelines)
+    assert _guideline_said(project) == ([said] if said else [])
 
 
 # --------------------------------------------------------------------------------------
@@ -35854,6 +37475,37 @@ def test_prose_in_a_script_the_gates_do_not_read_is_said(project: Path) -> None:
     assert found.severity == "warn"
     assert "characters of prose" in found.message and "Han (" in found.message
     assert "numbers written in it" in found.message
+
+
+_BOUND_CHINESE, _NUMERALS_CHINESE = (part.strip() for part in _CHINESE.split("\n\n"))
+
+
+@pytest.mark.parametrize(
+    ("sentence", "unbound"),
+    [
+        (_BOUND_CHINESE,
+         ["'结果见表1，比值比为'",
+          "'（95%置信区间'"]),
+        # The other side: the same sentence in English passes.
+        ("Results are in Table 1: the reporting odds ratio was {{results.ror.point}} (95% CI "
+         "{{results.ror.ci_low}} to {{results.ror.ci_high}}).", []),
+        (_NUMERALS_CHINESE, []),
+        ("Of ４０００ reports, most were hepatic.", ["'４０００'"]),
+    ],
+    ids=["chinese, every result bound", "english, every result bound", "chinese numerals",
+         "full-width digits in english"],
+)
+def test_g2_reads_chinese_prose_as_unspaced_tokens_and_its_numerals_as_words(
+    project: Path, sentence: str, unbound: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The gates read English text", G2): with no space
+    between words, the tokens holding the Table's 1 and the 95% are read whole and match no
+    rule, so a sentence with every result bound fails; Chinese numerals are not read as
+    numbers; full-width digits in English prose are read as digits and caught."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [f.message.split(" is ")[0] for f in gate_report(project).failures if f.gate == "G2"]
+    assert found == unbound
 
 
 def test_a_title_quoted_in_another_script_warns_and_fails_nothing(project: Path) -> None:
@@ -36954,6 +38606,46 @@ def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
     assert all("{{results.dictionary." in f.hint for f in found)
 
 
+_MEDDRA_LATER = "Events were coded with MedDRA, as the agency asks of every report it "
+
+
+@pytest.mark.parametrize(
+    ("sentence", "typed"),
+    [
+        # Any number equal to the release within 60 characters after the name is taken for
+        # it; past 60 it is a number like any other.
+        (_MEDDRA_LATER + "ever got, 26.1.", [("typed-dictionary-release", "'26.1'")]),
+        (_MEDDRA_LATER + "ever received from anyone, 26.1.", [("unclassified-number", "'26.1'")]),
+        # A second release overlapping the first draws a second finding.
+        ("Drugs were coded with ATC and WHODrug Global B3 March 2025.",
+         [("typed-dictionary-release", "'Global B3 March 2025'"),
+          ("typed-dictionary-release", "'2025'")]),
+        # A slug with a trailing underscore, `meddra_` from "MedDRA\N{REGISTERED SIGN}", is never
+        # found; the same words beside `meddra`'s release are.
+        ("Events were coded with MedDRA\N{REGISTERED SIGN} version 27.0.", []),
+        ("Events were coded with MedDRA\N{REGISTERED SIGN} version 26.1.",
+         [("typed-dictionary-release", "'26.1'")]),
+        # A doubled underscore, `icd_10___cm` from "ICD 10 & CM": its release is a number.
+        ("Diagnoses were coded with ICD 10 & CM 2023.",
+         [("unclassified-number", "'10'"), ("unclassified-number", "'2023'")]),
+    ],
+    ids=["within 60", "past 60", "overlapping", "slug never found", "slug of the name found",
+         "doubled underscore"],
+)
+def test_a_typed_release_is_read_by_its_text_within_60_characters_of_the_name(
+    project: Path, sentence: str, typed: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Typed releases of a dictionary"): where the
+    release is looked for, and what overlapping and unfindable releases draw."""
+    _coded_with(project, meddra="26.1", whodrug="Global B3 March 2025", atc="2025",
+                meddra_="27.0", icd_10___cm="2023")  # fmt: skip
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [(f.code, f.message.split(" is ")[0]) for f in gate_report(project).failures
+             if f.code in ("typed-dictionary-release", "unclassified-number")]  # fmt: skip
+    assert found == typed
+
+
 # ----------------------------------------------------- the data the paper analysed, named
 
 
@@ -37314,6 +39006,70 @@ def test_a_figure_typed_against_a_letter_is_part_of_a_name(
 
     assert own_figure(atom) == figure
     assert stated_number(atom) == states
+
+
+_COPIES = ("typed-parameter", "threshold-undeclared", "typed-software-version")
+
+
+@pytest.mark.parametrize(
+    ("declared", "sentence", "said"),
+    [
+        (95, "The 95% CI was used, and one rule asked for I2 > 95%.", []),
+        # The other side: a level that is no confidence level is read for its parameter.
+        (75, "One rule asked for I2 > 75%.", [("typed-parameter", "'75%'")]),
+        (None, "Another rule asked for at least three cases.", []),
+        (None, "Another rule asked for at least 3 cases.", [("typed-parameter", "'3'")]),
+        (None, "Another rule asked for caliper0.2 and power80%.", []),
+        (None, "Another rule asked for a caliper of 0.2 and a power of 80%.",
+         [("threshold-undeclared", "'0.2'"), ("threshold-undeclared", "'80%'")]),
+        # The declared version's first two parts, "3.13" of "3.13.16".
+        (None, "It ran in Python {short}.", []),
+        (None, "It ran in Python {python}.", [("typed-software-version", "'{python}'")]),
+    ],
+    ids=["a confidence level", "a threshold equal to a parameter", "a word",
+         "the word's figure", "against the word before it", "spaced from the word",
+         "a version's first parts", "the version whole"],
+)
+def test_only_an_equal_typed_copy_of_a_figure_is_read_for_a_parameter(
+    project: Path, declared: int | None, sentence: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Only an equal typed copy fails"): "95% CI" is
+    never read for a parameter, a version is matched by its whole text, a copy typed as a
+    word holds no figure, and a threshold typed against the word before it is a name: none
+    of these is seen by either rule."""
+    if declared is not None:
+        _declare_a_parameter_of(project, declared)
+    python = load_namespace(load_project(project)[0])[0]["results.software.python"].display
+    short = python.rsplit(".", 1)[0]
+    _replace_once(main_md(project), _CRITERION,
+                  f"{_CRITERION} {sentence.format(python=python, short=short)}")  # fmt: skip
+    found = [(f.code, f.message.split()[0]) for f in gate_report(project).findings
+             if f.code in _COPIES]  # fmt: skip
+    assert found == [(code, typed.format(python=python)) for code, typed in said]
+
+
+@pytest.mark.parametrize("parameters", [True, False], ids=["declared", "none declared"])
+def test_a_typed_threshold_unlike_every_parameter_is_warned_only_where_some_are_declared(
+    project: Path, parameters: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Only an equal typed copy fails"): a threshold
+    typed in the Methods that equals no parameter is `threshold-undeclared`, a warning, and
+    only in an analysis that declares parameters."""
+    if not parameters:
+        fragment = next((project / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key in [key for key in document["values"] if key.startswith("param.")]:
+            del document["values"][key]
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+        text = main_md(project).read_text(encoding="utf-8")
+        main_md(project).write_text(text.replace("{{results.param.alpha}}", "0.05").replace(
+            "{{results.param.signal.min_cases}}", "3"), encoding="utf-8")  # fmt: skip
+    _replace_once(main_md(project), _CRITERION, f"{_CRITERION} Another rule asked for p < 0.01.")
+    report = gate_report(project)
+    found = [(f.code, f.severity, f.message.split()[0]) for f in report.findings
+             if f.code in _COPIES]  # fmt: skip
+    assert found == ([("threshold-undeclared", "warn", "'0.01'")] if parameters else [])
 
 
 def test_explain_says_a_declared_threshold_is_typed(
@@ -38285,6 +40041,27 @@ def test_an_email_address_and_an_interleukin_are_no_numbers(tmp_path: Path) -> N
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         assert kinds["someone1989@example.org"] == kinds["a.b2@uni-3.edu.tr"] == STRUCTURAL
         assert {kinds[name] for name in names} == {TERM}, kinds
+
+
+def test_an_e_mail_address_whose_domain_ends_in_no_letters_is_a_number(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An e-mail address is one whose domain ends in
+    letters"): an address with no dot in its domain, or at a bare IP number, is read as a
+    number, by G2's classifier and by the audit, where one whose domain ends in letters is
+    an address."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import STRUCTURAL, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = "Write to name2@host, to name@192.168.0.1 or to name2@host.org for it.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["name2@host", "name@192.168.0.1"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {"name2@host": UNCLASSIFIED, "name@192.168.0.1": UNCLASSIFIED,
+                         "name2@host.org": STRUCTURAL}  # fmt: skip
 
 
 def test_a_term_inside_a_word_leaves_its_number_a_number(tmp_path: Path) -> None:

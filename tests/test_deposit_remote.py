@@ -301,6 +301,21 @@ def test_a_draft_holding_a_file_nobody_sent_is_refused(project: Path, hosts, cap
     assert "holds files the bundle does not: old.zip" in capsys.readouterr().err
 
 
+def test_a_draft_staged_again_keeps_a_file_the_new_bundle_no_longer_has(
+    project: Path, hosts, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Zenodo draft staged again keeps a file the new
+    bundle no longer has"): the draft's list is held to the files sent, a file left from an
+    earlier staging stops it by name, and the tool deletes nothing at the host."""
+    _staged(project, hosts)
+    hosts.hosts.files["NOTES-from-before.md"] = b"an earlier staging's file\n"
+    capsys.readouterr()
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--stage") == 1
+    assert "holds files the bundle does not: NOTES-from-before.md" in capsys.readouterr().err
+    assert "NOTES-from-before.md" in hosts.hosts.files
+    assert [method for method, _path, _h, _b in hosts.seen if method == "DELETE"] == []
+
+
 def test_publishing_needs_the_doi_typed_and_yes_does_not_answer_it(
     project: Path, hosts, capsys, monkeypatch
 ) -> None:

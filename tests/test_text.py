@@ -362,6 +362,25 @@ def test_a_bracket_closed_from_outside_ends_an_atom(text: str, expected: list) -
     assert atoms_of(text) == expected
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("An x]y2 here.", ["y2"]),
+        ("See [the x]y2 here.", ["y2"]),
+        # The other side: a bracket the run opens itself keeps it whole.
+        ("An x[a]y2 here.", ["x[a]y2"]),
+    ],
+)
+def test_a_bracket_closed_from_outside_cuts_the_run_wherever_it_stands(
+    text: str, expected: list
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An atom cut at a bracket keeps what the trimming
+    leaves"): a `]` that closes no bracket the run opened cuts it wherever it stands, whether
+    a bracket was opened before the run or none was, so an identifier written across one,
+    `x]y2`, is read as `y2`."""
+    assert atoms_of(text) == expected
+
+
 SPOOFS = {
     "fenced code comment": (
         f"## Methods\n\nAlpha set.\n\n{FENCE}python\n# Methods\nx = 1\n{FENCE}\n\n"

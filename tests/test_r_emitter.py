@@ -135,6 +135,110 @@ def test_both_emitters_record_the_lockfiles_alike(tmp_path: Path) -> None:
     assert recorded == expected
 
 
+def _environments(root: Path) -> tuple[list[str], list[str]]:
+    """The lockfiles R recorded in the project's fragment, and those Python records."""
+    from manuscript_guard.emit import Emitter
+
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["environment"]
+    python = Emitter(root / "analysis" / "01_r.R", root=root).document()
+    return ([entry["path"] for entry in from_r],
+            [entry["path"] for entry in python["provenance"]["environment"]])  # fmt: skip
+
+
+def test_a_lockfile_that_links_elsewhere_is_recorded_by_r_where_it_points(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The environment is the lockfiles at the project
+    root, and only a warning"): a lockfile that is a link to a file elsewhere is recorded by
+    R under the path it links to, and by Python under its own name; a lockfile in a
+    subfolder is recorded by neither."""
+    root = tmp_path / "rpaper"
+    (root / "locks").mkdir(parents=True)
+    (root / "locks" / "renv.lock").write_text('{"R": {"Version": "4.4.1"}}\n', encoding="utf-8")
+    (root / "locks" / "requirements.txt").write_text("pandas==2.2.2\n", encoding="utf-8")
+    try:
+        (root / "renv.lock").symlink_to(root / "locks" / "renv.lock")
+    except OSError:
+        pytest.skip("this system makes no symbolic links")
+    _built_r_project(tmp_path)
+    assert _environments(root) == (["locks/renv.lock"], ["renv.lock"])
+
+
+@pytest.mark.parametrize("name", ["renv.lock", "requirements.txt"])
+def test_both_emitters_digest_an_empty_lockfile_alike(tmp_path: Path, name: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): an empty lockfile is recorded by R
+    with the digest Python gives it, the SHA-256 of no bytes."""
+    import hashlib
+
+    from manuscript_guard.emit import lockfile_digest
+
+    root = _built_r_project(tmp_path, {name: ""})
+    fragment = next((root / "results").glob("*.json"))
+    recorded = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["environment"]
+    assert recorded == [{"path": name, "sha256": lockfile_digest(root / name)}]
+    assert recorded[0]["sha256"] == hashlib.sha256(b"").hexdigest()
+
+
+PLAN_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("n", 1L)
+em$write()
+"""
+
+
+@pytest.mark.parametrize(
+    ("written", "kept"),
+    [
+        (b"", True),
+        (b"\xc0\xaf", False),  # an overlong form of "/"
+        (b"\xe0\x80\xaf", False),  # another, in three bytes
+        (b"\xed\xa0\x80", False),  # the surrogate U+D800
+        (b"\xf4\x90\x80\x80", False),  # past U+10FFFF
+    ],
+    ids=["utf-8", "overlong in two bytes", "overlong in three bytes", "surrogate",
+         "out of range"],
+)
+def test_r_s_validutf8_and_python_s_decoder_refuse_the_same_plans(
+    tmp_path: Path, written: bytes, kept: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): a plan holding an overlong form, a
+    surrogate or a code point past U+10FFFF is not UTF-8 to R's `validUTF8` nor to Python's
+    decoder, and neither emitter keeps a frozen copy of it; plain UTF-8 both keep."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    (root / "design" / "plan.md").write_bytes(b"# Analysis plan\n\nAlpha " + written + b".\n")
+    frozen = root / "design" / "plan.frozen.yaml"
+    script = root / "analysis" / "plan.R"
+    script.write_text(PLAN_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    by_r = frozen.exists()
+    frozen.unlink(missing_ok=True)
+    em = Emitter(script, root=root)
+    em.value("n", 1)
+    em.write()
+    assert (by_r, frozen.exists()) == (kept, kept)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="a file system that ignores case")
+@pytest.mark.parametrize(("name", "by_r"), [("Requirements.txt", []),
+                                            ("requirements.txt", ["requirements.txt"])])
+def test_r_lists_lockfiles_in_their_case_on_windows(
+    tmp_path: Path, name: str, by_r: list[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): on Windows R lists the lockfiles
+    in their case, so `Requirements.txt` is not seen, where Python records it. The 2026-11-09
+    triage planned a fix (F07), which will change this test."""
+    root = _built_r_project(tmp_path, {name: "pandas==2.2.2\n"})
+    assert _environments(root) == (by_r, [name])
+
+
 def test_r_fragment_matches_the_schema(r_project: Path) -> None:
     fragment = r_project / "results" / "01_r.json"
     document = json.loads(fragment.read_text(encoding="utf-8"))
@@ -1630,6 +1734,33 @@ def test_r_and_python_print_day_month_year_where_the_paper_declares_no_english(
         assert values["dataset.vigibase.extracted"]["display"] == "1 March 2024", name
 
 
+def test_r_reads_the_english_from_its_own_line_and_not_from_a_flow_mapping(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The English a dataset's date is printed in is read
+    when the analysis runs"): R reads `english_variant` from its own line of `paper.yaml`, not
+    as YAML, and takes no English where it finds none there: a value in a flow mapping is not
+    seen, so an American paper that declares itself so prints "1 March 2024" from R, where
+    Python prints "March 1, 2024"."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path, None)
+    (root / "paper.yaml").write_text(
+        '{schema: manuscript-guard/paper/1, title: "P", english_variant: en-US}\n',
+        encoding="utf-8")  # fmt: skip
+    r_script = root / "analysis" / "data_r.R"
+    r_script.write_text(DATASETS["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix(),
+                                         **pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "data_py.py"
+    py_script.write_text(DATASETS["py"] % pins, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+    shown = {name: json.loads((root / "results" / name).read_text(encoding="utf-8"))["values"][
+        "dataset.vigibase.extracted"]["display"] for name in ("data_r.json", "data_py.json")}
+    assert shown == {"data_r.json": "1 March 2024", "data_py.json": "March 1, 2024"}
+
+
 DATASET_INPUTS = {
     "R": """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
@@ -1785,6 +1916,133 @@ def test_r_and_python_record_a_linked_input_by_its_own_path(tmp_path: Path) -> N
     from_python = json.loads(em.write().read_text(encoding="utf-8"))
     assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
     assert [i["path"] for i in from_r["provenance"]["inputs"]] == ["data/link.csv"]
+
+
+WORKDIR_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+%(add)s
+em$value("n", 1L)
+%(between)s
+em$write()
+"""
+
+
+def _added_in_r(input: str) -> str:
+    """The R call that reads `input`: as an input, or as a dictionary's release file."""
+    if input.startswith("release:"):
+        named = input.removeprefix("release:")
+        return f'em$dictionary("Terms", "1.0", release_file = "{named}")'
+    return f'em$add_input("{input}")'
+
+
+@pytest.mark.parametrize(
+    ("ran_in", "between", "input", "recorded", "read"),
+    [
+        (".", "", "data/tiny.csv", "data/tiny.csv", "data/tiny.csv"),
+        # Run from a folder that holds a file of that name, R reads and records that one.
+        ("analysis", "", "data/tiny.csv", "analysis/data/tiny.csv", "analysis/data/tiny.csv"),
+        # A `setwd()` between adding the input and `write()` digests another file.
+        (".", 'setwd("analysis")', "data/tiny.csv", "data/tiny.csv", "analysis/data/tiny.csv"),
+        # A dictionary's release file is an input, looked for where any is.
+        ("analysis", "", "release:data/tiny.csv", "analysis/data/tiny.csv",
+         "analysis/data/tiny.csv"),
+        # On Windows `~` is R's home, R_USER (Documents unless set), where Python's is the
+        # user's folder.
+        pytest.param(".", "", "~/tiny.csv", "../r_home/tiny.csv", "../r_home/tiny.csv",
+                     marks=pytest.mark.skipif(os.name != "nt", reason="Windows's home")),
+    ],
+    ids=["from the root", "from another folder", "setwd before write", "a release file",
+         "home"],
+)
+def test_r_reads_a_relative_input_where_it_runs_and_digests_it_at_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ran_in: str, between: str, input: str,
+    recorded: str, read: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The emitters"): R reads a relative input from its
+    working directory where a file of that name is there, records its path when it is
+    added and digests it at `write()`; `~` is R's home. Python reads every relative input
+    from the project root, and `~` from the user's folder. The 2026-11-09 triage planned a
+    fix (F07), which will change this test."""
+    from manuscript_guard.emit import Emitter, input_digest
+
+    root = _parameter_project(tmp_path)
+    r_home, py_home = tmp_path / "r_home", tmp_path / "py_home"
+    for folder, text in ((root / "data", "a\n1\n"), (root / "analysis" / "data", "a\n2\n"),
+                         (r_home, "a\n3\n"), (py_home, "a\n4\n")):  # fmt: skip
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "tiny.csv").write_text(text, encoding="utf-8")
+    script = root / "analysis" / "work.R"
+    script.write_text(WORKDIR_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "add": _added_in_r(input), "between": between},
+                      encoding="utf-8")  # fmt: skip
+    homes = {"R_USER": str(r_home), "HOME": str(r_home), "USERPROFILE": str(py_home)}
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)], capture_output=True, text=True, encoding="utf-8",
+        errors="replace", cwd=root / ran_in, env={**os.environ, **homes},
+    )  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    assert out.returncode == 0, out.stderr
+    [from_r] = json.loads((root / "results" / "work.json").read_text(encoding="utf-8"))[
+        "provenance"]["inputs"]  # fmt: skip
+    assert (from_r["path"], from_r["sha256"]) == (recorded, input_digest(root / read))
+    for name, value in homes.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.chdir(root / ran_in)
+    em = Emitter(script, root=root)
+    named = input.removeprefix("release:")
+    if named != input:
+        em.dictionary("Terms", "1.0", release_file=named)
+    else:
+        em.add_input(input)
+    [from_python] = em.document()["provenance"]["inputs"]
+    python_read = "../py_home/tiny.csv" if input.startswith("~") else named
+    assert (from_python["path"], from_python["sha256"]) == (
+        python_read, input_digest(root / python_read)
+    )
+
+
+FLOW_STEPS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$flow("prisma", stages = c(Records = 1200, Screened = 1000, Sought = 300, Assessed = 250),
+        exclusions = list(c(Duplicates = 150, Automation = 80), c(Excluded = 700),
+                          c("Not retrieved" = 50)),
+        overlapping = %(overlapping)s)
+em$write()
+"""
+
+
+@pytest.mark.parametrize(
+    ("overlapping", "written"),
+    [("c(1, 3)", [1, 3]), ("c(3, 1, 1)", [1, 3]), ("1L", [1]), ("1", [1]),
+     # The other side: a number that is not whole names no step.
+     ("1.5", None)],
+)  # fmt: skip
+def test_r_takes_any_numeric_vector_of_whole_values_for_the_overlapping_steps(
+    tmp_path: Path, overlapping: str, written: list[int] | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow's record is checked step by step, and
+    nothing more"): R takes any numeric vector of whole values, or a single number, for the
+    steps whose reasons overlap."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "steps.R"
+    script.write_text(FLOW_STEPS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                      "overlapping": overlapping}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    if written is None:
+        assert out.returncode != 0 and "overlapping is TRUE, FALSE" in out.stderr, out.stderr
+        return
+    assert out.returncode == 0, out.stderr
+    document = json.loads((root / "results" / "steps.json").read_text(encoding="utf-8"))
+    assert document["flows"]["prisma"]["overlapping"] == written
 
 
 REFUSED_R = """

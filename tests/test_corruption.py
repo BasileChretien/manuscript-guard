@@ -2537,6 +2537,145 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+def _reported(project: Path, sections: list[str]) -> set[str]:
+    """The numbers G2 reports as bound to nothing once `sections` end the manuscript."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + "".join(sections), "utf-8")
+    return {
+        f.message.split("'")[1]
+        for f in gate_report(project).failures
+        if f.code == "unclassified-number"
+    }
+
+
+def _reported_lines(project: Path, sections: list[str]) -> set[int]:
+    """The lines on which G2 reports a number as bound to nothing once `sections` end the
+    manuscript."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + "".join(sections), "utf-8")
+    return {f.line for f in gate_report(project).failures if f.code == "unclassified-number"}
+
+
+# Where pandoc prints a heading-shaped line as text: in a paragraph, a list item, a
+# quotation, a `<pre>` and a LaTeX environment, a `#` line and an underlined title.
+_AS_TEXT = {
+    "paragraph": "The rule counted\n{line}\n",
+    "list item": "- The rule counted\n{line}\n",
+    "quotation": "> The rule counted\n{line}\n",
+    "pre": "<pre>\n{line}\n</pre>\n",
+    "latex": "\\begin{{center}}\n{line}\n\\end{{center}}\n",
+}
+
+
+def test_a_line_shaped_like_a_heading_ends_a_section_for_g2_and_opens_no_methods(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A line shaped like a heading always ends a
+    section for G2"): each heading-shaped line pandoc prints as text ends the Methods above
+    it, so the threshold after it is reported, and one titled Methods under the Results
+    opens no Methods rules. Not such lines, the other side: a `\\#` that starts a wrapped
+    line, and the last row of a table the walk reads, or a table placeholder, over a rule."""
+    sections: list[str] = []
+    reported: list[str] = []
+    passed: list[str] = []
+
+    def section(heading: str, lines: str, case: str) -> str:
+        return f"# {heading}\n\nText.\n\n{lines}\nThe threshold ({case}) was p < 0.05.\n\n"
+
+    for name in sorted(_AS_TEXT):
+        for kind, line in [("hash", "# {title}"), ("underlined", "{title}\n========")]:
+            for heading, title, what in [("Methods", "Outcomes", "ends"),
+                                         ("Results", "Methods", "opens")]:  # fmt: skip
+                case = f"{what} {kind} {name}"
+                lines = _AS_TEXT[name].format(line=line.format(title=title))
+                sections.append(section(heading, lines, case))
+                reported.append(case)
+    # A Methods paragraph wrapped at "# of reports" reports the threshold after it.
+    sections.append(section("Methods", "The rule counted the\n# of reports named.\n", "wrap"))
+    reported.append("wrap")
+    for case, lines in [
+        ("escaped", "The rule counted the\n\\# of reports named.\n"),
+        ("table", "| a | b |\n|---|---|\n| 1 | 2 |\n---\n"),
+        ("placeholder", "{{table.two_by_two}}\n---\n"),
+    ]:
+        sections.append(section("Methods", lines, case))
+        passed.append(case)
+    found = _reported_lines(project, sections)
+    written = main_md(project).read_text(encoding="utf-8").split("\n")
+
+    def line_of(case: str) -> int:
+        return next(i for i, text in enumerate(written, 1) if f"({case})" in text)
+
+    assert [case for case in reported if line_of(case) not in found] == []
+    assert [case for case in passed if line_of(case) in found] == []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("fence", "printed"),
+    [("~~~", True), (" " + "`" * 3, True), ("`" * 3, False)],
+    ids=["tilde", "indented", "backtick at the margin"],
+)
+def test_a_fence_under_a_line_of_prose_is_code_to_the_gates(
+    project: Path, fence: str, printed: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A fence directly under a line of prose is code
+    to the gates and prose to pandoc"): a tilde fence, or one indented a space, straight
+    under a line of prose is printed as text, and the `# Methods` past the blank line is a
+    heading, where the gates blank the whole span: the number in it goes unread by G2 and
+    the heading is missed. A backtick fence at the margin, the other side, is code to both."""
+    from test_pandoc_agreement import pandoc_headings
+
+    from manuscript_guard.text.sections import headings
+
+    snippet = (
+        f"# Results\n\nWe saw it.\n{fence}\nThe ROR was 9.99.\n\n# Methods\n\n"
+        f"The threshold was p < 0.05.\n{fence}\n\n"
+    )
+    assert headings(snippet) == ["Results"]
+    assert pandoc_headings(snippet) == (["Results", "Methods"] if printed else ["Results"])
+    # The other side, the same lines with no fence: G2 reads the number.
+    bare = snippet.replace(f"{fence}\n", "").replace("9.99", "9.98")
+    found = _reported(project, [snippet, bare])
+    assert "9.98" in found
+    assert not {"9.99", "0.05"} & found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize("gap", ["", "\n"], ids=["directly under", "apart"])
+def test_a_heading_directly_under_a_figure_line_is_printed_as_text(
+    project: Path, gap: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading directly under a `{{figure.x}}` line is
+    printed as text"): the build writes an image there, the heading on the next line does
+    not interrupt the paragraph, and the gates read it as text too, so the threshold under
+    it is reported as the Results'. With a blank line between, it is a heading to both."""
+    from test_pandoc_agreement import pandoc_headings
+
+    from manuscript_guard.build import assemble
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "{{figure.forest}}\n\n# Discussion"
+    assert text.count(anchor) == 1
+    snippet = f"{{{{figure.forest}}}}\n{gap}# Methods\n\nThe threshold was p < 0.05.\n\n"
+    path.write_text(text.replace(anchor, snippet + "# Discussion"), encoding="utf-8")
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assembled, _assembly = assemble(projekt, namespace, results)
+    built = next(item.text for item in assembled if item.path.name == "main.md")
+    assert pandoc_headings(built).count("Methods") == (2 if gap else 1)
+    reported = any(
+        f.code == "unclassified-number" and "'0.05'" in f.message
+        for f in gate_report(project).failures
+    )
+    assert reported is not bool(gap)
+
+
 @pytest.mark.parametrize(
     ("title", "results"),
     [("## **Results**", True), ("- Results\n---", True), ("# Results\n---", True),
@@ -2758,6 +2897,40 @@ def test_a_heading_line_under_a_list_is_text(
     path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
     report = gate_report(project)
     assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "number", "reported"),
+    [
+        # A heading pandoc prints directly under an indented rule after a list.
+        ("# Safety\n\n1. Item\n\n  ***\n## 12 Patients\n\nText.\n\n", "'12'", True),
+        ("# Results\n\n1. Item\n\n  ***\n# Methods\n\nThe threshold was p < 0.05.\n\n",
+         "'0.05'", True),  # fmt: skip
+        # The other side: with no such line between, the heading is read and numbered.
+        ("# Safety\n\n1. Item\n\n## 12 Patients\n\nText.\n\n", "'12'", False),
+        # A numbered item pandoc starts after such a line: a new list, a nested item, an
+        # outer item directly under it.
+        ("# Safety\n\n1. First\n\n  An indented paragraph.\n\n 2. Second\n\n", "'2'", True),
+        ("# Safety\n\n1. Next\n   - next\n\n    More\n\n   3. Nested\n\n", "'3'", True),
+        ("# Safety\n\n1. First step\n\n  ***\n2. Second step\n\n", "'2'", True),
+        # The other side: an item at the margin after a blank line is recorded.
+        ("# Safety\n\n1. First step\n\n  An indented line.\n\n2. Second step\n\n", "'2'", False),
+    ],
+    ids=["heading", "methods", "no-line", "new-list", "nested", "outer", "outer-apart"],
+)
+def test_an_indented_line_under_a_list_costs_what_pandoc_starts_under_it(
+    project: Path, snippet: str, number: str, reported: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Every indented line under a list is the list's
+    for headings"): the walk reads an indented line under a list as the list's text, so a
+    heading pandoc prints directly under it is read as text, its number reported and no
+    Methods opened, and a numbered item pandoc starts after it is reported."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    found = any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+    assert found is reported
 
 
 @pytest.mark.parametrize("above", ["", "* * *\n"], ids=["under the item", "under a spaced rule"])
@@ -24635,6 +24808,44 @@ def test_two_colours_a_deficiency_makes_one_are_a_warning(project: Path, svg: bo
     assert "deuteranopia" in found.message and _GREEN in found.message and _RED in found.message
 
 
+#: A pale blue that tritanopia brings within 10 of white, 12 apart to normal vision: a
+#: confidence band, or a map's lightest class, on the page.
+_PALE = "#d9e1f9"
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_pale_colour_on_the_white_page_is_no_pair(project: Path, svg: bool) -> None:
+    """Basile, 2026-11-21: white is taken for the page and paired with no colour; on real
+    papers 14 of 25 pairs judged false set a pale colour against it."""
+    _painted(project, "#ffffff", _PALE, svg=svg)
+    assert _colours_said(project) == []
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_near_white_page_is_still_paired(project: Path, svg: bool) -> None:
+    """Only exactly #ffffff is the page (Known gaps): a near-white beside the same pale blue
+    is still compared, and tritanopia makes the two one."""
+    _painted(project, "#fefefe", _PALE, svg=svg)
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    found = [f for f in check_figure_colours(load_project(project)[0]).findings
+             if f.code == "figure-colours-confused"]
+    assert [f.severity for f in found] == ["warn"]
+    assert "tritanopia" in found[0].message and "#fefefe" in found[0].message
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_two_colours_beside_white_are_still_compared(project: Path, svg: bool) -> None:
+    """White leaves only its own pairs: red and green painted with it still warn, and the
+    finding names neither as paired with white."""
+    _painted(project, "#ffffff", _PALE, _RED, _GREEN, svg=svg)
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    found = check_figure_colours(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == [("figure-colours-confused", "warn")]
+    assert "#ffffff" not in found[0].message and _RED in found[0].message
+
+
 def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) -> None:
     """Okabe and Ito's orange and sky blue are one grey: a note, and a warning where the
     journal prints its figures in grey or the figure's guard file asks."""
@@ -26389,6 +26600,30 @@ def test_the_build_refuses_what_pandoc_reads_otherwise(
     assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
 
 
+@pytest.mark.parametrize("gap", ["", "\n"], ids=["continuing", "apart"])
+def test_a_title_continuing_a_paragraph_over_equals_is_titled_methods_by_check(
+    project: Path, gap: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A title continuing a paragraph over `===` is
+    read as a heading by `check`"): the heading scan files the threshold under the title in
+    a section titled Methods, the Results ended, while the walk reads one paragraph as
+    pandoc does, so G2 judges it under no Methods rules and reports it. Apart from the
+    paragraph, the title is a heading to both, and the threshold is the alpha."""
+    from manuscript_guard.text.sections import headings, section_chain
+
+    snippet = f"# Results\n\nWe also saw\n{gap}Methods\n=======\n\nThe threshold was p < 0.05.\n"
+    assert section_chain(snippet, snippet.index("0.05")) == ("Methods",)
+    assert headings(snippet) == (["Results"] if not gap else ["Results", "Methods"])
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion", f"\n{snippet}\n# Discussion", 1), "utf-8")
+    reported = any(
+        f.code == "unclassified-number" and "'0.05'" in f.message
+        for f in gate_report(project).failures
+    )
+    assert reported is not bool(gap)
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
@@ -26474,6 +26709,83 @@ def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: st
     body = f"# Introduction\n\nText.\n\n{heading}\n\nMore text.\n"
     found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
     assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A heading the build refuses that prints as the
+    gates read it"): with an unlabelled `(@)` item before `(@good)`, pandoc numbers it 2 in
+    the document and 1 in the titles set out on their own, and the heading citing it is
+    refused; with the unlabelled item after it, both number it 1."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+
+    def refused(examples: str) -> str | None:
+        body = f"# Introduction\n\nText.\n\n{examples}\n\n## As in example (@good)\n\nMore.\n"
+        return misreading(
+            header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+        )
+
+    assert refused("(@) First.\n(@good) An example.") == (
+        "the heading 'As in example (2)' (level 2) where the gates read "
+        "'As in example (@good)' (level 2) at main.md:8"
+    )
+    assert refused("(@good) An example.\n(@) Second.") is None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_setext_title_whose_value_starts_with_a_hash_is_built() -> None:
+    """Closed (DESIGN.md, Closed since, "A setext title whose value starts with `#` was
+    refused, though it printed as the gates read it"): the gates read the built line,
+    `#1 ranked drugs` over `===`, as the heading pandoc prints, and nothing is refused."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+    from manuscript_guard.text.sections import headings
+
+    header = "---\ntitle: A study\n---\n"
+    written = "# Introduction\n\nText.\n\n{{results.rank}} ranked drugs\n==============\n\nMore.\n"
+    built = written.replace("{{results.rank}}", "#1")
+    assert headings(built) == ["Introduction", "#1 ranked drugs"]
+    found = misreading(
+        header + built, header, [("main.md", written)], shutil.which("pandoc"), Path(),
+        built=[built],
+    )  # fmt: skip
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_setext_title_whose_bound_value_starts_with_a_hash_builds_as_a_heading(
+    project: Path,
+) -> None:
+    """Closed (DESIGN.md, Closed since, "A setext title whose value starts with `#` was
+    refused, though it printed as the gates read it"): a results value "#1", emitted with
+    `label=True` and bound at the start of a `===` title, passes the checks and builds, and
+    the document prints the title as a heading."""
+    from manuscript_guard.cli import main
+
+    _publish_text(project, "rank", "#1", quoted=False, label=True)
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = "{{results.rank}} ranked drugs\n=====================\n\nText.\n\n"
+    path.write_text(text.replace("\n# Discussion", f"\n{title}# Discussion", 1), "utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    xml = zipfile.ZipFile(project / "build" / "manuscript.docx").read("word/document.xml")
+    paragraph = next(
+        p for p in re.findall(r"<w:p\b.*?</w:p>", xml.decode("utf-8"), re.DOTALL)
+        if "ranked drugs" in p
+    )
+    assert re.findall(r'w:pStyle w:val="([^"]+)"', paragraph) == ["Heading1"]
+    assert "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", paragraph)) == "#1 ranked drugs"
 
 
 @pytest.mark.skipif(
@@ -26673,6 +26985,47 @@ def test_titles_that_cannot_be_read_while_the_document_can_are_refused() -> None
         header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
     )
     assert found is not None and found.startswith("the document, but not"), found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("opener", "closer", "refused"),
+    [
+        ("<pre>", "</pre>", True),
+        ("\\begin{verbatim}", "\\end{verbatim}", True),
+        # The other side: a listing is code to the gates, so its line is not copied.
+        ("```", "```", False),
+    ],
+    ids=["pre", "verbatim", "listing"],
+)
+def test_a_footnote_shaped_line_in_raw_markup_is_copied_to_the_titles(
+    opener: str, closer: str, refused: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A footnote-shaped line in a `<pre>` or a TeX
+    environment is copied to the titles"): a `[^n1]:` line over YAML pandoc cannot read, in
+    a `<pre>` or a `\\begin{verbatim}`, is copied to the titles' own run, which then fails
+    while the document reads, and the build refuses the document; in a listing it is not."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        f"# Results\n\nThe excess was significant.\n\n{opener}\n[^n1]:\n    ---\n"
+        f"    sites: [Caen\n    ...\n{closer}\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    if refused:
+        assert found == (
+            "the document, but not the build's header or the gates' titles set out on their "
+            "own, so their reading cannot be compared with the gates'"
+        )
+    else:
+        assert found is None, found
 
 
 @pytest.mark.skipif(
@@ -27933,6 +28286,31 @@ def test_a_line_of_dashes_inside_a_quotation_or_an_item_is_not_refused_by_check(
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        # An inline command pandoc starts no block behind.
+        "\\foo[x]{1em}",
+        # A colon after a command, which pandoc reads as text.
+        "\\newpage[^1]:",
+        "\\foo[x]:",
+        # A definition's brackets after its groups, text to pandoc.
+        "\\newcommand{\\foo}{bar}[x]",
+        "\\newcommand{a}[^x]",
+    ],
+)
+def test_dashes_after_a_tex_command_that_opens_nothing_are_refused(command: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some lines of dashes after a TeX command are
+    refused that open nothing"): pandoc reads each line as the command, then text, and the
+    refusal takes the dashes for a block's; the command put on a line of its own, the rest
+    of the text as it was, clears it."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    head = "---\ntitle: A study\n---\n\n# Introduction\n\n"
+    assert rules_opening_blocks(f"{head}{command} ---\n\nnext.\n") == [7]
+    assert rules_opening_blocks(f"{head}{command}\n\n---\n\nnext.\n") == []
+
+
+@pytest.mark.parametrize(
     ("text", "printed"),
     [
         # A rule, not front matter: the heading prints.
@@ -28561,6 +28939,48 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     assert all(masked[i] == "\n" for i, ch in enumerate(text) if ch == "\n")
 
 
+# Two fences the body's refusal refuses: an R Markdown chunk pair, the prose between them,
+# and a tilde fence straight under a line of text, which pandoc prints as prose.
+_FRONT_MATTER_FENCES = (
+    "```{r}\nx\n```\n\nThe ROR was 9.98.\n\n```{r}\ny\n```\n\n"
+    "We also saw\n~~~\nan ROR of 9.99.\n~~~\n"
+)
+
+
+def test_an_unclear_fence_in_the_front_matter_hides_prose_and_is_not_refused(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A fence in the front matter is read and not
+    refused"): in `abstract: |`, a chunk pair and a tilde fence under a line of text hide
+    9.98 and 9.99 from G2, which reports both once the fence lines are gone, and `check`
+    refuses no fence there, where it refuses the same lines in the body."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+
+    def failing(abstract: str, body: str) -> set[tuple[str, str]]:
+        indented = "".join(f"  {line}\n" if line else "\n" for line in abstract.split("\n")[:-1])
+        written = text.replace("\n---\n", f"\nabstract: |\n{indented}---\n", 1)
+        source.write_text(written.replace("\n# Discussion", f"{body}\n# Discussion", 1), "utf-8")
+        capsys.readouterr()
+        main(["check", str(project), "--json"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return {(f["code"], f["message"].split("'")[1] if f["code"] == "unclassified-number"
+                 else "") for f in found if f["severity"] == "fail"}  # fmt: skip
+
+    numbers = {("unclassified-number", "9.98"), ("unclassified-number", "9.99")}
+    hidden = failing(_FRONT_MATTER_FENCES, "")
+    assert not numbers & hidden
+    assert ("unclear-fence", "") not in hidden
+    bare = _FRONT_MATTER_FENCES
+    for line in ("```{r}\n", "```\n", "~~~\n"):
+        bare = bare.replace(line, "")
+    assert numbers <= failing(bare, "")
+    in_body = failing("Cases were counted.\n", f"\n{_FRONT_MATTER_FENCES}")
+    assert ("unclear-fence", "") in in_body
+
+
 def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
     """A URL is masked to the next space, and the key of the next YAML line is masked too,
     so one ending a title ran through that key into the next value: 9.99, which pandoc
@@ -28591,6 +29011,23 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_yaml_block_in_the_body_is_read_as_prose(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A YAML block in the middle of a document is
+    read as prose"): a number in a body block is reported, and its `# Methods` line under a
+    Results heading keeps the Results rules below it, the threshold reported. A bare `---`
+    over `---` is read as a heading titled "---", where a key between them heads nothing."""
+    from manuscript_guard.text.sections import headings, section_chain
+
+    assert headings("# Safety\n\nWe saw it.\n\n---\n---\n\nText.\n") == ["Safety", "---"]
+    assert headings("# Safety\n\nWe saw it.\n\n---\nnote: x\n---\n\nText.\n") == ["Safety"]
+    block = (
+        "# Results\n\nWe saw it.\n\n---\n# Methods\nnote: 9.99\n---\n\n"
+        "The threshold was p < 0.05.\n"
+    )
+    assert section_chain(block, block.index("0.05")) == ("Results",)
+    assert {"9.99", "0.05"} <= _reported(project, [block])
 
 
 @pytest.mark.parametrize(
@@ -29151,6 +29588,31 @@ def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        # The other side of the blank line rule: a blank line under the `<!--`.
+        f"<!-- An earlier model:\n\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # `<!--` on a line of its own after a blank line (the paragraph and heading shapes).
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # `<!--` straight under a listing's closer.
+        f"{_TICKS}r\na\n{_TICKS}\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        # The listing moved out of the commented-out item (the list item shape).
+        f"<!--\n- Fit the model:\n\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+    ],
+    ids=["blank-under-comment", "comment-after-blank", "comment-under-closer", "out-of-item"],
+)
+def test_a_listing_commented_out_in_these_shapes_is_accepted(block: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "More listings commented out whole are
+    refused"): the other side of the shapes refused above. A listing a comment holds is let
+    be straight under a `<!--` that starts its line, with a blank line, the file's start or
+    a listing's closer above it, under a blank line after the `<!--`, or moved out of the
+    commented-out list item."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
 def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
     """A comment whose `-->` falls inside the listing ends there, and the lines after it are
     printed: the listing is not the comment's, and stays refused."""
@@ -29158,6 +29620,23 @@ def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
 
     text = f"# Results\n\n<!--\n{_TICKS}r\nx -->\nThe excess (p < 0.001).\n{_TICKS}\n"
     assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize("closer", [f"{_TICKS} -->", f"{_TICKS}-->"], ids=["spaced", "glued"])
+def test_a_listing_commented_out_with_its_arrow_on_the_closer_is_refused(closer: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A listing commented out with `-->` on its
+    closing line is refused"): the gates read no closer in ```` ``` --> ````, so the opener is
+    left unpaired and both fence lines are refused, under a hint that says to put the `-->`
+    on a line of its own; written so, the same listing is accepted."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Results\n\nWe found it.\n\n<!--\n{_TICKS}r\nx\n{closer}\n\nThe end.\n"
+    found = fence_findings(Path("main.md"), text)
+    assert [f.line for f in found] == [6, 8]
+    assert all(f.code == "unclear-fence" for f in found)
+    assert "put the comment's `-->` on a line of its own after the closer" in found[0].hint
+    apart = text.replace(closer, f"{_TICKS}\n-->")
+    assert fence_findings(Path("main.md"), apart) == ()
 
 
 @pytest.mark.parametrize(
@@ -31271,6 +31750,96 @@ def test_a_value_paragraph_joined_into_the_one_above_is_not_merged_once_the_valu
     assert after == before, "a number was typed into the source"
 
 
+def _checked(project: Path) -> str:
+    """What `check` prints of the project."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from manuscript_guard.cli import main
+
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["check", str(project)])
+    return printed.getvalue()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("copy", ["a value paragraph", "four words of a paragraph"])
+def test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number(
+    project: Path, tmp_path: Path, copy: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A copy of a re-run value, or a partial copy of
+    under five words, merges."): a paragraph that is only a value, printing 4000, copied
+    rather than cut onto the end of Papa, or "Of 4000 reports screened" copied there from a
+    paragraph, and the analysis re-run to 4100. Nothing vanished, and `_swallowed` looks for
+    a copy of five words or more, so Papa merges "...dates. 4000" or "...dates. Of 4000
+    reports screened", and `check` reports the typed number as unbound."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    if copy == "a value paragraph":
+        blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _REPORTS, _BRAVO)
+        change, typed = _pasted(">4000<", "Papa paragraph", cut=False), "4000"
+    else:
+        blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+        typed = "Of 4000 reports screened"
+
+        def change(xml: str) -> str:
+            papa = _word_paragraph(xml, "Papa paragraph")
+            run = f'<w:r><w:t xml:space="preserve"> {typed}</w:t></w:r>'
+            return xml.replace(papa, papa[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
+    assert after == before.replace(_PAPA, f"{_PAPA} {typed}", 1), out
+    assert "'4000' is not bound to any source" in _checked(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_partial_copy_of_five_words_or_more_merges_too(project: Path, tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A copy of a re-run value, or a partial copy of
+    under five words, merges.", "A partial copy of five words or more merges too."):
+    `_swallowed` looks for the whole of a paragraph, so seven words copied from one, "Of
+    4000 reports screened, twelve were duplicates", in a document whose analysis was re-run
+    since, merge onto Papa as four do, and `check` reports the typed number as unbound."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+    typed = "Of 4000 reports screened, twelve were duplicates"
+
+    def change(xml: str) -> str:
+        papa = _word_paragraph(xml, "Papa paragraph")
+        run = f'<w:r><w:t xml:space="preserve"> {typed}</w:t></w:r>'
+        return xml.replace(papa, papa[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change, reports=4100)
+    assert after == before.replace(_PAPA, f"{_PAPA} {typed}", 1), out
+    assert "'4000' is not bound to any source" in _checked(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sentence_cut_from_a_paragraph_the_md_changed_merges_where_it_was_pasted(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A sentence cut from a paragraph the `.md`
+    changed since, and pasted into another, merges."): Papa, reworded in the `.md` since the
+    build and so not compared, loses its second sentence in Word, pasted onto the end of
+    Bravo. Bravo merges it, the sentence is then in the source twice, and with no number in
+    it `check` says nothing of it."""
+    second = "The exclusions were made before any analysis was run."
+    papa = f"{_PAPA} {second}"
+    blocks = ("# Intro", _ALPHA, papa, _ROMEO, _BRAVO)
+    now = tuple(_reworded(block) if block == papa else block for block in blocks)
+
+    def change(xml: str) -> str:
+        assert f" {second}" in xml
+        xml = xml.replace(f" {second}", "", 1)
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        run = f'<w:r><w:t xml:space="preserve"> {second}</w:t></w:r>'
+        return xml.replace(bravo, bravo[: -len("</w:p>")] + run + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(_BRAVO, f"{_BRAVO} {second}", 1), out
+    assert after.count(second) == 2
+    assert "exclusions were made" not in _checked(project)
+
+
 def _elsewhere(blocks: tuple[str, ...]) -> tuple[str, ...]:
     """The `.md` edited since the build where Word left it alone: stale, nothing re-run."""
     return tuple(block.replace("exposure window", "exposure period") for block in blocks)
@@ -31606,6 +32175,259 @@ def test_a_paragraph_whose_identifier_holds_text_it_cannot_be_told_by_is_not_sai
     assert "may not have come back (the one after 'Alpha paragraph" in reasons["unsure"]
     assert "did not come back" not in reasons["unsure"]
     assert "did not come back (the one after 'Alpha paragraph" in reasons["gone"]
+
+
+@pytest.mark.parametrize(
+    "unknown", ["changed in the .md", "dropped from the .md", "a value re-run"]
+)
+def test_a_rewording_that_gained_five_words_or_a_number_is_refused_beside_one_not_known(
+    tmp_path: Path, unknown: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A rewording that gained five words in a row, or a
+    number, is refused whenever a paragraph that did not come back said something not
+    known."). Romeo did not come back and what it said is not known: the `.md` changed it or
+    dropped it since the build, or it is only a value in a document built from other
+    inputs. A rewording elsewhere that gained a run of five words, or a word with a digit,
+    is refused; one that gained a word, fixed a word or cut a clause merges, and so does a
+    paragraph of four words with no digit copied into it, whose words are then in the source
+    twice."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    short = "Duplicates were removed early."
+    bravo = "Bravo paragraph describes the exposure window, as the protocol set it."
+    value = "{{results.cohort.n_reports}}"
+    middle = {"changed in the .md": _reworded(_ROMEO), "a value re-run": value}.get(unknown)
+    path = tmp_path / "main.md"
+    text = "\n\n".join([_ALPHA, short, *([middle] if middle else []), bravo]) + "\n"
+    path.write_text(text, encoding="utf-8")
+    names = {"a": _ALPHA, "s": short, "b": bravo, **({"v": value} if middle == value else {})}
+    known = {name: (path, words, text.index(words)) for name, words in names.items()}
+    sent = [Block(("a",), _ALPHA), Block(("s",), short)]
+    marked, flags = None, {}
+    if unknown == "a value re-run":
+        # Printing 4100 now, all of it the value: what it printed at the build is not known.
+        marked = [*sent, Block(("v",), "4100", tokens=((0, 4),)), Block(("b",), bravo)]
+        sent.append(Block(("v",), "4100"))
+        flags["stale"] = True
+    else:
+        sent += [Block(("r",), middle)] if middle else []
+        flags["built"] = ("a", "s", "r", "b")
+    sent.append(Block(("b",), bravo))
+    refused = {
+        "five words in a row": bravo[:-1] + ", which ran from the first dose.",
+        "a number": bravo.replace("window", "window of 2019"),
+    }
+    merged = {
+        "a word added": bravo.replace("the exposure", "the whole exposure"),
+        "a word fixed": bravo.replace("describes", "details"),
+        "a clause cut": "Bravo paragraph describes the exposure window.",
+        "four words copied in": f"{bravo} {short}",
+    }
+    for gained, now in {**refused, **merged}.items():
+        plan = plan_import(known, sent, [*sent[:2], Block(("b",), now)], marked, **flags)
+        if gained in refused:
+            assert [refusal.name for refusal in plan.refused] == ["b"], (gained, plan)
+            assert "and what it said then is not known" in plan.refused[0].why[0], gained
+        else:
+            assert plan.merged == {"b": now} and not plan.refused, (gained, plan)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8").count(short) == 2
+
+
+#: The returned blocks of the next test, by where Word left the identifier of Romeo, which
+#: the `.md` changed since the build: in front of Bravo's, on an empty line, at the end of
+#: Papa (its emptied line joined up), on text reading exactly as another paragraph or as a
+#: heading, on a sentence typed where it stood, on one typed after its line was joined up,
+#: on a block with Bravo's where neither bookmark's place is known, with and without text
+#: typed, and nowhere, deleted with Track Changes on; with whether Romeo counts as gone.
+_LEFT_BEHIND = {
+    "in front of another's": (True, ("r", "b"), _BRAVO, (("r", 0), ("b", 0))),
+    "on an empty line": (True, ("r",), "", ()),
+    "at the end of a paragraph": (True, ("p", "r"), _PAPA, (("p", 0), ("r", len(_PAPA)))),
+    "on another paragraph's text": (True, ("r",), _BRAVO, ()),
+    "on a heading's text": (True, ("r",), "Intro", ()),
+    "on a sentence typed": (False, ("r",), "A sentence typed where the cut one stood.", ()),
+    "on a sentence typed after a join": (
+        False, ("p", "r"), f"{_PAPA} A sentence typed there next.",
+        (("p", 0), ("r", len(_PAPA) + 1)),
+    ),
+    "beside another's, places unknown": (True, ("r", "b"), _BRAVO, ()),
+    "after a join, places unknown": (True, ("p", "r"), f"{_PAPA} A sentence typed there.", ()),
+    "deleted, tracked": (True, (), "", ()),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("gained", ["five words in a row", "a number"])
+@pytest.mark.parametrize("left", list(_LEFT_BEHIND))
+def test_without_the_record_an_identifier_left_behind_counts_as_gone_by_what_it_holds(
+    tmp_path: Path, left: str, gained: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), for a paragraph whose text is not
+    known. Romeo counts as gone where its identifier holds nothing - in front of another's,
+    on an empty line, at the end of the paragraph its line was joined onto - and where what
+    it holds reads exactly as another paragraph or a heading; and where a block holds it
+    with another and the place of neither bookmark is known; and deleted outright, as a
+    tracked deletion was. Gone, its words not known, it holds back Alpha's rewording that
+    gained five words in a row or a number. Holding text that reads as nothing sent - a
+    sentence typed where it stood, or after its emptied line was joined up - it counts as
+    Romeo reworded, and Alpha's rewording merges."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    gone, names, held, at = _LEFT_BEHIND[left]
+    path = tmp_path / "main.md"
+    text = f"# Intro\n\n{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"a": _ALPHA, "p": _PAPA, "b": _BRAVO}
+    known = {name: (path, line, text.index(line)) for name, line in words.items()}
+    heading = Block((), "Intro", role="heading")
+    sent = [heading, Block(("a",), _ALPHA), Block(("p",), _PAPA),
+            Block(("r",), _reworded(_ROMEO)), Block(("b",), _BRAVO)]  # fmt: skip
+    papa, bravo = Block(("p",), _PAPA), Block(("b",), _BRAVO)
+    rest = [Block(names, held, at=at)] if names else []
+    if "p" not in names:
+        rest = [papa, *rest]
+    if "b" not in names:
+        rest = [*rest, bravo]
+    grown = _ALPHA[:-1] + (
+        ", which ran from the first to the last dose." if gained == "five words in a row"
+        else " in 2019."
+    )  # fmt: skip
+    returned = [heading, Block(("a",), grown), *rest]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if gone:
+        assert "a" in [refusal.name for refusal in plan.refused], plan
+        refusal = next(refusal for refusal in plan.refused if refusal.name == "a")
+        assert "and what it said then is not known" in refusal.why[0]
+        assert "a" not in plan.merged
+    else:
+        assert plan.merged.get("a") == grown, plan
+        assert "a" not in [refusal.name for refusal in plan.refused]
+
+
+def test_without_the_record_a_paragraph_counted_reworded_is_not_looked_for_elsewhere(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), the paste not looked for.
+    Romeo, which the `.md` changed since the build, is cut and its old text pasted onto the
+    end of Alpha, and a sentence typed on its emptied line: its identifier holds text that
+    reads as nothing sent, it counts as Romeo reworded, and Alpha merges holding Romeo's old
+    sentence. With the identifier nowhere, Romeo is gone and Alpha is refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    pasted = Block(("a",), f"{_ALPHA} {_ROMEO}")
+    typed = Block(("r",), "A sentence typed where the cut one stood.")
+    plan = plan_import(known, sent, [pasted, sent[1], typed, sent[3]], built=("a", "p", "r", "b"))
+    assert plan.merged == {"a": pasted.text} and not plan.refused, plan
+    plan = plan_import(known, sent, [pasted, sent[1], sent[3]], built=("a", "p", "r", "b"))
+    assert [refusal.name for refusal in plan.refused] == ["a"] and not plan.merged, plan
+
+
+@pytest.mark.parametrize("kind", ["of its own kind", "of another kind"])
+@pytest.mark.parametrize("block", ["changed in the .md", "as built"])
+def test_without_the_record_an_identifier_on_a_block_the_md_changed_counts_as_the_paragraph(
+    tmp_path: Path, kind: str, block: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), the block given no identifier.
+    Romeo, which the `.md` changed since the build, deleted in Word, leaves its identifier on
+    the block under it, a paragraph over a code fence that the build gave none. Where that
+    block was changed in the `.md` since and is body text as Romeo was built, what the
+    identifier holds reads as nothing the fresh build prints: Romeo counts as reworded, and
+    its old text pasted onto Alpha is not looked for, so Alpha merges. A block as built
+    reads as itself, and one of another kind - a quotation - is known by its kind
+    (`merge._off_headings`): Romeo is gone, and Alpha is refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    then = "Uniform paragraph over a code fence says the old thing here."
+    now = "Uniform paragraph over a code fence now says something new."
+    role = "" if kind == "of its own kind" else "quote"
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{now}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    fresh = now if block == "changed in the .md" else then
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block((), fresh, role=role), Block(("b",), _BRAVO)]  # fmt: skip
+    pasted = Block(("a",), f"{_ALPHA} {_ROMEO}")
+    returned = [pasted, sent[1], Block(("r",), then, role=role), sent[4]]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if kind == "of its own kind" and block == "changed in the .md":
+        assert plan.merged == {"a": pasted.text} and not plan.refused, plan
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["a"] and not plan.merged, plan
+
+
+@pytest.mark.parametrize("holds", ["other text", "its own text"])
+def test_without_the_record_a_known_paragraph_counts_as_gone_where_its_text_is_not_held(
+    tmp_path: Path, holds: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), for a paragraph whose text is
+    known. Papa's identifier comes back in front of Bravo's on one block, holding text typed
+    there and not Papa's: Papa counts as gone, and a rewording of it pasted onto Alpha is
+    found and refused. Holding Papa's own text, Papa came back, and Alpha merges."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    grown = Block(("a",), f"{_ALPHA} {_PAPA.replace('twelve', 'a dozen')}")
+    first = "Some text typed here." if holds == "other text" else _PAPA
+    block = Block(("p", "b"), f"{first} {_BRAVO}", at=(("p", 0), ("b", len(first) + 1)))
+    plan = plan_import(known, sent, [grown, sent[2], block], built=("a", "p", "r", "b"))
+    if holds == "other text":
+        assert "a" in [refusal.name for refusal in plan.refused] and "a" not in plan.merged, plan
+        refusal = next(refusal for refusal in plan.refused if refusal.name == "a")
+        assert "it came back holding another paragraph" in refusal.why[0], refusal
+    else:
+        assert plan.merged == {"a": grown.text}, plan
+
+
+@pytest.mark.parametrize("papa", ["on other text", "gone"])
+def test_without_the_record_a_paragraph_on_other_text_is_not_looked_for_in_another(
+    tmp_path: Path, papa: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "An identifier Word left behind counts as the
+    paragraph gone only where the text it holds says so."), its last sentence. Papa, compared,
+    comes back with its identifier on text reading as Bravo's: it is refused itself
+    (`_not_its_own`), and a rewording of it pasted onto Bravo is not looked for, so Bravo
+    merges, as on `main`. Papa deleted instead, the same paste is found, and Bravo is
+    refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = f"{_ALPHA}\n\n{_PAPA}\n\n{_reworded(_ROMEO)}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("a", _ALPHA), ("p", _PAPA), ("b", _BRAVO))}
+    sent = [Block(("a",), _ALPHA), Block(("p",), _PAPA), Block(("r",), _reworded(_ROMEO)),
+            Block(("b",), _BRAVO)]  # fmt: skip
+    grown = Block(("b",), f"{_BRAVO} {_PAPA.replace('twelve', 'a dozen')}")
+    papa_back = [Block(("p",), _BRAVO)] if papa == "on other text" else []
+    returned = [sent[0], *papa_back, sent[2], grown]
+    plan = plan_import(known, sent, returned, built=("a", "p", "r", "b"))
+    if papa == "on other text":
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert "came back with its identifier on other text" in plan.refused[0].why[0]
+        assert plan.merged == {"b": grown.text}
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["b"] and not plan.merged, plan
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
@@ -32587,6 +33409,265 @@ def test_an_identifier_a_build_put_behind_text_is_not_read_as_joined_up() -> Non
     assert not out[0].names and "behind 'Label:'" in untold["mg-p-main-1"].why
 
 
+def _as_recorded(
+    tmp_path: Path,
+    sent: list,
+    returned: list,
+    *,
+    record: list | None = None,
+    recorded: bool = True,
+    left_out: tuple[str, ...] = (),
+    **flags,
+):
+    """`plan_import` of `returned` against a one-file source of `sent`'s blocks, a heading
+    written as one, with the document's record saying it printed `sent` (or `record`), or
+    with no record unless `recorded`. Identifiers in `left_out` are not compared. Returns
+    the plan, the file and its text."""
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "".join(
+        ("# " if block.role == "heading" else "") + block.text + "\n\n"
+        for block in sent
+        if not block.table
+    )
+    path.write_text(text, encoding="utf-8")
+    known = {
+        block.names[0]: (path, block.text, text.index(block.text))
+        for block in sent
+        if block.names and block.names[0] not in left_out
+    }
+    printed = (sent if record is None else record) if recorded else None
+    return plan_import(known, sent, returned, printed=printed, **flags), path, text
+
+
+#: The two blocks around the paragraphs of the tests below.
+_OPENS = "Alpha opens the results here."
+_CLOSES = "Zulu closes the results here."
+
+
+def test_with_the_record_a_caption_edited_to_read_like_the_deleted_sentence_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the first of them: a sentence above the caption that repeats it,
+    deleted in Word, its identifier on the caption, and the caption edited so that it reads
+    like the sentence too. The record cannot tell it from the sentence reworded, and it is
+    refused, not merged and not reported deleted."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    lead = "Table one shows the counts of reports by age group and sex."
+    caption = Block((), "Counts of reports by age group.", role="caption", style="caption")
+    edited = replace(caption, names=("p",), text=lead.replace("the counts", "counts"))
+    plan, _path, _text = _as_recorded(tmp_path, [alpha, Block(("p",), lead), caption, zulu],
+                                      [alpha, edited, zulu])  # fmt: skip
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "either this paragraph, reworded" in plan.refused[0].why[0]
+    assert not plan.merged and not plan.gone
+
+
+@pytest.mark.parametrize("side", ["above", "under"])
+def test_with_the_record_a_rewording_past_most_words_beside_a_deleted_block_of_its_kind_is_refused(
+    tmp_path: Path, side: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the second: a paragraph rewritten past most of its words in the
+    round in which a block of its own kind directly above or under it was deleted - the
+    text beside a displayed equation, a line block, a div with no style: a block without an
+    identifier, in the paragraph's style. The document is byte for byte that block typed
+    over with the paragraph deleted, and the rewording is refused. Reworded less far, it
+    merges: the other side of the same rule."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    beside = Block((), "where the counts come from the whole database.")
+    middle = [beside, paragraph] if side == "above" else [paragraph, beside]
+    sent = [alpha, *middle, zulu]
+    far = "We derived the estimate by logistic modelling instead."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), far), zulu])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "either this paragraph, reworded" in plan.refused[0].why[0]
+    assert not plan.merged and not plan.gone
+    near = "The ratio was computed from a two by two table of counts for each drug."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), near), zulu])
+    assert plan.merged == {"p": near} and not plan.refused, plan
+
+
+def test_with_the_record_a_joined_up_line_with_text_typed_after_its_identifier_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the third and fourth. A paragraph's text deleted, its emptied line
+    joined up onto the heading above, and the end of that heading retyped after the
+    identifier: what the identifier holds was typed after the join or is what is left of the
+    paragraph, so it is refused, not reported deleted, and nothing is written. With nothing
+    after the identifier the paragraph is reported deleted, and without the record so is
+    this one: the other sides. The paragraph after such a line, reworded in the round in
+    which the heading above was edited, is refused as beside new text; beside the heading as
+    sent, it merges."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    sent = [heading, paragraph, after]
+    # "Methods" with "ds" deleted before the identifier and " and design" typed after it.
+    typed = replace(heading, names=("p",), text="Metho and design", at=(("p", 5),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [typed, after])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "came back inside another block, behind 'Metho'" in plan.refused[0].why[0]
+    assert not plan.gone and not plan.merged
+    plan, _path, _text = _as_recorded(tmp_path, sent, [typed, after], recorded=False)
+    assert plan.gone == ("p",) and not plan.merged, plan
+    joined = replace(heading, names=("p",), at=(("p", len(heading.text)),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [joined, after])
+    assert plan.gone == ("p",) and not plan.refused, plan
+
+    reworded = Block(("q",), "Quebec closes the whole section here.")
+    retitled = replace(heading, names=("p",), text="Study methods", at=(("p", 13),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [retitled, reworded])
+    assert [refusal.name for refusal in plan.refused] == ["q"], plan
+    assert "came back after a new paragraph, 'Study methods'" in plan.refused[0].why[0]
+    assert plan.gone == ("p",) and not plan.merged
+    plan, _path, _text = _as_recorded(tmp_path, sent, [joined, reworded])
+    assert plan.merged == {"q": reworded.text} and not plan.refused, plan
+
+
+def test_with_the_record_the_refusals_that_rest_on_hashes_still_stand(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "With the record, five things are still refused
+    that are not wrong."), the fifth: the record could settle each of these, and none is
+    read from it. A rewording beside a heading the `.md` changed since the build
+    (`beside_changed`), in a stale document beside a heading that is missing
+    (`_printed_otherwise`), and just before a paragraph left out of the comparison that did
+    not come back (`_beside_lost`) are refused. The same rewording with none of them merges."""
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    reworded = Block(("p",), "We analysed the data in a single pass.")
+    sent = [heading, paragraph, after]
+
+    def refused(plan) -> str:
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert not plan.merged
+        return plan.refused[0].why[0]
+
+    changed = frozenset({"p"})
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, reworded, after],
+                                      beside_changed=changed)  # fmt: skip
+    assert "not the one the document was sent with" in refused(plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [reworded, after], stale=True)
+    assert "not the one the document was sent with" in refused(plan)
+    left_out = Block(("r",), "Romeo was left out of the comparison.")
+    plan, _path, _text = _as_recorded(
+        tmp_path, [paragraph, left_out, after], [reworded, after],
+        left_out=("r",), built=("p", "r", "q"),
+    )  # fmt: skip
+    assert "the paragraph after it in the document as sent did not come back" in refused(plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, reworded, after])
+    assert plan.merged == {"p": reworded.text} and not plan.refused, plan
+
+
+def test_where_a_bookmark_sits_is_read_only_for_one_identifier_the_record_holds(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its first three sentences. One
+    identifier the record holds, behind the text of a heading it was joined up onto, is
+    told by that place, and refused. A block carrying it with another, or carrying one the
+    record does not hold, is judged by its kind as a document without the record is: the
+    identifiers come off the heading, and their paragraphs are reported deleted. One whose
+    place is not known - Word's tracked changes moved it - is read as at the start of its
+    block: reported deleted, as one there is. Several identifiers on a block of body text
+    are a join, and never merged as a rewording."""
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+
+    heading = Block((), "Methods", role="heading", style="heading 1")
+    paragraph = Block(("p",), "We analysed the data in one pass.")
+    after = Block(("q",), "Quebec closes the section here.")
+    sent = [heading, paragraph, after]
+    behind = replace(heading, names=("p",), text="Metho and design", at=(("p", 5),))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [behind, after])
+    assert [refusal.name for refusal in plan.refused] == ["p"], plan
+    assert "came back inside another block" in plan.refused[0].why[0]
+    for at in ((("p", 0),), ()):
+        plan, _path, _text = _as_recorded(tmp_path, sent, [replace(behind, at=at), after])
+        assert plan.gone == ("p",) and not plan.refused, (at, plan)
+    plan, _path, _text = _as_recorded(tmp_path, sent, [behind, after], record=[heading, after])
+    assert plan.gone == ("p",) and not plan.refused, plan
+    both = replace(behind, names=("p", "q"), at=(("p", 5), ("q", 16)))
+    for recorded in (True, False):
+        plan, _path, _text = _as_recorded(tmp_path, sent, [both], recorded=recorded)
+        assert plan.gone == ("p", "q") and not plan.refused and not plan.merged, plan
+
+    reworded = "We analysed the data in a single pass."
+    joined = Block(("p", "q"), f"{reworded} {after.text}", at=(("p", 0), ("q", len(reworded) + 1)))
+    plan, _path, _text = _as_recorded(tmp_path, sent, [heading, joined])
+    assert plan.joined == (("p", "q"),) and not plan.merged, plan
+
+
+@pytest.mark.parametrize("table", ["edited in place", "as sent"])
+def test_with_the_record_a_table_edited_in_place_counts_as_gone(tmp_path: Path, table: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its table. A table with no copy of
+    the same content in the returned document counts as gone, so one edited in place does
+    too, and the text beyond it - here deleted, and of the paragraph's own kind - is weighed
+    with the text under the paragraph: a rewording past most of its words is refused. With
+    the table as sent, the text beyond it is not weighed, and the same rewording merges."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    counts = Block(kind="table", key="the counts as sent")
+    beyond = Block((), "Yankee paragraph text sits under the table here.")
+    sent = [alpha, paragraph, counts, beyond, zulu]
+    back = counts if table == "as sent" else Block(kind="table", key="one cell corrected")
+    far = Block(("p",), "We derived the estimate by logistic modelling instead.")
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, far, back, zulu])
+    if table == "as sent":
+        assert plan.merged == {"p": far.text} and not plan.refused, plan
+    else:
+        assert [refusal.name for refusal in plan.refused] == ["p"], plan
+        assert "either this paragraph, reworded" in plan.refused[0].why[0]
+        assert not plan.merged
+
+
+def test_a_block_of_the_paragraphs_kind_pasted_onto_its_emptied_line_is_its_rewording(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where an identifier's bookmark sits is read for
+    a block carrying one identifier the record holds."), its last sentence. A block of the
+    paragraph's own kind - a line block, the text beside an equation - cut from elsewhere,
+    pasted onto the line the paragraph's text was deleted from and edited there, is read as
+    the paragraph reworded: its text is merged into the paragraph's slot, and its old place
+    is listed as a block that vanished. The other side of "edited there": pasted as it was,
+    it reads exactly as that block, the identifier comes off it, and the paragraph is
+    reported deleted, with nothing vanished."""
+    from manuscript_guard.docxtext import Block
+
+    alpha, zulu = Block(("a",), _OPENS), Block(("z",), _CLOSES)
+    paragraph = Block(("p",), "The ratio was computed from a table of counts for each drug.")
+    bravo = Block(("b",), "Bravo sits between them.")
+    lima = Block((), "Lima is a line block that stood below.")
+    sent = [alpha, paragraph, bravo, lima, zulu]
+    edited = "Lima is a line block that once stood below."
+    plan, _path, _text = _as_recorded(tmp_path, sent, [alpha, Block(("p",), edited), bravo, zulu])
+    assert plan.merged == {"p": edited} and not plan.refused and not plan.gone, plan
+    assert plan.vanished == (lima.text,)
+    unedited = [alpha, Block(("p",), lima.text), bravo, zulu]
+    plan, _path, _text = _as_recorded(tmp_path, sent, unedited)
+    assert plan.gone == ("p",) and not plan.merged and not plan.vanished, plan
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
     ("heading", "edit"),
@@ -33556,6 +34637,123 @@ def test_the_annotated_copy_marks_what_main_marked(
     assert marked <= {s for s, reason in shown.items() if not reason}, shown
     for number, reason in unmarked.items():
         assert shown.get(number) == getattr(module, reason), shown
+
+
+_OTHERWISE = "READ_OTHERWISE"
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # A link's text across a line break; the other side, on one line.
+        (
+            "Of 120 reports, 14 as in [Table\n2](#t) of 40 sites.",
+            {"120": _OTHERWISE, "14": _OTHERWISE, "2": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        (
+            "Of 120 reports, 14 as in [Table 2](#t) of 40 sites.",
+            {"120": "", "14": "", "2": "IN_LINK", "40": ""},
+        ),
+        # A link's text holding `@` and a number; the other side, with no `@`.
+        (
+            "Of 120 reports, ask [a@b.org room 5](mailto:a@b.org) at 40 sites.",
+            {"120": _OTHERWISE, "5": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        (
+            "Of 120 reports, ask [the room 5](mailto:a@b.org) at 40 sites.",
+            {"120": "", "5": "IN_LINK", "40": ""},
+        ),
+        # An escaped `\$` closing an equation; the other side, no `$` to open one.
+        (
+            "Prices rose from $5 to 7\\$ at 40 sites.",
+            {"$5": "IN_EQUATION", "7": "IN_EQUATION", "40": ""},
+        ),
+        ("Prices rose from 5 to 7\\$ at 40 sites.", {"5": "", "7": "", "40": ""}),
+        # A range whose backslash is itself escaped; the other side, a single backslash.
+        (
+            "Fees were \\\\$10-\\\\$50 at 40 sites.",
+            {"\\\\$10-\\\\$50": "IN_MARKUP", "40": ""},
+        ),
+        ("Fees were \\$10-\\$50 at 40 sites.", {"\\$10-\\$50": "", "40": ""}),
+        # A definition on a list item's own line; the other side, at the margin.
+        (
+            "As in [Table 2][t] for 40 sites.\n\n- [t]: #x",
+            {"2": _OTHERWISE, "40": _OTHERWISE},
+        ),
+        ("As in [Table 2][t] for 40 sites.\n\n[t]: #x", {"2": "IN_LINK", "40": ""}),
+    ],
+    ids=[
+        "link across a break", "link on one line", "link with an at", "link without",
+        "escaped dollar", "no dollar", "escaped backslash range", "escaped range",
+        "definition in an item", "definition at the margin",
+    ],  # fmt: skip
+)
+def test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text(
+    text: str, said: dict[str, str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some numbers are listed in the annotated copy's
+    appendix and not marked in its text"): what the annotator says of each number, a mark
+    or the reason it has none, for the points left by the rounds of #76, each beside the
+    same paragraph with the cause taken out."""
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    reasons = {getattr(module, name): name for name in dir(module) if name.startswith("IN_")}
+    reasons[module.READ_OTHERWISE] = "READ_OTHERWISE"
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    assert {mark.shown: reasons.get(mark.unmarked, mark.unmarked) for mark in marks} == said
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_reference_definition_in_another_file_is_not_found_by_the_annotator() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Some numbers are listed in the annotated copy's
+    appendix and not marked in its text"): annotated one file at a time, `[Table 2][tbl]`
+    has its 2 marked when `[tbl]:` stands in the next file, and the copy the build joins
+    prints the mark as text; with the definition in its own file, 2 is a link's."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    pandoc = shutil.which("pandoc")
+    classifier = Classifier.load([], [])
+    counter = [0]
+    cited = "# Results\n\nAs shown in [Table 2][tbl] for 40 sites.\n"
+    first, marks = module.annotate(cited, {}, classifier, counter=counter, pandoc=pandoc)
+    second, _ = module.annotate(
+        "# Appendix\n\n[tbl]: #results\n", {}, classifier, counter=counter, pandoc=pandoc
+    )
+    assert [(mark.shown, mark.unmarked) for mark in marks] == [("2", ""), ("40", "")]
+    printed = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "plain"],
+        input=f"{first}\n\n{second}",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    assert "As shown in Table [2](#mg-n1) for 40 sites." in printed
+    _one, alone = module.annotate(
+        f"{cited}\n[tbl]: #results\n", {}, classifier, counter=[0], pandoc=pandoc
+    )
+    assert [(mark.shown, mark.unmarked) for mark in alone] == [
+        ("2", module.IN_LINK),
+        ("40", ""),
+    ]
 
 
 @pytest.mark.skipif(

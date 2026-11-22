@@ -860,6 +860,11 @@ a warning and never a failure; `figure-greyscale-confused` for grey, a note, and
 where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
 the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
 already less than 10 apart to normal vision is not said, since no deficiency made it so.
+White, exactly #ffffff, is taken for the page and paired with no colour: on real papers 14 of
+the 25 pairs judged false set a pale band, a map's lightest class or a panel's fill against
+the white around it, which tells no two marks apart (Basile, 2026-11-21, item 5 of the corpus
+plan, `docs/corpus.md`). Where white is a mark of its own, a map's "no data" class against its
+lightest class, the pair is not said either; a near-white page is still paired (Known gaps).
 
 **A figure that draws a continuous scale is not compared.** A colormap, or points coloured
 by a variable, has neighbours just over 10 apart, and grey, which keeps lightness alone, or a
@@ -17291,6 +17296,19 @@ been sorted yet.
     followed, since the reader cannot read the path exactly, and is warned of as named by
     no `\input`, as a file nothing inputs is (Basile, 2026-11-21).
     Pinned by `tests/test_corruption.py::test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding`.
+- **A definition in the paper's own `.sty` past where the reader stopped in that file is
+  never seen.** The reader stops in a package at its first construct it does not read, as in
+  any file, so a known command the package defines again below that point is never told to
+  the tree, and the paper's uses of it are read as LaTeX's. Two bundles of the robustness
+  sweep of 2026-11-21 do this. JMLR's jmlr2e.sty (and jmlr2e_number.sty, which differs from
+  it in two lines elsewhere) stops at the `\csname` of its `\@sict` on line 118 and defines
+  `\section` again with its own `\@startsiction` on line 182. dnd.sty stops at the same
+  `\csname` on line 79 and defines `\section` again inside its `\appendix` on line 327, a
+  heading that prints "Appendix" in each numbered title. Both headings are read as LaTeX's, and dnd's word is not read. The refusal in
+  the `.sty` is reported as any refusal is, but nothing says that the paper's headings
+  depend on what lies past it. Read on, either file would have the heading refused where it
+  first prints, dnd's before `\appendix` too (Basile, 2026-11-22, "Known gaps entry").
+  Pinned by `tests/test_latex_mask.py::test_a_heading_a_package_defines_again_past_where_the_reader_stopped_is_read_as_latex_s`.
 - **A part placed by `\subfile` that defines a known command again in its own preamble has
   its uses refused.** The part's reading reads its own preamble, so a part that repeats
   main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
@@ -17428,9 +17446,6 @@ been sorted yet.
   the letter. A command it does not know, `{\IJ}ssel`, is dropped with the letters run on
   into it.
   Pinned by `tests/test_names.py::test_a_dotless_i_no_accent_is_on_before_a_t_is_pinned`.
-- **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
-  built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
-  keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
 - **"Any browser" means a current one.** The page uses `??` and `<dialog>`, so a browser older
   than about 2022 shows it wrongly or not at all. What a co-author sees then is untested.
   Accepted.
@@ -18842,7 +18857,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum`,
   `tests/test_corruption.py::test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data`
   and `tests/test_corruption.py::test_a_value_quoted_in_the_alternative_text_alone_is_stamped_and_still_unquoted`.
-- **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
+- **A figure's colours are read from its SVG or PDF, and compared all with all but white.** A raster
   figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
   nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
   colour space. A figure that draws a continuous scale is not compared at all, its series
@@ -18855,10 +18870,14 @@ Added by the adversarial review, verified and **not** fixed:
   figure is not compared. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
-  by coloured labels is not checked. Every colour painted is compared with every other, the
-  background and the grid's among them: the check does not know which colours encode data, so
-  a series and a grid line made one by a deficiency are said, and `allow_colours` is how a
-  figure says that pair does not matter. A colour laid at an opacity is laid over white, not
+  by coloured labels is not checked. Every colour painted is compared with every other but
+  white, exactly #ffffff, which is taken for the page and compared with none (Basile,
+  2026-11-21): a series drawn in white, white bars with dark outlines, or a map's white "no
+  data" class is not compared with the colours beside it, so a lightest class a deficiency
+  makes one with that white is not said. A near-white page (#fefefe, a PDF grey of 0.998) is
+  not taken for the page, and its pale neighbours are still paired with it. A background of another colour and the grid's are compared: the check does not
+  know which colours encode data, so a series and a grid line made one by a deficiency are
+  said, and `allow_colours` is how a figure says that pair does not matter. A colour laid at an opacity is laid over white, not
   over what is under it. A PDF's CMYK is taken to RGB without its profile, and any colour
   space of three numbers is read as sRGB. The deficiencies are simulated at full severity
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
@@ -18871,6 +18890,8 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_figure_is_taken_to_draw_a_scale_by_the_chain_of_its_shades`,
   `tests/test_corruption.py::test_a_text_drawn_as_glyphs_is_known_only_where_matplotlib_or_cairo_draws_it`,
   `tests/test_corruption.py::test_a_texts_colour_is_not_a_series`,
+  `tests/test_corruption.py::test_a_pale_colour_on_the_white_page_is_no_pair`,
+  `tests/test_corruption.py::test_a_near_white_page_is_still_paired`,
   `tests/test_corruption.py::test_every_colour_a_figure_paints_is_compared_its_background_among_them`
   and `tests/test_corruption.py::test_a_colour_at_an_opacity_is_laid_over_white_and_not_over_what_is_under_it`.
 - **A marker or a line style is not seen.** The check reads the colours a figure paints and
@@ -21897,6 +21918,7 @@ Open, recorded as each change landed:
   and a comment on one line, in the fence reader, which reads before any comment is known.
   So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
   which is accepted.
+  Pinned by `tests/test_corruption.py::test_a_listing_commented_out_with_its_arrow_on_the_closer_is_refused`.
 - **More listings commented out whole are refused.** A tilde listing straight under the
   `<!--` line; a listing inside a commented-out list item; a backtick listing straight
   under a line of text that opens the comment, `Text <!-- aside`; and, found by the fourth
@@ -21913,6 +21935,9 @@ Open, recorded as each change landed:
   above it (the third round of review). A
   blank line under `<!--`, `<!--` on a line of its own after a blank line, or the listing
   moved out of the item, is accepted.
+  Pinned by `tests/test_corruption.py::test_a_listing_commented_out_in_these_shapes_is_refused`,
+  `tests/test_corruption.py::test_a_listing_commented_out_in_these_shapes_is_accepted`
+  and `tests/test_corruption.py::test_a_listing_straight_under_its_comment_is_still_held`.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
   starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
   14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an
@@ -21925,6 +21950,7 @@ Open, recorded as each change landed:
   pair or a tilde fence in `abstract: |` hides the prose between from the gates. The build
   prints no front-matter value today, so nothing is printed wrongly, but a gate reading the
   abstract reads less of it than pandoc does.
+  Pinned by `tests/test_corruption.py::test_an_unclear_fence_in_the_front_matter_hides_prose_and_is_not_refused`.
 - **Two misreads that cancel pass the build's comparison.** Headings are compared in order,
   not by where they stand, since pandoc's reading says nothing of where. A heading the gates
   read in one place and not in another, `# Methods` straight under a line of text early on
@@ -21943,12 +21969,11 @@ Open, recorded as each change landed:
   Methods. It takes an analysis emitting markup as a value; a value with a line break or a
   comment's mark is not a number, and mapping each heading through the substitutions,
   which would close this, is not done. Accepted.
-- **Two headings the build refuses that print as the gates read them.** An unlabelled
+- **A heading the build refuses that prints as the gates read it.** An unlabelled
   `(@)` example list item before `(@good)`: pandoc numbers `(@good)` 2 in the document and
-  1 in the titles set out on their own, so `## As in example (@good)` is refused. And a
-  setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
-  drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
-  are refused, not passed.
+  1 in the titles set out on their own, so `## As in example (@good)` is refused, not
+  passed.
+  Pinned by `tests/test_corruption.py::test_an_unlabelled_example_before_a_labelled_one_refuses_a_heading_citing_it`.
 - **Some lines of dashes after a TeX command are refused that open nothing.** The refusal
   takes any command for one pandoc starts a block behind, where pandoc does so only for a
   block-level command, `\newpage` or `\vspace{1em}`: behind `\foo[x]{1em}`, which it reads
@@ -21959,17 +21984,22 @@ Open, recorded as each change landed:
   list of them. A definition, `\newcommand` and its kin, takes brackets after its groups
   too, so `\newcommand{\foo}{bar}[x] ---` and `\newcommand{a}[^x] ---` are refused, where
   pandoc reads the brackets as text and no YAML under them.
+  Pinned by `tests/test_corruption.py::test_dashes_after_a_tex_command_that_opens_nothing_are_refused`.
 - **A footnote-shaped line in a `<pre>` or a TeX environment is copied to the titles.** The
   definitions the titles may refer to are taken from the text the gates do not take for
   code or a comment, and a `<pre>` or `\begin{verbatim}` is neither to them. A line there
   shaped `[^n1]:` over YAML pandoc cannot read makes the titles' run fail while the document
   reads, and the build refuses the document, where pandoc reads the block as raw markup and
   no footnote. Refused, not passed.
+  Pinned by `tests/test_corruption.py::test_a_footnote_shaped_line_in_raw_markup_is_copied_to_the_titles`.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
-  Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
+  Methods heading, so `check` puts the numbers under it in a section titled Methods, which
+  takes no Methods rules. The build compares
   its headings with pandoc's and refuses the document. The heading walk of #38, which knows
   what continues a paragraph, reads it as pandoc does.
+  Pinned by `tests/test_corruption.py::test_a_title_continuing_a_paragraph_over_equals_is_titled_methods_by_check`
+  and `tests/test_corruption.py::test_the_build_refuses_what_pandoc_reads_otherwise`.
 - **A Methods footnote defined outside Methods is read as a finding.** A number in a note
   must pass where the definition stands as well as at each reference, so a note referenced
   from Methods and defined at the end of the paper, as authors gather them, has its alpha
@@ -22058,9 +22088,11 @@ Open, recorded as each change landed:
   differences remain. Accepted.
   - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
     is taken for the block's opening brace, and the block stays in the title.
+    Pinned by `tests/test_pandoc_agreement.py::test_some_attribute_blocks_pandoc_takes_off_stay_in_the_title`.
   - A block continued on the next line, `# Results {#sec-results` above `.unnumbered}`,
     or a quoted value broken across two lines, is looked for on the heading's own line
     alone, where pandoc reads on. The block stays in the title.
+    Pinned by `tests/test_pandoc_agreement.py::test_some_attribute_blocks_pandoc_takes_off_stay_in_the_title`.
   - An unpaired `*` or `_` before the block or the closing `#`s, as in
     `# *References {-}`, `# References _{-}` or `# References *##`, opens an emphasis
     pandoc cannot close, and pandoc then prints the rest of the line, braces and `#`s
@@ -22117,6 +22149,9 @@ Open, recorded as each change landed:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+  Pinned by `tests/test_pandoc_agreement.py::test_a_heading_in_a_list_item_ends_a_section_and_opens_none`,
+  `tests/test_corruption.py::test_results_are_not_read_as_methods`
+  and `tests/test_pandoc_agreement.py::test_a_heading_further_into_a_list_item_is_not_seen`.
 - **What `check` says was recorded is what the records say.** A panel's reader is named as
   the record names it, a model or a person, and a figure review the same; nothing checks who
   they are. The design review is said not recorded until a panel can read the plan before
@@ -22218,19 +22253,24 @@ Open, recorded as each change landed:
   reported: a new list under `1. First` and an indented paragraph (` 2. Second`), a nested
   item under a line of the outer item of a nested list, which pandoc keeps in the list,
   and an outer item (`2. Second step`) directly under such a line.
+  Pinned by `tests/test_corruption.py::test_a_heading_line_under_a_list_is_text`
+  and `tests/test_corruption.py::test_an_indented_line_under_a_list_costs_what_pandoc_starts_under_it`.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,
   after which a `# Results` still inside the "fence" is a heading. `fenced_spans` does not
   know about paragraphs and blanks the whole span, so the numbers in it go unread by G2, and
   that heading is missed. The old scan did the same.
+  Pinned by `tests/test_corruption.py::test_a_fence_under_a_line_of_prose_is_code_to_the_gates`.
 - **A YAML block in the middle of a document is read as prose.** Pandoc takes `---` after a
   blank line, a YAML mapping or nothing but comments, and a closing `---` or `...` for
   metadata anywhere in a document, and prints none of it. The gates read it all. A number in
-  one is reported, which is only noise, but a `#` line in one is taken for a heading:
-  `---`, `# Methods`, `note: x`, `---` under a Results heading re-admits the `methods_only`
-  rules below it. Telling one from a rule, a sentence and a rule, which pandoc prints as a
+  one is reported, which is only noise, and a `#` line in one heads nothing:
+  `---`, `# Methods`, `note: x`, `---` under a Results heading keeps the Results rules
+  below it. Telling one from a rule, a sentence and a rule, which pandoc prints as a
   table, needs a YAML parse. A bare `---` over `---` is read as a heading titled "---".
+  Pinned by `tests/test_corruption.py::test_a_yaml_block_in_the_body_heads_nothing`
+  and `tests/test_corruption.py::test_a_yaml_block_in_the_body_is_read_as_prose`.
 - **A table written with lines of dashes is read as a paragraph.** A multiline table, or a
   simple table with no header or under a `Table:` caption, is not modelled. A row reading
   `# Top`, or a title over its dashes, is taken for a heading, and one pandoc prints under
@@ -22239,6 +22279,9 @@ Open, recorded as each change landed:
   between two lines of spaced dashes is a table cell to pandoc and a Methods heading to the
   gates. Word counts and the required-section check go by the headings the gates place, and
   miss the one under the table.
+  Pinned by `tests/test_pandoc_agreement.py::test_a_table_written_with_lines_of_dashes_is_read_as_a_paragraph`,
+  `tests/test_corruption.py::test_a_heading_line_the_walk_does_not_place_still_ends_methods`
+  and `tests/test_compliance.py::test_a_heading_under_a_dash_table_is_missed_by_the_counts`.
 - **A line shaped like a heading always ends a section for G2.** A `#` line or an underlined
   title that pandoc prints as text, because it continues a paragraph, a list item or a
   quotation, or sits in a `<pre>` or a LaTeX environment, still closes the section above it
@@ -22263,6 +22306,11 @@ Open, recorded as each change landed:
   the other chain where the walk marks the line as text; for G2 a section is Methods only if
   both readings say so. The audit's reference list starts
   only at a heading G2 would call printed, so none of these starts one.
+  Pinned by `tests/test_corruption.py::test_a_line_shaped_like_a_heading_ends_a_section_for_g2_and_opens_no_methods`,
+  `tests/test_corruption.py::test_results_are_not_read_as_methods`,
+  `tests/test_corruption.py::test_a_heading_line_the_walk_does_not_place_still_ends_methods`,
+  `tests/test_corruption.py::test_audit_does_not_start_a_reference_list_inside_a_paragraph`
+  and `tests/test_corruption.py::test_audit_does_not_start_a_reference_list_at_a_heading_the_walk_misplaces`.
 - **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
   line under a table for a row when it holds a pipe outside code, math and a backslash
   escape, and reads each of those naively: two dollars are math, a backslash escapes the
@@ -22271,6 +22319,7 @@ Open, recorded as each change landed:
   closes only on a run of as many backticks as opened it. The walk ends the table above such a row, and reads the row as
   whatever it is shaped like, a title over the rule under it say. The scan before the walk
   read that heading too.
+  Pinned by `tests/test_pandoc_agreement.py::test_a_pipe_table_row_is_found_more_simply_than_pandoc_finds_it`.
 - **A section is Results only by its title.** `## **Results**`, `- Results` and
   `# Results` over a rule are read as Results, but a combined title such as "Results and
   discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
@@ -22281,6 +22330,7 @@ Open, recorded as each change landed:
   the gates and to the build: the build writes an image there, and a heading on the next line
   does not interrupt the paragraph. A blank line avoids it, as the example leaves one
   everywhere.
+  Pinned by `tests/test_corruption.py::test_a_heading_directly_under_a_figure_line_is_printed_as_text`.
 - **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
   line of nothing but LaTeX commands is a block unless one of them is on a list of inline
   commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
@@ -23749,6 +23799,10 @@ Open, recorded as each change landed:
   missing (`_printed_otherwise`), or just before a paragraph left out of the comparison
   that did not come back (`_beside_lost`). The record could settle each; none is read
   from it yet.
+  Pinned by `tests/test_corruption.py::test_with_the_record_a_caption_edited_to_read_like_the_deleted_sentence_is_refused`,
+  `tests/test_corruption.py::test_with_the_record_a_rewording_past_most_words_beside_a_deleted_block_of_its_kind_is_refused`,
+  `tests/test_corruption.py::test_with_the_record_a_joined_up_line_with_text_typed_after_its_identifier_is_refused`
+  and `tests/test_corruption.py::test_with_the_record_the_refusals_that_rest_on_hashes_still_stand`.
 - **Where an identifier's bookmark sits is read for a block carrying one identifier the
   record holds.** A block carrying several, or one the record does not hold, is judged by
   its kind and its words as a document without the record is (`_off_headings`). Several
@@ -23759,10 +23813,14 @@ Open, recorded as each change landed:
   none with the same content, so one edited in place counts as gone too: the text beyond
   it is then weighed with the text under the paragraph, which can refuse a rewording and
   cannot merge one. And a block of the paragraph's own kind (a line block, the text beside
-  an equation) cut from elsewhere and pasted onto the line the paragraph's text was deleted
-  from is read as the paragraph reworded, as any text typed or pasted there is and as on
-  `main`: its text is written to the paragraph's slot, and its old place is reported as a
-  block that vanished, for the author to delete.
+  an equation) cut from elsewhere, pasted onto the line the paragraph's text was deleted
+  from and edited there, is read as the paragraph reworded, as any text typed there is and
+  as on `main`: its text is written to the paragraph's slot, and its old place is reported
+  as a block that vanished, for the author to delete. Pasted as it was, it reads exactly as
+  that block, and the paragraph is reported deleted.
+  Pinned by `tests/test_corruption.py::test_where_a_bookmark_sits_is_read_only_for_one_identifier_the_record_holds`,
+  `tests/test_corruption.py::test_with_the_record_a_table_edited_in_place_counts_as_gone`
+  and `tests/test_corruption.py::test_a_block_of_the_paragraphs_kind_pasted_onto_its_emptied_line_is_its_rewording`.
 - **The record is read as this release reads a document.** It holds each block's text as
   `docxtext.blocks` read it at the build. A release that reads a document otherwise - a
   symbol, a space - would find a paragraph's recorded text different from the text it
@@ -23777,6 +23835,8 @@ Open, recorded as each change landed:
   back in a forced import. One that gained less, as a word added, a word fixed or a clause
   cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
   another, as `_swallowed` lets one through: its words go into the source twice.
+  Pinned by `tests/test_corruption.py::test_a_rewording_that_gained_five_words_or_a_number_is_refused_beside_one_not_known`
+  and `tests/test_corruption.py::test_an_edit_merges_when_word_deletes_a_paragraph_the_author_also_changed`.
 - **An identifier Word left behind counts as the paragraph gone only where the text it holds
   says so.** This is the reading of a document without its record of what it printed; with
   the record, what the paragraph said is known, and the gaps of this entry are closed
@@ -23806,27 +23866,37 @@ Open, recorded as each change landed:
   bookmark is not known and one's paragraph is not. And a paragraph compared whose identifier
   came back on other text is refused itself (`_not_its_own`) but not looked for in the words
   another paragraph gained, as on `main`.
+  Pinned by `tests/test_corruption.py::test_without_the_record_an_identifier_left_behind_counts_as_gone_by_what_it_holds`,
+  `tests/test_corruption.py::test_without_the_record_a_paragraph_counted_reworded_is_not_looked_for_elsewhere`,
+  `tests/test_corruption.py::test_without_the_record_an_identifier_on_a_block_the_md_changed_counts_as_the_paragraph`,
+  `tests/test_corruption.py::test_without_the_record_a_known_paragraph_counts_as_gone_where_its_text_is_not_held`
+  and `tests/test_corruption.py::test_without_the_record_a_paragraph_on_other_text_is_not_looked_for_in_another`.
 - **The five-word rule is the rule for a document without its record.** The hashes of #56
   and #93 say whether a paragraph's source changed, not what it said, so what a paragraph
   deleted or cut in Word said is not known when the `.md` changed it since. The build now
   records what each paragraph printed, and for a document with that record the question
   is exact; the narrowed refusal stays for one built before it or imported away from it.
   Accepted.
-- **A copy of a re-run value, or a partial copy of under five words, merges.** A value
-  paragraph copied rather than cut in Word, or a stretch of under five words copied from a
-  paragraph ("Of 4000 reports screened"), in a document whose analysis was re-run since:
-  the copy stays where it was, so nothing vanished, and `_swallowed` looks for a copy of
+- **A copy of a re-run value, or a copy of part of a paragraph, merges.** A value
+  paragraph copied rather than cut in Word, or a stretch of words copied from a paragraph
+  ("Of 4000 reports screened", or seven words, "Of 4000 reports screened, twelve were
+  duplicates"), in a document whose analysis was re-run since: the copy stays where it
+  was, so nothing vanished, and `_swallowed` looks only for the whole of a paragraph of
   five words or more. "...dates. 4000" merges, as on `main`, and `check` reports the typed
   number as unbound.
+  Pinned by `tests/test_corruption.py::test_a_copy_of_a_rerun_value_merges_and_check_reports_the_number`
+  and `tests/test_corruption.py::test_a_partial_copy_of_five_words_or_more_merges_too`.
 - **A sentence cut from a paragraph the `.md` changed since, and pasted into another,
   merges.** The paragraph it went into gained it; the paragraph it left is not compared, so
   what it lost is not seen. The sentence is in the source twice, as on `main`, and with no
   number in it `check` cannot see it. This is the sibling of the tracked case below, where
   the paragraph the sentence left is refused because a binding went with it.
+  Pinned by `tests/test_corruption.py::test_a_sentence_cut_from_a_paragraph_the_md_changed_merges_where_it_was_pasted`.
 - **A paragraph cut from the supplement and pasted into the main text merges.** Each
   document is imported on its own and its record covers only itself, so the main text's
   import sees new words in a paragraph and the supplement's sees a deletion, which it
   reports and does not apply. As on `main`.
+  Pinned by `tests/test_roundtrip.py::test_a_paragraph_cut_from_the_supplement_into_the_paper_merges_there`.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still
@@ -23859,6 +23929,7 @@ Open, recorded as each change landed:
     the paragraph it arrived in merges it as typed text, numbers included, so the sentence is
     in the source twice until the author deletes one, and `check` reports the typed numbers
     as unbound. That is how any number typed in Word arrives, on `main` too.
+    Pinned by `tests/test_roundtrip.py::test_a_sentence_moved_with_track_changes_arrives_as_typed_text`.
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
     reported with the new text in that section and not applied. The search for the section
@@ -23873,8 +23944,10 @@ Open, recorded as each change landed:
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.
+    Pinned by `tests/test_roundtrip.py::test_a_rewording_that_gained_most_of_a_deleted_paragraphs_words_is_refused`.
   - *A paragraph moved beside a reworded one refuses the rewording*, as new text beside it
     would: it cannot be told from the second half of a split.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_moved_beside_a_reworded_one_refuses_the_rewording`.
   - *A paragraph typed in front of one that is then deleted*, with Track Changes on,
     reports the deletion and refuses a rewording of the paragraph after it, beside the new
     text. `main` merged the new text as a rewording of the deleted paragraph.
@@ -23883,9 +23956,11 @@ Open, recorded as each change landed:
     any other*: its neighbour keeps its identifier, and the new text is only counted among
     what was not compared. It used to be refused as a split of the neighbour, which at least
     named it. With Track Changes off it still is.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_started_in_front_of_another_leaves_it_its_identifier`.
   - *A comment's anchor is read from the markup only.* After a paste made without Track
     Changes at the start of a paragraph, a comment on the pasted text is attached to the
     paragraph it landed in front of.
+    Pinned by `tests/test_roundtrip.py::test_a_comment_on_text_pasted_at_a_paragraphs_start_is_that_paragraphs`.
   - *A heading is what its style says it is.* An identifier left on a heading, a caption or
     a reference entry - the paragraph before it deleted without Track Changes - names a
     paragraph that is gone, whatever the heading now says. A heading made by hand, bold and
@@ -23896,25 +23971,32 @@ Open, recorded as each change landed:
     their words, in order, which is read as that paragraph restyled: a short caption edited
     into mostly a deleted lead-in's words merges into the lead-in's slot, as on `main`, and
     the caption in the source stays as it was.
+    Pinned by `tests/test_roundtrip.py::test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text`,
+    `tests/test_roundtrip.py::test_a_heading_made_by_hand_and_retitled_is_the_deleted_paragraphs_wording`
+    and `tests/test_roundtrip.py::test_a_title_edited_into_mostly_a_deleted_lead_ins_words_merges_into_its_slot`.
   - *A heading joined into a short paragraph under it and retitled in the same round*, in a
     document without its record of what it printed (with the record the paragraph is
     refused and nothing is written: its identifier is behind the heading's text), is no
     longer known as a join once the heading's old title is gone from the block. When the new
-    title and the paragraph still share most of their words ("Ethics approval" with "Not
-    applicable."), the block merges into the paragraph's slot, title and all, and the
-    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted,
-    and Word's joined text listed as a changed heading ("Conflicts of interestNone
-    declared."). Read together, those two say to delete the paragraph and retype Word's copy
-    into the heading, and neither is meant: the paragraph is there. Undo the join in Word, or
-    make the retitle in the .md. A copy of the heading's old title standing elsewhere in the
-    document - typed as a heading of its own, say - hides the join in the same way, since
-    the join is known by that title going missing, and gives the same report.
+    title and the paragraph still share most of their words ("Ethics approval" with "Ethics
+    approval was not required."), the block merges into the paragraph's slot, title and
+    all, and the heading stays in the source, as on `main`; otherwise the paragraph is
+    reported deleted, and Word's joined text listed as a changed heading ("Conflicts of
+    interestNone declared."). Read together, those two say to delete the paragraph and
+    retype Word's copy into the heading, and neither is meant: the paragraph is there. Undo
+    the join in Word, or make the retitle in the .md. A copy of the heading's old title
+    standing elsewhere in the document - typed as a heading of its own, say - hides the join
+    in the same way, since the join is known by that title going missing, and gives the
+    same report.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_joined_into_its_paragraph_and_retitled_is_no_join_without_the_record`
+    and `tests/test_roundtrip.py::test_a_copy_of_a_joined_headings_title_hides_the_join`.
   - *A section deleted whole, with the heading after it retitled around the deleted title*
     ("Funding and competing interests", once the Funding heading and its paragraph are gone)
     is refused as a join with the deleted heading: its title gone from the document and
     turned up beside the deleted paragraph's identifier reads as one. Nothing is written,
     and the advice to undo a join points at one that was not made. Delete the section and
     retitle the heading in the .md.
+    Pinned by `tests/test_roundtrip.py::test_a_section_deleted_with_the_next_heading_retitled_around_it_is_refused_as_a_join`.
   - *A heading run into a paragraph that opens with the heading's own words* ("Statistical
     analysis" over "Statistical analysis used...", joined and edited into "Statistical
     analysis: we used...") merges, heading text and all, and the heading stays in the
@@ -23922,15 +24004,19 @@ Open, recorded as each change landed:
     did, and here it appears once before and once after. Check such a paragraph in the .md
     after an import. This too is of a document without its record: with it, the paragraph's
     identifier is behind the heading's text, and the paragraph is refused.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_run_into_a_paragraph_opening_with_its_words_merges_without_the_record`.
   - *A heading carrying a slid identifier, then joined into its paragraph* - the paragraph
     before the heading deleted without Track Changes, then Delete pressed at the end of the
     heading - comes back as one block with both identifiers, and is reported as those two
     paragraphs joined into one. The deletion is not reported, and the join named is not the
     one made. Nothing is written.
+    Pinned by `tests/test_roundtrip.py::test_a_heading_with_a_slid_identifier_joined_into_its_paragraph_is_the_wrong_join`.
   - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
     identifier on a caption of that same style. Deleted without Track Changes just above a
-    table whose caption was edited, it has the caption's new text written over it, as on
-    `main`. Nothing in the toolkit writes such a div.
+    table whose caption was edited, in a document without its record of what it printed,
+    it has the caption's new text written over it, as on `main`. Nothing in the toolkit
+    writes such a div.
+    Pinned by `tests/test_roundtrip.py::test_a_note_in_a_captions_style_deleted_above_an_edited_caption_takes_its_text`.
   - *A paragraph restyled as a heading, a list item or a quotation, or given the style of
     any other block the build leaves without an identifier, and reworded past most of its
     words* is reported deleted, and the restyled block as new text, with the document's
@@ -23941,10 +24027,12 @@ Open, recorded as each change landed:
     most of its words merges its rewording, and the style change is dropped without a word,
     as on `main`. So does one given a style the build uses nowhere, however much of it was
     reworded.
+    Pinned by `tests/test_roundtrip.py::test_a_paragraph_restyled_and_reworded_past_most_words_is_reported_deleted`.
   - *A subheading typed above a paragraph without Track Changes* takes that paragraph's
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its
     identifier back.
+    Pinned by `tests/test_roundtrip.py::test_a_subheading_typed_above_a_paragraph_reports_it_moved`.
 - **A join into a table is neither applied nor reported.** A paragraph whose mark was
   deleted just before a table runs on in Word into the table's first cell. Import folds a
   paragraph into the next only when no table stands between them, so it reads the paragraph
@@ -23952,6 +24040,7 @@ Open, recorded as each change landed:
   paragraph as a join would be the way to report it. Past a table deleted whole, whose rows
   import does not read, the two paragraphs are adjacent and the join is refused as any
   other.
+  Pinned by `tests/test_roundtrip.py::test_a_join_into_a_table_is_neither_applied_nor_reported`.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
@@ -23965,12 +24054,17 @@ Open, recorded as each change landed:
   sits is read against those blocks as the document was sent. An edited or deleted one is
   not among them, so a paragraph that crossed only that block is not seen to leave its
   section: with the order unchanged the move is not reported as a move, and with it changed
-  the paragraph goes to the edge of its own section. Since lists and quotations lost their
+  the paragraph goes to the edge of its own section; past an edited one, which is new text
+  there, the paragraph is held where it was. Since lists and quotations lost their
   identifiers this is no rare case, so any block without an identifier that came back
   reworded, deleted or in a different order is now listed, import no longer says the
   document matches, and it exits 1 - but the move itself is still not named. A table or
   figure that cannot be found in the returned document is not among them either. That one is
   reported, but a move past it is not.
+  Pinned by `tests/test_roundtrip.py::test_a_move_past_what_bounds_a_section_is_reported_and_left_where_it_was`,
+  `tests/test_roundtrip.py::test_a_move_past_a_block_that_came_back_changed_is_not_seen_to_leave_its_section`,
+  `tests/test_roundtrip.py::test_an_edit_to_a_paragraph_without_an_identifier_is_not_called_a_match`
+  and `tests/test_roundtrip.py::test_reordered_list_items_are_not_called_a_match`.
 - **A paragraph is held in place by its source, not by what the co-author meant.** Since the
   tagging rules changed, most of what was held carries no identifier at all, so import
   neither moves nor rewords it, and an edit to it is listed with the paragraphs without an
@@ -23991,6 +24085,10 @@ Open, recorded as each change landed:
   spans and closed comments set aside, and a backtick in a link's address, an autolink,
   inline maths or an HTML attribute can still be taken for one that opens a code span; a
   comment opened after it and closed past a blank line is then not seen by that reading.
+  Pinned by `tests/test_roundtrip.py::test_a_paragraph_held_by_its_source_is_left_untagged_or_neither_reworded_nor_moved`,
+  `tests/test_roundtrip.py::test_a_comment_or_a_page_break_still_ends_a_section`,
+  `tests/test_roundtrip.py::test_a_held_paragraph_dragged_past_one_names_that_one`
+  and `tests/test_roundtrip.py::test_a_backtick_where_pandoc_reads_none_can_hide_a_comment_from_bare`.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -24001,6 +24099,8 @@ Open, recorded as each change landed:
   one, and the deletion is not reported. A figure pasted a second time into its own stretch
   matches neither copy and is reported as not found; a copy pasted into another section is
   new content, and is not reported at all.
+  Pinned by `tests/test_roundtrip.py::test_a_table_figure_or_equation_is_paired_by_its_place_within_its_stretch`
+  and `tests/test_roundtrip.py::test_a_figure_word_stored_differently_is_still_that_figure`.
 - **An identifier on a figure or an equation is read as one Word left there.** A paragraph
   cut or deleted with Track Changes off leaves its bookmark on the paragraph after it, and
   where that shows a picture or display maths and no text, the identifier is read as a
@@ -24044,9 +24144,10 @@ Open, recorded as each change landed:
   nothing, and is listed only as new text without an identifier; a heading dragged elsewhere
   while a copy of it was pasted is paired with nothing either, so that drag, and a move past
   it, is not named, though the new copy is listed. A heading renamed while a new heading
-  with its old text is pasted elsewhere reads as that heading dragged there, and is reported
-  as moved: text cannot tell a drag from a rename and a paste, and a false report is the
-  safer of the two mistakes.
+  with its old text is pasted elsewhere reads as that heading dragged there, and the
+  paragraph it now stands below is reported as moved: text cannot tell a drag from a rename
+  and a paste, and a false report is the safer of the two mistakes.
+  Pinned by `tests/test_roundtrip.py::test_a_duplicated_heading_is_paired_only_where_that_is_unambiguous`.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
@@ -24156,6 +24257,7 @@ Open, recorded as each change landed:
     written on the line under it, with no empty line between, is never asked whether it
     runs on. Under a line holding only a no-break space, the paragraph below goes into the
     footnote, and is not compared. An empty line before the note avoids it.
+    Pinned by `tests/test_roundtrip.py::test_a_note_straight_under_a_heading_or_a_fence_is_never_asked_whether_it_runs_on`.
   - *Only a note left alone, or a label made a term, is read by itself.* Pandoc reads a
     note's text apart from the body. Directly under a label, a definition list's `:` or `~` -
     with text, a space or a tab, or alone, indented up to three spaces - makes a term and its
@@ -24182,6 +24284,10 @@ Open, recorded as each change landed:
     #54's eleventh round found hidden. And a code fence wrapped onto a note's second line,
     left alone or not, is still paired with the next fence below, so what lies between goes
     unmarked, or a marker lands inside a real code block. Both are so on `main`.
+    Pinned by `tests/test_roundtrip.py::test_a_note_over_a_line_it_may_end_at_hides_nothing_after_it`,
+    `tests/test_roundtrip.py::test_raw_content_followed_out_of_a_note_leaves_paragraphs_pandoc_prints_unmarked`,
+    `tests/test_roundtrip.py::test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed`
+    and `tests/test_roundtrip.py::test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next`.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below
@@ -24234,7 +24340,14 @@ Open, recorded as each change landed:
     the moves are held after.
     Pinned by `tests/test_roundtrip.py::test_a_write_that_would_cost_another_paragraph_its_identifier_is_held`.
   - *A paragraph that never reached the document is not checked.* One inside an HTML
-    comment has an identifier in the source and none in Word, and nothing writes it.
+    comment or a code block where `tag`'s reading and pandoc's differ - after a `:::` that
+    closes a div inside a note left alone and a `<!--`, or past a code fence wrapped onto a
+    note's second line and paired with the next fence below - has an identifier in the
+    source and none in Word: import never compares it, and nothing writes it. A paragraph
+    inside a plain comment has none in the source either.
+    Pinned by `tests/test_roundtrip.py::test_a_comment_after_a_div_closing_in_a_note_left_alone_is_not_followed`,
+    `tests/test_roundtrip.py::test_a_code_fence_wrapped_onto_a_notes_second_line_is_paired_with_the_next`
+    and `tests/test_roundtrip.py::test_a_paragraph_inside_a_comment_has_no_identifier_in_the_source`.
 - **A paragraph under a heading or a link's definition carries the identifier.** Pandoc
   needs no blank line after a heading, nor after a link's definition, so `# Methods` with
   its paragraph on the next line is a heading and a paragraph. Every block starting with
@@ -24283,8 +24396,9 @@ Open, recorded as each change landed:
     Pinned by `tests/test_roundtrip.py::test_the_paragraph_under_a_heading_carries_the_identifier`.
   - *A reworded paragraph can take the link above it along.* One that comes back from Word
     opening with `(`, `"` or `'` could be the title of a link's definition written straight
-    above it, so the next build marks the whole block, as #54 does, and the definition
-    prints as text.
+    above it: the next build would mark the whole block, as #54 does, and print the
+    definition as text, so `import` refuses the rewording.
+    Pinned by `tests/test_roundtrip.py::test_a_rewording_opening_like_a_link_title_under_its_definition_is_refused`.
   - *Setext headings are not compared, as before.* On `main` since #25 a block holding an
     underline is left unmarked whole, so the paragraph under a setext heading had no
     identifier either; it has one now, and the heading still none. A revision round opened
@@ -24352,9 +24466,14 @@ Open, recorded as each change landed:
   a paragraph changed and the one after it vanished, the import asks which the returned text
   resembles more: the paragraph as it was, or the paragraph followed by its neighbour. A tie
   counts as a join. Two counting rules came before this one and each was beaten in review by
-  an ordinary edit. A join that also rewrote most of the second paragraph still reads as a
-  rewording of the first and a deletion of the second: the first is merged with the combined
-  text, and the second is reported deleted and left in place for the author to remove.
+  an ordinary edit. The two are compared by `difflib`'s ratio of the words, in order, of
+  the returned text against the first paragraph's alone and against the two together
+  (`_absorbed`). A join that also rewrote the second paragraph until the first ratio is the
+  higher - after a first of six words, a second of ten with two of its words kept, where
+  three kept read as a join - still reads as a rewording of the first and a deletion of the
+  second: the first is merged with the combined text, and the second is reported deleted
+  and left in place for the author to remove.
+  Pinned by `tests/test_roundtrip.py::test_a_join_that_rewrote_the_second_paragraph_past_the_ratio_merges_as_a_rewording`.
 - **A paragraph that is not applied travels with the one before it.** Deleted in Word,
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in
@@ -24415,10 +24534,13 @@ Open, recorded as each change landed:
   Accepted.
   - a link's text across a line break is not found, so its paragraph loses every mark,
     as `main`'s copy misreads it (the extra round);
+    Pinned by `tests/test_corruption.py::test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text`.
   - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
     paragraph, which `main`'s copy also misreads (the extra round);
+    Pinned by `tests/test_corruption.py::test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text`.
   - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
     `from $5 to 7\$` both numbers go unmarked as "in an equation" (the extra round);
+    Pinned by `tests/test_corruption.py::test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text`.
   - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5`, or a
     lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
     reference two brackets make, and it reaches past them (the extra round). Narrowed,
@@ -24428,6 +24550,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_corruption.py::test_the_annotated_copy_marks_what_main_marked`.
   - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked (the extra
     round);
+    Pinned by `tests/test_corruption.py::test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text`.
   - a number straight after a TeX command, `\a 5`, is left unmarked, since the command would
     take the mark for its argument; the paragraph's other numbers keep theirs, as "12" in
     "Of 12 patients, \a 5 were seen." does (the final round);
@@ -24436,9 +24559,11 @@ Open, recorded as each change landed:
     file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
     prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
     manuscript" holds file by file (the fix-only round);
+    Pinned by `tests/test_corruption.py::test_a_reference_definition_in_another_file_is_not_found_by_the_annotator`.
   - a definition on a list item's own line, `- [t]: #x`, which pandoc reads, is not
     found, and a paragraph using it loses every mark, as `main`'s copy misreads it (the
     fix-only round).
+    Pinned by `tests/test_corruption.py::test_some_numbers_the_annotated_copy_lists_are_not_marked_in_its_text`.
 
   The follow-ups of #76 closed the rest: a number in a link's definition takes no mark;
   definitions are read where pandoc reads one, outside listings and comments, not under a
@@ -24451,6 +24576,7 @@ Open, recorded as each change landed:
   re-reads each source whole, where the build strips its YAML block, so whatever pandoc
   prints from that block prints in the annotated copy and not in the manuscript, its
   numbers listed as "in the front matter".
+  Pinned by `tests/test_annotate.py::test_the_annotated_copy_prints_the_manuscript_file_s_own_front_matter`.
 - **An interval is only checked in prose when it was emitted as one.** `em.interval()`
   publishes the estimate and both bounds together, verifies that the bounds bracket the
   estimate, and records which end each bound is — which is what lets G2 refuse
@@ -27207,9 +27333,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_recycling.py::test_a_season_in_parentheses_is_read_wrong_both_ways`.
   - `build` sets aside `supplementary.docx`'s staleness when the supplement's folder holds any
     file, though it builds one only from Markdown there.
+    Pinned by `tests/test_cli.py::test_the_supplement_s_staleness_is_set_aside_for_any_file_in_its_folder`.
   - A `docx-unreadable` from the live-field check says the journal's review is blind.
+    Pinned by `tests/test_cli.py::test_a_docx_unreadable_from_the_live_field_check_says_the_review_is_blind`.
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
-    when `manuscript.docx` is stale.
+    for each stale document the build writes over, from internal review on, where
+    `document-stale` fails: one when `manuscript.docx` is stale, two when
+    `supplementary.docx` is stale with it. While drafting the two counts agree.
+    Pinned by `tests/test_cli.py::test_an_unchecked_build_counts_one_failing_check_fewer_for_each_stale_document`.
 
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
   Accepted.
@@ -29820,6 +29951,32 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A setext title whose value starts with `#` was refused, though it printed as the gates
+  read it (2026-11-21).** It stood under "Two headings the build refuses that print as the
+  gates read them", now "A heading the build refuses that prints as the gates read it". A
+  `===` title opening with a placeholder whose value starts with `#`, `#1 ranked drugs`,
+  was a heading as written and none to the gates on the built line, while pandoc printed
+  it, and the build refused the document. The heading walk of #38 (13b7ea371) reads the
+  built line as a heading too, and the document builds; found while pinning the entry.
+  Held by `tests/test_corruption.py::test_a_setext_title_whose_value_starts_with_a_hash_is_built`
+  and `tests/test_corruption.py::test_a_setext_title_whose_bound_value_starts_with_a_hash_builds_as_a_heading`.
+
+- **No test ran the checker page's JavaScript (Known gaps F20, 2026-11-21).** The page a
+  co-author is sent was checked by reading its template and by opening a built page in a
+  browser by hand, so its storage, its download, its dialog, its clipboard and its keys were
+  held by nothing, and a defect there would have reached a co-author and not the suite.
+  `web/test/checker.mjs` drives a page built from the worked example in Chrome and in
+  Firefox, served over loopback: an answer kept across a reload, and the page drawn and
+  answering where storage throws; Save downloading the file of the page's name, holding the
+  answers given; Save and Copy opening the dialog with that file in its box, and Close
+  shutting it; Copy putting the file on the clipboard, and the box holding it where the
+  clipboard is refused or absent; each status key recording its answer, an arrow moving
+  between items, a key held with Ctrl, Alt or Meta recording nothing, and a key typed into
+  the note box staying the note's. Chrome refuses the clipboard by its permission; Firefox
+  writes on a click whatever its permissions say, so there the refused clipboard is a
+  stand-in whose `writeText` rejects. It runs in CI's `web` job, on a ready pull request and
+  on main, and not in pytest.
 
 - **Three rules that read text were held by examples, not by generated inputs (Known gaps
   F05, 2026-11-21).** A rule no property holds passes a change that breaks a form its cases

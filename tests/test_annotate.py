@@ -219,6 +219,43 @@ def test_the_annotated_copy_contains_the_tables_and_the_figure(project: Path) ->
     assert any(name.startswith("word/media/") for name in archive.namelist())
 
 
+@needs_pandoc
+def test_the_annotated_copy_prints_the_manuscript_file_s_own_front_matter(
+    project: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The annotated copy prints a manuscript file's
+    own front matter"): a subtitle in main.md's YAML block prints in the annotated copy, its
+    number listed as in the front matter, and not in the manuscript, whose build strips it."""
+    import json
+    import re
+
+    from manuscript_guard.annotate import IN_FRONT_MATTER
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\ntitle:")
+    path.write_text(text.replace("\n---\n", "\nsubtitle: A look at 412 reports\n---\n", 1),
+                    encoding="utf-8")  # fmt: skip
+
+    def printed(name: str) -> str:
+        xml = zipfile.ZipFile(project / "build" / name).read("word/document.xml").decode("utf-8")
+        return "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", xml))
+
+    # The build is UNCHECKED for one reason: G2 reads the subtitle's 412, bound to nothing.
+    capsys.readouterr()
+    main(["check", str(project), "--json"])
+    found = json.loads(capsys.readouterr().out)["findings"]
+    assert [(f["code"], f["message"].split("'")[1]) for f in found
+            if f["severity"] == "fail"] == [("unclassified-number", "412")]  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    assert main(["build", str(project), "--offline", "--annotated", "--skip-checks"]) == 0
+    assert "A look at 412 reports" not in printed("manuscript.UNCHECKED.docx")
+    assert "A look at 412 reports" in printed("manuscript.annotated.docx")
+    _text, marks = marked(project)
+    assert [mark.unmarked for mark in marks if mark.shown == "412"] == [IN_FRONT_MATTER]
+
+
 def test_the_figure_sheet_lists_the_exemptions_the_figure_declares(project: Path) -> None:
     """It read `presentational`; the sidecar sections are `allow` and `allow_source`.
 

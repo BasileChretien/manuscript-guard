@@ -17295,11 +17295,11 @@ been sorted yet.
   never seen.** The reader stops in a package at its first construct it does not read, as in
   any file, so a known command the package defines again below that point is never told to
   the tree, and the paper's uses of it are read as LaTeX's. Two bundles of the robustness
-  sweep of 2026-11-21 do this. JMLR's jmlr2e.sty (and its copy jmlr2e_number.sty) stops at
-  the `\csname` of its `\@sict` on line 118 and defines `\section` again with its own
-  `\@startsiction` on line 182. dnd.sty stops at the same `\csname` on line 79 and defines
-  `\section` again inside its `\appendix` on line 327, a heading that prints "Appendix" in
-  each title. Both headings are read as LaTeX's, and dnd's word is not read. The refusal in
+  sweep of 2026-11-21 do this. JMLR's jmlr2e.sty (and jmlr2e_number.sty, which differs from
+  it in two lines elsewhere) stops at the `\csname` of its `\@sict` on line 118 and defines
+  `\section` again with its own `\@startsiction` on line 182. dnd.sty stops at the same
+  `\csname` on line 79 and defines `\section` again inside its `\appendix` on line 327, a
+  heading that prints "Appendix" in each numbered title. Both headings are read as LaTeX's, and dnd's word is not read. The refusal in
   the `.sty` is reported as any refusal is, but nothing says that the paper's headings
   depend on what lies past it. Read on, either file would have the heading refused where it
   first prints, dnd's before `\appendix` too (Basile, 2026-11-22, "Known gaps entry").

@@ -1275,7 +1275,8 @@ _STOPS = "\\def\\@sict#1{\\edef\\@svsec{\\csname the#1\\endcsname}}\n"
         ("\\def\\section{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}\n"
          "             {\\large\\bf\\raggedright}}\n",
          "\\section{Introduction}\nOf 4100 reports, 12 were fatal.\n", ["Introduction"]),
-        # dnd.sty's line 327, an appendix heading that prints "Appendix" in each title.
+        # dnd.sty's line 327, an appendix heading that prints "Appendix" in each numbered
+        # title.
         ("\\renewcommand{\\appendix}{\\par\n"
          "\\def\\section{\\@ifnextchar*{\\@startsiction{section}{1}{\\z@}{-0.24in}{0.10in}%\n"
          "             {\\large\\bf\\raggedright}}%\n"

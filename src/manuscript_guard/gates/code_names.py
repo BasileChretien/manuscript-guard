@@ -30,8 +30,9 @@ fenced div, an HTML tag, a pandoc attribute with an `=` in it, a TeX command, a 
 link's definition and the label of a reference link the file defines, none of which is
 printed in the document. Machine text a paper quotes is set aside in two exact shapes and no
 other: a name alone in angle brackets, a placeholder, `<PAPER_TEXT>`; and a `name = value`
-line under a line that is only a `[section]` header (Basile, 2026-11-22, "Exact shapes
-only").
+line under a line that is only a `[section]` header, its quoted value running on to the
+paragraph that closes it (Basile, 2026-11-22, "Exact shapes only", "Quote may close
+later").
 
 **The finding is a warning, and a failure at submission** (D12.2): the version a journal
 receives has no word its reader cannot know. A word that is right with its underscores, a
@@ -111,11 +112,18 @@ _SECTION = re.compile(rf"(\*\*|__)?\\?\[{_KEY}(?:\.{_KEY})*\\?\](?(1)\1)")
 # A line that is only `name = value`, the value a quoted string, its quotes escaped as pandoc
 # writes them from a .docx or not, a literal string, a number, true or false, or a list in
 # brackets.
+# What a quoted string holds: no quote, and an escaped character other than a quote.
+_QUOTED = r'(?:\\[^"\n]|[^"\\\n])*'
 _SETTING = re.compile(
     rf"{_KEY}[ \t]*=[ \t]*"
-    r"""(?:\\?"(?:\\[^"\n]|[^"\\\n])*\\?"|'[^'\n]*'|[-+]?\d+(?:\.\d+)?|true|false"""
+    rf"""(?:\\?"{_QUOTED}\\?"|'[^'\n]*'|[-+]?\d+(?:\.\d+)?|true|false"""
     r"|\\?\[[^\[\]\n]*\\?\])"
 )
+# A `name = value` line whose quote does not close on it, and the line that closes it: a
+# value the Word conversion broke over paragraphs (Basile, 2026-11-22, "Quote may close
+# later").
+_OPENED = re.compile(rf'{_KEY}[ \t]*=[ \t]*\\?"{_QUOTED}')
+_CLOSING = re.compile(rf'{_QUOTED}\\?"')
 _LINE = re.compile(r"[^\n]+")
 # What a line of the view may hold besides its text: blanks, and NULs where nothing prints.
 _BLANK = " \t\r" + NUL
@@ -285,21 +293,42 @@ def _machine_text(printed: str) -> list[tuple[int, int]]:
     """Where `printed`, the view G14 reads, quotes machine text: each placeholder
     (`_PLACEHOLDER`), and each `name = value` line (`_SETTING`) under a line that is only a
     `[section]` header (`_SECTION`), with only such lines or blank ones between; a line of
-    nothing printed is blank. A boxed environment as such is not set aside (Basile,
-    2026-11-22, "Exact shapes only")."""
+    nothing printed is blank. A value whose quote does not close on its line runs on to the
+    line that closes it (`_closed`). A boxed environment as such is not set aside (Basile,
+    2026-11-22, "Exact shapes only", "Quote may close later")."""
     spans = [found.span() for found in _PLACEHOLDER.finditer(printed)]
-    under_a_section = False
+    lines = []  # each line's text without its blanks, and where that starts
     for line in _LINE.finditer(printed):
         typed = line.group()
-        bare = typed.strip(_BLANK)
+        lines.append((line.start() + len(typed) - len(typed.lstrip(_BLANK)), typed.strip(_BLANK)))
+    under_a_section, at = False, 0
+    while at < len(lines):
+        start, bare = lines[at]
+        last = _closed(lines, at) if under_a_section and _OPENED.fullmatch(bare) else None
         if _SECTION.fullmatch(bare):
             under_a_section = True
         elif under_a_section and _SETTING.fullmatch(bare):
-            start = line.start() + len(typed) - len(typed.lstrip(_BLANK))
             spans.append((start, start + len(bare)))
+        elif last is not None:
+            spans.append((start, lines[last][0] + len(lines[last][1])))
+            at = last
         elif bare:
             under_a_section = False
+        at += 1
     return spans
+
+
+def _closed(lines: list[tuple[int, str]], at: int) -> int | None:
+    """The index of the line that closes the quote the line at `at` opens: the first after
+    it with a quote in it, where that quote ends the line and nothing between is a
+    `[section]` or a `name = value` line; None where the quotes do not pair so."""
+    for index in range(at + 1, len(lines)):
+        bare = lines[index][1]
+        if _SECTION.fullmatch(bare) or _SETTING.fullmatch(bare) or _OPENED.fullmatch(bare):
+            return None
+        if '"' in bare:
+            return index if _CLOSING.fullmatch(bare) else None
+    return None
 
 
 def _celled(view: str, tables: Iterable[tuple[int, int]]) -> str:

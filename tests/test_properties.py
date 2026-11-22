@@ -12376,6 +12376,21 @@ def _any_line_opens_a_section(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_SECTION", re.compile(rf"(?!(?:{gate._SETTING.pattern})\Z)[^\n]*"))
 
 
+def _a_quote_closes_only_on_its_line(patch: pytest.MonkeyPatch) -> None:
+    """A value quoted over two paragraphs ended the configuration, its name and the names
+    after it read (before Basile's "Quote may close later", 2026-11-22)."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_closed", lambda lines, at: None)
+
+
+def _a_quote_left_open_closes_on_the_next_line(patch: pytest.MonkeyPatch) -> None:
+    """The quotes did not have to pair: a value left open ran on to the next line."""
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_closed", lambda lines, at: at + 1 if at + 1 < len(lines) else None)
+
+
 @holds(40, code_names())
 def test_the_audit_says_the_names_from_the_code_in_one_finding(
     planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
@@ -28247,6 +28262,14 @@ BROKEN = {
     ),
     "a setting is set aside with no section above it": (
         _any_line_opens_a_section,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a value quoted over two paragraphs ends the configuration": (
+        _a_quote_closes_only_on_its_line,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a quote that never closes pairs with the next line": (
+        _a_quote_left_open_closes_on_the_next_line,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "the audit reads only a word with underscores for a name from the code": (

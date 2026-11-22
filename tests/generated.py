@@ -3664,6 +3664,16 @@ CODE_NAME_PLACES = (
     ("snake", "\n\n{n} = \\\"a value\\\"\n\n", "\n\n{e} = 12\n\n", "prose"),
     ("snake", "\n\n[app]\n\nThe file sets it.\n\n{n} = 12\n\n",
      "\n\n[app]\n\nThe file sets it.\n\n{e} = 12\n\n", "prose"),
+    # A value quoted over two paragraphs is one line of its configuration, which goes on
+    # after it; a quote that never closes ends the configuration, its line read; and one
+    # closed later with no section above it is prose (Basile, 2026-11-22, "Quote may close
+    # later").
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"a long\n\nvalue\\\"\n\nalso_{n} = true\n\n",
+     "\n\n[app]\n\n{e} = \"a long\n\nvalue\"\n\nalso\\_{e} = 12\n\n", None),
+    ("snake", "\n\n**\\[app\\]**\n\n{n} = \\\"never closed\n\n",
+     "\n\n[app]\n\n{e} = \"never closed\n\n", "prose"),
+    ("snake", "\n\n{n} = \\\"a long\n\nvalue\\\"\n\n", "\n\n{e} = \"a long\n\nvalue\"\n\n",
+     "prose"),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
 #: writes one and `doseQab` as camelCase.

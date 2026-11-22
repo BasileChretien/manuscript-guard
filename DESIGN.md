@@ -6120,9 +6120,15 @@ is read. A line that is only `name = value` is a configuration's line where the 
 quoted string (its quotes escaped as pandoc writes them from a .docx, `\"secret key\"`, or
 not), a literal string, a number, `true` or `false` or a list in brackets, and a line that
 is only a `[section]` header, bold as Word writes it or not (`**\[app\]**`), stands above it
-with only such lines or blank ones between. A `name = value` line with no such header above
-it, or with a sentence between, is prose. A boxed environment, a `tcolorbox`, is not set
-aside as such: what is in it is read as before.
+with only such lines or blank ones between. A value whose quote does not close on its line,
+one the Word conversion broke over paragraphs, runs on to the paragraph that ends with its
+closing quote, and those paragraphs are that line's; the configuration goes on after it
+(Basile, 2026-11-22, "Quote may close later"). The quotes must pair: a value that does not
+close before the next `name = value` line, the next `[section]` line or the end of the text,
+or a paragraph between with a quote in it that does not end it, is no configuration line,
+and the configuration ends where it opened. A `name = value` line with no such header above
+it, or with a sentence between, is prose, and so is a value quoted over paragraphs there. A
+boxed environment, a `tcolorbox`, is not set aside as such: what is in it is read as before.
 
 **The audit says them in one finding** (decision 13). `audit` makes G14's warnings on a
 paper's names from the code one finding, as it makes the short forms left undefined one
@@ -25600,10 +25606,10 @@ Open, recorded as each change landed:
     otherwise, so a vocabulary term quoted in it, `"matprov:length\_thickness"`, reports
     `length_thickness`, and the all-caps word IMPORTANT in it is read by G14's short forms.
     Pinned by `tests/test_code_names.py::test_a_latex_prompt_s_placeholders_are_not_read_and_the_box_is`.
-  - A quoted value that the Word conversion broke over two paragraphs is no `name = value`
-    line: the configuration ends at it, and the names after it are read up to the next
-    `[section]` line.
-    Pinned by `tests/test_code_names.py::test_a_value_quoted_over_two_paragraphs_ends_the_configuration`.
+  - A configuration's value whose quote never closes, or closes only after another setting,
+    a `[section]` line or a paragraph with another quote in it, ends the configuration where
+    it opened: its name and the names after it are read up to the next `[section]` line.
+    Pinned by `tests/test_code_names.py::test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened`.
   - In Markdown, "1<max_len>2" is read, though pandoc takes `<max_len>` for an HTML tag and
     prints nothing of it: a tag is set aside only where its name has no underscore, and a
     digit against a bracket makes no placeholder. Accepted.

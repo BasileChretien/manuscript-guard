@@ -560,15 +560,50 @@ def test_a_line_shaped_as_a_setting_in_prose_is_read(text: str) -> None:
     assert named(text) == ["run_mode"]
 
 
-def test_a_value_quoted_over_two_paragraphs_ends_the_configuration() -> None:
-    """A quoted value that the Word conversion broke into two paragraphs is no `name =
-    value` line: the configuration ends at it, and its name and those after it are read
-    until the next section (DESIGN.md, Known gaps)."""
+def test_a_value_quoted_over_several_paragraphs_is_one_configuration_line() -> None:
+    """A quoted value that the Word conversion broke into paragraphs runs on to the one
+    that ends with its closing quote, and the configuration goes on after it (Basile,
+    2026-11-22, "Quote may close later"). The sentence after it is read."""
     text = ("**\\[chat\\]**\n\ninitial_message = \\\"Hello.\\\"\n\n"
             "stop_response = \\\"Thank you. The interview is over.\n\n"
-            "Please close the window.\\\"\n\nstop_label = \\\"Close.\\\"\n\n"
-            "**\\[study\\]**\n\nprotocol_process = true\n")  # fmt: skip
-    assert named(text) == ["stop_response", "stop_label"]
+            "Please close the window.\\\"\n\nstop_text = \\\"It looks like you stopped the\n\n"
+            "interview. Close it\n\nnow.\\\"\n\nstop_label = \\\"Close.\\\"\n\n"
+            "**\\[study\\]**\n\nprotocol_process = true\n\nThe hr_adj_main rose.\n")  # fmt: skip
+    assert named(text) == ["hr_adj_main"]
+
+
+@pytest.mark.parametrize(
+    ("after", "found"),
+    [
+        # never closed before the end of the text
+        ("Please close the window.\n", ["stop_response"]),
+        # never closed before the next setting
+        ("Please close the window.\n\nstop_label = \\\"Close.\\\"\n\nIt ends.\\\"\n",
+         ["stop_response", "stop_label"]),
+        # never closed before the next section
+        ("Please close.\n\n**\\[study\\]**\n\nprotocol_process = true\n\nIt ends.\\\"\n",
+         ["stop_response"]),
+        # a quote in a paragraph between that does not close it
+        ("Say \"stop\" and close it.\\\"\n\nstop_label = \\\"Close.\\\"\n",
+         ["stop_response", "stop_label"]),
+    ],
+    ids=["the end", "a setting", "a section", "a quote between"],
+)  # fmt: skip
+def test_a_quote_that_does_not_close_ends_the_configuration_where_it_opened(
+    after: str, found: list[str]
+) -> None:
+    """The quotes must pair: a value whose quote does not close before the next `name =
+    value` line, the next `[section]` line or the end of the text is no configuration line,
+    and the configuration ends at it (Basile, 2026-11-22, "Quote may close later")."""
+    text = ("**\\[chat\\]**\n\ninitial_message = \\\"Hello.\\\"\n\n"
+            "stop_response = \\\"Thank you.\n\n" + after)  # fmt: skip
+    assert named(text) == found
+
+
+def test_a_quote_that_closes_later_outside_a_configuration_changes_nothing() -> None:
+    """With no `[section]` line above it, a value quoted over two paragraphs is prose."""
+    text = "# Methods\n\nstop_response = \\\"Thank you.\n\nPlease close it.\\\"\n"
+    assert named(text) == ["stop_response"]
 
 
 #: An appendix that quotes an LLM's prompt in a `tcolorbox`, its placeholders on their own

@@ -211,12 +211,14 @@ def test_a_docx_s_names_are_placed_and_the_comment_stands_on_the_first(
 
 
 #: An appendix that quotes a prompt's placeholders and a TOML file, each a paragraph of the
-#: .docx, its sections bold, its quotes straight; a setting with no section above it, a
+#: .docx, its sections bold, its quotes straight, one value over two paragraphs (Basile,
+#: 2026-11-22, "Quote may close later"); a setting with no section above it, a
 #: name in a sentence and one between two comparison signs.
 QUOTED = (
     "# Methods\n\nThe text replaces \\<PAPER_TEXT\\> in the prompt, and trust_in_science was "
     "asked.\n\n# Appendix\n\n**\\[app\\]**\n\nsecret_key = \\\"secret key\\\"\n\n"
     "**\\[chat\\]**\n\ninitial_message = \\\"\\_The interview begins.\\_\\\"\n\n"
+    "stop_response = \\\"Thank you. The interview is over.\n\nPlease close it.\\\"\n\n"
     "protocol_process = true\n\nThe study set run_mode = \\\"fast\\\" too.\n\n"
     "When n \\< max_len \\> m it stops.\n"
 )

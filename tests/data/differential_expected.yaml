@@ -148,9 +148,11 @@ expected:
       machine text a paper quotes is no prose, in two exact shapes (Basile, 2026-11-22,
       "Exact shapes only"): a name alone in angle brackets, a placeholder, `<PAPER_TEXT>`,
       `\<PAPER_TEXT\>` and `<PAPER\_TEXT>`; and a `name = value` line under a `[section]`
-      line with only such lines or blank ones between; the generated inputs now hold both,
-      which the base reports, and a name between two signs of a comparison and a setting
-      with no section above it or with a sentence between, which both report; the entry it
+      line with only such lines or blank ones between, a value quoted over paragraphs
+      running on to its closing quote ("Quote may close later"); the generated inputs now
+      hold these, which the base reports, and a name between two signs of a comparison, a
+      setting with no section above it or with a sentence between, a quote that never
+      closes and one closed later with no section above it, which both report; the entry it
       replaces, for a name in a table's cell, is spent
   - reading: audit code names
     why: >-

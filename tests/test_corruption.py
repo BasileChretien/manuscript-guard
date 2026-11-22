@@ -39567,6 +39567,7 @@ def test_a_code_name_beside_a_quoted_prompt_and_configuration_is_caught(project:
     old = "Several limitations follow from the design."
     quoted = (" The placeholder \\<PAPER_TEXT\\> and <SYNTHESIS_TEXT> are replaced, as "
               "hr_adj_main was.\n\n**\\[app\\]**\n\nsecret_key = \\\"secret key\\\"\n\n"
+              "stop_response = \\\"Thank you.\n\nPlease close it.\\\"\n\n"
               "html_mode = true\n\nThe file sets age_band too.\n\n")  # fmt: skip
     main_md(project).write_text(text.replace(old, old + quoted), encoding="utf-8")
     assert [name for _s, _l, name in code_name_findings(project)] == ["hr_adj_main", "age_band"]

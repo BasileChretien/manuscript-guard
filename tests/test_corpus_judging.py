@@ -612,7 +612,9 @@ def test_a_ledger_names_a_batch_verdict_by_its_batch(corpus: Path) -> None:
     place = {"slug": "paper-a", "report": "audit", "index": 0}
     assert verdicts({**place, "batch": "b1"}) == [("", 0, "true", ""), ("b1", 0, "false", "d")]
     assert verdicts(place) == [("", 0, "false", "d"), ("b1", 0, "true", "")]
-    for bad in ("", None, 3):
+    # A name YAML reads as a number or a date is read as the decided file reads it.
+    assert verdicts({**place, "batch": 7}) == [("", 0, "true", ""), ("b1", 0, "true", "")]
+    for bad in ("", None, " b1", "b1 ", "b/1"):
         (corpus / "report" / "ledger.yaml").write_text(yaml.safe_dump({"decisions": [
             {"id": "d", "date": "2026-11-22", "by": "a", "what": "w", "source": "s",
              "rejudge": {"verdict": "false", "findings": [{**place, "batch": bad}]}}]}), "utf-8")

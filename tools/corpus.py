@@ -139,9 +139,12 @@ def _rejudge(decision: Decision, body: object, where: str) -> None:
         if not isinstance(key, dict) or set(key) - {"batch"} != {"slug", "report", "index"}:
             raise CorpusError(f"{where}: a finding is named by slug, report and index, and a "
                               "batch's verdict by its batch too")  # fmt: skip
-        batch = key.get("batch", "")
-        if "batch" in key and not (isinstance(batch, str) and batch.strip()):
-            raise CorpusError(f"{where}: a batch is named by its name, not {batch!r}")
+        # Read as the ties' decided file reads it (`str`), so that a name YAML takes for a
+        # number or a date is the same name; it must be one `unjudged` could have given.
+        batch = "" if key.get("batch") in (None, "") else str(key["batch"])
+        if "batch" in key and not corpus_run.SLUG.fullmatch(batch):
+            raise CorpusError(f"{where}: a batch is named by its name, letters, digits, '.', "
+                              f"'_' and '-', not {key['batch']!r}")  # fmt: skip
         try:
             place = (str(key["slug"]), str(key["report"]), int(key["index"]))
         except (TypeError, ValueError):

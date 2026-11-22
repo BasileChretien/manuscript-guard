@@ -72,6 +72,14 @@ def codes(report) -> set[str]:
     return {f.code for f in report.findings}
 
 
+def reported(project: Path, text: str) -> list[tuple[str, str]]:
+    """What G14 says of the short forms in `text`, as the Methods: each finding's code
+    without its `abbreviation-` and the short form it names, in order."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    return sorted((f.code.removeprefix("abbreviation-"), f.message.split()[0])
+                  for f in report.findings if f.code.startswith("abbreviation-"))  # fmt: skip
+
+
 PLAIN = (
     "Reports were included without restriction on age or sex. Duplicate records were "
     "removed by matching on report identifier, and the remaining records were classified "
@@ -152,6 +160,74 @@ def test_a_definition_nothing_uses_is_reported(project: Path) -> None:
     assert codes(report) == {"abbreviation-unused"}
     (finding,) = report.findings
     assert "reporting odds ratio" in finding.hint, "the hint says what to write instead"
+
+
+def test_a_short_form_defined_for_a_table_or_used_in_a_caption_is_unused(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): tables and figures are not read, so a short form the
+    text defines for a table placed after it, and uses again only in the table's caption,
+    is reported as unused, and the hint says those are not read."""
+    results = project / "results" / "01_disproportionality.json"
+    caption = "Reports by drug group. Values are n (%) unless stated."
+    data = results.read_text(encoding="utf-8")
+    assert caption in data, "the fixture's caption moved"
+    results.write_text(data.replace(caption, "Reports by drug group, with the PRR."),
+                       encoding="utf-8")  # fmt: skip
+    report = written(project, "# Methods\n\nThe proportional reporting ratio (PRR) is in the "
+                     "table.\n\n{{table.baseline}}\n")  # fmt: skip
+    (finding,) = report.findings
+    assert (finding.code, finding.message.split()[0]) == ("abbreviation-unused", "PRR")
+    assert "unless a table or a figure uses it: those are not read here" in finding.hint
+
+
+def test_a_short_form_used_only_in_a_table_s_or_a_figure_s_caption_is_not_seen(
+    project: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): an undefined `ALT` used only in a table's caption, or
+    only in a figure's, is not reported, where the same `ALT` in the text is."""
+    results = project / "results" / "01_disproportionality.json"
+    caption = "Reports by drug group. Values are n (%) unless stated."
+    data = results.read_text(encoding="utf-8")
+    assert caption in data, "the fixture's caption moved"
+    results.write_text(data.replace(caption, "Reports by drug group, with the ALT."),
+                       encoding="utf-8")  # fmt: skip
+    assert reported(project, "The counts are in the table.\n\n{{table.baseline}}") == []
+    assert reported(project, "The values are drawn.\n\n![ALT by drug group]"
+                    "(figures/forest.svg)") == []  # fmt: skip
+    # The other side: the same short form in the text.
+    assert reported(project, "The values are drawn.\n\n![ALT by drug group]"
+                    "(figures/forest.svg)\n\nThe ALT rose.") == [("undefined", "ALT")]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # A Summary and a Key points box are main text, where an Abstract is read apart.
+        ("# Summary\n\nThe reporting odds ratio (ROR) was high.\n\n# Introduction\n\n"
+         "The reporting odds ratio (ROR) was used. The ROR rose.\n", [("redefined", "ROR")]),
+        ("# Key points\n\nThe reporting odds ratio (ROR) was high.\n\n# Introduction\n\n"
+         "The reporting odds ratio (ROR) was used. The ROR rose.\n", [("redefined", "ROR")]),
+        ("# Abstract\n\nThe reporting odds ratio (ROR) was high.\n\n# Introduction\n\n"
+         "The reporting odds ratio (ROR) was used. The ROR rose.\n", [("unused", "ROR")]),
+        # A legend with no stop, colon or dash after its display is text.
+        ("# Results\n\nThe reporting odds ratio (ROR) was used. The ROR rose.\n\nFigure 1 The "
+         "reporting odds ratio (ROR) by year.\n", [("redefined", "ROR")]),
+        ("# Results\n\nThe reporting odds ratio (ROR) was used. The ROR rose.\n\nFigure 1. The "
+         "reporting odds ratio (ROR) by year.\n", []),
+    ],
+)  # fmt: skip
+def test_only_an_abstract_is_read_apart_and_a_legend_only_by_its_stop(
+    project: Path, text: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): only a section titled "Abstract" is read apart, so a
+    definition in a Summary or a Key points box repeated in the Introduction is reported as
+    redefined; and a legend with no stop, colon or dash after its display is text, so a
+    definition it repeats is reported."""
+    report = written(project, text)
+    assert sorted((f.code.removeprefix("abbreviation-"), f.message.split()[0])
+                  for f in report.findings) == said  # fmt: skip
 
 
 def test_an_abbreviation_never_defined_is_reported_once(project: Path) -> None:
@@ -872,6 +948,64 @@ def test_the_longest_defined_name_is_the_one_used(project: Path) -> None:
     assert not report.findings, found(report)
 
 
+_RNA_SEQ = "We used RNA sequencing (RNA-seq)"
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # Read whole where it opens the hyphenated word, follows an ordinary word, or
+        # follows a name of two parts read whole there.
+        (f"{_RNA_SEQ}. The RNA-seq-based data were read.", []),
+        (f"{_RNA_SEQ}. The single-RNA-seq data were read.", []),
+        (f"{_RNA_SEQ} and high-density lipoprotein cholesterol (HDL-C). The HDL-C-RNA-seq data "
+         "were read.", []),
+        # Not after any other part, a defined abbreviation of one part included.
+        (f"{_RNA_SEQ}. The 10x-RNA-seq data were read.", [("unused", "RNA-seq")]),
+        (f"{_RNA_SEQ} and the reporting odds ratio (ROR). The ROR-RNA-seq data were read.",
+         [("unused", "RNA-seq")]),
+        ("We used chromatin immunoprecipitation sequencing (ChIP-seq). The 10x-ChIP-seq data "
+         "were read.", [("undefined", "10x-ChIP"), ("unused", "ChIP-seq")]),
+        # A name with no ordinary word is read after any part.
+        ("We measured high-density lipoprotein cholesterol (HDL-C). The 10x-HDL-C data were "
+         "read.", []),
+    ],
+)  # fmt: skip
+def test_a_name_with_a_word_after_its_first_part_is_read_whole_only_after_a_word(
+    project: Path, text: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): a defined `RNA-seq` is read whole where it opens a
+    hyphenated word, after an ordinary word or after a name of two parts read whole there,
+    and not after any other part, `10x-` or a defined `ROR-`; `10x-ChIP-seq` is reported as
+    an undefined `10x-ChIP`; and `HDL-C`, with no ordinary word, is read after any part."""
+    assert reported(project, text) == said
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        ("Long non-coding RNAs (lncRNAs) were read. LncRNAs rose in the second group.",
+         [("undefined", "LncRNA"), ("unused", "lncRNA")]),
+        ("Non-HDL-C (non-high-density lipoprotein cholesterol) was measured. The non-HDL-C "
+         "rose.", [("undefined", "HDL-C"), ("unused", "Non-HDL-C")]),
+        ("Tissue plasminogen activator (t-PA) was given. T-PA rose.",
+         [("undefined", "T-PA"), ("unused", "t-PA")]),
+        # The other side of `T-PA`: a hyphenated name whose opening word has two letters.
+        ("High-sensitivity C-reactive protein (hs-CRP) was read. Hs-CRP rose.", []),
+    ],
+)  # fmt: skip
+def test_the_capital_a_name_takes_opening_a_sentence_is_read_one_way_only(
+    project: Path, text: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): `LncRNAs` opening a sentence is an undefined `LncRNA`
+    beside a defined `lncRNA`; a name defined with the capital opening its sentence,
+    `Non-HDL-C`, is not found by its lower-case uses; and `T-PA` opening a sentence is not
+    a defined `t-PA`, where `Hs-CRP` is `hs-CRP`."""
+    assert reported(project, text) == said
+
+
 def test_a_name_used_only_among_the_acknowledgements_is_used(project: Path) -> None:
     report = written(
         project,
@@ -1168,6 +1302,112 @@ def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
     assert shorts("Scored at entry (WSE1) and 20 (12%) had a second WSE (WSE2).") == ["WSE2"]
 
 
+_UNDEFINED_ROR = [("undefined", "ROR")]
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # Sentences of a shape G14 does not read.
+        ("The reporting odds ratio, which we call the ROR, was high. The ROR rose.",
+         _UNDEFINED_ROR),
+        ("The reporting odds ratio was high; ROR stands for it. The ROR rose.", _UNDEFINED_ROR),
+        ("Research and outreach programmes, or ROR, ran. The ROR rose.", _UNDEFINED_ROR),
+        # The words before a short form that are read.
+        ("The reporting odds ratio, known as ROR, was high. The ROR rose.", []),
+        ("The reporting odds ratio, referred to as ROR, was high. The ROR rose.", []),
+        ("The reporting odds ratio, called ROR, was high. The ROR rose.", []),
+        ("The reporting odds ratio, hereafter ROR, was high. The ROR rose.", []),
+        # A citation inside the bracket, and a semicolon or a comma.
+        ("The reporting odds ratio (ROR [@fictionalClassSignal2019]) was high. The ROR rose.",
+         _UNDEFINED_ROR),
+        ("The reporting odds ratio (ROR; see below) was high. The ROR rose.", []),
+        ("The reporting odds ratio (ROR, see below) was high. The ROR rose.", []),
+        # Brackets inside brackets: the inner is read and the outer is not, and a long form
+        # in the bracket that holds a bracket of its own is missed.
+        ("It was high (reporting odds ratio (ROR) 3.84). The ROR rose.", []),
+        ("It was the reporting odds ratio (ROR, as the proportional reporting ratio (PRR) was "
+         "not used). The ROR and the PRR rose.", _UNDEFINED_ROR),
+        ("The ratio was high (ROR, reporting odds ratio (crude)). The ROR rose.",
+         _UNDEFINED_ROR),
+        # A short form in square brackets, a link's text included, but not a file's.
+        ("The reporting odds ratio [ROR][ref] was read. The ROR rose.\n\n"
+         "[ref]: https://example.org", []),
+        ("The reporting odds ratio [ROR](https://example.org) was read. The ROR rose.", []),
+        ("The reporting odds ratio [ROR](glossary.md) was read. The ROR rose.", _UNDEFINED_ROR),
+    ],
+)  # fmt: skip
+def test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other(
+    project: Path, text: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): "which we call the ROR", "ROR stands for" and
+    "programmes, or ROR" define nothing, where "known as", "referred to as", "called" and
+    "hereafter" do; `(ROR [@key])` defines nothing, where `(ROR; ...)` and `(ROR, ...)` do;
+    of brackets inside brackets the inner is read and the outer not, and a long form in the
+    bracket holding a bracket is missed; and a short form in square brackets defines, a
+    reference link's or a URL link's text included, and not a link to a file."""
+    assert reported(project, text) == said
+
+
+def test_a_long_form_matched_by_letters_may_start_early(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): "the ratio as before (ROR)" is a definition whose long
+    form is "ratio as before": it is counted, and beside the real one it is reported as a
+    second meaning, quoted with that long form."""
+    assert reported(project, "We kept the ratio as before (ROR). The ROR rose.") == []
+    report = written(project, "# Methods\n\nWe kept the ratio as before (ROR). Later the "
+                     "reporting odds ratio (ROR) rose. The ROR rose.\n")  # fmt: skip
+    (message,) = found(report, "abbreviation-redefined")
+    assert message.startswith("ROR is defined as 'reporting odds ratio' here and as 'ratio as "
+                              "before' earlier"), message  # fmt: skip
+
+
+def test_a_long_form_matched_by_letters_may_start_late(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): "the relative risk ratio (RR)" is read with the long
+    form "risk ratio", a word late, so beside "the risk ratio (RR)" it is one meaning
+    defined again, where "the rate ratio (RR)" is a second meaning."""
+    late = written(project, "# Methods\n\nWe used the risk ratio (RR). Later the relative risk "
+                   "ratio (RR) was used. The RR rose.\n")  # fmt: skip
+    assert found(late, "abbreviation-redefined") == [
+        "RR is defined again; it was defined earlier on the same line"]  # fmt: skip
+    # The other side: a long form its letters do not shorten is a second meaning.
+    other = written(project, "# Methods\n\nWe used the risk ratio (RR). Later the rate ratio "
+                    "(RR) was used. The RR rose.\n")  # fmt: skip
+    assert [message.split(" on the")[0] for message in found(other, "abbreviation-redefined")] == [
+        "RR is defined as 'rate ratio' here and as 'risk ratio' earlier"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("after", "said", "long"),
+    [("# Abbreviations\n\nCI = 95% confidence interval", [("redefined", "CI")],
+      "'95% confidence interval'"),
+     # The other side: the same long form as the text's.
+     ("# Abbreviations\n\nCI = confidence interval", [], ""),
+     # A legend's long form is compared too; one with a number before it defines nothing,
+     # since `_spelt_after` refuses anything before the long form but an article.
+     ("Table 1. Odds by year. CI = credible interval.", [("redefined", "CI")],
+      "'credible interval'"),
+     ("Table 1. Odds by year. CI = 95% confidence interval.", [], ""),
+     ("Table 1. Odds by year. CI = 95% credible interval.", [], "")],
+)  # fmt: skip
+def test_a_glossary_s_long_form_is_compared_with_the_text_s_as_written(
+    project: Path, after: str, said: list[tuple[str, str]], long: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): "CI = 95% confidence interval" in a glossary beside
+    "confidence interval (CI)" in the text is reported as two meanings; a legend's long
+    form is compared too, so its "CI = credible interval" is reported, and its "CI = 95%
+    confidence interval" or "CI = 95% credible interval" defines nothing."""
+    report = written(project, "# Methods\n\nThe confidence interval (CI) was computed. The CI "
+                     f"was wide.\n\n{after}\n")  # fmt: skip
+    assert sorted((f.code.removeprefix("abbreviation-"), f.message.split()[0])
+                  for f in report.findings) == said  # fmt: skip
+    if said:
+        assert long in report.findings[0].message
+
+
 def test_what_follows_the_long_form_may_hold_a_bracket(project: Path) -> None:
     """A citation between the long form and its short form is masked to an empty bracket,
     and the long form's letters do not cross it; a definition nested in a bracket that also
@@ -1236,6 +1476,48 @@ def test_what_is_not_an_abbreviation_is_not_reported(project: Path, sentence: st
 def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) -> None:
     report = written(project, f"# Methods\n\n{sentence}\n")
     assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # No two capitals together: missed, where `iPSC` and `siRNA` are caught.
+        ("The HbA1c, the mL and the Hb were low, as were iPSC and siRNA.",
+         [("undefined", "iPSC"), ("undefined", "siRNA")]),
+        # The capital of a word cannot be defined: neither is tracked, so neither is unused.
+        ("The haemoglobin (Hb) was low, and the regulatory T cells (Tregs) rose.", []),
+        # Each entry of `data/terms.yaml`, in any case, where `ALT` is not one.
+        ("The eGFR, the EGFR, the ECOG and NYHA classes and the Meddra terms were read; ALT "
+         "rose.", [("undefined", "ALT")]),
+        # A formula with no count, organic shorthand, a group in brackets and a charge are
+        # reported.
+        ("HCl, NaOH, KOH, HCN and NO were added, with EtOAc, MeOH, (NH4)2SO4 and SO42-.",
+         [("undefined", short) for short in ("2SO4", "EtOAc", "HCN", "HCl", "KOH", "MeOH",
+                                             "NO", "NaOH", "SO42")]),
+        # A name spelt in element symbols with a count from two to twelve is a formula.
+        ("PI3K, VO2, CD3, CIN2, CKD3, PIP2 and ICD10 were measured.", []),
+        # The unit symbols not among the nine shipped are reported.
+        ("The plant gave 5 MW, 3 MJ, 2 MV, 40 MDa, 1 TWh, 400 IU and 30 HU.",
+         [("undefined", short) for short in ("HU", "IU", "MDa", "MJ", "MV", "MW", "TWh")]),
+        # A word in capitals for emphasis is reported, unless its paragraph is all in bold
+        # with no small letter.
+        ("This was NOT a randomised trial.", [("undefined", "NOT")]),
+        ("**This was NOT a randomised trial**", [("undefined", "NOT")]),
+        ("**THIS WAS NOT A RANDOMISED TRIAL**", []),
+    ],
+)  # fmt: skip
+def test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says(
+    project: Path, text: str, said: list[tuple[str, str]]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "G14 reads a definition by its shape, and an
+    abbreviation by its capitals."): an abbreviation with no two capitals together is
+    missed, and `Hb` and `Tregs` cannot be defined; every entry of `data/terms.yaml` is
+    exempt in any case; the formula rule reports a formula with no count, organic
+    shorthand, a group in brackets and a charge, and takes a name of element symbols with a
+    count from two to twelve for a formula; the units exempt are the nine shipped; and a
+    word in capitals for emphasis is reported unless its paragraph is all bold and has no
+    small letter."""
+    assert reported(project, text) == said
 
 
 def journal_asks(project: Path, rules: dict) -> None:
@@ -2560,3 +2842,176 @@ def test_the_text_after_the_keywords_list_is_the_main_text(project: Path) -> Non
     )
     assert not found(report, "abbreviation-undefined"), found(report)
     assert not found(report, "abbreviation-used-before-defined"), found(report)
+
+
+# ------------------------------------------- short forms read as no short form (corpus round)
+
+
+def test_another_meaning_given_in_each_note_is_reported_once(project: Path) -> None:
+    """A paper of the real-paper corpus defined one short form once in its text and with
+    another long form in each of six table notes: six findings of one meaning. Each other
+    meaning is reported once, where it is first given, and a third meaning is a finding of
+    its own; the text's own meaning given again is still "defined again". A meaning that
+    differs by an apostrophe alone, "Kids' Quiet Scale", is another meaning to
+    `_same_meaning`, reported once too, as DESIGN.md's Known gaps write down."""
+    notes = "".join(f"| Item | n |\n|---|---|\n| one | {n} |\n\n*Note.* KQS = Kids Quiet Scale "
+                    "short form.\n\n" for n in range(3))  # fmt: skip
+    possessive = "".join(f"| Item | n |\n|---|---|\n| two | {n} |\n\n*Note.* KQS = Kids' Quiet "
+                         "Scale.\n\n" for n in range(2))  # fmt: skip
+    report = written(
+        project,
+        "# Methods\n\nThe Kids Quiet Scale (KQS) was given. The KQS held.\n\n" + notes
+        + possessive + "The Kids Quiet Scale Short Forms (KQS) were also given.\n\nThe kids "
+        "quiet score (KQS) was read.\n\nThe Kids Quiet Scale (KQS) was given again.\n",
+    )
+    assert found(report, "abbreviation-redefined") == [
+        "KQS is defined as 'Kids Quiet Scale short form' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined as 'Kids' Quiet Scale' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined as 'kids quiet score' here and as 'Kids Quiet Scale' at "
+        "manuscript/main.md:3",
+        "KQS is defined again; it was defined at manuscript/main.md:3",
+    ], found(report)
+    lines = [f.line for f in report.findings if f.code == "abbreviation-redefined"]
+    assert lines[0] == 9, "the other meaning is reported where it is first given"
+
+
+@pytest.mark.parametrize(
+    "cited",
+    ["Fictional, 2014", "Fictional et al., 2014", "Fictional, 2014; Other & Made, 2015a"],
+)
+def test_a_citation_after_a_long_form_in_its_bracket_is_no_part_of_it(cited: str) -> None:
+    """A paper of the real-paper corpus gave an instrument's short form, its name and its
+    citation in one bracket, and the citation was read into the long form, and so as another
+    meaning than a table note's. What follows the first semicolon is author-year citations
+    typed as text, which the typed-citation reading reads as such, and no part of the long
+    form. A semicolon before anything else, and a citation after a comma, leave the bracket
+    whole: a limit DESIGN.md's Known gaps write down."""
+    text = f"For instance, the QP2 (Quiet Profile 2; {cited}) scores were read."
+    assert [(short, long) for _at, short, long in _definitions(text)] == [
+        ("QP2", "Quiet Profile 2")]
+    for kept in ("Quiet Profile 2; see Part 2", "Quiet Profile 2, Fictional, 2014"):
+        text = f"For instance, the QP2 ({kept}) scores were read."
+        assert [long for _at, _short, long in _definitions(text)] == [kept]
+
+
+def test_a_citation_after_a_long_form_gives_no_second_meaning(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe QP2 (Quiet Profile 2; Fictional, 2014) was read. The QP2 held.\n\n"
+        "| Item | n |\n|---|---|\n| QP2 | 3 |\n\n*Note.* QP2 = Quiet Profile 2.\n",
+    )
+    assert not found(report, "abbreviation-redefined"), found(report)
+
+
+@pytest.mark.parametrize("designated", ["[ZK92]30", "\\[ZK92\\]30", "[ZK92]4"])
+def test_a_catalogue_designation_is_no_short_form(project: Path, designated: str) -> None:
+    """"[KX92]30", as an astronomy preprint of the real-paper corpus names the thirtieth
+    source of a catalogue, was read as a definition of the catalogue's name whose long form
+    was the words after it, and as a use. A form in square brackets with a digit straight
+    after the closing one is neither, as typed or escaped as pandoc writes it from Word; one
+    with a space before its number is read as before, a limit DESIGN.md's Known gaps write
+    down."""
+    other = designated.replace("30", "21").replace("]4", "]5")
+    report = written(
+        project,
+        f"# Results\n\nThe outflow of the protostar {designated} is faint. The jets from "
+        f"{designated} and {other} are seen.\n",
+    )
+    assert not report.findings, found(report)
+    spaced = written(project, "# Results\n\nThe outflow of [ZK92] 30 is faint.\n")
+    assert "ZK92" in " ".join(found(spaced, "abbreviation-undefined")), found(spaced)
+
+
+def test_a_square_bracket_definition_before_a_flattened_citation_reads_as_a_designation(
+    project: Path,
+) -> None:
+    """The limit of the rule above, as DESIGN.md's Known gaps write it down (review round 1
+    of #717): a definition in square brackets with a citation's number flattened straight
+    after it, as a PDF or plain text prints a superscript, is a designation by its typing,
+    so it defines nothing and its short form is asked about as undefined. The same in round
+    brackets defines."""
+    square = written(project, "# Results\n\nThe C-reactive protein [CRP]12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert [f.message.split()[0] for f in square.findings] == ["CRP"], found(square)
+    assert found(square, "abbreviation-undefined"), found(square)
+    round_ = written(project, "# Results\n\nThe C-reactive protein (CRP)12 was measured. "
+                              "The CRP rose.\n")  # fmt: skip
+    assert not round_.findings, found(round_)
+
+
+def test_a_latex_catalogue_designation_is_no_short_form(tmp_path: Path) -> None:
+    """In LaTeX, the brackets typed bare and typed in mathematics, `$[$ZK92$]$12`, which
+    prints "[ZK92]12" and leaves only "ZK92" to read."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "The jets from [ZK92]21, and [ZK92]23. The source $[$ZK92$]$12 is faint.\n"
+        "\\begin{tabular}{ll}\n$[$ZK92$]$30 & I \\\\\n\\end{tabular}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    files = _latex_read(tmp_path, None)
+    assert not [each for read in files for each in read.definitions], "nothing is defined"
+    report = _judge(files, _Known(frozenset(), frozenset()), tmp_path)
+    assert not report.findings, [f.message for f in report.findings]
+
+
+@pytest.mark.parametrize(
+    "joined", ["QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "anti-QMP_RATE"]
+)
+def test_a_name_underscores_join_is_no_use_of_a_short_form(project: Path, joined: str) -> None:
+    """A series' name in a table of an economics preprint of the real-paper corpus, a short
+    form and a word joined by an underscore, was read as a use of the short form before the
+    text defined it. A name whose parts
+    underscores join, bare or escaped as Markdown writes one, is no use of any of its parts;
+    a short form alone is, and so is one an emphasis mark encloses."""
+    text = (f"# Results\n\n| Series | Loading |\n|---|---|\n| {joined} | 0.13 |\n\n"
+            "The quarterly market price (QMP) rose. The QMP fell.\n")  # fmt: skip
+    report = written(project, text)
+    assert not report.findings, found(report)
+    used = written(project, text.replace(joined, "_QMP_"))
+    assert found(used, "abbreviation-used-before-defined"), found(used)
+
+
+def test_a_short_form_used_only_in_names_underscores_join_is_unused(project: Path) -> None:
+    """The limit of the rule above, as DESIGN.md's Known gaps write it down: a short form the
+    paper defines and then writes only inside such names is defined and not used again."""
+    report = written(project, "# Results\n\nThe quarterly market price (QMP) rose.\n\n"
+                              "| Series | Loading |\n|---|---|\n| QMP_RATE | 0.13 |\n")  # fmt: skip
+    assert found(report) == [
+        "QMP is defined and not used again in the main text as G14 reads it"], found(report)
+
+
+@pytest.mark.parametrize(
+    ("cell", "said"),
+    [("LOG_GDP-QMP", ["QMP is used here, and defined later at manuscript/main.md:7"]),
+     ("LOG_QMP-IOS", ["IOS is used once in the main text as G14 reads it, and not defined "
+                      "there"])],
+)  # fmt: skip
+def test_a_word_a_hyphen_joins_after_a_joined_name_is_read_on_its_own(
+    project: Path, cell: str, said: list[str]
+) -> None:
+    """The limit DESIGN.md's Known gaps write down (review round 2 of #717): the name
+    underscores join ends at a hyphen, so a word a hyphen joins after it is read on its own.
+    QMP after "LOG_GDP-" is a use, before the text defines it; in "LOG_QMP-IOS", QMP is a
+    part of the name and no use, and IOS after the hyphen is read, and never defined."""
+    report = written(project, f"# Results\n\n| Series | Loading |\n|---|---|\n| {cell} | 0.13 "
+                              "|\n\nThe quarterly market price (QMP) rose. The QMP fell.\n")
+    assert found(report) == said, found(report)
+
+
+def test_a_latex_name_underscores_join_is_no_use_of_a_short_form(tmp_path: Path) -> None:
+    """In LaTeX, `QMP\\_RATE`, which the reader leaves as an underscore and a NUL."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "\\begin{tabular}{ll}\nQMP\\_RATE & 0.13 \\\\\nIOS\\_QMP & 0.2 \\\\\n"
+        "QMP\\_DURA\\_6-12mth & 0.1 \\\\\n\\end{tabular}\n"
+        "The quarterly market price (QMP) rose. The QMP fell.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    report = _judge(_latex_read(tmp_path, None), _Known(frozenset(), frozenset()), tmp_path)
+    assert not report.findings, [f.message for f in report.findings]

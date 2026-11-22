@@ -150,6 +150,32 @@ def test_the_text_report_says_page_and_line(tmp_path: Path, capsys) -> None:
 
 
 @needs_pdftotext
+def test_g6_and_g14_read_a_pdf_s_lines_as_markdown_one_paragraph_between_headings(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): the text is staged as
+    Markdown, a page's lines one paragraph between two headings; a line opening on `#` is a
+    heading to G14, so a short form defined there is not defined, and a list item's number
+    stays as typed."""
+    from manuscript_guard.auditing.gates import _staged_pdf
+
+    for first, defined in (("Intensive care unit (ICU) stays were long.", True),
+                           ("# Intensive care unit (ICU) stays were long.", False),
+                           ("1. Intensive care unit (ICU) stays were long.", True)):  # fmt: skip
+        lines = [*PAPER[:7], first, "We read 412 records [2].", *PAPER[8:10],
+                 "ICU stays were long in 40.", *PAPER[10:]]  # fmt: skip
+        paper = write(tmp_path / "paper.pdf", lines, per_column=40)
+        staged = _staged_pdf(paper).files["main.md"]
+        assert f"# Methods\n\n{first}\nWe read 412 records [2].\n\n# Results\n" in staged
+        _code, report, _err = audited(capsys, str(paper))
+        [undefined] = [f["message"] for f in found(report, "abbreviation-undefined")]
+        assert undefined.startswith("3 short forms are used and never defined as G14 reads the "
+                                    "paper: 'OR' here, then CI, ICU." if not defined else
+                                    "2 short forms are used and never defined as G14 reads the "
+                                    "paper: 'OR' here, then CI."), (first, undefined)
+
+
+@needs_pdftotext
 def test_a_pdf_that_numbers_its_lines_gives_the_number(tmp_path: Path, capsys) -> None:
     paper = write(tmp_path / "paper.pdf", line_numbers=True)
     _code, report, _err = audited(capsys, str(paper))
@@ -157,6 +183,59 @@ def test_a_pdf_that_numbers_its_lines_gives_the_number(tmp_path: Path, capsys) -
     assert [(f["page"], f["line"], f["printed_line"]) for f in test] == [(1, 11, 11)], test
     assert main(["audit", str(paper)]) == 0
     assert "page 1, line 11 (numbered 11): t(48)" in capsys.readouterr().out
+
+
+def _one_page(lines: list[str]) -> list:
+    from proof_pdf import LEADING, LEFT, TOP, Piece
+
+    return [Piece(LEFT, TOP - LEADING * at, text) for at, text in enumerate(lines)]
+
+
+@needs_pdftotext
+def test_a_number_split_by_a_hyphen_a_late_float_and_a_rare_running_head_are_read_as_set(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): a number broken by a hyphen
+    at a line's end is read as two, so the Abstract's is not found; a table drawn after the
+    Discussion's heading is the Discussion's; and a running head on fewer than half the
+    pages, or away from a page's edge, is read as text, where one at the edge of every page
+    is taken out."""
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
+
+    path = tmp_path / "paper.pdf"
+    for results, not_found in ((["In all, 12-", "345 adults were enrolled."],
+                                ["In all, 12345 adults were enrolled."]),
+                               (["In all, 12345 adults were enrolled."], [])):  # fmt: skip
+        path.write_bytes(pdf([_one_page(["Abstract", "In all, 12345 adults were enrolled.",
+                                         "Results", *results, "Discussion", "None."])]))
+        assert "\n".join(results) in reading.read_pdf(path).text
+        _code, report, _err = audited(capsys, str(path))
+        assert [f["context"] for f in found(report, "abstract-not-found")] == not_found
+    table = ["Table 1. Baseline", "Women 61"]
+    for before, after, asked in ((table, [], []), ([], table, ["Of them, 61 were women."])):
+        path.write_bytes(pdf([_one_page(["Abstract", "Of them, 61 were women.", "Methods",
+                                         "We read 412 records.", "Results", "None of note.",
+                                         *before, "Discussion", "It was so.", *after])]))
+        _code, report, _err = audited(capsys, str(path))
+        assert [f["context"] for f in found(report, "question-number-only-in")] == asked
+    head = "Journal of Things 2024;77:345"
+
+    def page(number: int, at: float | None) -> list:
+        # Two lines' room left after line 4, so that a head set mid-page there overlaps none.
+        pieces = [Piece(LEFT, TOP - LEADING * (k if k < 5 else k + 2), f"Line {k} of page "
+                        f"{number}.") for k in range(10)]  # fmt: skip
+        # Drawn where it stands, from the top down, so that a build reading the drawing
+        # order (Xpdf 4.00) and one reading the layout (poppler) set it at the same place.
+        set_out = pieces + ([] if at is None else [Piece(LEFT, at, head, size=7.0)])
+        return sorted(set_out, key=lambda piece: -piece.y)
+
+    for pages, taken in (([page(1, 810.0), page(2, None), page(3, None)], False),
+                         ([page(n, 810.0) for n in (1, 2, 3)], True),
+                         ([page(n, TOP - LEADING * 5.5) for n in (1, 2, 3)], False)):  # fmt: skip
+        path.write_bytes(pdf(pages))
+        read = reading.read_pdf(path)
+        assert (head in read.text, read.furniture) == (
+            (False, (head,)) if taken else (True, ())), taken
 
 
 @needs_pdftotext
@@ -203,6 +282,41 @@ def test_headings_that_cannot_be_placed_place_nothing(tmp_path: Path, capsys) ->
 
 
 @needs_pdftotext
+def test_a_section_under_another_title_is_the_one_before_and_a_name_twice_places_nothing(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): a Results headed "Outcomes"
+    is no heading, its lines the Methods', so the Abstract is compared with no Results; and a
+    wrapped line holding only "Results", with a capital, is a heading, the name then on two
+    lines, and the PDF's lines are placed in no section. In lower case it is no heading."""
+    outcomes = write(tmp_path / "outcomes.pdf", [
+        "Outcomes" if line == "Results" else line for line in PAPER], per_column=40)
+    assert [title for _line, title in reading.read_pdf(outcomes).headings] == [
+        "Abstract", "Introduction", "Methods", "Discussion", "References"]
+    _code, report, _err = audited(capsys, str(outcomes))
+    assert not report["abstract_compared"]
+    _code, report, _err = audited(capsys, str(write(tmp_path / "results.pdf", PAPER,
+                                                    per_column=40)))  # fmt: skip
+    assert report["abstract_compared"]
+    for word, placed in (("Results", False), ("results", True)):
+        lines = [*PAPER[:6], "Drugs cause harm in our", word, "and others [1].", *PAPER[6:]]
+        pdf = reading.read_pdf(write(tmp_path / f"{word}.pdf", lines, per_column=40))
+        assert ("Results" in [title for _line, title in pdf.headings][:3]) is not placed
+        assert (pdf.placed is not None) is placed, word
+        _code, report, _err = audited(capsys, str(pdf.path))
+        said = " ".join(f["message"] for f in found(report, "not-audited"))
+        assert ("its lines were placed in no section" in said) is not placed, word
+    # The parts end where their order starts again, a Background after Findings, though no
+    # part is named twice (`text.section_names._parts_end`).
+    lines = [PAPER[0], "Abstract", "Methods", "We read 412 records.", "Findings", PAPER[3],
+             "Background", "Drugs cause harm [1].", *PAPER[8:]]  # fmt: skip
+    pdf = reading.read_pdf(write(tmp_path / "order.pdf", lines, per_column=40))
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), ("Methods", 2), ("Findings", 2), ("Background", 1), ("Results", 1),
+        ("Discussion", 1), ("References", 1)]  # fmt: skip
+
+
+@needs_pdftotext
 def test_a_structured_abstract_ends_where_the_main_text_names_a_part_again(
     tmp_path: Path, capsys
 ) -> None:
@@ -216,6 +330,34 @@ def test_a_structured_abstract_ends_where_the_main_text_names_a_part_again(
     assert [level for _line, _title, level in pdf.placed] == [1, 2, 2, 1, 1, 1, 1]
     _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
     assert report["abstract_compared"]
+
+
+@needs_pdftotext
+def test_an_abstract_of_words_then_background_methods_and_results_is_placed(
+    tmp_path: Path, capsys
+) -> None:
+    """A BMC-style paper, its Abstract of words and then a main text headed Background,
+    Methods and Results with no Introduction, was read as a structured abstract with nothing
+    after it and left unplaced (DESIGN.md, "Closed since"): the words under the Abstract's
+    heading make the Background the main text's, and the paper is placed, its Abstract
+    compared, its causal words read and its word limits checked."""
+    lines = [*PAPER[:4], "Background", "Drugs cause harm [1].", *PAPER[6:]]
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines, per_column=40))
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), ("Background", 1), ("Methods", 1), ("Results", 1), ("Discussion", 1),
+        ("References", 1)]  # fmt: skip
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  abstract_words: 10\n"), encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(pdf.path), "--journal", str(journal),
+                                  "--design", "observational")  # fmt: skip
+    assert report["abstract_compared"]
+    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+        "The rate was 21.4% in the exposed."]
+    assert [f["message"] for f in found(report, "over-journal-limit")] == [
+        "abstract: 20 words, limit 10"]
+    assert [f["context"] for f in found(report, "causal-word-observational")] == [
+        "Exposure causes the event."]
 
 
 @needs_pdftotext
@@ -470,6 +612,83 @@ def test_a_journals_limits_on_tables_are_not_checked_in_a_pdf(tmp_path: Path, ca
 
 
 @needs_pdftotext
+def test_a_pdf_table_s_numbers_are_the_text_s_and_its_words_count_toward_g4(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): a table is not read as cells:
+    its total that the rows above it do not add up to is not held to them, which a Markdown
+    table's is; its numbers are read as the text's, the Abstract's found there; and its
+    words count toward G4's word limit."""
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  main_text_words: 10\n"), encoding="utf-8")  # fmt: skip
+    table = ["Table 1. Baseline", ((0, "Sex"), (120, "Cases"), (220, "Controls")),
+             ((0, "Men"), (120, "60"), (220, "50")), ((0, "Women"), (120, "40"), (220, "41")),
+             ((0, "Total"), (120, "100"), (220, "97"))]  # fmt: skip
+    for rows, words, not_found in ((table, 64, []),
+                                   ([], 49, ["Of the controls, 41 were women."])):  # fmt: skip
+        path = tmp_path / "paper.pdf"
+        path.write_bytes(_set(["Abstract", "Of the controls, 41 were women.", "Introduction",
+                               _LONG, "Methods", _LONG, "Results", "Of 412 patients, 77 had it.",
+                               *rows, "Discussion", _LONG]))  # fmt: skip
+        _code, report, _err = audited(capsys, str(path), "--journal", str(journal))
+        assert [f["message"] for f in found(report, "over-journal-limit")] == [
+            f"main text: {words} words, limit 10"]
+        assert [f["context"] for f in found(report, "abstract-not-found")] == not_found
+        assert report["counts"]["totals_off"] == 0 and not found(report, "sum-off")
+    # The other side, a Markdown table's total held to its rows (`test_corruption.py`).
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\n| Sex | Cases | Controls |\n|---|---|---|\n| Men | 60 | 50 |\n"
+                     "| Women | 40 | 41 |\n| Total | 100 | 97 |\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(paper))
+    assert report["counts"]["totals_off"] == 1 and len(found(report, "sum-off")) == 1
+
+
+#: Tables and a list of a paper, each with one fault a table's or a list's check finds: a
+#: share its count does not give, a mean less than twice its SD, categories over their
+#: column's n, a count held back that the total gives away, and a flow that does not add up.
+_HELD = [
+    ("Table 1. Baseline", [("Characteristic", "Cases (n = 100)"), ("Women", "40 (45%)"),
+                           ("CRP, mean (SD)", "5.0 (4.0)")]),
+    ("Table 2. Sites", [("Characteristic", "Cases (n = 120)"), ("Region", ""),
+                        ("North", "70 (50.0)"), ("South", "70 (50.0)")]),
+    ("Table 3. Wards", [("Ward", "Cases"), ("East", "60"), ("West", "<5"), ("Total", "63")]),
+]  # fmt: skip
+_FLOW = ["Assessed (n = 412)", "Excluded (n = 112)", "Randomised (n = 299)"]
+#: What each fault is said as, where its check reads it.
+_HELD_CODES = ["count-recoverable", "does-not-fit", "flow-broken", "mean-sd-skewed",
+               "over-header-n"]  # fmt: skip
+
+
+@needs_pdftotext
+def test_no_share_mean_flow_count_held_back_or_n_is_held_in_a_pdf_table(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): in a PDF no share, mean, flow,
+    count held back or n is held to another, its tables and lists being lines of text; the
+    same tables and list in a Markdown paper have each fault said."""
+    flags = ("--non-negative", "crp", "--minimum-cell-count", "5", "--json")
+    markdown = "# Results\n\nOf 412 patients, 77 had it.\n\n"
+    rows: list = ["Abstract", "Of 412 patients, 77 had it.", "Introduction", _LONG, "Methods",
+                  _LONG, "Results", "Of 412 patients, 77 had it."]  # fmt: skip
+    for caption, lines in _HELD:
+        markdown += f"{caption}\n\n| {lines[0][0]} | {lines[0][1]} |\n|---|---|\n" + "".join(
+            f"| {label} | {cell} |\n" for label, cell in lines[1:]) + "\n"
+        rows += [caption, *(((0, label), (160, cell)) if cell else label
+                            for label, cell in lines)]  # fmt: skip
+    markdown += ("Participant flow\n\n- " + _FLOW[0] + "\n  - " + _FLOW[1] + "\n- " + _FLOW[2]
+                 + "\n\n# Discussion\n\nNone.\n")  # fmt: skip
+    rows += ["Participant flow", f"- {_FLOW[0]}", f"  - {_FLOW[1]}", f"- {_FLOW[2]}",
+             "Discussion", _LONG]  # fmt: skip
+    (tmp_path / "paper.md").write_text(markdown, encoding="utf-8")
+    (tmp_path / "paper.pdf").write_bytes(_set(rows))
+    for name, said in (("paper.md", _HELD_CODES), ("paper.pdf", [])):
+        main(["audit", str(tmp_path / name), *flags])
+        report = json.loads(capsys.readouterr().out)
+        assert sorted({f["code"] for f in report["findings"]} & set(_HELD_CODES)) == said, name
+
+
+@needs_pdftotext
 @needs_pdfinfo
 def test_an_author_in_a_blind_pdfs_author_field_is_counted(tmp_path: Path, capsys) -> None:
     clean = write(tmp_path / "clean.pdf", author="Editorial Office")
@@ -483,6 +702,63 @@ def test_an_author_in_a_blind_pdfs_author_field_is_counted(tmp_path: Path, capsy
                                  "--authors", str(authors(tmp_path)), "--strict")  # fmt: skip
     named = found(report, "blind-document-names-author")
     assert code == 1 and len(named) == 1 and "the PDF's author" in named[0]["message"], named
+
+
+def _with_more_metadata(data: bytes, name: str) -> bytes:
+    """`data`, a PDF `typeset` wrote with an Author, given `name` in its Info dictionary's other
+    fields, as the XMP metadata's `dc:creator` and as a note's author and text."""
+    import re
+
+    objects = [m.group(2) for m in re.finditer(rb"(\d+) 0 obj\n(.*?)\nendobj\n", data, re.S)]
+    said = name.encode("ascii")
+    xmp = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/'
+           b'02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">'
+           b"<dc:creator><rdf:Seq><rdf:li>" + said + b"</rdf:li></rdf:Seq></dc:creator>"
+           b"</rdf:Description></rdf:RDF></x:xmpmeta>")  # fmt: skip
+    info = len(objects)
+    objects[0] = objects[0].replace(b" >>", b" /Metadata %d 0 R >>" % (info + 1), 1)
+    objects[4] = objects[4][:-2] + b" /Annots [%d 0 R] >>" % (info + 2)
+    objects[-1] = objects[-1].replace(b" >>", b" /Title (" + said + b") /Creator (" + said
+                                      + b") /Subject (" + said + b") /Keywords (" + said
+                                      + b") >>", 1)  # fmt: skip
+    objects += [b"<< /Type /Metadata /Subtype /XML /Length %d >>\nstream\n" % len(xmp) + xmp
+                + b"\nendstream",
+                b"<< /Type /Annot /Subtype /Text /Rect [500 700 520 720] /T (" + said
+                + b") /Contents (" + said + b" wrote this) >>"]  # fmt: skip
+    body = b"%PDF-1.4\n"
+    offsets = []
+    for number, content in enumerate(objects, start=1):
+        offsets.append(len(body))
+        body += b"%d 0 obj\n" % number + content + b"\nendobj\n"
+    table = len(body)
+    body += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    body += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    body += b"trailer\n<< /Size %d /Root 1 0 R /Info %d 0 R >>\n" % (len(objects) + 1, info)
+    return body + b"startxref\n%d\n%%%%EOF\n" % table
+
+
+@needs_pdftotext
+@needs_pdfinfo
+def test_of_a_pdf_only_the_author_of_its_info_dictionary_is_read(tmp_path: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A paper read by its editor or a referee"): an
+    author named in a PDF's other Info fields, its XMP metadata (`dc:creator`) and a note on
+    its page is not read, by the Document section or the blinding check; in its Author
+    field, the name is counted."""
+    for author, counted in (("Editorial Office", False), ("Ada Example", True)):
+        paper = tmp_path / "paper.pdf"
+        paper.write_bytes(_with_more_metadata(typeset(
+            PAPER, columns=1, per_column=12, head="Journal of Things", foot="Page", first_page=1,
+            author=author), "Ada Example"))  # fmt: skip
+        code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)),
+                                     "--authors", str(authors(tmp_path)), "--strict")  # fmt: skip
+        assert [f["message"] for f in found(report, "document-person")] == [
+            f"{reading.AUTHOR_FIELD}: {author}"]
+        named = [f["message"].split(" is in ")[1] for f in
+                 found(report, "blind-document-names-author")]  # fmt: skip
+        assert named == (["the PDF's author (the Author of its Info dictionary, read by "
+                          "pdfinfo) of paper.pdf, and the journal's review is double-blind"]
+                         if counted else []), named  # fmt: skip
+        assert code == (1 if counted else 0)
 
 
 @needs_pdftotext
@@ -522,6 +798,36 @@ def test_word_limits_of_a_pdf_whose_abstract_cannot_be_placed_are_not_checked(
                 if f["message"].startswith("abstract: ")]  # fmt: skip
     skipped = [f["message"] for f in found(report, "journal-not-checked")]
     assert any("headings could not be placed exactly" in m for m in skipped), skipped
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("title", ["Abbreviations", "Funding"])
+def test_a_heading_after_a_structured_abstract_counts_toward_its_limit(
+    tmp_path: Path, capsys, title: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): a heading between a PDF's
+    structured abstract and its Introduction is placed under the Abstract, and its words
+    count toward the abstract's limit in G4; after an Abstract of words alone it is the main
+    text's, and so are they."""
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  abstract_words: 10\n  main_text_words: 10\n"),
+        encoding="utf-8")  # fmt: skip
+    extra = [title, " ".join(["word"] * 8) + ".", " ".join(["word"] * 8) + "."]
+    for opening, level, words in (([PAPER[1], "Background", "Drugs are used.", "Results"], 2,
+                                   ("abstract: 42 words", "main text: 41 words")),
+                                  ([PAPER[1]], 1, ("abstract: 20 words", "main text: 58 words")),
+                                  ):  # fmt: skip
+        lines = [PAPER[0], *opening, PAPER[2], PAPER[3], *extra, *PAPER[4:]]
+        # One page, with no running head or foot: a one-page PDF does not have them taken
+        # out, and Xpdf 4.00 reads them first, poppler its foot last, so the words before
+        # the Abstract would differ by build.
+        path = write(tmp_path / "paper.pdf", lines, per_column=70, head=None, foot=None,
+                     first_page=None)  # fmt: skip
+        assert (title, level) in [(t, n) for _line, t, n in reading.read_pdf(path).placed]
+        _code, report, _err = audited(capsys, str(path), "--journal", str(journal))
+        assert sorted(f["message"] for f in found(report, "over-journal-limit")) == [
+            f"{words[0]}, limit 10", f"{words[1]}, limit 10"]
 
 
 @needs_pdftotext
@@ -640,6 +946,29 @@ def test_a_pdf_figure_is_no_pdf_paper_in_the_draft(tmp_path: Path, capsys) -> No
 
 
 @needs_pdftotext
+def test_one_pdf_as_the_paper_and_a_figure_is_read_as_both_and_no_figure_is_said(
+    tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): the paper's PDF named with
+    `--figures` too is read as both, its text a second time as a figure's, the Abstract's
+    21.4% found there; and the draft says no figure was given, as it does not of another."""
+    paper = write(tmp_path / "paper.pdf")
+    _code, report, _err = audited(capsys, str(paper))
+    assert (report["counts"]["files"], report["counts"]["abstract_not_found"]) == (1, 1)
+    forest = write(tmp_path / "forest.pdf", ["Figure 1", "Odds ratio 1.42"])
+    for figure, none_given in ((paper, True), (forest, False)):
+        target = tmp_path / "d.md"
+        target.unlink(missing_ok=True)
+        _code, report, _err = audited(capsys, str(paper), "--figures", str(figure),
+                                      "--report-draft", str(target))  # fmt: skip
+        assert report["counts"]["files"] == 2
+        assert report["counts"]["abstract_not_found"] == (0 if figure == paper else 1)
+        unchecked = target.read_text(encoding="utf-8").split("## Exact findings")[0]
+        assert ("Figures: none was given (`--figures`)" in unchecked) is none_given
+        assert "A PDF's tables and lists:" in unchecked
+
+
+@needs_pdftotext
 def test_a_compare_draft_beside_a_pdf_lists_no_table_or_figure_check(tmp_path: Path,
                                                                        capsys) -> None:  # fmt: skip
     """Where either version is a PDF, the tables and the figures are not compared: the draft
@@ -752,6 +1081,43 @@ def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
     said = [item.message for item in _printed_items(census)]
     assert said and "its numbers go from 2 to 4" in said[0], said
     assert [entry.dois for entry in census.entries] == [("10.5555/a.1",)]
+
+
+def test_two_dois_a_wrapped_next_number_and_a_hyphen_at_an_entry_s_end_misread_a_list(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A PDF manuscript"): an entry holding two DOIs
+    leaves the whole list not told apart, counted by its identifiers; a wrapped line that
+    opens on the next number expected is a phantom entry the citations are held to; and an
+    entry whose last line ends in a hyphen or a dash runs on into the next, whose number then
+    reads as a skip, a blank line between them or not."""
+    from manuscript_guard.auditing.references import NUMBERED, UNTOLD, census_of_printed
+
+    def read(text: str, cited: str = "As [1-3].\n"):
+        return census_of_printed(tmp_path / "p.pdf", text, [(0, text.count("\n"))], cited, [])
+
+    census = read("References\n1. A. doi:10.5555/a.1 and data doi:10.5555/d.1\n2. B. Two.\n"
+                  "3. C. Three.\n")  # fmt: skip
+    assert (census.style, census.untold) == (UNTOLD, "entry 1 holds more than one DOI")
+    assert [entry.dois for entry in census.entries] == [("10.5555/a.1",), ("10.5555/d.1",)]
+    # The other side: one DOI to the entry, and the list is told apart.
+    census = read("References\n1. A. doi:10.5555/a.1\n2. B. Two.\n3. C. Three.\n")
+    assert census.style == NUMBERED and [e.number for e in census.entries] == [1, 2, 3]
+    wrapped = "References\n1. A. One.\n2. B. Handbook, Part\nNEXT Results of the trial. 2019.\n"
+    census = read(wrapped.replace("NEXT", "3."), "As [1, 2].\n")
+    assert [(e.number, e.text) for e in census.entries] == [
+        (1, "1. A. One."), (2, "2. B. Handbook, Part"), (3, "3. Results of the trial. 2019.")]
+    assert [p.code for p in census.problems] == ["entry-never-cited"]
+    census = read(wrapped.replace("NEXT ", ""), "As [1, 2].\n")
+    assert [e.number for e in census.entries] == [1, 2] and census.problems == []
+    for dash in ("-", "\N{EN DASH}"):
+        for blank in ("", "\n"):
+            census = read(f"References\n1. A. J X. 2019;12:112{dash}\n{blank}2. B. Two.\n"
+                          "3. C. Three.\n")  # fmt: skip
+            assert census.style == UNTOLD and census.untold.startswith(
+                "its numbers go from 1 to 3"), (dash, blank)
+    census = read("References\n1. A. J X. 2019;12:112-9.\n2. B. Two.\n3. C. Three.\n")
+    assert census.style == NUMBERED
 
 
 def test_an_untold_list_looks_up_each_identifier_ending_a_line(tmp_path: Path) -> None:

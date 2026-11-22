@@ -125,6 +125,19 @@ def test_items_under_an_arm_are_said_and_not_read() -> None:
                           "read",)  # fmt: skip
 
 
+def test_items_under_a_reason_are_noted_and_not_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on steps for each arm): items under a reason are noted, and their 10 is held to
+    nothing."""
+    text = FLOW.replace("    - Declined to participate (n = 25)\n",
+                        "    - Declined to participate (n = 25)\n      - By phone (n = 10)\n")
+    [flow] = _flows(text)
+    assert flow.read and flow.problems == ()
+    assert flow.notes == ("the items under a reason of 'Excluded' are not read",)
+    [flow] = _flows(text.replace("(n = 10)", "(n = 99)"))
+    assert flow.problems == ()
+
+
 def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
     source = read_tree({"paper.tex": tex(
         "!documentclass{article}\n!begin{document}\n"
@@ -138,6 +151,24 @@ def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
     assert flow.stages == (412, 290) and flow.line == 4
     assert flow.problems == ("stage 1 (412) less its exclusions (112) is 300, and stage 2 is "
                              "290",)  # fmt: skip
+
+
+@pytest.mark.parametrize(("inner", "flows"), [("itemize", [(412, 290)]), ("compactitem", []),
+                                              ("steps", [])])  # fmt: skip
+def test_a_latex_list_of_another_environment_is_no_level(inner: str, flows: list) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on LaTeX environments): a `compactitem`, or a list environment the paper defines,
+    nested in an item is not read as a level, so the list is no flow. The paper defines
+    `steps` as an itemize."""
+    source = read_tree({"paper.tex": tex(
+        "!documentclass{article}\n!newenvironment{steps}{!begin{itemize}}{!end{itemize}}\n"
+        "!begin{document}\n!begin{itemize}\n!item Assessed (n = 412)\n"
+        f"!begin{{{inner}}}\n!item Excluded (n = 112)\n!end{{{inner}}}\n"
+        "!item Randomised (n = 290)\n!end{itemize}\n!end{document}\n")}, "paper.tex").sources[0]
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+    assert [flow.stages for flow in flows_in(latex_lists(source, hidden))] == flows
 
 
 def tex(text: str) -> str:
@@ -210,6 +241,27 @@ def test_counts_in_text_boxes_are_noted_as_a_flow_not_read(tmp_path: Path) -> No
         (0, "its text boxes give 2 counts (n = N), as a flow drawn in boxes does")]
 
 
+@pytest.mark.parametrize(("style", "levels"), [("<w:pPr><w:pStyle/></w:pPr>", ((2, 1),)),
+                                               ("", ())])  # fmt: skip
+def test_a_paragraph_style_with_no_value_is_looked_up_as_the_style_named_nothing(
+    tmp_path: Path, style: str, levels: tuple
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on `<w:pStyle/>`): a style written with no value is the style whose id is "", here
+    a heading, so "Participant flow" is a heading of the first level; with no style written
+    it is no heading."""
+    styles = (f"<w:styles {NS}><w:style w:type='paragraph' w:styleId=''><w:name "
+              "w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
+    body = (f"<w:p><w:r><w:t>Intro</w:t></w:r></w:p><w:p>{style}<w:r><w:t>Participant flow"
+            "</w:t></w:r></w:p>")  # fmt: skip
+    path = tmp_path / "p.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<?xml version='1.0'?><w:document {NS}><w:body>"
+                                              f"{body}</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/styles.xml", styles)
+    assert read_docx_text(path).heading_levels == levels
+
+
 # ------------------------------------------------------------------ Abstract against Results
 
 PAPER = """\
@@ -264,6 +316,65 @@ def test_numbers_that_agree_as_printed_are_no_conflict(tmp_path: Path) -> None:
     assert audit([tmp_path / "c.md"], None).abstract.conflicts == []
 
 
+INTERVAL_SAID = ("the Abstract gives OR 1.52 (95% CI 1.21 to 1.90), and where the paper reports, "
+                 "line 13 gives OR 1.52 (95% CI 1.21 to 1.89)")
+TEST_SAID = ("the Abstract gives t(48) = 2.10, P = 0.03, and where the paper reports, line 13 "
+             "gives t(48) = 2.10, P = 0.04")
+
+
+def _said(tmp_path: Path, text: str) -> list[str]:
+    (tmp_path / "p.md").write_text(text, encoding="utf-8")
+    return [c.message for c in audit([tmp_path / "p.md"], None).abstract.conflicts]
+
+
+def test_a_conflict_needs_a_unique_counterpart(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): where two intervals of the same estimate and level, or two tests of the
+    same kind, degrees of freedom and statistic, could be the counterpart, none is said; with
+    one of each, both are."""
+    assert _said(tmp_path, PAPER) == [INTERVAL_SAID, TEST_SAID]
+    two_intervals = PAPER.replace("We found t(48)", "Else, OR 1.52 (95% CI 1.21-1.88). We found "
+                                  "t(48)")  # fmt: skip
+    assert _said(tmp_path, two_intervals) == [TEST_SAID]
+    two_tests = PAPER.replace("P = 0.04.", "P = 0.04. Then t(48) = 2.10, P = 0.05.")
+    assert _said(tmp_path, two_tests) == [INTERVAL_SAID]
+
+
+@pytest.mark.parametrize(("abstract", "results", "paired"), [
+    ("aOR", "OR", False), ("adj. OR", "OR", False), ("OR", "aOR", False),
+    ("Adjusted OR", "OR", True),
+])  # fmt: skip
+def test_an_estimate_named_another_way_has_no_counterpart(
+    tmp_path: Path, abstract: str, results: str, paired: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): an estimate is paired by its name, so "aOR" or "adj. OR" against "OR" has
+    no counterpart and its conflict is not said; "Adjusted OR" is an OR, and it is."""
+    text = PAPER.replace("(OR 1.52, 95% CI 1.21-1.90)", f"({abstract} 1.52, 95% CI 1.21-1.90)")
+    text = text.replace("(OR 1.52, 95% CI 1.21-1.89)", f"({results} 1.52, 95% CI 1.21-1.89)")
+    assert _said(tmp_path, text) == ([INTERVAL_SAID, TEST_SAID] if paired else [TEST_SAID])
+
+
+def test_where_the_true_counterpart_is_unreadable_a_near_one_is_said_to_conflict(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): the Results' own interval, joined by hyphens after a negative bound, cannot
+    be read, and another of the same name and level agreeing in two numbers, the women's, is
+    said to conflict in its third; read, the true one agrees, and nothing is said."""
+    text = ("# A trial\n\n## Abstract\n\nThe mean difference was -0.50 (95% CI -0.90 to -0.10)."
+            "\n\n## Methods\n\nWe randomised 412 patients.\n\n## Results\n\nOverall, the mean "
+            "difference was -0.50 (95% CI TRUE). In women, the mean difference was -0.50 (95% "
+            "CI -0.90 to -0.20).\n\n## Discussion\n\nNothing.\n")  # fmt: skip
+    (tmp_path / "p.md").write_text(text.replace("TRUE", "-0.90--0.10"), encoding="utf-8")
+    [conflict] = audit([tmp_path / "p.md"], None).abstract.conflicts
+    assert (conflict.line, conflict.message) == (5, (
+        "the Abstract gives mean difference -0.50 (95% CI -0.90 to -0.10), and where the "
+        "paper reports, line 13 gives mean difference -0.50 (95% CI -0.90 to -0.20)"))
+    (tmp_path / "p.md").write_text(text.replace("TRUE", "-0.90 to -0.10"), encoding="utf-8")
+    assert audit([tmp_path / "p.md"], None).abstract.conflicts == []
+
+
 def test_a_supplement_and_a_table_are_where_the_paper_reports(tmp_path: Path) -> None:
     paper = PAPER.replace("As 99 died", "| Died | 99 |\n|---|---|\n| x | 1 |\n\nAs 9 died")
     (tmp_path / "p.md").write_text(paper.replace("99 died.", "99 died, 77 lived."),
@@ -271,6 +382,42 @@ def test_a_supplement_and_a_table_are_where_the_paper_reports(tmp_path: Path) ->
     (tmp_path / "supplement.md").write_text("Of the cohort, 77 lived.\n", encoding="utf-8")
     read = audit([tmp_path / "p.md", tmp_path / "supplement.md"], None).abstract
     assert read.not_found == []
+
+
+def test_a_table_in_the_abstract_reports_and_a_word_footnote_is_searched_nowhere(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): a table's lines are where the paper reports wherever it stands, the
+    Abstract included, and a Word document's footnotes are a note's lines, searched under no
+    heading, the Results not even where they are the body's last."""
+    text = ("# T\n\n## Abstract\n\nOf 412, 99 died.\n\nTABLE\n\n## Methods\n\nWe randomised 412 "
+            "patients.\n\n## Results\n\nNone.\n\n## Discussion\n\nDISCUSSION\n")  # fmt: skip
+    table = "| Died | 99 |\n|---|---|\n| x | 1 |"
+    (tmp_path / "a.md").write_text(text.replace("TABLE", table).replace("DISCUSSION", "None."),
+                                   encoding="utf-8")  # fmt: skip
+    read = audit([tmp_path / "a.md"], None).abstract
+    assert (read.matched, read.not_found, read.only_in) == (2, [], [])
+    # The other side: the same row as prose of the Discussion is no place the paper reports.
+    (tmp_path / "b.md").write_text(text.replace("TABLE", "").replace("DISCUSSION", "As 99 died."),
+                                   encoding="utf-8")  # fmt: skip
+    read = audit([tmp_path / "b.md"], None).abstract
+    assert read.matched == 1 and [c.text for c, *_rest in read.only_in] == ["99"]
+    notes = (f"<?xml version='1.0'?><w:footnotes {NS}><w:footnote w:id='1'><w:p><w:r>"
+             "<w:t>Of them 99 died.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    body = [("Abstract", "H1"), ("Of 412, 99 died.", ""), ("Methods", "H1"),
+            ("We randomised 412.", ""), ("Results", "H1"), ("None.", "")]  # fmt: skip
+    for last in ([], [("Discussion", "H1"), ("Nothing.", "")]):
+        path = word(tmp_path / f"p{len(last)}.docx", body + last)
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr("word/footnotes.xml", notes)
+        read = audit([path], None).abstract
+        assert read.matched == 1 and [c.text for c in read.not_found] == ["99"], last
+        assert read.only_in == []
+    # The other side: the same sentence in the body under the Results is found there.
+    path = word(tmp_path / "body.docx", [*body[:5], ("Of them 99 died.", "")])
+    read = audit([path], None).abstract
+    assert (read.matched, read.not_found) == (2, [])
 
 
 @pytest.mark.parametrize(
@@ -288,6 +435,21 @@ def test_without_an_abstract_or_results_nothing_is_compared(
     read = audit([tmp_path / "p.md"], None).abstract
     assert not read.compared and why in read.why_not
     assert read.conflicts == read.not_found == []
+
+
+@pytest.mark.parametrize("paper", [PAPER.replace("## Abstract", "## Summary"),
+                                   PAPER.replace("## Abstract\n\n", "")],
+                         ids=["summary", "no heading"])  # fmt: skip
+def test_an_abstract_under_summary_or_no_heading_is_not_found(tmp_path: Path, paper: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): an Abstract under no heading that names it, or under "Summary", is not
+    found, and nothing is compared; under "Abstract" its two conflicts are said."""
+    (tmp_path / "p.md").write_text(paper, encoding="utf-8")
+    read = audit([tmp_path / "p.md"], None).abstract
+    assert not read.compared and read.why_not == "no file has a heading that names the Abstract"
+    assert read.conflicts == read.not_found == read.only_in == [] and read.matched == 0
+    (tmp_path / "p.md").write_text(PAPER, encoding="utf-8")
+    assert len(audit([tmp_path / "p.md"], None).abstract.conflicts) == 2
 
 
 def test_a_word_abstract_is_placed_by_its_heading_levels(tmp_path: Path) -> None:
@@ -377,6 +539,42 @@ def test_a_subgroup_list_is_a_note_and_the_same_list_named_a_flow_fails(
     capsys.readouterr()
 
 
+def test_a_list_of_subgroups_under_participants_is_a_broken_flow_that_fails_strict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on lists of subgroups): men over smokers and women over smokers read as two
+    stages and an exclusion, and under "Participants", a name for a flow, the list is said
+    to be broken and fails `--strict`."""
+    [flow] = _flows("## Participants\n\n" + SUBGROUPS)
+    assert (flow.stages, flow.exclusions, flow.named) == ((200, 180), ((50,),), True)
+    assert flow.problems == ("the reasons after stage 1 (50) cannot account for the 20 "
+                             "excluded, even overlapping",)  # fmt: skip
+    paper = tmp_path / "p.md"
+    paper.write_text("# Participants\n\n" + SUBGROUPS, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("heading", ["Diagrama de flujo", "Teilnehmerfluss", "Results"])
+def test_a_broken_flow_under_a_heading_that_names_no_flow_in_english_passes_strict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], heading: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on `FLOW_NAMES`): the names for a flow are English, so a broken flow under a
+    Spanish or a German one, or under "Results" with nothing naming it, is a note and
+    passes `--strict`, where under "Participant flow" it fails."""
+    broken = FLOW.replace("149", "148")
+    [flow] = _flows(f"## {heading}\n\n{broken}")
+    assert not flow.named and flow.problems == ("the arms sum to 299, and the last stage is 300",)
+    paper = tmp_path / "p.md"
+    paper.write_text(f"# {heading}\n\n{broken}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Participant flow\n\n{broken}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    capsys.readouterr()
+
+
 def test_a_latex_and_a_word_list_are_named_by_their_heading_or_caption(tmp_path: Path) -> None:
     source = read_tree({"paper.tex": tex(
         "!documentclass{article}\n!begin{document}\n!section{Participant flow}\n\nText.\n\n"
@@ -458,6 +656,27 @@ def test_a_latex_abstract_on_the_line_of_its_end_is_compared(tmp_path: Path) -> 
     assert conflict.line == 4 and "line 8 gives" in conflict.message
 
 
+def test_an_introduction_s_interval_on_the_results_heading_s_line_is_read_as_reported(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The Abstract is held to the Results by weak
+    membership"): a `.tex` line keeps its first place where the paper reports, so another
+    trial's interval in the Introduction, on the line of the `\\section{Results}` after it,
+    is the Abstract's counterpart and its conflict is said; on a line of its own it is the
+    Introduction's, and nothing is."""
+    text = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\nThe OR was 1.52 (95!% "
+            "CI 1.21--1.90).\n!end{abstract}\n!section{Introduction}\nAnother trial gave OR 1.52 "
+            "(95!% CI 1.21--1.89).BREAK!section{Results}\nWe found 77 deaths.\n"
+            "!section{Discussion}\nNothing.\n!end{document}\n")  # fmt: skip
+    (tmp_path / "p.tex").write_text(tex(text.replace("BREAK", "")), encoding="utf-8")
+    [conflict] = audit([tmp_path / "p.tex"], None).abstract.conflicts
+    assert (conflict.line, conflict.message) == (4, (
+        "the Abstract gives OR 1.52 (95% CI 1.21 to 1.90), and where the paper reports, line 7 "
+        "gives OR 1.52 (95% CI 1.21 to 1.89)"))
+    (tmp_path / "p.tex").write_text(tex(text.replace("BREAK", "\n")), encoding="utf-8")
+    assert audit([tmp_path / "p.tex"], None).abstract.conflicts == []
+
+
 def test_any_heading_over_a_list_may_name_it_a_flow() -> None:
     [flow] = _flows("## Participant flow\n\n### Trial A\n\n- A (n = 9)\n  - B (n = 1)\n"
                     "- C (n = 7)\n")
@@ -482,6 +701,39 @@ def test_flow_alone_names_no_flow() -> None:
                     "Flow of patients through the trial"):
         [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
         assert flow.named, heading
+
+
+@pytest.mark.parametrize(("heading", "named"), [
+    ("Patient flow cytometry", True), ("Blood flow of the forearm", True),
+    ("Study population characteristics", True), ("Flow cytometry", False),
+    ("Blood flow", False), ("Population characteristics", False)])  # fmt: skip
+def test_a_name_for_a_flow_is_read_as_words_of_a_title_not_as_its_subject(
+    heading: str, named: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on names read as words): "Patient flow cytometry", "Blood flow of the forearm" and
+    "Study population characteristics" name a list a flow, for the words of a name in them,
+    where the same titles without those words do not."""
+    [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+    assert flow.named is named
+
+
+def test_a_review_s_sources_and_duplicates_under_identified_fail_as_exclusions() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A flow is read from a list's shape only", its
+    point on sources and a removal under one stage): databases, registers and duplicates
+    removed under "Identified" are read as that stage's exclusions, overlapping, and fail
+    under a PRISMA heading. The 2026-11-09 triage planned a fix (F10), which will change this
+    test."""
+    prisma = ("## PRISMA flow chart\n\n- Identified (n = 520)\n  - Databases (n = 500)\n"
+              "  - Registers (n = 20)\n  - Duplicates removed (n = 120)\n- Screened (n = 400)\n"
+              "  - Excluded (n = 300)\n- Included (n = 100)\n")  # fmt: skip
+    [flow] = _flows(prisma)
+    assert flow.named
+    assert flow.problems == ("the reasons after stage 1 (500, 20, 120) cannot account for the "
+                             "120 excluded, even overlapping",)  # fmt: skip
+    assert flow.notes == ("the exclusions after stage 1 add up to 640, more than the 120 it "
+                          "removes: read as overlapping, a record excluded for more than one "
+                          "reason",)  # fmt: skip
 
 
 def test_each_file_is_placed_by_its_own_headings(tmp_path: Path) -> None:

@@ -90,6 +90,49 @@ def test_a_number_pandoc_drops_is_not_read(name: str) -> None:
     assert "9.99" not in atoms_of(HIDDEN[name])
 
 
+#: Front matters whose values pandoc reads one at a time, and in which the gates hide a
+#: number pandoc prints, each beside the same shape kept inside one value, which they read.
+FRONT_MATTER_EDGES = {
+    "a fence opened in one value and closed in another": (
+        f"---\ntitle: |\n  {FENCE}\nsubtitle: |\n  A 9.99-fold excess.\n  {FENCE}\n---\n",
+        f"---\ntitle: |\n  {FENCE}\nsubtitle: |\n  A 9.99-fold excess.\n---\n",
+    ),
+    "a comment run from one keyword to the next": (
+        "---\nkeywords:\n  - risk <!-- x\n  - 9.99 -->\n---\n",
+        "---\nkeywords:\n  - risk <!-- x\n  - 9.99\n---\n",
+    ),
+    "a comment in a quoted title closed by a YAML comment": (
+        '---\ntitle: "Risk <!-- rose 9.99-fold" # -->\n---\n',
+        '---\ntitle: "Risk <!-- rose 9.99-fold"\n---\n',
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(FRONT_MATTER_EDGES))
+def test_a_mark_carried_from_one_front_matter_value_to_another_hides_a_number(
+    name: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The front-matter boundary still has edges"):
+    a fence or a comment opened in one value is closed by a mark in another, or in a YAML
+    comment, and the 9.99 pandoc prints between is not read; without that mark it is."""
+    across, within = FRONT_MATTER_EDGES[name]
+    assert "9.99" not in " ".join(atoms_of(f"{across}\nBody.\n"))
+    assert "9.99" in " ".join(atoms_of(f"{within}\nBody.\n"))
+
+
+def test_a_code_block_indented_in_an_abstract_is_not_found() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The front-matter boundary still has edges"):
+    a block indented four spaces in an abstract is code to pandoc and prose to the gates,
+    which read its 9.99 and take its `<!--` for a comment hiding the 8.88 pandoc prints
+    after it; the same code fenced is found."""
+    indented = "---\nabstract: |\n  Text.\n\n      x <- 9.99\n---\n\nBody.\n"
+    fenced = f"---\nabstract: |\n  Text.\n\n  {FENCE}\n  x <- 9.99\n  {FENCE}\n---\n\nBody.\n"
+    assert "9.99" in atoms_of(indented)
+    assert "9.99" not in atoms_of(fenced)
+    opened = "---\nabstract: |\n  Text.\n\n      <!-- x\n\n  The 8.88 -->\n---\n\nBody.\n"
+    assert "8.88" not in atoms_of(opened)
+
+
 def test_a_heading_after_code_that_names_a_comment_is_a_heading() -> None:
     """The heading scan blanked `## Results` as part of the comment, so the Results
     paragraph sat under Methods and its `p < 0.05` read as the alpha chosen in advance."""

@@ -989,6 +989,103 @@ NOTED = ("hand grip strength", "HGS")
 ONLY_HEADED = ("## Knee extension torque (KET)", "KET")
 
 
+#: What `apart_forms` plants, each kind with its own short form (the real-paper corpus, round
+#: of 2026-11-21). A short form the text defines, then gives other meanings in table notes,
+#: each meaning in one note or several: each other meaning is one finding, at its first note.
+REPEATED_SHORT = ("brisk walking test", "BWT")
+REPEATED_MEANINGS = ("brisk walking time", "brief walking trial", "brisk walk task")
+#: A long form with author-year citations typed after it in its bracket, which are no part
+#: of it, and a note that gives the same long form again.
+CITED_SHORT = ("quiet play scale", "QPS")
+TYPED_AFTER = ("Fictional, 2014", "Fictional et al., 2014", "Fictional & Made, 2015; Other, 2016",
+               "Fictional, 2015a")  # fmt: skip
+#: A catalogue's designations, as typed and as pandoc escapes them from Word: neither a
+#: definition nor a use of the catalogue's name.
+DESIGNATED = ("[KX92]{}", "\\[KX92\\]{}")
+DESIGNATION_SENTENCES = (
+    "The protostar {} drives a faint outflow.",
+    "Jets from {} and the ridge are seen.",
+    "The source {} lies outside the mosaic area.",
+)
+#: Names whose parts underscores join, in a table's cell before the text defines the short
+#: form one of their parts is: no use of it.
+JOINED_SHORT = ("quarterly market price", "QMP")
+JOINED_NAMES = ("QMP_RATE", "QMP\\_RATE", "IOS_QMP", "QMP_DURA_12mth", "UK_QMP\\_ALL")
+#: Such a name with a word a hyphen joins before it, which every example holds one of: the
+#: hyphenated word opens before the name, and its short form is a part of the name still.
+HYPHENED_NAMES = ("anti-QMP_RATE", "pre-QMP\\_ALL", "non-QMP_IOS")
+#: A colon pair or an equals sign's whose long form a bracket after it defines a short form
+#: from, alone or in a list, round or square: the bracket's definition wins (Basile,
+#: 2026-11-21, "Bracket wins"), so the pair's short form is defined by nothing. `{s}` is the
+#: pair's short form, `{l}` the long form and `{b}` the bracket.
+BRACKET_WINS = ("timed chair stand series", "TCS")
+BRACKET_PAIRS = ("The latest of the {s}s: {l} {b} was run.", "Here {s} = {l} {b} held.",
+                 "Of the {s}: {l} {b} came first.")  # fmt: skip
+BRACKET_DEFINING = (("({s}-S)", ("{s}-S",)), ("[{s}-S]", ("{s}-S",)),
+                    ("({s}-S, {s}-R)", ("{s}-S", "{s}-R")))  # fmt: skip
+
+
+#: One piece of each kind `apart_forms` draws, as the readings' inputs hold them
+#: (`ABBREVIATION_BLOCKS`): another meaning given in two notes, a citation after a long form
+#: in its bracket, designations typed and escaped, names underscores join, and a colon pair
+#: before a bracket's definition.
+APART_PIECES = (
+    "The brisk walking test (BWT) was run. The BWT held.\n\n*Note.* BWT = brisk walking "
+    "time.\n\n*Note.* BWT = brisk walking time.",
+    "The QPS (quiet play scale; Fictional, 2014) was read. The QPS held.\n\n*Note.* QPS = "
+    "quiet play scale.",
+    "The protostar [KX92]30 drives a faint outflow, and \\[KX92\\]21 too.",
+    "| Series | Loading |\n|---|---|\n| QMP_RATE | 0.1 |\n| IOS\\_QMP | 0.2 |\n\nThe quarterly "
+    "market price (QMP) rose. The QMP fell.",
+    "The latest of the TCSs: timed chair stand series (TCS-S) was run. The TCS-S held.",
+)
+
+
+@st.composite
+def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
+    """A Methods section with one piece of each kind of `REPEATED_SHORT`, `CITED_SHORT`,
+    `DESIGNATED`, `JOINED_SHORT` and `BRACKET_WINS`, in an order drawn, among words; and
+    what G14 owes it:
+    for each other meaning of the repeated short form, its code, the short form and the long
+    form that finding quotes as given here, and the pair's short form before the winning
+    bracket as used and never defined. Nothing else."""
+    long, short = REPEATED_SHORT
+    meanings = draw(st.lists(st.sampled_from(REPEATED_MEANINGS), min_size=1, max_size=3,
+                             unique=True))  # fmt: skip
+    again = draw(st.lists(st.sampled_from(meanings), min_size=1, max_size=3))
+    notes = draw(st.permutations([*meanings, *again]))
+    repeated = f"The {long} ({short}) was run. The {short} held.\n\n" + "\n\n".join(
+        f"| Walk | n |\n|---|---|\n| one | {at + 3} |\n\n*Note.* {short} = {meaning}."
+        for at, meaning in enumerate(notes))
+    told = list(dict.fromkeys(notes))
+    cited_long, cited = CITED_SHORT
+    citing = (f"The {cited} ({cited_long}; {draw(st.sampled_from(TYPED_AFTER))}) was read. The "
+              f"{cited} held.\n\n| Play | n |\n|---|---|\n| {cited} | 4 |\n\n*Note.* {cited} = "
+              f"{cited_long}.")  # fmt: skip
+    form = draw(st.sampled_from(DESIGNATED))
+    numbers = draw(st.lists(st.integers(1, 99), min_size=2, max_size=3))
+    sentences = draw(st.permutations(DESIGNATION_SENTENCES))
+    pairs = zip(sentences, numbers, strict=False)
+    designated = " ".join(sentence.format(form.format(number)) for sentence, number in pairs)
+    joined_long, joined = JOINED_SHORT
+    names = draw(st.permutations([
+        *draw(st.lists(st.sampled_from(JOINED_NAMES), min_size=1, max_size=3, unique=True)),
+        draw(st.sampled_from(HYPHENED_NAMES))]))  # fmt: skip
+    rows = "\n".join(f"| {name} | 0.{at + 1} |" for at, name in enumerate(names))
+    joining = (f"| Series | Loading |\n|---|---|\n{rows}\n\nThe {joined_long} ({joined}) rose. "
+               f"The {joined} fell.")  # fmt: skip
+    wins_long, wins = BRACKET_WINS
+    bracket, defined = draw(st.sampled_from(BRACKET_DEFINING))
+    winning = draw(st.sampled_from(BRACKET_PAIRS)).format(
+        s=wins, l=wins_long, b=bracket.format(s=wins))
+    winning += "".join(f" The {each.format(s=wins)} held." for each in defined)
+    pieces = draw(st.permutations([repeated, citing, designated, joining, winning]))
+    text, _starts = _paragraphs(draw, pieces)
+    # The pair's short form is defined by nothing, so it is used and never defined.
+    return "# Methods\n\n" + text, [*(("abbreviation-redefined", short, each) for each in told),
+                                    ("abbreviation-undefined", wins, "")]  # fmt: skip
+
+
 @st.composite
 def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
@@ -1534,6 +1631,40 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: What stands between two paragraphs: a blank line, one of spaces, of a tab or of a carriage
+#: return, two blank lines and three, which hold an empty paragraph; and a line of a space no
+#: blank line is made of, a no-break space or a form feed, then a blank line (round 1 of #734).
+CAPTION_GAPS = ("\n\n", "\n \n", "\n\t\n", "\n\r\n", "\n\n\n", "\n\n\n\n",
+                "\n\N{NO-BREAK SPACE}\n\n", "\n\f\n\n")  # fmt: skip
+
+
+@st.composite
+def caption_paragraphs(draw: st.DrawFn) -> str:
+    """A Markdown text of one paragraph of each kind a table's caption is read in or beside
+    (`glossary.markdown_captions`), in an order drawn, each two apart by a gap of
+    `CAPTION_GAPS`, each gap at least once and the rest drawn: prose; a caption opened by
+    `Table:`; two opened by a colon, which a table's line above or below makes captions as
+    the order falls; one after three spaces and one after four, which is none; a colon before
+    a mark, which is none; a pipe table and a grid table; a colon's caption under a table's
+    line and one above it, in the table's own paragraph; `Table:` on a paragraph's second
+    line; and a legend typed as one."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    kinds = [
+        f"{words().capitalize()} {words()}.", f"Table: {words()}", f": {words()}",
+        f": {words()}", f"   : {words()}", f"    : {words()}", f":-) {words()}",
+        "| A | B |\n|---|---|\n| 1 | 2 |", "+---+---+\n| a | b |\n+---+---+",
+        f"| A | B |\n|---|---|\n: {words()}", f": {words()}\n| A | B |\n|---|---|",
+        f"{words().capitalize()}.\nTable: {words()}", f"Table 2. {words()}",
+    ]  # fmt: skip
+    order = draw(st.permutations(kinds))
+    more = [draw(st.sampled_from(CAPTION_GAPS)) for _ in range(len(order) - 1 - len(CAPTION_GAPS))]
+    gaps = draw(st.permutations([*CAPTION_GAPS, *more]))
+    return order[0] + "".join(gap + kind for gap, kind in zip(gaps, order[1:], strict=True))
+
+
 #: The paragraphs that open a glossary with no heading over it, as a paper typed in Word has
 #: one: a sentence, a line in bold or in italics, a line with a colon, one in capitals.
 GLOSSARY_OPENERS = (
@@ -1646,6 +1777,7 @@ ABBREVIATION_BLOCKS = tuple(
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
         GLOSSARY_OPENED,
+        *APART_PIECES,
     )
 )
 
@@ -2284,6 +2416,105 @@ LATEX_PACKAGE_COMMANDS = {"unit": ("siunitx", "units"), "qty": ("siunitx", "phys
 
 
 @st.composite
+def latex_author_kits(draw: st.DrawFn) -> list[LatexCase]:
+    """Small LaTeX manuscripts whose heading is defined as the CVPR and ICCV author kit
+    defines it (Basile, 2026-11-22), every kind in every example: `\\@ifstar` between two
+    helpers defined above it, each handing its one argument on, starred or not, to a command
+    defined above as the `\\@startsection` of the heading's own name, written with `\\def` or
+    LaTeX's definers, the branches braced or not, with the kit's `\\texorpdfstring` of
+    spacing and punctuation before the argument or nothing.
+
+    - read as before, in the author's package and in the entry file's preamble past
+      `\\makeatletter`, its uses in the entry file and in a file it inputs, and so with a
+      `\\providecommand` below it of each of the three commands it goes through, which
+      defines nothing (rounds 1 and 2 of #757);
+    - a use with a short title in brackets, after a star or not, refused where it stands in
+      the file input, which the tree tells of the heading, and so with a `\\providecommand`
+      of the heading below it;
+    - the kit with one thing more or other, each refused where the heading is first used:
+      words before the argument, a helper of two parameters, the `\\@startsection` of another
+      level, a helper defined below the heading, each of the three commands it goes through
+      defined again below it, by `\\def` and by `\\let`, the branches swapped, a helper by
+      `\\providecommand`, a font switch in a helper, the heading by `\\edef` and by
+      `\\newcommand`, and the `\\@startsection` command defined before `\\makeatletter`,
+      where `@` is no letter."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    def helper(name: str, body: str) -> str:
+        how = draw(st.sampled_from(("\\def\\{0}#1", "\\newcommand{{\\{0}}}[1]",
+                                    "\\newcommand*\\{0}[1]")))  # fmt: skip
+        return how.format(name) + "{" + body + "}\n"
+
+    head, begin, end = "\\documentclass{article}\n", "\\begin{document}\n", "\\end{document}\n"
+    level, other = draw(st.permutations(("section", "subsection", "subsubsection")))[:2]
+    kit = draw(st.sampled_from(("iccv", "cvpr", "wacv")))
+    to, starred, plain = kit + level, kit + "s" + level, kit + "p" + level
+    restyle = draw(st.sampled_from(("\\def\\{0}", "\\newcommand{{\\{0}}}"))).format(to)
+    restyle += f"{{\\@startsection {{{level}}}{{1}}{{\\z@}}{{-10pt}}{{7pt}}{{\\bf}}}}\n"
+    before = draw(st.sampled_from(("", "\\texorpdfstring{\\hskip -1em.~}{}",
+                                   "\\texorpdfstring{ . ~}{ }")))  # fmt: skip
+    starred_body, plain_body = f"\\{to}*{{#1}}", f"\\{to}{{{before}#1}}"
+    starring, plaining = helper(starred, starred_body), helper(plain, plain_body)
+    braced = draw(st.booleans())
+    branches = f"{{\\{starred}}}{{\\{plain}}}" if braced else f"\\{starred}\\{plain}"
+    swapped = f"{{\\{plain}}}{{\\{starred}}}" if braced else f"\\{plain}\\{starred}"
+    chain = draw(st.sampled_from(("\\def\\{0}", "\\renewcommand{{\\{0}}}",
+                                  "\\renewcommand\\{0}"))).format(level)  # fmt: skip
+    chain += f"{{\\@ifstar{branches}}}\n"
+    defined = restyle + starring + plaining + chain
+
+    def tree(kit_text: str, where: str, part: str | None,
+             outside: str = "") -> tuple[dict, dict, str]:  # fmt: skip
+        preamble = ("\\usepackage{kit}\n" if where == "package"
+                    else outside + "\\makeatletter\n" + kit_text + "\\makeatother\n")  # fmt: skip
+        uses = f"\\{level}{{{words()}}}\n{words()}.\n\\{level}*{{{words()}}}\n{words()}.\n"
+        main = head + preamble + begin + uses + ("" if part is None else "\\input{part}\n") + end
+        files = {"main.tex": main, **({} if part is None else {"part.tex": part})}
+        return files, {"kit.sty": kit_text} if where == "package" else {}, main
+
+    cases: list[LatexCase] = []
+    for where in ("package", "preamble"):
+        part = f"{words()}.\n\\{level}{{{words()}}}\n\\{level}*{{{words()}}} {words()}.\n"
+        provided = [defined + f"\\providecommand{{\\{name}}}[1]{{\\textbf{{#1}}}}\n"
+                    for name in (starred, plain, to)]  # fmt: skip
+        for kit_text in (defined, *provided):
+            files, packages, _main = tree(kit_text, where, part)
+            cases.append((files, packages, [], [], []))
+        gap = draw(st.sampled_from(("", " ", "\n", "*", " * ")))
+        short = f"{words()}.\n\\{level}{gap}[{words()}]{{{words()}}} {words()}.\n"
+        for kit_text in (defined, defined + f"\\providecommand\\{level}{{x}}\n"):
+            files, packages, _main = tree(kit_text, where, short)
+            cases.append((files, packages, [("part.tex", short.index("\\" + level))], [], []))
+    # A helper before `\makeatletter` with an `@` only in a comment, read (round 3 of #757).
+    commented = starring.replace("{" + starred_body, "{% from a@b.org\n" + starred_body)
+    files, packages, _main = tree(defined.replace(starring, ""), "preamble", None, commented)
+    cases.append((files, packages, [], [], []))
+    spoilt = [
+        (defined.replace(plain_body, f"\\{to}{{\\texorpdfstring{{Part~}}{{}}#1}}"), ""),
+        (defined.replace(plaining, f"\\def\\{plain}#1#2{{\\{to}{{#1#2}}}}\n"), ""),
+        (defined.replace(f"{{\\@startsection {{{level}}}", f"{{\\@startsection {{{other}}}"), ""),
+        (defined.replace(starring, "") + starring, ""),
+        *((defined + how.format(name), "") for name in (starred, plain, to)
+          for how in ("\\def\\{0}#1{{\\textbf{{#1}}}}\n", "\\let\\{0}\\relax\n")),
+        (defined.replace(branches, swapped), ""),
+        (defined.replace(plaining, f"\\providecommand{{\\{plain}}}[1]{{{plain_body}}}\n"), ""),
+        (defined.replace(plain_body, "\\bf" + plain_body), ""),
+        *((defined.replace(chain, f"\\{how}\\{level}{{\\@ifstar{branches}}}\n"), "")
+          for how in ("edef", "newcommand")),
+        # The `\@startsection` command in the preamble before `\makeatletter`.
+        (defined.replace(restyle, ""), restyle),
+    ]
+    for kit_text, outside in spoilt:
+        where = "preamble" if outside else draw(st.sampled_from(("package", "preamble")))
+        files, packages, main = tree(kit_text, where, None, outside)
+        first = main.index("\\" + level, main.index(begin))
+        cases.append((files, packages, [("main.tex", first)], [], []))
+    return cases
+
+
+@st.composite
 def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     """Small LaTeX manuscripts, each holding one thing the reader refuses or reads that 17
     papers from arXiv showed (2026-10-23), every kind in every example, among words drawn:
@@ -2298,6 +2529,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       in the preamble, a file input from it or the author's package, read, and each use
       refused where it prints, in the entry file and in a file it inputs; in the body,
       refused at the command (Basile, 2026-11-11);
+    - a heading defined as the CVPR and ICCV author kit defines it, read as before, and its
+      short title and the kit with one thing more or other refused (`latex_author_kits`);
     - an article's own command named as a package's, read as an unknown one where no file of
       the tree loads the package, and refused where it prints where the same file, the
       author's package or a file input from the preamble loads it;
@@ -2413,6 +2646,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     main = head + "\\input{refs}\n" + begin + words() + " \\autoref{e1}.\n" + end
     cases.append(({"main.tex": main, "refs.tex": worse}, {},
                   [("main.tex", main.index("\\autoref"))], [], []))  # fmt: skip
+    # The third form read as before, the CVPR and ICCV author kit's heading (2026-11-22).
+    cases.extend(draw(latex_author_kits()))
 
     main = head + begin + words() + "\n"
     # Refused where the command's name stands, or at its braces, `{\url}`.
@@ -14888,28 +15123,42 @@ TEX_UNREAD = ((r"{\IJ}", "IJ"), (r"\foreignlanguage{dutch}{IJ}", "IJ"))
 
 
 @st.composite
-def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | None]]]:
     """A `.bib` file with a work for each letter of `TEX_LETTERS`, its first author's family
     name holding the letter in TeX, written "Family, Given" or "Given Family", and one whose
     name holds TeX of `TEX_UNREAD`; and for each, the citation a manuscript types for it, the
-    letter as typed or as a reader without it types it, with the key. Every letter in every
-    example, so that a reading broken for one fails under any seed."""
+    letter as typed or as a reader without it types it, with the key. Then two citations no
+    work is, with None: the name of a work whose name is read, with a year no work has, and a
+    name no work has, with the year of a work whose name is read (no two works share a year).
+    Every letter and both citations in every example, so that a reading broken for one fails
+    under any seed."""
     # No "e" or "s" around the letter: "oe" and "ss" are a transcription of their own.
     part = st.text("abdfghikmnoprtuvz", min_size=1, max_size=5)
-    entries, cited = [], []
+    entries: list[str] = []
+    cited: list[tuple[str, str | None]] = []
     shapes = [(letter, typed, tex, True) for letter, typed, tex in TEX_LETTERS]
     shapes += [(typed, typed, tex, False) for tex, typed in TEX_UNREAD]
+    years = iter(draw(st.lists(st.integers(1900, 2020), min_size=len(shapes),
+                               max_size=len(shapes), unique=True)))  # fmt: skip
+    read_by: list[tuple[str, int]] = []
     for number, (letter, plain, tex, read) in enumerate(draw(st.permutations(shapes))):
         head = "" if letter[0].isupper() else draw(st.sampled_from("BDGKMPTV"))
         tail = draw(part)
         written = draw(st.sampled_from((letter, plain))) if read else plain
-        year = 1900 + draw(st.integers(0, 120))
+        year = next(years)
         key = f"work{number}"
         family = f"{head}{tex}{tail}"
         author = draw(st.sampled_from((f"{family}, Anne", f"Anne {family}")))
         entries.append(f"@article{{{key},\n  author = {{{author} and Other, Eve}},\n"
                        f"  year = {{{year}}},\n}}\n")  # fmt: skip
         cited.append((f"({head}{written}{tail}, {year})", key))
+        if read:
+            read_by.append((f"{head}{written}{tail}", year))
+    # The years run to 2020, and no name of a work opens with "Q".
+    name, _year = draw(st.sampled_from(read_by))
+    cited.append((f"({name}, {draw(st.integers(2021, 2099))})", None))
+    _name, year = draw(st.sampled_from(read_by))
+    cited.append((f"(Q{draw(part)}, {year})", None))
     return "\n".join(entries), cited
 
 
@@ -18327,8 +18576,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         latex_skipped_blocks().flatmap(lambda cases: st.sampled_from([c[0] for c in cases])),
     ),
     "latex sections": latex_texts(),
-    "latex documents": st.one_of(latex_trees().map(lambda drawn: drawn[0]),
-                                 latex_folders().map(lambda drawn: drawn[0])),  # fmt: skip
+    "latex documents": st.one_of(
+        latex_trees().map(lambda drawn: drawn[0]),
+        latex_folders().map(lambda drawn: drawn[0]),
+        # A folder of the author kit's heading, its package beside the paper (2026-11-22).
+        latex_author_kits().flatmap(
+            lambda cases: st.sampled_from([{**case[0], **case[1]} for case in cases])),
+    ),
     "latex bindings": latex_texts(),
     "latex citations": latex_texts(),
     "latex printed": latex_texts(),

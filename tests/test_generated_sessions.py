@@ -201,7 +201,8 @@ def _left_on(session: Session, *, identified: bool) -> list[str]:
 
 #: The middle of what #121 made the import say of a paragraph it cannot tell from the
 #: block under it, from these words to the block it quotes. `tests/test_corruption.py`
-#: holds the sentence's opening, and that nothing is written; no test its closing words.
+#: holds the sentence whole, and that nothing is written, in
+#: `test_a_paragraph_deleted_in_front_of_a_reworded_div_is_refused_in_the_whole_sentence`.
 _UNDER_IT = "or the text that stood under it when the document was sent ('The {tag} reports"
 
 

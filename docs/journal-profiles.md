@@ -19,7 +19,7 @@ checks goes under `manual:`, quoted, and the corresponding author signs it off.
 Most of the profile is about the paper: word limits, required sections and statements, the
 structured abstract, the reference style, the figures' artwork rules, the English, how a
 pointer to a table is written. This page describes the three blocks about what the journal
-prints and lets out beside the paper.
+prints and lets out beside the paper, and the format it takes the main document in.
 
 ## Boxes beside the abstract
 
@@ -138,6 +138,36 @@ not state "1:1".
 A box has one quote, and each of its numbers is looked for anywhere in it: `items_max: 3`
 passes against "3 to 5 highlights", since 3 is there. Check that each number is the one the
 page gives for that field.
+
+## The main document's format
+
+Where the page says in what format the main document is submitted, the profile names every
+format it takes, `tex` for the LaTeX source:
+
+```yaml
+submission:
+  main_document: [pdf]
+quotes:
+  submission.main_document: "Please submit a PDF as your main document."
+```
+
+A Markdown manuscript is packed as a .docx, and as a PDF with its LaTeX source in latex/ by
+`submit --latex`; a LaTeX manuscript as its PDF and source. `MANIFEST.yaml` records the main
+document and its formats, and, where the profile says, what the journal takes and whether
+the pack meets it. Where it does not, `submit` says so, with how to make the one it takes,
+and `journal-checklist.md` carries it as an item to tick.
+
+| Code | What it says |
+|---|---|
+| `main-document-format` | the main document of the pack on disk, as its manifest records it, or, where there is none, the one `submit` will pack, is in no format the journal takes |
+| `journal-format-not-in-quote` | a format of `main_document` its quote does not name ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument", "LaTeX"); fails from internal review. It proves a format is named, not that it is the one taken: "a Word version is requested on acceptance" passes for `[docx]` |
+
+`main-document-format` is a warning at submission and a note before it, never a failure:
+`submit --latex`, which makes a Markdown paper's PDF, runs the submission check, and a
+failure would refuse it. G4 runs before `submit` replaces the pack, so the pack on disk is
+the last one made: the next `submit` by the other route (`--latex` or not) packs another,
+and says itself what it holds. What the journal asks only at revision, such as the source
+files, goes under `manual:`.
 
 ## A page of its own
 

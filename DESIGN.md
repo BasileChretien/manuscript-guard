@@ -7895,6 +7895,35 @@ below it.
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
 
+The main document goes in a format the journal takes. Royal Society Open Science says
+"Please submit a PDF as your main document", and the pack offered the .docx the build makes:
+a profile had no field to say it, and the paper that found it could only list the rule under
+`manual:`. A profile now says it as `submission: {main_document: [pdf]}`, the formats the
+journal takes (pdf, docx, doc, rtf, odt, and tex for the LaTeX source), quoted under
+`quotes.submission.main_document` and held to the stored page as every rule is; each format
+must be named in the quote ("PDF", "Word", ".docx", "Rich Text Format", "OpenDocument",
+"LaTeX"), or G4 fails `journal-format-not-in-quote` from internal review, since `[docx]`
+quoted as RSOS's sentence would silence the warning below (round 1 of #724). The manifest
+records the main document, its formats (a .docx; or a PDF and, where latex/ holds the
+source, tex), and, where the profile says, what the journal takes and whether the pack meets
+it. Where it does not, `submit` says so with the pack and `journal-checklist.md` carries it
+under a heading of its own, "The main document", beside "The rules no check holds" (the
+page's title is the rules to check before sending), written even where the profile has no
+`manual:` rule, each with how to make the one the journal takes: `submit --latex` for a
+Markdown paper's PDF or LaTeX source, or the .docx saved as PDF from Word once its
+citations are refreshed, where the journal takes a PDF; `submit` without `--latex` where it
+takes Word; and at a revision, that the LaTeX route packs no marked-up copy. `submit` does
+not take the LaTeX route by itself: it needs a TeX installation, packs no marked-up Word copy
+at a revision, and is the author's choice of document. G4 says it too,
+`main-document-format`: a warning at submission, a note before. It reads the pack on disk,
+as its manifest records it, a pack for another journal set aside, and predicts the pack
+`submit` will make where there is none. The pack on disk is the last one made, and G4 runs
+before `submit` replaces it, so the next `submit` by the other route (`--latex` or not) packs
+another: that pack's own note then says what it holds, and the hint says so. A warning, as a
+figure in a format the journal does not take is (`figure-format`), and not a failure: the
+pack refuses while the check fails, and `submit --latex`, which makes the PDF, runs the same
+check, so a failure would refuse the remedy with the fault.
+
 The covering letter is deliberately not generated. It is the one part addressed to a
 particular editor about a particular paper at a particular moment, and a generated one reads
 exactly like a generated one.
@@ -17123,6 +17152,15 @@ limit as it is written: a change that closes the gap or moves it fails one of th
 entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
+
+- **`journal-format-not-in-quote` reads a format's name, not the sentence around it**
+  (`gates/journal_quotes.py`, `_FORMAT_WORDS`). It proves a format is named in the quote, not
+  that it is the one taken, and some wordings slip past it: "a 250 word abstract", "an
+  8k-word manuscript" and "word-processing files" still name Word, so `[docx]` passes on a
+  page that asks for a PDF; "PDF or Word – limit 20 MB" fails, the dash read as a hyphen before
+  "limit"; "Open Office" written apart fails `[odt]`; "rich text" in advice about a form passes
+  `[rtf]`; "pdfLaTeX" or "XeLaTeX" alone does not name LaTeX (rounds 2 and 3 of #724).
+  Accepted.
 
 - **The corpus tool finds a judged finding again only by its gate and code, by its line in
   the same file, or for G14 by its short form** (`tools/corpus.py`, docs/corpus.md). A

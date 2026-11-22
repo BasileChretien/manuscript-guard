@@ -259,6 +259,41 @@ def test_the_dry_run_shows_the_number_a_refusal_is_for(
     assert "Reporting of hepatic injury" not in "".join(shown), out
 
 
+@needs_pandoc
+def test_a_refusal_is_shown_against_the_build_s_record_or_else_the_fresh_build(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The dry run of `import` shows each change by its
+    words"): a refused paragraph is shown against what it printed when the document was
+    built, from the build's record; without the record, against the fresh build, so in a
+    forced import a value re-run since shows as changed beside the co-author's edit."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    returned = edit_docx(document, tmp_path / "back.docx", {">426 named": ">427 named"})
+    _reprinted(project, 4100)
+
+    def shown() -> list[str]:
+        """The `-` and `+` lines of the refusal of the paragraph the co-author edited."""
+        lines = capsys.readouterr().out.splitlines()
+        marks = ("    - ", "    + ")
+        return [line for line in lines if line.startswith(marks) and "of which" in line]
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--force"]) == 1
+    recorded = shown()
+    assert len(recorded) == 2, recorded
+    assert "contained 4000 reports, of which 426 named" in recorded[0], recorded
+    assert "contained 4000 reports, of which 427 named" in recorded[1], recorded
+    for record in (project / "build" / "records").glob("*.json"):
+        record.unlink()
+    assert main(["import", str(returned), str(project), "--force"]) == 1
+    fresh = shown()
+    assert len(fresh) == 2, fresh
+    assert "contained 4100 reports, of which 426 named" in fresh[0], fresh
+    assert "contained 4000 reports, of which 427 named" in fresh[1], fresh
+
+
 def _dry_run_of_a_planted_paragraph(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], paragraph: str,
     replacements: dict[str, str],
@@ -641,6 +676,31 @@ def test_a_style_moved_since_the_build_is_asked_for(
     assert "is not the citation style" in capsys.readouterr().err
 
 
+@needs_pandoc
+def test_a_style_edited_where_the_build_found_it_is_a_change_and_its_line_endings_are_not(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A document built with `--csl` is compared in the
+    style its digest names"): a style changed where the build found it is said to be so, and
+    each paragraph that cites is refused, compared in the default style; the same file with
+    only its line endings changed is the style it was built with."""
+    from manuscript_guard.cli import main
+
+    style = tmp_path / "minimal.csl"
+    built = _built_in(project, style, capsys)
+    returned = tmp_path / "back.docx"
+    returned.write_bytes(built.read_bytes())
+    style.write_bytes(style.read_bytes().replace(b"\n", b"\r\n"))
+    assert main(["import", str(returned), str(project)]) == 0
+    out = capsys.readouterr().out
+    assert "was built with a citation style" not in out and "NOT merged" not in out, out
+    style.write_text(MINIMAL_CSL.replace("Minimal numeric", "Edited"), encoding="utf-8")
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "that is not there now, or has changed since" in " ".join(out.split()), out
+    assert "is the citation [@fictionalHepaticCohort2021]" in out, out
+
+
 #: Better BibTeX's zotero.lua as far as `import` reads what it writes: each citation a
 #: Zotero field whose code names each work by a URI and holds the citation as the source
 #: writes it, and shows "<Do Zotero Refresh: ...>" until Zotero formats it. A narrative
@@ -944,6 +1004,44 @@ def test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose(
 
 
 @needs_pandoc
+@pytest.mark.parametrize(
+    ("where", "listed"),
+    [
+        (">Funding</w:t></w:r>", "+ Funding (Fictional and Fictional 2019)"),
+        ("unless stated.</w:t></w:r>", "unless stated. (Fictional and Fictional 2019)"),
+        (">426</w:t></w:r>", None),
+    ],
+    ids=["heading", "caption", "table-cell"],
+)
+def test_a_citation_inserted_where_nothing_is_compared_is_not_named(
+    project: Path, tmp_path: Path, capsys, where: str, listed: str | None
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A citation a co-author inserts with a reference
+    manager is named as far as its code names it"): one inserted in a paragraph without an
+    identifier, a heading, a caption or a table cell, is not reported as a citation; the
+    heading and the caption are listed as changed, and the cell not at all. The other side,
+    the same field in a paragraph that carries one, is named (the test above)."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    before = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    field = _field_runs(_csl_code(CLASS_ITEM), " (Fictional and Fictional 2019)")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {where: where + field}
+    )
+    assert where + field in _docx_part(returned, "word/document.xml"), "the field was not inserted"
+    code = main(["import", str(returned), str(project), "--apply"])
+    out = capsys.readouterr().out
+    assert "was cited in Word" not in out and "fictionalClassSignal2019" not in out, out
+    if listed is None:
+        assert code == 0 and "nothing came back" in out, out
+    else:
+        assert code == 1 and listed in out, out
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
 def test_a_citation_inserted_in_a_paragraph_not_compared_stops_nothing(
     project: Path, tmp_path: Path, capsys
 ) -> None:
@@ -1054,6 +1152,41 @@ def test_an_emoji_word_saves_as_a_choice_is_no_edit(project: Path, tmp_path: Pat
         assert "symEx" in archive.read("word/document.xml").decode("utf-8")
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert main_md.read_text(encoding="utf-8") == source
+
+
+def _behind_a_choice(choice: str, fallback: str) -> str:
+    """A run of AlternateContent: `choice` under a choice requiring `w99`, `fallback` under
+    its fallback."""
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    return (
+        f'<w:r><mc:AlternateContent {mc}><mc:Choice Requires="w99">{choice}</mc:Choice>'
+        f"<mc:Fallback>{fallback}</mc:Fallback></mc:AlternateContent></w:r>"
+    )
+
+
+@needs_pandoc
+def test_source_text_word_writes_only_in_a_fallback_is_deleted_by_apply(
+    project: Path, tmp_path: Path
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit and the import read every `mc:Choice`
+    and no `mc:Fallback`"): a word of the source that comes back only in a fallback, behind
+    a choice the readers do not know, goes unread, and `--apply` deletes it from the source.
+    Behind a choice they know, the emoji's, nothing is lost (the test above)."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    assert main(["build", str(project), "--offline"]) == 0
+    unknown = _behind_a_choice('<w99:mark xmlns:w99="urn:example"/>', "<w:t>funding</w:t>")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"no funding.</w:t>": f"no </w:t></w:r>{unknown}<w:r><w:t>.</w:t>"},
+    )
+    source = main_md.read_text(encoding="utf-8")
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert main_md.read_text(encoding="utf-8") == source.replace(
+        "This work received no funding.", "This work received no ."
+    )
 
 
 def _funding(inserted: str) -> dict[str, str]:
@@ -3731,6 +3864,98 @@ def test_a_line_of_dashes_under_prose_or_a_list_item_opens_no_table() -> None:
         assert "Apixaban" in marked, (above, marked)
 
 
+@pytest.mark.parametrize("dashes", ["---", "--"])
+def test_a_block_opening_on_dashes_hides_paragraphs_pandoc_reads_as_paragraphs(
+    dashes: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A block that opens on a line of dashes is taken
+    for a table whatever surrounds it"): with text straight under it, the line opens a table
+    to `tag` down to the next line of dashes, inside a list item, inside a fenced div after
+    a blank line and after a no-break-space line inside a paragraph, where pandoc reads the
+    paragraphs between as paragraphs; they go unmarked. `check` and the build refuse the
+    line, `rule-opens-a-block`. With a blank line under it, the line is a rule and hides
+    nothing."""
+    from manuscript_guard.build.assemble import rule_findings
+    from manuscript_guard.roundtrip import tag
+
+    rows = f"{dashes}\nText under.\n\nPara A.\n\nPara B.\n\n{dashes}"
+    for text in (
+        f"Intro.\n\n- item one\n\n  {rows}\n\nAfter.\n",
+        f"Intro.\n\n::: note\n\n{rows}\n\n:::\n\nAfter.\n",
+        f"Intro.\n\nSome text\n\N{NO-BREAK SPACE}\n{rows}\n\nAfter.\n",
+    ):
+        marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+        assert marked == ["Intro.", "After."], (text, marked)
+        assert [f.line for f in rule_findings(Path("main.md"), text)] == [5], text
+    ruled = f"Intro.\n\n{dashes}\n\nText under.\n\nPara A.\n\nPara B.\n\n{dashes}\n\nAfter.\n"
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(ruled, "main.md"))
+    assert marked == ["Intro.", "Text", "Para", "Para", "After."]
+
+
+#: YAML pandoc tries and gives up on quietly, a blank line inside it.
+_GIVEN_UP = "---\ntitle: x\n\nNote, the value: held.\n..."
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [f"{FENCE}\ncode\n{FENCE}\n{_GIVEN_UP}",
+     f"----------  ----------\nWarfarin    Bleeding\n----------  ----------\n{_GIVEN_UP}",
+     f"::: note\n{_GIVEN_UP}\n:::"],
+    ids=["after-a-fence", "under-a-table-s-closing-rule", "inside-a-div"],
+)  # fmt: skip
+def test_yaml_opened_mid_block_is_not_followed_and_its_marker_fails_the_build(
+    layout: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A YAML block in the body is followed only where a
+    block starts with it"): a `---` straight after a code fence, under a table's closing
+    rule or inside a fenced div with no blank line before it is not followed, so `tag` marks
+    a line inside the YAML pandoc tries, and pandoc then fails on the text it read before.
+    The other side: the same YAML opening a block is followed, and nothing in it is marked."""
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Intro.\n\n{layout}\n\nAfter.\n"
+    tagged = tag(text, "main.md")
+    opener = tagged.rindex("---\n", 0, tagged.index("title: x"))
+    inside = tagged[opener : tagged.index("...", opener)]
+    assert "[]{#mg-p-" in inside, tagged
+    if PANDOC:
+        import subprocess
+
+        def reads(markdown: str) -> int:
+            return subprocess.run(
+                ["pandoc", "-f", "markdown", "-t", "native"], input=markdown.encode("utf-8"),
+                capture_output=True, timeout=60,
+            ).returncode  # fmt: skip
+
+        assert reads(text) == 0 and reads(tagged) != 0
+    alone = tag(f"Intro.\n\n{_GIVEN_UP}\n\nAfter.\n", "main.md")
+    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", alone) == ["Intro.", "After."]
+
+
+@needs_pandoc
+def test_yaml_opened_in_one_file_and_stopped_in_the_next_is_tagged_apart_and_refused(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A YAML block in the body is followed only where a
+    block starts with it"): each file is tagged on its own, so an attempt opening at the end
+    of `main.md` hides nothing of the next file, whose paragraph is marked; the build
+    refuses the line that opens it, `rule-opens-a-block`."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import tag
+
+    opening, next_file = "---\nA note opens here.\n", "The next file opens with this.\n\n---\n"
+    assert not re.search(r"\[\]\{#mg-p-", tag(f"Intro.\n\n{opening}", "main.md").split("---")[1])
+    assert tag(next_file, "2_more.md").startswith("[]{#mg-p-")
+    source = project / "manuscript" / "main.md"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{opening}", encoding="utf-8")
+    source.with_name("2_more.md").write_text(f"{next_file}\nAnd closes.\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    out = capsys.readouterr().out
+    assert "a line of dashes with a line directly above or under it" in out, out
+    assert "> A note opens here." in out, out
+
+
 def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
     """A line taken for a table's opener that pandoc does not read as one starts a span
     pandoc does not have. Run on to the next table, it ended on that table's header
@@ -4744,6 +4969,326 @@ def test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word() -> Non
     )  # fmt: skip
     assert aligned.rebuilt == "They called it ‘the biggest’ at {{results.x}} in *all*."
     assert aligned.flattened == ("They called it ‘the biggest’ at",)
+
+
+def test_a_run_of_chinese_or_japanese_is_one_word_and_loses_its_emphasis_when_edited() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", a run of Chinese or Japanese): any edit inside a run with no space writes the
+    whole run from Word's text, its bold lost, and the loss is listed; an edit outside the
+    run keeps the bold inside it."""
+    run, marked = "患者は**重い**副作用を報告した", "患者は重い副作用を報告した"
+    aligned = merged_alignment(
+        f"{run} in all at {{{{results.x}}}}.", f"{marked} in all at ⟦3.84⟧.",
+        "患者は軽い副作用を報告した in all at 3.84.",
+    )  # fmt: skip
+    assert aligned.rebuilt == "患者は軽い副作用を報告した in all at {{results.x}}."
+    assert aligned.flattened == ("患者は軽い副作用を報告した",)
+    aligned = merged_alignment(
+        f"{run} in all at {{{{results.x}}}}.", f"{marked} in all at ⟦3.84⟧.",
+        f"{marked} in most at 3.84.",
+    )  # fmt: skip
+    assert aligned.rebuilt == f"{run} in most at {{{{results.x}}}}."
+    assert aligned.flattened == ()
+
+
+#: Each edit beside which what is kept could read otherwise: the stretch, opening with
+#: "*Seen*", is written whole from Word's text, and the emphasis is lost.
+_READ_OTHERWISE = {
+    "deleted-after-(": ("(big a)", "(big a)", "(a)"),
+    "deleted-before-)": ("(a big)", "(a big)", "(a)"),
+    "deleted-before-]": (r"\[a big\]", "[a big]", "[a]"),
+    "deleted-after-{": (r"\{big a\}", "{big a}", "{a}"),
+    "deleted-after-<": ("<big a", "<big a", "<a"),
+    "deleted-before-&": ("a big& b", "a big& b", "a& b"),
+    "deleted-after-backtick": ("a\\`big b", "a`big b", "a`b"),
+    "deleted-after-$": (r"\$big 5", "$big 5", "$5"),
+    "deleted-after-~": (r"\~big 5", "~big 5", "~5"),
+    "typed-after-<": ("<5 a", "<5 a", "<LOD a"),
+    "typed-after-&": ("R&5 a", "R&5 a", "R&D a"),
+    "after-a-tag-opening-<-with-a-bare->": (
+        "<LOD (in mg) were high, not >0.5,", "<LOD (in mg) were high, not >0.5,",
+        "<LOD (in mg) were low, not >0.5,",
+    ),
+}
+#: The other side of each: the same edits where nothing kept beside them can read
+#: otherwise, written word by word with the emphasis kept.
+_READ_THE_SAME = {
+    "deleted-beside-a-letter": ("x big y", "x big y", "x y"),
+    "deleted-beside-emphasis": ("*a* big b", "a big b", "a b"),
+    "deleted-beside-code": ("`a` big b", "a big b", "a b"),
+    "digits-typed-after-<": ("<5 a", "<5 a", "<7 a"),
+    "digits-typed-after-&": ("R&5 a", "R&5 a", "R&7 a"),
+    "after-a-<-opening-no-tag": ("<5 (in mg) were high, not >0.5,",
+                                 "<5 (in mg) were high, not >0.5,",
+                                 "<5 (in mg) were low, not >0.5,"),
+    "after-a-tag-opening-<-with-no->": ("<LOD (in mg) were high", "<LOD (in mg) were high",
+                                        "<LOD (in mg) were low"),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(_READ_OTHERWISE) + sorted(_READ_THE_SAME))
+def test_an_edit_beside_what_could_read_otherwise_writes_its_whole_stretch_plain(
+    case: str,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): words deleted next to a character
+    Markdown reads as markup, words typed straight after a kept `<` or `&` that can open a
+    tag or an entity, and an edit after a `<` that can open a tag with a bare `>` after it
+    write the stretch from Word's text, losing its emphasis, and the dry run lists it."""
+    source, printed, returned = {**_READ_OTHERWISE, **_READ_THE_SAME}[case]
+    aligned = merged_alignment(
+        f"*Seen* in {source} x at {{{{results.x}}}}.", f"Seen in {printed} x at ⟦3.84⟧.",
+        f"Seen in {returned} x at 3.84.",
+    )  # fmt: skip
+    if case in _READ_OTHERWISE:
+        assert aligned.rebuilt is not None and aligned.rebuilt.startswith("Seen in ")
+        assert aligned.flattened == (f"Seen in {returned} x at",)
+    else:
+        assert aligned.rebuilt is not None and aligned.rebuilt.startswith("*Seen* in ")
+        assert aligned.flattened == ()
+
+
+def test_a_stretch_after_a_quote_left_open_or_beside_a_bare_brace_is_written_plain() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): a stretch while a straight quote
+    opened before it is still open, and any stretch of a paragraph whose prose has a bare
+    brace, are written from Word's text, their emphasis lost; with the quote closed, or no
+    brace, the emphasis is kept."""
+    opened = merged_alignment(
+        "He said 'big {{results.x}} and *all* grew' then.",
+        "He said ‘big ⟦3.84⟧ and all grew’ then.", "He said ‘big 3.84 and all rose’ then.",
+    )  # fmt: skip
+    assert opened.rebuilt == "He said 'big {{results.x}} and all rose' then."
+    assert opened.flattened == ("and all rose’ then.",)
+    closed = merged_alignment(
+        "He said 'big' {{results.x}} and *all* grew then.",
+        "He said ‘big’ ⟦3.84⟧ and all grew then.", "He said ‘big’ 3.84 and all rose then.",
+    )  # fmt: skip
+    assert closed.rebuilt == "He said 'big' {{results.x}} and *all* rose then."
+    for brace, kept in (("The set {a, b} at", "with all rose."), ("The set at", "")):
+        aligned = merged_alignment(
+            f"{brace} {{{{results.x}}}} with *all* grew.",
+            f"{brace} ⟦3.84⟧ with all grew.", f"{brace} 3.84 with all rose.",
+        )  # fmt: skip
+        assert aligned.flattened == ((kept,) if kept else ()), brace
+
+
+def test_a_merge_that_does_not_read_back_as_word_s_text_writes_its_stretch_plain() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): the space before an italic `_b_`
+    deleted in Word, written word by word, makes `a\\__b_`, which does not read back as
+    Word's "a_b"; the stretch is written from Word's text, and the emphasis of `*d*` is lost
+    with it. An edit that reads back keeps both."""
+    source = "of a _b_ c and *d* at {{results.x}} now."
+    printed = "of a b c and d at ⟦3.84⟧ now."
+    joined = merged_alignment(source, printed, "of a_b c and d at 3.84 now.")
+    assert joined.rebuilt == "of a_b c and d at {{results.x}} now."
+    assert joined.flattened == ("of a_b c and d at",)
+    edited = merged_alignment(source, printed, "of a b c and e at 3.84 now.")
+    assert edited.rebuilt == "of a _b_ c and *e* at {{results.x}} now."
+    assert edited.flattened == ()
+
+
+#: A citation style whose citations are notes, which pandoc writes as footnotes.
+NOTE_CSL = MINIMAL_CSL.replace('class="in-text"', 'class="note"').replace(
+    "Minimal numeric", "Minimal note"
+)
+
+
+@needs_pandoc
+def test_a_citation_in_a_note_style_is_refused_before_a_stretch_is_written(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", some edits write their whole stretch plain): in a note style pandoc drops the
+    space before the note, so the source's "word " is printed "word"; a word edited beside it
+    in Word refuses the paragraph, as one whose numbers, citations and markup could not be
+    told apart from its prose, and `--apply` writes nothing."""
+    from manuscript_guard.cli import main
+
+    style = tmp_path / "note.csl"
+    style.write_text(NOTE_CSL, encoding="utf-8", newline="\n")
+    with_paragraphs(project, "A *big* word [@fictionalClassSignal2019] and more of it here.")
+    assert main(["build", str(project), "--offline", "--csl", str(style)]) == 0
+    built = project / "build" / "manuscript.docx"
+    xml = _docx_part(built, "word/document.xml")
+    assert re.search(r">word</w:t></w:r><w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"", xml)
+    returned = edit_docx(built, tmp_path / "back.docx", {">word</w:t>": ">term</w:t>"})
+    assert ">term</w:t>" in _docx_part(returned, "word/document.xml")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--csl", str(style), "--apply"]) == 1
+    out = capsys.readouterr().out
+    refused = next(b for b in out.split("\n\n") if "+ A big term and more of it here." in b)
+    said = " ".join(refused.split())
+    assert said.startswith("NOT merged into"), out
+    assert "citations and markup could not be told apart from its prose" in said, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+def test_of_two_equal_words_the_comparison_chooses_which_was_typed() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A merged edit can lose the inline formatting it
+    meets", which of two equal words was edited): "very" typed before a bold "very" is
+    lined up as the first, and the bold stays on the second."""
+    aligned = merged_alignment(
+        "It was **very** large at {{results.x}}.", "It was very large at ⟦3.84⟧.",
+        "It was very very large at 3.84.",
+    )  # fmt: skip
+    assert aligned.rebuilt == "It was very **very** large at {{results.x}}."
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "refused"),
+    [
+        pytest.param("As [1][2] shown, high in all.", "As [1][2] shown, high in all.",
+                     "As [1][2] shown, high in most.", "markup", id="undefined-reference-link"),
+        pytest.param("See [reg] for it, high in all.", "See reg for it, high in all.",
+                     "See reg for it, high in most.", "unaligned", id="defined-shortcut-link"),
+    ],
+)  # fmt: skip
+def test_a_link_read_otherwise_than_pandoc_reads_it_refuses_the_edit(
+    source: str, rendered: str, returned: str, refused: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Merging a reworded paragraph refuses, rather than
+    drops", the reading is pandoc's, closely enough): `[1][2]`, text to pandoc with no
+    reference definition, is a link here, and an edit far from it is refused by name;
+    `[reg]`, a link to pandoc with a definition, is text here, and a paragraph holding it
+    cannot be lined up, whatever the edit."""
+    aligned = merged_alignment(source, rendered, returned)
+    assert aligned.rebuilt is None
+    if refused == "markup":
+        assert aligned.markup == ("a link",)
+    else:
+        assert aligned.unaligned
+
+
+@pytest.mark.parametrize(
+    ("written", "printed", "plain", "kept"),
+    [
+        ("&lt;LOD", "<LOD", "\\<LOD", "&lt;LOD"),
+        ("5&nbsp;mg", "5\N{NO-BREAK SPACE}mg", "5\N{NO-BREAK SPACE}mg", "5&nbsp;mg"),
+        ("5\\ mg", "5\N{NO-BREAK SPACE}mg", "5\N{NO-BREAK SPACE}mg", "5\\ mg"),
+        ('a \\"b\\"', 'a "b"', 'a "b"', 'a \\"b\\"'),
+    ],
+    ids=["entity-lt", "entity-nbsp", "escaped-space", "escaped-quote"],
+)
+def test_text_written_from_word_loses_the_source_s_way_of_writing_a_character(
+    written: str, printed: str, plain: str, kept: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Merging a reworded paragraph refuses, rather than
+    drops", what is written from Word's text): a stretch written from Word's text writes
+    `&lt;` as `\\<`, `&nbsp;` and `\\ ` as the no-break space itself, and `\\"` bare. Written
+    word by word, the source's own way of writing each is kept."""
+    plain_stretch = merged_alignment(
+        f"*Seen* in {written} (big a) x at {{{{results.x}}}}.",
+        f"Seen in {printed} (big a) x at ⟦3.84⟧.", f"Seen in {printed} (a) x at 3.84.",
+    )  # fmt: skip
+    assert plain_stretch.rebuilt == f"Seen in {plain} (a) x at {{{{results.x}}}}."
+    word_by_word = merged_alignment(
+        f"*Seen* in {written} big x at {{{{results.x}}}}.",
+        f"Seen in {printed} big x at ⟦3.84⟧.", f"Seen in {printed} x at 3.84.",
+    )  # fmt: skip
+    assert word_by_word.rebuilt == f"*Seen* in {kept} x at {{{{results.x}}}}."
+
+
+def _pandoc_prints(markdown: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "plain", "--wrap=none"],
+        input=markdown.encode("utf-8"), capture_output=True, check=True, timeout=60,
+    ).stdout.decode("utf-8").strip()  # fmt: skip
+
+
+def test_a_straight_quote_opens_by_rule_and_its_curly_close_is_written_straight() -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where a straight quote opens is read by a rule,
+    not by pandoc"): where the build printed a ‘ in the stretch, the first ’ of the edited
+    stretch that closes it is written straight, a space typed before it kept; pandoc trims
+    that space, and "3.84 ’" prints as "3.84’". Where the build printed none, as for the `'`
+    of `'Tis`, a ’ typed in the edited stretch stays curly."""
+    closing = merged_alignment(
+        "They said 'it was {{results.x}}' in all.", "They said ‘it was ⟦3.84⟧’ in all.",
+        "They said ‘it was 3.84 ’ in most.",
+    )  # fmt: skip
+    assert closing.rebuilt == "They said 'it was {{results.x}} ' in most."
+    if PANDOC:
+        printed = _pandoc_prints(closing.rebuilt.replace("{{results.x}}", "3.84"))
+        assert printed == "They said ‘it was 3.84’ in most."
+    tis = merged_alignment(
+        "'Tis {{results.x}} and high’ in all.", "’Tis ⟦3.84⟧ and high’ in all.",
+        "’Tis 3.84 and very high’ in all.",
+    )  # fmt: skip
+    assert tis.rebuilt == "'Tis {{results.x}} and very high’ in all."
+
+
+#: Where a straight `'` opens a quotation around a binding, each placement the quote rule was
+#: tried in against pandoc; `{X}` stands for the binding.
+_QUOTE_PLACEMENTS = [
+    "They said 'it was {X}' in all.",
+    "They said ('it was {X}') in all.",
+    "They said -'it was {X}' in all.",
+    "They said—'it was {X}' in all.",
+    "They said:'it was {X}' in all.",
+    "They said ['it was {X}'] in all.",
+    "They said '{X} was it' in all.",
+    "They said '*it* was {X}' in all.",
+    "They said '90s {X}' in all.",
+    "They said 'it was {X}'s' in all.",
+    "It was 'a' {X} and 'b' in all.",
+    "They said 'tis {X}' in all.",
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("placement", _QUOTE_PLACEMENTS)
+def test_a_quote_the_rule_opens_prints_as_word_s_text_read(placement: str) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Where a straight quote opens is read by a rule,
+    not by pandoc"): in each placement tried, the stretch after the binding edited in Word
+    and the paragraph rebuilt, pandoc prints it exactly as Word's text read, every quote the
+    right way round."""
+    printed = _pandoc_prints(placement.replace("{X}", "QQQ"))
+    assert "QQQ" in printed, printed
+    returned = printed.replace("QQQ", "3.84").replace("in all", "in most")
+    aligned = merged_alignment(
+        placement.replace("{X}", "{{results.x}}"), printed.replace("QQQ", "⟦3.84⟧"),
+        returned,
+    )  # fmt: skip
+    assert aligned.rebuilt is not None, placement
+    assert _pandoc_prints(aligned.rebuilt.replace("{{results.x}}", "3.84")) == returned
+
+
+def test_a_straight_quote_from_word_is_written_as_typed_and_may_pair_across_a_token() -> None:
+    """A known gap (DESIGN.md, Known gaps, "A straight quote from Word is typeset like one in
+    the source"): curly quotes turned straight in Word rebuild the source as it was, so the
+    change is lost; a straight quote typed before a value pairs with the source's straight
+    one after it, and `'high' at "{{x}} and "low"` prints “3.84 and”low”. A quoted value the
+    source opened after a `<` of its own keeps its straight closing quote when its stretch is
+    edited, and an edit beside that quote is refused."""
+    signal = 'They called it "a signal" at {{results.x}} in all.'
+    straightened = merged_alignment(
+        signal, "They called it “a signal” at ⟦3.84⟧ in all.",
+        'They called it "a signal" at 3.84 in all.',
+    )  # fmt: skip
+    assert straightened.rebuilt == signal
+    paired = merged_alignment(
+        "'high' at {{results.x}} and \"low\"", "‘high’ at ⟦3.84⟧ and “low”",
+        "‘high’ at \"3.84 and “low”",
+    )  # fmt: skip
+    assert paired.rebuilt == "'high' at \"{{results.x}} and \"low\""
+    if PANDOC:
+        printed = _pandoc_prints(paired.rebuilt.replace("{{results.x}}", "3.84"))
+        assert printed == "‘high’ at “3.84 and”low”"
+    coded = 'Values <LOD in {{results.u}} were coded="HR {{results.x}} or LOD" in all.'
+    printed_coded = "Values <LOD in ⟦mg⟧ were coded=“HR ⟦3.84⟧ or LOD” in all."
+    edited = merged_alignment(
+        coded, printed_coded, "Values <LOD in mg were coded=“HR 3.84 or LOD” in most."
+    )
+    assert edited.rebuilt == coded.replace("in all.", "in most.")
+    beside = merged_alignment(
+        coded, printed_coded, "Values <LOD in mg were coded=“HR 3.84 or LLOD” in all."
+    )
+    assert beside.rebuilt is None
 
 
 #: Documents Word itself saved, for what Word does to a document that no test can say for it.
@@ -7674,6 +8219,76 @@ def test_a_deleted_paragraph_without_an_identifier_is_named(
     capsys.readouterr()
     assert main(["import", str(returned), str(project)]) == 1
     assert "- Funding" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_number_corrected_in_a_table_is_only_counted_and_a_heading_reworded_is_listed(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`import` compares only paragraphs that carry an
+    identifier"): a number corrected in a table cell is neither merged nor refused nor
+    listed, only counted among what went unexamined, and import exits 0; a heading reworded,
+    outside a table, is listed and import exits 1. Neither is applied. And the term of a
+    loose definition list is one paragraph, and keeps its identifier."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("Prose.\n\nTerm\n\n:   A definition.\n\nAfter.\n", "main.md")
+    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tagged) == ["Prose.", "Term", "After."]
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    cell = rewrite(
+        document, tmp_path / "cell.docx", lambda x: x.replace(">426</w:t>", ">427</w:t>", 1)
+    )
+    assert ">427</w:t>" in _docx_part(cell, "word/document.xml"), "the cell was not edited"
+    capsys.readouterr()
+    assert main(["import", str(cell), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "nothing came back" in out and "427" not in out, out
+    assert "None outside a table changed; an edit inside a table is not reported at all" in out
+    heading = edit_docx(document, tmp_path / "heading.docx", {">Discussion<": ">Discussion of it<"})
+    assert ">Discussion of it<" in _docx_part(heading, "word/document.xml")
+    assert main(["import", str(heading), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "    - Discussion\n    + Discussion of it\n" in out, out
+    assert "Those outside tables that changed are listed above" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_document_that_ran_a_list_into_a_paragraph_comes_back_listing_it_untouched(
+    project: Path, tmp_path: Path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "`import` compares only paragraphs that carry an
+    identifier"): a document built before identifiers moved off lists ran a list into one
+    paragraph carrying an identifier. Returned untouched, it lists the list's items as
+    changed and names that paragraph as not compared, applies nothing and exits 1; a
+    current build sent out comes back with nothing to report."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "- Alpha item of the list.\n- Bravo item of the list.")
+    was = roundtrip._untagged
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            roundtrip, "_untagged", lambda block: not block.startswith("- Alpha") and was(block)
+        )
+        old = shutil.copy(built(project), tmp_path / "old.docx")
+    with zipfile.ZipFile(old) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+    assert "- Alpha item of the list.</w:t>" in xml, "the list ran into a paragraph"
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(old), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "    - Alpha item of the list.\n    - Bravo item of the list.\n" in out, out
+    assert "were not compared, because their identifier no longer names" in out, out
+    assert source.read_text(encoding="utf-8") == before
+    current = shutil.copy(built(project), tmp_path / "current.docx")
+    assert main(["import", str(current), str(project), "--apply"]) == 0
+    assert "nothing came back" in capsys.readouterr().out
 
 
 def blocks(text: str) -> list[str]:
@@ -12092,6 +12707,57 @@ def test_a_no_break_space_typed_in_word_is_an_edit(tmp_path: Path) -> None:
     assert plan.merged == {"a": "Le mot\u00a0: clair."}
 
 
+@needs_pandoc
+def test_a_no_break_space_added_at_either_end_of_a_paragraph_is_dropped(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Merging a reworded paragraph refuses, rather than
+    drops", a space at either end of a paragraph): a no-break space the co-author added at
+    the start or the end of a paragraph is dropped, silently where it is the only change,
+    and left out of the paragraph merged where there is another. Inside a paragraph it is an
+    edit (the test above)."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    funding = "This work received no funding."
+    for name, now in (("end", f"{funding}\u00a0"), ("start", f"\u00a0{funding}")):
+        returned = edit_docx(document, tmp_path / f"{name}.docx", {funding: now})
+        capsys.readouterr()
+        assert main(["import", str(returned), str(project), "--apply"]) == 0, name
+        assert "nothing came back" in capsys.readouterr().out, name
+        assert source.read_text(encoding="utf-8") == before, name
+    now = "This work received no external funding.\u00a0"
+    edited = edit_docx(document, tmp_path / "edited.docx", {funding: now})
+    assert main(["import", str(edited), str(project), "--apply"]) == 0
+    assert source.read_text(encoding="utf-8") == before.replace(
+        funding, "This work received no external funding."
+    )
+
+
+@needs_pandoc
+def test_curly_quotes_turned_straight_in_word_come_back_as_nothing(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A straight quote from Word is typeset like one in
+    the source"): “a signal” turned into "a signal" rebuilds the paragraph as the
+    source has it, so the change is lost and nothing is reported."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, 'They called it "a signal" in the cohort.')
+    returned = edit_docx(
+        built(project), tmp_path / "back.docx", {"\u201ca signal\u201d": "&quot;a signal&quot;"}
+    )
+    assert "&quot;a signal&quot;" in _docx_part(returned, "word/document.xml")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "nothing came back" in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before
+
+
 @pytest.mark.parametrize(
     ("source", "rendered", "returned", "named"),
     [
@@ -13940,6 +14606,66 @@ def test_word_text_takes_a_symbol_font_from_the_font_table(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
+    ("runs", "shown"),
+    [
+        pytest.param(in_font("J J", "MyDings"), "J J", id="unknown-symbol-font-no-font-table"),
+        pytest.param(
+            '<w:r><w:rPr><w:rFonts w:cs="Symbol"/><w:rtl/></w:rPr><w:t>m</w:t></w:r>', "m",
+            id="complex-script-font-rtl",
+        ),
+        pytest.param(
+            '<w:r><w:rPr><w:rFonts w:cs="Symbol"/><w:cs/></w:rPr><w:t>m</w:t></w:r>', "m",
+            id="complex-script-font-cs",
+        ),
+        pytest.param(
+            '<w:r><w:rPr><w:rFonts w:eastAsia="Symbol" w:hint="eastAsia"/></w:rPr>'
+            "<w:t>患</w:t></w:r>",
+            "患",
+            id="east-asian-symbol-font",
+        ),
+    ],
+)  # fmt: skip
+def test_a_font_past_the_run_styles_defaults_and_theme_is_not_considered(
+    tmp_path: Path, runs: str, shown: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Fonts are resolved as far as the run, its
+    styles, the defaults and the theme"): a symbol font the reader does not know by name, in
+    a document with no font table, the complex-script font and an East Asian font of Symbol
+    drawing CJK text are read as the characters they hold, by the import and by the audit.
+    The other side: the same `m` in the Symbol font as the run's own is read as a mu."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.text.docx import read_docx
+
+    document = symbol_document(tmp_path, text_run("5 ") + runs)
+    [block] = blocks(document)
+    assert (block.text, block.unread) == (f"5 {shown}", ())
+    assert read_docx(document) == f"\n5 {shown}"
+    [block] = blocks(symbol_document(tmp_path, text_run("5 ") + in_font("m")))
+    assert block.text == f"5 {MU}"
+
+
+def test_a_table_style_s_font_is_not_considered(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Fonts are resolved as far as the run, its
+    styles, the defaults and the theme"): a table style that sets the Symbol font leaves its
+    cells' text read as written, where a paragraph style setting it is followed."""
+    from manuscript_guard.text.docx import read_docx
+
+    fonts = '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr>'
+    styles = (
+        f'<w:style w:type="table" w:styleId="Grid"><w:name w:val="Grid"/>{fonts}</w:style>'
+        f'<w:style w:type="paragraph" w:styleId="Greek"><w:name w:val="Greek"/>{fonts}</w:style>'
+    )
+    table = (
+        '<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/></w:tblPr><w:tr><w:tc><w:p><w:r>'
+        "<w:t>5 m</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    )
+    document = symbol_document(tmp_path, "</w:p>" + table + "<w:p>" + text_run("after"), styles)
+    assert "\n5 m\n" in read_docx(document)
+    greek = symbol_document(tmp_path, text_run("5 m"), styles, paragraph_style="Greek")
+    assert read_docx(greek) == f"\n5 {MU}"
+
+
+@pytest.mark.parametrize(
     ("font", "code", "shown", "unread"),
     [
         ("Symbol", "F06D", MU, ()),
@@ -13964,6 +14690,24 @@ def test_word_text_reads_a_symbol_extension_in_the_font_it_names(
     [block] = blocks(symbol_document(tmp_path, text_run("5 ") + run + text_run("g")))
     assert block.text == f"5 {shown}g"
     assert block.unread == unread
+
+
+def test_word_text_reads_every_choice_and_no_fallback_whatever_the_choice_requires(
+    tmp_path: Path,
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The audit and the import read every `mc:Choice`
+    and no `mc:Fallback`"): text only in a fallback, behind a choice the reader does not know,
+    is not read, and a second choice is read as well as the first."""
+    from manuscript_guard.docxtext import blocks
+
+    unknown = _behind_a_choice('<w99:mark xmlns:w99="urn:example"/>', "<w:t>funding</w:t>")
+    [block] = blocks(symbol_document(tmp_path, text_run("no ") + unknown + text_run(".")))
+    assert block.text == "no ."
+    two = _behind_a_choice("<w:t>one</w:t>", "<w:t>fallback</w:t>").replace(
+        "</mc:Choice>", '</mc:Choice><mc:Choice Requires="w98"><w:t>two</w:t></mc:Choice>'
+    )
+    [block] = blocks(symbol_document(tmp_path, text_run("a ") + two + text_run(" b")))
+    assert block.text == "a onetwo b"
 
 
 def test_a_new_paragraph_holding_only_a_symbol_is_new_text_beside_its_neighbour(
@@ -14091,6 +14835,25 @@ def test_a_second_private_use_character_of_a_code_already_sent_is_refused(
     why = " ".join(refusal.why)
     assert "private-use character F06D" in why and "body font" in why, why
     assert "no text" not in why, why
+
+
+def test_a_private_use_character_moved_in_its_paragraph_merges_as_moved(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "Fonts are resolved as far as the run, its
+    styles, the defaults and the theme"): a private-use character is counted, not placed, so
+    one deleted and another of the same code typed elsewhere in the paragraph is no change of
+    count, and merges as the character moved; one more of it is refused (the test above)."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    pua = chr(0xF06D)
+    was = f"The mark {pua} is here and there."
+    _path, known = source_of(tmp_path, {"a": was})
+    once = ("private-use character F06D",)
+    sent = [Block(("a",), was, unread=once)]
+    returned = [Block(("a",), f"The mark is here and {pua} there.", unread=once)]
+    plan = plan_import(known, sent, returned)
+    assert not plan.refused
+    assert plan.merged == {"a": f"The mark is here and {pua} there."}
 
 
 def test_what_the_sent_document_could_not_read_either_is_no_edit(tmp_path: Path) -> None:
@@ -14723,6 +15486,35 @@ def test_a_block_pandoc_reads_as_more_than_a_paragraph_stays_untagged(block: str
     from manuscript_guard.roundtrip import tag
 
     assert not tag(block, "main.md").startswith("[]{#mg-p-")
+
+
+@needs_pandoc
+def test_a_brace_an_earlier_version_wrote_back_leaves_its_paragraph_uncompared(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A brace an earlier version wrote back is half a
+    pair now"): `\\{a, b}` has an unpaired `}`, so its paragraph carries no identifier; it
+    builds, and an edit to it in Word is listed as not compared and not applied. With the
+    missing backslash, `\\{a, b\\}`, it is marked again."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import tag
+
+    old, fixed = r"The set \{a, b} was used in the cohort.", r"The set \{a, b\} was used."
+    assert not tag(old, "main.md").startswith("[]{#mg-p-")
+    assert tag(fixed, "main.md").startswith("[]{#mg-p-")
+    with_paragraphs(project, old)
+    returned = edit_docx(
+        built(project), tmp_path / "back.docx", {"used in the cohort.": "used in the whole cohort."}
+    )
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "    - The set {a, b} was used in the cohort.\n" in out, out
+    assert "    + The set {a, b} was used in the whole cohort.\n" in out, out
+    assert "came back different and were not compared" in out, out
+    assert source.read_text(encoding="utf-8") == before
 
 
 @needs_pandoc

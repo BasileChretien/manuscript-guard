@@ -30,9 +30,10 @@ Two findings are not about consistency:
   inside a piece raised or lowered as pandoc writes one, "u~0school~", nor anywhere in a run
   of characters with no blank in it that holds a name joined by underscores,
   `UNEMP\\_DURA\\_6-12mth`, where no unit is closed up either (Basile, 2026-11-22, "Skip the
-  whole token"), an "=" ending the run, so that "C_max=12mg" is read ("'=' ends the
-  token"); and in text the audit read from a PDF, no word against a signed number,
-  since pdftotext sets an exponent or an index on the line.
+  whole token"), an "=" and nothing else ending the run, so that "C_max=12mg" is read
+  where no other name's run takes the value in ("'=' ends the token"); and in text the
+  audit read from a PDF, no word against a signed number, since pdftotext sets an exponent
+  or an index on the line.
 
 **A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
 bindings, `{{results.ror.point}}`, so the notation is read with each binding that stands in

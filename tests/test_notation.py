@@ -586,9 +586,38 @@ def test_a_space_left_out_in_the_run_of_a_name_passes(written: str) -> None:
     ids=["unit after", "half-life", "word after", "unit before", "a hyphen ends nothing"],
 )  # fmt: skip
 def test_an_equals_sign_ends_the_run_of_a_name(written: str, told_of: list) -> None:
-    """The run of a name stops at "=", so the value after it is read: "C_max=12mg" is a
-    unit closed up, as it was before the run was read whole (Basile, 2026-11-22, "'=' ends
-    the token"). A hyphen ends nothing."""
+    """The run of a name stops at "=", so the value after it is read unless it runs on into
+    another name: "C_max=12mg" is a unit closed up, as it was before the run was read whole
+    (Basile, 2026-11-22, "'=' ends the token"). A hyphen ends nothing."""
+    assert told(read(f"# Results\n\n{written}\n")) == told_of, written
+
+
+@pytest.mark.parametrize(
+    ("written", "told_of"),
+    [
+        # a value after one "=" joined to the next name falls into that name's run
+        ("The C_max=12mg;t_max=2h was seen.",
+         [("notation-unit", "a number runs into its unit once: '2h'")]),
+        ("The pair (t_1/2=5h,C_max=12mg) was seen.",
+         [("notation-unit", "a number runs into its unit once: '12mg'")]),
+        # only "=" ends the run
+        ("The C_max>12mg was seen.", []),
+        ("The C_max<12mg was seen.", []),
+        ("The t_1/2\N{ALMOST EQUAL TO}5h was seen.", []),
+        ("The C_max\N{LESS-THAN OR EQUAL TO}12mg was seen.", []),
+        ("The C_max\N{GREATER-THAN OR EQUAL TO}12mg was seen.", []),
+        # a code's name=level is split at "="
+        ("The level DURA\\_CAT=6-12mth was seen.",
+         [("notation-space-missing", "a number and a word run together once: '12mth'")]),
+    ],
+    ids=["semicolon", "comma", ">", "<", "approximately", "at most", "at least",
+         "name=level"],
+)  # fmt: skip
+def test_what_the_equals_sign_leaves_in_the_run_of_a_name(written: str, told_of: list) -> None:
+    """The limits of "'=' ends the token" as decided (Basile, 2026-11-22; DESIGN.md, Known
+    gaps): a value joined to the next name by a semicolon or a comma falls into its run and
+    passes; another sign of comparison ends nothing; and a code's `name=level` is split at
+    "=", its level read."""
     assert told(read(f"# Results\n\n{written}\n")) == told_of, written
 
 

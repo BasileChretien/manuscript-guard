@@ -8704,7 +8704,8 @@ NOTATED = (
 )  # fmt: skip
 
 #: A space left out around a number, each counted once by `notation-space-missing`; and what
-#: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
+#: is no such thing: a unit closed up, which `notation-unit` counts (three of them here, one
+#: past an "=" in the run of a name), a name
 #: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
 #: scientific notation, a letter and a sign, a number inside a piece raised or lowered as
 #: pandoc writes one and inside a name joined by underscores. A tilde escaped lowers
@@ -8721,7 +8722,7 @@ RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n
 NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
               "5mg", "x+1", "u~0school~", "k^12rep^", "12mth\\_rate",
               "12mth\\_\\_rate", "UNEMP_DURA_6-12mth", "UNEMP\\_DURA\\_6-12mth",
-              "12mth-RATE\\_x", "RATE\\_x-to+0.5", "DOSE\\_6-5mg")  # fmt: skip
+              "12mth-RATE\\_x", "RATE\\_x-to+0.5", "DOSE\\_6-5mg", "C\\_max=12mg")  # fmt: skip
 #: Of `RUN_ON`, the words typed against a signed number, which text read from a PDF does not
 #: count: pdftotext sets an exponent or an index on the line (Basile, 2026-11-21).
 SIGNED_RUN_ON = ("to+0.77", "rose to+0.5.", "to+{{results.high}}", "tn+1")

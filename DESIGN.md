@@ -5991,9 +5991,10 @@ agree on what a name is. The run is taken as `code-name-in-prose` takes it to lo
 path (`code_names.joined_runs`), so `UNEMP\_DURA\_6-12mth` in a LaTeX data table, whose
 name ends at the hyphen, is no "12mth" typed against its number; nor is a unit closed up in
 such a run, `DOSE\_6-5mg`, nor a word against a signed number, `RATE\_x-to+0.5` (Basile,
-2026-11-22, "Skip the whole token"). An "=" ends the run, so the value after it is read:
-"C_max=12mg" is a unit closed up, and "(t_1/2=5h)" reports "5h" ("'=' ends the token");
-a hyphen ends nothing. `code-name-in-prose` looks for a path in the run as before, past
+2026-11-22, "Skip the whole token"). An "=" ends the run, so the value after it is read
+unless it runs on into the run of another name: "C_max=12mg" is a unit closed up, and
+"(t_1/2=5h)" reports "5h" ("'=' ends the token"); a hyphen ends nothing, nor does any other
+sign (Known gaps). `code-name-in-prose` looks for a path in the run as before, past
 an "=" too. In text the audit read from a PDF a word typed against a signed number is
 not read at all: pdftotext sets a superscript or a subscript on the line, so "cm−3",
 "yr−1", "cos−1" and "tn+1" are exponents and indices there, and on the real-paper corpus
@@ -25522,6 +25523,14 @@ Open, recorded as each change landed:
     characters either side of the name.
     Pinned by `tests/test_notation.py::test_a_number_inside_a_raised_or_lowered_piece_is_no_space_left_out`
     and `tests/test_notation.py::test_a_space_left_out_in_the_run_of_a_name_passes`.
+  - "=" alone ends the run of a name (Basile, 2026-11-22, "'=' ends the token"), and that
+    leaves three limits. A value after one "=" that is joined to the next name by a
+    semicolon or a comma falls into that name's run and passes: "C_max=12mg;t_max=2h"
+    reports only "2h", and "(t_1/2=5h,C_max=12mg)" passes "5h". Another sign of comparison
+    ends nothing, so "C_max>12mg", "C_max<12mg", "t_1/2≈5h", "C_max≤12mg" and "C_max≥12mg"
+    pass in silence. And a code's `name=level` is split at "=", its level read:
+    "DURA\_CAT=6-12mth" reports "12mth".
+    Pinned by `tests/test_notation.py::test_what_the_equals_sign_leaves_in_the_run_of_a_name`.
   - A tilde for "approximately" pairs with the next tilde where no blank stands between
     them, "(~3days,~5days)", and the stretch between is taken for a subscript, as pandoc
     prints it: "3days" passes and "5days" is reported (round 1 of #719).

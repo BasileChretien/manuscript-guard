@@ -8455,14 +8455,15 @@ def test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is(
     not a unit closed up, which `notation-unit` counts, nor a name a number stands inside,
     an ordinal or a decade alone, a number in hexadecimal or in scientific notation, a
     letter and a sign, or anything in the run of a name joined by underscores, whose units
-    `notation-unit` does not count either."""
+    `notation-unit` does not count either; what stands past an "=" in that run is read,
+    its unit closed up counted."""
     from manuscript_guard.gates.notation import judge_notation
     from manuscript_guard.gates.vocabulary import Passage
 
     read = _file(0, Path("main.md"), drawn, [], False)
     report = judge_notation([Passage(read.path, read.text, read.printed, read.line_of)])
     assert report.counts["notation_spaces_missing"] == len(RUN_ON), drawn
-    assert report.counts["notation_units_closed"] == 2, drawn
+    assert report.counts["notation_units_closed"] == 3, drawn
 
 
 from generated import SIGNED_RUN_ON  # noqa: E402

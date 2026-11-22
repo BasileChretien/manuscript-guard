@@ -73,8 +73,9 @@ _EXTENSION = re.compile(r"(?=[0-9]*[A-Za-z])[A-Za-z0-9]{1,10}")
 _FOLDER = re.compile(r"\\(?=[^\W_])")
 # How far either side of a word its run of characters is looked at for a path.
 _REACH = 200
-# What ends the run of a name for G14's notation, besides a blank: the value after `=` is read
-# (Basile, 2026-11-22, "'=' ends the token").
+# What ends the run of a name for G14's notation, besides a blank: the value after `=` is read,
+# unless it runs on into the run of another name; no other sign ends it (Basile, 2026-11-22,
+# "'=' ends the token"; DESIGN.md, Known gaps).
 _RUN_ENDS = "="
 # In Markdown, what is not printed: the opening or closing line of a fenced div, an HTML
 # tag, a pandoc attribute holding an `=` (`{custom-style="Body_Text"}`) and a TeX command

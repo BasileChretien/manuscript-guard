@@ -26,6 +26,8 @@ from pathlib import Path
 LIMIT = 600
 #: A paper's slug, which names its folders under corpus/ and runs/<run>/.
 SLUG = re.compile(r"[A-Za-z0-9._-]+")
+#: What a paper's `removed` in its meta.json says, all three required.
+REMOVED = ("by", "date", "why")
 
 
 class CorpusError(Exception):
@@ -213,10 +215,51 @@ def papers(root: Path) -> list[dict]:
         if slug != meta.parent.name or not SLUG.fullmatch(slug) or ".." in slug:
             raise CorpusError(f"{meta}: its slug {slug!r} is not its folder's name, in letters, "
                               "digits, '.', '_' and '-'")  # fmt: skip
+        removal(data, meta)
         found.append(data)
     if not found:
         raise CorpusError(f"{root / 'corpus'} holds no corpus/<slug>/meta.json")
     return found
+
+
+def removal(data: dict, meta: Path) -> dict | None:
+    """What a paper's `removed` says, who took it out of the corpus, when and why; None where
+    it has none. Refused unless it says all three in words and nothing else."""
+    if "removed" not in data:
+        return None
+    said = data["removed"]
+    if not isinstance(said, dict) or set(said) != set(REMOVED) or not all(
+            isinstance(value, str) and value.strip() for value in said.values()):  # fmt: skip
+        raise CorpusError(f"{meta}: `removed` says by, date and why, each in words, and nothing "
+                          "else")  # fmt: skip
+    return said
+
+
+def removed_papers(root: Path) -> dict[str, dict]:
+    """The papers removed from the corpus after judging, by slug, each with its `removed`. A
+    meta.json that cannot be read is refused: its paper would pass for one still in, and its
+    verdicts would count."""
+    found = {}
+    for meta in sorted((root / "corpus").glob("*/meta.json")):
+        data = load_json(meta)
+        if not isinstance(data, dict):
+            raise CorpusError(f"{meta} cannot be read, so whether its paper was removed cannot "
+                              "be told")  # fmt: skip
+        said = removal(data, meta)
+        if said is not None:
+            found[meta.parent.name] = said
+    return found
+
+
+def render_removed(removed: list[dict]) -> list[str]:
+    """The lines of a report that name the papers removed after judging, and why."""
+    if not removed:
+        return []
+    count = sum(paper["verdicts"] for paper in removed)
+    return ["", f"Papers removed after judging ({len(removed)}), their {count} verdicts left "
+            "out of every run measured:", "",
+            *(f"- {p['slug']}: {' '.join(p['why'].split())} ({p['verdicts']} verdicts; removed "
+              f"by {p['by']}, {p['date']})" for p in removed)]  # fmt: skip
 
 
 def _latex_project(mg: list[str], files: Path, main: str, project: Path, env: dict) -> dict:
@@ -317,8 +360,12 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
     out_root = root / "runs" / (name or sha[:9])
     out_root.mkdir(parents=True, exist_ok=True)
     _claim(out_root, sha)
-    chosen = [m for m in papers(root) if not only or m["slug"] in only]
-    env = {**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
+    named = [m for m in papers(root) if not only or m["slug"] in only]
+    chosen = [m for m in named if "removed" not in m]
+    for meta in named:
+        if "removed" in meta:
+            print(f"{out_root.name} {meta['slug']}: removed after judging, not run", flush=True)
+    env ={**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
     env.pop("MANUSCRIPT_GUARD_DEBUG", None)
     record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen),

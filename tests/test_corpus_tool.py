@@ -820,3 +820,118 @@ def test_a_verdict_written_as_a_json_boolean_is_counted(corpus: Path) -> None:
     result = tool.measure(corpus, "new", ledger=False)
     assert len(result["findings"]) == 9 and result["skipped"] == {"verdict unclear": 1}
 
+
+# --- a paper removed after judging ------------------------------------------------------
+
+WHY = {"by": "the author", "date": "2026-11-23", "why": "a data readme, not a manuscript"}
+REASON = "paper removed after judging"
+
+
+def mark_removed(root: Path, slug: str, said: object = WHY) -> None:
+    folder = root / "corpus" / slug
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "meta.json"
+    meta = json.loads(path.read_text("utf-8")) if path.is_file() else {
+        "slug": slug, "format": "pdf", "main": "paper.pdf"}  # fmt: skip
+    path.write_text(json.dumps({**meta, "removed": said}), "utf-8")
+
+
+def test_a_removed_paper_is_left_out_of_the_measure_and_named(corpus: Path,
+                                                              tmp_path: Path) -> None:
+    before = tool.measure(corpus, "new", ledger=False)
+    verdicts = corpus / "report" / "judged" / "field.json"
+    held = verdicts.read_bytes()
+    mark_removed(corpus, "paper-b")
+    out, data = tmp_path / "measure.md", tmp_path / "measure.json"
+    assert tool.main(["--corpus", str(corpus), "measure", "new", "--no-ledger",
+                      "--out", str(out), "--json", str(data)]) == 0  # fmt: skip
+    result = json.loads(data.read_text("utf-8"))
+    assert result["findings"] == [r for r in before["findings"] if r["slug"] == "paper-a"]
+    # Its unclear verdict is one of its verdicts, counted under the one reason.
+    assert result["skipped"] == {REASON: 2}
+    assert result["removed"] == [{"slug": "paper-b", **WHY, "verdicts": 2}]
+    text = out.read_text("utf-8")
+    assert REASON in text and "paper-b" in text and WHY["why"] in text
+    assert verdicts.read_bytes() == held
+
+
+def test_a_removed_paper_can_neither_block_nor_flatter_a_gate(corpus: Path,
+                                                              tmp_path: Path) -> None:
+    assert not tool.gate(corpus, "base", "new")["ok"]
+    assert tool.gate(corpus, "new", "base")["recovered"]
+    mark_removed(corpus, "paper-a")
+    out, data = tmp_path / "gate.md", tmp_path / "gate.json"
+    assert tool.main(["--corpus", str(corpus), "gate", "base", "new",
+                      "--out", str(out), "--json", str(data)]) == 0  # fmt: skip
+    result = json.loads(data.read_text("utf-8"))
+    assert result["ok"] and not result["lost"] and not result["false_loud"]
+    assert not tool.gate(corpus, "new", "base")["recovered"]
+    for side in ("base", "new"):  # paper-b's one counted verdict, on both sides
+        assert sum(n for v in result["totals"][side].values() for n in v.values()) == 1
+    # Its loud findings are no findings "no judged finding accounts for" either.
+    assert "G14/notation-percent" not in result["unjudged"]
+    assert result["skipped"] == {REASON: 8, "verdict unclear": 1}
+    assert result["removed"] == [{"slug": "paper-a", **WHY, "verdicts": 8}]
+    text = out.read_text("utf-8")
+    assert REASON in text and "paper-a" in text and WHY["why"] in text
+
+
+def test_removing_a_paper_changes_no_other_paper_s_pairing(corpus: Path) -> None:
+    """Whether a finding is told from others of its code is read over every packet, so the
+    removed paper's packet still counts there: its removal moves no other paper's verdict."""
+    path = corpus / "report" / "packets" / "field.json"
+    papers = {p["slug"]: p for p in json.loads(path.read_text("utf-8"))}
+    papers["paper-a"]["reports"]["audit"]["totals"] = {"G14/spelling-variant": 1}
+    papers["paper-b"]["reports"]["audit"]["findings"].append(
+        finding("G14", "spelling-variant", "'behavior' is the American spelling", line=9))
+    path.write_text(json.dumps(list(papers.values())), "utf-8")
+
+    def alone() -> bool:
+        return next(i.alone for i in tool.load_judged(corpus)[0]
+                    if i.slug == "paper-a" and i.index == 5)  # fmt: skip
+
+    assert alone()
+    mark_removed(corpus, "paper-b")
+    assert {i.slug for i in tool.load_judged(corpus)[0]} == {"paper-a"} and alone()
+
+
+@pytest.mark.parametrize("said", [
+    None, "yes", True, {}, {"by": "x", "date": "y"}, {**WHY, "why": ""}, {**WHY, "date": "  "},
+    {**WHY, "by": 3}, {**WHY, "and": "more"},
+])  # fmt: skip
+def test_a_removal_that_does_not_say_who_when_and_why_is_refused(corpus: Path,
+                                                                 said: object) -> None:
+    mark_removed(corpus, "paper-b", said)
+    for read in (lambda: tool.measure(corpus, "new"), lambda: tool.gate(corpus, "base", "new"),
+                 lambda: tool.corpus_run.papers(corpus)):  # fmt: skip
+        with pytest.raises(tool.CorpusError, match="`removed` says by, date and why"):
+            read()
+
+
+def test_a_meta_that_cannot_be_read_is_not_taken_for_a_paper_still_in(corpus: Path) -> None:
+    mark_removed(corpus, "paper-b")
+    (corpus / "corpus" / "paper-b" / "meta.json").write_text('{"slug": "paper-b",', "utf-8")
+    with pytest.raises(tool.CorpusError, match="cannot be read"):
+        tool.measure(corpus, "new")
+
+
+def test_run_leaves_out_a_removed_paper_and_a_run_holding_one_is_fine(
+        corpus: Path, monkeypatch, capsys) -> None:  # fmt: skip
+    add_papers(corpus)
+    fake = FakeBuild(monkeypatch)
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    held = corpus / "runs" / "pr-1" / "doc-1" / "audit.json"
+    assert held.is_file()
+    mark_removed(corpus, "doc-1")
+    fake.steps.clear()
+    # The run that holds it goes on, and leaves what it holds where it is.
+    record = tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    assert record["papers"] == 2 and held.is_file()
+    assert "doc-1" not in {out.parent.name for _, _, out, _ in fake.steps}
+    assert "pr-1 doc-1: removed after judging, not run" in capsys.readouterr().out
+    # A new run does not run it, even when it is named.
+    tool.corpus_run.run(corpus, "main", "pr-2", REPO, jobs=1, only=None)
+    assert not (corpus / "runs" / "pr-2" / "doc-1").exists()
+    assert (corpus / "runs" / "pr-2" / "tex-1").is_dir()
+    tool.corpus_run.run(corpus, "main", "pr-3", REPO, jobs=1, only=["doc-1"])
+    assert not (corpus / "runs" / "pr-3" / "doc-1").exists()

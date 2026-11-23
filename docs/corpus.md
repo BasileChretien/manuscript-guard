@@ -39,7 +39,8 @@ made into a project and checked as well, and of a PDF `run` writes pdftotext's t
 the run's reports (`paper.txt`, `-enc UTF-8 -layout`) for the judges, where pdftotext is on
 `PATH`. Keep the SHA-256 of each file there too, so a paper fetched again can be told from
 another. A slug is its folder's name, in letters, digits,
-`.`, `_` and `-`.
+`.`, `_` and `-`. A paper found not to be a manuscript after its findings were judged carries
+`removed` (below).
 
 Give the corpus folder its own git repository, if any, never a remote, and this
 `.gitignore`:
@@ -69,6 +70,37 @@ for each of `audit`, `audit-pdf`, `check` and `compare`, the `findings` as that 
 before any were left out of the sample. A verdict is `{slug, report, index, verdict}`, where `index` is the
 finding's place in that report's list and `verdict` is `true`, `false` or `unclear`; any other
 fields (`kind`, `why`, `useful`) are kept for people. Only true and false verdicts are counted.
+
+### A paper removed after judging
+
+A paper that turns out not to belong in the corpus, a data readme say, leaves it by a line in
+its `meta.json` (Basile, 2026-11-23):
+
+```json
+"removed": {"by": "the author", "date": "2026-11-23", "why": "a data readme, not a manuscript"}
+```
+
+All three are required, each in words, and nothing else may stand there; a `removed` that
+does not say them is refused, and so is a `meta.json` that cannot be read, since its paper
+would pass for one still in. The verdict files are not edited. From then on:
+
+- `run` does not run the paper and `unjudged` does not pack it. A run folder that already
+  holds it is fine, and what it holds stays there.
+- `measure`, `gate` and `tie` leave out its verdicts, the first ones and a batch's, on both
+  sides of a gate, so that its loss can neither block a run nor flatter one. Its findings in a
+  run count nowhere, among the warnings no judged finding accounts for and the gate's count of
+  new findings included.
+- The Markdown and the JSON of `measure` and `gate`, and `tie`'s, say so: the verdicts left
+  out gain the reason `paper removed after judging` with its count, and `removed` lists each
+  paper's slug, `by`, `date`, `why` and number of verdicts left out.
+- No other paper's pairing moves: what tells a finding from others of its code is still read
+  over every packet, the removed paper's too.
+- A tie the author decided on its findings stays in `report/ties-decided.yaml`, read nowhere
+  and refused nowhere, and a decision of the ledger that named only its findings shows
+  `matched: 0`.
+
+`agree` still reads a batch packed before the removal, since the two judges' files answer to
+the packet; what it writes for the removed paper is left out like its other verdicts.
 
 The papers are downloaded files. The tool runs nothing with its working folder inside
 `corpus/`, gives every command a time limit, and runs the build under `python -I`, which

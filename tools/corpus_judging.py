@@ -18,8 +18,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from corpus_match import key_of, loud, norm
-from corpus_run import SLUG, CorpusError, load_json
+from corpus_run import SLUG, CorpusError, load_json, removed_papers
 
+#: The reason counted among the verdicts left out for a paper that left the corpus.
+REMOVED_AFTER_JUDGING = "paper removed after judging"
 PACKETS = Path("report") / "packets"
 JUDGED = Path("report") / "judged"
 JUDGES = Path("report") / "judges"
@@ -166,18 +168,32 @@ def _messages(papers) -> dict[str, list[str]]:
 
 
 def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
-    """Each verdict with the finding it judged, and a count of those left out, by reason. A
+    """Each verdict with the finding it judged, and a count of those left out, by reason."""
+    judged, skipped, _removed = read_judged(root)
+    return judged, skipped
+
+
+def read_judged(root: Path) -> tuple[list[Judged], collections.Counter, list[dict]]:
+    """Each verdict with the finding it judged, a count of those left out, by reason, and the
+    papers removed after judging, each with its `removed` and its verdicts left out. A
     batch's verdicts read its own packet (`packet_of`), and a finding judged twice in one
-    batch is refused; the first ones read the first packets by slug, as before batches."""
+    batch is refused; the first ones read the first packets by slug, as before batches. A
+    removed paper's packets still count in what tells a finding from others of its code
+    (`telling`), so that its removal changes no other paper's pairing."""
     first, batches = read_packets(root)
     messages = _messages(first.values())
     every = _messages([*first.values(), *(p for b in batches.values() for p in b.values())])
     judged, skipped, seen = [], collections.Counter(), set()
+    removed, left_out = removed_papers(root), collections.Counter()
     for path in sorted((root / "report" / "judged").glob("*.json")):
         entries = load_json(path) or []
         batch = packet_of(path, batches, entries)
         for entry in entries:
             check_author(entry, path)
+            if str(entry.get("slug")) in removed:
+                skipped[REMOVED_AFTER_JUDGING] += 1
+                left_out[str(entry["slug"])] += 1
+                continue
             verdict = str(entry.get("verdict")).lower()
             if verdict not in VERDICTS:
                 skipped[f"verdict {verdict}"] += 1
@@ -206,8 +222,11 @@ def load_judged(root: Path) -> tuple[list[Judged], collections.Counter]:
                 seen.add(item.key)
             judged.append(item)
     if not judged:
-        raise CorpusError(f"{root / 'report'} holds no judged finding (docs/corpus.md)")
-    return judged, skipped
+        gone = sum(left_out.values())
+        said = f": {gone} verdicts are of papers removed after judging" if gone else ""
+        raise CorpusError(f"{root / 'report'} holds no judged finding{said} (docs/corpus.md)")
+    return judged, skipped, [{"slug": slug, **said, "verdicts": left_out[slug]}
+                             for slug, said in sorted(removed.items())]  # fmt: skip
 
 
 # --- unjudged ---------------------------------------------------------------------------
@@ -409,7 +428,8 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
             "written": bool(papers), "papers": len(papers), "findings": sum(codes.values()),
             "base": base.name if base is not None else None, "by_code": dict(codes.most_common()),
             "settled": settled, "no_text": sorted(s for s, p in papers.items() if not p["text"]),
-            "packed_already": selection["packed_already"], "nothing_judged": not rows}
+            "packed_already": selection["packed_already"], "nothing_judged": not rows,
+            "removed": sorted(removed_papers(root))}
 
 
 def render_pack(result: dict) -> str:
@@ -424,6 +444,8 @@ def render_pack(result: dict) -> str:
     lines = [f"## Batch {result['name']}", "", said, ""]
     if result["packed_already"]:
         lines += [f"{result['packed_already']} left out as a batch holds them already.", ""]
+    if result["removed"]:
+        lines += [f"Not packed, as removed after judging: {', '.join(result['removed'])}.", ""]
     if result["no_text"]:
         lines += [f"No text for a judge found for: {', '.join(result['no_text'])}.", ""]
     lines += ["| code | findings |", "| --- | ---: |"]

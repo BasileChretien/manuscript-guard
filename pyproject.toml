@@ -132,7 +132,8 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+# W605: a backslash that starts no escape, which Python warns of now and will refuse.
+select = ["E", "F", "I", "UP", "B", "SIM", "W605"]
 
 [tool.ruff.lint.isort]
 # Stated rather than inferred. Whether a src-layout package counts as first-party depends

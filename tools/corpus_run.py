@@ -28,6 +28,8 @@ LIMIT = 600
 SLUG = re.compile(r"[A-Za-z0-9._-]+")
 #: What a paper's `removed` in its meta.json says, all three required.
 REMOVED = ("by", "date", "why")
+#: The reason counted among the verdicts left out for a paper that left the corpus.
+REMOVED_AFTER_JUDGING = "paper removed after judging"
 
 
 class CorpusError(Exception):
@@ -256,10 +258,15 @@ def render_removed(removed: list[dict]) -> list[str]:
     if not removed:
         return []
     count = sum(paper["verdicts"] for paper in removed)
-    return ["", f"Papers removed after judging ({len(removed)}), their {count} verdicts left "
-            "out of every run measured:", "",
-            *(f"- {p['slug']}: {' '.join(p['why'].split())} ({p['verdicts']} verdicts; removed "
-              f"by {p['by']}, {p['date']})" for p in removed)]  # fmt: skip
+    return ["", f"Left out of every run measured, `{REMOVED_AFTER_JUDGING}`: "
+            f"{counted(count, 'verdict')}, of {counted(len(removed), 'paper')}:", "",
+            *(f"- {p['slug']}: {' '.join(p['why'].split())} ({counted(p['verdicts'], 'verdict')}; "
+              f"removed by {p['by']}, {p['date']})" for p in removed)]  # fmt: skip
+
+
+def counted(number: int, noun: str) -> str:
+    """"1 verdict", "2 verdicts"."""
+    return f"{number} {noun}{'s' * (number != 1)}"
 
 
 def _latex_project(mg: list[str], files: Path, main: str, project: Path, env: dict) -> dict:
@@ -365,7 +372,7 @@ def run(root: Path, commit: str, name: str | None, repo: Path, jobs: int,
     for meta in named:
         if "removed" in meta:
             print(f"{out_root.name} {meta['slug']}: removed after judging, not run", flush=True)
-    env ={**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
+    env = {**os.environ, "MANUSCRIPT_GUARD_USER_SKILLS": str(root / "no-user-skills"),
            "MANUSCRIPT_GUARD_NO_REPORTS": "1"}  # fmt: skip
     env.pop("MANUSCRIPT_GUARD_DEBUG", None)
     record = {"commit": commit, "sha": sha, "version": version, "papers": len(chosen),

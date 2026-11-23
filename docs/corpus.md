@@ -90,17 +90,24 @@ would pass for one still in. The verdict files are not edited. From then on:
   sides of a gate, so that its loss can neither block a run nor flatter one. Its findings in a
   run count nowhere, among the warnings no judged finding accounts for and the gate's count of
   new findings included.
-- The Markdown and the JSON of `measure` and `gate`, and `tie`'s, say so: the verdicts left
-  out gain the reason `paper removed after judging` with its count, and `removed` lists each
-  paper's slug, `by`, `date`, `why` and number of verdicts left out.
+- The Markdown and the JSON of `measure`, `gate` and `tie` say so: the verdicts left out gain
+  the reason `paper removed after judging` with its count, and `removed` lists each paper's
+  slug, `by`, `date`, `why` and number of verdicts left out. Where no paper is removed, the
+  JSON has no `removed`, and `tie`'s no `skipped`.
 - No other paper's pairing moves: what tells a finding from others of its code is still read
   over every packet, the removed paper's too.
-- A tie the author decided on its findings stays in `report/ties-decided.yaml`, read nowhere
-  and refused nowhere, and a decision of the ledger that named only its findings shows
-  `matched: 0`.
+- A tie the author decided on its findings stays in `report/ties-decided.yaml`. Its form is
+  checked with the rest of the file, and it is then set aside: it need not name a judged
+  finding or a key of the ties' run, and it pairs nothing. A decision of the ledger that named
+  only its findings shows `matched: 0`.
+- Where the only verdicts left are a removed paper's, `measure` and `gate` refuse, having
+  nothing to measure, and `unjudged` packs as it does for a corpus judged for the first time.
 
 `agree` still reads a batch packed before the removal, since the two judges' files answer to
-the packet; what it writes for the removed paper is left out like its other verdicts.
+the packet, and `report/judged/<batch>.json` keeps the removed paper's agreements, which the
+measure leaves out. What goes before the author does not hold it: `-disagreements.md` and
+`-sample.md` omit it, it takes no place in the draw of 20, and each file says how many
+verdicts it left out for that reason.
 
 The papers are downloaded files. The tool runs nothing with its working folder inside
 `corpus/`, gives every command a time limit, and runs the build under `python -I`, which

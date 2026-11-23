@@ -487,8 +487,8 @@ def measure(root: Path, run_name: str, ledger: bool = True, run: Run | None = No
                                       for r in rows),
                        "successor": sum(r["successor_by"] == d.id for r in rows)}
                       for d in decisions],
-        "skipped": dict(skipped), "removed": removed, "totals": _table(rows),
-        "paper": _table(papers), "notices": _table(notices),
+        "skipped": dict(skipped), **({"removed": removed} if removed else {}),
+        "totals": _table(rows), "paper": _table(papers), "notices": _table(notices),
         "precision_loud": _precision(_table(papers), ("reported", "elsewhere")),
         "codes": codes, "findings": rows, "keys": _key_counts(rows),
         "scheme_note": against if isinstance(against, str) else None,
@@ -518,7 +518,7 @@ def render_measure(result: dict) -> str:
              + (f"{len(result['decisions'])} decisions, {rejudged_n} findings re-judged, "
                 f"{asked_n} kept by a successor (asked by message, elsewhere by key)."
                 if result["ledger"] else "not applied."),
-             *corpus_run.render_removed(result["removed"]),
+             *corpus_run.render_removed(result.get("removed", [])),
              "", *_counts("verdict", result["totals"]), "",
              "About the paper (reading notices apart):", "", *_counts("verdict", result["paper"]),
              "", "Reading notices:", "", *_counts("verdict", result["notices"]), "",
@@ -587,7 +587,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     base_loud, new_loud = unjudged(base), unjudged(new)
     return {
         "base": base.name, "new": new.name, "ok": not lost, "skipped": dict(skipped),
-        "removed": removed, "decisions": len(decisions),
+        **({"removed": removed} if removed else {}), "decisions": len(decisions),
         "totals": {"base": _table([_row(b) for b, _ in pairs]),
                    "new": _table([_row(n) for _, n in pairs])},
         "lost": lost,
@@ -614,7 +614,8 @@ def render_gate(result: dict) -> str:
                "covers them.")  # fmt: skip
     lines = [f"## Corpus gate: {result['base']} -> {result['new']}", "", verdict, "",
              f"Ledger applied: {result['decisions']} decisions. Judged findings left out: "
-             f"{result['skipped'] or 'none'}.", *corpus_run.render_removed(result["removed"]), "",
+             f"{result['skipped'] or 'none'}.",
+             *corpus_run.render_removed(result.get("removed", [])), "",
              "| verdict | run | " + " | ".join(STATES) + " |", "| --- | --- |" + " ---: |" * 4]
     for v in VERDICTS:
         for side in ("base", "new"):
@@ -705,7 +706,7 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
     2026-11-21). Writes `report/ties.yaml`, a batch's ties under `batches` by its name, and,
     for the author to settle by hand, `report/ties-ambiguous.md`. The verdicts and the
     ledger are not touched."""
-    every, _skipped, removed = corpus_judging.read_judged(root)
+    every, skipped, removed = corpus_judging.read_judged(root)
     judged = [item for item in every if not item.batch]
     run_folder(root, judged_run)
     run = open_run(root, keyed_run)
@@ -738,7 +739,8 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
             "batches": {name: {"judged_run": b["judged_run"], "scheme": b["scheme"],
                                "tied": len(b["ties"]), "ambiguous": b["ambiguous"],
                                "to_decide": b["to_decide"]} for name, b in batches.items()},
-            "own_scheme": own, "no_run": list(no_run), "removed": removed}  # fmt: skip
+            "own_scheme": own, "no_run": list(no_run),
+            **({"removed": removed, "skipped": dict(skipped)} if removed else {})}  # fmt: skip
 
 
 # --- the command line -------------------------------------------------------------------

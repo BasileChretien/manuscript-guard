@@ -935,3 +935,20 @@ def test_run_leaves_out_a_removed_paper_and_a_run_holding_one_is_fine(
     assert (corpus / "runs" / "pr-2" / "tex-1").is_dir()
     tool.corpus_run.run(corpus, "main", "pr-3", REPO, jobs=1, only=["doc-1"])
     assert not (corpus / "runs" / "pr-3" / "doc-1").exists()
+
+
+def test_a_corpus_with_no_removed_paper_keeps_its_json_as_it_was(corpus: Path,
+                                                                 tmp_path: Path) -> None:
+    for command in (["measure", "new"], ["gate", "base", "new"]):
+        out, data = tmp_path / f"{command[0]}.md", tmp_path / f"{command[0]}.json"
+        tool.main(["--corpus", str(corpus), *command, "--out", str(out), "--json", str(data)])
+        assert "removed" not in json.loads(data.read_text("utf-8"))
+        assert REASON not in out.read_text("utf-8")
+
+
+def test_one_verdict_left_out_is_said_in_the_singular() -> None:
+    one = "\n".join(tool.corpus_run.render_removed([{"slug": "p", **WHY, "verdicts": 1}]))
+    assert "1 verdict, of 1 paper" in one and "(1 verdict;" in one and "verdicts" not in one
+    two = "\n".join(tool.corpus_run.render_removed([{"slug": "p", **WHY, "verdicts": 2},
+                                                    {"slug": "q", **WHY, "verdicts": 1}]))
+    assert "3 verdicts, of 2 papers" in two and "(2 verdicts;" in two and "(1 verdict;" in two

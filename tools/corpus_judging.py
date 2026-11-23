@@ -18,10 +18,15 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from corpus_match import key_of, loud, norm
-from corpus_run import SLUG, CorpusError, load_json, removed_papers
+from corpus_run import (
+    REMOVED_AFTER_JUDGING,
+    SLUG,
+    CorpusError,
+    counted,
+    load_json,
+    removed_papers,
+)
 
-#: The reason counted among the verdicts left out for a paper that left the corpus.
-REMOVED_AFTER_JUDGING = "paper removed after judging"
 PACKETS = Path("report") / "packets"
 JUDGED = Path("report") / "judged"
 JUDGES = Path("report") / "judges"
@@ -223,7 +228,8 @@ def read_judged(root: Path) -> tuple[list[Judged], collections.Counter, list[dic
             judged.append(item)
     if not judged:
         gone = sum(left_out.values())
-        said = f": {gone} verdicts are of papers removed after judging" if gone else ""
+        whose = "is of a paper" if gone == 1 else "are of papers"
+        said = f": {counted(gone, 'verdict')} {whose} removed after judging" if gone else ""
         raise CorpusError(f"{root / 'report'} holds no judged finding{said} (docs/corpus.md)")
     return judged, skipped, [{"slug": slug, **said, "verdicts": left_out[slug]}
                              for slug, said in sorted(removed.items())]  # fmt: skip
@@ -342,10 +348,17 @@ def render_fresh(said: dict) -> list[str]:
 
 
 def has_verdicts(root: Path) -> bool:
-    """Whether any verdict file of `report/judged/` holds a verdict, or may: a corpus judged
-    for the first time holds none, or only empty lists, and `unjudged` then packs every loud
+    """Whether any verdict file of `report/judged/` holds a verdict of a paper still in the
+    corpus, or may: a corpus judged for the first time holds none, or only empty lists, or
+    only verdicts of papers removed after judging, and `unjudged` then packs every loud
     finding of the run. A file that cannot be read counts, so that it is refused as before."""
-    return any(load_json(path) != [] for path in sorted((root / JUDGED).glob("*.json")))
+    removed = removed_papers(root)
+
+    def holds(entries: object) -> bool:
+        return not isinstance(entries, list) or any(
+            not isinstance(e, dict) or str(e.get("slug")) not in removed for e in entries)
+
+    return any(holds(load_json(path)) for path in sorted((root / JUDGED).glob("*.json")))
 
 
 def judge_text(root: Path, run, slug: str, meta: dict) -> str | None:
@@ -495,10 +508,16 @@ def _item(n: int, where: tuple, finding: dict, a: dict, b: dict) -> list[str]:
     return [*lines, ""]
 
 
+def _left_out(said: str) -> list[str]:
+    """The line of an author's file that counts what a removed paper took out of it."""
+    return [f"Left out, {REMOVED_AFTER_JUDGING}: {said}.", ""]
+
+
 def agree(root: Path, batch: str) -> dict:
     """Set the two judges' verdicts on a batch side by side: write the agreements as its
     verdicts, the rest for the author, and a sample of 20 agreements, refusing to overwrite
-    any of the three."""
+    any of the three. The verdicts keep a paper removed after judging, which the measure
+    leaves out; what goes before the author does not, and says how many it left out."""
     packet = load_json(root / PACKETS / f"{batch}.json")
     if not isinstance(packet, list):
         raise CorpusError(f"no packet {PACKETS.as_posix()}/{batch}.json to read the verdicts by")
@@ -513,6 +532,7 @@ def agree(root: Path, batch: str) -> dict:
     there = [str(p) for p in out if p.exists()]
     if there:
         raise CorpusError(f"{', '.join(there)} there already: nothing written")
+    removed = removed_papers(root)
     agreed, split = [], []
     for where, finding in wanted.items():
         if a[where]["verdict"] == b[where]["verdict"] and a[where]["verdict"] in VERDICTS:
@@ -524,17 +544,24 @@ def agree(root: Path, batch: str) -> dict:
             agreed.append(entry)
         else:
             split.append(where)
-    drawn = random.Random(batch).sample(agreed, min(SAMPLE, len(agreed)))
-    answer = (f"Answer by number, true or false and why. Each answer goes in "
+    every_split, split = split, [w for w in split if w[0] not in removed]
+    drawable = [e for e in agreed if e["slug"] not in removed]
+    gone_split, gone_agreed = len(every_split) - len(split), len(agreed) - len(drawable)
+    drawn = random.Random(batch).sample(drawable, min(SAMPLE, len(drawable)))
+    answer =(f"Answer by number, true or false and why. Each answer goes in "
               f"`{JUDGED.as_posix()}/{batch}{AUTHOR}.json`, a list of `{{slug, report, index, "
               "verdict, why, by, date, source}`.")  # fmt: skip
     lines = [f"# {batch}: the findings the two judges did not agree on ({len(split)})", "",
              "Those they judged differently, and those either judged unclear.", "", answer, ""]
+    if gone_split:
+        lines += _left_out(f"the two judges' verdicts on {counted(gone_split, 'finding')}")
     for n, where in enumerate(split, 1):
         lines += _item(n, where, wanted[where], a[where], b[where])
     sample = [f"# {batch}: {len(drawn)} agreements drawn at random", "",
               f"Drawn with `random.Random({batch!r})`, so the same each time. Does each verdict "
               "hold?", ""]  # fmt: skip
+    if gone_agreed:
+        sample += _left_out(counted(gone_agreed, "agreed verdict"))
     for n, entry in enumerate(drawn, 1):
         where = (entry["slug"], entry["report"], entry["index"])
         sample += _item(n, where, wanted[where], a[where], b[where])
@@ -545,12 +572,18 @@ def agree(root: Path, batch: str) -> dict:
     unclear = sum("unclear" in (a[w]["verdict"], b[w]["verdict"]) for w in split)
     return {"batch": batch, "findings": len(wanted), "agreed": len(agreed),
             "true": sum(e["verdict"] == "true" for e in agreed), "disagreed": len(split),
-            "unclear": unclear, "sample": len(drawn), "paths": [str(p) for p in out]}
+            "unclear": unclear, "sample": len(drawn), "paths": [str(p) for p in out],
+            "left_out": {"agreed": gone_agreed, "disagreed": gone_split}}
 
 
 def render_agree(result: dict) -> str:
+    gone = result["left_out"]
+    parts = [counted(gone["agreed"], "agreed verdict")] * bool(gone["agreed"]) + [
+        counted(gone["disagreed"], "disagreement")] * bool(gone["disagreed"])  # fmt: skip
+    left = (f" {' and '.join(parts)} left out of what he reads, {REMOVED_AFTER_JUDGING}."
+            if parts else "")  # fmt: skip
     return (f"## Batch {result['batch']}: two judges\n\n{result['findings']} findings: "
             f"{result['agreed']} agreed ({result['true']} true, "
             f"{result['agreed'] - result['true']} false), {result['disagreed']} for the author "
             f"({result['unclear']} of them unclear to a judge), {result['sample']} agreements "
-            f"drawn for him. Wrote {', '.join(result['paths'])}.\n")
+            f"drawn for him.{left} Wrote {', '.join(result['paths'])}.\n")

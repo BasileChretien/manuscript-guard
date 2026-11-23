@@ -323,9 +323,10 @@ def render_fresh(said: dict) -> list[str]:
 
 
 def has_verdicts(root: Path) -> bool:
-    """Whether any verdict file of `report/judged/` holds a verdict: a corpus judged for the
-    first time holds none, and `unjudged` then packs every loud finding of the run."""
-    return any(load_json(path) for path in sorted((root / JUDGED).glob("*.json")))
+    """Whether any verdict file of `report/judged/` holds a verdict, or may: a corpus judged
+    for the first time holds none, or only empty lists, and `unjudged` then packs every loud
+    finding of the run. A file that cannot be read counts, so that it is refused as before."""
+    return any(load_json(path) != [] for path in sorted((root / JUDGED).glob("*.json")))
 
 
 def judge_text(root: Path, run, slug: str, meta: dict) -> str | None:
@@ -333,7 +334,8 @@ def judge_text(root: Path, run, slug: str, meta: dict) -> str | None:
     run's `main.md` of a Word paper, the source of a LaTeX one or the file of a Markdown one,
     pdftotext's text of a PDF, which `run` writes beside the run's reports (`paper.txt`).
     That text is the PDF's whatever the build, so the text written beside another run's
-    reports serves; nothing is run on the paper here. None where no such file is."""
+    reports serves; nothing is run on the paper here. An empty file is passed over. None
+    where no such file is."""
     here = run.folder / slug
     if meta.get("format") == "docx":
         found = [here / "project" / "manuscript" / "main.md"]
@@ -343,7 +345,7 @@ def judge_text(root: Path, run, slug: str, meta: dict) -> str | None:
         runs = root / "runs"
         found = [here / "paper.txt", *sorted(p / slug / "paper.txt" for p in
                                              (runs.iterdir() if runs.is_dir() else ()))]
-    return next((str(p) for p in found if p.is_file()), None)
+    return next((str(p) for p in found if p.is_file() and p.stat().st_size), None)
 
 
 def figure_files(project: Path, finding: dict) -> list[str]:

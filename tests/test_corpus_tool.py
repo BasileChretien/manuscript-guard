@@ -683,6 +683,41 @@ def test_run_writes_a_pdf_s_text_and_audits_a_markdown_paper_only(corpus: Path,
         ("pdf-1", "audit.json")]
 
 
+def test_a_pdftotext_that_fails_leaves_no_text_and_is_tried_again(corpus: Path,
+                                                                  monkeypatch, capsys) -> None:
+    """A pdftotext that cannot read the PDF leaves no empty `paper.txt` for the judges: the run
+    says it failed, a text beside another run serves, and the next run tries again."""
+    (corpus / "corpus" / "pdf-1" / "files").mkdir(parents=True)
+    meta = {"slug": "pdf-1", "format": "pdf", "main": "paper.pdf"}
+    (corpus / "corpus" / "pdf-1" / "meta.json").write_text(json.dumps(meta))
+    old = corpus / "runs" / "old" / "pdf-1" / "paper.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("the text", "utf-8")
+    fake = FakeBuild(monkeypatch)
+    monkeypatch.setattr(tool.corpus_run, "pdftotext", lambda: "pdftotext")
+    passed = fake.call
+
+    def fails(cmd, cwd, out, env) -> dict:
+        if cmd[0] != "pdftotext":
+            return passed(cmd, cwd, out, env)
+        out.write_text("")
+        return {"cmd": cmd, "exit": 1, "seconds": 0.0, "stderr": "Error opening PDF file"}
+
+    monkeypatch.setattr(tool.corpus_run, "call", fails)
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    assert "pr-1 pdf-1: {'text': 'pdftotext failed (1)'}" in capsys.readouterr().out
+    here = corpus / "runs" / "pr-1" / "pdf-1"
+    assert not (here / "paper.txt").exists()
+    run = type("R", (), {"folder": corpus / "runs" / "pr-1"})()
+    assert tool.corpus_judging.judge_text(corpus, run, "pdf-1", meta) == str(old)
+    (here / "paper.txt").write_text("")  # an empty text, from before this fix, is passed over
+    assert tool.corpus_judging.judge_text(corpus, run, "pdf-1", meta) == str(old)
+    monkeypatch.setattr(tool.corpus_run, "call", passed)
+    fake.steps.clear()
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    assert [(out.name, cmd[0]) for cmd, _, out, _ in fake.steps] == [("paper.txt", "pdftotext")]
+
+
 def add_papers(corpus: Path) -> None:
     for slug, meta in {
         "doc-1": {"format": "docx", "main": "paper.docx"},

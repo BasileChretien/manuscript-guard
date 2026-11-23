@@ -177,6 +177,20 @@ def test_unjudged_packs_every_loud_finding_where_nothing_is_judged_yet(corpus: P
     assert "of every code, nothing in the corpus being judged yet" in capsys.readouterr().out
 
 
+def test_a_verdict_file_that_cannot_be_read_is_no_corpus_with_no_verdict(corpus: Path,
+                                                                        capsys) -> None:
+    """Only empty verdict files make a corpus not judged yet: one that is not JSON is refused,
+    as before, rather than packing every loud finding."""
+    for verdicts in (corpus / "report" / "judged").glob("*.json"):
+        verdicts.unlink()
+    (corpus / "report" / "judged" / "b0.json").write_text('[{"slug": "paper-a",}', "utf-8")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "x"]) == 2
+    assert "holds no judged finding" in capsys.readouterr().err
+    assert not (corpus / "report" / "packets" / "x.json").exists()
+    (corpus / "report" / "judged" / "b0.json").write_text("[]", "utf-8")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "x"]) == 0
+
+
 def test_a_markdown_paper_s_text_is_the_paper_itself(corpus: Path) -> None:
     """A Markdown paper is audited only, and a judge reads the paper's own file."""
     (corpus / "corpus" / "paper-c" / "files").mkdir(parents=True)

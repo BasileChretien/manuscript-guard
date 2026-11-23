@@ -105,9 +105,16 @@ would pass for one still in. The verdict files are not edited. From then on:
 
 `agree` still reads a batch packed before the removal, since the two judges' files answer to
 the packet, and `report/judged/<batch>.json` keeps the removed paper's agreements, which the
-measure leaves out. What goes before the author does not hold it: `-disagreements.md` and
-`-sample.md` omit it, it takes no place in the draw of 20, and each file says how many
-verdicts it left out for that reason.
+measure leaves out. Where `agree` runs after the removal, what goes before the author does not
+hold the paper: `-disagreements.md` and `-sample.md` omit it, it takes no place in the draw of
+20, and each file says how many verdicts it left out for that reason. Files `agree` wrote
+before the removal keep the paper, and an answer the author gives on it is dropped when the
+verdicts are read.
+
+Where a removal is undone after `agree` ran while it was in force, delete the batch's three
+files, `report/judged/<batch>.json`, `<batch>-disagreements.md` and `<batch>-sample.md`, and
+run `agree` again. Otherwise a finding the two judges split on stands in no verdict file, and
+`unjudged` counts it as packed.
 
 The papers are downloaded files. The tool runs nothing with its working folder inside
 `corpus/`, gives every command a time limit, and runs the build under `python -I`, which

@@ -228,8 +228,9 @@ def read_judged(root: Path) -> tuple[list[Judged], collections.Counter, list[dic
             judged.append(item)
     if not judged:
         gone = sum(left_out.values())
-        whose = "is of a paper" if gone == 1 else "are of papers"
-        said = f": {counted(gone, 'verdict')} {whose} removed after judging" if gone else ""
+        verb, whose = "is" if gone == 1 else "are", "a paper" if len(left_out) == 1 else "papers"
+        said = (f": {counted(gone, 'verdict')} {verb} of {whose} removed after judging"
+                if gone else "")  # fmt: skip
         raise CorpusError(f"{root / 'report'} holds no judged finding{said} (docs/corpus.md)")
     return judged, skipped, [{"slug": slug, **said, "verdicts": left_out[slug]}
                              for slug, said in sorted(removed.items())]  # fmt: skip
@@ -548,7 +549,7 @@ def agree(root: Path, batch: str) -> dict:
     drawable = [e for e in agreed if e["slug"] not in removed]
     gone_split, gone_agreed = len(every_split) - len(split), len(agreed) - len(drawable)
     drawn = random.Random(batch).sample(drawable, min(SAMPLE, len(drawable)))
-    answer =(f"Answer by number, true or false and why. Each answer goes in "
+    answer = (f"Answer by number, true or false and why. Each answer goes in "
               f"`{JUDGED.as_posix()}/{batch}{AUTHOR}.json`, a list of `{{slug, report, index, "
               "verdict, why, by, date, source}`.")  # fmt: skip
     lines = [f"# {batch}: the findings the two judges did not agree on ({len(split)})", "",

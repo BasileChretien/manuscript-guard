@@ -888,7 +888,13 @@ def test_the_gate_s_count_of_new_findings_leaves_a_removed_paper_out(corpus: Pat
 
 def test_a_corpus_whose_every_verdict_is_of_a_removed_paper_says_so(corpus: Path) -> None:
     mark_removed(corpus, "paper-a")
-    with pytest.raises(tool.CorpusError, match="11 verdicts are of papers removed"):
+    with pytest.raises(tool.CorpusError, match="11 verdicts are of a paper removed"):
+        tool.measure(corpus, "r1")
+    path = corpus / "report" / "judged" / "field.json"
+    entry = {"slug": "paper-b", "report": "audit", "index": 0, "verdict": "true"}
+    path.write_text(json.dumps([*json.loads(path.read_text("utf-8")), entry]), "utf-8")
+    mark_removed(corpus, "paper-b")
+    with pytest.raises(tool.CorpusError, match="12 verdicts are of papers removed"):
         tool.measure(corpus, "r1")
 
 

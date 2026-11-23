@@ -9786,16 +9786,26 @@ The table is `auditing/measured.py`, applied where the two reports take G6's and
 findings (`auditing.gates.run_gates`, which both run), where the audit says what it read of
 a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
 and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
-at d056f71, and the last two rows at 0949b4b, once the two judges had read the findings no
-verdict covered (`docs/corpus.md`, "Judging"):
+at d056f71, the next two rows at 0949b4b, once the two judges had read the findings no
+verdict covered (`docs/corpus.md`, "Judging"), and the last at 77abd45db:
 
-| Code | Judged | True | False ones from | In `audit` and `compare` | In `check` |
-|---|---|---|---|---|---|
-| `code-name-in-prose` (G14) | 50 | 18 | 8 papers | INFO | warns, fails at submission |
-| `model-artefact` (G6), a bare placeholder | 12 | 1 | 4 papers | INFO | fails from drafting |
-| `entries-not-told-apart` (G7) | 13 | 13 | none | warning | not given |
-| `abstract-not-found` (audit) | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
-| `claim-negation` (compare) | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
+| Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
+|---|---|---|---|---|---|---|
+| `code-name-in-prose` (G14) | any format | 50 | 18 | 8 papers | INFO | warns, fails at submission |
+| `model-artefact` (G6), a bare placeholder | any format | 12 | 1 | 4 papers | INFO | fails from drafting |
+| `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
+| `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
+| `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
+| `abbreviation-used-before-defined` (G14) | PDF only | 65 | 25 | 12 papers | INFO from a PDF; a warning from Word, LaTeX or Markdown | warns |
+
+An entry can hold for one format, and the last row is the first that does (Basile,
+2026-11-23, "INFO on PDFs now"). G14 reads a PDF's text with its paragraphs gone, so a table's
+or a legend's words look like prose and a short form in one looks used before its definition.
+Its figures count the findings reported on the corpus's papers that are PDFs (their slugs
+start `pdf-`), by the verdicts as the ledger leaves them. What decides is what a finding was
+read from, which is the file audited: a LaTeX or Word paper's own PDF, audited as a PDF, is
+text read from a PDF, and its source keeps the warning. Rebuilding a PDF's paragraphs is
+another piece of work, and the code stays a note there until a fix measures 0.75.
 
 The Abstract's numbers found nowhere were false where the paper gives the number another
 way: written out as a word, as a proportion where the Abstract gives a share, inside a name
@@ -28528,6 +28538,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     counts on the page by the lines `pdftotext` joins or splits; where the PDF numbers its
     lines, that number is given too.
     Pinned by `tests/test_audit_pdf.py::test_a_pdf_that_numbers_its_lines_gives_the_number`.
+  - A short form used before its definition is a note from every PDF, since a PDF does not
+    say what it was made from. The figures that lowered it are those of the corpus's PDF
+    papers, 25 true of 65. On the PDFs of its papers in other formats, the same code was
+    right 10 times of 16, above the rule's line of a half, and those true findings are notes
+    too.
+    Pinned by `tests/test_audit_measured.py::test_a_paper_s_own_pdf_is_text_read_from_a_pdf`.
   - A heading is a line that holds a section's name alone (`HEADINGS`): a section under
     another title is read as the one before, a Results headed "Outcomes" among them, so its
     numbers are the section before's; a structured abstract whose headings stand on lines of

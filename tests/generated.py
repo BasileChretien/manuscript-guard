@@ -1480,6 +1480,32 @@ def undue_places(
     return papers
 
 
+#: Long forms with the short form their initials make, none a word or a known form.
+MEASURED_TERMS = (("weekly sleep quota", "WSQ"), ("group task quota", "GTQ"),
+                  ("bench lift quota", "BLQ"), ("home meal quota", "HMQ"),
+                  ("peer reading quota", "PRQ"), ("class walk quota", "CWQ"))  # fmt: skip
+MEASURED_VERBS = ("summed", "read", "noted", "recorded")
+
+
+@st.composite
+def measured_papers(draw: st.DrawFn) -> str:
+    """A Markdown paper holding one finding of each kind G14 gives on a defined short form:
+    one used in the Introduction before the Methods define it, one defined twice, and one
+    defined and never used again, each drawn from `MEASURED_TERMS`."""
+    (early_long, early), (twice_long, twice), (once_long, once) = draw(
+        st.permutations(MEASURED_TERMS))[:3]  # fmt: skip
+    verb = draw(st.sampled_from(MEASURED_VERBS))
+    pupils = draw(st.integers(20, 900))
+    return (f"# Introduction\n\nThe {early} was raised in the second wave.\n\n"
+            f"# Methods\n\nThe {early_long} ({early}) was {verb} for each pupil.\n\n"
+            f"The {early} was high in both waves.\n\n"
+            f"The {twice_long} ({twice}) was {verb} for each class.\n\n"
+            f"The {twice} was low in the first wave.\n\n"
+            f"The {once_long} ({once}) was kept.\n\n"
+            f"# Results\n\nThe {twice_long} ({twice}) fell in the second wave.\n\n"
+            f"The {twice} and the {early} were read for {pupils} pupils.\n")  # fmt: skip
+
+
 def _undue_file(blocks: list[str], running: str | None) -> tuple[str, list[int]]:
     """A file of `blocks`, each a paragraph, with the lines of it that are `running`."""
     text = "\n\n".join(blocks) + "\n"

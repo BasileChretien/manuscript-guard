@@ -6,12 +6,17 @@ are notes in the two reports that read papers written without the tool, a journa
 instruction left in the text still fails there, and a PDF's reference list whose entries
 could not be told apart is a warning. By the same rule, once the two judges had read the
 findings no verdict covered (2026-11-21): a number of the Abstract found nowhere, and a
-sentence that may now say the opposite, are notes. Every paper here is made up.
+sentence that may now say the opposite, are notes. And on 2026-11-23 ("INFO on PDFs now"): a
+short form used before its definition is a note in text the audit read from a PDF, and keeps
+its warning from Word, LaTeX and Markdown. Every paper here is made up.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -24,6 +29,12 @@ from manuscript_guard.auditing.references import UNTOLD, Census
 from manuscript_guard.auditing.report import _printed_items
 from manuscript_guard.cli import main
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding
+
+sys.path.insert(0, str(Path(__file__).parent))
+from proof_pdf import typeset  # noqa: E402
+
+needs_pdftotext = pytest.mark.skipif(shutil.which("pdftotext") is None,
+                                     reason="pdftotext is not installed")  # fmt: skip
 
 #: A name from the code in the prose, a bare placeholder, and a journal template's
 #: instruction in Word's words and in a template's, each in a paragraph of its own.
@@ -162,6 +173,121 @@ def test_the_text_report_marks_only_the_template_as_failing(tmp_path: Path, caps
     assert [line for line in placed if "'xxxx'" in line and ": FAIL: " not in line]
 
 
+# ------------------------------------------------------------------- read from a PDF
+
+BEFORE = "abbreviation-used-before-defined"
+#: A short form used in the Introduction and defined in the Methods, and another defined
+#: twice, whose finding is G14's too and was not measured on PDFs.
+LINES = [
+    "Introduction",
+    "The QXR was raised in the second wave of the study.",
+    "Methods",
+    "The quarterly exam ratio (QXR) was summed for each pupil.",
+    "The QXR was high in both waves of the study.",
+    "The weekly sleep score (WSS) was read for each pupil.",
+    "The WSS was low in the first wave of the study.",
+    "Results",
+    "The weekly sleep score (WSS) fell in the second wave.",
+    "The WSS and the QXR were read for 212 pupils.",
+]
+HEADINGS = ("Introduction", "Methods", "Results")
+
+
+def _as_markdown(lines: list[str] = LINES) -> str:
+    return "".join(f"# {line}\n\n" if line in HEADINGS else f"{line}\n\n" for line in lines)
+
+
+def _as_pdf(path: Path, lines: list[str] = LINES) -> Path:
+    path.write_bytes(typeset(lines, columns=1, per_column=40))
+    return path
+
+
+def _as_latex(path: Path) -> Path:
+    body = "".join(f"\\section{{{line}}}\n" if line in HEADINGS else f"{line}\n\n"
+                   for line in LINES)  # fmt: skip
+    path.write_text("\\documentclass{article}\n\\begin{document}\n" + body
+                    + "\\end{document}\n", encoding="utf-8", newline="\n")  # fmt: skip
+    return path
+
+
+def _as_word(path: Path) -> Path:
+    from manuscript_guard.build.document import BuildError, pandoc
+
+    try:
+        program = pandoc()
+    except BuildError:
+        pytest.skip("pandoc is not installed")
+    source = _paper(path.parent, _as_markdown(), "source.md")
+    subprocess.run([str(program), str(source), "-o", str(path)], check=True, timeout=120)
+    source.unlink()
+    return path
+
+
+def _severities(report: dict, code: str = BEFORE) -> list[str]:
+    return [f["severity"] for f in _of(report, code)]
+
+
+@needs_pdftotext
+def test_a_short_form_used_before_its_definition_is_a_note_from_a_pdf(
+    tmp_path: Path, capsys
+) -> None:
+    (found,) = _of(audited(_as_pdf(tmp_path / "paper.pdf"), capsys), BEFORE)
+    assert found["message"].startswith("QXR is used here") and found["severity"] == "info"
+
+
+@pytest.mark.parametrize(("name", "make"), [
+    ("paper.md", lambda path: _paper(path.parent, _as_markdown(), path.name)),
+    ("paper.tex", _as_latex),
+    ("paper.docx", _as_word),
+])  # fmt: skip
+def test_the_same_finding_keeps_its_warning_from_any_other_format(
+    tmp_path: Path, capsys, name: str, make
+) -> None:
+    (found,) = _of(audited(make(tmp_path / name), capsys), BEFORE)
+    assert found["message"].startswith("QXR is used here") and found["severity"] == "warn"
+
+
+@needs_pdftotext
+def test_a_paper_s_own_pdf_is_text_read_from_a_pdf(tmp_path: Path, capsys) -> None:
+    """What decides is what the finding was read from. A LaTeX paper's source warns, and the
+    PDF made of it, audited as a PDF (the corpus's `audit-pdf`), gives the note: nothing in a
+    PDF says what it was made from, and its paragraphs are gone either way. On the corpus
+    these findings were right 10 times of 16, which DESIGN.md's Known gaps records."""
+    source = audited(_as_latex(tmp_path / "paper.tex"), capsys)
+    printed = audited(_as_pdf(tmp_path / "paper.pdf"), capsys)
+    assert (_severities(source), _severities(printed)) == (["warn"], ["info"])
+
+
+@needs_pdftotext
+def test_a_pdf_s_other_findings_on_short_forms_keep_their_severity(
+    tmp_path: Path, capsys
+) -> None:
+    """Only the code that was measured on PDFs moves: the same words give the same warning
+    on a definition given twice, from a PDF and from Markdown."""
+    printed = audited(_as_pdf(tmp_path / "paper.pdf"), capsys)
+    typed = audited(_paper(tmp_path, _as_markdown()), capsys)
+    code = "abbreviation-redefined"
+    assert _severities(printed, code) == _severities(typed, code) == ["warn"]
+
+
+@needs_pdftotext
+def test_a_note_from_a_pdf_is_still_said_and_changes_no_exit(tmp_path: Path, capsys) -> None:
+    """The summary still counts it among what there is to look at, the report lists it at its
+    page and line, no line calls it a failure, and `--strict`, which never counted G14, exits
+    as it does on the same words in Markdown."""
+    paper = _as_pdf(tmp_path / "paper.pdf")
+    assert main(["audit", str(paper)]) == 0
+    out = capsys.readouterr().out
+    assert "Abbreviations used before they are defined (G14, 1)" in out
+    (line,) = [one for one in out.splitlines() if "QXR is used here" in one]
+    assert "page 1" in line and "FAIL" not in line
+    (summary,) = [one for one in out.splitlines() if one.strip().startswith("Writing and")]
+    assert "to look at" in summary and "not counted by --strict" in summary
+    assert main(["audit", str(paper), "--strict"]) == main(
+        ["audit", str(_paper(tmp_path, _as_markdown())), "--strict"]) == 0
+    capsys.readouterr()
+
+
 # -------------------------------------------------------------------------- compare
 
 
@@ -192,6 +318,18 @@ def test_compare_says_a_claim_reversed_as_a_note(tmp_path: Path, capsys) -> None
     said = sorted((f["code"], f["severity"]) for f in report["findings"]
                   if f["code"].startswith("claim-"))  # fmt: skip
     assert said == [("claim-negation", "info"), ("claim-stronger", "warn")]
+
+
+@needs_pdftotext
+def test_compare_says_it_by_what_v2_was_read_from(tmp_path: Path, capsys) -> None:
+    """v2 as a PDF gives the note and v2 as Markdown the warning, against the same v1, and
+    the finding stands in v1 by its words whatever severity each version gave it."""
+    old = _paper(tmp_path, _as_markdown(), "v1.md")
+    said = {}
+    for new in (_as_pdf(tmp_path / "v2.pdf"), _paper(tmp_path, _as_markdown(), "v2.md")):
+        assert main(["compare", str(old), str(new), "--json"]) == 0
+        said[new.suffix] = _severities(json.loads(capsys.readouterr().out))
+    assert said == {".pdf": ["info"], ".md": ["warn"]}
 
 
 def test_compare_audits_v2_s_abstract_numbers_as_notes(tmp_path: Path, capsys) -> None:
@@ -280,6 +418,36 @@ def test_an_entry_holds_for_the_gate_it_was_judged_under(gate: str, code: str,
     """G4's `abstract-not-found`, a journal's Abstract missing, is another finding than the
     audit's number found nowhere, and `reworded`'s reversed claim than `compare`'s."""
     assert table.measured(Finding(gate, code, "said", WARN)).severity == severity
+
+
+@pytest.mark.parametrize(("gate", "code", "read_from", "severity"), [
+    ("G14", BEFORE, "PDF", INFO), ("G14", BEFORE, None, WARN),
+    ("G14", BEFORE, "Word", WARN), ("G4", BEFORE, "PDF", WARN),
+    ("G14", "abbreviation-redefined", "PDF", WARN),
+    ("G14", "code-name-in-prose", None, INFO), ("G14", "code-name-in-prose", "PDF", INFO),
+])  # fmt: skip
+def test_an_entry_holds_for_the_format_it_was_measured_on(
+    gate: str, code: str, read_from: str | None, severity: str
+) -> None:
+    """An entry that names a format holds for findings read from it alone; one that names
+    none holds for all of them."""
+    found = Finding(gate, code, "said", WARN)
+    assert table.measured(found, read_from=read_from).severity == severity
+
+
+def test_the_entry_for_a_pdf_says_so_and_its_figures_are_the_corpus_s() -> None:
+    """25 true of the 65 reported in the corpus's PDF papers at main-77abd45db, the false ones
+    from 12 of them."""
+    entry = table.MEASURED[BEFORE]
+    assert (entry.severity, entry.true, entry.judged, entry.papers, entry.gate,
+            entry.read_from) == (INFO, 25, 65, 12, "G14", table.PDF)  # fmt: skip
+    assert [code for code, one in table.MEASURED.items() if one.read_from] == [BEFORE]
+
+
+def test_a_finding_lowered_keeps_its_key() -> None:
+    """A key is what the corpus pairs a finding by, and a severity is no part of it."""
+    found = Finding("G14", BEFORE, "said", WARN, subject="QXR@main", at=4)
+    assert table.measured(found, read_from=table.PDF).key == found.key
 
 
 def test_each_entry_keeps_to_the_rule() -> None:

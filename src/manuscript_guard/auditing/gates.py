@@ -283,7 +283,7 @@ def run_gates(
             return GateRun(paper, note=f"G6 and G14 could not run on {paper.name}: "
                            f"{type(exc).__name__}: {exc}")  # fmt: skip
         from manuscript_guard.auditing import code_names, undefined
-        from manuscript_guard.auditing.measured import measured
+        from manuscript_guard.auditing.measured import PDF, measured
         from manuscript_guard.findings import Report
 
         # The short forms used and not defined in one question (`auditing.undefined`), made
@@ -295,12 +295,15 @@ def run_gates(
         # Only a .docx is copied with its corrections in Track Changes, and only where asked.
         corrections = _corrections(project) if corrected and staged.converted else []
         # Each at the severity the audit gives its code where that was measured on real
-        # papers (`auditing.measured`), before they are sorted by it.
-        writing = Report(tuple(measured(f) for f in writing.findings))
+        # papers (`auditing.measured`), for text read from a PDF where it was measured on
+        # that, before they are sorted by it.
+        read_from = PDF if staged.from_pdf else None
+        writing = Report(tuple(measured(f, read_from=read_from) for f in writing.findings))
         return GateRun(
             paper,
             writing=[put_back(f) for f in writing.sorted().findings],
-            language=list(Report(tuple(measured(f) for f in said)).sorted().findings),
+            language=list(Report(tuple(measured(f, read_from=read_from)
+                                       for f in said)).sorted().findings),
             converted=staged.converted,
             places=staged.places,
             corrections=corrections,

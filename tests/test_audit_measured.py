@@ -436,11 +436,12 @@ def test_an_entry_holds_for_the_format_it_was_measured_on(
 
 
 def test_the_entry_for_a_pdf_says_so_and_its_figures_are_the_corpus_s() -> None:
-    """25 true of the 65 reported in the corpus's PDF papers at main-77abd45db, the false ones
-    from 12 of them."""
+    """35 true of the 81 reported from text read from a PDF at main-77abd45db, the false ones
+    from 17 papers: the `audit` of a PDF paper (25 of 65, from 12) and the `audit-pdf` of a
+    LaTeX paper (10 of 16, from 5). The corpus holds no Word paper's own PDF."""
     entry = table.MEASURED[BEFORE]
     assert (entry.severity, entry.true, entry.judged, entry.papers, entry.gate,
-            entry.read_from) == (INFO, 25, 65, 12, "G14", table.PDF)  # fmt: skip
+            entry.read_from) == (INFO, 35, 81, 17, "G14", table.PDF)  # fmt: skip
     assert [code for code, one in table.MEASURED.items() if one.read_from] == [BEFORE]
 
 

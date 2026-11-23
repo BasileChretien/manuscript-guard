@@ -90,10 +90,12 @@ MEASURED: dict[str, Measured] = {
     # reversed. Not `reworded`'s, which reads one edit of a project's own text. At 0949b4b.
     "claim-negation": Measured(INFO, true=1, judged=17, papers=4, gate="compare"),
     # G14's short form used before its definition, in text read from a PDF, whose paragraphs
-    # are gone: 25 true of the 65 reported in the corpus's PDF papers, the false ones from 12
-    # papers. From Word, LaTeX or Markdown it keeps its warning. At 77abd45db (Basile,
-    # 2026-11-23, "INFO on PDFs now").
-    "abbreviation-used-before-defined": Measured(INFO, true=25, judged=65, papers=12,
+    # are gone: 35 true of the 81 reported, the false ones from 17 papers. These are all the
+    # reported findings read from a PDF: the `audit` of a PDF paper (25 of 65, from 12) and
+    # the `audit-pdf` of a LaTeX paper (10 of 16, from 5; the corpus holds no Word paper's
+    # own PDF). From Word, LaTeX or Markdown, where 111 of the 166 reported were true, it
+    # keeps its warning. At 77abd45db (Basile, 2026-11-23, "INFO on PDFs now").
+    "abbreviation-used-before-defined": Measured(INFO, true=35, judged=81, papers=17,
                                                  gate="G14", read_from=PDF),
 }
 

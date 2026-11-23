@@ -24911,9 +24911,9 @@ def _an_ordinal_counts_across_the_paper(patch: pytest.MonkeyPatch) -> None:
 from generated import measured_papers  # noqa: E402
 
 
-def _language_read_from(text: str, suffix: str) -> list:
-    """G14's findings as the audit gives them on `text`, staged as read from a file of that
-    suffix: the PDF's reading itself is `tests/test_audit_pdf.py`'s."""
+def _words_read_from(text: str, suffix: str) -> list:
+    """G6's and G14's findings as the audit gives them on `text`, staged as read from a file
+    of that suffix: the PDF's reading itself is `tests/test_audit_pdf.py`'s."""
     from manuscript_guard.auditing import gates
 
     with pytest.MonkeyPatch.context() as patch:
@@ -24921,24 +24921,29 @@ def _language_read_from(text: str, suffix: str) -> list:
             {"main.md": text}, {"main.md": paper}))  # fmt: skip
         run = gates.run_gates(Path(f"paper{suffix}"))
     assert not run.note
-    return run.language
+    return [*run.writing, *run.language]
 
 
 @holds(15, measured_papers())
 def test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf(text: str) -> None:
     """The same words give the same findings whatever they were read from. From a PDF a use
     before the definition is a note; from Markdown it is a warning, and every other finding
-    has one severity in both (Basile, 2026-11-23, "INFO on PDFs now")."""
+    has one severity in both, a name from the code and a bare placeholder, whose entries hold
+    for any format, a note in both (Basile, 2026-11-23, "INFO on PDFs now")."""
     code = "abbreviation-used-before-defined"
-    typed = _language_read_from(text, ".md")
-    printed = _language_read_from(text, ".pdf")
-    assert sorted((f.code, f.subject) for f in typed) == sorted(
-        (f.code, f.subject) for f in printed), text
+    typed = _words_read_from(text, ".md")
+    printed = _words_read_from(text, ".pdf")
+    assert sorted((f.code, str(f.subject)) for f in typed) == sorted(
+        (f.code, str(f.subject)) for f in printed), text
     assert {"abbreviation-redefined", "abbreviation-unused", code} <= {f.code for f in typed}
     assert [f.severity for f in typed if f.code == code] == ["warn"], text
     assert [f.severity for f in printed if f.code == code] == ["info"], text
     others = {(f.code, f.subject): f.severity for f in typed if f.code != code}
     assert others == {(f.code, f.subject): f.severity for f in printed if f.code != code}, text
+    for found in (typed, printed):
+        assert [f.severity for f in found if f.code == "code-name-in-prose"] == ["info"], text
+        assert [f.severity for f in found if f.code == "model-artefact"
+                and str(f.subject).startswith("placeholder-word:")] == ["info"], text  # fmt: skip
 
 
 def _the_pdf_entry_holds_for_every_format(patch: pytest.MonkeyPatch) -> None:
@@ -24968,11 +24973,30 @@ def _every_short_form_finding_of_a_pdf_is_lowered(patch: pytest.MonkeyPatch) -> 
     patch.setattr(table, "measured", lowered)
 
 
+def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch) -> None:
+    """The guard on the format written `entry.read_from != read_from` (round 1 of #775)."""
+    from manuscript_guard.auditing import measured as table
+
+    kept = table.measured
+
+    def guarded(found: Any, read_from: str | None = None) -> Any:
+        entry = table.MEASURED.get(getattr(found, "code", ""))
+        if entry is not None and entry.read_from != read_from:
+            return found
+        return kept(found, read_from=read_from)
+
+    patch.setattr(table, "measured", guarded)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
     "the PDF entry holds for every format": (
         _the_pdf_entry_holds_for_every_format,
+        test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
+    ),
+    "an entry for any format does not hold from a PDF": (
+        _an_entry_for_any_format_does_not_hold_from_a_pdf,
         test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
     ),
     "the audit does not say what it read a finding from": (

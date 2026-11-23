@@ -1485,24 +1485,34 @@ MEASURED_TERMS = (("weekly sleep quota", "WSQ"), ("group task quota", "GTQ"),
                   ("bench lift quota", "BLQ"), ("home meal quota", "HMQ"),
                   ("peer reading quota", "PRQ"), ("class walk quota", "CWQ"))  # fmt: skip
 MEASURED_VERBS = ("summed", "read", "noted", "recorded")
+#: A name from the code and a bare placeholder, whose entries in the audit's table hold for
+#: text of any format.
+MEASURED_NAMES = ("pupil_sleep_total", "class_walk_sum", "home_meal_count", "peer_read_score")
+MEASURED_GAPS = ("xxxx", "XXXX")
 
 
 @st.composite
 def measured_papers(draw: st.DrawFn) -> str:
     """A Markdown paper holding one finding of each kind G14 gives on a defined short form:
     one used in the Introduction before the Methods define it, one defined twice, and one
-    defined and never used again, each drawn from `MEASURED_TERMS`."""
+    defined and never used again, each drawn from `MEASURED_TERMS`; and one each of the
+    kinds the audit's table lowers for any format, a name from the code and a bare
+    placeholder."""
     (early_long, early), (twice_long, twice), (once_long, once) = draw(
         st.permutations(MEASURED_TERMS))[:3]  # fmt: skip
     verb = draw(st.sampled_from(MEASURED_VERBS))
     pupils = draw(st.integers(20, 900))
+    name = draw(st.sampled_from(MEASURED_NAMES))
+    gap = draw(st.sampled_from(MEASURED_GAPS))
     return (f"# Introduction\n\nThe {early} was raised in the second wave.\n\n"
             f"# Methods\n\nThe {early_long} ({early}) was {verb} for each pupil.\n\n"
             f"The {early} was high in both waves.\n\n"
             f"The {twice_long} ({twice}) was {verb} for each class.\n\n"
             f"The {twice} was low in the first wave.\n\n"
             f"The {once_long} ({once}) was kept.\n\n"
+            f"The score {name} was {verb} for each pupil.\n\n"
             f"# Results\n\nThe {twice_long} ({twice}) fell in the second wave.\n\n"
+            f"The mean was {gap} in the second wave.\n\n"
             f"The {twice} and the {early} were read for {pupils} pupils.\n")  # fmt: skip
 
 

@@ -322,14 +322,15 @@ def test_compare_says_a_claim_reversed_as_a_note(tmp_path: Path, capsys) -> None
 
 @needs_pdftotext
 def test_compare_says_it_by_what_v2_was_read_from(tmp_path: Path, capsys) -> None:
-    """v2 as a PDF gives the note and v2 as Markdown the warning, against the same v1, and
-    the finding stands in v1 by its words whatever severity each version gave it."""
+    """v2 as a PDF gives the note and v2 as Markdown the warning, against the same v1. Each
+    is marked new in v2, since the message `compare` matches on names the finding's place."""
     old = _paper(tmp_path, _as_markdown(), "v1.md")
     said = {}
     for new in (_as_pdf(tmp_path / "v2.pdf"), _paper(tmp_path, _as_markdown(), "v2.md")):
         assert main(["compare", str(old), str(new), "--json"]) == 0
-        said[new.suffix] = _severities(json.loads(capsys.readouterr().out))
-    assert said == {".pdf": ["info"], ".md": ["warn"]}
+        said[new.suffix] = [(f["severity"], f["mark"])
+                            for f in _of(json.loads(capsys.readouterr().out), BEFORE)]  # fmt: skip
+    assert said == {".pdf": [("info", "new in v2")], ".md": [("warn", "new in v2")]}
 
 
 def test_compare_audits_v2_s_abstract_numbers_as_notes(tmp_path: Path, capsys) -> None:

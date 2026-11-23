@@ -840,3 +840,118 @@ def test_agree_from_the_command_line(corpus: Path, capsys) -> None:
     assert "4 agreed (3 true, 1 false), 2 for the author" in capsys.readouterr().out
     assert tool.main(["--corpus", str(corpus), "agree", "b1"]) == 2
     assert "there already" in capsys.readouterr().err
+
+
+# --- a paper removed after judging ------------------------------------------------------
+
+WHY = {"by": "the author", "date": "2026-11-23", "why": "a preregistration template"}
+
+
+def mark_removed(root: Path, slug: str) -> None:
+    path = root / "corpus" / slug / "meta.json"
+    meta = json.loads(path.read_text("utf-8"))
+    path.write_text(json.dumps({**meta, "removed": WHY}), "utf-8")
+
+
+def test_unjudged_packs_nothing_of_a_removed_paper(corpus: Path, capsys) -> None:
+    mark_removed(corpus, "paper-b")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "b1"]) == 0
+    assert {slug for slug, _r, _m in packed(corpus)} == {"paper-a"}
+    assert "Not packed, as removed after judging: paper-b." in capsys.readouterr().out
+    (corpus / "report" / "packets" / "b1.json").unlink()
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "b2",
+                      "--base", "r0"]) == 0  # fmt: skip
+    assert {slug for slug, _r, _m in packed(corpus, "b2")} == {"paper-a"}
+
+
+def test_a_removed_paper_s_batch_verdicts_are_left_out(corpus: Path) -> None:
+    pack(corpus)
+    judge(corpus, "b1", "a", ["true"] * 6)
+    judge(corpus, "b1", "b", ["true"] * 6)
+    judging.agree(corpus, "b1")
+    before = tool.measure(corpus, "r1")
+    assert any(r["batch"] and r["slug"] == "paper-b" for r in before["findings"])
+    mark_removed(corpus, "paper-b")
+    after = tool.measure(corpus, "r1")
+    assert after["findings"] == [r for r in before["findings"] if r["slug"] == "paper-a"]
+    assert after["skipped"] == {"paper removed after judging": 1}
+    assert after["removed"] == [{"slug": "paper-b", **WHY, "verdicts": 1}]
+
+
+def test_the_gate_s_count_of_new_findings_leaves_a_removed_paper_out(corpus: Path) -> None:
+    assert "G7/doi-unresolved" in tool.gate(corpus, "r0", "r1")["fresh"]["by_code"]
+    mark_removed(corpus, "paper-b")
+    result = tool.gate(corpus, "r0", "r1")
+    assert "G7/doi-unresolved" not in result["fresh"]["by_code"]
+    assert "G7/doi-unresolved" not in result["unjudged"]
+
+
+def test_a_corpus_whose_every_verdict_is_of_a_removed_paper_says_so(corpus: Path) -> None:
+    mark_removed(corpus, "paper-a")
+    with pytest.raises(tool.CorpusError, match="11 verdicts are of a paper removed"):
+        tool.measure(corpus, "r1")
+    path = corpus / "report" / "judged" / "field.json"
+    entry = {"slug": "paper-b", "report": "audit", "index": 0, "verdict": "true"}
+    path.write_text(json.dumps([*json.loads(path.read_text("utf-8")), entry]), "utf-8")
+    mark_removed(corpus, "paper-b")
+    with pytest.raises(tool.CorpusError, match="12 verdicts are of papers removed"):
+        tool.measure(corpus, "r1")
+
+
+def test_unjudged_packs_as_a_first_time_corpus_where_only_removed_verdicts_are_held(
+        corpus: Path, capsys) -> None:  # fmt: skip
+    mark_removed(corpus, "paper-a")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "b1"]) == 0
+    assert {slug for slug, _r, _m in packed(corpus)} == {"paper-b"}
+    assert "nothing in the corpus being judged yet" in capsys.readouterr().out
+
+
+def test_one_verdict_of_a_removed_paper_is_said_in_the_singular(corpus: Path) -> None:
+    path = corpus / "report" / "judged" / "field.json"
+    path.write_text(json.dumps(json.loads(path.read_text("utf-8"))[:1]), "utf-8")
+    mark_removed(corpus, "paper-a")
+    with pytest.raises(tool.CorpusError, match="1 verdict is of a paper removed"):
+        tool.measure(corpus, "r1")
+
+
+def test_agree_puts_no_disagreement_of_a_removed_paper_before_the_author(corpus: Path) -> None:
+    pack(corpus)
+    judge(corpus, "b1", "a", A)
+    judge(corpus, "b1", "b", B)
+    mark_removed(corpus, "paper-b")
+    result = judging.agree(corpus, "b1")
+    told = (corpus / "report" / "judged" / "b1-disagreements.md").read_text("utf-8")
+    assert "paper-b" not in told and "### 1. paper-a check 2" in told and "### 2." not in told
+    assert "did not agree on (1)" in told
+    assert "paper removed after judging: the two judges' verdicts on 1 finding" in told
+    assert result["disagreed"] == 1 and result["unclear"] == 0
+    assert "1 disagreement left out" in judging.render_agree(result)
+
+
+def test_agree_draws_no_sample_slot_for_a_removed_paper(corpus: Path) -> None:
+    pack(corpus)
+    judge(corpus, "b1", "a", ["true"] * 6)
+    judge(corpus, "b1", "b", ["true"] * 6)
+    mark_removed(corpus, "paper-b")
+    result = judging.agree(corpus, "b1")
+    judged = corpus / "report" / "judged"
+    # Its JSON is as it was: the measure is what leaves the verdict out.
+    assert sum(e["slug"] == "paper-b" for e in
+               json.loads((judged / "b1.json").read_text("utf-8"))) == 1  # fmt: skip
+    sample = (judged / "b1-sample.md").read_text("utf-8")
+    assert "paper-b" not in sample and sample.count("\n### ") == 5 and result["sample"] == 5
+    assert "paper removed after judging: 1 agreed verdict" in sample
+    assert "1 agreed verdict left out" in judging.render_agree(result)
+
+
+def test_agree_speaks_of_removal_only_where_a_paper_is_removed(corpus: Path) -> None:
+    result = agreed(corpus)
+    judged = corpus / "report" / "judged"
+    names = ("b1.json", "b1-disagreements.md", "b1-sample.md")
+    for name in names[1:]:
+        assert "removed after judging" not in (judged / name).read_text("utf-8")
+    assert "left out" not in judging.render_agree(result)
+    for name in names:
+        (judged / name).unlink()
+    mark_removed(corpus, "paper-b")
+    assert "left out" in judging.render_agree(judging.agree(corpus, "b1"))

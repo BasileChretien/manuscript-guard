@@ -610,3 +610,60 @@ def test_the_ties_error_names_every_key_allowed_and_the_count_rule_its_exception
     exception = "unless none is left and it stands elsewhere"
     assert exception in (REPO / "docs" / "corpus.md").read_text("utf-8")
     assert exception in " ".join(keys.key_state.__doc__.split())
+
+
+# --- a paper removed after judging ------------------------------------------------------
+
+
+def test_tie_leaves_out_a_removed_paper_and_a_decision_on_it_refuses_nothing(
+        corpus: Path) -> None:  # fmt: skip
+    why = {"by": "the author", "date": "2026-11-23", "why": "a data readme"}
+    other = finding("G7", "doi-unresolved", "10.1/abc does not resolve", line=4)
+    for name, entry in (("packets", {"slug": "paper-b", "text": "made up",
+                                     "reports": {"check": {"findings": [other]}}}),
+                        ("judged", {"slug": "paper-b", "report": "check", "index": 0,
+                                    "verdict": "true"})):  # fmt: skip
+        path = corpus / "report" / name / "f.json"
+        path.write_text(json.dumps([*json.loads(path.read_text("utf-8")), entry]), "utf-8")
+    for run, found in (("judged", other), ("tied", {**other, "key": "G7|doi-unresolved|a|-"})):
+        folder = corpus / "runs" / run / "paper-b"
+        folder.mkdir()
+        (folder / "check.json").write_text(json.dumps({"findings": [found]}), "utf-8")
+    assert tool.tie(corpus, "judged", "tied")["tied"] == 5
+    (corpus / "corpus" / "paper-b").mkdir(parents=True)
+    meta = {"slug": "paper-b", "format": "pdf", "main": "p.pdf", "removed": why}
+    (corpus / "corpus" / "paper-b" / "meta.json").write_text(json.dumps(meta), "utf-8")
+    said = tool.tie(corpus, "judged", "tied")
+    assert said["tied"] == 4 and said["removed"] == [{"slug": "paper-b", **why, "verdicts": 1}]
+    document = yaml.safe_load((corpus / "report" / "ties.yaml").read_text("utf-8"))
+    assert {t["slug"] for t in document["ties"]} == {"paper-a"}
+    told = keys.render_tie(said)
+    assert "paper-b" in told and "a data readme" in told and "(1 verdict;" in told
+    # The author's tie of its finding, made before it left, is read nowhere and refused nowhere.
+    (corpus / "report" / "ties-decided.yaml").write_text(yaml.safe_dump([
+        {"slug": "paper-b", "report": "check", "index": 0, "key": None, "by": "the author",
+         "date": "2026-11-20"}]), "utf-8")  # fmt: skip
+    result = tool.measure(corpus, "tied", ledger=False)
+    assert {r["slug"] for r in result["findings"]} == {"paper-a"}
+
+
+def test_tie_s_json_is_as_it_was_with_no_removed_paper(corpus: Path, tmp_path: Path) -> None:
+    out, data = tmp_path / "tie.md", tmp_path / "tie.json"
+    assert tool.main(["--corpus", str(corpus), "tie", "judged", "tied", "--out", str(out),
+                      "--json", str(data)]) == 0  # fmt: skip
+    said = json.loads(data.read_text("utf-8"))
+    assert "removed" not in said and "skipped" not in said
+    assert "removed after judging" not in out.read_text("utf-8")
+
+
+def test_tie_counts_a_removed_paper_s_verdicts_under_the_reason(corpus: Path) -> None:
+    why = {"by": "the author", "date": "2026-11-23", "why": "a data readme"}
+    path = corpus / "report" / "judged" / "f.json"
+    entry = {"slug": "paper-b", "report": "check", "index": 0, "verdict": "true"}
+    path.write_text(json.dumps([*json.loads(path.read_text("utf-8")), entry]), "utf-8")
+    (corpus / "corpus" / "paper-b").mkdir(parents=True)
+    meta = {"slug": "paper-b", "format": "pdf", "main": "p.pdf", "removed": why}
+    (corpus / "corpus" / "paper-b" / "meta.json").write_text(json.dumps(meta), "utf-8")
+    said = tool.tie(corpus, "judged", "tied")
+    assert said["skipped"] == {"paper removed after judging": 1}
+    assert "`paper removed after judging`: 1 verdict, of 1 paper" in keys.render_tie(said)

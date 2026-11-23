@@ -15,6 +15,13 @@ level, the English of the first; an `-ize` both write counts for neither. The wo
 fewer are then reported as in a paper that declared the more, and `spelling-not-as-declared`
 is never given, since nothing was declared.
 
+**One word repeated does not decide it** (Basile, 2026-11-23). Where the more are a single
+different word and the other English has three or more different words, the paper is in the
+other English: "grey" ten times does not make British a paper with eight American words.
+Nothing broader: a count of different words would lose true findings. A declared English is
+not touched, and two Englishes level have no majority, so the first word still decides. The
+one word is reported, and not respelt, since the paper's count says otherwise.
+
 Three findings, all warnings:
 
 * `spelling-variant`: a word in the other usage's spelling, once for the word, where it
@@ -43,7 +50,7 @@ funder's.
 
 **A word with one spelling in the paper's English is an edit, at every place**
 (`spelling_edits`), for the audit's copy in Track Changes: not where the list gives two, nor
-where the paper's English is in doubt.
+where the paper's English is in doubt, as it is where one repeated word has the count.
 """
 
 from __future__ import annotations
@@ -72,6 +79,9 @@ _KINDS = {BRITISH: ("gb", "ise"), AMERICAN: ("us",)}
 MANY = 5
 #: How many words that finding lists.
 LISTED = 12
+#: From this many different words of one English, a single word of the other does not make
+#: the paper's English, however often it is repeated (Basile, 2026-11-23).
+AGAINST_ONE_WORD = 3
 #: How many words the finding on the two endings quotes for each.
 EXAMPLES = 5
 
@@ -192,6 +202,11 @@ def _spellings(
     return spelt
 
 
+#: How a paper that declares no English came to the one it is held to: by the more words, by
+#: the first word of two Englishes level, or against one word repeated.
+_MORE, _LEVEL, _ONE_WORD = "more", "level", "one word"
+
+
 def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, bool] | None:
     """The English most of the words are in, and whether the two are level, in which case
     the English of the first word is taken. None where no word is either's: an `-ize`
@@ -205,6 +220,31 @@ def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, boo
         return max(counts, key=lambda variant: counts[variant]), False
     first = next(kind for *_, kind in spelt if kind)
     return (BRITISH if first in _KINDS[BRITISH] else AMERICAN), True
+
+
+def _one_word_outvotes(spelt: list[tuple[int, Passage, int, str, str]], more: str) -> bool:
+    """Are the words of `more`, the English with the more uses, one word repeated, against
+    three or more different words of the other?"""
+    different = {
+        variant: {key for *_, key, kind in spelt if kind in _KINDS[variant]}
+        for variant in _NAMES
+    }
+    fewer = AMERICAN if more == BRITISH else BRITISH
+    return len(different[more]) == 1 and len(different[fewer]) >= AGAINST_ONE_WORD
+
+
+def _held_to(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, str] | None:
+    """The English a paper that declares none is held to, and how it was come to: `_MORE`,
+    `_LEVEL` or `_ONE_WORD`. None where no word is either's."""
+    taken = _majority(spelt)
+    if taken is None:
+        return None
+    more, level = taken
+    if level:
+        return more, _LEVEL
+    if _one_word_outvotes(spelt, more):
+        return (AMERICAN if more == BRITISH else BRITISH), _ONE_WORD
+    return more, _MORE
 
 
 def _not_as_declared(declared: bool, different: int, other: int, own: int) -> bool:
@@ -222,7 +262,8 @@ def spelling_edits(
     "Colour" opening a sentence "Color". Not a word inside a quotation set inline, which is
     somebody else's or a title's. Nothing where the paper's English is in doubt: a
     paper mostly in the other English than it declares, whose declaration is likelier
-    wrong, or one that declares none and has as many words in each."""
+    wrong, or one that declares none and has as many words in each, or whose more are one
+    word repeated."""
     declared = variant is not None
     if declared and (not isinstance(variant, str) or variant not in _NAMES):
         return []
@@ -230,8 +271,8 @@ def spelling_edits(
     kept = {word.lower() for word in accepted if isinstance(word, str)}
     spelt = _spellings(passages, kept)
     if not declared:
-        taken = _majority(spelt)
-        if taken is None or taken[1]:
+        taken = _held_to(spelt)
+        if taken is None or taken[1] != _MORE:
             return []
         variant = taken[0]
     others = _KINDS[AMERICAN if variant == BRITISH else BRITISH]
@@ -299,7 +340,8 @@ def judge_spelling(
 ) -> Report:
     """The findings of the spelling reading, for a paper in `variant`, or where that is
     None, a paper that declares no English: it is then held to the one most of its words
-    are in (Basile, 2026-10-23). `accepted` are the spellings the project keeps whatever
+    are in (Basile, 2026-10-23), unless those are one word repeated against three or more
+    of the other's (2026-11-23). `accepted` are the spellings the project keeps whatever
     the list says; `paper` is the file that names the variant, for the finding about it."""
     nothing = Report((), {"spelling_own": 0, "spelling_other": 0})
     declared = variant is not None
@@ -310,12 +352,12 @@ def judge_spelling(
     words, with_ize = _variants()
     kept = {word.lower() for word in accepted if isinstance(word, str)}
     spelt = _spellings(passages, kept)
-    level = False
+    how = _MORE
     if not declared:
-        taken = _majority(spelt)
+        taken = _held_to(spelt)
         if taken is None:
             return nothing
-        variant, level = taken
+        variant, how = taken
     british = variant == BRITISH
     other_variant = AMERICAN if british else BRITISH
     others = _KINDS[other_variant]
@@ -345,10 +387,16 @@ def judge_spelling(
     theirs, ours = _NAMES[other_variant], _NAMES[variant]
     if declared:
         english = f"this paper is in {ours} English"
-    elif level:
+    elif how == _LEVEL:
         english = (
             f"paper.yaml declares no English, and the paper has as many words in {ours} "
             f"spelling as in {theirs}, {own} of each, the first in {ours}"
+        )
+    elif how == _ONE_WORD:
+        different = len({key for *_, key, kind in spelt if kind in _KINDS[variant]})
+        english = (
+            f"paper.yaml declares no English, and the paper has {own} words in {ours} "
+            f"spelling, {different} different ones, to this one word in {theirs}"
         )
     else:
         english = (
@@ -356,8 +404,8 @@ def judge_spelling(
             f"spelling to {other} in {theirs}"
         )
 
-    # Declaring none, the paper's English is the one most of its words are in, so the
-    # other's are never the more: no setting to be told of.
+    # Declaring none, there is no setting to be told of, even where one word of the other
+    # English is used more often than the paper's own.
     if _not_as_declared(declared, len(times), other, own):
         listed = _most_used(times, LISTED)
         respell = ", ".join(

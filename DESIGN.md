@@ -5881,7 +5881,18 @@ absent. Each reader of it has a rule for a paper that has not said:
   nothing. The words of the fewer are then each a `spelling-variant`, which says that
   `paper.yaml` declares no English and gives both counts; `spelling-mixed` reads the endings
   of a paper that is mostly British as it does those of a British one;
-  `spelling-not-as-declared` is never given, since the other English is never the more.
+  `spelling-not-as-declared` is never given, since nothing was declared.
+- **One word repeated does not decide it** (Basile, 2026-11-23, "Narrow rule"). In a paper
+  whose words were American, "grey" ten times outvoted nine American words of eight kinds,
+  and each of those was reported. Where the more are a single different word and the other
+  English has three or more different words, the paper is in the other English, and the one
+  word is the `spelling-variant`, whose message gives both counts. A plain count of different
+  words was measured and refused: it turned two other papers and lost 14 true findings. A
+  declared English is not touched, and where the two are level there is no majority to
+  overturn, so the first word still decides. `spelling_edits` respells nothing in such a
+  paper, as in a level one: its count and its words disagree about its English, and the
+  repeated word may be the field's ("grey matter"). A paper so held to British is read as a
+  British one, its endings included; one so held to American has its `-ise` word as the stray.
 - **The build** gives the document `lang: en`, English with no region. Pandoc writes `en`
   into the .docx (`w:lang` in its styles, `dc:language` in its properties). Word 16 reads it
   as English with no region (LanguageID 9) and proofs it with its American dictionary:
@@ -25369,6 +25380,14 @@ Open, recorded as each change landed:
     American ones, or one more of the wrong kind, is told the right ones are the strays.
     Where they are level the first word decides, which is an order, not a reason.
     Pinned by `tests/test_spelling.py::test_declaring_none_with_as_many_of_each_the_first_sets_the_english`.
+  - One word repeated gives way only to three or more different words of the other English
+    (Basile, 2026-11-23). Two words repeated keep the count, as does one word against two,
+    so "grey" and "greys" together, two words of the list, still outvote three American
+    words.
+    Pinned by `tests/test_spelling.py::test_two_words_of_the_more_are_not_one_word`.
+  - That rule needs a majority. One word used three times against three different words
+    once each is level, and the first word decides, which may be the repeated one.
+    Pinned by `tests/test_spelling.py::test_a_tie_has_no_majority_so_the_first_word_still_decides`.
   - The count is of the words on G14's list, and only those: a paper whose only spellings
     of either kind are in a name, a quotation or a section left unread has no English, and
     hears nothing.

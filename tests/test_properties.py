@@ -8693,7 +8693,8 @@ def test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure(
     one that declares none, in the English of the more. Not a name, a variable's name, a
     word inside a quotation, one the paper keeps or one with two spellings; and nothing in a
     paper that declares none and has as many words of each, nor in one mostly in the other
-    English than it declares. Edited, it is edited no further."""
+    English than it declares, nor in one whose more are a word repeated against three of the
+    other's. Edited, it is edited no further."""
     from manuscript_guard.gates.spelling import spelling_edits
     from manuscript_guard.gates.vocabulary import Passage
 
@@ -13751,12 +13752,68 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
 
 
 #: The papers each example of the property below holds: mostly British, mostly American,
-#: as many of each, British by its -ise words alone, and British with as many -ize words
-#: both Englishes write as it has British ones, which count for neither.
-_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize")
+#: as many of each, British by its -ise words alone, British with as many -ize words both
+#: Englishes write as it has British ones, which count for neither, and the four around
+#: one word repeated (Basile, 2026-11-23): against three different words of the other
+#: English, which are then the paper's; two words repeated against three, one against
+#: two, and one against three with as many uses of each, where the count stands.
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize",
+             "one word", "two words", "against two", "level, one word")  # fmt: skip
 #: The -ise spellings British usage writes, and the -ize ones both usages write.
 WITH_ISE = ("randomised", "organised", "summarised", "categorised")
 WITH_IZE = ("randomized", "organized", "summarized", "categorized")
+
+
+def _one_word_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
+    """The English a paper around one repeated word is held to, and its words in order."""
+    pools = {"en-GB": BRITISH, "en-US": AMERICAN}
+    held = draw(st.sampled_from(("en-GB", "en-US")))
+    stray = "en-US" if held == "en-GB" else "en-GB"
+    ours, theirs = draw(st.permutations(pools[held])), draw(st.permutations(pools[stray]))
+    if leaning == "one word":
+        many = ours[: draw(st.integers(3, 4))]
+        words = [(held, word) for word in many]
+        words += [(stray, theirs[0])] * (len(many) + draw(st.integers(1, 3)))
+    elif leaning == "two words":
+        words = [(held, ours[0])] * draw(st.integers(2, 3)) + [(held, ours[1])] * 2
+        words += [(stray, word) for word in theirs[:3]]
+    elif leaning == "against two":
+        words = [(held, ours[0])] * draw(st.integers(3, 5))
+        words += [(stray, word) for word in theirs[:2]]
+    else:  # level, the repeated word first: with no majority, it still decides
+        uses = draw(st.integers(3, 4))
+        rest = [(held, ours[0])] * (uses - 1) + [(stray, word) for word in theirs[:uses]]
+        return held, [(held, ours[0]), *draw(st.permutations(rest))]
+    return held, list(draw(st.permutations(words)))
+
+
+def _leaning_words(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
+    """The English a paper of this leaning is held to, and its words in order."""
+    if leaning in ("one word", "two words", "against two", "level, one word"):
+        return _one_word_leaning(draw, leaning)
+    pools = {
+        "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
+        "en-US": AMERICAN,
+        "both": WITH_IZE,
+    }
+    more = draw(st.integers(2, 6))
+    if leaning == "level":
+        # The first word's English is the paper's; the rest are drawn in any order.
+        held = draw(st.sampled_from(("en-GB", "en-US")))
+        stray = "en-US" if held == "en-GB" else "en-GB"
+        planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
+        return held, [(english, draw(st.sampled_from(pools[english]))) for english in planted]
+    held = "en-GB" if leaning.startswith("-") else leaning
+    stray = "en-US" if held == "en-GB" else "en-GB"
+    fewer = draw(st.integers(1, more - 1))
+    both = ["both"] * more * (leaning == "-ize")
+    planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
+    # Two different words of the more at least: one alone is a leaning of its own.
+    own = list(draw(st.permutations(pools[held]))[:2])
+    own += [draw(st.sampled_from(pools[held])) for _ in range(more - 2)]
+    own = list(draw(st.permutations(own)))
+    return held, [(english, own.pop() if english == held
+                   else draw(st.sampled_from(pools[english]))) for english in planted]  # fmt: skip
 
 
 @st.composite
@@ -13766,34 +13823,19 @@ def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], 
     be held to, the words of the other with where each first stands, and how many of each."""
     papers = []
     for leaning in _LEANINGS:
-        more = draw(st.integers(2, 6))
-        if leaning == "level":
-            # The first word's English is the paper's; the rest are drawn in any order.
-            held = draw(st.sampled_from(("en-GB", "en-US")))
-            stray = "en-US" if held == "en-GB" else "en-GB"
-            planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
-        else:
-            held = "en-GB" if leaning.startswith("-") else leaning
-            stray = "en-US" if held == "en-GB" else "en-GB"
-            fewer = draw(st.integers(1, more - 1))
-            both = ["both"] * more * (leaning == "-ize")
-            planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
-        pools = {
-            "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
-            "en-US": AMERICAN,
-            "both": WITH_IZE,
-        }
+        held, planted = _leaning_words(draw, leaning)
+        stray = "en-US" if held == "en-GB" else "en-GB"
         sentences: list[str] = []
         stands: dict[str, int] = {}
-        for english in planted:
-            word = draw(st.sampled_from(pools[english]))
+        for english, word in planted:
             before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
             after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
             sentence = f"{before.capitalize()} {word} {after}."
             if english == stray:
                 stands.setdefault(word, len(sentences))
             sentences.append(sentence)
-        own, other = planted.count(held), planted.count(stray)
+        own = sum(english == held for english, _ in planted)
+        other = sum(english == stray for english, _ in planted)
         papers.append(("\n".join(sentences) + "\n", held, stands, own, other))
     return papers
 
@@ -13804,7 +13846,8 @@ def test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_a
 ) -> None:
     """Basile, 2026-10-23. The words of the fewer English are each said where they first
     stand, those of the more never, and nothing about a setting nobody made; where the two
-    are level, the English of the first word is the paper's."""
+    are level, the English of the first word is the paper's. Where the more are one word
+    repeated against three or more of the other's, the other's is (2026-11-23)."""
     names = {"en-GB": "British", "en-US": "American"}
     for text, held, stands, own, other in papers:
         file = _file(0, MAIN, text, [], False)
@@ -19969,6 +20012,67 @@ def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
         return (spelling_gate.BRITISH, True) if taken and taken[1] else taken
 
     patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _one_word_repeated_decides_the_english(patch: pytest.MonkeyPatch) -> None:
+    """The false alarm of 2026-11-23: the count alone, whatever it is a count of."""
+    patch.setattr(spelling_gate, "_one_word_outvotes", lambda spelt, more: False)
+
+
+def _different_words(spelt: list, english: str) -> int:
+    return len({each[3] for each in spelt if each[4] in spelling_gate._KINDS[english]})
+
+
+def _the_other_english(english: str) -> str:
+    return spelling_gate.AMERICAN if english == spelling_gate.BRITISH else spelling_gate.BRITISH
+
+
+def _english_words_counted_as_different_words(patch: pytest.MonkeyPatch) -> None:
+    """The plain count of different words the author did not want."""
+    patch.setattr(
+        spelling_gate, "_one_word_outvotes",
+        lambda spelt, more: (_different_words(spelt, _the_other_english(more))
+                             > _different_words(spelt, more)),
+    )  # fmt: skip
+
+
+def _two_words_are_taken_for_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        spelling_gate, "_one_word_outvotes",
+        lambda spelt, more: (_different_words(spelt, more) <= 2
+                             and _different_words(spelt, _the_other_english(more)) >= 3),
+    )  # fmt: skip
+
+
+def _one_word_loses_to_two(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(spelling_gate, "AGAINST_ONE_WORD", 2)
+
+
+def _a_level_paper_goes_against_its_one_word(patch: pytest.MonkeyPatch) -> None:
+    """The narrow rule read on a tie, where there is no majority to overturn."""
+    real = spelling_gate._held_to
+
+    def broken(spelt: list) -> tuple[str, str] | None:
+        taken = real(spelt)
+        if taken and taken[1] == spelling_gate._LEVEL and spelling_gate._one_word_outvotes(
+            spelt, taken[0]
+        ):
+            return _the_other_english(taken[0]), spelling_gate._ONE_WORD
+        return taken
+
+    patch.setattr(spelling_gate, "_held_to", broken)
+
+
+def _a_paper_against_its_count_is_respelt(patch: pytest.MonkeyPatch) -> None:
+    real = spelling_gate._held_to
+
+    def broken(spelt: list) -> tuple[str, str] | None:
+        taken = real(spelt)
+        if taken and taken[1] == spelling_gate._ONE_WORD:
+            return taken[0], spelling_gate._MORE
+        return taken
+
+    patch.setattr(spelling_gate, "_held_to", broken)
 
 
 def _ise_counts_for_neither(patch: pytest.MonkeyPatch) -> None:
@@ -31357,6 +31461,30 @@ BROKEN = {
     "two Englishes level are taken for British": (
         _level_englishes_are_british,
         test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "one word repeated decides a paper's English": (
+        _one_word_repeated_decides_the_english,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a paper's English is that of its different words": (
+        _english_words_counted_as_different_words,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "two words repeated are taken for one": (
+        _two_words_are_taken_for_one,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "one word repeated loses to two different words": (
+        _one_word_loses_to_two,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a tie goes against its one repeated word": (
+        _a_level_paper_goes_against_its_one_word,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a paper held against its count is respelt": (
+        _a_paper_against_its_count_is_respelt,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
     ),
     "an -ise spelling counts for neither English": (
         _ise_counts_for_neither,

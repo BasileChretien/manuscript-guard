@@ -150,11 +150,13 @@ def _unread(family: str) -> bool:
 class Works:
     """`references.bib`'s keys by first author and year, as `_fold` and four digits, by year
     the keys of the works whose first author's name holds TeX `_fold` does not read, and each
-    key found by first author with all the work's authors (`gates.cited_as_typed`)."""
+    key found by first author with all the work's authors and its title
+    (`gates.cited_as_typed`)."""
 
     keys: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     unread: dict[str, list[str]] = field(default_factory=dict)
     people: dict[str, Authors] = field(default_factory=dict)
+    titles: dict[str, str] = field(default_factory=dict)
 
 
 def works_by(path: Path) -> Works:
@@ -171,6 +173,7 @@ def works_by(path: Path) -> Works:
     found: dict[tuple[str, str], list[str]] = {}
     unread: dict[str, list[str]] = {}
     authors: dict[str, Authors] = {}
+    titles: dict[str, str] = {}
     for key, fields in entries.items():
         year = re.search(r"\d{4}", fields.get("year") or fields.get("date") or "")
         written = cited(fields.get("author") or fields.get("editor") or "")
@@ -182,8 +185,10 @@ def works_by(path: Path) -> Works:
         elif family := _fold(people[0].family):
             found.setdefault((family, year.group()), []).append(key)
             authors[key] = written
+            titles[key] = fields.get("title") or ""
     return Works({where: sorted(keys) for where, keys in found.items()},
-                 {year: sorted(keys) for year, keys in unread.items()}, authors)  # fmt: skip
+                 {year: sorted(keys) for year, keys in unread.items()}, authors,
+                 titles)  # fmt: skip
 
 
 def keys_for(typed: Typed, works: Works) -> list[str]:

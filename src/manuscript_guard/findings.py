@@ -45,6 +45,9 @@ class Finding:
     subject: str | None = field(default=None, compare=False, repr=False)
     sentence: str | None = field(default=None, compare=False, repr=False)
     at: int | None = field(default=None, compare=False, repr=False)
+    #: The words a key from the context is made of, where a finding reworded keeps the key of
+    #: what it said before (G7's `reference-uncited`): never shown.
+    keyed_on: str | None = field(default=None, compare=False, repr=False)
 
     def located(self) -> str:
         if self.path is None:
@@ -63,8 +66,9 @@ class Finding:
 
     def keyed(self) -> Keyed:
         """What its key is made of (`keys.Keyed`)."""
-        return Keyed(self.gate, self.code, self.subject, self.sentence, self.at, self.context,
-                     self.message, paths_of(self.path))  # fmt: skip
+        return Keyed(self.gate, self.code, self.subject, self.sentence, self.at,
+                     self.keyed_on or self.context, self.message,
+                     paths_of(self.path))  # fmt: skip
 
     @property
     def key(self) -> str:
@@ -73,7 +77,7 @@ class Finding:
 
     def as_dict(self) -> dict:
         out = {name: value for name, value in asdict(self).items()
-               if name not in ("subject", "sentence", "at")}  # fmt: skip
+               if name not in ("subject", "sentence", "at", "keyed_on")}  # fmt: skip
         out["path"] = None if self.path is None else str(self.path)
         return keyed_json([self.keyed()], [out])[0]
 

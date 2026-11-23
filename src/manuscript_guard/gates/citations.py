@@ -206,7 +206,7 @@ def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool) -> F
         hint=f"to keep the entry, write the citation as [@{citekey}] and check that the work "
         "is in your Zotero library before running `sync-bib`, which writes the file from "
         "Zotero and the citation keys alone",
-        subject=nothing.keyed().parts()[2],
+        keyed_on=nothing.message,
     )
 
 

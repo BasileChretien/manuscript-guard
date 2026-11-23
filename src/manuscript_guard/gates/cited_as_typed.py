@@ -8,9 +8,14 @@ file from the keys, would drop it (Basile, 2026-11-23). The import does not chan
 
 A typed citation counts for an entry by the rule the import makes a key by, all the
 citation's names and its year: one author by name, two by both joined with "&" or "and",
-three or more by every name or by the first and "et al.", and the year's letter as the list
-gives it. Names are compared as G7 folds them (`gates.authors.name_words`), whole, so "Berg"
-is not "van der Berg". Initials typed before the first name must be the entry's.
+three or more by every name or by the first and "et al.", and the year's letter as the typed
+list prints it. A name is compared as the import compares it, as the list writes it, so
+"Berg" is not "van der Berg" and "Xu" is not "Xue": G7's folding for the registries
+(`gates.authors.name_words`) makes those two one. Only the first name's first letter may be
+a capital the entry's lacks, as at the start of a sentence. Initials typed before the first
+name must be the entry's. A capitalised word just before the names may be one of them
+("Garcia Lopez", "Professor Lopez"), so it leaves the entry a warning unless it is among the
+words that open a sentence (`_OPENERS`).
 
 Read beyond what the import makes a key: each part of a group on its own, so an unknown
 neighbour does not hide it; a page after the year ("Smith, 2020, p. 4"); several years
@@ -18,8 +23,12 @@ neighbour does not hide it; a page after the year ("Smith, 2020, p. 4"); several
 "and colleagues", as "et al." is read; and a possessive ("Smith and Jones's (2020)").
 
 A citation that may be two works counts for neither: two entries by those names and that
-year, an entry of the typed list the import could not read that holds the year and opens on
-the first author's name, or a work of that year whose name holds TeX that cannot be read.
+year; an entry the typed list holds by those names and that year and `references.bib` does
+not, told apart by its initials and title; an entry of the list the import could not read
+that holds the year and opens on the first author's name; or a work of that year whose name
+holds TeX that cannot be read. With no typed list a year's letter is not known: a key's last
+letter is no printed one, since Better BibTeX and the import key a first and a second work
+`smith2020` and `smith2020a`.
 """
 
 from __future__ import annotations
@@ -30,13 +39,13 @@ from dataclasses import dataclass
 
 from manuscript_guard.gates.authors import PARTICLES, name_words
 from manuscript_guard.gates.typed_citations import Works, _is_name, works_by
-from manuscript_guard.literature.names import Authors
+from manuscript_guard.literature.names import Authors, Name
 from manuscript_guard.text.inline import code_spans
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.reference_lists import reference_lists
 from manuscript_guard.typed_references import read as read_typed
-from manuscript_guard.typed_references.citations import _PREFIX, _names_alone
-from manuscript_guard.typed_references.entries import YEAR
+from manuscript_guard.typed_references.citations import _CITED_BEFORE, _PREFIX
+from manuscript_guard.typed_references.entries import YEAR, Entry
 
 #: A pair of brackets within a paragraph, with no bracket inside.
 _GROUP = re.compile(r"\((?P<inside>[^()]{1,400})\)")
@@ -57,18 +66,22 @@ _JOINS_LAST = re.compile(r"&|and")
 _INITIAL = re.compile(r"[A-Z\N{LATIN CAPITAL LETTER A WITH GRAVE}-\N{LATIN CAPITAL LETTER THORN}]"
                       r"[a-z]?\.(?:-[A-Z][a-z]?\.)?")  # fmt: skip
 _LETTERS = re.compile(r"[^\W\d_]+")
-#: A key's letter after its year, where no typed list says what the entry's year is.
+_TITLE_WORD = re.compile(r"[^\W_]+")
+#: A key that ends in a letter after its year, which says nothing of a printed year's letter.
 _KEY_LETTER = re.compile(r"\d{4}([a-z])$")
 #: How far back a citation's names are looked for in its sentence.
 _BACK = 200
-#: The words that open a sentence before a comma and are no one's name: "Recently, Smith
-#: (2020)". A capitalised word there may otherwise be a first author, "Brown, Lee (2018)".
+#: The words that open a sentence and are no one's name: "Recently, Smith (2020)", "As Smith
+#: (2020)". Any other capitalised word before a name may be part of it, "Garcia Lopez (2019)",
+#: or a first author, "Brown, Lee (2018)".
 _OPENERS = frozenset({
-    "additionally", "also", "conversely", "consequently", "finally", "first", "firstly",
-    "furthermore", "hence", "however", "importantly", "indeed", "instead", "lastly", "later",
-    "likewise", "moreover", "nevertheless", "nonetheless", "notably", "overall", "previously",
-    "recently", "second", "secondly", "similarly", "specifically", "subsequently", "third",
-    "thirdly", "thus", "therefore", "ultimately",
+    "additionally", "also", "although", "and", "as", "because", "both", "but", "by",
+    "conversely", "consequently", "finally", "first", "firstly", "following", "for", "from",
+    "furthermore", "hence", "here", "however", "if", "importantly", "in", "indeed", "instead",
+    "lastly", "later", "likewise", "moreover", "nevertheless", "nonetheless", "notably", "on",
+    "overall", "previously", "recently", "second", "secondly", "similarly", "since",
+    "specifically", "subsequently", "that", "then", "therefore", "third", "thirdly", "though",
+    "thus", "to", "ultimately", "unlike", "when", "whereas", "while", "with", "yet",
 })  # fmt: skip
 
 
@@ -107,15 +120,34 @@ def _lead_fits(lead: str, *, bracketed: bool) -> bool:
     if bracketed:
         return not lead or _PREFIX.fullmatch(lead) is not None
     words = lead.split()
-    last = words[-1] if words else ""
-    if last.endswith(";"):
+    if not words:
         return True
-    if last in ("and", "&") and len(words) > 1 and words[-2].endswith(")"):
-        return True  # No name ends in a bracket: the "and" joins two clauses.
-    if last.endswith(","):
-        word = last.rstrip(",")
-        return not word[:1].isupper() or word.casefold() in _OPENERS
-    return _names_alone(lead)
+    last = words[-1]
+    if last.endswith(";") or _CITED_BEFORE.search(last):
+        return True
+    if last in ("and", "&"):
+        # Between two citations, "Smith (2019) and Lee (2018)"; else the names go on before it.
+        return len(words) > 1 and _CITED_BEFORE.search(words[-2]) is not None
+    word = last.rstrip(",")
+    if word.endswith(")"):
+        return False  # "Brown (ed.) Lee (2018)": what the bracket follows may be a name.
+    return _is_no_name(word)
+
+
+def _is_no_name(word: str) -> bool:
+    """Whether a word before a citation's names is none of them: in lower case throughout
+    ("al-Rashid" is not), a number, or a word that opens a sentence."""
+    return word.islower() or word.isdigit() or word.casefold() in _OPENERS
+
+
+def _same_name(typed: str, family: str, *, opens: bool = False) -> bool:
+    """Whether a name typed is the family name as the list writes it, as the import compares
+    them. With `opens`, where it opens the citation, it may have a capital the entry lacks:
+    "Van der Berg" for "van der Berg" at the start of a sentence."""
+    written = " ".join(family.split())
+    return typed == written or (
+        opens and written[:1].islower() and typed == written[0].upper() + written[1:]
+    )
 
 
 def _first_name_fits(head: _Head, at: int, family: str, given: str, *,
@@ -126,13 +158,10 @@ def _first_name_fits(head: _Head, at: int, family: str, given: str, *,
     start, end = head.spans[at]
     found = list(re.finditer(r"\S+", head.text[start:end]))
     words = [word.group() for word in found]
-    wanted = name_words(family)
-    if not words or not wanted or not _is_name(words[-1]):
+    taken = len(family.split())
+    if not taken or len(words) < taken or not _is_name(words[-1]):
         return None
-    # A family name's words are at most its compared words: a hyphen joins two in one.
-    taken = next((count for count in range(1, min(len(words), len(wanted)) + 1)
-                  if name_words(" ".join(words[-count:])) == wanted), 0)  # fmt: skip
-    if not taken:
+    if not _same_name(" ".join(words[-taken:]), family, opens=True):
         return None
     before = words[:-taken]
     typed: list[str] = []
@@ -171,7 +200,7 @@ def _names_it(head: _Head, people: Authors, *, bracketed: bool) -> int | None:
     at = len(head.spans) - count
     for offset, person in enumerate(wanted[1:], start=at + 1):
         start, end = head.spans[offset]
-        if name_words(head.text[start:end]) != name_words(person.family):
+        if not _same_name(head.text[start:end], person.family):
             return None
     return _first_name_fits(head, at, wanted[0].family, wanted[0].given, bracketed=bracketed)
 
@@ -195,29 +224,67 @@ class _NotRead:
         return year[:4] in self.years and set(name_words(family)) <= self.first
 
 
+def _title_words(title: str) -> tuple[str, ...]:
+    return tuple(_TITLE_WORD.findall(title.casefold()))
+
+
+def _same_work(entry: Entry, key: str, year: str, works: Works) -> bool:
+    """Whether a typed list's `entry` is the work `references.bib` holds as `key`, from `year`:
+    every family name as written, the initials of each, and the title. The import keys an
+    entry by its name and year alone, so a key the list and the file share does not say it."""
+    people = works.people[key].names
+    return (
+        entry.year[:4] == year
+        and len(people) == len(entry.families)
+        and all(one.family == family and _initials(one.given) == _initials(given)
+                for one, family, given in zip(people, entry.families, entry.initials,
+                                              strict=True))  # fmt: skip
+        and _title_words(works.titles.get(key, "")) == _title_words(dict(entry.fields).get(
+            "title") or "")
+    )  # fmt: skip
+
+
+def _authors_of(entry: Entry) -> Authors:
+    return Authors(tuple(Name(family=family, given=given) for family, given
+                         in zip(entry.families, entry.initials, strict=True)))  # fmt: skip
+
+
 @dataclass(frozen=True)
 class _Listing:
-    """What the manuscript's typed reference lists add to `references.bib`: the year each
-    entry is typed with, and the entries that were not read."""
+    """What the manuscript's typed reference lists add to `references.bib`: the entries read
+    from them, and those not read."""
 
-    years: dict[str, str]
+    entries: tuple[Entry, ...]
     unknown: tuple[_NotRead, ...]
 
     @classmethod
     def of(cls, texts: Iterable[str]) -> _Listing:
-        years: dict[str, str] = {}
+        entries: list[Entry] = []
         unknown: list[_NotRead] = []
         for text in texts:
             typed = read_typed(text)
-            years.update((key, entry.year) for key, entry in typed.entries)
+            entries += [entry for _key, entry in typed.entries]
             unknown += [_NotRead.of(entry.text) for entry in typed.unread]
-        return cls(years, tuple(unknown))
+        return cls(tuple(entries), tuple(unknown))
 
-    def letter(self, key: str) -> str:
-        if key in self.years:
-            return self.years[key][4:]
-        found = _KEY_LETTER.search(key)
-        return found.group(1) if found else ""
+    def letter(self, key: str, year: str, works: Works) -> str | None:
+        """The letter the list prints after the year of the work `key`, "" for none, or None
+        where that is not known: the list does not hold the work and the key ends in a
+        letter, which says only that it was the second of its name and year."""
+        printed = {entry.year[4:] for entry in self.entries if _same_work(entry, key, year, works)}
+        if printed:
+            return printed.pop() if len(printed) == 1 else None
+        return None if _KEY_LETTER.search(key) else ""
+
+    def holds_another(self, head: _Head, year: str, key: str, works: Works, *,
+                      bracketed: bool) -> bool:  # fmt: skip
+        """Whether the list holds a work other than `key` that the citation names."""
+        return any(
+            entry.year == year
+            and not _same_work(entry, key, year[:4], works)
+            and _names_it(head, _authors_of(entry), bracketed=bracketed) is not None
+            for entry in self.entries
+        )
 
 
 def _the_work(head: _Head, year: str, works: Works, by_year: dict[str, list[str]],
@@ -230,13 +297,14 @@ def _the_work(head: _Head, year: str, works: Works, by_year: dict[str, list[str]
     fits = ((key, _names_it(head, works.people[key], bracketed=bracketed))
             for key in by_year.get(four, ()))  # fmt: skip
     named = {key: at for key, at in fits if at is not None}
-    same = [key for key in named if listing.letter(key) == letter]
-    if len(same) != 1:
-        return None
-    if not letter and len(named) > 1 and any(key not in listing.years for key in named):
+    letters = {key: listing.letter(key, four, works) for key in named}
+    same = [key for key, printed in letters.items() if printed == letter]
+    if len(same) != 1 or None in letters.values():
         return None
     family = works.people[same[0]].names[0].family
     if any(entry.may_be(year, family) for entry in listing.unknown):
+        return None
+    if listing.holds_another(head, year, same[0], works, bracketed=bracketed):
         return None
     return same[0], named[same[0]]
 

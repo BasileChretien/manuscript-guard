@@ -27333,7 +27333,7 @@ Open, recorded as each change landed:
   not hold is gone; the file's header says to import it into Zotero first. An entry no
   citation was made a key of is `reference-uncited` to G7: a warning whose hint is to run
   `sync-bib` where nothing cites it, and a note that `sync-bib` would drop it where the
-  manuscript cites it as typed text (Basile, 2026-11-23). Accepted.
+  manuscript cites it as typed text in the shapes G7 reads (Basile, 2026-11-23). Accepted.
 - **G7 counts a typed citation for an entry only in the shapes that name it exactly.** It
   reads each part of a group alone, with a page, several years, words in lower case before
   the name, "and colleagues" or a possessive, by all the entry's names and its year. A
@@ -27342,9 +27342,12 @@ Open, recorded as each change landed:
   & Jones" for Smith, Jones and Lee), three authors typed as one or as "Smith, Jones, et
   al.", an abbreviation in the part ("ABC, Smith, 2020"), two citations parted by a comma, a
   capitalised phrase before the name ("now Other Name, see Smith et al., 2020"), a
-  second year by its letter alone ("2020a, b"), a capitalised word and a comma before a name
-  in the sentence that is not among the words that open one ("In Japan, Smith (2020)"), and
-  a group's name. On the tuning corpus this leaves 2 of the 24 false findings: one with its
+  second year by its letter alone ("2020a, b"), a capitalised word before a name in the
+  sentence, with a comma or without, that is not among the words that open one ("In Japan,
+  Smith (2020)", "Garcia Smith (2020)"), an "and" after a bracket that is not another
+  citation's year ("(*N* = 12) and Smith (2020)"), a name the list writes otherwise than the
+  citation does, by more than a capital on its first letter, and a group's name. With no
+  typed list, a citation with a year's letter counts for no entry. On the tuning corpus this leaves 2 of the 24 false findings: one with its
   names in another order and one with another year. A LaTeX manuscript cites by command and
   is not read for this. Pinned by
   `tests/test_corruption.py::test_a_citation_typed_in_a_shape_not_read_leaves_the_warning`.

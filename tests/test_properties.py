@@ -13817,7 +13817,7 @@ def _a_citation_of_two_works_is_of_the_first(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_year_s_letter_is_not_read(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(typed_only_module._Listing, "letter", lambda self, key: "")
+    patch.setattr(typed_only_module._Listing, "letter", lambda self, key, year, works: "")
 
 
 def _an_entry_not_read_is_never_the_work(patch: pytest.MonkeyPatch) -> None:
@@ -13849,6 +13849,41 @@ def _and_colleagues_is_not_read(patch: pytest.MonkeyPatch) -> None:
 
 def _initials_are_not_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_only_module, "_initials", lambda given: ("b",))
+
+
+def _names_are_folded_as_for_the_registries(patch: pytest.MonkeyPatch) -> None:
+    def folded(typed: str, family: str, *, opens: bool = False) -> bool:
+        return typed_only_module.name_words(typed) == typed_only_module.name_words(family)
+
+    patch.setattr(typed_only_module, "_same_name", folded)
+
+
+def _an_entry_only_the_list_holds_is_not_the_work(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._Listing, "holds_another", lambda *a, **k: False)
+
+
+def _a_capitalised_word_before_the_names_is_none(patch: pytest.MonkeyPatch) -> None:
+    no_name = typed_only_module._is_no_name
+    patch.setattr(typed_only_module, "_is_no_name",
+                  lambda word: word[:1].isupper() or no_name(word))  # fmt: skip
+
+
+def _a_word_opening_in_lower_case_is_no_name(patch: pytest.MonkeyPatch) -> None:
+    no_name = typed_only_module._is_no_name
+    patch.setattr(typed_only_module, "_is_no_name",
+                  lambda word: word[:1].islower() or no_name(word))  # fmt: skip
+
+
+def _any_bracket_before_the_names_is_a_citation_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_CITED_BEFORE", re.compile(r"\)[,;]?$"))
+
+
+def _a_key_s_last_letter_is_the_printed_one(patch: pytest.MonkeyPatch) -> None:
+    def letter(self, key, year, works):
+        found = typed_only_module._KEY_LETTER.search(key)
+        return found.group(1) if found else ""
+
+    patch.setattr(typed_only_module._Listing, "letter", letter)
 
 
 #: The papers each example of the property below holds: mostly British, mostly American,
@@ -26579,6 +26614,30 @@ BROKEN = {
     ),
     "the initials before a typed name are not compared": (
         _initials_are_not_compared,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed name is folded as for the registries": (
+        _names_are_folded_as_for_the_registries,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "an entry only the typed list holds is not the work": (
+        _an_entry_only_the_list_holds_is_not_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a capitalised word before a typed citation's names is none": (
+        _a_capitalised_word_before_the_names_is_none,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a word opening in lower case before a typed citation's names is none": (
+        _a_word_opening_in_lower_case_is_no_name,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "any bracket before a typed citation's names is a citation's": (
+        _any_bracket_before_the_names_is_a_citation_s,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a key's last letter is a typed citation's year letter": (
+        _a_key_s_last_letter_is_the_printed_one,
         test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
     ),
     "in LaTeX, an escaped percent opens a comment": (

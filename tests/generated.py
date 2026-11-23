@@ -15370,7 +15370,16 @@ TYPED_ONLY = (
     ("Professor {n} ({y})", 1, False), ("(B. {n}, {y})", 1, False), ("({n}, {y}a)", 1, False),
     ("({n}, {y}, Table 2)", 1, False), ("<!-- ({n}, {y}) -->", 1, False),
     ("`({n}, {y})`", 1, False),
+    ("As {n} ({y})", 1, True), ("\n\n{n} ({y})", 1, True),
+    ("Earlier work differs. {n} ({y})", 1, True),
+    ("Found by Absent (1804) and {n} ({y})", 1, True),
+    ("Earlier work differs. Garcia {n} ({y})", 1, False), ("\n\nProfessor {n} ({y})", 1, False),
+    ("al-Rashid, {n} ({y})", 1, False), ("Absent (ed.) and {n} ({y})", 1, False),
+    ("Absent (ed.), {n} ({y})", 1, False),
 )  # fmt: skip
+#: Two family names G7's folding for the registries makes one, the entry's and a citation's.
+TYPED_ONLY_FOLDED = (("Xue", "Xu"), ("Suen", "Sun"), ("Yue", "Yu"), ("Ross", "Ros"),
+                     ("Mueller", "Muller"))  # fmt: skip
 #: Family names, one to an entry: of one word, hyphenated, with an accent, an apostrophe or
 #: particles, as a `.bib` holds them.
 TYPED_ONLY_NAMES = (
@@ -15380,6 +15389,8 @@ TYPED_ONLY_NAMES = (
     "Zeller", "Abbott", "Barlow", "Calloway", "Dunmore", "Everett", "Finch", "Gale",
     "Holloway", "Irving", "Jarvis", "Keating", "Larkin", "Mercer", "Nash", "Osborne",
     "Pryor", "Quill", "Rowan", "Sutton", "Tolliver", "Upton", "Voss", "Wynn",
+    "Ashby", "Blackwood", "Crane", "Delaney", "Eastman", "Farley", "Goddard", "Hale",
+    "Ivers", "Jennings", "Kirkland", "Lyle", "Marlowe", "Nolan", "Ormond", "Penhale",
     "Smith-Jones", "O'Neil", "van der Berg",
     "\N{LATIN CAPITAL LETTER O WITH STROKE}deg\N{LATIN SMALL LETTER A WITH RING ABOVE}rd",
 )  # fmt: skip
@@ -15388,63 +15399,82 @@ TYPED_ONLY_NAMES = (
 @st.composite
 def typed_only_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool]]:
     """A `references.bib`, a manuscript citing its entries as typed text, and for each key
-    whether a citation there is of it. An entry for each shape of `TYPED_ONLY`; two by one
-    name and year that a bare citation may be either of, and two whose year's letter says
-    which; one only a title in the typed list names; and one the list holds in a form the import
-    cannot read, which the citation may be of, and one it holds as a second author's, which
-    it cannot. Each in every example, so that a rule broken for one fails under any seed."""
-    extra = 7
-    names = draw(st.permutations(TYPED_ONLY_NAMES))
+    whether a citation there is of it. An entry for each shape of `TYPED_ONLY`, and one for
+    each name of `TYPED_ONLY_FOLDED`, cited by the other. Then: two by one name and year that
+    a bare citation may be either of; two keyed `smith2020` and `smith2020a`, with no typed
+    list to say which prints the letter cited; two the typed list prints with a letter each;
+    one only a title in the list names; one the list holds in a form the import cannot read,
+    which the citation may be of; one it holds as a second author's, which it cannot; one
+    beside another person of that name the list holds and the file does not; and one the
+    list holds itself. Each in every example, so that a rule broken for one fails under any
+    seed."""
+    extra = len(TYPED_ONLY_FOLDED) + 9
+    names = iter(draw(st.permutations(TYPED_ONLY_NAMES)))
     years = iter(draw(st.lists(st.integers(1900, 2020), min_size=len(TYPED_ONLY) + extra,
                                max_size=len(TYPED_ONLY) + extra, unique=True)))  # fmt: skip
     others = ("Second", "Third")
     entries: list[str] = []
     cited: dict[str, bool] = {}
     sentences: list[str] = []
+    listed: list[str] = []
 
-    def entry(key: str, family: str, year: int, count: int) -> None:
+    def entry(key: str, family: str, year: int, count: int, cites: bool, title: str = "T") -> None:
         people = [f"{{{family}}}, Anne" if " " in family else f"{family}, Anne"]
         people += [f"{other}, Bea" for other in others[: count - 1]]
         entries.append(f"@article{{{key},\n  author = {{{' and '.join(people)}}},\n"
-                       f"  title = {{T}},\n  journal = {{J}},\n  year = {{{year}}},\n}}\n")
+                       f"  title = {{{title}}},\n  journal = {{J}},\n  year = {{{year}}},\n}}\n")
+        cited[key] = cites
 
     for at, (shape, count, cites) in enumerate(TYPED_ONLY):
-        year = next(years)
-        key = f"w{at}x{year}"
-        entry(key, names[at], year, count)
-        cited[key] = cites
-        filled = shape.replace("{n}", names[at]).replace("{o}", "Second").replace("{p}", "Third")
+        year, name = next(years), next(names)
+        entry(f"w{at}x{year}", name, year, count, cites)
+        filled = shape.replace("{n}", name).replace("{o}", "Second").replace("{p}", "Third")
         sentences.append(filled.replace("{y}", str(year)).replace("{w}", "1802"))
-    at = len(TYPED_ONLY)
-    # Two works one bare citation may be either of, and two a letter tells apart.
-    year = next(years)
+    for at, (family, typed) in enumerate(TYPED_ONLY_FOLDED):
+        year = next(years)
+        entry(f"f{at}x{year}", family, year, 1, False)
+        sentences.append(f"({typed}, {year})")
+    # Two works one bare citation may be either of.
+    year, name = next(years), next(names)
+    entry(f"t{year}x{year}a", name, year, 1, False)
+    entry(f"t{year}x{year}b", name, year, 1, False)
+    sentences.append(f"({name}, {year})")
+    # A first and a second work's keys, with no list to say what either prints.
+    year, name = next(years), next(names)
+    entry(f"k{year}x{year}", name, year, 1, False)
+    entry(f"k{year}x{year}a", name, year, 1, False)
+    sentences.append(f"({name}, {year}a)")
+    # Two the list prints with a letter each.
+    year, name = next(years), next(names)
     for letter in "ab":
-        entry(f"t{at}x{year}{letter}", names[at], year, 1)
-        cited[f"t{at}x{year}{letter}"] = False
-    sentences.append(f"({names[at]}, {year})")
-    year = next(years)
-    for letter in "ab":
-        entry(f"l{at}x{year}{letter}", names[at + 1], year, 1)
-        cited[f"l{at}x{year}{letter}"] = letter == "b"
-    sentences.append(f"({names[at + 1]}, {year}b)")
-    # What the typed list holds.
-    listed, unread, second = next(years), next(years), next(years)
-    entry(f"r{at}x{listed}", names[at + 2], listed, 1)
-    cited[f"r{at}x{listed}"] = False
-    entry(f"u{at}x{unread}", names[at + 3], unread, 1)
-    cited[f"u{at}x{unread}"] = False
-    sentences.append(f"({names[at + 3]}, {unread})")
-    entry(f"c{at}x{second}", names[at + 4], second, 1)
-    cited[f"c{at}x{second}"] = True
-    sentences.append(f"({names[at + 4]}, {second})")
+        entry(f"l{year}x{year}{letter}", name, year, 1, letter == "b", title=f"T{letter}")
+        listed.append(f"{name}, A. ({year}{letter}). T{letter}. *J*, *1*, 1--2.")
+    sentences.append(f"({name}, {year}b)")
+    # Named only by a title in the list.
+    year, name = next(years), next(names)
+    entry(f"r{year}x{year}", name, year, 1, False)
+    listed.append(f"Absent, A. (1803). A reply to {name} ({year}). *J*, *1*, 1--2.")
+    # In the list in a form the import cannot read, and as a second author's.
+    year, name = next(years), next(names)
+    entry(f"u{year}x{year}", name, year, 1, False)
+    listed.append(f"{name}, K. {year}. In no form the import reads.")
+    sentences.append(f"({name}, {year})")
+    year, name = next(years), next(names)
+    entry(f"c{year}x{year}", name, year, 1, True)
+    listed.append(f"Absent, A., & {name}, K. ({year}). A title in no form.")
+    sentences.append(f"({name}, {year})")
+    # Another person of the name in the list alone, and the entry itself in the list.
+    year, name = next(years), next(names)
+    entry(f"o{year}x{year}", name, year, 1, False)
+    listed.append(f"{name}, K. ({year}). Other. *J*, *1*, 1--2.")
+    sentences.append(f"({name}, {year})")
+    year, name = next(years), next(names)
+    entry(f"s{year}x{year}", name, year, 1, True, title="Same")
+    listed.append(f"{name}, A. ({year}). Same. *J*, *1*, 1--2.")
+    sentences.append(f"({name}, {year})")
     order = draw(st.permutations(sentences))
     prose = "".join(f"we read that {said} here. " for said in order)
-    typed_list = (
-        f"Absent, A. (1803). A reply to {names[at + 2]} ({listed}). *J*, *1*, 1--2.\n\n"
-        f"{names[at + 3]}, K. {unread}. In no form the import reads.\n\n"
-        f"Absent, A., & {names[at + 4]}, K. ({second}). A title in no form.\n"
-    )
-    return "".join(entries), f"{prose}\n\n# References\n\n{typed_list}", cited
+    return "".join(entries), f"{prose}\n\n# References\n\n" + "\n\n".join(listed) + "\n", cited
 
 
 #: A letter of a family name as a manuscript types it, as a reader without it types it, and

@@ -157,6 +157,55 @@ def test_unjudged_packs_the_loud_findings_of_codes_not_settled(corpus: Path) -> 
     assert result["by_code"]["G3/figure-colours-confused"] == 2 and result["findings"] == 6
 
 
+def test_unjudged_packs_every_loud_finding_where_nothing_is_judged_yet(corpus: Path,
+                                                                       capsys) -> None:
+    """A corpus judged for the first time, a held-out set say, holds no verdict: `unjudged`
+    packs every loud finding of the run, no code being settled (Basile, 2026-11-23)."""
+    for verdicts in (corpus / "report" / "judged").glob("*.json"):
+        verdicts.unlink()
+    (corpus / "report" / "packets" / "field.json").unlink()
+    with pytest.raises(tool.CorpusError, match="holds no judged finding"):
+        tool.measure(corpus, "r1")  # the measure still asks for verdicts
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "first"]) == 0
+    loud = [(slug, report, f["message"]) for (slug, report), found in R1.items()
+            for f in found if f["severity"] in ("warn", "fail")]  # fmt: skip
+    # As with verdicts: not a check's finding every new project gives, nor one repeating
+    # the same paper's audit.
+    left_out = {("paper-a", "check", "the plan's question section is empty"),
+                ("paper-a", "check", "42 is typed")}
+    assert sorted(packed(corpus, "first")) == sorted(set(loud) - left_out)
+    assert "of every code, nothing in the corpus being judged yet" in capsys.readouterr().out
+
+
+def test_a_verdict_file_that_cannot_be_read_is_no_corpus_with_no_verdict(corpus: Path,
+                                                                        capsys) -> None:
+    """Only empty verdict files make a corpus not judged yet: one that is not JSON is refused,
+    as before, rather than packing every loud finding."""
+    for verdicts in (corpus / "report" / "judged").glob("*.json"):
+        verdicts.unlink()
+    (corpus / "report" / "judged" / "b0.json").write_text('[{"slug": "paper-a",}', "utf-8")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "x"]) == 2
+    assert "holds no judged finding" in capsys.readouterr().err
+    assert not (corpus / "report" / "packets" / "x.json").exists()
+    (corpus / "report" / "judged" / "b0.json").write_text("[]", "utf-8")
+    assert tool.main(["--corpus", str(corpus), "unjudged", "r1", "--name", "x"]) == 0
+
+
+def test_a_markdown_paper_s_text_is_the_paper_itself(corpus: Path) -> None:
+    """A Markdown paper is audited only, and a judge reads the paper's own file."""
+    (corpus / "corpus" / "paper-c" / "files").mkdir(parents=True)
+    (corpus / "corpus" / "paper-c" / "files" / "paper.md").write_text("# A\n", "utf-8")
+    (corpus / "corpus" / "paper-c" / "meta.json").write_text(json.dumps(
+        {"slug": "paper-c", "format": "markdown", "main": "paper.md", "title": "C",
+         "window": "B"}), "utf-8")  # fmt: skip
+    write_run(corpus, "r1", {("paper-c", "audit"): [
+        finding("G6", "ai-phrasing", "'delve into' is a phrase models favour", "delve2")]})
+    pack(corpus)
+    papers = {p["slug"]: p for p in json.loads(
+        (corpus / "report" / "packets" / "b1.json").read_text("utf-8"))}  # fmt: skip
+    assert papers["paper-c"]["text"] == str(corpus / "corpus" / "paper-c" / "files" / "paper.md")
+
+
 def test_the_thresholds_of_a_settled_code_are_flags(corpus: Path, capsys) -> None:
     assert pack(corpus, "loose", share=0.5, least=1)["settled"] == {
         "G6/vague-attribution": (10, 10), "G14/spelling-variant": (1, 1)}

@@ -252,6 +252,11 @@ def _claim(out_root: Path, sha: str) -> None:
                               "run otherwise, or delete its folder")  # fmt: skip
 
 
+def pdftotext() -> str | None:
+    """The pdftotext a PDF's text is written with, from PATH; None where there is none."""
+    return shutil.which("pdftotext")
+
+
 def run_paper(python: Path, meta: dict, root: Path, out_root: Path, env: dict,
               sha: str) -> dict:  # fmt: skip
     """The four reports on one paper, each step once: a step already run for the same commit
@@ -272,6 +277,17 @@ def run_paper(python: Path, meta: dict, root: Path, out_root: Path, env: dict,
             steps[name] = call([*mg, *args], cwd, out / f"{name}.json", env)
 
     step("audit", ["audit", "--json", str(main)])
+    made = steps.get("text", {}).get("exit") == 0
+    reader = pdftotext() if meta["format"] == "pdf" and not made else None
+    if reader:
+        # What a judge reads of a PDF, as the harness wrote it (`corpus_judging.judge_text`).
+        text = out / "paper.txt"
+        done = call([reader, "-enc", "UTF-8", "-layout", str(main), "-"], out, text, env)
+        if done["exit"] != 0:
+            # No empty or partial text for the judges: the run says so, and the next tries again.
+            text.unlink(missing_ok=True)
+            done = {**done, "exit": f"pdftotext failed ({done['exit']})"}
+        steps["text"] = done
     if meta.get("pdf"):
         step("audit-pdf", ["audit", "--json", str(files / meta["pdf"])])
     if meta.get("v1"):

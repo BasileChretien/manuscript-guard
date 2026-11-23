@@ -626,12 +626,13 @@ OTHER_SHA = "fedcba9876543210fedcba9876543210fedcba98"
 
 class FakeBuild:
     """`quiet` and `call` of the runner, faked: git answers `self.sha`, a venv is a file, and
-    each step writes an empty report."""
+    each step writes an empty report. No pdftotext is found unless a test sets one."""
 
     def __init__(self, monkeypatch) -> None:
         self.sha, self.quiet_calls, self.steps = SHA, [], []
         monkeypatch.setattr(tool.corpus_run, "quiet", self.quiet)
         monkeypatch.setattr(tool.corpus_run, "call", self.call)
+        monkeypatch.setattr(tool.corpus_run, "pdftotext", lambda: None)
 
     def quiet(self, cmd, cwd=None) -> bytes:
         self.quiet_calls.append([str(c) for c in cmd])
@@ -653,6 +654,68 @@ class FakeBuild:
             (Path(cmd[-1]) / "manuscript").mkdir(parents=True)
         out.write_text(json.dumps({"findings": []}))
         return {"cmd": cmd, "exit": 0, "seconds": 0.0, "stderr": ""}
+
+
+def test_run_writes_a_pdf_s_text_and_audits_a_markdown_paper_only(corpus: Path,
+                                                                    monkeypatch) -> None:
+    """What a judge reads of a PDF is pdftotext's text, `-enc UTF-8 -layout` as the harness
+    wrote it, beside the run's reports (`judge_text`); a Markdown paper is audited, and its
+    own file is its text (Basile, 2026-11-23, item 6). With no pdftotext, no text is made."""
+    for slug, meta in {"pdf-1": {"format": "pdf", "main": "paper.pdf"},
+                       "md-1": {"format": "markdown", "main": "paper.md"}}.items():
+        (corpus / "corpus" / slug / "files").mkdir(parents=True)
+        (corpus / "corpus" / slug / "meta.json").write_text(json.dumps({"slug": slug, **meta}))
+    fake = FakeBuild(monkeypatch)
+    monkeypatch.setattr(tool.corpus_run, "pdftotext", lambda: "C:/tools/pdftotext.exe")
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    by_out = {(out.parent.name, out.name): cmd for cmd, _, out, _ in fake.steps}
+    assert set(by_out) == {("pdf-1", "audit.json"), ("pdf-1", "paper.txt"),
+                           ("md-1", "audit.json")}
+    pdf = corpus / "corpus" / "pdf-1" / "files" / "paper.pdf"
+    assert by_out[("pdf-1", "paper.txt")] == ["C:/tools/pdftotext.exe", "-enc", "UTF-8",
+                                              "-layout", str(pdf), "-"]
+    held = json.loads((corpus / "runs" / "pr-1" / "pdf-1" / "steps.json").read_text("utf-8"))
+    assert set(held["steps"]) == {"audit", "text"}
+    fake.steps.clear()
+    monkeypatch.setattr(tool.corpus_run, "pdftotext", lambda: None)
+    tool.corpus_run.run(corpus, "main", "pr-2", REPO, jobs=1, only=["pdf-1"])
+    assert [(out.parent.name, out.name) for _, _, out, _ in fake.steps] == [
+        ("pdf-1", "audit.json")]
+
+
+def test_a_pdftotext_that_fails_leaves_no_text_and_is_tried_again(corpus: Path,
+                                                                  monkeypatch, capsys) -> None:
+    """A pdftotext that cannot read the PDF leaves no empty `paper.txt` for the judges: the run
+    says it failed, a text beside another run serves, and the next run tries again."""
+    (corpus / "corpus" / "pdf-1" / "files").mkdir(parents=True)
+    meta = {"slug": "pdf-1", "format": "pdf", "main": "paper.pdf"}
+    (corpus / "corpus" / "pdf-1" / "meta.json").write_text(json.dumps(meta))
+    old = corpus / "runs" / "old" / "pdf-1" / "paper.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("the text", "utf-8")
+    fake = FakeBuild(monkeypatch)
+    monkeypatch.setattr(tool.corpus_run, "pdftotext", lambda: "pdftotext")
+    passed = fake.call
+
+    def fails(cmd, cwd, out, env) -> dict:
+        if cmd[0] != "pdftotext":
+            return passed(cmd, cwd, out, env)
+        out.write_text("")
+        return {"cmd": cmd, "exit": 1, "seconds": 0.0, "stderr": "Error opening PDF file"}
+
+    monkeypatch.setattr(tool.corpus_run, "call", fails)
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    assert "pr-1 pdf-1: {'text': 'pdftotext failed (1)'}" in capsys.readouterr().out
+    here = corpus / "runs" / "pr-1" / "pdf-1"
+    assert not (here / "paper.txt").exists()
+    run = type("R", (), {"folder": corpus / "runs" / "pr-1"})()
+    assert tool.corpus_judging.judge_text(corpus, run, "pdf-1", meta) == str(old)
+    (here / "paper.txt").write_text("")  # an empty text, from before this fix, is passed over
+    assert tool.corpus_judging.judge_text(corpus, run, "pdf-1", meta) == str(old)
+    monkeypatch.setattr(tool.corpus_run, "call", passed)
+    fake.steps.clear()
+    tool.corpus_run.run(corpus, "main", "pr-1", REPO, jobs=1, only=None)
+    assert [(out.name, cmd[0]) for cmd, _, out, _ in fake.steps] == [("paper.txt", "pdftotext")]
 
 
 def add_papers(corpus: Path) -> None:

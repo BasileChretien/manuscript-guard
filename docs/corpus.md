@@ -32,10 +32,13 @@ runs/<run>/<slug>/<report>.json   one run of one build: audit, audit-pdf, check,
 builds/<sha9>/               a venv for each commit run, named by its sha's first nine characters
 ```
 
-`meta.json` names the paper's `slug`, its `format` (`docx`, `pdf` or `latex`) and its `main`
-file under `files/`, and may name a `pdf` of the same paper and a `v1`, an earlier version,
-which `compare` sets beside the main file. Keep the SHA-256 of each file there too, so a paper
-fetched again can be told from another. A slug is its folder's name, in letters, digits,
+`meta.json` names the paper's `slug`, its `format` (`docx`, `pdf`, `latex` or `markdown`) and
+its `main` file under `files/`, and may name a `pdf` of the same paper and a `v1`, an earlier version,
+which `compare` sets beside the main file. Every paper is audited; a Word or LaTeX paper is
+made into a project and checked as well, and of a PDF `run` writes pdftotext's text beside
+the run's reports (`paper.txt`, `-enc UTF-8 -layout`) for the judges, where pdftotext is on
+`PATH`. Keep the SHA-256 of each file there too, so a paper fetched again can be told from
+another. A slug is its folder's name, in letters, digits,
 `.`, `_` and `-`.
 
 Give the corpus folder its own git repository, if any, never a remote, and this
@@ -97,7 +100,9 @@ wrote the first packets did, it leaves out the check findings whose gate, code a
 the same paper's audit gave, and those of the codes every new project gives
 (`EXPECTED_IN_NEW_PROJECT` in `tools/corpus_judging.py`). With `--base <run>` it takes
 instead, of every code, those whose key is not loud in the base run's same paper and report:
-what a pull request's run adds. Both runs must key by one scheme. `--base` too leaves out
+what a pull request's run adds. Both runs must key by one scheme. In a corpus that holds no
+verdict yet, a held-out set judged for the first time, no code is settled and every loud
+finding is packed, less the same check findings. `--base` too leaves out
 the harness's check findings, the audit's repeats and the codes every new project gives.
 Either way it leaves out a finding whose key a batch packet of the run's scheme holds in the
 same paper and report, and says how many: its verdicts may be waiting for the author, and
@@ -107,8 +112,9 @@ A batch's packet is laid out as the first ones, and each paper names its `batch`
 the packet as a batch's, and its `run`, the run's `folder` and its key `scheme` too. Each
 finding is as the run gave it, its `key` with it, and a G3 finding lists the `figure_files` of the run's project (under `figures/` and `manuscript/`) that its
 message names, or all of them where it names none, so that a judge can look at the image. The
-`text` is the run's own `main.md` of a Word paper, the LaTeX source, or the text pdftotext
-made of a PDF beside a run's reports; nothing is run on the paper. `unjudged` prints the count
+`text` is the run's own `main.md` of a Word paper, the LaTeX source, a Markdown paper's own
+file, or the text pdftotext made of a PDF beside a run's reports; nothing is run on the
+paper. `unjudged` prints the count
 by code. It never overwrites a packet, and refuses a batch name that a verdict file already
 has (`report/judged/<name>.json` or `<name>-author.json`), since that file would then be read
 against the batch's packet.

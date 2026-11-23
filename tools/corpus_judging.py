@@ -322,21 +322,30 @@ def render_fresh(said: dict) -> list[str]:
             f"verdict: {said['count']}. To pack them for two judges: `{said['command']}`."]
 
 
+def has_verdicts(root: Path) -> bool:
+    """Whether any verdict file of `report/judged/` holds a verdict, or may: a corpus judged
+    for the first time holds none, or only empty lists, and `unjudged` then packs every loud
+    finding of the run. A file that cannot be read counts, so that it is refused as before."""
+    return any(load_json(path) != [] for path in sorted((root / JUDGED).glob("*.json")))
+
+
 def judge_text(root: Path, run, slug: str, meta: dict) -> str | None:
     """The text a judge reads, as the harness chose it (`judge_text` in summarise.py): the
-    run's `main.md` of a Word paper, the source of a LaTeX one, pdftotext's text of a PDF.
-    That text is the PDF's whatever the build, so the text the harness wrote beside another
-    run's reports serves; nothing is run on the paper here. None where no such file is."""
+    run's `main.md` of a Word paper, the source of a LaTeX one or the file of a Markdown one,
+    pdftotext's text of a PDF, which `run` writes beside the run's reports (`paper.txt`).
+    That text is the PDF's whatever the build, so the text written beside another run's
+    reports serves; nothing is run on the paper here. An empty file is passed over. None
+    where no such file is."""
     here = run.folder / slug
     if meta.get("format") == "docx":
         found = [here / "project" / "manuscript" / "main.md"]
-    elif meta.get("format") == "latex":
+    elif meta.get("format") in ("latex", "markdown"):
         found = [root / "corpus" / slug / "files" / str(meta.get("main"))]
     else:
         runs = root / "runs"
         found = [here / "paper.txt", *sorted(p / slug / "paper.txt" for p in
                                              (runs.iterdir() if runs.is_dir() else ()))]
-    return next((str(p) for p in found if p.is_file()), None)
+    return next((str(p) for p in found if p.is_file() and p.stat().st_size), None)
 
 
 def figure_files(project: Path, finding: dict) -> list[str]:
@@ -400,11 +409,13 @@ def pack(root: Path, run, rows: list[dict], name: str, base=None,
             "written": bool(papers), "papers": len(papers), "findings": sum(codes.values()),
             "base": base.name if base is not None else None, "by_code": dict(codes.most_common()),
             "settled": settled, "no_text": sorted(s for s, p in papers.items() if not p["text"]),
-            "packed_already": selection["packed_already"]}
+            "packed_already": selection["packed_already"], "nothing_judged": not rows}
 
 
 def render_pack(result: dict) -> str:
     which = (f"of every code, whose key is not loud in {result['base']}" if result["base"] else
+             "of every code, nothing in the corpus being judged yet"
+             if result.get("nothing_judged") else
              f"of the codes not settled ({len(result['settled'])} settled left out)")
     said = (f"Wrote {result['path']}: {result['findings']} loud findings of {result['run']} "
             f"with no verdict, {which}, in {result['papers']} papers."

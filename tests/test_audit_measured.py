@@ -320,25 +320,40 @@ def test_compare_says_a_claim_reversed_as_a_note(tmp_path: Path, capsys) -> None
     assert said == [("claim-negation", "info"), ("claim-stronger", "warn")]
 
 
+def _marked(old: Path, new: Path, capsys) -> list[tuple[str, str]]:
+    """The severity and the mark `compare` gives each use before its definition in `new`."""
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    return [(f["severity"], f["mark"])
+            for f in _of(json.loads(capsys.readouterr().out), BEFORE)]  # fmt: skip
+
+
 @needs_pdftotext
-def test_compare_says_it_by_what_v2_was_read_from(tmp_path: Path, capsys) -> None:
-    """v2 as a PDF gives the note and v2 as Markdown the warning, against the same v1.
-    `compare` marks a finding by its message, which names the file and line of the
-    definition: "v2.md:7" against "v1.md:7", or a PDF's page and line, is new in v2, and the
-    same text under v1's file name in another folder stood in v1."""
-
-    def marked(old: Path, new: Path) -> list[tuple[str, str]]:
-        assert main(["compare", str(old), str(new), "--json"]) == 0
-        return [(f["severity"], f["mark"])
-                for f in _of(json.loads(capsys.readouterr().out), BEFORE)]  # fmt: skip
-
+def test_compare_gives_the_note_where_v2_was_read_from_a_pdf(tmp_path: Path, capsys) -> None:
+    """Against a v1 in Markdown, whose message names "v1.md:7", a PDF's names its page and
+    line, so the finding is new in v2."""
     old = _paper(tmp_path, _as_markdown(), "v1.md")
-    assert marked(old, _as_pdf(tmp_path / "v2.pdf")) == [("info", "new in v2")]
-    assert marked(old, _paper(tmp_path, _as_markdown(), "v2.md")) == [("warn", "new in v2")]
+    assert _marked(old, _as_pdf(tmp_path / "v2.pdf"), capsys) == [("info", "new in v2")]
+
+
+def test_compare_keeps_the_warning_from_markdown_and_marks_it_by_its_message(
+    tmp_path: Path, capsys
+) -> None:
+    """`compare` marks a finding by its message. Where the definition is on another line the
+    message names its file and line: "v2.md:7" against "v1.md:7" is new in v2, and the same
+    text under v1's file name in another folder stood in v1. Where it is on the same line the
+    message says "defined later on the same line", names no file, and stood in v1."""
+    old = _paper(tmp_path, _as_markdown(), "v1.md")
+    new = _paper(tmp_path, _as_markdown(), "v2.md")
+    assert _marked(old, new, capsys) == [("warn", "new in v2")]
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()
-    assert marked(_paper(tmp_path / "a", _as_markdown()),
-                  _paper(tmp_path / "b", _as_markdown())) == [("warn", "stood in v1")]  # fmt: skip
+    assert _marked(_paper(tmp_path / "a", _as_markdown()),
+                   _paper(tmp_path / "b", _as_markdown()),
+                   capsys) == [("warn", "stood in v1")]  # fmt: skip
+    same_line = ("# Methods\n\nThe QXR rose, and the quarterly exam ratio (QXR) was summed.\n\n"
+                 "# Results\n\nThe QXR was read for 212 pupils.\n")  # fmt: skip
+    assert _marked(_paper(tmp_path, same_line, "v1.md"), _paper(tmp_path, same_line, "v2.md"),
+                   capsys) == [("warn", "stood in v1")]  # fmt: skip
 
 
 def test_compare_audits_v2_s_abstract_numbers_as_notes(tmp_path: Path, capsys) -> None:

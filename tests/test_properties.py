@@ -24925,11 +24925,13 @@ def _words_read_from(text: str, suffix: str) -> list:
 
 
 @holds(15, measured_papers())
-def test_only_a_use_before_its_definition_differs_by_format(text: str) -> None:
-    """The same words give the same findings whatever they were read from. From a PDF a use
-    before the definition is a note; from Markdown it is a warning, and every other finding
-    has one severity in both, a name from the code and a bare placeholder, whose entries hold
-    for any format, a note in both (Basile, 2026-11-23, "INFO on PDFs now")."""
+def test_only_a_use_before_its_definition_is_lowered_from_a_pdf(text: str) -> None:
+    """On these papers G6 and G14 give the same findings from a PDF and from Markdown, and of
+    their severities only a use before the definition's differs: a note from a PDF, a warning
+    from Markdown. A name from the code and a bare placeholder, whose entries hold for any
+    format, are notes from both (Basile, 2026-11-23, "INFO on PDFs now"). The papers type no
+    word against a signed number, which G14's notation reads otherwise in a PDF's text
+    (`gates/notation.py`)."""
     code = "abbreviation-used-before-defined"
     typed = _words_read_from(text, ".md")
     printed = _words_read_from(text, ".pdf")
@@ -24993,19 +24995,19 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
 BROKEN = {
     "the PDF entry holds for every format": (
         _the_pdf_entry_holds_for_every_format,
-        test_only_a_use_before_its_definition_differs_by_format,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
     ),
     "an entry for any format does not hold from a PDF": (
         _an_entry_for_any_format_does_not_hold_from_a_pdf,
-        test_only_a_use_before_its_definition_differs_by_format,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
     ),
     "the audit does not say what it read a finding from": (
         _the_audit_does_not_say_what_it_read_from,
-        test_only_a_use_before_its_definition_differs_by_format,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
     ),
     "every short form's finding of a PDF is lowered": (
         _every_short_form_finding_of_a_pdf_is_lowered,
-        test_only_a_use_before_its_definition_differs_by_format,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
     ),
     "a conditional inside a skipped block opens no fi of its own": (
         _nesting_is_not_counted,

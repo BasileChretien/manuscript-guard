@@ -1495,9 +1495,9 @@ MEASURED_GAPS = ("xxxx", "XXXX")
 def measured_papers(draw: st.DrawFn) -> str:
     """A Markdown paper holding one finding of each kind G14 gives on a defined short form:
     one used in the Introduction before the Methods define it, one defined twice, and one
-    defined and never used again, each drawn from `MEASURED_TERMS`; and one each of the
-    kinds the audit's table lowers for any format, a name from the code and a bare
-    placeholder."""
+    defined and never used again, each drawn from `MEASURED_TERMS`; and G14's name from the
+    code and G6's `placeholder-word`, two of the findings the audit's table lowers for any
+    format."""
     (early_long, early), (twice_long, twice), (once_long, once) = draw(
         st.permutations(MEASURED_TERMS))[:3]  # fmt: skip
     verb = draw(st.sampled_from(MEASURED_VERBS))

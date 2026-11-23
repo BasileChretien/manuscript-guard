@@ -24925,7 +24925,7 @@ def _words_read_from(text: str, suffix: str) -> list:
 
 
 @holds(15, measured_papers())
-def test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf(text: str) -> None:
+def test_only_a_use_before_its_definition_differs_by_format(text: str) -> None:
     """The same words give the same findings whatever they were read from. From a PDF a use
     before the definition is a note; from Markdown it is a warning, and every other finding
     has one severity in both, a name from the code and a bare placeholder, whose entries hold
@@ -24993,19 +24993,19 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
 BROKEN = {
     "the PDF entry holds for every format": (
         _the_pdf_entry_holds_for_every_format,
-        test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
+        test_only_a_use_before_its_definition_differs_by_format,
     ),
     "an entry for any format does not hold from a PDF": (
         _an_entry_for_any_format_does_not_hold_from_a_pdf,
-        test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
+        test_only_a_use_before_its_definition_differs_by_format,
     ),
     "the audit does not say what it read a finding from": (
         _the_audit_does_not_say_what_it_read_from,
-        test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
+        test_only_a_use_before_its_definition_differs_by_format,
     ),
     "every short form's finding of a PDF is lowered": (
         _every_short_form_finding_of_a_pdf_is_lowered,
-        test_only_a_use_before_its_definition_is_lowered_and_only_from_a_pdf,
+        test_only_a_use_before_its_definition_differs_by_format,
     ),
     "a conditional inside a skipped block opens no fi of its own": (
         _nesting_is_not_counted,

@@ -239,11 +239,14 @@ def run_folder(root: Path, run: str) -> Path:
 
 
 class Run:
-    """A run's reports, read once each."""
+    """A run's reports, read once each. `removed` names the papers removed after judging,
+    which a run made before may hold: `all_reports`, and so all a run is counted by, passes
+    them over."""
 
-    def __init__(self, folder: Path) -> None:
+    def __init__(self, folder: Path, removed: frozenset[str] = frozenset()) -> None:
         self.folder = folder
         self.name = folder.name
+        self.removed = removed
         self._reports: dict[tuple[str, str], list[dict] | None] = {}
         self.used: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
 
@@ -274,11 +277,17 @@ class Run:
         return corpus_keys.Keys(self.findings(slug, report) or [])
 
     def all_reports(self):
-        for paper in sorted(p for p in self.folder.iterdir() if p.is_dir()):
+        for paper in sorted(p for p in self.folder.iterdir()
+                            if p.is_dir() and p.name not in self.removed):  # fmt: skip
             for report in REPORTS:
                 found = self.findings(paper.name, report)
                 if found is not None:
                     yield paper.name, report, found
+
+
+def open_run(root: Path, name: str) -> Run:
+    """A run of the corpus, which passes over the papers removed from it after judging."""
+    return Run(run_folder(root, name), frozenset(corpus_run.removed_papers(root)))
 
 
 def _by_key(item: Judged, tie: corpus_keys.Tie, run: Run, base: Run,
@@ -427,7 +436,7 @@ def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
     tied_scheme, schemes = ties["scheme"], [run.scheme for run in runs]
     if len({tied_scheme, *schemes}) > 1:
         return corpus_keys.scheme_note(tied_scheme, schemes)
-    tied = Run(run_folder(root, ties["run"]))
+    tied = open_run(root, ties["run"])
     judged = load_judged(root)[0]
     corpus_keys.check_batches(ties["batches"], {item.batch: (item.run, item.scheme)
                                                 for item in judged if item.batch})
@@ -436,10 +445,13 @@ def keyed_against(root: Path, *runs: Run) -> tuple[dict, Run] | str | None:
 
 def decided(root: Path, judged: list[Judged], tied: Run, scheme: int) -> dict:
     """`report/ties-decided.yaml`, each decision checked against the judged set, the run of
-    the ties and the batches of their scheme (`corpus_keys.check_decided`)."""
+    the ties and the batches of their scheme (`corpus_keys.check_decided`). A decision on a
+    paper removed after judging stays in the file and is read nowhere."""
     own = frozenset(item.batch for item in judged if item.batch and item.scheme == scheme)
-    return corpus_keys.check_decided(corpus_keys.load_decided(root), {i.key for i in judged},
-                                     tied.name, lambda slug, report: tied.keys(slug, report),
+    held = {where: said for where, said in corpus_keys.load_decided(root).items()
+            if where[0] not in tied.removed}  # fmt: skip
+    return corpus_keys.check_decided(held, {i.key for i in judged}, tied.name,
+                                     lambda slug, report: tied.keys(slug, report),
                                      own)  # fmt: skip
 
 
@@ -455,10 +467,10 @@ def _precision(table: dict, states: tuple[str, ...]) -> float | None:
 
 
 def measure(root: Path, run_name: str, ledger: bool = True, run: Run | None = None) -> dict:
-    judged, skipped = load_judged(root)
+    judged, skipped, removed = corpus_judging.read_judged(root)
     path = root / "report" / "ledger.yaml"
     decisions = load_ledger(path) if ledger else []
-    run = run or Run(run_folder(root, run_name))
+    run = run or open_run(root, run_name)
     against = keyed_against(root, run)
     keyed = against if isinstance(against, tuple) else None
     rows = [_row(f) for f in fates(rejudged(judged, decisions), run, decisions, keyed)]
@@ -475,8 +487,8 @@ def measure(root: Path, run_name: str, ledger: bool = True, run: Run | None = No
                                       for r in rows),
                        "successor": sum(r["successor_by"] == d.id for r in rows)}
                       for d in decisions],
-        "skipped": dict(skipped), "totals": _table(rows), "paper": _table(papers),
-        "notices": _table(notices),
+        "skipped": dict(skipped), **({"removed": removed} if removed else {}),
+        "totals": _table(rows), "paper": _table(papers), "notices": _table(notices),
         "precision_loud": _precision(_table(papers), ("reported", "elsewhere")),
         "codes": codes, "findings": rows, "keys": _key_counts(rows),
         "scheme_note": against if isinstance(against, str) else None,
@@ -506,6 +518,7 @@ def render_measure(result: dict) -> str:
              + (f"{len(result['decisions'])} decisions, {rejudged_n} findings re-judged, "
                 f"{asked_n} kept by a successor (asked by message, elsewhere by key)."
                 if result["ledger"] else "not applied."),
+             *corpus_run.render_removed(result.get("removed", [])),
              "", *_counts("verdict", result["totals"]), "",
              "About the paper (reading notices apart):", "", *_counts("verdict", result["paper"]),
              "", "Reading notices:", "", *_counts("verdict", result["notices"]), "",
@@ -555,10 +568,10 @@ FOLD = 10
 
 
 def gate(root: Path, base_name: str, new_name: str) -> dict:
-    judged, skipped = load_judged(root)
+    judged, skipped, removed = corpus_judging.read_judged(root)
     decisions = load_ledger(root / "report" / "ledger.yaml")
     items = rejudged(judged, decisions)
-    base, new = Run(run_folder(root, base_name)), Run(run_folder(root, new_name))
+    base, new = open_run(root, base_name), open_run(root, new_name)
     # By key where both runs carry keys, the base's counts held to the run of the ties and
     # the new run's to the base's; by #705's matcher, both of them, otherwise.
     against = keyed_against(root, base, new)
@@ -574,7 +587,7 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     base_loud, new_loud = unjudged(base), unjudged(new)
     return {
         "base": base.name, "new": new.name, "ok": not lost, "skipped": dict(skipped),
-        "decisions": len(decisions),
+        **({"removed": removed} if removed else {}), "decisions": len(decisions),
         "totals": {"base": _table([_row(b) for b, _ in pairs]),
                    "new": _table([_row(n) for _, n in pairs])},
         "lost": lost,
@@ -601,7 +614,8 @@ def render_gate(result: dict) -> str:
                "covers them.")  # fmt: skip
     lines = [f"## Corpus gate: {result['base']} -> {result['new']}", "", verdict, "",
              f"Ledger applied: {result['decisions']} decisions. Judged findings left out: "
-             f"{result['skipped'] or 'none'}.", "",
+             f"{result['skipped'] or 'none'}.",
+             *corpus_run.render_removed(result.get("removed", [])), "",
              "| verdict | run | " + " | ".join(STATES) + " |", "| --- | --- |" + " ---: |" * 4]
     for v in VERDICTS:
         for side in ("base", "new"):
@@ -692,16 +706,16 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
     2026-11-21). Writes `report/ties.yaml`, a batch's ties under `batches` by its name, and,
     for the author to settle by hand, `report/ties-ambiguous.md`. The verdicts and the
     ledger are not touched."""
-    every = load_judged(root)[0]
+    every, skipped, removed = corpus_judging.read_judged(root)
     judged = [item for item in every if not item.batch]
     run_folder(root, judged_run)
-    run = Run(run_folder(root, keyed_run))
+    run = open_run(root, keyed_run)
     if not run.keyed:
         raise CorpusError(f"{keyed_run} carries no keys: tie to a run of a build from #706 on")
     batches, by_batch, no_run = _tie_batches([item for item in every if item.batch
                                               and item.scheme != run.scheme], run)  # fmt: skip
     own = sorted({item.batch for item in every if item.batch and item.scheme == run.scheme})
-    ties, ambiguous = _tie_set(judged, run, Run(run_folder(root, judged_run)))
+    ties, ambiguous = _tie_set(judged, run, open_run(root, judged_run))
     document = {"judged_run": judged_run, "run": keyed_run, "scheme": run.scheme, "ties": ties}
     if batches:
         document["batches"] = {name: {k: b[k] for k in ("judged_run", "scheme", "ties")}
@@ -725,7 +739,8 @@ def tie(root: Path, judged_run: str, keyed_run: str) -> dict:
             "batches": {name: {"judged_run": b["judged_run"], "scheme": b["scheme"],
                                "tied": len(b["ties"]), "ambiguous": b["ambiguous"],
                                "to_decide": b["to_decide"]} for name, b in batches.items()},
-            "own_scheme": own, "no_run": list(no_run)}  # fmt: skip
+            "own_scheme": own, "no_run": list(no_run),
+            **({"removed": removed, "skipped": dict(skipped)} if removed else {})}  # fmt: skip
 
 
 # --- the command line -------------------------------------------------------------------
@@ -735,18 +750,18 @@ def judging(root: Path, args: argparse.Namespace) -> str:
     """`unjudged`, the run measured as `measure` measures it, or `agree`, in Markdown."""
     if args.command == "agree":
         return corpus_judging.render_agree(corpus_judging.agree(root, args.batch))
-    base = Run(run_folder(root, args.base)) if args.base else None
+    base = open_run(root, args.base) if args.base else None
     # A corpus judged for the first time, a held-out set, holds no verdict to measure: no code
     # is settled, and every loud finding is packed (Basile, 2026-11-23, item 6).
     measured = (_measured(root, args.run) if corpus_judging.has_verdicts(root)
-                else (Run(run_folder(root, args.run)), []))  # fmt: skip
+                else (open_run(root, args.run), []))  # fmt: skip
     return corpus_judging.render_pack(corpus_judging.pack(
         root, *measured, args.name, base, args.settled, args.min_judged))
 
 
 def _measured(root: Path, name: str) -> tuple[Run, list[dict]]:
     """A run, with the judged set paired in it as `measure` pairs it, and the rows."""
-    run = Run(run_folder(root, name))
+    run = open_run(root, name)
     return run, measure(root, name, run=run)["findings"]
 
 
@@ -755,7 +770,7 @@ def fresh(root: Path, new_name: str, base: Run) -> dict:
     base: the new run measured as `unjudged` measures it, and `unjudged --base`'s selection,
     so that the count is what the command it prints packs; where the keys of the two cannot
     be set side by side, why, and the new run is not measured."""
-    problem = corpus_judging.base_problem(Run(run_folder(root, new_name)), base)
+    problem = corpus_judging.base_problem(open_run(root, new_name), base)
     if problem:
         return {"count": None, "note": problem}
     return corpus_judging.fresh(root, *_measured(root, new_name), base)

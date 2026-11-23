@@ -30,7 +30,7 @@ from corpus_match import (
     states,
     subject_of,
 )
-from corpus_run import CorpusError
+from corpus_run import CorpusError, render_removed
 
 #: What a key's subject is where it stands for a list, and its digest where it stands for no
 #: sentence (`manuscript_guard.keys.NONE`).
@@ -598,7 +598,7 @@ def render_tie(result: dict) -> str:
              "runs/, and the matcher pairs its verdicts" for name in result.get("no_run", [])]
     if told:
         lines += ["", "Batches, in the same files:", "", *told]
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines + render_removed(result.get("removed", []))) + "\n"
 
 
 def scheme_note(tied: int, schemes: list[int]) -> str:

@@ -13750,6 +13750,107 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_MONTHS", frozenset())
 
 
+# ------------------------------------------- an entry cited only as typed text, G7
+
+from generated import typed_only_papers  # noqa: E402
+
+from manuscript_guard.gates import cited_as_typed as typed_only_module  # noqa: E402
+
+
+@holds(60, typed_only_papers())
+def test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year(
+    drawn: tuple[str, str, dict[str, bool]],
+) -> None:
+    """The author's decision of 2026-11-23: G7 says of an entry cited only as typed text that
+    it is, and keeps its warning for an entry nothing cites. A citation is of an entry where
+    it gives every name, or the first and "et al." for three or more, and its year with its
+    letter. One that may be two works counts for neither, and nothing in the typed list, a
+    comment or code counts at all."""
+    bib, text, cited = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "references.bib"
+        path.write_text(bib, encoding="utf-8")
+        works = typed_module.works_by(path)
+    found = set(typed_only_module.cited_as_typed([text], works))
+    assert found == {key for key, cites in cited.items() if cites}, (
+        sorted(found ^ {key for key, cites in cited.items() if cites}), text)
+
+
+def _the_first_author_and_year_are_enough(patch: pytest.MonkeyPatch) -> None:
+    names_it = typed_only_module._names_it
+
+    def first(head, people, *, bracketed):
+        alone = type(people)(names=people.names[:1])
+        return names_it(head, alone, bracketed=bracketed)
+
+    patch.setattr(typed_only_module, "_names_it", first)
+
+
+def _et_al_stands_for_any_number_of_authors(patch: pytest.MonkeyPatch) -> None:
+    names_it = typed_only_module._names_it
+
+    def any_number(head, people, *, bracketed):
+        if head.more:
+            people = type(people)(names=people.names[:1], truncated=True)
+        return names_it(head, people, bracketed=bracketed)
+
+    patch.setattr(typed_only_module, "_names_it", any_number)
+
+
+def _the_typed_list_cites_its_own_entries(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "reference_lists", lambda text: [])
+
+
+def _a_citation_in_code_counts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "code_spans", lambda text: [])
+
+
+def _a_citation_of_two_works_is_of_the_first(patch: pytest.MonkeyPatch) -> None:
+    def first(head, year, works, by_year, listing, *, bracketed):
+        for key in by_year.get(year[:4], ()):
+            at = typed_only_module._names_it(head, works.people[key], bracketed=bracketed)
+            if at is not None:
+                return key, at
+        return None
+
+    patch.setattr(typed_only_module, "_the_work", first)
+
+
+def _a_year_s_letter_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._Listing, "letter", lambda self, key: "")
+
+
+def _an_entry_not_read_is_never_the_work(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._NotRead, "may_be", lambda self, year, family: False)
+
+
+def _a_second_author_of_an_entry_not_read_makes_it_the_work(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    def of(text: str):
+        years = frozenset(re.findall(r"\d{4}", text))
+        return typed_only_module._NotRead(years, frozenset(typed_only_module.name_words(text)))
+
+    patch.setattr(typed_only_module._NotRead, "of", of)
+
+
+def _a_page_after_the_year_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_PART", re.compile(
+        rf"(?P<head>.+?),?\s+{typed_only_module._YEARS}"))  # fmt: skip
+
+
+def _a_prefix_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_PREFIX", re.compile(r"(?!)"))
+
+
+def _and_colleagues_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_MORE", re.compile(r",?\s+et\s+al\b\.?$"))
+
+
+def _initials_are_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_initials", lambda given: ("b",))
+
+
 #: The papers each example of the property below holds: mostly British, mostly American,
 #: as many of each, British by its -ise words alone, and British with as many -ize words
 #: both Englishes write as it has British ones, which count for neither.
@@ -26431,6 +26532,54 @@ BROKEN = {
     "a typed citation's hint names a work from that year by another name": (
         _a_work_of_another_name_is_named,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a typed citation is of an entry by its first author and year alone": (
+        _the_first_author_and_year_are_enough,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed et al. is of an entry of any number of authors": (
+        _et_al_stands_for_any_number_of_authors,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "the typed reference list cites its own entries": (
+        _the_typed_list_cites_its_own_entries,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation in code counts": (
+        _a_citation_in_code_counts,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation of two works is of the first": (
+        _a_citation_of_two_works_is_of_the_first,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation's letter is not read": (
+        _a_year_s_letter_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation is never of a list's entry not read": (
+        _an_entry_not_read_is_never_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a second author makes a list's entry not read the work": (
+        _a_second_author_of_an_entry_not_read_makes_it_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a page after a typed citation's year is not read": (
+        _a_page_after_the_year_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a word before a typed citation's name is not read": (
+        _a_prefix_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "and colleagues is not read": (
+        _and_colleagues_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "the initials before a typed name are not compared": (
+        _initials_are_not_compared,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

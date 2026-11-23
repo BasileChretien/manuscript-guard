@@ -783,6 +783,22 @@ def _typed_citations() -> Reading:
     return typed
 
 
+@reading("cited as typed")
+def _cited_as_typed() -> Reading:
+    from manuscript_guard.gates.cited_as_typed import cited_as_typed
+    from manuscript_guard.gates.typed_citations import works_by
+
+    def cited(given: dict[str, str]) -> dict[str, str]:
+        """The entries of a `references.bib` a manuscript cites as typed text, each with the
+        words of its first such citation: what makes G7's `reference-uncited` a note."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "references.bib"
+            path.write_bytes(given["bib"].encode("utf-8"))
+            return cited_as_typed([given["text"]], works_by(path))
+
+    return cited
+
+
 @reading("typed references")
 def _typed_references() -> Reading:
     from manuscript_guard.typed_references import read

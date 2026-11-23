@@ -27,11 +27,13 @@ single warning rather than silently passing.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.cited_as_typed import typed_only
 from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
@@ -161,22 +163,50 @@ def check_citations(project: Project, literature: Literature) -> Report:
     report = report.merge(check_lookups(project, sorted(seen), literature))
     report = report.merge(check_duplicates(project, seen))
     stale = sorted(committed - seen) if committed else []
+    typed = typed_only(project, stale)
     for citekey in stale:
         report = report.with_findings(
-            Finding(
-                gate=GATE,
-                code="reference-uncited",
-                severity=WARN,
-                message=f"references.bib holds @{citekey}, which nothing cites",
-                path=project.path("literature") / BIB_FILE,
-                hint="run `manuscript-guard sync-bib` to rebuild it from what is cited",
-            )
+            _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen))
         )
 
     return report.with_counts(
         citations=len(uses),
         citations_distinct=len(seen),
         citations_narrative=sum(1 for u in uses if u.narrative),
+    )
+
+
+def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool) -> Finding:
+    """An entry of `references.bib` no citation key points to: a warning where nothing cites
+    it, a note where the manuscript cites it as typed text, `typed` (Basile, 2026-11-23). The
+    note keeps the warning's key, made from the warning's words, so that a verdict on the
+    one is paired with the other. It says what `sync_bib` does: it writes the file from the
+    manuscript's keys, and with `any_key` false, no key at all, it stops and writes nothing."""
+    nothing = Finding(
+        gate=GATE,
+        code="reference-uncited",
+        severity=WARN,
+        message=f"references.bib holds @{citekey}, which nothing cites",
+        path=path,
+        hint="run `manuscript-guard sync-bib` to rebuild it from what is cited",
+    )
+    if typed is None:
+        return nothing
+    return replace(
+        nothing,
+        severity=INFO,
+        message=f"references.bib holds @{citekey}, which the manuscript cites only as typed "
+        f'text ("{typed}"): no citation key points to it, so `sync-bib` would drop it from '
+        "the file"
+        if any_key
+        else f"references.bib holds @{citekey}, which the manuscript cites only as typed "
+        f'text ("{typed}"): no citation key points to it. The manuscript has no citation key '
+        "yet, so `sync-bib` stops and writes nothing; once it has one, `sync-bib` would drop "
+        "this entry",
+        hint=f"to keep the entry, write the citation as [@{citekey}] and check that the work "
+        "is in your Zotero library before running `sync-bib`, which writes the file from "
+        "Zotero and the citation keys alone",
+        subject=nothing.keyed().parts()[2],
     )
 
 

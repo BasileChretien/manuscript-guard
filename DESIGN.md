@@ -27331,8 +27331,23 @@ Open, recorded as each change landed:
 - **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
   file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
   not hold is gone; the file's header says to import it into Zotero first. An entry no
-  citation was made a key of is `reference-uncited` to G7, whose hint is to run `sync-bib`.
-  Accepted.
+  citation was made a key of is `reference-uncited` to G7: a warning whose hint is to run
+  `sync-bib` where nothing cites it, and a note that `sync-bib` would drop it where the
+  manuscript cites it as typed text (Basile, 2026-11-23). Accepted.
+- **G7 counts a typed citation for an entry only in the shapes that name it exactly.** It
+  reads each part of a group alone, with a page, several years, words in lower case before
+  the name, "and colleagues" or a possessive, by all the entry's names and its year. A
+  citation typed any other way leaves the entry a warning that nothing cites it, though a
+  reader sees that something does: the names in another order than the list's ("Smith, Lee
+  & Jones" for Smith, Jones and Lee), three authors typed as one or as "Smith, Jones, et
+  al.", an abbreviation in the part ("ABC, Smith, 2020"), two citations parted by a comma, a
+  capitalised phrase before the name ("now Other Name, see Smith et al., 2020"), a
+  second year by its letter alone ("2020a, b"), a capitalised word and a comma before a name
+  in the sentence that is not among the words that open one ("In Japan, Smith (2020)"), and
+  a group's name. On the tuning corpus this leaves 2 of the 24 false findings: one with its
+  names in another order and one with another year. A LaTeX manuscript cites by command and
+  is not read for this. Pinned by
+  `tests/test_corruption.py::test_a_citation_typed_in_a_shape_not_read_leaves_the_warning`.
 - **G2 reads no number in a typed reference list up to where the list is taken to end.** A
   list under a heading or a title in bold that names one ends at the next heading, at a
   caption, a table or a title of back matter, at a footnote's definition, at a caption

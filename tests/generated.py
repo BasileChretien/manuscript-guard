@@ -15347,6 +15347,106 @@ def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | No
     return text, found
 
 
+# --------------------------------------------- an entry cited only as typed text, G7
+
+#: A typed citation, `{n}`, `{o}` and `{p}` its entry's authors, `{y}` the entry's year and
+#: `{w}` another, with how many authors the entry has and whether the citation is of it.
+TYPED_ONLY = (
+    ("({n}, {y})", 1, True), ("({n} {y})", 1, True), ("{n} ({y})", 1, True),
+    ("({n} & {o}, {y})", 2, True), ("({n} and {o}, {y})", 2, True),
+    ("{n} and {o} ({y})", 2, True), ("({n} et al., {y})", 3, True),
+    ("{n} et al. ({y})", 3, True), ("({n}, {o}, & {p}, {y})", 3, True),
+    ("({n}, {o}, and {p}, {y})", 3, True), ("({n}, {y}, p. 4)", 1, True),
+    ("({n}, {y}, pp. 5-9)", 1, True), ("({n} {w}, {y})", 1, True), ("{n} ({w}, {y})", 1, True),
+    ("(e.g., {n}, {y})", 1, True), ("(see also {n} & {o}, {y})", 2, True),
+    ("Recently, {n} and colleagues ({y})", 3, True), ("{n} and {o}'s ({y})", 2, True),
+    ("{n} et al.'s ({y})", 3, True), ("(Absent, 1801; {n}, {y})", 1, True),
+    ("(A. {n}, {y})", 1, True),
+    ("({n}, {w})", 1, False), ("({n} & Absent, {y})", 1, False),
+    ("({n} et al., {y})", 1, False), ("({n} et al., {y})", 2, False), ("({n}, {y})", 2, False),
+    ("({n} & Absent, {y})", 2, False), ("({n}, {y})", 3, False), ("({n} & {o}, {y})", 3, False),
+    ("({n}, {o}, & Absent, {y})", 3, False), ("{n} and colleagues ({y})", 2, False),
+    ("Absent and {n} ({y})", 1, False), ("Absent, {n} ({y})", 1, False),
+    ("Professor {n} ({y})", 1, False), ("(B. {n}, {y})", 1, False), ("({n}, {y}a)", 1, False),
+    ("({n}, {y}, Table 2)", 1, False), ("<!-- ({n}, {y}) -->", 1, False),
+    ("`({n}, {y})`", 1, False),
+)  # fmt: skip
+#: Family names, one to an entry: of one word, hyphenated, with an accent, an apostrophe or
+#: particles, as a `.bib` holds them.
+TYPED_ONLY_NAMES = (
+    "Arden", "Bellamy", "Corwin", "Dashwood", "Ellery", "Fairfax", "Garland", "Hartley",
+    "Ingram", "Jessop", "Kendrick", "Lockwood", "Merrick", "Norwood", "Oakley", "Prescott",
+    "Quimby", "Radcliffe", "Sheldon", "Thorne", "Underhill", "Vance", "Whitlock", "Yardley",
+    "Zeller", "Abbott", "Barlow", "Calloway", "Dunmore", "Everett", "Finch", "Gale",
+    "Holloway", "Irving", "Jarvis", "Keating", "Larkin", "Mercer", "Nash", "Osborne",
+    "Pryor", "Quill", "Rowan", "Sutton", "Tolliver", "Upton", "Voss", "Wynn",
+    "Smith-Jones", "O'Neil", "van der Berg",
+    "\N{LATIN CAPITAL LETTER O WITH STROKE}deg\N{LATIN SMALL LETTER A WITH RING ABOVE}rd",
+)  # fmt: skip
+
+
+@st.composite
+def typed_only_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool]]:
+    """A `references.bib`, a manuscript citing its entries as typed text, and for each key
+    whether a citation there is of it. An entry for each shape of `TYPED_ONLY`; two by one
+    name and year that a bare citation may be either of, and two whose year's letter says
+    which; one only a title in the typed list names; and one the list holds in a form the import
+    cannot read, which the citation may be of, and one it holds as a second author's, which
+    it cannot. Each in every example, so that a rule broken for one fails under any seed."""
+    extra = 7
+    names = draw(st.permutations(TYPED_ONLY_NAMES))
+    years = iter(draw(st.lists(st.integers(1900, 2020), min_size=len(TYPED_ONLY) + extra,
+                               max_size=len(TYPED_ONLY) + extra, unique=True)))  # fmt: skip
+    others = ("Second", "Third")
+    entries: list[str] = []
+    cited: dict[str, bool] = {}
+    sentences: list[str] = []
+
+    def entry(key: str, family: str, year: int, count: int) -> None:
+        people = [f"{{{family}}}, Anne" if " " in family else f"{family}, Anne"]
+        people += [f"{other}, Bea" for other in others[: count - 1]]
+        entries.append(f"@article{{{key},\n  author = {{{' and '.join(people)}}},\n"
+                       f"  title = {{T}},\n  journal = {{J}},\n  year = {{{year}}},\n}}\n")
+
+    for at, (shape, count, cites) in enumerate(TYPED_ONLY):
+        year = next(years)
+        key = f"w{at}x{year}"
+        entry(key, names[at], year, count)
+        cited[key] = cites
+        filled = shape.replace("{n}", names[at]).replace("{o}", "Second").replace("{p}", "Third")
+        sentences.append(filled.replace("{y}", str(year)).replace("{w}", "1802"))
+    at = len(TYPED_ONLY)
+    # Two works one bare citation may be either of, and two a letter tells apart.
+    year = next(years)
+    for letter in "ab":
+        entry(f"t{at}x{year}{letter}", names[at], year, 1)
+        cited[f"t{at}x{year}{letter}"] = False
+    sentences.append(f"({names[at]}, {year})")
+    year = next(years)
+    for letter in "ab":
+        entry(f"l{at}x{year}{letter}", names[at + 1], year, 1)
+        cited[f"l{at}x{year}{letter}"] = letter == "b"
+    sentences.append(f"({names[at + 1]}, {year}b)")
+    # What the typed list holds.
+    listed, unread, second = next(years), next(years), next(years)
+    entry(f"r{at}x{listed}", names[at + 2], listed, 1)
+    cited[f"r{at}x{listed}"] = False
+    entry(f"u{at}x{unread}", names[at + 3], unread, 1)
+    cited[f"u{at}x{unread}"] = False
+    sentences.append(f"({names[at + 3]}, {unread})")
+    entry(f"c{at}x{second}", names[at + 4], second, 1)
+    cited[f"c{at}x{second}"] = True
+    sentences.append(f"({names[at + 4]}, {second})")
+    order = draw(st.permutations(sentences))
+    prose = "".join(f"we read that {said} here. " for said in order)
+    typed_list = (
+        f"Absent, A. (1803). A reply to {names[at + 2]} ({listed}). *J*, *1*, 1--2.\n\n"
+        f"{names[at + 3]}, K. {unread}. In no form the import reads.\n\n"
+        f"Absent, A., & {names[at + 4]}, K. ({second}). A title in no form.\n"
+    )
+    return "".join(entries), f"{prose}\n\n# References\n\n{typed_list}", cited
+
+
 #: A letter of a family name as a manuscript types it, as a reader without it types it, and
 #: as a .bib writes it in TeX, as Better BibTeX's BibTeX export does. The capitals open a name.
 TEX_LETTERS = (
@@ -18997,6 +19097,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
+    "cited as typed": st.one_of(
+        typed_only_papers().map(lambda drawn: {"bib": drawn[0], "text": drawn[1]}),
+        texts().map(lambda text: {"bib": "", "text": text}),
+    ),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),

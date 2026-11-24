@@ -53,7 +53,7 @@ def bib_keys(project: Project) -> frozenset[str]:
 
 
 def check_citations(project: Project, literature: Literature) -> Report:
-    from manuscript_guard.text.reader import citation_uses
+    from manuscript_guard.text.reader import LATEX, citation_uses, manuscript_format
 
     report = Report()
     uses = citation_uses(project)
@@ -164,9 +164,10 @@ def check_citations(project: Project, literature: Literature) -> Report:
     report = report.merge(check_duplicates(project, seen))
     stale = sorted(committed - seen) if committed else []
     typed = typed_only(project, stale)
+    latex = manuscript_format(project.path("manuscript")) == LATEX
     for citekey in stale:
         report = report.with_findings(
-            _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen))
+            _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
         )
 
     return report.with_counts(
@@ -176,7 +177,23 @@ def check_citations(project: Project, literature: Literature) -> Report:
     )
 
 
-def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool) -> Finding:
+def _uncited_hint(citekey: str, *, latex: bool) -> str:
+    """What to do of an entry no citation key points to and no bracket names. A citation in
+    the sentence is not read, so the work may be cited all the same, and `sync_bib` would
+    drop it: that comes first, and the removal only for a work that really is not cited."""
+    cite = f"\\cite{{{citekey}}}" if latex else f"@{citekey}"
+    return (
+        f'if the text does cite this work in words, as in "Smith (2020) showed", write that '
+        f"citation with its key, {cite}: whenever `sync-bib` writes references.bib, it keeps "
+        "only the entries a citation key points to. If the work really is not cited, delete "
+        "its entry from the file, or run `manuscript-guard sync-bib`, which writes the file "
+        "again from Zotero for the keys the manuscript cites (so check that Zotero holds "
+        "them), and stops without writing anything if the manuscript has no key at all"
+    )
+
+
+def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool,
+             latex: bool) -> Finding:  # fmt: skip
     """An entry of `references.bib` no citation key points to: a warning where nothing cites
     it, a note where the manuscript cites it as typed text, `typed` (Basile, 2026-11-23). The
     note keeps the warning's key, made from the warning's words, so that a verdict on the
@@ -188,7 +205,7 @@ def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool) -> F
         severity=WARN,
         message=f"references.bib holds @{citekey}, which nothing cites",
         path=path,
-        hint="run `manuscript-guard sync-bib` to rebuild it from what is cited",
+        hint=_uncited_hint(citekey, latex=latex),
     )
     if typed is None:
         return nothing

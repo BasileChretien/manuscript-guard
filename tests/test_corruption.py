@@ -20668,6 +20668,51 @@ def test_the_note_says_what_sync_bib_does_in_a_paper_with_no_citation_key(
     assert "once it has one, `sync-bib` would drop this entry" in found.message, found.message
 
 
+def _is_the_old_warning(found, key: str) -> None:
+    """The warning as `main` has it, but for its hint: severity, code, words and key."""
+    from manuscript_guard.findings import WARN, Finding
+
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=found.path,
+                  message=f"references.bib holds @{key}, which nothing cites")  # fmt: skip
+    assert (found.severity, found.code, found.message) == (was.severity, was.code, was.message)
+    assert found.key == was.key and found.as_dict()["key"] == was.as_dict()["key"], found.key
+    assert found.as_dict()["key_from"] == "context", found.as_dict()
+
+
+@pytest.mark.parametrize("typed", ["Imaginary (2018) showed this.", "Nothing names it."])
+def test_the_warning_s_hint_does_not_send_a_cited_work_to_sync_bib(
+    project: Path, typed: str
+) -> None:
+    """A citation in the sentence is not read, so this warning may stand on a work the paper
+    does cite, and `sync-bib` would drop it. The hint says first what to do if so, and offers
+    the removal only for a work that really is not cited. It holds of what `sync-bib` does:
+    it writes the file from the keys, and stops where the manuscript has none."""
+    found = _uncited(project, typed)["imaginary2018"]
+    _is_the_old_warning(found, "imaginary2018")
+    hint = found.hint
+    assert not hint.startswith("run"), hint
+    assert 'cite this work in words, as in "Smith (2020) showed"' in hint, hint
+    assert "with its key, @imaginary2018" in hint, hint
+    assert "keeps only the entries a citation key points to" in hint, hint
+    assert hint.index("@imaginary2018") < hint.index("If the work really is not cited") \
+        < hint.index("run `manuscript-guard sync-bib`"), hint
+    assert "delete its entry" in hint and "Zotero" in hint, hint
+    assert "stops without writing anything if the manuscript has no key at all" in hint, hint
+
+
+def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
+    """A LaTeX manuscript cites by command, so the key is offered as one."""
+    entry = _twin(project)
+    _into_results(entry, "A claim.")
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
+    (found,) = [f for f in _g7(project).findings if f.code == "reference-uncited"
+                and "@imaginary2018" in f.message]  # fmt: skip
+    _is_the_old_warning(found, "imaginary2018")
+    assert "with its key, \\cite{imaginary2018}" in found.hint, found.hint
+    assert "@imaginary2018" not in found.hint, found.hint
+
+
 def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:
     """The verdicts on this code are of Markdown papers only, and a LaTeX paper cites by
     command: the note is for a paper in Markdown."""

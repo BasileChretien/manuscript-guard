@@ -27345,18 +27345,20 @@ Open, recorded as each change landed:
 - **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
   file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
   not hold is gone; the file's header says to import it into Zotero first. An entry no
-  citation was made a key of is `reference-uncited` to G7: a warning whose hint is to run
-  `sync-bib` where nothing cites it, and a note that `sync-bib` would drop it where the
-  manuscript cites it as typed text in brackets, as exactly its names and year (Basile,
-  2026-11-23 and 2026-11-24). Accepted.
+  citation was made a key of is `reference-uncited` to G7: a note that `sync-bib` would drop
+  it where the manuscript cites it as typed text in brackets, as exactly its names and year
+  (Basile, 2026-11-23 and 2026-11-24), and otherwise a warning, whose hint says to give a
+  citation in words its key and to remove the entry only if the work really is not cited.
+  Accepted.
 - **G7 counts a typed citation for an entry only in brackets, as exactly its names and
   year.** A citation in the sentence, "Smith (2020) showed", is not read at all (Basile,
   2026-11-24): what stands before the bracket cannot be told from a longer name ("Garcia
   Smith", "zur Smith"). In brackets, a part, the bracket's content or one `;`-separated piece
   of it, counts where it is the entry's names as the import renders them, a comma and the
   year, with only a page or further years after it. Every other citation leaves the entry
-  a warning that nothing cites it, though a reader sees that something does, and that
-  warning's hint is to run `sync-bib`, which would drop the entry: words before the name
+  a warning that nothing cites it, though a reader sees that something does, and whose
+  hint says to give such a citation its key, since `sync-bib` would drop the entry: words
+  before the name
   ("e.g., Smith, 2020", "ABC, Smith, 2020", "A. Smith, 2020"), no comma before the year, the
   names in another order than the list's ("Smith, Lee & Jones" for Smith, Jones and Lee),
   three authors typed as one or as "Smith, Jones, et al.", "and colleagues", two citations

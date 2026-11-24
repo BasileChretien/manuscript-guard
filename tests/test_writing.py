@@ -206,6 +206,11 @@ def _voiced(project: Path, text: str) -> list[str]:
         ("\\noindent\nsure, here is the revised abstract.", []),
         ("**Methods**\nsure, here is the revised Methods section.", []),
         ("\\noindent\nSure, here is the revised abstract.", ["'Sure'"]),
+        # A word broken by a hyphen at a line's end carries its sentence on; the second half
+        # of one opening a line under a line from another column, as a PDF's text can put
+        # it, is read as a paragraph's opening (window C of the real-paper corpus).
+        ("The cohort was measured by expo-\nsure in the later period.", []),
+        ("The cohort was small.\nsure in the later period.", ["'sure'"]),
         ("**Methods**\nSure, here is the revised Methods section.", ["'Sure'"]),
     ],
 )  # fmt: skip
@@ -217,7 +222,9 @@ def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
     `}`, `\\%`, `$` or "et al." is read as ending its paragraph, so "of course" at the next
     line's start fails; "Of course" or "Certainly" after a wrap at a full stop fails where
     the same sentence on one line passes; and a reply in lower case under a line ending in
-    a letter, `\\noindent` or a bold label is missed. The 2026-11-09 triage planned a fix
+    a letter, `\\noindent` or a bold label is missed; and "sure", the second half of a word
+    broken at a line's end, under a line that ends its sentence, as a PDF's interleaved
+    columns can put it, fails. The 2026-11-09 triage planned a fix
     (F11), which will change this test."""
     assert _voiced(project, text) == said
 

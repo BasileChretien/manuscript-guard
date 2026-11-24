@@ -46,6 +46,7 @@ from generated import (
     AGREED,
     BACKSLASH,
     BESIDE_A_BINDING,
+    BROKEN_AT_A_LINE_END,
     CAUSAL_PARTS,
     CLAIMED,
     CREDITING,
@@ -66,6 +67,7 @@ from generated import (
     LOOKALIKES,
     LOWERED,
     NOTATED,
+    OPENER_LOOKALIKES,
     PLACEHOLDERS,
     PREVIEWED,
     PROOF_ABBREVIATED,
@@ -14188,6 +14190,43 @@ def test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrap
         assert len(voiced(opening)) == 1, opening
 
 
+@st.composite
+def _openers_among_other_words(draw: st.DrawFn) -> tuple[str, str]:
+    """A Methods section of three paragraphs in an order drawn: one that opens with a word
+    beginning with an assistant's opener that is another word, one hard-wrapped at a word
+    broken by a hyphen whose second half is an opener's word or begins with one, and one
+    that opens with an assistant's opener, each after a kind of paragraph end drawn. Every
+    kind in every example."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6)))
+
+    opener = draw(st.sampled_from(_OPENERS))
+    paragraphs = draw(st.permutations([
+        f"{draw(st.sampled_from(OPENER_LOOKALIKES))} {words()}.",
+        f"{words()} {draw(st.sampled_from(BROKEN_AT_A_LINE_END))} {words()}.",
+        f"{opener} {words()}.",
+    ]))  # fmt: skip
+    ends = [draw(st.sampled_from(_PARAGRAPH_ENDS)) for _ in paragraphs[1:]]
+    body = paragraphs[0] + "".join(end + one for end, one in zip(ends, paragraphs[1:], strict=True))
+    return f"# Methods\n\n{body}\n", opener
+
+
+@holds(200, _openers_among_other_words())
+def test_an_assistant_opener_is_a_word_of_its_own(drawn: tuple[str, str]) -> None:
+    """`assistant-voice` reads an opener as a word of its own: not the start of a longer
+    word, a name, "Surely", a compound, a plural, nor the second half of a word that a PDF's
+    text breaks at a line's end, "mea-/sures" or "expo-/sure" (the real-paper corpus, window
+    C). The assistant's own opener in the same section is found, once."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    text, opener = drawn
+    voiced = [match.group(0).strip() for rule, match in artefacts_in(load_rules(), text,
+                                                                     manuscript=True)
+              if rule["id"] == "assistant-voice"]  # fmt: skip
+    assert voiced == [opener], text
+
+
 # ------------------------------------------------------- words to the reviewers, left in
 
 
@@ -19846,6 +19885,53 @@ def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
         return {**rule, "pattern": "(?i)" + rule["pattern"]}
 
     _residue_rule(patch, "lines-cited-alone", in_any_case)
+
+
+def _artefact_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
+    """The artefact rule `rule_id` as `change` makes it, given the rule and returning it."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    artefacts = tuple(change(rule) if rule["id"] == rule_id else rule for rule in rules.artefacts)
+    assert artefacts != rules.artefacts, f"{rule_id} is not an artefact rule"
+    patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
+
+
+#: How `assistant-voice` ends its words now: one word end for every opener, which a hyphen
+#: and a letter after it do not give.
+_OPENER_ENDS = "(?:the|a|an))\\b(?!-\\w)"
+
+
+def _an_opener_s_word_end_binds_its_last_words_alone(patch: pytest.MonkeyPatch) -> None:
+    # As the rule was written until window C of the real-paper corpus: the word end inside
+    # the last alternative, so "Suresha" and "mea-/sures" opened with "sure".
+    def as_it_was(rule: dict) -> dict:
+        assert _OPENER_ENDS in rule["pattern"], "the rule no longer ends its words this way"
+        return {**rule, "pattern": rule["pattern"].replace(_OPENER_ENDS, "(?:the|a|an)\\b)")}
+
+    _artefact_rule(patch, "assistant-voice", as_it_was)
+
+
+def _an_opener_s_word_ends_at_a_hyphen(patch: pytest.MonkeyPatch) -> None:
+    # A word end alone: "Sure-footed" opens with "Sure".
+    def at_a_hyphen(rule: dict) -> dict:
+        assert _OPENER_ENDS in rule["pattern"], "the rule no longer ends its words this way"
+        return {**rule, "pattern": rule["pattern"].replace(_OPENER_ENDS, "(?:the|a|an))\\b")}
+
+    _artefact_rule(patch, "assistant-voice", at_a_hyphen)
+
+
+def _a_word_broken_at_a_line_end_ends_its_line(patch: pytest.MonkeyPatch) -> None:
+    # As `_continues_a_sentence` read a line until window C: a hyphen after a letter was no
+    # running prose, so "expo-/sure" opened the next line with "sure".
+    from manuscript_guard.gates import writing
+
+    patch.setattr(writing, "_RUNS_ON",
+                  re.compile(r"(?:[\w,;:–—]|(?<!-)--)"
+                             r"[)\]*_'\"’”]*"
+                             r"[ \t\r]*$"))  # fmt: skip
 
 
 def _an_opener_is_read_at_every_line(patch: pytest.MonkeyPatch) -> None:
@@ -31713,6 +31799,18 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an opener's word end binds only its last words": (
+        _an_opener_s_word_end_binds_its_last_words_alone,
+        test_an_assistant_opener_is_a_word_of_its_own,
+    ),
+    "an opener's word ends at a hyphen": (
+        _an_opener_s_word_ends_at_a_hyphen,
+        test_an_assistant_opener_is_a_word_of_its_own,
+    ),
+    "a word broken at a line end ends its line": (
+        _a_word_broken_at_a_line_end_ends_its_line,
+        test_an_assistant_opener_is_a_word_of_its_own,
     ),
     "an assistant's opener is read at the start of every line": (
         _an_opener_is_read_at_every_line,

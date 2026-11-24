@@ -5594,10 +5594,10 @@ opens with a note's mark ("Note", "Abbreviations", a footnote's) or pairs a shor
 its long form ("ICC: intraclass correlation"); a legend with no table beside it, a figure's
 or a supplementary table's, "**S1 Table.** ...", is a display with the notes under it; a
 heading, and anything G14 does not read, ends one. In LaTeX it is a table's float whole, or a
-`tabular` and its kin in none. In the text `audit` reads from a PDF none is found, and all of
-it is the text's (Known gaps). A definition there that gives a meaning the text gives says
-nothing, so a display may define its forms again as the text does. One that gives another
-meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
+`tabular` and its kin in none. In the text `audit` reads from a PDF no display is found,
+and all of it is the text's (Known gaps). A definition there that gives a meaning the text
+gives says nothing, so a display may define its forms again as the text does. One that gives
+another meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
 drop"): a question, `abbreviation-redefined` at INFO, never a warning, where that meaning is
 first given in a display and once, naming the display's long form and the text's. A slip in a
 note's long form, "Score" for "Scale", is then still before the author, and a display's own

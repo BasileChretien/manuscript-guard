@@ -17160,11 +17160,12 @@ def pdf_heading_papers(
     number of each kind of `PDF_STUDY_NUMBERS` among them, with names of `PDF_STUDY_NAMES`
     under it, one of them under each, and every kind of `PDF_STUDY_PROSE` among their lines;
     the back matter after the last, a reference that opens on the label and one that opens
-    on a study's number and a colon; the count before the label in the first. And five
+    on a study's number and a colon; the count before the label in the first. And six
     papers made from them: with a line that names the Abstract alone after the label, which
     is then text; with a study's line in the Abstract, which is no heading; with a name twice
     under one study, where no study's line is a heading and nothing is placed; with no
-    heading over the Introduction, where the Abstract ends at the first study's line; and
+    heading over the Introduction, where the Abstract ends at its run-in "Keywords:", then a
+    heading, and with no keywords either, where it ends at the first study's line; and
     with its studies under a structured Abstract, whose parts that line ends. Each
     with its headings `(line, title)`, the run-in label's line, and the levels
     `PdfText.placed` gives them."""
@@ -17241,13 +17242,25 @@ def pdf_heading_papers(
              if title.split()[0] not in {study.split()[0] for study in PDF_STUDIES}]
     out.append((twice[0], names, run_in, None))
     # The third paper with no heading over its Introduction, as APA's papers have none: the
-    # Abstract ends at the first study's line (round 2 of #686).
+    # Abstract ends at its run-in "Keywords:", which words now follow, a heading of its own,
+    # as a Word paper's does (window C of the real-paper corpus, row 8); before that rule it
+    # ended at the first study's line (round 2 of #686).
     lines, headings, run_in, levels = out[2]
     gone = next(at for at, (_line, title) in enumerate(headings) if title == "Introduction")
     line = headings[gone][0]
+    keywords = lines.index("Keywords: falls; records") + 1
+    kept = [(at - (at > line), title) for at, title in headings if at != line]
     out.append(([*lines[: line - 1], *lines[line:]],
-                [(at - (at > line), title) for at, title in headings if at != line],
-                {at - (at > line) for at in run_in}, (*levels[:gone], *levels[gone + 1 :])))
+                sorted([*kept, (keywords, "Keywords")]),
+                {at - (at > line) for at in run_in} | {keywords},
+                (*levels[:gone], 1, *levels[gone + 1 :])))
+    # And with no keywords either: the Abstract ends at the first study's line.
+    cut = sorted({line, keywords})
+    out.append(([one for at, one in enumerate(lines, 1) if at not in cut],
+                [(at - sum(at > one for one in cut), title) for at, title in headings
+                 if at != line],
+                {at - sum(at > one for one in cut) for at in run_in},
+                (*levels[:gone], *levels[gone + 1 :])))
     # The fourth paper's studies under a structured Abstract with no Introduction after it:
     # its first study's line ends the Abstract's parts (round 3 of #686).
     lines, headings, _run_in, levels = out[3]

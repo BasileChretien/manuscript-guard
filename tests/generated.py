@@ -8685,6 +8685,24 @@ LOOKALIKES = (
     "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
 )  # fmt: skip
 
+#: Words a paragraph opens with that begin with a chat assistant's opener and are other
+#: words: a name, an adverb, a noun, a compound, a plural (the real-paper corpus, window C:
+#: "Suresha, B." opening a reference). And the second half of a word broken by a hyphen at
+#: a line's end, as a PDF's text keeps it, which is an opener's word or begins with one
+#: ("mea-/sures", "expo-/sure"). None is an assistant's voice.
+OPENER_LOOKALIKES = (
+    "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses offered",
+    # Rounds 1 and 2 of #779: an adverb broken by a hyphen at a line's end, ASCII's or the
+    # soft one, and a compound joined by Unicode's hyphen or its non-breaking hyphen.
+    "Sure-\nly", "Sure\N{SOFT HYPHEN}\nly", "Sure\N{HYPHEN}footed",
+    "Sure\N{NON-BREAKING HYPHEN}footed",
+)  # fmt: skip
+BROKEN_AT_A_LINE_END = (
+    "expo-\nsure", "mea-\nsures", "mea-\nsured", "en-\nsure", "as-\nsured",
+    # Round 2 of #779: each of the other hyphens a PDF's text can break a word with.
+    "expo\N{HYPHEN}\nsure", "en\N{NON-BREAKING HYPHEN}\nsure", "in\N{SOFT HYPHEN}\nsure",
+)  # fmt: skip
+
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
 #: G6 that finds it and the words it finds: one of each rule, a phrase cut by a hard wrap,
 #: and the plural beside the singular. And what reads like them and is prose: a name, the
@@ -19432,7 +19450,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         + SOURCE_NAMES
     ),
     "placeholders": texts(
-        tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
+        tuple(written for written, _found in PLACEHOLDERS + LOWERED)
+        + LOOKALIKES + OPENER_LOOKALIKES + BROKEN_AT_A_LINE_END
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
     "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),

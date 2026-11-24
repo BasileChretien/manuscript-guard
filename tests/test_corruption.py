@@ -11412,6 +11412,21 @@ def test_an_assistant_reply_after_a_wrapped_paragraph_fails(project: Path) -> No
     ], said
 
 
+def test_an_assistant_reply_fails_and_a_word_that_begins_like_one_passes(project: Path) -> None:
+    """`assistant-voice` matched "sure" at the start of a longer word: a reference opening
+    "Suresha, B." and, in a PDF's text, the second half of "mea-/sures" (the real-paper
+    corpus, window C); and "expo-/sure" opened its line, a hyphen at a line's end being read
+    as ending the sentence. Only the reply fails."""
+    _with_paragraph(project, "Suresha, B., and Verma, D. (2020). Inclusion and access.\n\n"
+                    "Surely the cohort was small.\n\nOf courses offered, most were online.\n\n"
+                    "Performance mea-\nsures were read with expo-\nsure in the later period.\n\n"
+                    "Sure, here is the revised Methods section.")
+    said = _placeholders(_g6(project))
+    assert [(severity, message.split(" \N{EM DASH} ")[0]) for severity, message in said] == [
+        ("fail", "'Sure'")
+    ], said
+
+
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
     """A "TBD" in a figure reached the document: G6 read only the manuscript."""
     figure = project / "figures" / "forest.svg"

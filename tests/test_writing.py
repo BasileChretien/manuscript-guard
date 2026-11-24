@@ -207,6 +207,21 @@ def _voiced(project: Path, text: str) -> list[str]:
         ("**Methods**\nsure, here is the revised Methods section.", []),
         ("\\noindent\nSure, here is the revised abstract.", ["'Sure'"]),
         ("**Methods**\nSure, here is the revised Methods section.", ["'Sure'"]),
+        # A word broken by a hyphen at a line's end carries its sentence on; the second half
+        # of one opening a line under a line from another column, as a PDF's text can put
+        # it, is read as a paragraph's opening (window C of the real-paper corpus). So a
+        # reply in lower case under a line ending in a hyphen joined to a word is missed,
+        # where the base caught it (round 1 of #779).
+        ("The cohort was measured by expo-\nsure in the later period.", []),
+        ("The cohort was small.\nsure in the later period.", ["'sure'"]),
+        ("The analysis was complete-\nsure, here is the revised Methods section.", []),
+        # Round 2 of #779: each hyphen a PDF's text breaks a word with; and an opener with a
+        # hyphen at its line's end before a reply in lower case, read as a word broken there.
+        ("The cohort was measured by expo\N{HYPHEN}\nsure in the later period.", []),
+        ("The cohort was measured by expo\N{NON-BREAKING HYPHEN}\nsure in the later period.",
+         []),
+        ("The cohort was measured by expo\N{SOFT HYPHEN}\nsure in the later period.", []),
+        ("Sure-\nhere is the revised abstract.", []),
     ],
 )  # fmt: skip
 def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
@@ -217,8 +232,11 @@ def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
     `}`, `\\%`, `$` or "et al." is read as ending its paragraph, so "of course" at the next
     line's start fails; "Of course" or "Certainly" after a wrap at a full stop fails where
     the same sentence on one line passes; and a reply in lower case under a line ending in
-    a letter, `\\noindent` or a bold label is missed. The 2026-11-09 triage planned a fix
-    (F11), which will change this test."""
+    a letter, a hyphen joined to a word, `\\noindent` or a bold label is missed; and "sure",
+    the second half of a word broken at a line's end, under a line that ends its sentence,
+    as a PDF's interleaved columns can put it, fails; and an opener with a hyphen at its
+    line's end, "Sure-/here is the revised abstract.", is missed. The 2026-11-09 triage
+    planned a fix (F11), which will change this test."""
     assert _voiced(project, text) == said
 
 

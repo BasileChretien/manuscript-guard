@@ -1916,12 +1916,15 @@ def _file(
     supplementary: bool,
     abstract_title: str | None = None,
     opens: bool | None = None,
+    from_pdf: bool = False,
     running: Iterable[int] = (),
 ) -> _File:
     """A Markdown file read. `opens` where it is the first file of the paper or of the
-    supplement, which a title page may open; by default, where `order` is 0. `running` are
-    the lines, from 1, that a PDF the file was staged from repeats at the top or the foot of
-    its pages (`auditing.pdf.PdfText.repeated`)."""
+    supplement, which a title page may open; by default, where `order` is 0. `from_pdf`
+    where the audit staged it from a PDF, whose text holds no table, legend or note G14 can
+    find, so none is a display of its own and all of it is the text's (DESIGN.md, Known
+    gaps). `running` are the lines, from 1, that a PDF the file was staged from repeats at
+    the top or the foot of its pages (`auditing.pdf.PdfText.repeated`)."""
     headings = find_headings(text)
     hidden, code = _views(text)
     if opens is None:
@@ -1946,11 +1949,15 @@ def _file(
     glossaries = glossary.united([*glossary.sections(titled, len(text)),
                                   *glossary.opened(prose, text, titled, _may_be_defined)])
     captions = tuple(glossary.markdown_captions(prose))
+    # A PDF's text has a line to each of its lines and no blank line but around a heading, so
+    # a block of it runs from heading to heading: one caption in it would make the section a
+    # display of its own (window C of the real-paper corpus, row 6).
+    displayed = None if from_pdf else (
+        lambda paired: markdown_displays(text, prose, captions, _noted(text, paired), spans))
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=captions,
-        displayed=lambda paired: markdown_displays(text, prose, captions,
-                                                   _noted(text, paired), spans),
+        displayed=displayed,
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         tables=_markdown_tables(text),
@@ -2400,11 +2407,16 @@ def _input_ends(source: Source) -> list[int]:
     return [end for end, _after in source.resumes]
 
 
-def _read(project: Project, running: Mapping[str, Iterable[int]] | None = None) -> list[_File]:
+def _read(
+    project: Project,
+    running: Mapping[str, Iterable[int]] | None = None,
+    pdf: Collection[str] = (),
+) -> list[_File]:
     """The manuscript as a reader meets it: the paper's files in printed order, then the
     supplement's. The abstract is the section the journal's profile names as one, where it
     names one ("Summary"), as G4 reads it. `running` gives, by a file's path under
-    `manuscript/`, the lines a PDF it was staged from repeats at its pages' edges."""
+    `manuscript/`, the lines a PDF it was staged from repeats at its pages' edges; `pdf`, by
+    the same paths, the files the audit staged from a PDF."""
     from manuscript_guard.gates.journal import abstract_title
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
@@ -2426,7 +2438,7 @@ def _read(project: Project, running: Mapping[str, Iterable[int]] | None = None) 
             text = read_text(path)
             lines = _running_at(running, root, path)
             files.append(_file(len(files), path, text, chain, supplementary, named, at == 0,
-                               running=lines))  # fmt: skip
+                               from_pdf=_staged_as(pdf, root, path), running=lines))  # fmt: skip
     return files
 
 
@@ -3001,7 +3013,7 @@ def check_language(
     the top or the foot of its pages, where no use of a short form is owed its definition;
     `pdf` names, by the same paths, the files the audit staged from a PDF, whose notation is
     read as pdftotext prints it."""
-    files = _read(project, running)
+    files = _read(project, running, pdf)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     root = project.path("manuscript")
     from_pdf = frozenset(file.path for file in files if _staged_as(pdf, root, file.path))

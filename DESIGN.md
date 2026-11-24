@@ -28671,16 +28671,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     as on main: Basile chose this exact rule (2026-11-15) after a rule that told a title
     page's counts of words apart failed twice in review. Accepted.
   - A PDF's Abstract ends at a run-in "Keywords:" by a Word paper's rule, and at nothing
-    else a Word paper's rule does not read (window C of the real-paper corpus, row 8). The
-    label alone on its line with no colon, "Keywords" over a line of keywords, ends
-    nothing, as a Word paper's "Keywords:" with nothing after it ends nothing, and neither
-    does a letter-spaced "K E Y W O R D S" or a label that stands after a structured
-    abstract's last part; a PDF has no table's cell, so a label on a line of a table's text
-    ends the Abstract where a Word paper's in a cell does not. The list of keywords is the
-    rest of the label's line alone: a PDF's text marks no paragraph, so a list carried onto
-    a second line is read there as the main text's. Accepted. Pinned by
+    else a Word paper's rule does not read (window C of the real-paper corpus, row 8): only
+    the label followed by a colon and words on its line, "Keywords: falls; older adults",
+    ends it. "Keywords" alone on its line over a line of keywords ends nothing, nor does
+    "Keywords:" with nothing after it, as a Word paper's ends nothing; nor a letter-spaced
+    "K E Y W O R D S", Springer's label with no colon, "Keywords Pharmacovigilance ·
+    Disproportionality", IEEE's "Index Terms—falls, records", or a label that stands
+    after a structured abstract's last part. A PDF has no table's cell, so a label on a line
+    of a table's text ends the Abstract where a Word paper's in a cell does not. The list of
+    keywords is the rest of the label's line alone: a PDF's text marks no paragraph, so a
+    list carried onto a second line is read there as the main text's. Accepted. Pinned by
     `tests/test_audit_pdf.py::test_no_other_keywords_line_ends_a_pdf_s_abstract` and
     `tests/test_audit_pdf.py::test_a_pdf_s_keywords_are_a_paragraph_under_their_heading_and_the_body_the_main_text`.
+  - In a two-column PDF read in drawing order, a run-in "Keywords:" drawn between two halves
+    of the Abstract ends it there: the Abstract's later lines are the Keywords section's,
+    and are never compared with the Results, where before the rule they were the Abstract's.
+    Accepted. Pinned by
+    `tests/test_audit_pdf.py::test_a_run_in_keywords_drawn_between_two_halves_of_the_abstract_ends_it_there`.
   - Where the names cannot be placed alone, a line after the Abstract that opens on
     "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
     no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a

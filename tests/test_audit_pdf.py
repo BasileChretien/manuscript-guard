@@ -1738,8 +1738,10 @@ def test_a_run_in_keywords_with_no_words_after_it_ends_the_abstract_and_is_no_he
     "The keywords: harm and drugs were searched.", "Keywords were searched in 3 databases.",
     "Keywords:", "Keywords:harm",
     # The label alone with no colon, and letter-spaced, which a Word paper's rule does not
-    # read either (DESIGN.md, Known gaps).
-    "Keywords", "K E Y W O R D S",
+    # read either (DESIGN.md, Known gaps); Springer's label with no colon before the
+    # keywords, and IEEE's "Index Terms" after a dash.
+    "Keywords", "K E Y W O R D S", "Keywords Pharmacovigilance \N{MIDDLE DOT} Disproportionality",
+    "Index Terms\N{EM DASH}falls, records",
 ])  # fmt: skip
 def test_no_other_keywords_line_ends_a_pdf_s_abstract(line: str | None) -> None:
     """Nothing ends the Abstract, so the titles after it stay its parts, as the Word
@@ -1772,3 +1774,37 @@ def test_a_pdf_s_keywords_are_a_paragraph_under_their_heading_and_the_body_the_m
     assert "\n# Keywords\n\nharm; drugs; records\n\n1.1 Drugs and harm\n" in staged, staged
     keywords = next(one for one in read_version(paper).sections if one.title == "Keywords")
     assert keywords.body.startswith("harm; drugs; records"), keywords.body
+
+
+def test_a_run_in_keywords_drawn_between_two_halves_of_the_abstract_ends_it_there() -> None:
+    """A known gap (DESIGN.md, Known gaps): in a two-column PDF read in drawing order, a
+    run-in "Keywords:" drawn between two halves of the Abstract ends it there, and the
+    Abstract's later lines are the Keywords section's, never compared with the Results.
+    Before the rule (window C, row 8) they stayed the Abstract's."""
+    lines = ["Abstract", "Of 412 patients, 77 (18.7%) had the event.",
+             "Keywords: falls; older adults", "The rate was 21.4% in the exposed.",
+             "Introduction", "Drugs cause harm [1].", "Results",
+             "Of 412 patients, 77 (18.7%) had the event."]  # fmt: skip
+    pdf = _pdf_of(lines)
+    assert [(line, title) for line, title, _level in pdf.placed] == [
+        (1, "Abstract"), (3, "Keywords"), (5, "Introduction"), (7, "Results")]
+
+
+def test_a_run_in_keywords_ends_the_abstract_where_studies_are_placed_too() -> None:
+    """Every reading of where a PDF's Abstract ends gives it the same end: where the names
+    alone are not placed and a study's line is read as a heading (`_studies`,
+    `_abstract_ends`), a run-in "Keywords:" with no words after it ends the Abstract as it
+    does where the names are placed. So a multi-study paper whose main text opens on
+    "Background" after its keywords is placed, the Background the paper's; read as the
+    Abstract's part, it left the study's lines in the Abstract and nothing placed (round 1
+    of #783)."""
+    lines = ["Abstract", "Of 412, 77 fell.", "Keywords: falls; records", "Background",
+             "Falls are common.", "Study 1: A first look", "Method", "We read 412.", "Results",
+             "Of 412, 77 fell.", "Study 2: Again", "Method", "We read 99.", "Results",
+             "Of 99, 9 fell.", "References", "1. Smith A. A paper. J Things. 2019;12:345-56."]
+    pdf = _pdf_of(lines)
+    assert pdf.placed is not None
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), ("Background", 1), ("Study 1: A first look", 1), ("Method", 2),
+        ("Results", 2), ("Study 2: Again", 1), ("Method", 2), ("Results", 2),
+        ("References", 2)]

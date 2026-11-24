@@ -395,7 +395,7 @@ def _studies(texts: Sequence[str], named: list[tuple[int, str]],
         return named
     titles = [title for _at, title in named]
     worded = _worded(list(texts), named, run_in)
-    if section_levels(titles, worded) is not None:
+    if section_levels(titles, worded, _ended(list(texts), named, run_in)) is not None:
         return named
     after = _abstract_ends(texts, named, lines, run_in)
     if after is None:
@@ -407,7 +407,8 @@ def _studies(texts: Sequence[str], named: list[tuple[int, str]],
     if not kept:
         return named
     found = sorted([*named, *kept])
-    if _levels([title for _at, title in found], _worded(list(texts), found, run_in)) is None:
+    if _levels([title for _at, title in found], _worded(list(texts), found, run_in),
+               _ended(list(texts), found, run_in)) is None:  # fmt: skip
         return named
     return found
 
@@ -421,15 +422,19 @@ def _abstract_ends(texts: Sequence[str], named: list[tuple[int, str]],
     Introduction, it ends there, and so it does at a Background after an Abstract with words
     under it; a study's line before it is the Abstract's. Else the first study's line after
     the Abstract's ends its parts: over the names alone, an APA paper's Abstract with no
-    Introduction ran to its second study's "Method" (rounds 2 and 3 of #686)."""
+    Introduction ran to its second study's "Method" (rounds 2 and 3 of #686). A run-in
+    "Keywords:" under the Abstract's own heading ends it at the next heading, as it does
+    where `PdfText.placed` places the names (`_ended`)."""
     first = next((at for at, (_line, title) in enumerate(named) if names_abstract(title)),
                  None)  # fmt: skip
     if first is None:
         return 0
     worded = _worded(list(texts), named, run_in)
+    ended = _ended(list(texts), named, run_in)
     titles = [title for _line, title in named]
-    end = abstract_end(titles[first:], worded[first:])
-    if end is not None and first + end < len(named) and _no_part(titles[first + end]):
+    end = abstract_end(titles[first:], worded[first:], ended[first:])
+    if end is not None and first + end < len(named) and (
+            ended[first] or _no_part(titles[first + end])):  # fmt: skip
         return named[first + end][0]
     if worded[first] and first + 1 < len(named) and names_introduction(titles[first + 1]):
         return named[first + 1][0]
@@ -438,7 +443,8 @@ def _abstract_ends(texts: Sequence[str], named: list[tuple[int, str]],
         return None
     before = [one for one in named[first:] if one[0] < study]
     levels = _prefix_levels([title for _line, title in before],
-                            _worded(list(texts), [*before, (study, "")], run_in)[:-1])
+                            _worded(list(texts), [*before, (study, "")], run_in)[:-1],
+                            _ended(list(texts), [*before, (study, "")], run_in)[:-1])
     if levels is None:
         return None
     return next((line for (line, _title), level in list(zip(before, levels, strict=True))[1:]

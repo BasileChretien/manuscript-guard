@@ -329,7 +329,7 @@ journal's page again to know which of the two is wrong.
 Where the profile names an English (`en-GB` or `en-US`) and `paper.yaml` declares none, G4
 notes `english-variant-undeclared`; it fails nothing. Ask the author which English the
 paper is in and declare it in `paper.yaml`: until then G14 holds the paper to the English
-most of its words are in, which may not be the journal's. Where `paper.yaml` declares the
+its spellings show, which may not be the journal's. Where `paper.yaml` declares the
 other English, G4 fails `english-variant-mismatch` from internal review.
 
 ## Changing journals after a rejection

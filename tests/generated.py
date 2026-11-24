@@ -8975,9 +8975,10 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
         # an `-ize` both write counts for neither, and is not respelt
         mine = {word: spelt for word, spelt in mine.items() if word != "organise"}
     other = {word: spelt for word, spelt in other.items() if word != accepted}
-    pairs = [(f"the {word} seen", f"the {word} seen")
-             for word in draw(st.lists(st.sampled_from(sorted(mine)), min_size=ours,
-                                       max_size=ours))]  # fmt: skip
+    written = draw(st.lists(st.sampled_from(sorted(mine)), min_size=ours, max_size=ours))
+    if len(set(written)) == 1:  # a paper whose own words are one word is `spelling_edited`'s last
+        written[-1] = next(word for word in sorted(mine) if word != written[0])
+    pairs = [(f"the {word} seen", f"the {word} seen") for word in written]
     words = draw(st.lists(st.sampled_from(sorted(other)), min_size=theirs, max_size=theirs))
     quoted = {1: ('as "', '" was said'),
               2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said"),
@@ -9072,12 +9073,15 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
 
 @st.composite
 def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], str, str]]:
-    """Five manuscripts, each with the English it declares and the spellings it keeps,
+    """Seven manuscripts, each with the English it declares and the spellings it keeps,
     typed and as G14's spelling edits leave it: two that declare the English most of their
     words are in, one British and one American, their words of the other respelt but one the
     list gives two spellings for and one the paper keeps; one that declares none, its fewer
     words respelt in the English of the more; one that declares none and has as many of
-    each, and one mostly in the other English than it declares, neither respelt."""
+    each, one mostly in the other English than it declares, neither respelt; one that
+    declares none whose more are one word repeated against one or two of the other's, which
+    are respelt; and last one whose more are one word repeated against three of the other's,
+    none of them respelt."""
     made = []
     declared = draw(st.sampled_from(("en-GB", "en-US")))
     theirs = draw(st.integers(5, 6))
@@ -9095,7 +9099,31 @@ def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], 
     many = sorted(BRITISH_ONE if other == "en-GB" else AMERICAN_ONE)[:6]
     pairs = [(f"the {word} seen",) * 2 for word in many]
     made.append((declared, (), *_both_ways(draw, draw(st.permutations(pairs)))))
+    own, repeated = (BRITISH_ONE, AMERICAN_ONE) if more == "en-GB" else (AMERICAN_ONE, BRITISH_ONE)
+    # Not `organise`: an -ise word is none of the three (Basile, 2026-11-24).
+    kept = sorted(word for word in own if word != "organise")
+    alone = draw(st.sampled_from(kept))
+    strays = draw(st.permutations(sorted(repeated)))[:draw(st.integers(1, 2))]
+    pairs = [(f"the {alone} seen",) * 2] * (len(strays) + draw(st.integers(1, 3)))
+    pairs += [(f"the {word} seen", f"the {repeated[word]} seen") for word in strays]
+    made.append((None, (), *_both_ways(draw, draw(st.permutations(pairs)))))
+    three = draw(st.permutations(kept))[:3]
+    word = draw(st.sampled_from(sorted(repeated)))
+    pairs = [(f"the {one} seen",) * 2 for one in three]
+    pairs += [(f"the {word} seen",) * 2] * (3 + draw(st.integers(1, 3)))
+    made.append((None, (), *_both_ways(draw, draw(st.permutations(pairs)))))
     return made
+
+@st.composite
+def few_of_the_other_english(draw: st.DrawFn) -> dict[str, Any]:
+    """A paper that declares an English and writes only the other's, in two to four different
+    words: fewer than the five that make one finding of them, so that each is reported."""
+    declared = draw(st.sampled_from(("en-GB", "en-US")))
+    other = AMERICAN_ONE if declared == "en-GB" else BRITISH_ONE
+    words = draw(st.permutations(sorted(other)))[:draw(st.integers(2, 4))]
+    return {"text": "".join(f"The {word} seen.\n\n" for word in words), "variant": declared,
+            "accepted": []}  # fmt: skip
+
 
 #: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
 #: longer word: what G2 finds typed where it should be bound.
@@ -19088,13 +19116,20 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),
-    "spelling": st.fixed_dictionaries(
-        {
-            "text": texts(SPELT, REFERENCE_BLOCKS),
-            # None: the paper declares no English (Basile, 2026-10-23).
-            "variant": st.sampled_from(("en-GB", "en-US", None)),
-            "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
-        }
+    "spelling": st.one_of(
+        st.fixed_dictionaries(
+            {
+                "text": texts(SPELT, REFERENCE_BLOCKS),
+                # None: the paper declares no English (Basile, 2026-10-23).
+                "variant": st.sampled_from(("en-GB", "en-US", None)),
+                "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
+            }
+        ),
+        # The last: one word repeated against three of the other English (2026-11-23).
+        spelling_edited().map(
+            lambda drawn: {"text": drawn[-1][2], "variant": None, "accepted": []}
+        ),
+        few_of_the_other_english(),
     ),
     "notation": texts(NOTATED),
     "notation of a PDF's text": texts(NOTATED),

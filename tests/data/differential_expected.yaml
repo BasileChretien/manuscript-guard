@@ -269,11 +269,14 @@ expected:
       listing of a file with CRLF line ends where it was NUL
   - reading: spelling
     why: >-
-      a reference list under the headings "Literature cited" and "Reference list", or under
-      a title in a block quote, `> **11. REFERENCES**:`, a link,
-      `[**References**](#_Ref89712232)`, or a bold title a hard line break opens, is passed
-      over, so the spelling of its entries is not read; the inputs now hold these titles
-      (the real-paper corpus, 2026-11-11)
+      a paper that declares no English, whose more words are one word repeated against three
+      or more different words of the other English, is held to the other English (Basile,
+      2026-11-23), a word's -s, -es, -ed and -ing forms being one word and an -ise word none
+      of the three (2026-11-24); the inputs now hold such a paper
+  - reading: spelling edits
+    why: >-
+      such a paper is not respelt: the one word is reported, and its English goes against
+      its count, so the edits wait (Basile, 2026-11-23)
   - reading: recycled passages
     why: >-
       a reference list under a title in a block quote, `> **11. REFERENCES**:`, a link,

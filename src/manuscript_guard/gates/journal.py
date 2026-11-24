@@ -564,7 +564,7 @@ def _check_variant(document: dict, project: Project) -> Report:
         return Report()
     if declared is None:
         # A paper that declares no English has nothing to compare, and G14 holds it to the
-        # English most of its words are in, which may not be the journal's: a note, never a
+        # English its spellings show, which may not be the journal's: a note, never a
         # failure (Basile, 2026-10-23).
         return Report(
             (
@@ -575,7 +575,7 @@ def _check_variant(document: dict, project: Project) -> Report:
                     message=f"the journal asks for {_ENGLISH_NAMES.get(wanted, wanted)} "
                     f"({wanted}), and paper.yaml declares no English",
                     hint=f"declare english_variant: {wanted} in paper.yaml to be held to it; "
-                    "until then G14 holds the paper to the English most of its words are in",
+                    "until then G14 holds the paper to the English its spellings show",
                 ),
             )
         )

@@ -21,8 +21,9 @@ other English: "grey" ten times does not make British a paper with eight America
 Nothing broader: a count of different words would lose true findings. A declared English is
 not touched, and two Englishes level have no majority, so the first word still decides. The
 one word is reported, and not respelt, since the paper's count says otherwise. In counting
-different words (2026-11-24), a word with -s, -es, -ed or -ing is that word, on both sides,
-and an `-ise` word is none of the three, since `-ize` is correct British too.
+different words (2026-11-24), a word with -s, -es, -ed or -ing, or -ies or -ied for its "y",
+is that word, on both sides, and a word of the list's kind `ise` is none of the three, since
+its spelling in `-ize` is correct British too.
 
 Three findings, all warnings:
 
@@ -85,9 +86,10 @@ LISTED = 12
 #: From this many different words of one English, a single word of the other does not make
 #: the paper's English, however often it is repeated (Basile, 2026-11-23).
 AGAINST_ONE_WORD = 3
-#: The kinds that count toward those different words: not `ise`, since a paper in `-ize` is
-#: as British as one in `-ise`, and a few `-ise` strays say nothing of its English
-#: (Basile, 2026-11-24).
+#: The kinds that count toward those different words: not the kind `ise`, whose spelling in
+#: `-ize` is British too, so that a few strays of it say nothing of a paper's English
+#: (Basile, 2026-11-24). A `gb` word that ends in `-ise`, "anaesthetise", differs from the
+#: American by more than that ending, and counts.
 _TOWARD_THE_THREE = {BRITISH: ("gb",), AMERICAN: ("us",)}
 #: How many words the finding on the two endings quotes for each.
 EXAMPLES = 5
@@ -231,7 +233,8 @@ def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, boo
 
 def _stem(word: str) -> str:
     """`word` without -s, -es, -ed or -ing, and without the "e" those take the place of:
-    "colors", "colored" and "coloring" are "color", "analysed" and "analysing" "analys"."""
+    "colors", "colored" and "coloring" are "color", "analysed" and "analysing" "analys". A
+    final "y" is read as the "i" of -ies and -ied: "enquiry" and "enquiries" are "enquiri"."""
     if word.endswith(("ings", "eds")):  # "colorings": a noun made of the -ing form
         word = word[:-1]
     if not word.endswith(("ss", "us", "is")):
@@ -239,12 +242,14 @@ def _stem(word: str) -> str:
             if word.endswith(ending) and len(word) - len(ending) >= 3:
                 word = word[: -len(ending)]
                 break
-    return word[:-1] if word.endswith("e") and not word.endswith("ae") else word
+    if word.endswith("e") and not word.endswith("ae"):
+        word = word[:-1]
+    return word[:-1] + "i" if word.endswith("y") else word
 
 
 def _one_word(key: str) -> tuple[str, str]:
     """What makes two spellings on the list one word: their stems, and those of what the
-    other usage writes. Over the whole list this joins no two words, and leaves six forms
+    other usage writes. Over the whole list this joins no two words, and leaves three forms
     apart from their base, whose other spelling is irregular or another word: "matts" are
     "mats" where "matt" is "matte" (`tests/test_spelling.py`)."""
     return _stem(key), _stem(_variants()[0][key][1].split("/")[0])
@@ -259,7 +264,7 @@ def _different_words(
 
 def _one_word_outvotes(spelt: list[tuple[int, Passage, int, str, str]], more: str) -> bool:
     """Are the words of `more`, the English with the more uses, one word repeated, against
-    three or more different words of the other, its `-ise` spellings not counted?"""
+    three or more different words of the other, those of the kind `ise` not counted?"""
     fewer = AMERICAN if more == BRITISH else BRITISH
     return (_different_words(spelt, _KINDS[more]) == 1
             and _different_words(spelt, _TOWARD_THE_THREE[fewer]) >= AGAINST_ONE_WORD)  # fmt: skip
@@ -427,7 +432,8 @@ def judge_spelling(
         )
     elif how == _ONE_WORD:
         different = _different_words(spelt, _TOWARD_THE_THREE[variant])
-        apart = " apart from -ise" if any(kind == "ise" for *_, kind in spelt) and british else ""
+        apart = (" apart from -ise forms of words both Englishes write with -ize"
+                 if british and any(kind == "ise" for *_, kind in spelt) else "")  # fmt: skip
         english = (
             f"paper.yaml declares no English, and the paper has {own} words in {ours} "
             f"spelling, {different} different ones{apart}, to this one word in {theirs}"

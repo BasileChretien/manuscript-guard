@@ -5887,12 +5887,14 @@ absent. Each reader of it has a rule for a paper that has not said:
   and each of those was reported. Where the more are a single different word and the other
   English has three or more different words, the paper is in the other English, and the one
   word is the `spelling-variant`, whose message gives both counts. In counting different
-  words (Basile, 2026-11-24), a word with -s, -es, -ed or -ing is that word, on both sides, so
-  "color, colors, colored" is one and "grey, greys" one repeated; and an `-ise` word is none
-  of the three, since `-ize` is correct British too. A form joins its word only where what
-  the other usage writes joins too, which over the whole list leaves six forms apart
-  ("esophaguses", "oesophaguses", "fogeys", "matts", "noseys", "storeys") and joins no two
-  words. A plain count of different
+  words (Basile, 2026-11-24), a word with -s, -es, -ed or -ing, or -ies or -ied for its "y",
+  is that word, on both sides, so "color, colors, colored" is one, "grey, greys" one repeated
+  and "speciality, specialities" one; and a word of the list's kind `ise` is none of the
+  three, since its spelling in `-ize` is correct British too. A `gb` word that ends in `-ise`,
+  "anaesthetised", differs from the American by more than that and counts. A form joins its
+  word only where what the other usage writes joins too, which over the whole list leaves
+  three forms apart ("esophaguses", "oesophaguses", "matts") and joins no two words; no form
+  with a doubled consonant has its base on the list. A plain count of different
   words was measured and refused: it turned two other papers and lost 14 true findings. A
   declared English is not touched, and where the two are level there is no majority to
   overturn, so the first word still decides. `spelling_edits` respells nothing in such a
@@ -25406,11 +25408,15 @@ Open, recorded as each change landed:
     together still outvote three American words, and "grey" alone outvotes two.
     Pinned by `tests/test_spelling.py::test_two_words_of_the_more_are_not_one_word` and
     `tests/test_spelling.py::test_one_word_against_two_different_ones_keeps_the_count`.
-  - An `-ise` word is none of the three (2026-11-24), so a paper with one American word
-    repeated and any number of `-ise` strays stays American, and two British words beside an
-    `-ise` word are not three.
-    Pinned by `tests/test_spelling.py::test_ise_words_do_not_count_toward_the_three` and
-    `tests/test_spelling.py::test_two_gb_words_and_an_ise_word_are_not_three`.
+  - A word of the list's kind `ise` is none of the three (2026-11-24), though its uses still
+    count for British. A paper with one American word repeated and strays of that kind stays
+    American while they have fewer uses than the American word; with more ("color" twice
+    against three of them) it is British, as it was. Two `gb` words beside one of the kind
+    `ise` are not three, and a `gb` word that ends in `-ise`, "anaesthetised", is one of them.
+    Pinned by `tests/test_spelling.py::test_ise_words_do_not_count_toward_the_three`,
+    `tests/test_spelling.py::test_fewer_uses_of_the_american_word_than_of_ise_strays_is_still_british`,
+    `tests/test_spelling.py::test_two_gb_words_and_an_ise_word_are_not_three` and
+    `tests/test_spelling.py::test_a_gb_word_written_with_ise_counts_toward_the_three`.
   - That rule needs a majority. One word used three times against three different words
     once each is level, and the first word decides, which may be the repeated one. So one
     use more or less can turn the paper's English and turn it back: "grey" four times
@@ -25432,6 +25438,11 @@ Open, recorded as each change landed:
     (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
     Zotero build names `en-US`. A paper written in British spelling that declares nothing
     is so proofed and cited in American; declaring `en-GB` is the way out. Accepted.
+- **`spelling-not-as-declared` counts each spelling as written.** For a paper that declares
+  an English, the five that make one finding of many, and the "different ones" that finding
+  gives, take "color", "colors" and "colored" as three, where the rule for a paper that
+  declares none takes them as one (Basile, 2026-11-24: a declared paper's behaviour stays).
+  Pinned by `tests/test_spelling.py::test_a_declared_paper_s_count_takes_each_spelling_as_written`.
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   Accepted.
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and

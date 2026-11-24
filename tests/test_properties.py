@@ -13762,8 +13762,16 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
 #: side of the more and on the side of the fewer.
 _ONE_WORD_LEANINGS = ("one word", "two words", "against two", "level, one word",
                       "-ise strays", "one -ise word", "-ise beside three",
-                      "forms of the more", "forms of the fewer")  # fmt: skip
+                      "forms of the more", "forms of the fewer",
+                      "forms in -ies of the more", "forms in -ies of the fewer")  # fmt: skip
 _LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize", *_ONE_WORD_LEANINGS)
+#: Words with their plural in -ies, which are one word too (round 2 of #777).
+_FORMS_IN_IES = {
+    "en-US": (("hemoglobinopathy", "hemoglobinopathies"), ("gynecology", "gynecologies"),
+              ("hematology", "hematologies")),
+    "en-GB": (("speciality", "specialities"), ("enquiry", "enquiries"),
+              ("haematology", "haematologies")),
+}  # fmt: skip
 #: Words with their forms, for the leanings that hold them to be one word.
 _FORMS = {
     "en-US": (("color", "colors", "colored"), ("center", "centers", "centered"),
@@ -13800,9 +13808,14 @@ def _forms_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, 
     held = draw(st.sampled_from(("en-GB", "en-US")))
     stray = "en-US" if held == "en-GB" else "en-GB"
     ours, theirs = draw(st.permutations(_FORMS[held])), draw(st.permutations(_FORMS[stray]))
-    if leaning == "forms of the more":  # the more are one word: the three are the paper's
+    in_ies = draw(st.sampled_from(_FORMS_IN_IES[stray]))
+    if leaning == "forms in -ies of the fewer":  # a word, its plural and one more are two
+        words = [(stray, in_ies[0]), (stray, in_ies[1]), (stray, theirs[0][0])]
+        words += [(held, ours[0][0])] * draw(st.integers(4, 6))
+    elif leaning in ("forms of the more", "forms in -ies of the more"):
+        # the more are one word: the three are the paper's
         words = [(held, forms[0]) for forms in ours[:3]]
-        forms = theirs[0]
+        forms = in_ies if "-ies" in leaning else theirs[0]
         words += [(stray, form) for form in forms]
         words += [(stray, forms[0])] * (4 - len(forms) + draw(st.integers(0, 2)))
     else:  # the fewer are one word in three forms: the count stands
@@ -20140,17 +20153,15 @@ def _a_word_s_forms_are_different_words(patch: pytest.MonkeyPatch) -> None:
 def _forms_are_folded_on_one_side_only(patch: pytest.MonkeyPatch, more: bool) -> None:
     """The forms of one word are one word on one side, and on the other each its own."""
 
-    def apart(spelt: list, english: str) -> int:
-        return len({each[3] for each in spelt
-                    if each[4] in spelling_gate._TOWARD_THE_THREE[english]})  # fmt: skip
-
-    def folded(spelt: list, english: str) -> int:
-        return spelling_gate._different_words(spelt, spelling_gate._KINDS[english])
+    def counted(spelt: list, kinds: tuple[str, ...], fold: bool) -> int:
+        if fold:
+            return spelling_gate._different_words(spelt, kinds)
+        return len({each[3] for each in spelt if each[4] in kinds})
 
     def broken(spelt: list, english: str) -> bool:
         fewer = _the_other_english(english)
-        one = (apart if more else folded)(spelt, english)
-        three = (folded if more else apart)(spelt, fewer)
+        one = counted(spelt, spelling_gate._KINDS[english], not more)
+        three = counted(spelt, spelling_gate._TOWARD_THE_THREE[fewer], more)
         return one == 1 and three >= spelling_gate.AGAINST_ONE_WORD
 
     patch.setattr(spelling_gate, "_one_word_outvotes", broken)
@@ -20162,6 +20173,13 @@ def _forms_of_the_more_are_different_words(patch: pytest.MonkeyPatch) -> None:
 
 def _forms_of_the_fewer_are_different_words(patch: pytest.MonkeyPatch) -> None:
     _forms_are_folded_on_one_side_only(patch, False)
+
+
+def _a_plural_in_ies_is_another_word(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #777: "speciality" and "specialities" counted as two."""
+    real = spelling_gate._stem
+    patch.setattr(spelling_gate, "_stem",
+                  lambda word: word if word.endswith("ies") else real(word))  # fmt: skip
 
 
 def _every_one_word_majority_is_left_unrespelt(patch: pytest.MonkeyPatch) -> None:
@@ -31701,6 +31719,10 @@ BROKEN = {
     ),
     "the forms of the fewer are different words": (
         _forms_of_the_fewer_are_different_words,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a plural in -ies is another word": (
+        _a_plural_in_ies_is_another_word,
         test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a one-word majority against one or two words is not respelt": (

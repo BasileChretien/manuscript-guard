@@ -605,7 +605,8 @@ def _long_form(short: str, before: str) -> str | None:
     letter or digit of the short form is found in turn, and the first must begin a word.
     A letter is not taken from inside a bracket the long form would open: where the nearest
     is, the bracket is passed over and its letters looked for before it, so the `S` of
-    "Depression Scale (French version) (HADS)" is the one of "Scale".
+    "Depression Scale (French version) (HADS)" is the one of "Scale". A long form that
+    closes a bracket it does not open is none (`_unmatched`).
     """
     searched = before
     while True:
@@ -616,8 +617,9 @@ def _long_form(short: str, before: str) -> str | None:
         if opened is None:
             break
         searched = _passed_over(searched, opened)
-    found = before[matched[-1] :].strip().strip(_EDGES).strip()
-    if len(found) <= len(short):
+    read = before[matched[-1] :].strip()
+    found = read.strip(_EDGES).strip()
+    if len(found) <= len(short) or _unmatched(read, short):
         return None
     # A short form does not define itself, nor through its plural: in "expressed as ORs
     # (OR, 95% CI)" the letters of OR are all in "ORs".
@@ -625,6 +627,30 @@ def _long_form(short: str, before: str) -> str | None:
     if _singular(short).lower() in words:
         return None
     return found
+
+
+def _unmatched(read: str, short: str) -> bool:
+    """Does the long form of `short` read as `read`, from its first letter to the end of the
+    text before the short form, close a bracket it does not open?
+
+    "20.6 mg (M1) to 21.5 mg (M2)" reads M2's letters back across the bracket of M1, to "M1)
+    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). One
+    bracket the long form closes is its own: one that holds a part the short form opens
+    with and nothing else, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at
+    one hour. Brackets are counted as `_passed_over` counts them, round and square alike.
+    What clings to the end is no part of the long form, so a bracket closing there closes
+    one opened before it, "(mean arterial pressure) (MAP)". A bracket the long form opens
+    and does not close is left to the short form's to close, as nested brackets are: "visual
+    analogue scale (in mm (VAS))"."""
+    depth = 0
+    for at, char in enumerate(read[: len(read.rstrip(_EDGES + " \t\r\n"))]):
+        if char in _OPENING:
+            depth += 1
+        elif char in _CLOSING and depth:
+            depth -= 1
+        elif char in _CLOSING and not (at < len(short) and short.startswith(read[:at])):
+            return True
+    return False
 
 
 def _letters(short: str, before: str) -> list[int] | None:

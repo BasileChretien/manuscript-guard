@@ -2785,6 +2785,33 @@ def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
 
 
+def _a_long_form_may_close_a_bracket_it_does_not_open(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_unmatched", lambda read, short: False)
+
+
+def _a_long_form_closes_no_bracket_its_short_form_opens_with(patch: pytest.MonkeyPatch) -> None:
+    """Every bracket the long form closes and does not open refuses it, "warning score (WSE)
+    at 1 hour (WSE1)" among them."""
+    real = language_gate._unmatched
+    patch.setattr(language_gate, "_unmatched", lambda read, short: real(read, ""))
+
+
+def _a_long_form_s_brackets_balance_to_its_last_character(patch: pytest.MonkeyPatch) -> None:
+    """The brackets counted over the whole of what is read, its end too: one closing there
+    that the long form did not open, "(mean arterial pressure) (MAP)", refuses it, and so
+    does one it opens that the short form's closes, "(in mm (VAS))"."""
+
+    def whole(read: str, short: str) -> bool:
+        depth = 0
+        for char in read:
+            depth += (char in language_gate._OPENING) - (char in language_gate._CLOSING)
+            if depth < 0:
+                return True
+        return depth != 0
+
+    patch.setattr(language_gate, "_unmatched", whole)
+
+
 def _a_bracket_s_last_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_short_closing", lambda bracket: None)
 
@@ -28264,6 +28291,18 @@ BROKEN = {
     ),
     "a long form crosses no bracket": (
         _a_long_form_crosses_no_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form may close a bracket it does not open": (
+        _a_long_form_may_close_a_bracket_it_does_not_open,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form closes no bracket its short form opens with": (
+        _a_long_form_closes_no_bracket_its_short_form_opens_with,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form's brackets balance to its last character": (
+        _a_long_form_s_brackets_balance_to_its_last_character,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a short form closing a bracket after a separator defines nothing": (

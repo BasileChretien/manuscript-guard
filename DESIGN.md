@@ -5330,9 +5330,16 @@ had a second WSE (WSE2)" the `2` of WSE2 is found only in "(12.5%)", and nothing
 defined. Where the nearest letter is inside such a bracket and another stands before it,
 the bracket is passed over: the `S` of "Hospital Anxiety and Depression Scale (French
 version) (HADS)" is the one of "Scale", and the `I` of "body mass index (in kg/m2) (BMI)"
-the one of "index". A long form may close a bracket, "warning score (WSE) at 1 hour
-(WSE1)", where WSE1 is the WSE at one hour, and hold a whole one none of its letters is in,
-"adjusted (for age) relative risk (aRR)". Both rules come from manuscripts written in Word.
+the one of "index". A long form may close a bracket that holds the part its short form opens
+with, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at one hour, and hold a
+whole one none of its letters is in, "adjusted (for age) relative risk (aRR)". Both rules
+come from manuscripts written in Word. A long form that closes any other bracket it does not
+open is none: "20.6 mg (M1) to 21.5 mg (M2)" reads the letters of M2 back across the bracket
+of M1, to "M1) to 21.5 mg", and with two such pairs M2 was reported as given another meaning
+(the real-paper corpus, row 4 of window C: 20 false findings and no true one over every
+judged set). A bracket closing at the long form's end closes one opened before it, "(mean
+arterial pressure) (MAP)", and one the long form opens is left for the short form's bracket
+to close, "visual analogue scale (in mm (VAS))".
 
 **An abbreviation nobody defined is read by its capitals.** A word met with no definition
 is taken for one only when two capitals stand side by side, which keeps `McNemar`,
@@ -25073,12 +25080,13 @@ Open, recorded as each change landed:
   - A long form before its short form takes no letter from inside a bracket it opens: the
     bracket is passed over and the letter looked for before it. A definition whose letter
     is only in such a bracket is missed, as one whose long form is an aside would be. One
-    that takes its letters from a bracket it closes is read, the elliptical "at entry
-    (WSE1) and after 2 hours (WSE2)" among them, with the long form "WSE1) and after 2
-    hours". So is one whose letter is found past the aside in a count: "(WSE1) and 20
-    (12%) had a second WSE (WSE2)" defines WSE2 as "WSE1) and 20 (12%) had a second WSE".
-    Pinned by `tests/test_language.py::test_the_limits_of_the_bracket_rules_are_as_design_md_says`
-    and `tests/test_language.py::test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens`.
+    that closes a bracket holding the part its short form opens with is read, "warning
+    score (WSE) at 1 hour (WSE1)"; one that closes any other bracket it does not open is
+    not, so the elliptical "at entry (WSE1) and after 2 hours (WSE2)" defines nothing, and a
+    WSE2 used with no other definition is reported as undefined.
+    Pinned by `tests/test_language.py::test_the_limits_of_the_bracket_rules_are_as_design_md_says`,
+    `tests/test_language.py::test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens`
+    and `tests/test_language.py::test_a_long_form_holding_an_unmatched_bracket_defines_nothing`.
   - The long form is matched by letters, so it can start a word late or early: "the ratio
     as before (ROR)" is read as a definition whose long form is "ratio as before". The
     definition is still counted; the long form quoted in a message can be wrong, and two
@@ -30238,6 +30246,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A long form read across a bracket it does not open defined its short form (row 4 of
+  window C, 2026-11-24).** It stood under "A long form before its short form takes no letter
+  from inside a bracket it opens": "(WSE1) and 20 (12%) had a second WSE (WSE2)" defined
+  WSE2 as "WSE1) and 20 (12%) had a second WSE", and "20.6 mg (M1) to 21.5 mg (M2)" defined
+  M2 as "M1) to 21.5 mg", which a second pair then gave another meaning. On the real-paper
+  corpus such long forms gave 20 false findings and no true one. A long form that closes a
+  bracket it does not open is none, unless the bracket holds the part its short form opens
+  with, "warning score (WSE) at 1 hour (WSE1)" (Basile, 2026-11-24, "Keep WSE1, drop
+  WSE2"). The elliptical "at entry (WSE1) and after 2 hours (WSE2)" is read the way M2 is,
+  since nothing in its brackets tells the two apart, and so defines nothing now.
+  Held by `tests/test_corruption.py::test_a_long_form_read_across_a_bracket_it_does_not_open_is_no_definition`
+  and `tests/test_language.py::test_a_long_form_holding_an_unmatched_bracket_defines_nothing`.
 
 - **A setext title whose value starts with `#` was refused, though it printed as the gates
   read it (2026-11-21).** It stood under "Two headings the build refuses that print as the

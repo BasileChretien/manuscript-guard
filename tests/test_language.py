@@ -1283,6 +1283,43 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
     assert (short, long) in [(found, words) for _at, found, words in _definitions(text)]
 
 
+def _pdf_findings(text: str) -> list[tuple[str, str]]:
+    """G14's findings on `text` as a file the audit staged from a PDF."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    file = replace(_file(0, Path("main.md"), text, [], False), from_pdf=True)
+    report = _judge([file], _Known(frozenset(), frozenset()), Path("."))
+    return [(f.code, f.message) for f in report.findings]
+
+
+def test_the_limits_of_a_line_s_end_in_a_pdf_are_as_design_md_says() -> None:
+    """Known gaps, held where they stand: a long form whose first word a PDF breaks at a
+    line's end is read from the word's second half, where it opens on the short form's first
+    letter, and gives another meaning; and a short form a PDF breaks at its own hyphen is no
+    use of it, its halves read as two forms never defined."""
+    found = _pdf_findings("# Methods\n\nThe standardised mortality ratio (SMR) was read. The "
+                          "standardi-\nsed mortality ratio (SMR) was read again.\n")
+    assert ("abbreviation-redefined", "SMR is defined as 'sed mortality ratio' here and as "
+            "'standardised mortality ratio' at main.md:3") in found
+    found = _pdf_findings("# Methods\n\nThe Reach Effectiveness Adoption Implementation "
+                          "Maintenance (RE-AIM) frame was used. The RE-\nAIM frame held.\n")
+    assert [code for code, _message in found] == ["abbreviation-unused", "abbreviation-undefined"]
+
+
+def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_only_there() -> None:
+    """A long form broken inside a word at a line's end gives the same meaning in a PDF's
+    text, and another where the hyphen and a space are typed in a line."""
+    broken = ("# Methods\n\nThe interquartile range (IQR) was read. The inter-\nquartile range "
+              "(IQR) was read again.\n")
+    assert [m.split(";")[0] for code, m in _pdf_findings(broken)
+            if code == "abbreviation-redefined"] == ["IQR is defined again"]  # fmt: skip
+    typed = broken.replace("inter-\nquartile", "inter- quartile")
+    assert [m.split(" here")[0] for code, m in _pdf_findings(typed)
+            if code == "abbreviation-redefined"] == [  # fmt: skip
+        "IQR is defined as 'inter- quartile range'"
+    ]
+
+
 def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
     """Known gaps, held where they stand: after a colon, a short form is read by its letters,
     a statistic or not, so words that hold them in order define it; a colon before words is

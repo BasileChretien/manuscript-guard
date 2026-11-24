@@ -2463,6 +2463,25 @@ def _audit_abbreviations() -> Reading:
     return audited
 
 
+@reading("abbreviations of a PDF's text")
+def _abbreviations_of_a_pdf() -> Reading:
+    """G14's findings on a file the audit staged from a PDF, whose long forms are compared
+    with a word broken at a line's end joined (`_File.from_pdf`, `_rejoined`)."""
+    import dataclasses
+
+    from manuscript_guard.gates.language import _File, _judge, _Known, _shipped
+
+    if "from_pdf" not in {each.name for each in dataclasses.fields(_File)}:
+        raise ImportError("G14 reads no PDF's text apart", name="manuscript_guard.gates.language")
+
+    def abbreviations(text: str) -> dict[str, Any]:
+        file = dataclasses.replace(_file(text), from_pdf=True)
+        return _told(_judge([file], _Known(*_shipped()), Path(".")))
+
+    _file("")
+    return abbreviations
+
+
 @reading("prose quotations")
 def _prose_quotations() -> Reading:
     """Each quotation of four words or more in a sentence that cites, with the paragraph's

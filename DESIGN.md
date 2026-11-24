@@ -5334,6 +5334,17 @@ the one of "index". A long form may close a bracket, "warning score (WSE) at 1 h
 (WSE1)", where WSE1 is the WSE at one hour, and hold a whole one none of its letters is in,
 "adjusted (for age) relative risk (aRR)". Both rules come from manuscripts written in Word.
 
+In text read from a PDF, a word broken at a line's end is the same word. pdftotext prints it
+as its first part, a hyphen, the line's end and the rest, "Chlamydia trachoma-\ntis", and
+the long form G14 reads joins its words with a space, "trachoma- tis", so a definition given
+again across such a break read as another meaning (the real-paper corpus, row 7 of window
+C). pdftotext prints a compound broken at its own hyphen, "self-\nreported", the same way,
+and nothing in the text tells the two apart, so a long form with such breaks is compared as
+read, each break a hyphen, and with each way of joining them: two long forms give the same
+meaning where any readings of them do. A hyphen and a space typed in a line is no break, and
+the long form shown in a message is the one read. Text from Word, LaTeX and Markdown is
+compared as before.
+
 **An abbreviation nobody defined is read by its capitals.** A word met with no definition
 is taken for one only when two capitals stand side by side, which keeps `McNemar`,
 `DeLong` and `PhD` out of the report. Three things with two capitals together are not
@@ -25085,6 +25096,13 @@ Open, recorded as each change landed:
     definitions of one thing can be reported as two meanings.
     Pinned by `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_early`
     and `tests/test_language.py::test_a_long_form_matched_by_letters_may_start_late`.
+  - A word a PDF breaks at a line's end is joined only where long forms are compared, so
+    two limits stay. A long form whose first word is broken is read from the word's second
+    half where that opens on the short form's first letter: "standardi-\nsed mortality
+    ratio (SMR)" is read as "sed mortality ratio", another meaning than the full one. And a
+    short form broken at its own hyphen, "RE-\nAIM", is no use of it: its halves are read
+    as two forms never defined, and the definition as unused.
+    Pinned by `tests/test_language.py::test_the_limits_of_a_line_s_end_in_a_pdf_are_as_design_md_says`.
   - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
     and `Hb` are missed, where `iPSC` and `siRNA` are caught. `Hb` and `Tregs` cannot be
     defined either, each being the capital of a word, so "haemoglobin (Hb)" is not tracked.

@@ -438,6 +438,10 @@ class _Definition(_Mark):
     #: In a caption or a glossary: where a definition may be given again, and is not given
     #: twice by being so.
     restates: bool = False
+    #: The long form read with a word a PDF broke at a line's end joined, each way of joining
+    #: its breaks; none where the text was not read from a PDF or no word of it is broken
+    #: there (`_rejoined`).
+    rejoined: tuple[str, ...] = ()
 
 
 @dataclass
@@ -1813,6 +1817,9 @@ class _File:
     #: Where each heading runs, in order: Markdown's as `find_headings` finds them, a setext
     #: heading's underline with it, and LaTeX's as its reader does.
     headings: tuple[tuple[int, int], ...] = ()
+    #: Whether the audit staged the file from a PDF, whose text pdftotext printed with a word
+    #: broken at a line's end as two (`_rejoined`).
+    from_pdf: bool = False
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -2400,7 +2407,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             defining.add((file.order, offset))
             scopes[region.scope].defined.setdefault(short, []).append(
                 _Definition(file.order, offset, region.quiet, file.display_of(offset), long,
-                            offset in file.restating)
+                            offset in file.restating,
+                            _rejoined(file.prose, offset, long) if file.from_pdf else ())
             )
 
     # The authors' initials a contributions statement names, which are people in a bracket
@@ -2483,6 +2491,56 @@ def _fronts(files: list[_File]) -> dict[int, int]:
     return ends
 
 
+#: What a word broken at a line's end ends on: a hyphen, a hyphen proper or a soft hyphen.
+_BREAKING = "-\N{HYPHEN}\N{SOFT HYPHEN}"
+#: How far from a definition's short form its long form is looked for, besides its length.
+_REJOIN_REACH = 400
+#: The most breaks a long form is joined at in every way: two to the power of them.
+_MOST_BREAKS = 4
+
+
+def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
+    """`long` with each word a PDF broke at a line's end joined, in every way of joining
+    them; none where it holds no such break.
+
+    pdftotext prints a word broken at a line's end as its first part, a hyphen, the line's
+    end and the rest, "Chlamydia trachoma-\\ntis", and a compound broken at its own hyphen
+    the same way, "self-\\nreported" (the real-paper corpus, row 7 of window C). The long
+    form G14 reads joins its words with a space, "trachoma- tis"; it is found again in
+    `prose` near the short form at `offset`, its words as they stand with what stands
+    between them, and a break is where a word ends on a hyphen and a line's end follows it.
+    The long form as read keeps each break as a hyphen, which `_same_meaning` reads as a
+    space, so each reading here joins some: two long forms are the same where any readings
+    of them are. A hyphen and a space typed in a line is no break."""
+    words = long.split()
+    if len(words) < 2 or not any(word[-1] in _BREAKING for word in words[:-1]):
+        return ()
+    low = max(0, offset - len(long) - _REJOIN_REACH)
+    high = min(len(prose), offset + len(long) + _REJOIN_REACH)
+    found = list(re.finditer(r"\s+".join(map(re.escape, words)), prose[low:high]))
+    if not found:
+        return ()
+    nearest = min(found, key=lambda match: abs(low + match.start() - offset))
+    between = re.findall(r"\s+", nearest.group(0))
+    breaks = [at for at, gap in enumerate(between)
+              if words[at][-1] in _BREAKING and "\n" in gap][:_MOST_BREAKS]  # fmt: skip
+    readings = []
+    for chosen in range(1, 2 ** len(breaks)):
+        joined = {at for bit, at in enumerate(breaks) if chosen >> bit & 1}
+        reading = words[0]
+        for at, word in enumerate(words[1:]):
+            reading = reading[:-1] + word if at in joined else f"{reading} {word}"
+        readings.append(reading)
+    return tuple(readings)
+
+
+def _alike(one: _Definition, other: _Definition) -> bool:
+    """Do two definitions give the same meaning: their long forms, or a reading of one with
+    a word a PDF broke at a line's end joined (`_rejoined`)."""
+    return any(_same_meaning(first, second) for first in (one.long, *one.rejoined)
+               for second in (other.long, *other.rejoined))  # fmt: skip
+
+
 def _same_meaning(one: str, other: str) -> bool:
     def plain(long: str) -> str:
         words = re.sub(r"[-\s]+", " ", long.lower()).strip()
@@ -2494,10 +2552,10 @@ def _same_meaning(one: str, other: str) -> bool:
     return plain(one) == plain(other)
 
 
-def _told_before(long: str, told: Iterable[str]) -> bool:
-    """Whether a meaning `long` gives is one of `told`, the meanings already reported as
-    another than the first."""
-    return any(_same_meaning(long, each) for each in told)
+def _told_before(mark: _Definition, told: Iterable[_Definition]) -> bool:
+    """Whether the meaning `mark` gives is one of `told`'s, the definitions whose meanings
+    were already reported as another than the first."""
+    return any(_alike(mark, each) for each in told)
 
 
 def _given_again(
@@ -2514,12 +2572,12 @@ def _given_again(
     of six table notes is one finding and not six (`_told_before`)."""
     first = definitions[0]
     given: _Definition | None = None
-    told: list[str] = []
+    told: list[_Definition] = []
     found = []
     for again in definitions:
-        if again is not first and not _same_meaning(first.long, again.long):
-            if not _told_before(again.long, told):
-                told.append(again.long)
+        if again is not first and not _alike(first, again):
+            if not _told_before(again, told):
+                told.append(again)
                 found.append((
                     again,
                     # The long forms quoted as typed: `repr` doubled a backslash an escape
@@ -2578,7 +2636,7 @@ def _given_again_apart(
     # was where that meaning was first given in it, and is not asked about besides (rounds 1
     # and 2 of #759).
     warned = frozenset(id(mark) for display, group in groups.items() if display is not None
-                       for mark in group[1:] if not _same_meaning(group[0].long, mark.long))
+                       for mark in group[1:] if not _alike(group[0], mark))
     found += [(*each, True) for each in _asked_of_displays(short, definitions, said, warned)]
     return sorted(found, key=lambda each: each[0].key)
 
@@ -2598,15 +2656,15 @@ def _asked_of_displays(
     text = [mark for mark in definitions if mark.display is None]
     if not text:
         return []
-    told: list[str] = []
+    told: list[_Definition] = []
     found = []
     for mark in definitions:
         if (mark.display is None or id(mark) in warned
-                or any(_same_meaning(mark.long, each.long) for each in text)):  # fmt: skip
+                or any(_alike(mark, each) for each in text)):  # fmt: skip
             continue
-        if _told_before(mark.long, told):
+        if _told_before(mark, told):
             continue
-        told.append(mark.long)
+        told.append(mark)
         # The text's definition may stand later on this line, a LaTeX float typed on one line
         # before the sentence (round 1 of #759).
         beside = "earlier on the same line" if text[0].key < mark.key else "later on the same line"
@@ -2927,11 +2985,13 @@ def check_language(
     path under `manuscript/`, the lines from 1 that a PDF the audit staged it from repeats at
     the top or the foot of its pages, where no use of a short form is owed its definition;
     `pdf` names, by the same paths, the files the audit staged from a PDF, whose notation is
-    read as pdftotext prints it."""
-    files = _read(project, running)
-    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    read as pdftotext prints it, and whose long forms are compared with a word broken at a
+    line's end joined (`_rejoined`)."""
     root = project.path("manuscript")
-    from_pdf = frozenset(file.path for file in files if _staged_as(pdf, root, file.path))
+    files = [replace(file, from_pdf=True) if _staged_as(pdf, root, file.path) else file
+             for file in _read(project, running)]  # fmt: skip
+    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    from_pdf = frozenset(file.path for file in files if file.from_pdf)
     prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,
                    file.headings)
              for file in files]  # fmt: skip

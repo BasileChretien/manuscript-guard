@@ -759,6 +759,9 @@ NOT_DEFINING = (
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
+    # A letter found only inside a bracket the long form opens, with no bracket before the
+    # long form, which a long form closing one it does not open would refuse on its own.
+    ("the warning score (12.5%) rose (WS2)", "(WS2", "WS2"),
     ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
     ("doses rose from 20.6 mg (DM1) to 21.5 mg (DM2) of oil", "(DM2", "DM2"),
     ("a reading of the scores (SD; Range) by school (SRS)", "(SRS", "SRS"),

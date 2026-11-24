@@ -61,9 +61,10 @@ expected:
       WSE1, drop WSE2"), or a hyphen follows the bracket and none of its items is the short
       form, "(TdT)-mediated ... (TUNEL)": "20.6 mg (DM1) to 21.5 mg (DM2)" and the
       elliptical "at entry (SCE1) and after 2 hours (SCE2)" define nothing, so the base's
-      unused definition of SCE2 is now a use of a form never defined. The inputs now hold those pieces, a list's bracket closed
-      inside a long form, and the bracket shapes kept (tests/generated.py, `DEFINING` and
-      `NOT_DEFINING`). The entry it replaces, for "Table stands alone", is spent
+      unused definition of SCE2 is now a use of a form never defined. The inputs now hold
+      those pieces, a list's bracket closed inside a long form, and the bracket shapes kept
+      (tests/generated.py, `DEFINING` and `NOT_DEFINING`). The entry it replaces, for "Table
+      stands alone", is spent
   - reading: abbreviation edits
     why: >-
       the same: a short form whose long form closes a bracket it does not open, and is not

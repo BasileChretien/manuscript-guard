@@ -1325,6 +1325,10 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
         # Round 2: what the bracket holds is read from where it opens.
         ("A score (the WSE) at 1 hour (WSE1) was taken.", "WSE1"),
         ("A construct (S199AzF, clone 4)-tagged protein (S199AzF) was used.", "S199AzF"),
+        # Round 2: the bracket read from where it opens, before the words the long form is
+        # looked for in, and a second bracket closed, though the first is the long form's.
+        ("A score (the WSE) at 1 hour of the second day (WSE1) was taken.", "WSE1"),
+        ("The scale ((WSE) x)-based score at 1 hour (WSE1) was taken.", "WSE1"),
     ],
 )  # fmt: skip
 def test_a_long_form_holding_an_unmatched_bracket_defines_nothing(text: str, short: str) -> None:

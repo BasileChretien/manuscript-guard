@@ -782,6 +782,11 @@ NOT_DEFINING = (
     # Its items typed with no space, so that no word of the long form is the short form
     # and only the bracket's items tell it holds the short form.
     ("a construct (KO,S199AzF;v2)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
+    # Round 2: a bracket read from where it opens before Schwartz and Hearst's bound, and a
+    # second bracket the long form closes, a hyphen after it, which the first's being its
+    # own does not make its own.
+    ("a score (the QXS) at 1 hour of the second day (QXS1)", "(QXS1", "QXS1"),
+    ("the scale ((QWZ) x)-based score at 1 hour (QWZ1)", "(QWZ1", "QWZ1"),
     # A short form closing a bracket whose letters are before the bracket and not before
     # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
     ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),

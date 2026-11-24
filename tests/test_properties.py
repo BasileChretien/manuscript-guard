@@ -2861,6 +2861,36 @@ def _a_bracket_holds_the_short_form_only_as_all_it_holds(patch: pytest.MonkeyPat
         or (_follows_a_hyphen(before, close) and before[start:close] != short)))
 
 
+def _a_bracket_is_read_in_the_words_a_long_form_is_looked_for_in(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """The bracket a long form closes read from where it opens within Schwartz and Hearst's
+    bound only, so "a score (the QXS) at 1 hour of the second day (QXS1)", whose "(the" is
+    before the bound, defines QXS1."""
+    real = language_gate._long_form
+    patch.setattr(language_gate, "_long_form",
+                  lambda short, before, wider="": real(short, before))
+
+
+def _a_long_form_may_close_two_brackets_it_does_not_open(patch: pytest.MonkeyPatch) -> None:
+    """Each bracket the long form closes and does not open judged on its own, so "((QWZ)
+    x)-based score at 1 hour (QWZ1)" defines QWZ1, its second bracket before a hyphen."""
+
+    def each(before: str, start: int, short: str) -> bool:
+        read, depth = before[start:], 0
+        for at, char in enumerate(read[: len(read.rstrip(language_gate._EDGES + " \t\r\n"))]):
+            if char in language_gate._OPENING:
+                depth += 1
+            elif char in language_gate._CLOSING and depth:
+                depth -= 1
+            elif char in language_gate._CLOSING and not language_gate._its_own(
+                    before, start, start + at, short):  # fmt: skip
+                return True
+        return False
+
+    patch.setattr(language_gate, "_unmatched", each)
+
+
 def _a_long_form_s_brackets_balance_to_its_last_character(patch: pytest.MonkeyPatch) -> None:
     """The brackets counted over the whole of what is read, its end too: one closing there
     that the long form did not open, "(mean arterial pressure) (MAP)", refuses it, and so
@@ -28388,6 +28418,14 @@ BROKEN = {
     ),
     "a bracket holds the short form only as all it holds": (
         _a_bracket_holds_the_short_form_only_as_all_it_holds,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket is read in the words a long form is looked for in": (
+        _a_bracket_is_read_in_the_words_a_long_form_is_looked_for_in,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form may close two brackets it does not open": (
+        _a_long_form_may_close_two_brackets_it_does_not_open,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a long form's brackets balance to its last character": (

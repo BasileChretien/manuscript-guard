@@ -8633,7 +8633,12 @@ LOOKALIKES = (
 #: "Suresha, B." opening a reference). And the second half of a word broken by a hyphen at
 #: a line's end, as a PDF's text keeps it, which is an opener's word or begins with one
 #: ("mea-/sures", "expo-/sure"). None is an assistant's voice.
-OPENER_LOOKALIKES = ("Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses offered")
+OPENER_LOOKALIKES = (
+    "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses offered",
+    # Round 1 of #779: an adverb broken by a hyphen at a line's end, and a compound joined
+    # by Unicode's hyphen.
+    "Sure-\nly", "Sure\N{HYPHEN}footed",
+)  # fmt: skip
 BROKEN_AT_A_LINE_END = ("expo-\nsure", "mea-\nsures", "mea-\nsured", "en-\nsure", "as-\nsured")
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of

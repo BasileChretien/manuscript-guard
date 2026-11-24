@@ -19899,9 +19899,9 @@ def _artefact_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
     patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
 
 
-#: How `assistant-voice` ends its words now: one word end for every opener, which a hyphen
-#: and a letter after it do not give.
-_OPENER_ENDS = "(?:the|a|an))\\b(?!-\\w)"
+#: How `assistant-voice` ends its words now: one word end for every opener, which a hyphen,
+#: ASCII or Unicode's, and a letter after it, on its line or the next, do not give.
+_OPENER_ENDS = "(?:the|a|an))\\b(?![-\N{HYPHEN}](?:[^\\S\\n]*\\n[^\\S\\n]*)?\\w)"
 
 
 def _an_opener_s_word_end_binds_its_last_words_alone(patch: pytest.MonkeyPatch) -> None:
@@ -19921,6 +19921,17 @@ def _an_opener_s_word_ends_at_a_hyphen(patch: pytest.MonkeyPatch) -> None:
         return {**rule, "pattern": rule["pattern"].replace(_OPENER_ENDS, "(?:the|a|an))\\b")}
 
     _artefact_rule(patch, "assistant-voice", at_a_hyphen)
+
+
+def _an_opener_s_word_ends_at_a_hyphen_off_its_line(patch: pytest.MonkeyPatch) -> None:
+    # As the first head of #779 had it: an ASCII hyphen with a letter after it on its line
+    # alone, so "Sure-/ly" and "Sure‐footed" opened with "Sure" (round 1 of #779).
+    def on_its_line(rule: dict) -> dict:
+        assert _OPENER_ENDS in rule["pattern"], "the rule no longer ends its words this way"
+        return {**rule, "pattern": rule["pattern"].replace(_OPENER_ENDS,
+                                                           "(?:the|a|an))\\b(?!-\\w)")}
+
+    _artefact_rule(patch, "assistant-voice", on_its_line)
 
 
 def _a_word_broken_at_a_line_end_ends_its_line(patch: pytest.MonkeyPatch) -> None:
@@ -31806,6 +31817,10 @@ BROKEN = {
     ),
     "an opener's word ends at a hyphen": (
         _an_opener_s_word_ends_at_a_hyphen,
+        test_an_assistant_opener_is_a_word_of_its_own,
+    ),
+    "an opener's word ends at a hyphen off its line or not ASCII's": (
+        _an_opener_s_word_ends_at_a_hyphen_off_its_line,
         test_an_assistant_opener_is_a_word_of_its_own,
     ),
     "a word broken at a line end ends its line": (

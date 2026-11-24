@@ -181,8 +181,9 @@ expected:
   - reading: placeholders
     why: >-
       an assistant's opener is a word of its own (window C of the real-paper corpus): the
-      inputs now hold "Suresha, B.", "Surely", "Sureness", "Sure-footed" and "Of courses
-      offered", which the base reads as opening with "Sure" or "Of course", and a word broken
+      inputs now hold "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses
+      offered", "Sure-/ly" and "Sure" joined to "footed" by Unicode's hyphen (round 1 of
+      #779), which the base reads as opening with "Sure" or "Of course", and a word broken
       by a hyphen at a line's end, "mea-/sures", "expo-/sure", whose second half the base
       reads as an opener where it opens a line; the entry it replaces is spent
   - reading: table margins

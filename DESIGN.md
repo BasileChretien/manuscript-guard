@@ -5010,19 +5010,21 @@ match whose words carry on a sentence from the line before (`paragraph_start`,
 `writing._continues_a_sentence`): the words are in lower case, and the line before is prose
 that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
 marks, or in a word broken by a hyphen, as a PDF's text keeps one ("expo-/sure"). Each
-opener is a word of its own: the word end bound only the last of them, so a reference
-opening "Suresha, B." and a PDF's "mea-/sures" opened with "sure" (window C of the
-real-paper corpus, four false findings and no true one). Read at every line, it failed a hard-wrapped sentence whose line began "here is the"
-(the athlete-leakage study, 2026-11-06). A capital is read as an opening whatever stands
-before it, since a chat assistant's reply opens with one, and so is a lower-case word after
-anything but running prose: the file is read as typed, and a list of what ends a paragraph,
-then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
-#538). Its limits, each as base had it or narrower: wrapped prose whose line ends in
-something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop ("Smith et
-al."), still fails at a lower-case opener after it; a sentence that opens with "Certainly"
-or "Of course" after a wrap at a full stop fails where the same sentence on one line does
-not; and a reply typed in lower case under a line that ends in a letter, `\noindent` or a
-bold label, is missed, where base caught it.
+opener is a word of its own, and a hyphen with a letter after it, on its line or the next,
+ends none: the word end bound only the last of them, so a reference opening "Suresha, B."
+and a PDF's "mea-/sures" opened with "sure" (window C of the real-paper corpus, four false
+findings and no true one). Read at every line, the rule failed a hard-wrapped sentence whose
+line began "here is the" (the athlete-leakage study, 2026-11-06). A capital is read as an
+opening whatever stands before it, since a chat assistant's reply opens with one, and so is
+a lower-case word after anything but running prose: the file is read as typed, and a list of
+what ends a paragraph, then a test of the line before alone, each missed markup the other
+caught (rounds 1 to 3 of #538). Its limits, each as base had it or narrower: wrapped prose
+whose line ends in something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop
+("Smith et al."), still fails at a lower-case opener after it; a sentence that opens with
+"Certainly" or "Of course" after a wrap at a full stop fails where the same sentence on one
+line does not; and a reply typed in lower case under a line that ends in a letter, a hyphen
+joined to a word ("complete-/sure, here is"), `\noindent` or a bold label, is missed, where
+base caught it (the hyphen since window C; round 1 of #779).
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
@@ -22738,19 +22740,22 @@ Open, recorded as each change landed:
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a
-  comma, a semicolon, a colon, a dash or a word broken by a hyphen (see "The AI-writing lint measures rate, not
-  presence", which gives the rule and these limits). Wrapped prose whose line ends in
-  anything else still reads as opening the next: `}` (`Table~\ref{t1}`, or a `\footnote{...}`
-  or `\cite{...}` alone on its line inside a LaTeX paragraph), `\%`, `$`, or an
-  abbreviation's stop ("Smith et al."), so "of course" at the start of the next line fails
-  (round 2 of #538, finding 3; round 4, finding 2). A sentence that opens with "Certainly"
-  or "Of course" after a wrap at a full stop fails where the same sentence on one line
-  passes (round 4, finding 4). And a reply typed in lower case under a line that ends in a
-  letter, `\noindent` or a bold label, is missed, where the rule before #538 caught it
-  (round 4, finding 3). In a PDF's text whose columns are interleaved, the second half of a
-  word broken at a line's end can open a line under one from the other column that ends
-  its sentence; where that half is "sure", it fails (window C of the real-paper corpus).
-  Closing these needs the line before read as pandoc parses it, not by its last character.
+  comma, a semicolon, a colon, a dash or a word broken by a hyphen (see "The AI-writing
+  lint measures rate, not presence", which gives the rule and these limits). Wrapped prose
+  whose line ends in anything else still reads as opening the next: `}` (`Table~\ref{t1}`,
+  or a `\footnote{...}` or `\cite{...}` alone on its line inside a LaTeX paragraph), `\%`,
+  `$`, or an abbreviation's stop ("Smith et al."), so "of course" at the start of the next
+  line fails (round 2 of #538, finding 3; round 4, finding 2). A sentence that opens with
+  "Certainly" or "Of course" after a wrap at a full stop fails where the same sentence on
+  one line passes (round 4, finding 4). And a reply typed in lower case under a line that
+  ends in a letter, `\noindent` or a bold label, is missed, where the rule before #538
+  caught it (round 4, finding 3); and so is one under a line ending in a hyphen joined to a
+  word, "The analysis was complete-/sure, here is the revised Methods section.", which the
+  rule reads as a word broken at the line's end, as a PDF's text keeps one (round 1 of
+  #779). In a PDF's text whose columns are interleaved, the second half of a word broken at
+  a line's end can open a line under one from the other column that ends its sentence; where
+  that half is "sure", it fails (window C of the real-paper corpus). Closing these needs the
+  line before read as pandoc parses it, not by its last character.
   Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`
   and `tests/test_writing.py::test_an_assistant_s_opener_after_a_command_alone_on_its_line_in_latex_fails`.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after

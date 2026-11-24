@@ -215,6 +215,13 @@ def _voiced(project: Path, text: str) -> list[str]:
         ("The cohort was measured by expo-\nsure in the later period.", []),
         ("The cohort was small.\nsure in the later period.", ["'sure'"]),
         ("The analysis was complete-\nsure, here is the revised Methods section.", []),
+        # Round 2 of #779: each hyphen a PDF's text breaks a word with; and an opener with a
+        # hyphen at its line's end before a reply in lower case, read as a word broken there.
+        ("The cohort was measured by expo\N{HYPHEN}\nsure in the later period.", []),
+        ("The cohort was measured by expo\N{NON-BREAKING HYPHEN}\nsure in the later period.",
+         []),
+        ("The cohort was measured by expo\N{SOFT HYPHEN}\nsure in the later period.", []),
+        ("Sure-\nhere is the revised abstract.", []),
     ],
 )  # fmt: skip
 def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
@@ -227,8 +234,9 @@ def test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before(
     the same sentence on one line passes; and a reply in lower case under a line ending in
     a letter, a hyphen joined to a word, `\\noindent` or a bold label is missed; and "sure",
     the second half of a word broken at a line's end, under a line that ends its sentence,
-    as a PDF's interleaved columns can put it, fails. The 2026-11-09 triage planned a fix
-    (F11), which will change this test."""
+    as a PDF's interleaved columns can put it, fails; and an opener with a hyphen at its
+    line's end, "Sure-/here is the revised abstract.", is missed. The 2026-11-09 triage
+    planned a fix (F11), which will change this test."""
     assert _voiced(project, text) == said
 
 

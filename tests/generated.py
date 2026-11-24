@@ -8635,11 +8635,16 @@ LOOKALIKES = (
 #: ("mea-/sures", "expo-/sure"). None is an assistant's voice.
 OPENER_LOOKALIKES = (
     "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses offered",
-    # Round 1 of #779: an adverb broken by a hyphen at a line's end, and a compound joined
-    # by Unicode's hyphen.
-    "Sure-\nly", "Sure\N{HYPHEN}footed",
+    # Rounds 1 and 2 of #779: an adverb broken by a hyphen at a line's end, ASCII's or the
+    # soft one, and a compound joined by Unicode's hyphen or its non-breaking hyphen.
+    "Sure-\nly", "Sure\N{SOFT HYPHEN}\nly", "Sure\N{HYPHEN}footed",
+    "Sure\N{NON-BREAKING HYPHEN}footed",
 )  # fmt: skip
-BROKEN_AT_A_LINE_END = ("expo-\nsure", "mea-\nsures", "mea-\nsured", "en-\nsure", "as-\nsured")
+BROKEN_AT_A_LINE_END = (
+    "expo-\nsure", "mea-\nsures", "mea-\nsured", "en-\nsure", "as-\nsured",
+    # Round 2 of #779: each of the other hyphens a PDF's text can break a word with.
+    "expo\N{HYPHEN}\nsure", "en\N{NON-BREAKING HYPHEN}\nsure", "in\N{SOFT HYPHEN}\nsure",
+)  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
 #: G6 that finds it and the words it finds: one of each rule, a phrase cut by a hard wrap,

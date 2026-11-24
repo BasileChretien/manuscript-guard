@@ -19901,7 +19901,8 @@ def _artefact_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
 
 #: How `assistant-voice` ends its words now: one word end for every opener, which a hyphen,
 #: ASCII or Unicode's, and a letter after it, on its line or the next, do not give.
-_OPENER_ENDS = "(?:the|a|an))\\b(?![-\N{HYPHEN}](?:[^\\S\\n]*\\n[^\\S\\n]*)?\\w)"
+_OPENER_ENDS = ("(?:the|a|an))\\b(?![-\\u2010\\u2011\\u00ad]"
+                "(?:[^\\S\\n]*\\n[^\\S\\n]*)?\\w)")
 
 
 def _an_opener_s_word_end_binds_its_last_words_alone(patch: pytest.MonkeyPatch) -> None:
@@ -19932,6 +19933,30 @@ def _an_opener_s_word_ends_at_a_hyphen_off_its_line(patch: pytest.MonkeyPatch) -
                                                            "(?:the|a|an))\\b(?!-\\w)")}
 
     _artefact_rule(patch, "assistant-voice", on_its_line)
+
+
+def _an_opener_s_word_ends_at_two_hyphens_alone(patch: pytest.MonkeyPatch) -> None:
+    # As the second head of #779 had it: the ASCII hyphen and U+2010 alone, so "Sure" joined
+    # to "footed" by U+2011 and "Sure" with a soft hyphen at its line's end opened with "Sure"
+    # (round 2 of #779).
+    def two(rule: dict) -> dict:
+        assert _OPENER_ENDS in rule["pattern"], "the rule no longer ends its words this way"
+        return {**rule, "pattern": rule["pattern"].replace(
+            _OPENER_ENDS, "(?:the|a|an))\\b(?![-\N{HYPHEN}]"
+                          "(?:[^\\S\\n]*\\n[^\\S\\n]*)?\\w)")}
+
+    _artefact_rule(patch, "assistant-voice", two)
+
+
+def _a_word_broken_by_an_ascii_hyphen_alone_runs_on(patch: pytest.MonkeyPatch) -> None:
+    # As the first and second heads of #779 read a line: a word broken at its end by the
+    # ASCII hyphen alone ran on, so "expo/sure" broken by U+2010 opened with "sure" (round 2).
+    from manuscript_guard.gates import writing
+
+    patch.setattr(writing, "_RUNS_ON",
+                  re.compile(r"(?:[\w,;:\N{EN DASH}\N{EM DASH}]|(?<!-)--|(?<=\w)-)"
+                             r"[)\]*_'\"’”]*"
+                             r"[ \t\r]*$"))  # fmt: skip
 
 
 def _a_word_broken_at_a_line_end_ends_its_line(patch: pytest.MonkeyPatch) -> None:
@@ -31821,6 +31846,14 @@ BROKEN = {
     ),
     "an opener's word ends at a hyphen off its line or not ASCII's": (
         _an_opener_s_word_ends_at_a_hyphen_off_its_line,
+        test_an_assistant_opener_is_a_word_of_its_own,
+    ),
+    "an opener's word ends at any hyphen but two": (
+        _an_opener_s_word_ends_at_two_hyphens_alone,
+        test_an_assistant_opener_is_a_word_of_its_own,
+    ),
+    "a word broken by the ASCII hyphen alone runs on": (
+        _a_word_broken_by_an_ascii_hyphen_alone_runs_on,
         test_an_assistant_opener_is_a_word_of_its_own,
     ),
     "a word broken at a line end ends its line": (

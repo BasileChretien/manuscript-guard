@@ -5010,13 +5010,15 @@ match whose words carry on a sentence from the line before (`paragraph_start`,
 `writing._continues_a_sentence`): the words are in lower case, and the line before is prose
 that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
 marks, or in a word broken by a hyphen, as a PDF's text keeps one ("expo-/sure"). Each
-opener is a word of its own, and a hyphen with a letter after it, on its line or the next,
-ends none: the word end bound only the last of them, so a reference opening "Suresha, B."
-and a PDF's "mea-/sures" opened with "sure" (window C of the real-paper corpus, four false
-findings and no true one). Read at every line, the rule failed a hard-wrapped sentence whose
-line began "here is the" (the athlete-leakage study, 2026-11-06). A capital is read as an
-opening whatever stands before it, since a chat assistant's reply opens with one, and so is
-a lower-case word after anything but running prose: the file is read as typed, and a list of
+opener is a word of its own, and its word end refuses a hyphen, the ASCII one, U+2010,
+U+2011 or the soft hyphen U+00AD, followed on its line or at the next line's start by a
+letter, a digit or an underscore, and a line that ends in one of them after a word runs on.
+The word end bound only the last opener, so a reference opening "Suresha, B." and a PDF's
+"mea-/sures" opened with "sure" (window C of the real-paper corpus, four false findings and
+no true one). Read at every line, the rule failed a hard-wrapped sentence whose line began
+"here is the" (the athlete-leakage study, 2026-11-06). A capital is read as an opening
+whatever stands before it, since a chat assistant's reply opens with one, and so is a
+lower-case word after anything but running prose: the file is read as typed, and a list of
 what ends a paragraph, then a test of the line before alone, each missed markup the other
 caught (rounds 1 to 3 of #538). Its limits, each as base had it or narrower: wrapped prose
 whose line ends in something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop
@@ -22752,10 +22754,13 @@ Open, recorded as each change landed:
   caught it (round 4, finding 3); and so is one under a line ending in a hyphen joined to a
   word, "The analysis was complete-/sure, here is the revised Methods section.", which the
   rule reads as a word broken at the line's end, as a PDF's text keeps one (round 1 of
-  #779). In a PDF's text whose columns are interleaved, the second half of a word broken at
-  a line's end can open a line under one from the other column that ends its sentence; where
-  that half is "sure", it fails (window C of the real-paper corpus). Closing these needs the
-  line before read as pandoc parses it, not by its last character.
+  #779); and so is an opener with a hyphen at its line's end before a reply in lower case,
+  "Sure-/here is the revised abstract.", whose hyphen and letter after it read as a word
+  broken there (round 2 of #779). In a PDF's text whose columns are interleaved, the second
+  half of a word broken at a line's end can open a line under one from the other column that
+  ends its sentence; where that half is "sure", it fails (window C of the real-paper
+  corpus). Closing these needs the line before read as pandoc parses it, not by its last
+  character.
   Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`
   and `tests/test_writing.py::test_an_assistant_s_opener_after_a_command_alone_on_its_line_in_latex_fails`.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after

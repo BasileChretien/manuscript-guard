@@ -182,10 +182,11 @@ expected:
     why: >-
       an assistant's opener is a word of its own (window C of the real-paper corpus): the
       inputs now hold "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses
-      offered", "Sure-/ly" and "Sure" joined to "footed" by Unicode's hyphen (round 1 of
-      #779), which the base reads as opening with "Sure" or "Of course", and a word broken
-      by a hyphen at a line's end, "mea-/sures", "expo-/sure", whose second half the base
-      reads as an opener where it opens a line; the entry it replaces is spent
+      offered", "Sure-/ly" and the same with a soft hyphen, and "Sure" joined to "footed" by
+      U+2010 or U+2011 (rounds 1 and 2 of #779), which the base reads as opening with "Sure"
+      or "Of course", and a word broken by a hyphen at a line's end, "mea-/sures",
+      "expo-/sure", and "expo/sure" broken by U+2010, U+2011 or a soft hyphen, whose second
+      half the base reads as an opener where it opens a line; the entry it replaces is spent
   - reading: table margins
     why: >-
       categories over their column's n by no more than (k + 1) / 2 for k categories,

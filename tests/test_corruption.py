@@ -37576,8 +37576,10 @@ def test_a_long_form_read_across_a_bracket_it_does_not_open_is_no_definition(
     """The real-paper corpus (row 4 of window C): two doses, each given as a pair, "20.6 mg
     (M1) to 21.5 mg (M2)". The letters of M2 were read back across the bracket of M1, so M2
     was defined as "M1) to 21.5 mg" and then as "M1) to 9.2 mg", and reported as given
-    another meaning. A long form holding a bracket it does not open, or one it opens and does
-    not close, is no long form; one that holds a whole bracket still is."""
+    another meaning. A long form that closes a bracket it does not open is no long form,
+    unless the bracket opens on a part the short form opens with or a hyphen follows it; one
+    that holds a whole bracket still is, and so is one that opens a bracket the short form's
+    bracket closes, "visual analogue scale (in mm (VAS))", as nested brackets are written."""
     mended = with_ror_defined(project)
     paired = mended.replace(
         "The reporting odds ratio observed here",

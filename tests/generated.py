@@ -600,6 +600,13 @@ DEFINING = (
      "(TUNEL", "TUNEL"),
     ("a coat of (3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH)", "(APDMES",
      "APDMES"),
+    # Round 2 of the same: a non-breaking hyphen after the bracket, and a bracket whose
+    # first item, up to a semicolon or a comma, is the part the short form opens with.
+    ("the terminal transferase (TdT)\N{NON-BREAKING HYPHEN}mediated uridine nick-end "
+     "labelling (TUNL)", "(TUNL", "TUNL"),
+    ("the scale (HADS; Zigmond and Snaith, 1983) Anxiety subscale (HADS-A)", "(HADS-A",
+     "HADS-A"),
+    ("the scale (HQS, 0-21) Anxiety subscale (HQS-A)", "(HQS-A", "HQS-A"),
     # A short form after a colon, its letters one per word or not.
     ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
     ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
@@ -768,6 +775,13 @@ NOT_DEFINING = (
     ("bound to the receptors (Fc gamma Rs), or a bivalent analyte model (FcRn)", "(FcRn",
      "FcRn"),
     ("a construct (KO, S199AzF)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
+    # Round 2: a bracket read from where it opens, so its first item is not the part the
+    # short form opens with, and an item of it a hyphen follows is the short form itself.
+    ("a scale (the QWS) at 15 minutes (QWS1)", "(QWS1", "QWS1"),
+    ("a construct (S199AzF, clone 4)-tagged protein (S199AzF)", "(S199AzF", "S199AzF"),
+    # Its items typed with no space, so that no word of the long form is the short form
+    # and only the bracket's items tell it holds the short form.
+    ("a construct (KO,S199AzF;v2)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
     # A short form closing a bracket whose letters are before the bracket and not before
     # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
     ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),

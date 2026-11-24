@@ -1282,6 +1282,18 @@ def test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens(text: str) -
          "(TUNEL) was used.", "TUNEL", "TdT)-mediated dUTP nick-end labeling"),
         ("Slides had a coat of (3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH).",
          "APDMES", "aminopropyl)-dimethyl-ethoxysilane"),
+        # Round 2: a hyphen proper or a non-breaking one after the bracket, and a bracket
+        # whose first item, up to a semicolon or a comma, is the part the short form opens
+        # with.
+        ("The terminal transferase (TdT)\N{NON-BREAKING HYPHEN}mediated uridine nick-end "
+         "labelling (TUNEL) was run.", "TUNEL",
+         "TdT)\N{NON-BREAKING HYPHEN}mediated uridine nick-end labelling"),
+        ("The terminal transferase (TdT)\N{HYPHEN}mediated uridine nick-end labelling "
+         "(TUNEL) was run.", "TUNEL", "TdT)\N{HYPHEN}mediated uridine nick-end labelling"),
+        ("The scale (HADS; Zigmond and Snaith, 1983) Anxiety subscale (HADS-A) was used.",
+         "HADS-A", "HADS; Zigmond and Snaith, 1983) Anxiety subscale"),
+        ("The scale (HADS, 0-21) Anxiety subscale (HADS-A) was used.", "HADS-A",
+         "HADS, 0-21) Anxiety subscale"),
         # A bracket it opens that the short form's bracket closes, as nested ones are.
         ("The visual analogue scale (in mm (VAS)) was used.", "VAS",
          "visual analogue scale (in mm"),
@@ -1310,6 +1322,9 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
         ("A reading of the scores (SD; Range) by school (SE) was made.", "SE"),
         ("Bound to receptors (Fc gamma Rs), or a bivalent analyte model (FcRn).", "FcRn"),
         ("A construct (KO, S199AzF)-HIS Addgene tag (S199AzF) was used.", "S199AzF"),
+        # Round 2: what the bracket holds is read from where it opens.
+        ("A score (the WSE) at 1 hour (WSE1) was taken.", "WSE1"),
+        ("A construct (S199AzF, clone 4)-tagged protein (S199AzF) was used.", "S199AzF"),
     ],
 )  # fmt: skip
 def test_a_long_form_holding_an_unmatched_bracket_defines_nothing(text: str, short: str) -> None:
@@ -1334,6 +1349,15 @@ def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
     assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
     # A whole number alone after the short form, as "(ESM 1)" is (decision 29).
     assert shorts("The reporting odds ratio (ROR 3) was high.") == ["ROR"]
+    # A bracket of a single letter is a part every short form with that letter opens with,
+    # so "(M) to 21.5 mg" is read as M2's long form.
+    assert shorts("Doses rose from 20.6 mg (M) to 21.5 mg (M2) of oil.") == ["M2"]
+    # Only a hyphen puts a bracket in a word: after an en dash or a slash it closes one the
+    # long form does not open, and the long form is refused.
+    assert shorts("The terminal transferase (TdT)\N{EN DASH}mediated uridine nick-end "
+                  "labelling (TUNEL) was run.") == []
+    assert shorts("The terminal transferase (TdT)/mediated uridine nick-end labelling "
+                  "(TUNEL) was run.") == []
     # An elliptical short form made from a sibling's bracket defines nothing.
     assert shorts("The score was taken at entry (WSE1) and after 2 hours (WSE2).") == []
 

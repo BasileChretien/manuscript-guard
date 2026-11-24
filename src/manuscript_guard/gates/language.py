@@ -619,7 +619,7 @@ def _long_form(short: str, before: str) -> str | None:
         searched = _passed_over(searched, opened)
     read = before[matched[-1] :].strip()
     found = read.strip(_EDGES).strip()
-    if len(found) <= len(short) or _unmatched(read, short):
+    if len(found) <= len(short) or _unmatched(before, matched[-1], short):
         return None
     # A short form does not define itself, nor through its plural: in "expressed as ORs
     # (OR, 95% CI)" the letters of OR are all in "ORs".
@@ -629,43 +629,69 @@ def _long_form(short: str, before: str) -> str | None:
     return found
 
 
-def _unmatched(read: str, short: str) -> bool:
-    """Does the long form of `short` read as `read`, from its first letter to the end of the
-    text before the short form, close a bracket it does not open?
+#: What may follow a closing bracket inside a word: a hyphen, a hyphen proper and a
+#: non-breaking hyphen.
+_WORD_HYPHENS = "-\N{HYPHEN}\N{NON-BREAKING HYPHEN}"
+
+
+def _unmatched(before: str, start: int, short: str) -> bool:
+    """Does the long form of `short` that starts at `start` of `before`, the text before the
+    short form, close a bracket it does not open?
 
     "20.6 mg (M1) to 21.5 mg (M2)" reads M2's letters back across the bracket of M1, to "M1)
-    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). Two
-    brackets the long form closes are its own (`_its_own`): one that holds a part the short
-    form opens with and nothing else, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is
-    the WSE at one hour; and one a hyphen follows, which is part of a word, "(TdT)-mediated
-    dUTP nick-end labeling (TUNEL)". Brackets are counted as `_passed_over` counts them,
-    round and square alike.
-    What clings to the end is no part of the long form, so a bracket closing there closes
-    one opened before it, "(mean arterial pressure) (MAP)". A bracket the long form opens
-    and does not close is left to the short form's to close, as nested brackets are: "visual
+    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). The first
+    bracket the long form closes and does not open may be its own (`_its_own`); one after it
+    is not. Brackets are counted as `_passed_over` counts them, round and square alike. What
+    clings to the end is no part of the long form, so a bracket closing there closes one
+    opened before it, "(mean arterial pressure) (MAP)". A bracket the long form opens and
+    does not close is left to the short form's to close, as nested brackets are: "visual
     analogue scale (in mm (VAS))"."""
-    depth = 0
+    read = before[start:]
+    depth, closed = 0, False
     for at, char in enumerate(read[: len(read.rstrip(_EDGES + " \t\r\n"))]):
         if char in _OPENING:
             depth += 1
         elif char in _CLOSING and depth:
             depth -= 1
-        elif char in _CLOSING and not _its_own(read, at, short):
-            return True
+        elif char in _CLOSING:
+            if closed or not _its_own(before, start, start + at, short):
+                return True
+            closed = True
     return False
 
 
-def _its_own(read: str, at: int, short: str) -> bool:
-    """Is the bracket that closes at `at` of `read`, and that the long form of `short` does not
-    open, the long form's own? It is where it holds a part the short form opens with and
-    nothing else, "WSE) at 1 hour" for WSE1; and where a hyphen follows it, the bracket part
-    of a word, "TdT)-mediated dUTP nick-end labeling" for TUNEL, "aminopropyl)-dimethyl-
-    ethoxysilane" for APDMES, unless what it holds is the short form itself, "S199AzF)-HIS"
-    (the real-paper corpus, row 4 of window C)."""
-    held = read[:at]
-    if at < len(short) and short.startswith(held):
+def _its_own(before: str, start: int, close: int, short: str) -> bool:
+    """Is the bracket that closes at `close` of `before`, opened before the long form of
+    `short` that starts at `start`, the long form's own? What it holds is read from where it
+    opens, or from the start of `before` where it opens before that, in items a semicolon or
+    a comma ends.
+
+    It is where its first item is a part the short form opens with, "warning score (WSE) at
+    1 hour (WSE1)", where WSE1 is the WSE at one hour, and "(HADS; Zigmond and Snaith, 1983)
+    Anxiety subscale (HADS-A)"; not "(the WSE) at 1 hour (WSE1)". And it is where a hyphen
+    follows it, the bracket part of a word, "(TdT)-mediated dUTP nick-end labeling (TUNEL)"
+    and "(3-aminopropyl)-dimethyl- ethoxysilane (APDMES", unless an item of it is the short
+    form itself, "(KO, S199AzF)-HIS tag (S199AzF)" (the real-paper corpus, row 4 of window
+    C)."""
+    items = [item.strip() for item in re.split(r"[;,]", before[_opened(before, start) : close])]
+    if items[0] and len(items[0]) < len(short) and short.startswith(items[0]):
         return True
-    return read[at + 1 : at + 2] == "-" and held != short
+    after = before[close + 1 : close + 2]
+    return bool(after) and after in _WORD_HYPHENS and short not in items
+
+
+def _opened(before: str, start: int) -> int:
+    """Where the text of the bracket open at `start` of `before` begins, just after its
+    opening; 0 where it opens before `before` does."""
+    depth = 0
+    for at in range(start - 1, -1, -1):
+        if before[at] in _CLOSING:
+            depth += 1
+        elif before[at] in _OPENING:
+            if not depth:
+                return at + 1
+            depth -= 1
+    return 0
 
 
 def _letters(short: str, before: str) -> list[int] | None:

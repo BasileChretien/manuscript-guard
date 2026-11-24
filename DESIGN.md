@@ -5009,17 +5009,24 @@ past a construct it refuses, it was quadratic in the stretch's lines, 36 s for a
 match whose words carry on a sentence from the line before (`paragraph_start`,
 `writing._continues_a_sentence`): the words are in lower case, and the line before is prose
 that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
-marks. Read at every line, it failed a hard-wrapped sentence whose line began "here is the"
-(the athlete-leakage study, 2026-11-06). A capital is read as an opening whatever stands
-before it, since a chat assistant's reply opens with one, and so is a lower-case word after
-anything but running prose: the file is read as typed, and a list of what ends a paragraph,
-then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
-#538). Its limits, each as base had it or narrower: wrapped prose whose line ends in
-something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop ("Smith et
-al."), still fails at a lower-case opener after it; a sentence that opens with "Certainly"
-or "Of course" after a wrap at a full stop fails where the same sentence on one line does
-not; and a reply typed in lower case under a line that ends in a letter, `\noindent` or a
-bold label, is missed, where base caught it.
+marks, or in a word broken by a hyphen, as a PDF's text keeps one ("expo-/sure"). Each
+opener is a word of its own, and its word end refuses a hyphen, the ASCII one, U+2010,
+U+2011 or the soft hyphen U+00AD, followed on its line or at the next line's start by a
+letter, a digit or an underscore, and a line that ends in one of them after a word runs on.
+The word end bound only the last opener, so a reference opening "Suresha, B." and a PDF's
+"mea-/sures" opened with "sure" (window C of the real-paper corpus, four false findings and
+no true one). Read at every line, the rule failed a hard-wrapped sentence whose line began
+"here is the" (the athlete-leakage study, 2026-11-06). A capital is read as an opening
+whatever stands before it, since a chat assistant's reply opens with one, and so is a
+lower-case word after anything but running prose: the file is read as typed, and a list of
+what ends a paragraph, then a test of the line before alone, each missed markup the other
+caught (rounds 1 to 3 of #538). Its limits, each as base had it or narrower: wrapped prose
+whose line ends in something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop
+("Smith et al."), still fails at a lower-case opener after it; a sentence that opens with
+"Certainly" or "Of course" after a wrap at a full stop fails where the same sentence on one
+line does not; and a reply typed in lower case under a line that ends in a letter, a hyphen
+joined to a word ("complete-/sure, here is"), `\noindent` or a bold label, is missed, where
+base caught it (the hyphen since window C; round 1 of #779).
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
@@ -5594,9 +5601,10 @@ opens with a note's mark ("Note", "Abbreviations", a footnote's) or pairs a shor
 its long form ("ICC: intraclass correlation"); a legend with no table beside it, a figure's
 or a supplementary table's, "**S1 Table.** ...", is a display with the notes under it; a
 heading, and anything G14 does not read, ends one. In LaTeX it is a table's float whole, or a
-`tabular` and its kin in none. A definition there that gives a meaning the text gives says
-nothing, so a display may define its forms again as the text does. One that gives another
-meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
+`tabular` and its kin in none. In the text `audit` reads from a PDF no display is found,
+and all of it is the text's (Known gaps). A definition there that gives a meaning the text
+gives says nothing, so a display may define its forms again as the text does. One that gives
+another meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
 drop"): a question, `abbreviation-redefined` at INFO, never a warning, where that meaning is
 first given in a display and once, naming the display's long form and the text's. A slip in a
 note's long form, "Score" for "Scale", is then still before the author, and a display's own
@@ -17269,7 +17277,11 @@ to fix is pinned until the fix lands, and the fix changes its test.
     with any other paragraph between it and its table is a display of its own, and the
     table another. Accepted.
   - A PDF's text holds no table that G14 can find, so a PDF's tables, captions and notes
-    are read as the text's, as before. Accepted.
+    are read as the text's, as before. Its lines come with no blank line but around a
+    heading, so a legend's line found by its shape made the whole section under the heading
+    a display (window C of the real-paper corpus, row 6): a file `audit` staged from a PDF
+    is read with no display. Accepted. Pinned by
+    `tests/test_tables_stand_alone.py::test_a_pdf_s_text_holds_no_display_and_all_of_it_is_the_text_s`.
   - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
   - Where the text defines a form nowhere, a display's definition counts for a use outside
     it: the use after it is defined, the use before it is used before it is defined, as
@@ -22751,17 +22763,25 @@ Open, recorded as each change landed:
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a
-  comma, a semicolon, a colon or a dash (see "The AI-writing lint measures rate, not
-  presence", which gives the rule and these limits). Wrapped prose whose line ends in
-  anything else still reads as opening the next: `}` (`Table~\ref{t1}`, or a `\footnote{...}`
-  or `\cite{...}` alone on its line inside a LaTeX paragraph), `\%`, `$`, or an
-  abbreviation's stop ("Smith et al."), so "of course" at the start of the next line fails
-  (round 2 of #538, finding 3; round 4, finding 2). A sentence that opens with "Certainly"
-  or "Of course" after a wrap at a full stop fails where the same sentence on one line
-  passes (round 4, finding 4). And a reply typed in lower case under a line that ends in a
-  letter, `\noindent` or a bold label, is missed, where the rule before #538 caught it
-  (round 4, finding 3). Closing these needs the line before read as pandoc parses it, not
-  by its last character.
+  comma, a semicolon, a colon, a dash or a word broken by a hyphen (see "The AI-writing
+  lint measures rate, not presence", which gives the rule and these limits). Wrapped prose
+  whose line ends in anything else still reads as opening the next: `}` (`Table~\ref{t1}`,
+  or a `\footnote{...}` or `\cite{...}` alone on its line inside a LaTeX paragraph), `\%`,
+  `$`, or an abbreviation's stop ("Smith et al."), so "of course" at the start of the next
+  line fails (round 2 of #538, finding 3; round 4, finding 2). A sentence that opens with
+  "Certainly" or "Of course" after a wrap at a full stop fails where the same sentence on
+  one line passes (round 4, finding 4). And a reply typed in lower case under a line that
+  ends in a letter, `\noindent` or a bold label, is missed, where the rule before #538
+  caught it (round 4, finding 3); and so is one under a line ending in a hyphen joined to a
+  word, "The analysis was complete-/sure, here is the revised Methods section.", which the
+  rule reads as a word broken at the line's end, as a PDF's text keeps one (round 1 of
+  #779); and so is an opener with a hyphen at its line's end before a reply in lower case,
+  "Sure-/here is the revised abstract.", whose hyphen and letter after it read as a word
+  broken there (round 2 of #779). In a PDF's text whose columns are interleaved, the second
+  half of a word broken at a line's end can open a line under one from the other column that
+  ends its sentence; where that half is "sure", it fails (window C of the real-paper
+  corpus). Closing these needs the line before read as pandoc parses it, not by its last
+  character.
   Pinned by `tests/test_writing.py::test_an_assistant_s_opener_is_read_by_the_last_character_of_the_line_before`
   and `tests/test_writing.py::test_an_assistant_s_opener_after_a_command_alone_on_its_line_in_latex_fails`.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after

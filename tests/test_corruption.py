@@ -11412,6 +11412,21 @@ def test_an_assistant_reply_after_a_wrapped_paragraph_fails(project: Path) -> No
     ], said
 
 
+def test_an_assistant_reply_fails_and_a_word_that_begins_like_one_passes(project: Path) -> None:
+    """`assistant-voice` matched "sure" at the start of a longer word: a reference opening
+    "Suresha, B." and, in a PDF's text, the second half of "mea-/sures" (the real-paper
+    corpus, window C); and "expo-/sure" opened its line, a hyphen at a line's end being read
+    as ending the sentence. Only the reply fails."""
+    _with_paragraph(project, "Suresha, B., and Verma, D. (2020). Inclusion and access.\n\n"
+                    "Surely the cohort was small.\n\nOf courses offered, most were online.\n\n"
+                    "Performance mea-\nsures were read with expo-\nsure in the later period.\n\n"
+                    "Sure, here is the revised Methods section.")
+    said = _placeholders(_g6(project))
+    assert [(severity, message.split(" \N{EM DASH} ")[0]) for severity, message in said] == [
+        ("fail", "'Sure'")
+    ], said
+
+
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
     """A "TBD" in a figure reached the document: G6 read only the manuscript."""
     figure = project / "figures" / "forest.svg"
@@ -37283,6 +37298,46 @@ def test_a_use_put_above_its_definition_is_still_caught_in_a_pdf(
 
     assert found(clean) == {".pdf": [], ".md": []}
     assert found(slipped) == {".pdf": ["info"], ".md": ["warn"]}
+
+
+def test_a_slip_beside_a_legend_in_a_pdf_is_the_text_s(tmp_path: Path, capsys) -> None:
+    """A PDF's text holds no display G14 can find (DESIGN.md, Known gaps): its lines come
+    with no blank line but around a heading, so a legend's line made the whole section it
+    stands in a table's own text, and a slip there was asked about or said nothing (window C
+    of the real-paper corpus, row 6). The slips made beside a legend in a clean paper, a
+    short form given another meaning and one used before its definition, are the text's
+    and are reported, as from the same words in Markdown with no table."""
+    import shutil
+    import sys
+
+    from manuscript_guard.cli import main
+
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext is not installed")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    clean = ["Introduction", "Each pupil sat the quarterly exam twice.", "Methods",
+             "The quarterly exam ratio (QXR) was summed for each pupil.",
+             "The QXR was high in both waves of the study.", "Results",
+             "Table 1. Scores of the pupils by wave.",
+             "The QXR was read for 212 pupils, and the weekly score mean (WSM) rose.",
+             "The WSM was kept."]  # fmt: skip
+    slipped = [*clean[:7], "The quarterly exit ratio (QXR) was read again.",
+               "The WSM was read for 212 pupils, and the weekly score mean (WSM) rose.",
+               clean[8]]  # fmt: skip
+
+    def found(lines: list[str]) -> list[tuple[str, bool]]:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(typeset(lines, columns=1, per_column=40))
+        assert main(["audit", str(pdf), "--json"]) == 0
+        return sorted((one["code"], bool(one.get("question")))
+                      for one in json.loads(capsys.readouterr().out)["findings"]
+                      if one["code"].startswith("abbreviation-"))  # fmt: skip
+
+    assert found(clean) == []
+    assert found(slipped) == [("abbreviation-redefined", False),
+                              ("abbreviation-used-before-defined", False)]
 
 
 def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:

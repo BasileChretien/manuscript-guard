@@ -1880,6 +1880,63 @@ def displays_alone(draw: st.DrawFn) -> dict[str, Any]:
     return {"text": text, "found": DISPLAYS_FOUND}
 
 
+#: How a display's legend opens in a PDF's text, each a line as pdftotext gives it: a legend
+#: that opens with its number, a figure's after a colon, APA's number alone over its title,
+#: and PLOS's number before the display's name. `{n}` is its number, `{title}` its title.
+PDF_LEGENDS = {
+    "numbered": "Table {n}. {title}",
+    "figure": "Figure {n}: {title}",
+    "apa": "Table {n}.\n{title}",
+    "plos": "S{n} Table. {title}",
+}
+#: The forms of each kind of `PDF_LEGENDS`, in order: one the Methods define and the
+#: display's section gives another meaning, with both long forms; and one a row of the
+#: display uses before a sentence of its section defines it.
+PDF_FORMS = (
+    (("LD", "low dose", "light dose"), ("HD", "high dose")),
+    (("QS", "quality score", "quiet score"), ("KQ", "knee quotient")),
+    (("MR", "mortality ratio", "mean rank"), ("WR", "weight rank")),
+    (("TS", "total score", "trial stage"), ("PV", "peak volume")),
+)
+#: The sections of the main text after the Methods, one for each kind of `PDF_LEGENDS`.
+PDF_SECTIONS = ("Results", "Discussion", "Limitations", "Conclusions")
+
+
+@st.composite
+def pdf_displays(draw: st.DrawFn) -> dict[str, Any]:
+    """A manuscript as the audit stages a PDF's text (`auditing.gates._staged_pdf`): a line
+    to each of its lines and no blank line but around a heading, so that a block runs from
+    heading to heading. Each section after the Methods opens with a legend of a kind of
+    `PDF_LEGENDS`, in an order drawn, a row of its table under it, and lines of words drawn;
+    in it, where drawn, the Methods' form given another meaning, and the row's form used
+    before the line that defines it. A PDF's text holds no display G14 can find (DESIGN.md,
+    Known gaps), so each is the text's: a redefinition and a use before the definition,
+    warned of, where a legend opening a section once made the section a display, a question
+    and nothing (window C of the real-paper corpus, row 6)."""
+    kinds = draw(st.permutations(sorted(PDF_LEGENDS)))
+    words = _in_a_row(_spaced(FILLER), few=3, many=8)
+    methods = ["We kept the cohort of the trial."]
+    sections = []
+    found = []
+    for number, (kind, ((again, first, other), (used, defined))) in enumerate(
+            zip(kinds, PDF_FORMS, strict=True), start=1):  # fmt: skip
+        methods.append(f"The {first} ({again}) was read, and the {again} held.")
+        lines = [draw(words) for _ in range(draw(st.integers(0, 2)))]
+        redefining = f"The {other} ({again}) was read again."
+        defining = f"Then the {defined} ({used}) was given, and the {used} rose."
+        # The other meaning, and the line that defines the row's form, each at a place drawn
+        # among the lines of words, the definition after the row.
+        lines.insert(draw(st.integers(0, len(lines))), redefining)
+        lines.insert(draw(st.integers(0, len(lines))), defining)
+        legend = PDF_LEGENDS[kind].format(n=number, title=draw(words).capitalize() + ".")
+        body = "\n".join([legend, f"{used} 12 14", *lines])
+        sections.append(f"# {PDF_SECTIONS[number - 1]}\n\n{body}\n\n")
+        found += [("abbreviation-redefined", again, "warned"),
+                  ("abbreviation-used-before-defined", used, "warned")]
+    text = "# Methods\n\n" + "\n".join(methods) + "\n\n" + "".join(sections)
+    return {"text": text, "found": sorted(found)}
+
+
 
 #: A contributions statement and the initials it names in brackets in the paper, which
 #: every input of the `abbreviations` reading ends with, under a heading of its own so that
@@ -8626,6 +8683,24 @@ LOOKALIKES = (
     # Round 1 of #625: a Roman numeral, no space after "Fig.", a number with a dot in it.
     "[Insert Table IV here]", "[INSERT TABLE XIX]", "[Insert Fig.1 here]",
     "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
+)  # fmt: skip
+
+#: Words a paragraph opens with that begin with a chat assistant's opener and are other
+#: words: a name, an adverb, a noun, a compound, a plural (the real-paper corpus, window C:
+#: "Suresha, B." opening a reference). And the second half of a word broken by a hyphen at
+#: a line's end, as a PDF's text keeps it, which is an opener's word or begins with one
+#: ("mea-/sures", "expo-/sure"). None is an assistant's voice.
+OPENER_LOOKALIKES = (
+    "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses offered",
+    # Rounds 1 and 2 of #779: an adverb broken by a hyphen at a line's end, ASCII's or the
+    # soft one, and a compound joined by Unicode's hyphen or its non-breaking hyphen.
+    "Sure-\nly", "Sure\N{SOFT HYPHEN}\nly", "Sure\N{HYPHEN}footed",
+    "Sure\N{NON-BREAKING HYPHEN}footed",
+)  # fmt: skip
+BROKEN_AT_A_LINE_END = (
+    "expo-\nsure", "mea-\nsures", "mea-\nsured", "en-\nsure", "as-\nsured",
+    # Round 2 of #779: each of the other hyphens a PDF's text can break a word with.
+    "expo\N{HYPHEN}\nsure", "en\N{NON-BREAKING HYPHEN}\nsure", "in\N{SOFT HYPHEN}\nsure",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -19435,7 +19510,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         + SOURCE_NAMES
     ),
     "placeholders": texts(
-        tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
+        tuple(written for written, _found in PLACEHOLDERS + LOWERED)
+        + LOOKALIKES + OPENER_LOOKALIKES + BROKEN_AT_A_LINE_END
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
     "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),
@@ -19515,6 +19591,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),  # fmt: skip
     "audit abbreviations": st.one_of(
         undefined_forms().map(lambda drawn: drawn[0][0][1]),
+        texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
+    ),
+    "abbreviations of a PDF's text": st.one_of(
+        pdf_displays().map(lambda drawn: drawn["text"]),
         texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
     ),
     "tex outside maths": lines(),

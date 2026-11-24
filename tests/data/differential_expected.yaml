@@ -180,13 +180,13 @@ expected:
       link's target hid it up to the next `)`
   - reading: placeholders
     why: >-
-      a placement marker, a table or a figure named with its number where it is to go,
-      "[Insert Table 1 here]", "[INSERT FIGURE 2]", also after pandoc's escaping, with a
-      number that has a dot in it, "Table 1.1", a Roman numeral from I to XIX, "[INSERT TABLE
-      XIV]", or "Fig." run into it, "[Insert Fig.1 here]", is no placeholder (Basile,
-      2026-11-11, after 52 real preprints; round 1 of #625); the inputs now hold a marker of
-      each form, and an instruction with no number, with other words, or with X or XX for
-      its number, which is one still
+      an assistant's opener is a word of its own (window C of the real-paper corpus): the
+      inputs now hold "Suresha, B.", "Surely", "Sureness", "Sure-footed", "Of courses
+      offered", "Sure-/ly" and the same with a soft hyphen, and "Sure" joined to "footed" by
+      U+2010 or U+2011 (rounds 1 and 2 of #779), which the base reads as opening with "Sure"
+      or "Of course", and a word broken by a hyphen at a line's end, "mea-/sures",
+      "expo-/sure", and "expo/sure" broken by U+2010, U+2011 or a soft hyphen, whose second
+      half the base reads as an opener where it opens a line; the entry it replaces is spent
   - reading: table margins
     why: >-
       categories over their column's n by no more than (k + 1) / 2 for k categories,

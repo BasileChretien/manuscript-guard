@@ -216,8 +216,15 @@ artefacts:
   # in a stretch's lines, and the LaTeX reader blanks a file past a construct it refuses
   # (36 s for a paper of 187,000 characters, in the robustness sweep of 2026-11-21). Each
   # opener it found, it finds.
+  # Each opener is a word of its own, so the word end follows them all, and it refuses a
+  # hyphen followed, on its line or at the next line's start, by a letter, a digit or an
+  # underscore: the ASCII hyphen, U+2010, U+2011 or the soft hyphen U+00AD, the class
+  # `writing._RUNS_ON` reads a word broken at a line's end by. The end bound the last opener
+  # alone, and "Suresha, B." opening a reference, "Surely" and a PDF's "mea-/sures" opened
+  # with "sure" (window C of the real-paper corpus); and "Sure-/ly" and "Sure" joined to
+  # "footed" by U+2010 (rounds 1 and 2 of #779).
   - id: assistant-voice
-    pattern: '(?i)^[^\S\n]*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an)\b)'
+    pattern: '(?i)^[^\S\n]*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an))\b(?![-\u2010\u2011\u00ad](?:[^\S\n]*\n[^\S\n]*)?\w)'
     why: Chat-assistant register, left in the manuscript
     paragraph_start: true
 

@@ -37010,6 +37010,47 @@ def test_a_short_form_used_before_its_definition_is_still_a_warning(project: Pat
     assert before.severity == "warn" and not before.question and report.warnings == (before,)
 
 
+def test_a_use_put_above_its_definition_is_still_caught_in_a_pdf(
+    tmp_path: Path, capsys
+) -> None:
+    """A note in text read from a PDF, by how often it was right on real papers
+    (`auditing.measured`, Basile, 2026-11-23), is still a finding: the slip made in a clean
+    paper is reported at its place from the PDF, as a note, and from the same words in
+    Markdown as the warning it was."""
+    import shutil
+    import sys
+
+    from manuscript_guard.cli import main
+
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext is not installed")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    clean = ["Introduction", "The second wave of the study was longer.", "Methods",
+             "The quarterly exam ratio (QXR) was summed for each pupil.",
+             "The QXR was high in both waves of the study.", "Results",
+             "The QXR was read for 212 pupils."]  # fmt: skip
+    slipped = [clean[0], "The QXR was raised in the second wave.", *clean[2:]]
+
+    def found(lines: list[str]) -> dict[str, list[str]]:
+        pdf, typed = tmp_path / "paper.pdf", tmp_path / "paper.md"
+        pdf.write_bytes(typeset(lines, columns=1, per_column=40))
+        typed.write_text("".join(f"# {line}\n\n" if line in (clean[0], clean[2], clean[5])
+                                 else f"{line}\n\n" for line in lines),
+                         encoding="utf-8", newline="\n")  # fmt: skip
+        said = {}
+        for paper in (pdf, typed):
+            assert main(["audit", str(paper), "--json"]) == 0
+            said[paper.suffix] = [
+                one["severity"] for one in json.loads(capsys.readouterr().out)["findings"]
+                if one["code"] == "abbreviation-used-before-defined"]  # fmt: skip
+        return said
+
+    assert found(clean) == {".pdf": [], ".md": []}
+    assert found(slipped) == {".pdf": ["info"], ".md": ["warn"]}
+
+
 def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:
     """The Methods define a short form with a stop in it and use it, as a French paper
     names the "Licence avec Accès Santé (L.AS)": read whole, it is defined and used, where

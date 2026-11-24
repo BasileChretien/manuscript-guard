@@ -855,26 +855,32 @@ def test_next_does_not_send_a_work_cited_in_words_to_sync_bib(
     assert 'cite this work in words, as in "Smith (2020) showed"' in action["why"], action
     assert "with its key, @imaginary2018" in action["why"], action
     assert "If the work really is not cited" in action["why"], action
+    assert "do not use `sync-bib` for this" in action["why"], action
+    assert "manuscript-guard sync-bib" not in action["why"], action
 
     assert main(["next", "--all", str(project)]) == 0
     text = capsys.readouterr().out
-    assert "run: manuscript-guard sync-bib" not in text, text
+    assert "manuscript-guard sync-bib" not in text, text
     assert not re.search(r"^\s*run:\s*$", text, re.MULTILINE), text
     assert "reference-uncited" in text and "If the work really is not cited" in text, text
 
 
 def test_a_warning_with_a_command_beside_this_one_keeps_it(tmp_path: Path) -> None:
-    """Only `reference-uncited` loses its command: `sync-sources`, on the same skill, keeps
-    its own, and the two together are told to read `check`, as any two commands are."""
-    assert route_of("literature-source-not-here").argv == ("sync-sources",)
-    assert route_of("reference-updated").argv is None
-    assert route_of("reference-unknown-code").argv == ("lookup",)
-    state = settled(tmp_path, findings=(
-        at(tmp_path, "G7", "reference-uncited", WARN, "literature/references.bib"),
-        at(tmp_path, "G7", "reference-unknown-code", WARN, "literature/references.bib"),
-    ))  # fmt: skip
-    (action,) = [one for one in decide(state) if "reference-uncited" in one.codes]
-    assert action.argv is not None and "sync-bib" not in action.argv, action
+    """Only `reference-uncited` loses its command: alone it is offered none, `sync-sources`,
+    on the same skill, keeps its own, and the two together are told to read `check`, as any
+    two commands are."""
+
+    def action_of(*codes: str) -> guide.Action:
+        state = settled(tmp_path, findings=tuple(
+            at(tmp_path, "G7", code, WARN, "literature/references.bib") for code in codes))
+        (action,) = [one for one in decide(state) if set(codes) <= set(one.codes)]
+        return action
+
+    assert route_of("reference-uncited").argv is None
+    assert action_of("reference-uncited").argv is None
+    assert "sync-sources" in action_of("literature-source-not-here").argv
+    together = action_of("reference-uncited", "literature-source-not-here").argv
+    assert "check" in together and "sync-bib" not in together, together
 
 
 def test_a_round_with_disagreements_or_stale_answers_is_the_authors(tmp_path: Path) -> None:

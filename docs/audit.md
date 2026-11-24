@@ -815,8 +815,8 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   there first. It keeps only the entries a citation key points to: `check` notes each entry
   the paper cites only as typed text in brackets, as exactly its names and year, which
   `sync-bib` would drop. A citation in the sentence, "Smith (2020) showed", is not read, so
-  an entry cited only that way stays a warning that nothing cites it: give it its key before
-  running `sync-bib`.
+  an entry cited only that way stays a warning that nothing cites it: give it its key, and
+  delete by hand an entry that really is not cited, since `sync-bib` would drop them all.
 
 Where the title page stays in the text, as when the document opens on its title in a
 heading style, G14 still does not read it for abbreviations: its authors' names, units and

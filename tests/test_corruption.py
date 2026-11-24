@@ -20421,6 +20421,10 @@ def test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do
         ("A claim (Brown, Imaginary, 2018).", "imaginary2018"),
         ("A claim (Walker and colleagues, 2020).", "walker2020"),
         ("A claim (Imaginary 2018).", "imaginary2018"),
+        # A piece of a bracket beside one that is no citation with its own year.
+        ("A claim (Silva; Imaginary, 2018).", "imaginary2018"),
+        ("A claim (*d* = 0.17; Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Imaginary, 2018; see the text).", "imaginary2018"),
         # A month, a letter the entry does not have, and what is not a page after the year.
         ("In (March, 2018) it rained.", "imaginary2018"),
         ("A claim (Imaginary, 2018a).", "imaginary2018"),
@@ -20479,6 +20483,60 @@ def test_a_name_in_tex_is_never_two_people(project: Path) -> None:
     bib = _one_entry("tex2020", 'M{\\"u}ller, Anne') + _one_entry("plain2020", f"{plain}, Anne")
     found = _uncited(project, f"A claim ({plain}, 2020).", bib)
     assert {found[key].severity for key in ("tex2020", "plain2020")} == {WARN}
+
+
+def test_a_name_in_babel_s_tex_is_never_two_people(project: Path) -> None:
+    """The scoped check of #776: `M{"u}ller` loses its braces when the name is read, and
+    `M"uller` is still that name."""
+    from manuscript_guard.findings import WARN
+
+    plain = "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"
+    bib = _one_entry("tex2020", 'M{"u}ller, Anne') + _one_entry("plain2020", f"{plain}, Anne")
+    found = _uncited(project, f"A claim ({plain}, 2020).", bib)
+    assert {found[key].severity for key in ("tex2020", "plain2020")} == {WARN}
+
+
+def test_authors_parted_by_a_semicolon_are_no_citation_of_the_last(project: Path) -> None:
+    """The scoped check of #776: ABNT parts authors with semicolons, so "(Silva; Souza, 2020)"
+    is a work of both. A piece counts only where every piece of the bracket is a citation
+    with its own year."""
+    from manuscript_guard.findings import WARN
+
+    bib = _one_entry("silva2020", "Silva, Ana and Souza, Bia") + _one_entry(
+        "souza2020", "Souza, Bia", title="Other")  # fmt: skip
+    found = _uncited(project, "A claim (Silva; Souza, 2020).", bib)
+    assert {found[key].severity for key in ("silva2020", "souza2020")} == {WARN}
+
+
+def test_each_piece_of_a_bracket_of_citations_counts(project: Path) -> None:
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("smith2019", "Smith, Ann", 2019) + _one_entry("jones2020", "Jones, Bo")
+    found = _uncited(project, "A claim (Smith, 2019; Jones, 2020).", bib)
+    assert {found[key].severity for key in ("smith2019", "jones2020")} == {INFO}
+
+
+@pytest.mark.parametrize(("family", "year"), [("Winter", 2018), ("London", 2020)])
+def test_a_season_or_a_place_is_read_as_an_author_of_that_year(
+    project: Path, family: str, year: int
+) -> None:
+    """Known gaps: "(Winter, 2018)" may be a date and "(London, 2020)" a place, and where the
+    list holds a work by that name from that year, the entry is a note."""
+    from manuscript_guard.findings import INFO
+
+    key = f"{family.lower()}{year}"
+    bib = _one_entry(key, f"{family}, Anne", year)
+    assert _uncited(project, f"Sampled ({family}, {year}).", bib)[key].severity == INFO
+
+
+def test_a_bare_page_is_read_as_a_further_year(project: Path) -> None:
+    """Known gaps: the page of "(Smith, 2020, 1998)" has a year's shape, so a work by Smith
+    from 1998 is a note."""
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("smith2020", "Smith, Anne") + _one_entry("smith1998", "Smith, Anne", 1998)
+    found = _uncited(project, "A claim (Smith, 2020, 1998).", bib)
+    assert {found[key].severity for key in ("smith2020", "smith1998")} == {INFO}
 
 
 def test_an_entry_in_tex_alone_keeps_its_warning(project: Path) -> None:
@@ -20693,11 +20751,29 @@ def test_the_warning_s_hint_does_not_send_a_cited_work_to_sync_bib(
     assert not hint.startswith("run"), hint
     assert 'cite this work in words, as in "Smith (2020) showed"' in hint, hint
     assert "with its key, @imaginary2018" in hint, hint
-    assert "keeps only the entries a citation key points to" in hint, hint
-    assert hint.index("@imaginary2018") < hint.index("If the work really is not cited") \
-        < hint.index("run `manuscript-guard sync-bib`"), hint
-    assert "delete its entry" in hint and "Zotero" in hint, hint
-    assert "stops without writing anything if the manuscript has no key at all" in hint, hint
+    assert hint.index("@imaginary2018") < hint.index("If the work really is not cited"), hint
+    _advises_no_sync_bib(hint)
+
+
+def _advises_no_sync_bib(hint: str) -> None:
+    """The removal is by hand. `sync-bib` is named only to say it is not the way: it would
+    take every other work the text cites only in words with it. "When it writes" holds of a
+    manuscript with no key too, where it stops and writes nothing."""
+    assert "delete its entry from references.bib by hand" in hint, hint
+    assert "do not use `sync-bib` for this" in hint, hint
+    assert "when it writes the file, it keeps only the entries a citation key points to" in hint
+    assert "would also drop any other work the text cites only in words" in hint, hint
+    assert "manuscript-guard sync-bib" not in hint and "run `" not in hint, hint
+
+
+def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> None:
+    """The scoped check of #776: following the hint of `a2020`, which nothing cites, by
+    running `sync-bib` would have lost `b2019`, which the text cites in words."""
+    bib = _one_entry("a2020", "Ayala, Anne") + _one_entry("b2019", "Bee, Bo", 2019)
+    found = _uncited(project, "Bee (2019) showed this.", bib)
+    for key in ("a2020", "b2019"):
+        _is_the_old_warning(found[key], key)
+        _advises_no_sync_bib(found[key].hint)
 
 
 def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
@@ -20711,6 +20787,7 @@ def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -
     _is_the_old_warning(found, "imaginary2018")
     assert "with its key, \\cite{imaginary2018}" in found.hint, found.hint
     assert "@imaginary2018" not in found.hint, found.hint
+    _advises_no_sync_bib(found.hint)
 
 
 def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:

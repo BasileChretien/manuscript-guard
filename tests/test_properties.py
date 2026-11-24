@@ -13885,6 +13885,14 @@ def _a_name_in_tex_is_another_person(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_only_module, "_in_tex", lambda people: False)
 
 
+def _babel_s_tex_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_TEX_SIGNS", "\\{}")
+
+
+def _a_piece_counts_beside_one_that_is_no_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_every_piece_cites", lambda read: True)
+
+
 def _an_entry_only_the_list_holds_is_not_the_work(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_only_module._Listing, "holds_another", lambda *a, **k: False)
 
@@ -26743,6 +26751,14 @@ BROKEN = {
     ),
     "a name in TeX is another person": (
         _a_name_in_tex_is_another_person,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a name in babel's TeX is another person": (
+        _babel_s_tex_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a piece of a bracket counts beside one that is no citation": (
+        _a_piece_counts_beside_one_that_is_no_citation,
         test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
     ),
     "an entry only the typed list holds is not the work": (

@@ -179,16 +179,15 @@ def check_citations(project: Project, literature: Literature) -> Report:
 
 def _uncited_hint(citekey: str, *, latex: bool) -> str:
     """What to do of an entry no citation key points to and no bracket names. A citation in
-    the sentence is not read, so the work may be cited all the same, and `sync_bib` would
-    drop it: that comes first, and the removal only for a work that really is not cited."""
+    the sentence is not read, so the work may be cited all the same: that comes first. The
+    removal is by hand, since `sync_bib` would take every other such work with it."""
     cite = f"\\cite{{{citekey}}}" if latex else f"@{citekey}"
     return (
         f'if the text does cite this work in words, as in "Smith (2020) showed", write that '
-        f"citation with its key, {cite}: whenever `sync-bib` writes references.bib, it keeps "
-        "only the entries a citation key points to. If the work really is not cited, delete "
-        "its entry from the file, or run `manuscript-guard sync-bib`, which writes the file "
-        "again from Zotero for the keys the manuscript cites (so check that Zotero holds "
-        "them), and stops without writing anything if the manuscript has no key at all"
+        f"citation with its key, {cite}. If the work really is not cited, delete its entry "
+        "from references.bib by hand, and do not use `sync-bib` for this: when it writes the "
+        "file, it keeps only the entries a citation key points to, so it would also drop any "
+        "other work the text cites only in words"
     )
 
 

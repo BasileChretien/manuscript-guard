@@ -15414,6 +15414,9 @@ TYPED_ONLY = (
     ("({n}, {y}, p. 4, Table 2)", 1, False),
     # Not printed as a citation, or with something masked in its part.
     ("<!-- ({n}, {y}) -->", 1, False), ("`({n}, {y})`", 1, False), ("({n}, `x` {y})", 1, False),
+    # A piece beside one that is no citation with its own year.
+    ("(Absent; {n}, {y})", 1, False), ("(*d* = 0.17; {n}, {y})", 1, False),
+    ("({n}, {y}; see the text)", 1, False),
 )  # fmt: skip
 #: Two family names G7's folding for the registries makes one, the entry's and a citation's.
 TYPED_ONLY_FOLDED = (("Xue", "Xu"), ("Suen", "Sun"), ("Yue", "Yu"), ("Ross", "Ros"),
@@ -15422,6 +15425,7 @@ TYPED_ONLY_FOLDED = (("Xue", "Xu"), ("Suen", "Sun"), ("Yue", "Yu"), ("Ross", "Ro
 TYPED_ONLY_TEX = (
     ('M{\\"u}ller', "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"),
     ("Sch{\\'e}r", "Sch\N{LATIN SMALL LETTER E WITH ACUTE}r"),
+    ('M{"o}ller', "M\N{LATIN SMALL LETTER O WITH DIAERESIS}ller"),
 )  # fmt: skip
 #: A family name in no letter from a to z, which the import cannot make a key of.
 TYPED_ONLY_NO_KEY = "".join(map(chr, (0x418, 0x432, 0x430, 0x43D, 0x43E, 0x432)))

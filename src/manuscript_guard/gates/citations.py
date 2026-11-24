@@ -191,6 +191,18 @@ def _uncited_hint(citekey: str, *, latex: bool) -> str:
     )
 
 
+def _typed_only_hint(citekey: str, *, latex: bool) -> str:
+    """What to do of an entry cited only as typed text. Its own key is not enough before
+    `sync_bib`, which would still drop any other work the text cites only in words."""
+    cite = f"\\cite{{{citekey}}}" if latex else f"[@{citekey}]"
+    return (
+        f"to keep the entry, write the citation as {cite} and check that the work is in your "
+        "Zotero library. Do not run `sync-bib` until every work the text cites has its key, "
+        "this one and any other cited only in words: when it writes the file, it keeps only "
+        "the entries a citation key points to"
+    )
+
+
 def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool,
              latex: bool) -> Finding:  # fmt: skip
     """An entry of `references.bib` no citation key points to: a warning where nothing cites
@@ -219,9 +231,7 @@ def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool,
         f'text ("{typed}"): no citation key points to it. The manuscript has no citation key '
         "yet, so `sync-bib` stops and writes nothing; once it has one, `sync-bib` would drop "
         "this entry",
-        hint=f"to keep the entry, write the citation as [@{citekey}] and check that the work "
-        "is in your Zotero library before running `sync-bib`, which writes the file from "
-        "Zotero and the citation keys alone",
+        hint=_typed_only_hint(citekey, latex=latex),
         keyed_on=nothing.message,
     )
 

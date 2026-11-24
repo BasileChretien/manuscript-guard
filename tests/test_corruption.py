@@ -20766,6 +20766,50 @@ def _advises_no_sync_bib(hint: str) -> None:
     assert "manuscript-guard sync-bib" not in hint and "run `" not in hint, hint
 
 
+def _holds_sync_bib_back_for_the_whole_file(hint: str, cite: str) -> None:
+    """Writing this one key is not enough: `sync-bib` would still drop any other work the
+    text cites only in words."""
+    assert f"write the citation as {cite}" in hint and "Zotero" in hint, hint
+    assert "Do not run `sync-bib` until every work the text cites has its key" in hint, hint
+    assert "this one and any other cited only in words" in hint, hint
+    assert "when it writes the file, it keeps only the entries a citation key points to" in hint
+    assert "before running" not in hint, hint
+
+
+def test_the_note_s_hint_holds_sync_bib_back_until_every_cited_work_has_its_key(
+    project: Path,
+) -> None:
+    """The note's severity, code, words and key stay; only what it advises is of the whole
+    file. A second entry here is cited only in words, and `sync-bib` would drop it."""
+    from manuscript_guard.findings import INFO, WARN, Finding
+
+    typed = "A claim (Imaginary, 2018). Dupont and Second (2019) showed this."
+    found = _uncited(project, typed)["imaginary2018"]
+    assert (found.severity, found.code) == (INFO, "reference-uncited"), found
+    assert 'cites only as typed text ("Imaginary, 2018")' in found.message, found.message
+    _holds_sync_bib_back_for_the_whole_file(found.hint, "[@imaginary2018]")
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=found.path,
+                  message="references.bib holds @imaginary2018, which nothing cites")  # fmt: skip
+    assert found.key == was.key and found.as_dict()["key_from"] == "context", found.key
+
+
+@pytest.mark.parametrize("any_key", [True, False])
+def test_the_note_s_hint_is_written_for_a_latex_paper_too(tmp_path: Path, any_key: bool) -> None:
+    """`typed_only` reads no LaTeX manuscript, so a run makes no such note there; the hint is
+    held all the same to the command such a paper cites by."""
+    from manuscript_guard.findings import INFO, WARN, Finding
+    from manuscript_guard.gates.citations import _uncited as uncited_finding
+
+    path = tmp_path / "references.bib"
+    found = uncited_finding("imaginary2018", path, "Imaginary, 2018", any_key=any_key, latex=True)
+    assert found.severity == INFO, found
+    _holds_sync_bib_back_for_the_whole_file(found.hint, "\\cite{imaginary2018}")
+    assert "[@" not in found.hint, found.hint
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=path,
+                  message="references.bib holds @imaginary2018, which nothing cites")  # fmt: skip
+    assert found.key == was.key, found.key
+
+
 def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> None:
     """The scoped check of #776: following the hint of `a2020`, which nothing cites, by
     running `sync-bib` would have lost `b2019`, which the text cites in words."""

@@ -5881,7 +5881,27 @@ absent. Each reader of it has a rule for a paper that has not said:
   nothing. The words of the fewer are then each a `spelling-variant`, which says that
   `paper.yaml` declares no English and gives both counts; `spelling-mixed` reads the endings
   of a paper that is mostly British as it does those of a British one;
-  `spelling-not-as-declared` is never given, since the other English is never the more.
+  `spelling-not-as-declared` is never given, since nothing was declared.
+- **One word repeated does not decide it** (Basile, 2026-11-23, "Narrow rule"). In a paper
+  whose words were American, "grey" ten times outvoted nine American words of eight kinds,
+  and each of those was reported. Where the more are a single different word and the other
+  English has three or more different words, the paper is in the other English, and the one
+  word is the `spelling-variant`, whose message gives both counts. In counting different
+  words (Basile, 2026-11-24), a word with -s, -es, -ed or -ing, or -ies or -ied for its "y",
+  is that word, on both sides, so "color, colors, colored" is one, "grey, greys" one repeated
+  and "speciality, specialities" one; and a word of the list's kind `ise` is none of the
+  three: that kind is the set whose American spelling in `-ize` is also British. A `gb` word
+  that ends in `-ise` is outside it and counts, since the American of "anaesthetised" is not
+  British and "prize", the American of "prise", is another word. A form joins its
+  word only where what the other usage writes joins too, which over the whole list leaves
+  three forms apart ("esophaguses", "oesophaguses", "matts") and joins no two words; no form
+  with a doubled consonant has its base on the list. A plain count of different
+  words was measured and refused: it turned two other papers and lost 14 true findings. A
+  declared English is not touched, and where the two are level there is no majority to
+  overturn, so the first word still decides. `spelling_edits` respells nothing in such a
+  paper, as in a level one: its count and its words disagree about its English, and the
+  repeated word may be the field's ("grey matter"). A paper so held to British is read as a
+  British one, its endings included; one so held to American has its `-ise` word as the stray.
 - **The build** gives the document `lang: en`, English with no region. Pandoc writes `en`
   into the .docx (`w:lang` in its styles, `dc:language` in its properties). Word 16 reads it
   as English with no region (LanguageID 9) and proofs it with its American dictionary:
@@ -25383,6 +25403,31 @@ Open, recorded as each change landed:
     American ones, or one more of the wrong kind, is told the right ones are the strays.
     Where they are level the first word decides, which is an order, not a reason.
     Pinned by `tests/test_spelling.py::test_declaring_none_with_as_many_of_each_the_first_sets_the_english`.
+  - One word repeated gives way only to three or more different words of the other English
+    (Basile, 2026-11-23), its forms in -s, -es, -ed and -ing being that word. Two different
+    words repeated keep the count, as does one word against two, so "grey" and "colour"
+    together still outvote three American words, and "grey" alone outvotes two.
+    Pinned by `tests/test_spelling.py::test_two_words_of_the_more_are_not_one_word` and
+    `tests/test_spelling.py::test_one_word_against_two_different_ones_keeps_the_count`.
+  - A word of the list's kind `ise` is none of the three (2026-11-24), though its uses still
+    count for British. A paper with one American word repeated and strays of that kind stays
+    American while they have fewer uses than the American word; with more ("color" twice
+    against three of them) it is British, as it was. At equal uses the first word decides:
+    "color" twice and then two of them stays American and reports the two, and with the
+    strays first it is British. Two `gb` words beside one of the kind `ise` are not three,
+    and a `gb` word that ends in `-ise`, "anaesthetised", is one of them.
+    Pinned by `tests/test_spelling.py::test_ise_words_do_not_count_toward_the_three`,
+    `tests/test_spelling.py::test_fewer_uses_of_the_american_word_than_of_ise_strays_is_still_british`,
+    `tests/test_spelling.py::test_as_many_uses_of_the_american_word_as_of_ise_strays_go_by_the_first_word`,
+    `tests/test_spelling.py::test_two_gb_words_and_an_ise_word_are_not_three` and
+    `tests/test_spelling.py::test_a_gb_word_written_with_ise_counts_toward_the_three`.
+  - That rule needs a majority. One word used three times against three different words
+    once each is level, and the first word decides, which may be the repeated one. So one
+    use more or less can turn the paper's English and turn it back: "grey" four times
+    against three American words is American, three times British if it comes first, and
+    twice American.
+    Pinned by `tests/test_spelling.py::test_a_tie_has_no_majority_so_the_first_word_still_decides` and
+    `tests/test_spelling.py::test_one_use_more_or_less_can_turn_the_english_and_turn_it_back`.
   - The count is of the words on G14's list, and only those: a paper whose only spellings
     of either kind are in a name, a quotation or a section left unread has no English, and
     hears nothing.
@@ -25397,6 +25442,11 @@ Open, recorded as each change landed:
     (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
     Zotero build names `en-US`. A paper written in British spelling that declares nothing
     is so proofed and cited in American; declaring `en-GB` is the way out. Accepted.
+- **`spelling-not-as-declared` counts each spelling as written.** For a paper that declares
+  an English, the five that make one finding of many, and the "different ones" that finding
+  gives, take "color", "colors" and "colored" as three, where the rule for a paper that
+  declares none takes them as one (Basile, 2026-11-24: a declared paper's behaviour stays).
+  Pinned by `tests/test_spelling.py::test_a_declared_paper_s_count_takes_each_spelling_as_written`.
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   Accepted.
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and

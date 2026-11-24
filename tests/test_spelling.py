@@ -29,9 +29,11 @@ from manuscript_guard.gates.spelling import (
     DATA,
     LISTED,
     MANY,
+    _one_word,
     _variants,
     judge_spelling,
     opens_a_sentence,
+    spelling_edits,
 )
 from manuscript_guard.gates.vocabulary import Passage
 
@@ -408,6 +410,388 @@ def test_the_reading_asked_with_no_english_takes_the_majority() -> None:
     report = judge_spelling(passages, None, (), Path("paper.yaml"))
     assert reported(report.findings) == ["color"]
     assert report.counts == {"spelling_own": 2, "spelling_other": 1}
+
+
+# ------------------------------------------- one word repeated does not decide the English
+# Basile, 2026-11-23, "Narrow rule": where the majority by occurrences is a single distinct
+# word and the other side has three or more distinct words, the other side is the paper's
+# English. A plain count of different words is not wanted: it loses true findings.
+
+
+def test_one_british_word_repeated_does_not_outvote_three_american_ones(project: Path) -> None:
+    """The false alarm: "grey" four times told an American paper to respell its words."""
+    report, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the grey. The color, the tumor and "
+        "the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["grey"]
+    assert found[0].message == (
+        "'grey' is the British spelling of 'gray', used 4 times; paper.yaml declares no "
+        "English, and the paper has 3 words in American spelling, 3 different ones, to this "
+        "one word in British"
+    )
+    assert "set english_variant: en-GB" in found[0].hint, "the author can still say otherwise"
+    assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (3, 4)
+
+
+def test_one_american_word_repeated_does_not_outvote_three_british_ones(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe tumor, the tumor, the tumor and the tumor. The colour, the centre "
+        "and the fibre were noted.\n",
+        None,
+    )
+    assert reported(found) == ["tumor"]
+    assert "3 words in British spelling, 3 different ones" in found[0].message
+
+
+def test_the_different_words_are_counted_and_their_uses_said(project: Path) -> None:
+    """Four uses of three words: the message gives both, since they differ."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey, the grey and the grey. The color, the "
+        "color, the tumor and the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["grey"]
+    assert "4 words in American spelling, 3 different ones" in found[0].message
+
+
+def test_two_words_of_the_more_are_not_one_word(project: Path) -> None:
+    """The majority is two words, so the count stands: this is no plain count of words."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey, the colour and the colour. The tumor, "
+        "the center and the fiber were noted.\n",
+        None,
+    )
+    assert reported(found) == ["tumor", "center", "fiber"]
+    assert "5 words in British spelling to 3 in American" in found[0].message
+
+
+def test_one_word_against_two_different_ones_keeps_the_count(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the grey. The tumor and the center "
+        "were noted.\n",
+        None,
+    )
+    assert reported(found) == ["tumor", "center"]
+    assert "4 words in British spelling to 2 in American" in found[0].message
+
+
+@pytest.mark.parametrize(
+    ("text", "strays"),
+    [
+        ("The grey, the grey, the grey. The color, the tumor and the center.",
+         ["color", "tumor", "center"]),
+        ("The color, the tumor and the center. The grey, the grey, the grey.", ["grey"]),
+    ],
+)  # fmt: skip
+def test_a_tie_has_no_majority_so_the_first_word_still_decides(
+    project: Path, text: str, strays: list[str]
+) -> None:
+    """One word three times against three words once each is level: the decision is about
+    a majority, and where there is none the first word's English is taken, as before."""
+    _, found = written(project, f"# Methods\n\n{text}\n", None)
+    assert reported(found) == strays
+    assert all("as many words in" in f.message for f in found)
+
+
+@pytest.mark.parametrize(
+    ("variant", "strays"),
+    [("en-GB", ["color", "tumor", "center"]), ("en-US", ["grey"])],
+)
+def test_a_declared_english_wins_over_the_narrow_rule(
+    project: Path, variant: str, strays: list[str]
+) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the grey. The color, the tumor and "
+        "the center were noted.\n",
+        variant,
+    )
+    assert reported(found) == strays
+    assert all("this paper is in" in f.message for f in found)
+
+
+def test_a_repeated_word_the_project_keeps_is_not_counted(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the grey. The color, the tumor and "
+        "the center were noted.\n",
+        None,
+        accepted=["grey"],
+    )
+    assert not found
+
+
+def test_a_paper_made_british_by_the_rule_is_told_its_endings_are_mixed(project: Path) -> None:
+    """Held to British against the count, it is read as a British paper in full. The message
+    counts the different words as the rule does, and says the -ise word is not among them."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color, the color, the color, the color and the color. The colour, "
+        "the centre and the fibre were randomised, and doses were standardized.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+    assert sorted(f.code for f in found) == ["spelling-mixed", "spelling-variant"]
+    variant = next(f for f in found if f.code == "spelling-variant")
+    assert variant.message.endswith(
+        "the paper has 4 words in British spelling, 3 different ones apart from -ise forms of "
+        "words both Englishes write with -ize, to this one word in American"
+    )
+
+
+def test_ise_words_do_not_count_toward_the_three(project: Path) -> None:
+    """Basile, 2026-11-24, "Don't count -ise": -ize is correct British too, so a paper in -ize
+    with three -ise strays is no British paper. It keeps today's reading."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color, the color, the color and the color. We randomized, "
+        "randomized, randomized, randomized, randomized and randomized them. We organised, "
+        "summarised and categorised the data.\n",
+        None,
+    )
+    assert reported(found) == ["organised", "summarised", "categorised"]
+    assert {f.code for f in found} == {"spelling-variant"}
+    assert "4 words in American spelling to 3 in British" in found[0].message
+
+
+def test_two_gb_words_and_an_ise_word_are_not_three(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe color, the color, the color, the color and the color. The colour "
+        "and the centre were randomised.\n",
+        None,
+    )
+    assert reported(found) == ["colour", "centre", "randomised"]
+
+
+def test_a_repeated_ise_word_is_still_one_word_against_three(project: Path) -> None:
+    """The decision is about what counts toward the three: an -ise word can be the one."""
+    _, found = written(
+        project,
+        "# Methods\n\nWe randomised, randomised, randomised and randomised them. The color, "
+        "the tumor and the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["randomised"]
+    assert "3 words in American spelling, 3 different ones, to this one word" in found[0].message
+
+
+@pytest.mark.parametrize(
+    "forms",
+    [
+        ("color", "colors", "colored", "coloring", "colorings"),
+        ("colour", "colours", "coloured", "colouring"),
+        ("grey", "greys", "greyed", "greying"),
+        ("analyse", "analysed", "analysing"),
+        ("analyze", "analyzes", "analyzed", "analyzing"),
+        ("centre", "centres", "centred", "centring"),
+        ("labeled", "labeling"),
+        ("labelled", "labelling"),
+        ("speciality", "specialities"),
+        ("hemoglobinopathy", "hemoglobinopathies"),
+        ("cosy", "cosies", "cosied", "cosying"),
+        ("storey", "storeys"),
+    ],
+)
+def test_a_word_with_s_es_ed_or_ing_is_one_word(forms: tuple[str, ...]) -> None:
+    """Basile, 2026-11-24, "One word"."""
+    assert len({_one_word(form) for form in forms}) == 1
+
+
+def _inflections(base: str) -> set[str]:
+    made = {base + ending for ending in ("s", "es", "ed", "ing")}
+    if base.endswith("e"):
+        made |= {base + "d", base[:-1] + "ing", base[:-1] + "es"}
+    if base[-1] not in "aeiouy":
+        made |= {base + base[-1] + "ed", base + base[-1] + "ing"}
+    if base.endswith("y"):
+        made |= {base[:-1] + "ies", base[:-1] + "ied"}
+    return made
+
+
+def test_on_the_list_no_two_words_fold_together() -> None:
+    """Over every word of the list: each inflection is its base's word but for three, whose
+    other spelling is irregular or another word ("matts" are "mats", "matt" is "matte"), and
+    no word without an ending shares a word with another ("amebae" is not "ameba")."""
+    words, _ = _variants()
+    side = {word: row[0] == "us" for word, row in words.items()}
+    apart = {
+        form
+        for base in words
+        for form in _inflections(base)
+        if form in words and side[form] == side[base] and _one_word(form) != _one_word(base)
+    }
+    assert apart == {"esophaguses", "matts", "oesophaguses"}
+    bare: dict[tuple[bool, tuple[str, str]], list[str]] = {}
+    for word in words:
+        if not word.endswith(("s", "ed", "ing")):
+            bare.setdefault((side[word], _one_word(word)), []).append(word)
+    assert [group for group in bare.values() if len(group) > 1] == []
+
+
+def test_a_word_and_its_plural_in_ies_are_one_repeated_word(project: Path) -> None:
+    """Round 2 of #777: "speciality" and "specialities" outvoted three American words as two."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe speciality, the specialities, the speciality and the specialities. "
+        "The color, the tumor and the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["speciality", "specialities"]
+    assert "3 words in American spelling, 3 different ones" in found[0].message
+
+
+def test_a_word_and_its_plural_in_ies_are_not_two_of_the_three(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the grey. The hemoglobinopathy, the "
+        "hemoglobinopathies and the tumor were noted.\n",
+        None,
+    )
+    assert reported(found) == ["hemoglobinopathy", "hemoglobinopathies", "tumor"]
+    assert "4 words in British spelling to 3 in American" in found[0].message
+
+
+def test_fewer_uses_of_the_american_word_than_of_ise_strays_is_still_british(
+    project: Path,
+) -> None:
+    """Words of the kind `ise` are not among the three, but they are counted as British uses:
+    "color" twice against three of them is British, 3 to 2, as it was."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color and the color. We organised, summarised and categorised the "
+        "data.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+    assert "3 words in British spelling to 2 in American" in found[0].message
+
+
+def test_as_many_uses_of_the_american_word_as_of_ise_strays_go_by_the_first_word(
+    project: Path,
+) -> None:
+    """Level, there is no majority: the first word decides, whichever side it is on."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color and the color. We organised and summarised the data.\n",
+        None,
+    )
+    assert reported(found) == ["organised", "summarised"]
+    assert all("as many words in" in f.message for f in found)
+    _, found = written(
+        project,
+        "# Methods\n\nWe organised and summarised the data. The color and the color.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+    assert "as many words in" in found[0].message
+
+
+def test_a_gb_word_written_with_ise_counts_toward_the_three(project: Path) -> None:
+    """The rule names the list's kind `ise`, not the ending: "anaesthetised" differs from
+    American by more than its ending, is of the kind `gb`, and is one of the three. So is
+    "prise", which differs by that ending alone: the American "prize" is another word."""
+    assert _variants()[0]["anaesthetised"][0] == "gb"
+    assert _variants()[0]["prise"] == ("gb", "prize")
+    _, found = written(
+        project,
+        "# Methods\n\nThe color, the color, the color and the color. The colour, the centre "
+        "and the anaesthetised were noted.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+    assert "3 words in British spelling, 3 different ones, to this" in found[0].message
+
+
+def test_a_declared_paper_s_count_takes_each_spelling_as_written(project: Path) -> None:
+    """Known gaps: the folding is for a paper that declares none. Declared, the five spellings
+    that make one finding, and its "different ones", are spellings: these are two words."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color, the colors, the colored, the coloring and the tumor.\n",
+        "en-GB",
+    )
+    assert [f.code for f in found] == ["spelling-not-as-declared"]
+    assert "5 words are in American spelling (5 different ones)" in found[0].message
+
+
+def test_a_word_and_its_plural_are_one_repeated_word(project: Path) -> None:
+    """This was a known gap: "grey" and "greys" outvoted three American words as two."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey and the greys. The color, the tumor and "
+        "the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["grey", "greys"]
+    assert "3 words in American spelling, 3 different ones" in found[0].message
+
+
+def test_the_forms_of_one_word_are_not_three_different_words(project: Path) -> None:
+    """The other side of the same rule: "behaviour" keeps its count against one word."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe behaviour, the behaviour, the behaviour and the behaviour. The "
+        "color, the colors and the colored were noted.\n",
+        None,
+    )
+    assert reported(found) == ["color", "colors", "colored"]
+    assert "4 words in British spelling to 3 in American" in found[0].message
+
+
+def test_the_message_counts_different_words_as_the_rule_does(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nThe grey, the grey, the grey, the grey, the grey and the grey. The "
+        "color, the colors, the colored, the tumor and the center were noted.\n",
+        None,
+    )
+    assert reported(found) == ["grey"]
+    assert "5 words in American spelling, 3 different ones" in found[0].message
+
+
+def test_one_use_more_or_less_can_turn_the_english_and_turn_it_back(project: Path) -> None:
+    """Known gaps: four "grey" against three American words is American, three is level and
+    the first word, "grey", makes it British, and two is American by the count."""
+    rest = "The color, the tumor and the center were noted.\n"
+    strays = []
+    for uses in (4, 3, 2):
+        said = ", ".join(["the grey"] * uses).capitalize()
+        _, found = written(project, f"# Methods\n\n{said}. {rest}", None)
+        strays.append(reported(found))
+    assert strays == [["grey"], ["color", "tumor", "center"], ["grey"]]
+
+
+def test_a_paper_made_american_by_the_rule_has_no_endings_to_mix(project: Path) -> None:
+    """Its one British word in -ise is a stray, and -ize is simply what it writes."""
+    _, found = written(
+        project,
+        "# Methods\n\nWe randomised, randomised, randomised and randomised them. The color, "
+        "the tumor and the center were standardized.\n",
+        None,
+    )
+    assert [f.code for f in found] == ["spelling-variant"]
+    assert reported(found) == ["randomised"]
+
+
+def test_a_paper_whose_english_goes_against_its_count_is_not_respelt() -> None:
+    """The finding says the word; the edit waits, since the two readings of the paper's
+    English disagree. A paper whose count and words agree is respelt as before."""
+    against = "The grey, the grey, the grey and the grey. The color, the tumor and the center."
+    agreed = "The grey. The color, the tumor and the center."
+    edits = [
+        spelling_edits([Passage(Path("main.md"), text, text, lambda offset: 1)], None, ())
+        for text in (against, agreed)
+    ]
+    assert edits[0] == []
+    assert [one.new for one in edits[1]] == ["gray"]
 
 
 def test_a_british_paper_that_writes_both_endings_is_told_once(project: Path) -> None:

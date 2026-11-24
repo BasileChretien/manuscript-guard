@@ -16,7 +16,7 @@
     "keywords": { "type": "array", "items": { "type": "string" } },
     "english_variant": {
       "enum": ["en-GB", "en-US"],
-      "description": "British or American spelling, which G14 holds the manuscript to, and the language the build gives the document. The author's choice; a journal profile may ask for one. Absent, nothing is declared: G14 holds the paper to the English most of its words are in, the document is written as English with no region, and a date is printed day, month, year."
+      "description": "British or American spelling, which G14 holds the manuscript to, and the language the build gives the document. The author's choice; a journal profile may ask for one. Absent, nothing is declared: G14 holds the paper to the English its spellings show, the document is written as English with no region, and a date is printed day, month, year."
     },
     "target_journal": {
       "type": "string",

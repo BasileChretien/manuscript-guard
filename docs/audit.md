@@ -282,7 +282,9 @@ converted, and the report says G6 and G14 were not run on it. A paper's citation
 text, "[12]" or "(Smith et al., 2020)", are its citations to G6: a claim beside one is
 not a vague attribution.
 `--english british` or `american` declares the paper's English, which G14 holds its spelling
-to; without it G14 holds the paper to the English most of its words are in. `--known` lists
+to; without it G14 holds the paper to the English its spellings show: that of most of its
+words, unless those are one word repeated against three or more different words of the
+other. `--known` lists
 the words the paper's readers know, names, an author's initials, an institution's acronym
 and the field's terms (`--known CHU QR licence`): G14 neither asks for them to be defined,
 reports their spelling, nor reads them as names from code. A G14 hint that tells a project

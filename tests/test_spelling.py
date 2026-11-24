@@ -674,10 +674,32 @@ def test_fewer_uses_of_the_american_word_than_of_ise_strays_is_still_british(
     assert "3 words in British spelling to 2 in American" in found[0].message
 
 
+def test_as_many_uses_of_the_american_word_as_of_ise_strays_go_by_the_first_word(
+    project: Path,
+) -> None:
+    """Level, there is no majority: the first word decides, whichever side it is on."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe color and the color. We organised and summarised the data.\n",
+        None,
+    )
+    assert reported(found) == ["organised", "summarised"]
+    assert all("as many words in" in f.message for f in found)
+    _, found = written(
+        project,
+        "# Methods\n\nWe organised and summarised the data. The color and the color.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+    assert "as many words in" in found[0].message
+
+
 def test_a_gb_word_written_with_ise_counts_toward_the_three(project: Path) -> None:
     """The rule names the list's kind `ise`, not the ending: "anaesthetised" differs from
-    American by more than its ending, is of the kind `gb`, and is one of the three."""
+    American by more than its ending, is of the kind `gb`, and is one of the three. So is
+    "prise", which differs by that ending alone: the American "prize" is another word."""
     assert _variants()[0]["anaesthetised"][0] == "gb"
+    assert _variants()[0]["prise"] == ("gb", "prize")
     _, found = written(
         project,
         "# Methods\n\nThe color, the color, the color and the color. The colour, the centre "

@@ -86,10 +86,10 @@ LISTED = 12
 #: From this many different words of one English, a single word of the other does not make
 #: the paper's English, however often it is repeated (Basile, 2026-11-23).
 AGAINST_ONE_WORD = 3
-#: The kinds that count toward those different words: not the kind `ise`, whose spelling in
-#: `-ize` is British too, so that a few strays of it say nothing of a paper's English
-#: (Basile, 2026-11-24). A `gb` word that ends in `-ise`, "anaesthetise", differs from the
-#: American by more than that ending, and counts.
+#: The kinds that count toward those different words: not the kind `ise`, the words whose
+#: American spelling in `-ize` is British too, so that a few strays of it say nothing of a
+#: paper's English (Basile, 2026-11-24). A `gb` word that ends in `-ise` is outside that set
+#: and counts: the American of "anaesthetise" is not British, and "prize" is another word.
 _TOWARD_THE_THREE = {BRITISH: ("gb",), AMERICAN: ("us",)}
 #: How many words the finding on the two endings quotes for each.
 EXAMPLES = 5

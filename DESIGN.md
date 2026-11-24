@@ -5890,8 +5890,9 @@ absent. Each reader of it has a rule for a paper that has not said:
   words (Basile, 2026-11-24), a word with -s, -es, -ed or -ing, or -ies or -ied for its "y",
   is that word, on both sides, so "color, colors, colored" is one, "grey, greys" one repeated
   and "speciality, specialities" one; and a word of the list's kind `ise` is none of the
-  three, since its spelling in `-ize` is correct British too. A `gb` word that ends in `-ise`,
-  "anaesthetised", differs from the American by more than that and counts. A form joins its
+  three: that kind is the set whose American spelling in `-ize` is also British. A `gb` word
+  that ends in `-ise` is outside it and counts, since the American of "anaesthetised" is not
+  British and "prize", the American of "prise", is another word. A form joins its
   word only where what the other usage writes joins too, which over the whole list leaves
   three forms apart ("esophaguses", "oesophaguses", "matts") and joins no two words; no form
   with a doubled consonant has its base on the list. A plain count of different
@@ -25411,10 +25412,13 @@ Open, recorded as each change landed:
   - A word of the list's kind `ise` is none of the three (2026-11-24), though its uses still
     count for British. A paper with one American word repeated and strays of that kind stays
     American while they have fewer uses than the American word; with more ("color" twice
-    against three of them) it is British, as it was. Two `gb` words beside one of the kind
-    `ise` are not three, and a `gb` word that ends in `-ise`, "anaesthetised", is one of them.
+    against three of them) it is British, as it was. At equal uses the first word decides:
+    "color" twice and then two of them stays American and reports the two, and with the
+    strays first it is British. Two `gb` words beside one of the kind `ise` are not three,
+    and a `gb` word that ends in `-ise`, "anaesthetised", is one of them.
     Pinned by `tests/test_spelling.py::test_ise_words_do_not_count_toward_the_three`,
     `tests/test_spelling.py::test_fewer_uses_of_the_american_word_than_of_ise_strays_is_still_british`,
+    `tests/test_spelling.py::test_as_many_uses_of_the_american_word_as_of_ise_strays_go_by_the_first_word`,
     `tests/test_spelling.py::test_two_gb_words_and_an_ise_word_are_not_three` and
     `tests/test_spelling.py::test_a_gb_word_written_with_ise_counts_toward_the_three`.
   - That rule needs a majority. One word used three times against three different words

@@ -145,8 +145,12 @@ def _staged_pdf(paper: Path) -> _Staged:
     """A PDF's text as the Markdown G4, G6 and G14 read: each line of it a line, and each line
     that holds a section's name alone (`auditing.pdf.heading_title`) a heading, a blank line
     before and after it, a structured abstract's a heading under the Abstract's where it can
-    be placed (`PdfText.placed`), with the line of the text each line of the Markdown is."""
+    be placed (`PdfText.placed`), with the line of the text each line of the Markdown is. A
+    run-in label's heading has the rest of its line under it; the keywords' rest is a
+    paragraph of its own, the list of the paper's keywords G14 reads in the Abstract's
+    scope, and the lines after it the main text's (`gates.language._keywords_lists`)."""
     from manuscript_guard.auditing.pdf import UnreadablePdf, after_label, read_pdf
+    from manuscript_guard.text.section_names import names_keywords
 
     try:
         pdf = read_pdf(paper)
@@ -164,8 +168,12 @@ def _staged_pdf(paper: Path) -> _Staged:
         if at in repeated and at not in levels:
             running.append(len(staged) + 1)
         if at in pdf.run_in:
-            # The rest of a run-in label's line is the Abstract's first text.
+            # The rest of a run-in label's line is the Abstract's first text, or the keywords:
+            # a PDF's text marks no paragraph, so their list is that line alone (DESIGN.md,
+            # Known gaps).
             said.append(after_label(text))
+            if names_keywords(levels[at][0]):
+                said.append("")
         staged += said
         lines += [at] * len(said)
     return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),

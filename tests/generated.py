@@ -17722,6 +17722,24 @@ def keywords_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple[int, str]]]]:
     return out
 
 
+#: The kinds of `KEYWORDS_PAPERS` a PDF's text can hold: a PDF has no table's cell, so a
+#: label in one is a line like any other and ends the Abstract (DESIGN.md, Known gaps).
+PDF_KEYWORDS_KINDS = tuple(kind for kind in KEYWORDS_PAPERS if kind != "in a cell")
+
+
+@st.composite
+def pdf_keywords_papers(draw: st.DrawFn) -> list[tuple[list[str], list[tuple[int, str]]]]:
+    """A PDF's lines for every kind of `PDF_KEYWORDS_KINDS`, in an order drawn, each
+    paragraph of the Word paper a line, bold or not; and the headings the audit places the
+    Word paper by, which it places the PDF by too: a run-in "Keywords:" ends a PDF's
+    Abstract by the Word paper's rule (window C of the real-paper corpus, row 8)."""
+    out = []
+    for kind in draw(st.permutations(list(PDF_KEYWORDS_KINDS))):
+        paragraphs, headings = _keywords_drawn(draw, kind)
+        out.append(([text for _how, text in paragraphs], headings))
+    return out
+
+
 def _keywords_inlines(text: str) -> list[dict]:
     """`text` as pandoc's inlines, a word to each piece and a gap between."""
     out: list[dict] = []
@@ -19136,7 +19154,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "pdf headings": st.one_of(
         pdf_heading_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
-        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn]))),
+        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
+        pdf_keywords_papers().flatmap(
+            lambda drawn: st.sampled_from([lines for lines, _headings in drawn]))),
     "word abstract": st.one_of(
         st.one_of(word_abstract_papers(), keywords_papers()).flatmap(
             lambda drawn: st.sampled_from([body for body, _titles in drawn])),

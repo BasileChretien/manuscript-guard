@@ -1682,3 +1682,93 @@ def test_a_study_listed_in_an_abstract_over_a_background_is_no_heading() -> None
     assert _levels_of(lines) == [("Abstract", 1), ("Background", 1), *_PLACED[:6],
                                  ("Study 3: Again", 1), ("Method", 2), ("Results", 2),
                                  *_PLACED[6:]]
+
+
+# ------------------------------------------- a run-in "Keywords:" ends the Abstract (row 8)
+
+#: A PDF's Abstract under its heading, then its keywords on a line that opens on the label,
+#: then a body whose numbered titles are no section's name, as pdf-nutr-C1 of the real-paper
+#: corpus has it: the body ran on as the Abstract.
+KEYWORDS = ["A study of things", "Abstract", "Of 412 patients, 77 (18.7%) had the event.",
+            "Keywords: harm; drugs; records", "1.1 Drugs and harm", "Drugs cause harm [1].",
+            "Results", "Of 412 patients, 77 (18.7%) had the event.", "References",
+            "1. Smith A. A paper. J Things. 2019;12:345-56."]  # fmt: skip
+
+
+def _pdf_of(lines: list[str]):
+    from manuscript_guard.auditing.pdf import PdfText, Place, headings_of
+
+    headings, run_in = headings_of(lines)
+    return PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                   tuple(Place(1, at) for at in range(1, len(lines) + 1)), headings,
+                   run_in=run_in)  # fmt: skip
+
+
+@pytest.mark.parametrize("label", ["Keywords:", "Key words:", "KEYWORDS:", "Key Words :"])
+def test_a_run_in_keywords_after_the_abstract_s_words_is_a_heading_that_ends_it(
+    label: str,
+) -> None:
+    """As a Word paper's (`text.docx_abstract._keywords`; Basile, 2026-11-15): the label is
+    a heading at the Abstract's level, the rest of its line the keywords, and the Results
+    after it are the paper's, not a part of the Abstract."""
+    lines = [*KEYWORDS[:3], KEYWORDS[3].replace("Keywords:", label), *KEYWORDS[4:]]
+    pdf = _pdf_of(lines)
+    assert pdf.headings[:2] == ((2, "Abstract"), (4, label.rstrip(" :"))), pdf.headings
+    assert pdf.run_in == {4}
+    assert [(title, level) for _line, title, level in pdf.placed] == [
+        ("Abstract", 1), (label.rstrip(" :"), 1), ("Results", 1), ("References", 1)]
+
+
+def test_a_run_in_keywords_with_no_words_after_it_ends_the_abstract_and_is_no_heading() -> None:
+    """The Results, Discussion and Conclusion after it are the paper's, where they were the
+    Abstract's parts, as a Word paper's are."""
+    lines = ["Abstract", "Of 412, 77 fell.", "Keywords: falls; reports", "Results",
+             "Of 412, 77 fell.", "Discussion", "Falls are common.", "Conclusion",
+             "They matter.", "Methods", "We read 412."]  # fmt: skip
+    pdf = _pdf_of(lines)
+    assert [title for _line, title in pdf.headings] == ["Abstract", "Results", "Discussion",
+                                                        "Conclusion", "Methods"]
+    assert {level for _line, _title, level in pdf.placed} == {1}, pdf.placed
+
+
+@pytest.mark.parametrize("line", [
+    # Under the Abstract's heading with no words before it, above its titled parts.
+    None,
+    # A sentence, a label with nothing after it, and one run on into the words.
+    "The keywords: harm and drugs were searched.", "Keywords were searched in 3 databases.",
+    "Keywords:", "Keywords:harm",
+    # The label alone with no colon, and letter-spaced, which a Word paper's rule does not
+    # read either (DESIGN.md, Known gaps).
+    "Keywords", "K E Y W O R D S",
+])  # fmt: skip
+def test_no_other_keywords_line_ends_a_pdf_s_abstract(line: str | None) -> None:
+    """Nothing ends the Abstract, so the titles after it stay its parts, as the Word
+    paper's do."""
+    lines = (["Abstract", "Keywords: harm; drugs", "Background", "Falls harm.", "Results",
+              "Of 412, 77 fell.", "Conclusions", "They matter.", "Introduction", "Falls."]
+             if line is None else
+             ["Abstract", "Of 412, 77 fell.", line, "Up to 45% fall.", "Results",
+              "Of 412, 77 fell.", "Discussion", "Falls are common.", "Conclusion",
+              "They matter.", "Methods", "We read 412."])  # fmt: skip
+    pdf = _pdf_of(lines)
+    assert not any(title.casefold().startswith("key") for _line, title in pdf.headings)
+    levels = [(title, level) for _line, title, level in pdf.placed]
+    assert levels[1] == (("Background", 2) if line is None else ("Results", 2)), levels
+
+
+@needs_pdftotext
+def test_a_pdf_s_keywords_are_a_paragraph_under_their_heading_and_the_body_the_main_text(
+    tmp_path: Path,
+) -> None:
+    """The staged text G4, G6 and G14 read: the keywords' heading over the rest of the
+    label's line, a paragraph of its own, the list G14 reads in the Abstract's scope; the
+    lines after it are the main text's (`gates.language._keywords_lists`). `compare` reads the
+    keywords under their heading too."""
+    from manuscript_guard.auditing.gates import _staged_pdf
+    from manuscript_guard.comparing.versions import read_version
+
+    paper = write(tmp_path / "paper.pdf", KEYWORDS, per_column=40)
+    staged = _staged_pdf(paper).files["main.md"]
+    assert "\n# Keywords\n\nharm; drugs; records\n\n1.1 Drugs and harm\n" in staged, staged
+    keywords = next(one for one in read_version(paper).sections if one.title == "Keywords")
+    assert keywords.body.startswith("harm; drugs; records"), keywords.body

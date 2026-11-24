@@ -56,6 +56,10 @@ def _all(skill: str | None, argv: tuple[str, ...] | None, *keys: str, who: str =
     return dict.fromkeys(keys, route)
 
 
+#: The codes no command answers and whose finding's hint says what to do, which `next` then
+#: gives with the action.
+HINT_IS_THE_STEP = frozenset({"reference-uncited"})
+
 _VERIFY = ("verify",)
 _BIND = ("bind",)
 
@@ -154,10 +158,11 @@ ROUTES: dict[str, Route] = {
     **_all("literature-verify", None, "effect-claim-weak-source"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",
            "pmid-", "preprint-", "pages-placeholder", "identifier-malformed"),
-    # Neither is answered by asking the registries: one is rebuilt from what is cited, the
-    # other is put right in Zotero.
-    **_all("literature-verify", ("sync-bib",), "reference-uncited"),
-    **_all("literature-verify", None, "reference-duplicate", "reference-title-duplicate"),
+    # None is answered by asking the registries. An entry no key points to may be a work the
+    # text cites in words, which `sync-bib` would drop, so no command is offered and its hint
+    # is the step (`HINT_IS_THE_STEP`); the other two are put right in Zotero.
+    **_all("literature-verify", None, "reference-uncited", "reference-duplicate",
+           "reference-title-duplicate"),
     # A later version, a correction, a number quoted from a review: what the registries said
     # is read, and the citation or the quote is put right in Zotero and the ledger.
     **_all("literature-verify", None, "reference-updated", "reference-corrected",

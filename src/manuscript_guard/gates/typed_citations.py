@@ -27,6 +27,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from manuscript_guard.literature.names import Authors
 
 #: A year a citation gives: four digits from 1800 to 2099, with a letter after where an
 #: author has two works in one year.
@@ -144,11 +148,15 @@ def _unread(family: str) -> bool:
 
 @dataclass(frozen=True)
 class Works:
-    """`references.bib`'s keys by first author and year, as `_fold` and four digits, and by
-    year the keys of the works whose first author's name holds TeX `_fold` does not read."""
+    """`references.bib`'s keys by first author and year, as `_fold` and four digits, by year
+    the keys of the works whose first author's name holds TeX `_fold` does not read, and each
+    key found by first author with all the work's authors and its title
+    (`gates.cited_as_typed`)."""
 
     keys: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     unread: dict[str, list[str]] = field(default_factory=dict)
+    people: dict[str, Authors] = field(default_factory=dict)
+    titles: dict[str, str] = field(default_factory=dict)
 
 
 def works_by(path: Path) -> Works:
@@ -164,17 +172,23 @@ def works_by(path: Path) -> Works:
         return Works()
     found: dict[tuple[str, str], list[str]] = {}
     unread: dict[str, list[str]] = {}
+    authors: dict[str, Authors] = {}
+    titles: dict[str, str] = {}
     for key, fields in entries.items():
         year = re.search(r"\d{4}", fields.get("year") or fields.get("date") or "")
-        people = cited(fields.get("author") or fields.get("editor") or "").names
+        written = cited(fields.get("author") or fields.get("editor") or "")
+        people = written.names
         if not year or not people or not people[0].family:
             continue
         if _unread(people[0].family):
             unread.setdefault(year.group(), []).append(key)
         elif family := _fold(people[0].family):
             found.setdefault((family, year.group()), []).append(key)
+            authors[key] = written
+            titles[key] = fields.get("title") or ""
     return Works({where: sorted(keys) for where, keys in found.items()},
-                 {year: sorted(keys) for year, keys in unread.items()})  # fmt: skip
+                 {year: sorted(keys) for year, keys in unread.items()}, authors,
+                 titles)  # fmt: skip
 
 
 def keys_for(typed: Typed, works: Works) -> list[str]:

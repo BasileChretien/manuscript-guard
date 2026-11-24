@@ -13751,6 +13751,153 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_MONTHS", frozenset())
 
 
+# ------------------------------------------- an entry cited only as typed text, G7
+
+from generated import typed_only_papers  # noqa: E402
+
+from manuscript_guard.gates import cited_as_typed as typed_only_module  # noqa: E402
+
+
+@holds(60, typed_only_papers())
+def test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year(
+    drawn: tuple[str, str, dict[str, bool]],
+) -> None:
+    """The author's decisions of 2026-11-23 and 2026-11-24: G7 says of an entry cited only as
+    typed text that it is, and keeps its warning for every other. A citation counts in
+    brackets alone, where its whole part is every name, or the first and "et al." for three
+    or more, its year with its letter, and a page or further years after it. One that may
+    be two works counts for neither, and nothing in the typed list, a comment or code, or in
+    the sentence, counts at all."""
+    bib, text, cited = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "references.bib"
+        path.write_text(bib, encoding="utf-8")
+        works = typed_module.works_by(path)
+    found = set(typed_only_module.cited_as_typed([text], works))
+    assert found == {key for key, cites in cited.items() if cites}, (
+        sorted(found ^ {key for key, cites in cited.items() if cites}), text)
+
+
+def _the_first_author_and_year_are_enough(patch: pytest.MonkeyPatch) -> None:
+    forms = typed_only_module._forms
+    patch.setattr(typed_only_module, "_forms",
+                  lambda people: (*forms(people), people.names[0].family))  # fmt: skip
+
+
+def _et_al_stands_for_any_number_of_authors(patch: pytest.MonkeyPatch) -> None:
+    forms = typed_only_module._forms
+    patch.setattr(typed_only_module, "_forms",
+                  lambda people: (*forms(people), f"{people.names[0].family} et al."))  # fmt: skip
+
+
+def _the_typed_list_cites_its_own_entries(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "reference_lists", lambda text: [])
+
+
+def _a_citation_in_code_counts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "code_spans", lambda text: [])
+
+
+def _a_citation_of_two_works_is_of_the_first(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_only", lambda keys: keys[0] if keys else None)
+
+
+def _a_year_s_letter_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._Listing, "letter", lambda self, key, year, works: "")
+
+
+def _a_key_s_last_letter_is_the_printed_one(patch: pytest.MonkeyPatch) -> None:
+    def letter(self, key, year, works):
+        found = typed_only_module._KEY_LETTER.search(key)
+        return found.group(1) if found else ""
+
+    patch.setattr(typed_only_module._Listing, "letter", letter)
+
+
+def _an_entry_not_read_is_never_the_work(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._NotRead, "may_be", lambda self, year, family: False)
+
+
+def _a_second_author_of_an_entry_not_read_makes_it_the_work(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    def of(text: str):
+        years = frozenset(re.findall(r"\d{4}", text))
+        return typed_only_module._NotRead(years, frozenset(typed_only_module.name_words(text)))
+
+    patch.setattr(typed_only_module._NotRead, "of", of)
+
+
+def _an_entry_with_no_key_is_read_by_its_name_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_as_typed", lambda lines, entry: entry.text)
+
+
+def _a_page_after_the_year_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_PART", re.compile(
+        rf"(?P<names>.+?), (?P<years>{typed_only_module.YEAR}"
+        rf"(?:, {typed_only_module.YEAR})*)"))  # fmt: skip
+
+
+def _further_years_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    year, page = typed_only_module.YEAR, typed_only_module._PAGE
+    patch.setattr(typed_only_module, "_PART",
+                  re.compile(rf"(?P<names>.+?), (?P<years>{year}){page}"))  # fmt: skip
+
+
+def _words_before_the_names_are_passed_over(patch: pytest.MonkeyPatch) -> None:
+    names_it = typed_only_module._names_it
+    patch.setattr(typed_only_module, "_names_it", lambda names, people: any(
+        names_it(names[at:], people) for at in range(len(names))))  # fmt: skip
+
+
+def _a_citation_in_the_sentence_is_read(patch: pytest.MonkeyPatch) -> None:
+    parts = typed_only_module._parts
+
+    def with_sentence(text: str):
+        yield from parts(text)
+        for found in re.finditer(r"(\w+) \((\d{4})\)", text):
+            yield found.group(1), (found.group(2),), found.group(0)
+
+    patch.setattr(typed_only_module, "_parts", with_sentence)
+
+
+def _a_month_is_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_MONTHS", frozenset())
+
+
+def _initials_are_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_initials", lambda given: ("b",))
+
+
+def _titles_are_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_title_words", lambda title: ())
+
+
+def _names_are_folded_as_for_the_registries(patch: pytest.MonkeyPatch) -> None:
+    def folded(names: str, people) -> bool:
+        said = typed_only_module.name_words(names)
+        return any(said == typed_only_module.name_words(form)
+                   for form in typed_only_module._forms(people))  # fmt: skip
+
+    patch.setattr(typed_only_module, "_names_it", folded)
+
+
+def _a_name_in_tex_is_another_person(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_in_tex", lambda people: False)
+
+
+def _babel_s_tex_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_TEX_SIGNS", "\\{}")
+
+
+def _a_piece_counts_beside_one_that_is_no_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module, "_every_piece_cites", lambda read: True)
+
+
+def _an_entry_only_the_list_holds_is_not_the_work(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_only_module._Listing, "holds_another", lambda *a, **k: False)
+
+
 #: The papers each example of the property below holds: mostly British, mostly American,
 #: as many of each, British by its -ise words alone, British with as many -ize words both
 #: Englishes write as it has British ones, which count for neither, and those around one
@@ -26754,6 +26901,94 @@ BROKEN = {
     "a typed citation's hint names a work from that year by another name": (
         _a_work_of_another_name_is_named,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a typed citation is of an entry by its first author and year alone": (
+        _the_first_author_and_year_are_enough,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed et al. is of an entry of any number of authors": (
+        _et_al_stands_for_any_number_of_authors,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "the typed reference list cites its own entries": (
+        _the_typed_list_cites_its_own_entries,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation in code counts": (
+        _a_citation_in_code_counts,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation of two works is of the first": (
+        _a_citation_of_two_works_is_of_the_first,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation's letter is not read": (
+        _a_year_s_letter_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a key's last letter is a typed citation's year letter": (
+        _a_key_s_last_letter_is_the_printed_one,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation is never of a list's entry not read": (
+        _an_entry_not_read_is_never_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a second author makes a list's entry not read the work": (
+        _a_second_author_of_an_entry_not_read_makes_it_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a list's entry with no key is read by its name alone": (
+        _an_entry_with_no_key_is_read_by_its_name_alone,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a page after a typed citation's year is not read": (
+        _a_page_after_the_year_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "further years after a typed citation's year are not read": (
+        _further_years_are_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "words before a typed citation's names are passed over": (
+        _words_before_the_names_are_passed_over,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed citation in the sentence is read": (
+        _a_citation_in_the_sentence_is_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a month is a typed citation's author": (
+        _a_month_is_an_author,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a list entry's initials are not compared": (
+        _initials_are_not_compared,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a list entry's title is not compared": (
+        _titles_are_not_compared,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a typed name is folded as for the registries": (
+        _names_are_folded_as_for_the_registries,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a name in TeX is another person": (
+        _a_name_in_tex_is_another_person,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a name in babel's TeX is another person": (
+        _babel_s_tex_is_not_read,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "a piece of a bracket counts beside one that is no citation": (
+        _a_piece_counts_beside_one_that_is_no_citation,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
+    ),
+    "an entry only the typed list holds is not the work": (
+        _an_entry_only_the_list_holds_is_not_the_work,
+        test_a_typed_citation_counts_for_an_entry_by_all_its_names_and_its_year,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

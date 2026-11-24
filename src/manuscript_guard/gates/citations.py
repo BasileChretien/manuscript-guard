@@ -27,11 +27,13 @@ single warning rather than silently passing.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.cited_as_typed import typed_only
 from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
@@ -51,7 +53,7 @@ def bib_keys(project: Project) -> frozenset[str]:
 
 
 def check_citations(project: Project, literature: Literature) -> Report:
-    from manuscript_guard.text.reader import citation_uses
+    from manuscript_guard.text.reader import LATEX, citation_uses, manuscript_format
 
     report = Report()
     uses = citation_uses(project)
@@ -161,22 +163,76 @@ def check_citations(project: Project, literature: Literature) -> Report:
     report = report.merge(check_lookups(project, sorted(seen), literature))
     report = report.merge(check_duplicates(project, seen))
     stale = sorted(committed - seen) if committed else []
+    typed = typed_only(project, stale)
+    latex = manuscript_format(project.path("manuscript")) == LATEX
     for citekey in stale:
         report = report.with_findings(
-            Finding(
-                gate=GATE,
-                code="reference-uncited",
-                severity=WARN,
-                message=f"references.bib holds @{citekey}, which nothing cites",
-                path=project.path("literature") / BIB_FILE,
-                hint="run `manuscript-guard sync-bib` to rebuild it from what is cited",
-            )
+            _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
         )
 
     return report.with_counts(
         citations=len(uses),
         citations_distinct=len(seen),
         citations_narrative=sum(1 for u in uses if u.narrative),
+    )
+
+
+def _uncited_hint(citekey: str, *, latex: bool) -> str:
+    """What to do of an entry no citation key points to and no bracket names. A citation in
+    the sentence is not read, so the work may be cited all the same: that comes first. The
+    removal is by hand, since `sync_bib` would take every other such work with it."""
+    cite = f"\\cite{{{citekey}}}" if latex else f"@{citekey}"
+    return (
+        f'if the text does cite this work in words, as in "Smith (2020) showed", write that '
+        f"citation with its key, {cite}. If the work really is not cited, delete its entry "
+        "from references.bib by hand, and do not use `sync-bib` for this: when it writes the "
+        "file, it keeps only the entries a citation key points to, so it would also drop any "
+        "other work the text cites only in words"
+    )
+
+
+def _typed_only_hint(citekey: str, *, latex: bool) -> str:
+    """What to do of an entry cited only as typed text. Its own key is not enough before
+    `sync_bib`, which would still drop any other work the text cites only in words."""
+    cite = f"\\cite{{{citekey}}}" if latex else f"[@{citekey}]"
+    return (
+        f"to keep the entry, write the citation as {cite} and check that the work is in your "
+        "Zotero library. Do not run `sync-bib` until every work the text cites has its key, "
+        "this one and any other cited only in words: when it writes the file, it keeps only "
+        "the entries a citation key points to"
+    )
+
+
+def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool,
+             latex: bool) -> Finding:  # fmt: skip
+    """An entry of `references.bib` no citation key points to: a warning where nothing cites
+    it, a note where the manuscript cites it as typed text, `typed` (Basile, 2026-11-23). The
+    note keeps the warning's key, made from the warning's words, so that a verdict on the
+    one is paired with the other. It says what `sync_bib` does: it writes the file from the
+    manuscript's keys, and with `any_key` false, no key at all, it stops and writes nothing."""
+    nothing = Finding(
+        gate=GATE,
+        code="reference-uncited",
+        severity=WARN,
+        message=f"references.bib holds @{citekey}, which nothing cites",
+        path=path,
+        hint=_uncited_hint(citekey, latex=latex),
+    )
+    if typed is None:
+        return nothing
+    return replace(
+        nothing,
+        severity=INFO,
+        message=f"references.bib holds @{citekey}, which the manuscript cites only as typed "
+        f'text ("{typed}"): no citation key points to it, so `sync-bib` would drop it from '
+        "the file"
+        if any_key
+        else f"references.bib holds @{citekey}, which the manuscript cites only as typed "
+        f'text ("{typed}"): no citation key points to it. The manuscript has no citation key '
+        "yet, so `sync-bib` stops and writes nothing; once it has one, `sync-bib` would drop "
+        "this entry",
+        hint=_typed_only_hint(citekey, latex=latex),
+        keyed_on=nothing.message,
     )
 
 

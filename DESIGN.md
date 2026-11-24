@@ -27395,8 +27395,50 @@ Open, recorded as each change landed:
 - **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
   file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
   not hold is gone; the file's header says to import it into Zotero first. An entry no
-  citation was made a key of is `reference-uncited` to G7, whose hint is to run `sync-bib`.
-  Accepted.
+  citation was made a key of is `reference-uncited` to G7: a note that `sync-bib` would drop
+  it where the manuscript cites it as typed text in brackets, as exactly its names and year
+  (Basile, 2026-11-23 and 2026-11-24), and otherwise a warning, whose hint says to give a
+  citation in words its key, to delete the entry by hand only if the work really is not
+  cited, and not to use `sync-bib` for that. Accepted.
+- **G7 counts a typed citation for an entry only in brackets, as exactly its names and
+  year.** A citation in the sentence, "Smith (2020) showed", is not read at all (Basile,
+  2026-11-24): what stands before the bracket cannot be told from a longer name ("Garcia
+  Smith", "zur Smith"). In brackets, a part, the bracket's content or one `;`-separated piece
+  of it where every piece is text, a comma and a year, counts where it is the entry's
+  names as the import renders them, a comma and the year, with only a page or further years
+  after it. Every other citation leaves the entry a warning that nothing cites it, though a
+  reader sees that something does, and whose hint says to give such a citation its key,
+  since `sync-bib` would drop the entry: a piece beside one that is no citation ("*d* =
+  0.17; Smith, 2020", "BDI; Smith, 2020"), words before the name
+  ("e.g., Smith, 2020", "ABC, Smith, 2020", "A. Smith, 2020"), no comma before the year, the
+  names in another order than the list's ("Smith, Lee & Jones" for Smith, Jones and Lee),
+  three authors typed as one or as "Smith, Jones, et al.", "and colleagues", two citations
+  parted by a comma, a second year by its letter alone ("2020a, b"), a name written
+  otherwise than the list writes it, a capital included, a family name in TeX, which the
+  import does not read (TeX in a given name blocks nothing), and a group's name. With no typed list a year's letter is not known, so a
+  citation with one counts for no entry, and a key ending in a letter counts for no
+  citation, even the only one of its name and year. On the tuning corpus this leaves 11 of
+  the 24 false findings loud: 5 cited only in the sentence, 2 in a piece beside one that is
+  no citation, and one each with a word before the name, no comma, the names in another
+  order and another year. A LaTeX manuscript cites by command and is not read for this.
+  Pinned by
+  `tests/test_corruption.py::test_a_citation_typed_in_a_shape_not_read_leaves_the_warning`
+  and `tests/test_corruption.py::test_a_bare_citation_of_a_lone_key_ending_in_a_letter_keeps_the_warning`.
+- **One piece of a bracket G7 does not read voids the exact citations beside it.** It does
+  so even where that piece is a real citation: "(Smith, 2020; Jones, in press)", "(Smith,
+  2020; Lee, 2017a,b)" and "(Smith, 2020; Jones 2020)" all leave Smith's entry a warning.
+  Pinned by `tests/test_corruption.py::test_one_piece_not_read_voids_the_exact_citations_beside_it`.
+- **A piece of a bracket is held to a citation's shape alone.** Text, a comma and a year is
+  enough, so a statistic of that shape does not void the citation beside it: "(*d* = 0.17,
+  2019; Smith, 2020)" gives Smith's entry a note. Pinned by
+  `tests/test_corruption.py::test_a_piece_with_a_comma_and_a_year_passes_as_a_citation`.
+- **G7 takes a season or a place for an author, and a bare page for a further year.** A
+  bracket holds no sign of what its word is: "(Winter, 2018)" may be a date and "(London,
+  2020)" a place, and where the list holds a work by that name from that year, its entry
+  is a note. Pinned by
+  `tests/test_corruption.py::test_a_season_or_a_place_is_read_as_an_author_of_that_year`.
+  The page of "(Smith, 2020, 1998)" has a year's shape, so a work by Smith from 1998 is a
+  note too. Pinned by `tests/test_corruption.py::test_a_bare_page_is_read_as_a_further_year`.
 - **G2 reads no number in a typed reference list up to where the list is taken to end.** A
   list under a heading or a title in bold that names one ends at the next heading, at a
   caption, a table or a title of back matter, at a footnote's definition, at a caption

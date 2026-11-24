@@ -823,10 +823,64 @@ def test_what_a_contract_refuses_is_not_sent_to_bind(tmp_path: Path) -> None:
         "bound-uncheckable": ("results-binding", ("check",)),
         "front-matter-unreadable": ("project-setup", ("check",)),
         "front-matter-abstract": ("manuscript-writing", None),
-        "reference-uncited": ("literature-verify", ("sync-bib",)),
+        "reference-uncited": ("literature-verify", None),
         "reference-duplicate": ("literature-verify", None),
         "reference-title-duplicate": ("literature-verify", None),
     }  # fmt: skip
+
+
+def _cited_only_in_the_sentence(root: Path) -> None:
+    """An entry the manuscript cites in words alone, which G7 does not read as a citation."""
+    bib = root / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + "\n@article{imaginary2018,\n"
+                   "  author = {Imaginary, Anne}, title = {T}, journal = {J}, year = {2018},\n}\n",
+                   encoding="utf-8")  # fmt: skip
+    main = root / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8") + "\nImaginary (2018) showed this.\n",
+                    encoding="utf-8")  # fmt: skip
+
+
+def test_next_does_not_send_a_work_cited_in_words_to_sync_bib(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`sync-bib` would drop the entry of a work the text cites in words, so `next` offers
+    no command for this warning. What it says instead is the finding's hint, in the text
+    and in the JSON, with no `run:` line left empty."""
+    _cited_only_in_the_sentence(project)
+    assert main(["next", "--all", "--json", str(project)]) == 0
+    said = json.loads(capsys.readouterr().out)
+    (action,) = [one for one in said["actions"] if "reference-uncited" in one["codes"]]
+    assert action["skill"] == "literature-verify", action
+    assert "sync-bib" not in (action["command"] or "") and action["argv"] != ["sync-bib"], action
+    assert 'cite this work in words, as in "Smith (2020) showed"' in action["why"], action
+    assert "with its key, @imaginary2018" in action["why"], action
+    assert "If the work really is not cited" in action["why"], action
+    assert "do not use `sync-bib` for this" in action["why"], action
+    assert "manuscript-guard sync-bib" not in action["why"], action
+
+    assert main(["next", "--all", str(project)]) == 0
+    text = capsys.readouterr().out
+    assert "manuscript-guard sync-bib" not in text, text
+    assert not re.search(r"^\s*run:\s*$", text, re.MULTILINE), text
+    assert "reference-uncited" in text and "If the work really is not cited" in text, text
+
+
+def test_a_warning_with_a_command_beside_this_one_keeps_it(tmp_path: Path) -> None:
+    """Only `reference-uncited` loses its command: alone it is offered none, `sync-sources`,
+    on the same skill, keeps its own, and the two together are told to read `check`, as any
+    two commands are."""
+
+    def action_of(*codes: str) -> guide.Action:
+        state = settled(tmp_path, findings=tuple(
+            at(tmp_path, "G7", code, WARN, "literature/references.bib") for code in codes))
+        (action,) = [one for one in decide(state) if set(codes) <= set(one.codes)]
+        return action
+
+    assert route_of("reference-uncited").argv is None
+    assert action_of("reference-uncited").argv is None
+    assert "sync-sources" in action_of("literature-source-not-here").argv
+    together = action_of("reference-uncited", "literature-source-not-here").argv
+    assert "check" in together and "sync-bib" not in together, together
 
 
 def test_a_round_with_disagreements_or_stale_answers_is_the_authors(tmp_path: Path) -> None:

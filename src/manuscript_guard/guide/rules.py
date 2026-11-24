@@ -33,7 +33,14 @@ from manuscript_guard.guide.model import (
     argv,
     shown,
 )
-from manuscript_guard.guide.routes import CANNOT_CHECK, GATE_SKILLS, Route, route_for, route_of
+from manuscript_guard.guide.routes import (
+    CANNOT_CHECK,
+    GATE_SKILLS,
+    HINT_IS_THE_STEP,
+    Route,
+    route_for,
+    route_of,
+)
 from manuscript_guard.policy import DESCRIPTIONS, DRAFTING, INTERNAL_REVIEW, STAGES, SUBMISSION
 
 
@@ -261,6 +268,14 @@ def _co_author_checks(state: State) -> list[Action]:
     )]  # fmt: skip
 
 
+def _why_warned(ordered: list[Finding]) -> str:
+    """Why an action on warnings is there, with the hint of the first finding that no command
+    answers (`HINT_IS_THE_STEP`), which is then what to do."""
+    step = next((f for f in ordered if f.code in HINT_IS_THE_STEP and f.hint), None)
+    return WHY["warnings"] if step is None else (
+        f"{WHY['warnings']} For the first {step.code}: {step.hint}.")
+
+
 def _warnings(state: State) -> list[Action]:
     by_skill: dict[str, list[Finding]] = {}
     for finding in state.findings:
@@ -292,8 +307,9 @@ def _warnings(state: State) -> list[Action]:
             skill, title = name, f"{warned} for the {name} skill"
         who = AUTHOR if any(r is not None and r.who == AUTHOR for r in routes) else AGENT
         actions.append(Action(
-            id=f"warnings:{name}", rule="warnings", tier=8, title=title, why=WHY["warnings"],
-            who=who, skill=skill, argv=argv(state, *words) if words else None,
+            id=f"warnings:{name}", rule="warnings", tier=8, title=title,
+            why=_why_warned(ordered), who=who, skill=skill,
+            argv=argv(state, *words) if words else None,
             codes=tuple(sorted({f.code for f in ordered})), findings=ordered,
             key=(_rank(ordered[0].gate), name, "", 0),
         ))  # fmt: skip

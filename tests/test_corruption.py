@@ -20290,6 +20290,596 @@ def test_an_e_mail_address_is_no_citation_and_a_key_beside_one_still_is(project:
     assert unresolved == ["@ghostKey2020 matches nothing in the library"]
 
 
+# An entry of `references.bib` a Word paper cites only as typed text. `init --from` makes a
+# group a key only if each of its parts names an entry, so one unknown author leaves the
+# rest typed, and G7 said of them that nothing cites them (the real-paper corpus, window C:
+# 24 false findings in 8 papers against 4 true). The author's decisions of 2026-11-23 and
+# 2026-11-24: a note that says so and what `sync-bib` would do, for a citation in brackets
+# whose whole part is the entry's names and year; every other entry stays a warning.
+
+_TYPED_ONLY_BIB = """
+@article{imaginary2018,
+  author = {Imaginary, Anne}, title = {One}, journal = {J}, year = {2018},
+}
+@article{dupont2019,
+  author = {Dupont, Anne and Second, Bea}, title = {Two}, journal = {J}, year = {2019},
+}
+@article{walker2020,
+  author = {Walker, Anne and Second, Bea and Third, Cleo}, title = {Three}, journal = {J},
+  year = {2020},
+}
+@article{vanderberg2014,
+  author = {{van der Berg}, Anne and Second, Bea and Third, Cleo}, title = {Four},
+  journal = {J}, year = {2014},
+}
+@article{who2020,
+  author = {{World Health Organization}}, title = {Five}, journal = {J}, year = {2020},
+}
+"""
+
+
+def _uncited(root: Path, typed: str, bib: str = _TYPED_ONLY_BIB) -> dict:
+    """G7's `reference-uncited` findings by key, the manuscript holding `typed` and
+    `references.bib` the entries of `bib` beside its own."""
+    path = root / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
+    main = main_md(root)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n{typed}\n", encoding="utf-8")
+    found = [f for f in _g7(root).findings if f.code == "reference-uncited"]
+    return {re.search(r"@(\w+)", f.message).group(1): f for f in found}
+
+
+def _one_entry(key: str, author: str, year: int = 2020, title: str = "T") -> str:
+    return (f"\n@article{{{key},\n  author = {{{author}}}, title = {{{title}}},\n"
+            f"  year = {{{year}}},\n}}\n")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("typed", "key", "shown"),
+    [
+        ("A claim (Imaginary, 2018).", "imaginary2018", "Imaginary, 2018"),
+        ("A claim (Dupont & Second, 2019).", "dupont2019", "Dupont & Second, 2019"),
+        ("A claim (Dupont and Second, 2019).", "dupont2019", "Dupont and Second, 2019"),
+        ("A claim (Walker et al., 2020).", "walker2020", "Walker et al., 2020"),
+        ("A claim (Walker, Second, & Third, 2020).", "walker2020",
+         "Walker, Second, & Third, 2020"),
+        ("A claim (Walker, Second, and Third, 2020).", "walker2020",
+         "Walker, Second, and Third, 2020"),
+        ("A claim (van der Berg et al., 2014).", "vanderberg2014",
+         "van der Berg et al., 2014"),
+        # A group with a work the list lacks: why the import left it typed.
+        ("A claim (Nobody, 2001; Imaginary, 2018).", "imaginary2018", "Imaginary, 2018"),
+        ("A claim (Imaginary, 2018; Nobody, 2001).", "imaginary2018", "Imaginary, 2018"),
+        # After the year, a page or further years.
+        ("A claim (Imaginary, 2018, p. 45).", "imaginary2018", "Imaginary, 2018, p. 45"),
+        ("A claim (Imaginary, 2018, pp. 57-58).", "imaginary2018",
+         "Imaginary, 2018, pp. 57-58"),
+        ("A claim (Imaginary, 2011, 2014, 2018).", "imaginary2018",
+         "Imaginary, 2011, 2014, 2018"),
+        ("A claim (Imaginary, 2018, 2021).", "imaginary2018", "Imaginary, 2018, 2021"),
+    ],
+)
+def test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do(
+    project: Path, typed: str, key: str, shown: str
+) -> None:
+    """The entry is cited, so G7 no longer says nothing cites it: it is a note that names the
+    words that cite it and says that `sync-bib`, which writes the file from the citation keys
+    alone, would drop it. The code is the same, and so is the key: a verdict on the old
+    finding pairs with this one."""
+    from manuscript_guard.findings import INFO, WARN, Finding
+
+    found = _uncited(project, typed)[key]
+    assert found.severity == INFO, found
+    assert f'cites only as typed text ("{shown}")' in found.message, found.message
+    assert "no citation key points to it" in found.message, found.message
+    assert "`sync-bib` would drop it" in found.message, found.message
+    assert f"[@{key}]" in found.hint and "Zotero" in found.hint, found.hint
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=found.path,
+                  message=f"references.bib holds @{key}, which nothing cites")  # fmt: skip
+    assert was.keyed().from_context and found.key == was.key, (found.key, was.key)
+    said = found.as_dict()
+    assert said["key"] == was.as_dict()["key"] and said["key_from"] == "context", said
+    assert set(said) == set(was.as_dict()), said
+
+
+@pytest.mark.parametrize(
+    ("typed", "key"),
+    [
+        ("Nothing names it.", "imaginary2018"),
+        ("A claim (Imaginary, 2017).", "imaginary2018"),
+        ("A claim (Fictional, 2018).", "imaginary2018"),
+        # The first author is the entry's and the citation is of another work.
+        ("A claim (Imaginary & Other, 2018).", "imaginary2018"),
+        ("A claim (Imaginary et al., 2018).", "imaginary2018"),
+        ("A claim (Dupont, 2019).", "dupont2019"),
+        ("A claim (Dupont & Other, 2019).", "dupont2019"),
+        ("A claim (Dupont et al., 2019).", "dupont2019"),
+        ("A claim (Walker, 2020).", "walker2020"),
+        ("A claim (Walker & Second, 2020).", "walker2020"),
+        ("A claim (Walker, Second, & Other, 2020).", "walker2020"),
+        ("A claim (Berg et al., 2014).", "vanderberg2014"),
+        ("A claim (Van der Berg et al., 2014).", "vanderberg2014"),
+        # A citation in the sentence is not read.
+        ("Imaginary (2018) wrote.", "imaginary2018"),
+        ("As Imaginary (2018) wrote.", "imaginary2018"),
+        ("As Imaginary (2011, 2018) wrote.", "imaginary2018"),
+        ("As Dupont and Second (2019) wrote.", "dupont2019"),
+        ("Dupont and Second's (2019) work.", "dupont2019"),
+        ("As Walker et al. (2020) wrote.", "walker2020"),
+        ("Recently, Walker and colleagues (2020) wrote.", "walker2020"),
+        ("As Brown and Imaginary (2018) wrote.", "imaginary2018"),
+        ("Professor Imaginary (2018) wrote.", "imaginary2018"),
+        ("Earlier work differs. Garcia Imaginary (2018) found this.", "imaginary2018"),
+        ("As al-Rashid, Imaginary (2018) wrote.", "imaginary2018"),
+        ("As Brown (ed.) and Imaginary (2018) wrote.", "imaginary2018"),
+        # Anything before or between the names, or no comma before the year.
+        ("A claim (e.g., Imaginary, 2018).", "imaginary2018"),
+        ("A claim (see also Imaginary, 2018).", "imaginary2018"),
+        ("A claim (A. Imaginary, 2018).", "imaginary2018"),
+        ("A claim (B. Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Garcia Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Brown, Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Walker and colleagues, 2020).", "walker2020"),
+        ("A claim (Imaginary 2018).", "imaginary2018"),
+        # A piece of a bracket beside one that is no citation with its own year.
+        ("A claim (Silva; Imaginary, 2018).", "imaginary2018"),
+        ("A claim (*d* = 0.17; Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Imaginary, 2018; see the text).", "imaginary2018"),
+        # A month, a letter the entry does not have, and what is not a page after the year.
+        ("In (March, 2018) it rained.", "imaginary2018"),
+        ("A claim (Imaginary, 2018a).", "imaginary2018"),
+        ("A claim (Imaginary, 2018, Table 2).", "imaginary2018"),
+        ("A claim (Imaginary, 2018, p. 4, Table 2).", "imaginary2018"),
+        # In a comment, in code, around code, or in the typed reference list itself.
+        ("<!-- A claim (Imaginary, 2018). -->", "imaginary2018"),
+        ("`(Imaginary, 2018)`", "imaginary2018"),
+        ("A claim (Imaginary, `x` 2018).", "imaginary2018"),
+        ("# References\n\nImaginary, A. (2018). One. *J*, *1*, 1--2.", "imaginary2018"),
+        ("# References\n\nOther, A. (2001). On (Imaginary, 2018). *J*, *1*, 1--2.",
+         "imaginary2018"),
+    ],
+)
+def test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning(
+    project: Path, typed: str, key: str
+) -> None:
+    """A citation counts only in brackets, and only where its whole part is the entry's names
+    and year, by the rule `init --from` makes a key by."""
+    from manuscript_guard.findings import WARN
+
+    found = _uncited(project, typed)[key]
+    assert found.severity == WARN, found
+    assert found.message == f"references.bib holds @{key}, which nothing cites", found.message
+
+
+@pytest.mark.parametrize(
+    ("author", "year", "key", "typed"),
+    [
+        ("Lee, Ann and Wong, Bo", 2018, "lee2018", "To, Lee, and Wong (2018) wrote."),
+        ("Lee, Ann and Wong, Bo", 2018, "lee2018", "A claim (To, Lee, and Wong, 2018)."),
+        ("Lee, Ann", 2018, "lee2018", "Brown And Lee (2018) wrote."),
+        ("Lee, Ann", 2018, "lee2018", "A claim (Brown And Lee, 2018)."),
+        ("Hausen, Anne", 2009, "hausen2009", "As zur Hausen (2009) wrote."),
+        ("Hausen, Anne", 2009, "hausen2009", "A claim (zur Hausen, 2009)."),
+        ("Brocke, Anne", 2009, "brocke2009", "A claim (vom Brocke, 2009)."),
+        ("Hooft, Anne", 2009, "hooft2009", "A claim ('t Hooft, 2009)."),
+    ],
+)
+def test_a_citation_of_a_longer_name_is_not_of_its_last_words(
+    project: Path, author: str, year: int, key: str, typed: str
+) -> None:
+    """Round 2 of #776: each of these quietened an entry by another person."""
+    from manuscript_guard.findings import WARN
+
+    assert _uncited(project, typed, _one_entry(key, author, year))[key].severity == WARN
+
+
+def test_a_name_in_tex_is_never_two_people(project: Path) -> None:
+    """Round 2 of #776: `M{\\"u}ller` and "Müller" are one name. The import does not read TeX,
+    so an entry in TeX is not named by a typed citation, and a citation that may be of it
+    counts for no other."""
+    from manuscript_guard.findings import WARN
+
+    plain = "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"
+    bib = _one_entry("tex2020", 'M{\\"u}ller, Anne') + _one_entry("plain2020", f"{plain}, Anne")
+    found = _uncited(project, f"A claim ({plain}, 2020).", bib)
+    assert {found[key].severity for key in ("tex2020", "plain2020")} == {WARN}
+
+
+def test_a_name_in_babel_s_tex_is_never_two_people(project: Path) -> None:
+    """The scoped check of #776: `M{"u}ller` loses its braces when the name is read, and
+    `M"uller` is still that name."""
+    from manuscript_guard.findings import WARN
+
+    plain = "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"
+    bib = _one_entry("tex2020", 'M{"u}ller, Anne') + _one_entry("plain2020", f"{plain}, Anne")
+    found = _uncited(project, f"A claim ({plain}, 2020).", bib)
+    assert {found[key].severity for key in ("tex2020", "plain2020")} == {WARN}
+
+
+def test_authors_parted_by_a_semicolon_are_no_citation_of_the_last(project: Path) -> None:
+    """The scoped check of #776: ABNT parts authors with semicolons, so "(Silva; Souza, 2020)"
+    is a work of both. A piece counts only where every piece of the bracket is a citation
+    with its own year."""
+    from manuscript_guard.findings import WARN
+
+    bib = _one_entry("silva2020", "Silva, Ana and Souza, Bia") + _one_entry(
+        "souza2020", "Souza, Bia", title="Other")  # fmt: skip
+    found = _uncited(project, "A claim (Silva; Souza, 2020).", bib)
+    assert {found[key].severity for key in ("silva2020", "souza2020")} == {WARN}
+
+
+def test_each_piece_of_a_bracket_of_citations_counts(project: Path) -> None:
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("smith2019", "Smith, Ann", 2019) + _one_entry("jones2020", "Jones, Bo")
+    found = _uncited(project, "A claim (Smith, 2019; Jones, 2020).", bib)
+    assert {found[key].severity for key in ("smith2019", "jones2020")} == {INFO}
+
+
+@pytest.mark.parametrize(("family", "year"), [("Winter", 2018), ("London", 2020)])
+def test_a_season_or_a_place_is_read_as_an_author_of_that_year(
+    project: Path, family: str, year: int
+) -> None:
+    """Known gaps: "(Winter, 2018)" may be a date and "(London, 2020)" a place, and where the
+    list holds a work by that name from that year, the entry is a note."""
+    from manuscript_guard.findings import INFO
+
+    key = f"{family.lower()}{year}"
+    bib = _one_entry(key, f"{family}, Anne", year)
+    assert _uncited(project, f"Sampled ({family}, {year}).", bib)[key].severity == INFO
+
+
+def test_a_bare_page_is_read_as_a_further_year(project: Path) -> None:
+    """Known gaps: the page of "(Smith, 2020, 1998)" has a year's shape, so a work by Smith
+    from 1998 is a note."""
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("smith2020", "Smith, Anne") + _one_entry("smith1998", "Smith, Anne", 1998)
+    found = _uncited(project, "A claim (Smith, 2020, 1998).", bib)
+    assert {found[key].severity for key in ("smith2020", "smith1998")} == {INFO}
+
+
+@pytest.mark.parametrize(
+    "typed",
+    ["(Imaginary, 2018; Jones, in press)", "(Imaginary, 2018; Lee, 2017a,b)",
+     "(Imaginary, 2018; Jones 2020)"],
+)  # fmt: skip
+def test_one_piece_not_read_voids_the_exact_citations_beside_it(
+    project: Path, typed: str
+) -> None:
+    """Known gaps: the other piece is a real citation in a shape not read, and the exact
+    citation beside it is not counted either, so the entry keeps its warning."""
+    from manuscript_guard.findings import WARN
+
+    assert _uncited(project, f"A claim {typed}.")["imaginary2018"].severity == WARN
+
+
+def test_a_piece_with_a_comma_and_a_year_passes_as_a_citation(project: Path) -> None:
+    """Known gaps: a piece is held to its shape, text, a comma and a year, so a statistic
+    of that shape does not void the citation beside it."""
+    from manuscript_guard.findings import INFO
+
+    found = _uncited(project, "A claim (*d* = 0.17, 2019; Imaginary, 2018).")
+    assert found["imaginary2018"].severity == INFO
+
+
+def test_tex_in_a_given_name_does_not_block_the_entry(project: Path) -> None:
+    """Only family names are compared, so only TeX in one keeps the warning."""
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("imaginaryJorg2018", 'Imaginary, J{\\"o}rg', 2018)
+    found = _uncited(project, "A claim (Imaginary, 2018).", bib)
+    assert found["imaginaryJorg2018"].severity == INFO
+
+
+def test_an_entry_in_tex_alone_keeps_its_warning(project: Path) -> None:
+    from manuscript_guard.findings import WARN
+
+    plain = "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"
+    bib = _one_entry("tex2020", 'M{\\"u}ller, Anne')
+    assert _uncited(project, f"A claim ({plain}, 2020).", bib)["tex2020"].severity == WARN
+
+
+def test_an_entry_the_import_could_not_key_may_be_the_work(project: Path) -> None:
+    """Round 2 of #776: a name in no a-z letters gets no key, and the import keeps only that
+    name of its entry, without the year. The line itself is read."""
+    from manuscript_guard.findings import WARN
+
+    name = "".join(map(chr, (0x418, 0x432, 0x430, 0x43D, 0x43E, 0x432)))
+    typed = (f"A claim ({name}, 2020).\n\n# References\n\n"
+             f"{name}, K. (2020). Other. *J*, *1*, 1--2.\n")  # fmt: skip
+    found = _uncited(project, typed, _one_entry("ivanov2020", f"{name}, Anne"))
+    assert found["ivanov2020"].severity == WARN
+
+
+def test_a_month_is_no_author(project: Path) -> None:
+    """"(May, 2020)" is a date, as the import reads it, though a work by May is listed."""
+    from manuscript_guard.findings import WARN
+
+    found = _uncited(project, "It ended (May, 2020).", _one_entry("may2020", "May, Anne"))
+    assert found["may2020"].severity == WARN
+
+
+_TWO_WORKS_BIB = """
+@article{smith2020a,
+  author = {Smith, Anne}, title = {One}, journal = {J}, year = {2020},
+}
+@article{smith2020b,
+  author = {Smith, Anne}, title = {Two}, journal = {J}, year = {2020},
+}
+"""
+
+
+def test_a_citation_that_may_be_either_of_two_entries_silences_neither(project: Path) -> None:
+    """"(Smith, 2020)" with two works by Smith from 2020 names neither: both stay warnings."""
+    from manuscript_guard.findings import WARN
+
+    found = _uncited(project, "A claim (Smith, 2020).", _TWO_WORKS_BIB)
+    assert {found[key].severity for key in ("smith2020a", "smith2020b")} == {WARN}
+
+
+def test_two_keys_with_no_letter_for_one_citation_are_neither_cited(project: Path) -> None:
+    """Round 2 of #776: two works by one author from one year, keyed with no letter."""
+    from manuscript_guard.findings import WARN
+
+    bib = (_one_entry("smithCohort2020", "Smith, Anne", title="One")
+           + _one_entry("smithTrial2020", "Smith, Anne", title="Two"))  # fmt: skip
+    found = _uncited(project, "A claim (Smith, 2020).", bib)
+    assert {found[key].severity for key in ("smithCohort2020", "smithTrial2020")} == {WARN}
+
+
+def test_a_year_s_letter_says_which_of_two_entries_is_cited(project: Path) -> None:
+    """The typed list prints the letter, and says which entry has it."""
+    from manuscript_guard.findings import INFO, WARN
+
+    typed = ("A claim (Smith, 2020b).\n\n# References\n\n"
+             "Smith, A. (2020a). One. *J*, *1*, 1--2.\n\n"
+             "Smith, A. (2020b). Two. *J*, *1*, 1--2.\n")  # fmt: skip
+    found = _uncited(project, typed, _TWO_WORKS_BIB)
+    assert (found["smith2020a"].severity, found["smith2020b"].severity) == (WARN, INFO)
+
+
+@pytest.mark.parametrize("typed", ["(Smith, 2020a)", "(Smith, 2020b)", "(Smith, 2020)"])
+def test_a_key_s_last_letter_is_no_printed_year_letter(project: Path, typed: str) -> None:
+    """Better BibTeX and the import key a first and a second work `smith2020` and
+    `smith2020a`. With no typed list nothing says which year's letter either prints."""
+    from manuscript_guard.findings import WARN
+
+    bib = _one_entry("smith2020", "Smith, Anne", title="One") + _one_entry(
+        "smith2020a", "Smith, Anne", title="Two")  # fmt: skip
+    found = _uncited(project, f"A claim {typed}.", bib)
+    assert {found[key].severity for key in ("smith2020", "smith2020a")} == {WARN}
+
+
+def test_a_bare_citation_of_a_lone_key_ending_in_a_letter_keeps_the_warning(
+    project: Path,
+) -> None:
+    """Known gaps: the key may be the second of its name and year, its first not listed."""
+    from manuscript_guard.findings import WARN
+
+    found = _uncited(project, "A claim (Smith, 2020).", _one_entry("smith2020a", "Smith, Anne"))
+    assert found["smith2020a"].severity == WARN
+
+
+@pytest.mark.parametrize(
+    ("family", "typed"),
+    [("Xue", "Xu"), ("Suen", "Sun"), ("Yue", "Yu"), ("Ross", "Ros"), ("Mueller", "Muller")],
+)
+def test_two_family_names_are_compared_as_the_import_compares_them(
+    project: Path, family: str, typed: str
+) -> None:
+    """G7's folding for registries writes "ue" as "u" and "ss" as "s", which makes Xue and Xu
+    one person. A typed citation is held to the name as the list writes it."""
+    from manuscript_guard.findings import INFO, WARN
+
+    bib = _one_entry("entry2020", f"{family}, Li")
+    assert _uncited(project, f"A claim ({typed}, 2020).", bib)["entry2020"].severity == WARN
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace(f"({typed}, 2020)",
+                                                             f"({family}, 2020)"),
+                    encoding="utf-8")  # fmt: skip
+    found = [f for f in _g7(project).findings if f.code == "reference-uncited"
+             and "@entry2020" in f.message]  # fmt: skip
+    assert [f.severity for f in found] == [INFO], found
+
+
+@pytest.mark.parametrize(
+    ("listed", "severity"),
+    [
+        # Another person of the name, in the list and not in `references.bib`.
+        ("Smith, K. (2020). Other. *J*, *1*, 1--2.", "warn"),
+        # The same person with another work of that year.
+        ("Smith, A. (2020). Other. *J*, *1*, 1--2.", "warn"),
+        # The entry itself.
+        ("Smith, A. (2020). One. *J*, *1*, 1--2.", "info"),
+    ],
+)
+def test_an_entry_read_from_the_list_may_be_the_work_a_citation_names(
+    project: Path, listed: str, severity: str
+) -> None:
+    """Round 1 of #776: an entry the import read exactly and `references.bib` does not hold
+    can be the work "(Smith, 2020)" cites, so it does not say the entry it does hold is."""
+    bib = _one_entry("smithCohort2020", "Smith, Anne", title="One")
+    typed = f"A claim (Smith, 2020).\n\n# References\n\n{listed}\n"
+    assert _uncited(project, typed, bib)["smithCohort2020"].severity == severity
+
+
+def test_a_citation_an_entry_not_read_may_be_of_silences_no_other(project: Path) -> None:
+    """The typed list holds a second work by Smith from 2020 the import could not read: it
+    wrote only the first to `references.bib`, and left "(Smith, 2020)" typed since it may be
+    either. So it does not say that the entry it wrote is the one cited."""
+    from manuscript_guard.findings import WARN
+
+    bib = "\n@article{smith2020,\n  author = {Smith, Anne}, title = {One}, year = {2020},\n}\n"
+    typed = ("A claim (Smith, 2020).\n\n# References\n\n"
+             "Smith, A. (2020). One. *J*, *1*, 1--2.\n\n"
+             "Smith, K. 2020. Not in the form the import reads.\n")  # fmt: skip
+    assert _uncited(project, typed, bib)["smith2020"].severity == WARN
+
+
+@pytest.mark.parametrize(
+    ("typed", "key"),
+    [
+        ("Imaginary (2018) showed this.", "imaginary2018"),
+        ("A claim (e.g., Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Imaginary 2018).", "imaginary2018"),
+        ("A claim (Walker, Third, & Second, 2020).", "walker2020"),
+        ("A claim (Walker, Second, et al., 2020).", "walker2020"),
+        ("A claim (ABC, Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Walker et al., 2020, Imaginary, 2018).", "imaginary2018"),
+        ("A claim (now Other Name, see Imaginary, 2018).", "imaginary2018"),
+        ("A claim (Imaginary, 2017, 2018a, b).", "imaginary2018"),
+        ("A claim (World Health Organization, 2020).", "who2020"),
+    ],
+)
+def test_a_citation_typed_in_a_shape_not_read_leaves_the_warning(
+    project: Path, typed: str, key: str
+) -> None:
+    """Known gaps, "G7 counts a typed citation for an entry only in brackets, as exactly its
+    names and year": each of these is a citation a reader would see, and each is left a
+    warning, the side of the rule that says too much rather than silences an uncited entry."""
+    from manuscript_guard.findings import WARN
+
+    assert _uncited(project, typed)[key].severity == WARN
+
+
+def test_the_note_says_what_sync_bib_does_in_a_paper_with_no_citation_key(
+    project: Path,
+) -> None:
+    """`sync-bib` refuses a manuscript that cites nothing and leaves the file as it is, so in
+    a paper whose every citation is typed it would drop nothing yet, and the note says so."""
+    from manuscript_guard.findings import INFO
+
+    main = main_md(project)
+    main.write_text(re.sub(r"\[[^\]\n]*@[^\]\n]*\]", "", main.read_text(encoding="utf-8")),
+                    encoding="utf-8")  # fmt: skip
+    found = _uncited(project, "A claim (Imaginary, 2018).")["imaginary2018"]
+    assert found.severity == INFO, found
+    assert "`sync-bib` stops and writes nothing" in found.message, found.message
+    assert "once it has one, `sync-bib` would drop this entry" in found.message, found.message
+
+
+def _is_the_old_warning(found, key: str) -> None:
+    """The warning as `main` has it, but for its hint: severity, code, words and key."""
+    from manuscript_guard.findings import WARN, Finding
+
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=found.path,
+                  message=f"references.bib holds @{key}, which nothing cites")  # fmt: skip
+    assert (found.severity, found.code, found.message) == (was.severity, was.code, was.message)
+    assert found.key == was.key and found.as_dict()["key"] == was.as_dict()["key"], found.key
+    assert found.as_dict()["key_from"] == "context", found.as_dict()
+
+
+@pytest.mark.parametrize("typed", ["Imaginary (2018) showed this.", "Nothing names it."])
+def test_the_warning_s_hint_does_not_send_a_cited_work_to_sync_bib(
+    project: Path, typed: str
+) -> None:
+    """A citation in the sentence is not read, so this warning may stand on a work the paper
+    does cite, and `sync-bib` would drop it. The hint says first what to do if so, and offers
+    the removal only for a work that really is not cited. It holds of what `sync-bib` does:
+    it writes the file from the keys, and stops where the manuscript has none."""
+    found = _uncited(project, typed)["imaginary2018"]
+    _is_the_old_warning(found, "imaginary2018")
+    hint = found.hint
+    assert not hint.startswith("run"), hint
+    assert 'cite this work in words, as in "Smith (2020) showed"' in hint, hint
+    assert "with its key, @imaginary2018" in hint, hint
+    assert hint.index("@imaginary2018") < hint.index("If the work really is not cited"), hint
+    _advises_no_sync_bib(hint)
+
+
+def _advises_no_sync_bib(hint: str) -> None:
+    """The removal is by hand. `sync-bib` is named only to say it is not the way: it would
+    take every other work the text cites only in words with it. "When it writes" holds of a
+    manuscript with no key too, where it stops and writes nothing."""
+    assert "delete its entry from references.bib by hand" in hint, hint
+    assert "do not use `sync-bib` for this" in hint, hint
+    assert "when it writes the file, it keeps only the entries a citation key points to" in hint
+    assert "would also drop any other work the text cites only in words" in hint, hint
+    assert "manuscript-guard sync-bib" not in hint and "run `" not in hint, hint
+
+
+def _holds_sync_bib_back_for_the_whole_file(hint: str, cite: str) -> None:
+    """Writing this one key is not enough: `sync-bib` would still drop any other work the
+    text cites only in words."""
+    assert f"write the citation as {cite}" in hint and "Zotero" in hint, hint
+    assert "Do not run `sync-bib` until every work the text cites has its key" in hint, hint
+    assert "this one and any other cited only in words" in hint, hint
+    assert "when it writes the file, it keeps only the entries a citation key points to" in hint
+    assert "before running" not in hint, hint
+
+
+def test_the_note_s_hint_holds_sync_bib_back_until_every_cited_work_has_its_key(
+    project: Path,
+) -> None:
+    """The note's severity, code, words and key stay; only what it advises is of the whole
+    file. A second entry here is cited only in words, and `sync-bib` would drop it."""
+    from manuscript_guard.findings import INFO, WARN, Finding
+
+    typed = "A claim (Imaginary, 2018). Dupont and Second (2019) showed this."
+    found = _uncited(project, typed)["imaginary2018"]
+    assert (found.severity, found.code) == (INFO, "reference-uncited"), found
+    assert 'cites only as typed text ("Imaginary, 2018")' in found.message, found.message
+    _holds_sync_bib_back_for_the_whole_file(found.hint, "[@imaginary2018]")
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=found.path,
+                  message="references.bib holds @imaginary2018, which nothing cites")  # fmt: skip
+    assert found.key == was.key and found.as_dict()["key_from"] == "context", found.key
+
+
+@pytest.mark.parametrize("any_key", [True, False])
+def test_the_note_s_hint_is_written_for_a_latex_paper_too(tmp_path: Path, any_key: bool) -> None:
+    """`typed_only` reads no LaTeX manuscript, so a run makes no such note there; the hint is
+    held all the same to the command such a paper cites by."""
+    from manuscript_guard.findings import INFO, WARN, Finding
+    from manuscript_guard.gates.citations import _uncited as uncited_finding
+
+    path = tmp_path / "references.bib"
+    found = uncited_finding("imaginary2018", path, "Imaginary, 2018", any_key=any_key, latex=True)
+    assert found.severity == INFO, found
+    _holds_sync_bib_back_for_the_whole_file(found.hint, "\\cite{imaginary2018}")
+    assert "[@" not in found.hint, found.hint
+    was = Finding(gate="G7", code="reference-uncited", severity=WARN, path=path,
+                  message="references.bib holds @imaginary2018, which nothing cites")  # fmt: skip
+    assert found.key == was.key, found.key
+
+
+def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> None:
+    """The scoped check of #776: following the hint of `a2020`, which nothing cites, by
+    running `sync-bib` would have lost `b2019`, which the text cites in words."""
+    bib = _one_entry("a2020", "Ayala, Anne") + _one_entry("b2019", "Bee, Bo", 2019)
+    found = _uncited(project, "Bee (2019) showed this.", bib)
+    for key in ("a2020", "b2019"):
+        _is_the_old_warning(found[key], key)
+        _advises_no_sync_bib(found[key].hint)
+
+
+def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
+    """A LaTeX manuscript cites by command, so the key is offered as one."""
+    entry = _twin(project)
+    _into_results(entry, "A claim.")
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
+    (found,) = [f for f in _g7(project).findings if f.code == "reference-uncited"
+                and "@imaginary2018" in f.message]  # fmt: skip
+    _is_the_old_warning(found, "imaginary2018")
+    assert "with its key, \\cite{imaginary2018}" in found.hint, found.hint
+    assert "@imaginary2018" not in found.hint, found.hint
+    _advises_no_sync_bib(found.hint)
+
+
+def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:
+    """The verdicts on this code are of Markdown papers only, and a LaTeX paper cites by
+    command: the note is for a paper in Markdown."""
+    from manuscript_guard.gates.cited_as_typed import typed_only
+
+    entry = _twin(project)
+    _into_results(entry, "A claim (Imaginary, 2018).")
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
+    loaded, _ = load_project(project)
+    assert typed_only(loaded, ["imaginary2018"]) == {}
+
+
 
 
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:

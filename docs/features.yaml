@@ -460,11 +460,14 @@ features:
     title: Citations that resolve
     says: >-
       Each citation leads to a reference with well-formed identifiers and the fields it
-      needs, and no work is cited under two keys.
+      needs, no work is cited under two keys, and an entry nothing cites is warned of, or
+      noted where the paper cites it only as typed text in brackets.
     status: works
     gates: [G7]
     tests:
       - tests/test_corruption.py::test_a_malformed_identifier_fails_from_internal_review
+      - tests/test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do
+      - tests/test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning
       - tests/test_zotero.py
 
   - id: zotero

@@ -809,7 +809,10 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   where `references.bib` is already there. The typed list stays in `main.md`, where G2 does
   not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
   there first. It keeps only the entries a citation key points to: `check` notes each entry
-  the paper cites only as typed text, in the shapes it reads, which `sync-bib` would drop.
+  the paper cites only as typed text in brackets, as exactly its names and year, which
+  `sync-bib` would drop. A citation in the sentence, "Smith (2020) showed", is not read, so
+  an entry cited only that way stays a warning that nothing cites it: give it its key before
+  running `sync-bib`.
 
 Where the title page stays in the text, as when the document opens on its title in a
 heading style, G14 still does not read it for abbreviations: its authors' names, units and

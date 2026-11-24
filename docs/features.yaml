@@ -461,7 +461,7 @@ features:
     says: >-
       Each citation leads to a reference with well-formed identifiers and the fields it
       needs, no work is cited under two keys, and an entry nothing cites is warned of, or
-      noted where the paper cites it only as typed text.
+      noted where the paper cites it only as typed text in brackets.
     status: works
     gates: [G7]
     tests:

@@ -20539,6 +20539,39 @@ def test_a_bare_page_is_read_as_a_further_year(project: Path) -> None:
     assert {found[key].severity for key in ("smith2020", "smith1998")} == {INFO}
 
 
+@pytest.mark.parametrize(
+    "typed",
+    ["(Imaginary, 2018; Jones, in press)", "(Imaginary, 2018; Lee, 2017a,b)",
+     "(Imaginary, 2018; Jones 2020)"],
+)  # fmt: skip
+def test_one_piece_not_read_voids_the_exact_citations_beside_it(
+    project: Path, typed: str
+) -> None:
+    """Known gaps: the other piece is a real citation in a shape not read, and the exact
+    citation beside it is not counted either, so the entry keeps its warning."""
+    from manuscript_guard.findings import WARN
+
+    assert _uncited(project, f"A claim {typed}.")["imaginary2018"].severity == WARN
+
+
+def test_a_piece_with_a_comma_and_a_year_passes_as_a_citation(project: Path) -> None:
+    """Known gaps: a piece is held to its shape, text, a comma and a year, so a statistic
+    of that shape does not void the citation beside it."""
+    from manuscript_guard.findings import INFO
+
+    found = _uncited(project, "A claim (*d* = 0.17, 2019; Imaginary, 2018).")
+    assert found["imaginary2018"].severity == INFO
+
+
+def test_tex_in_a_given_name_does_not_block_the_entry(project: Path) -> None:
+    """Only family names are compared, so only TeX in one keeps the warning."""
+    from manuscript_guard.findings import INFO
+
+    bib = _one_entry("imaginaryJorg2018", 'Imaginary, J{\\"o}rg', 2018)
+    found = _uncited(project, "A claim (Imaginary, 2018).", bib)
+    assert found["imaginaryJorg2018"].severity == INFO
+
+
 def test_an_entry_in_tex_alone_keeps_its_warning(project: Path) -> None:
     from manuscript_guard.findings import WARN
 

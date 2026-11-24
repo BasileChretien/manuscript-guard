@@ -7,10 +7,11 @@ an entry is narrower: it is cited, and no key points to it, so `sync-bib`, which
 file from the keys, would drop it (Basile, 2026-11-23). The import does not change.
 
 Only a citation in brackets is read (Basile, 2026-11-24, "Brackets only"). A part is what a
-bracket holds, or one `;`-separated piece of it where every piece of that bracket is names
-and a year: "(Silva; Souza, 2020)", as ABNT parts two authors, is no citation of Souza. A part
-counts for an entry where it is exactly the entry's names, a comma and the year, with
-nothing before or between them:
+bracket holds, or one `;`-separated piece of it where every piece of that bracket is text, a
+comma and a year: "(Silva; Souza, 2020)", as ABNT parts two authors, is no citation of Souza,
+and one piece not read voids the citations beside it, even where it is a real citation
+("Smith, 2020; Jones, in press"). A part counts for an entry where it is exactly the entry's
+names, a comma and the year, with nothing before or between them:
 "Smith", "Smith & Jones" or "Smith and Jones", every name or "Smith et al." for three or
 more, as the import renders them (`typed_references.citations.renderings`). After the year
 it may hold a page ("p. 5", "pp. 5-7") or further years, and nothing else. A citation in the
@@ -19,11 +20,12 @@ from a longer name ("Garcia Smith", "zur Smith"), so the entry keeps its warning
 
 Names are compared as the import compares them, as the list writes them: "Xu" is not "Xue",
 which G7's folding for the registries (`gates.authors.name_words`) makes one. The import does
-not read TeX, so an entry with TeX in any of its names is not named by a typed citation.
+not read TeX, so an entry with TeX in any author's family name is not named by a typed
+citation. TeX in a given name blocks nothing, since family names alone are compared.
 
 A citation that may be two works counts for neither: two entries by those names and that
-year; one of that year with TeX in any of its names, whose first author may be that name; an
-entry the typed list holds by those
+year; one of that year with TeX in any author's family name, whose first author may be that
+name; an entry the typed list holds by those
 names and that year that is not the file's, told apart by its initials and title; an entry
 of the list the import could not read, or could not key, that holds the year and opens on
 the first author's name; or a work of that year whose name holds TeX that cannot be read. A
@@ -66,9 +68,9 @@ _BABEL = re.compile(r'(?<!\\)"')
 
 
 def _in_tex(people: Authors) -> bool:
-    """Whether a name of the entry holds TeX, which the import does not read. Reading a name
-    takes its braces off, so babel's `M{"u}ller` is `M"uller` here, and a quotation mark,
-    which no family name holds, says it too."""
+    """Whether any author's family name holds TeX, which the import does not read. Reading a
+    name takes its braces off, so babel's `M{"u}ller` is `M"uller` here, and a quotation
+    mark, which no family name holds, says it too. A given name is not looked at."""
     return any(sign in one.family for one in people.names for sign in _TEX_SIGNS)
 
 
@@ -183,8 +185,8 @@ def _only(keys: list[str]) -> str | None:
 def _the_work(names: str, year: str, works: Works, by_year: dict[str, list[str]],
               listing: _Listing) -> str | None:  # fmt: skip
     """The one key the citation `names`, `year` can mean, or None where it names none or may
-    be of two works: among them an entry of that year with TeX in any of its names, whose
-    first author, folded, is the first author of the entry named."""
+    be of two works: among them an entry of that year with TeX in any author's family name,
+    whose first author, folded, is the first author of the entry named."""
     four, letter = year[:4], year[4:]
     if names.rstrip(".").casefold() in _MONTHS or works.unread.get(four):
         return None
@@ -205,12 +207,13 @@ def _the_work(names: str, year: str, works: Works, by_year: dict[str, list[str]]
 
 
 def _every_piece_cites(read: list[re.Match[str] | None]) -> bool:
-    """Whether every `;`-separated piece of a bracket is names and a year of its own."""
+    """Whether every `;`-separated piece of a bracket has the shape of a citation: text, a
+    comma and a year of its own. The shape alone: "*d* = 0.17, 2019" has it."""
     return all(piece is not None for piece in read)
 
 
 def _parts(text: str) -> Iterable[tuple[str, tuple[str, ...], str]]:
-    """Each part of a bracket of `text`, a masked text, whose every piece is names and years:
+    """Each part of a bracket of `text`, a masked text, whose every piece has a citation's shape:
     the names, the years and the part as typed. What is masked stays in it as NUL, which is
     no name's and no year's, so a part with code or a comment in it is read as no citation."""
     for found in _GROUP.finditer(text):

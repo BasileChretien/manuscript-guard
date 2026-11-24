@@ -2420,6 +2420,28 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("abbreviations of a PDF's text")
+def _abbreviations_of_a_pdf() -> Reading:
+    """G14's findings on the short forms of a file the audit staged from a PDF, whose text
+    holds no display G14 can find (`_file`'s `from_pdf`; DESIGN.md, Known gaps)."""
+    import inspect
+
+    from manuscript_guard.gates.language import _file as read
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    if "from_pdf" not in inspect.signature(read).parameters:
+        raise ImportError("_file reads no PDF's text apart",
+                          name="manuscript_guard.gates.language")  # fmt: skip
+
+    def abbreviations(text: str) -> dict[str, Any]:
+        exact, lowered = _shipped()
+        file = read(0, MAIN, text, [], False, from_pdf=True)
+        return _told(_judge([file], _Known(exact, lowered), Path(".")))
+
+    _file("")
+    return abbreviations
+
+
 @reading("abbreviation edits")
 def _abbreviation_edits() -> Reading:
     from manuscript_guard.corrections import corrections

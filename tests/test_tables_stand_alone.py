@@ -314,3 +314,46 @@ def test_a_line_of_a_note_that_g14_reads_nothing_of_ends_nothing() -> None:
             "means of\n`score_total`\nacross sites; ICC: intraclass correlation.\n\nThe ICC was "
             "low.\n")  # fmt: skip
     assert _found(text) == [("abbreviation-redefined", "ICC", ASKED)]
+
+
+# ------------------------------------------------- a PDF's text holds no display (window C, row 6)
+
+#: A PDF's text as the audit stages it (`auditing.gates._staged_pdf`): a line to each of the
+#: PDF's lines, and no blank line but around a heading, so that a legend's line stands in a
+#: block that runs from heading to heading.
+PDF_STAGED = ("# Methods\n\nWe gave the low dose (LD) to each patient.\nThe LD was kept.\n\n"
+              "# Results\n\nTable 1. Scores at the lowest dose (LD) given.\nHD 12 14\nThen the "
+              "high dose (HD) was given, and the HD rose.\n\n# Discussion\n\nThe LD and the HD "
+              "held.\n")  # fmt: skip
+
+
+def _found_in_pdf(text: str) -> list[tuple[str, str, str]]:
+    read = _file(0, Path("main.md"), text, [], False, from_pdf=True)
+    assert read.displays == ()
+    return _said(_judge([read], NOTHING, Path(".")).findings)
+
+
+def test_a_pdf_s_text_holds_no_display_and_all_of_it_is_the_text_s() -> None:
+    """DESIGN.md, Known gaps: a PDF's text holds no table that G14 can find, so its tables,
+    captions and notes are read as the text's. Found by its shape, the legend's line made
+    the whole Results a display, its other meaning of LD a question and its use of HD before
+    the sentence that defines it nothing (window C of the real-paper corpus, row 6). The
+    same text in Markdown keeps its display."""
+    assert _found_in_pdf(PDF_STAGED) == [("abbreviation-redefined", "LD", WARNED),
+                                         ("abbreviation-used-before-defined", "HD", WARNED)]
+    assert _found(PDF_STAGED) == [("abbreviation-redefined", "LD", ASKED)]
+
+
+def test_check_reads_only_the_files_staged_from_a_pdf_with_no_display(project: Path) -> None:
+    """`check_language`'s `pdf` names the files the audit staged from a PDF: those, and no
+    other, are read with no display."""
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
+    (project / "manuscript" / "main.md").write_text(PDF_STAGED, encoding="utf-8")
+    loaded = load_project(project)[0]
+
+    def said(pdf: frozenset[str]) -> list[tuple[str, str, str]]:
+        report = check_language(loaded, pdf=pdf)
+        return [each for each in _said(report.findings) if each[0].startswith("abbreviation-")]
+
+    assert said(frozenset({"main.md"})) == _found_in_pdf(PDF_STAGED)
+    assert said(frozenset({"other.md"})) == said(frozenset()) == _found(PDF_STAGED)

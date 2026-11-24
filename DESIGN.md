@@ -5594,7 +5594,8 @@ opens with a note's mark ("Note", "Abbreviations", a footnote's) or pairs a shor
 its long form ("ICC: intraclass correlation"); a legend with no table beside it, a figure's
 or a supplementary table's, "**S1 Table.** ...", is a display with the notes under it; a
 heading, and anything G14 does not read, ends one. In LaTeX it is a table's float whole, or a
-`tabular` and its kin in none. A definition there that gives a meaning the text gives says
+`tabular` and its kin in none. In the text `audit` reads from a PDF none is found, and all of
+it is the text's (Known gaps). A definition there that gives a meaning the text gives says
 nothing, so a display may define its forms again as the text does. One that gives another
 meaning than every one the text gives is asked about (Basile, 2026-11-22, "Ask, don't
 drop"): a question, `abbreviation-redefined` at INFO, never a warning, where that meaning is
@@ -17269,7 +17270,11 @@ to fix is pinned until the fix lands, and the fix changes its test.
     with any other paragraph between it and its table is a display of its own, and the
     table another. Accepted.
   - A PDF's text holds no table that G14 can find, so a PDF's tables, captions and notes
-    are read as the text's, as before. Accepted.
+    are read as the text's, as before. Its lines come with no blank line but around a
+    heading, so a legend's line found by its shape made the whole section under the heading
+    a display (window C of the real-paper corpus, row 6): a file `audit` staged from a PDF
+    is read with no display. Accepted. Pinned by
+    `tests/test_tables_stand_alone.py::test_a_pdf_s_text_holds_no_display_and_all_of_it_is_the_text_s`.
   - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
   - Where the text defines a form nowhere, a display's definition counts for a use outside
     it: the use after it is defined, the use before it is used before it is defined, as

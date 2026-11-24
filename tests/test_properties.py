@@ -3562,6 +3562,35 @@ def test_a_table_or_a_figure_stands_alone(drawn: dict[str, Any]) -> None:
     assert found == drawn["found"], (found, drawn["text"])
 
 
+from generated import pdf_displays  # noqa: E402
+
+
+@holds(60, pdf_displays())
+def test_a_pdf_s_text_holds_no_display(drawn: dict[str, Any]) -> None:
+    """DESIGN.md, Known gaps: a PDF's text holds no table that G14 can find, so its tables,
+    captions and notes are read as the text's, as before "Table stands alone". Its lines
+    come with no blank line but around a heading, so a legend opening a section, of any
+    kind, made the section a display: its other meaning a question and its use before the
+    definition nothing (window C of the real-paper corpus, row 6). Read from a PDF, each is
+    the text's warning."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    read = [language_gate._file(0, Path("main.md"), drawn["text"], [], False, from_pdf=True)]
+    report = _g14_warned(read, nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0],
+                    "asked" if getattr(f, "question", False) else "warned")
+                   for f in report.findings)  # fmt: skip
+    assert found == drawn["found"], (found, drawn["text"])
+
+
+def _a_pdf_s_text_is_read_for_displays(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._file
+
+    def read(*args, from_pdf: bool = False, **more):
+        return real(*args, **more)
+
+    patch.setattr(language_gate, "_file", read)
+
+
 def _a_display_is_compared_with_the_text(patch: pytest.MonkeyPatch) -> None:
     real = language_gate._given_again
     patch.setattr(language_gate, "_given_again_apart", lambda short, definitions, said: [
@@ -28777,6 +28806,10 @@ BROKEN = {
     "APA's number alone above a table takes no title": (
         _a_number_alone_takes_no_title,
         test_a_table_or_a_figure_stands_alone,
+    ),
+    "G14 finds displays in a PDF's text": (
+        _a_pdf_s_text_is_read_for_displays,
+        test_a_pdf_s_text_holds_no_display,
     ),
     "the audit lists the short forms left undefined last first": (
         _the_short_forms_are_listed_last_first,

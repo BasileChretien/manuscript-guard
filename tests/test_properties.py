@@ -13577,7 +13577,7 @@ def docx_with_headings(path: Path, paragraphs: list[tuple[str, bool]]) -> Path:
 
 @holds(60, entries_styled_as_headings())
 def test_a_word_list_goes_on_over_an_entry_styled_as_a_heading(
-    drawn: list[tuple[str, bool]],
+    drawn: tuple[list[tuple[str, bool]], list[list[str]]],
 ) -> None:
     """An entry of a .docx's reference list in a heading style is an entry, and the list goes
     on over it: one numbered in brackets after the entry above it, "[2]" after "[1]", which
@@ -13585,22 +13585,16 @@ def test_a_word_list_goes_on_over_an_entry_styled_as_a_heading(
     list ended there, and the entries after it were read as text, their numbers as
     citations of entries the list did not hold (window C of the real-paper corpus). A
     section's title after the list ends it still, one numbered as the next entry would be,
-    "5. Discussion", among them (`audit.bibliography_spans`)."""
+    "5. Discussion", among them; and so do an entry in brackets out of sequence, "[9]" after
+    "[2]", and a first entry with an entry's shape and none above it (round 1 of #782;
+    `audit.bibliography_spans`)."""
     import tempfile
 
     from manuscript_guard.text.docx import read_docx_text
 
-    expected, current = [], None
-    for text, _heading in drawn:
-        if text == "References":
-            current = [text]
-            expected.append(current)
-        elif current is not None and (text[:1] == "[" or ". J Ex. " in text):
-            current.append(text)
-        else:
-            current = None
+    paragraphs, expected = drawn
     with tempfile.TemporaryDirectory() as folder:
-        document = read_docx_text(docx_with_headings(Path(folder) / "paper.docx", drawn))
+        document = read_docx_text(docx_with_headings(Path(folder) / "paper.docx", paragraphs))
     lines = document.body.split("\n")
     read = [[line for line in lines[start:end] if line.strip()]
             for start, end in audit_module.docx_bibliography_spans(document)]  # fmt: skip
@@ -13633,6 +13627,21 @@ def _only_an_entry_numbered_in_brackets_goes_on(patch: pytest.MonkeyPatch) -> No
     """An entry in a heading style read by its number in brackets alone, and not by an
     entry's shape."""
     patch.setattr(audit_module, "_shaped_as_an_entry_above", lambda lines, start, at: False)
+
+
+def _any_heading_numbered_in_brackets_goes_on(patch: pytest.MonkeyPatch) -> None:
+    """Rule A without its sequence: any heading that opens with a number in brackets is an
+    entry, "[9]" after "[2]" too (round 1 of #782)."""
+    patch.setattr(audit_module, "_bracketed_after_the_entry_above",
+                  lambda lines, start, at: audit_module._BRACKETED_ENTRY.match(lines[at])
+                  is not None)  # fmt: skip
+
+
+def _any_heading_shaped_as_an_entry_goes_on(patch: pytest.MonkeyPatch) -> None:
+    """Rule B without the entry above it: any heading with an entry's shape is an entry, the
+    list's first among them (round 1 of #782)."""
+    patch.setattr(audit_module, "_shaped_as_an_entry_above",
+                  lambda lines, start, at: audit_module.looks_like_reference(lines[at]))
 
 
 def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
@@ -31807,6 +31816,14 @@ BROKEN = {
     ),
     "only an entry numbered in brackets goes on under a heading style": (
         _only_an_entry_numbered_in_brackets_goes_on,
+        test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
+    ),
+    "any heading numbered in brackets goes on, out of sequence too": (
+        _any_heading_numbered_in_brackets_goes_on,
+        test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
+    ),
+    "any heading shaped as an entry goes on, with no entry above": (
+        _any_heading_shaped_as_an_entry_goes_on,
         test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
     ),
     "an assistant's opener is read at the start of every line": (

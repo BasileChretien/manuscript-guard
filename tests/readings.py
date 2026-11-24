@@ -2085,6 +2085,44 @@ def _word_abstract() -> Reading:
     return read
 
 
+@reading("word reference lists")
+def _word_reference_lists() -> Reading:
+    """What `audit` reads as a Word paper's reference lists, its paragraphs given with
+    whether each is in the style "heading 1": each list's paragraphs, and G7's census of
+    them, each entry's label and number and each problem's code and subject
+    (`audit.docx_bibliography_spans`)."""
+    from xml.sax.saxutils import escape
+
+    from manuscript_guard.audit import audit, docx_bibliography_spans
+    from manuscript_guard.text.docx import read_docx_text
+
+    def read(given: list[tuple[str, bool]]) -> dict[str, Any]:
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        styled = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+        body = "".join(f'<w:p>{styled if heading else ""}<w:r><w:t xml:space="preserve">'
+                       f"{escape(text)}</w:t></w:r></w:p>" for text, heading in given)  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "paper.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>"
+                                                      f"{body}</w:body></w:document>")  # fmt: skip
+                archive.writestr("word/styles.xml", f"<w:styles {namespace}><w:style "
+                                 'w:type="paragraph" w:styleId="Heading1"><w:name '
+                                 'w:val="heading 1"/></w:style></w:styles>')  # fmt: skip
+            document = read_docx_text(path)
+            lines = document.body.split("\n")
+            census = audit([path], None).references
+        return {
+            "lists": [[line for line in lines[start:end] if line.strip()]
+                      for start, end in docx_bibliography_spans(document)],
+            "census": [[[entry.label, entry.number] for entry in found.entries]
+                       + [[problem.code, problem.subject] for problem in found.problems]
+                       for found in census],
+        }  # fmt: skip
+
+    return read
+
+
 @reading("pdf headings")
 def _pdf_headings() -> Reading:
     """The headings a PDF's lines are read as, each `(line, title)`, those that are the

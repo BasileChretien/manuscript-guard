@@ -23335,6 +23335,41 @@ def test_an_audited_latex_paper_is_held_as_a_markdown_one_is(
     )
 
 
+def test_a_word_entry_styled_as_a_heading_is_held_as_an_entry(tmp_path: Path) -> None:
+    """A Word paper styled two of its entries as headings, so the list ended at the first of
+    them and every entry after it was read as text, its number a citation of an entry the
+    list did not hold: eight false findings in one paper (window C of the real-paper
+    corpus). Each is an entry now, and the list ends at the next section's title, under
+    which "[6]" cites what the list does not hold."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    paragraphs = [
+        ("Results", True), ("The rate rose [1, 2] and fell [3-5].", False),
+        ("REFERENCES", False),
+        ("[1] Dataset - https://example.org/data", False),
+        ("[2] Face detection: a review - https://example.org/review", True),
+        ("[3] A cohort of masks - https://example.org/cohort", False),
+        ("[4] A network for masks - https://example.org/network", False),
+        ("[5] A tiny network for masks - https://example.org/tiny", True),
+        ("Appendix", True), ("The rate in the appendix rose [6].", False),
+    ]  # fmt: skip
+    styled = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+    body = "".join(f'<w:p>{styled if heading else ""}<w:r><w:t xml:space="preserve">{text}'
+                   "</w:t></w:r></w:p>" for text, heading in paragraphs)  # fmt: skip
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document {ns}><w:body>{body}</w:body></w:document>")
+        archive.writestr("word/styles.xml", f'<w:styles {ns}><w:style w:type="paragraph" '
+                         'w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>')
+    [census] = audit([paper], None).references
+    assert len(census.entries) == 5, [entry.label for entry in census.entries]
+    assert [(p.code, p.subject) for p in census.problems] == [("citation-beyond-list", "[6]")]
+
+
 @pytest.mark.parametrize(("marker", "listed"), [("[3]", []), ("[4]", ["citation-beyond-list"])])
 def test_an_audited_paper_s_numbered_citation_is_held_to_its_list(
     tmp_path: Path, marker: str, listed: list[str]

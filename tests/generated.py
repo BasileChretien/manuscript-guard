@@ -11781,6 +11781,44 @@ def broken_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]
     return "\n".join(lines), spans
 
 
+#: The numberings of a .docx's reference list each draw of `entries_styled_as_headings`
+#: holds, one list of each in an order drawn: in brackets, "[2]", with a stop, "2.", and
+#: none.
+STYLED_LISTS = ("bracketed", "stopped", "unnumbered")
+#: The titles of sections after a reference list.
+_AFTER_A_LIST = ("Appendix", "Supplementary material", "Discussion", "Figure legends")
+
+
+@st.composite
+def entries_styled_as_headings(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """A .docx's paragraphs, each with whether it is in a heading style: a reference list of
+    each kind of `STYLED_LISTS`, each under a "References" in a heading style or not, one to
+    three of its entries after the first in a heading style, as Word papers style them by
+    mistake, and ended by a section's title in a heading style with a sentence under it.
+    The bracketed list's entries have no entry's shape, a title and an address, as Word
+    papers type them (window C of the real-paper corpus); the others have one. The title
+    after the stopped list is numbered as its next entry would be, "5. Discussion", as a
+    numbered section's title is. Every kind in every example."""
+    paragraphs: list[tuple[str, bool]] = []
+    for kind in draw(st.permutations(STYLED_LISTS)):
+        count = draw(st.integers(3, 7))
+        styled = draw(st.sets(st.integers(2, count), min_size=1, max_size=3))
+        paragraphs.append(("References", draw(st.booleans())))
+        for number in range(1, count + 1):
+            name = draw(word_names())
+            entry = {
+                "bracketed": f"[{number}] A study of {name} - https://example.org/{number}",
+                "stopped": f"{number}. {name} A. A study. J Ex. 2019;{number}:1-2.",
+                "unnumbered": f"{name} A. A study. J Ex. 20{10 + number};{number}:1-2.",
+            }[kind]
+            paragraphs.append((entry, number in styled))
+        title = draw(st.sampled_from(_AFTER_A_LIST))
+        paragraphs.append((f"{count + 1}. {title}" if kind == "stopped" else title, True))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6))
+        paragraphs.append((" ".join(words).capitalize() + ".", False))
+    return paragraphs
+
+
 def word_names() -> st.SearchStrategy[str]:
     """A family name for a reference entry."""
     return st.sampled_from(("Smith", "Jones", "Brown", "Green", "Sato", "Okafor"))
@@ -19411,6 +19449,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": commented_numbered_citations().map(lambda drawn: drawn[0]),
+    "word reference lists": entries_styled_as_headings(),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

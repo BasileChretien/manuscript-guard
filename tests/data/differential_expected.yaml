@@ -403,3 +403,10 @@ expected:
     why: >-
       the same: no space is put after the hyphen in "UNEMP\_DURA\_6-12mth" nor in
       "DOSE\_6-5mg", where the base put one; the entry it replaces is spent
+  - reading: word reference lists
+    why: >-
+      a new reading: a .docx's entry in a heading style, numbered in brackets after the entry
+      above it, "[2]" after "[1]", or shaped as an entry above it is, goes on with the list,
+      where the base ends the list there and reads the entries after it as text (window C of
+      the real-paper corpus); a section's title after the list, "5. Discussion" after "4.",
+      ends it on both

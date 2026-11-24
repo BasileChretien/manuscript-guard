@@ -22732,6 +22732,19 @@ Open, recorded as each change landed:
   `tests/test_corruption.py::test_a_placeholder_in_a_table_caption_fails`,
   `tests/test_corruption.py::test_what_a_cited_reference_holds_and_is_no_placeholder_passes`
   and `tests/test_corruption.py::test_a_placeholder_in_an_uncited_reference_says_nothing`.
+- **A Word paper's reference entry styled as a heading goes on with the list only where it
+  is numbered in brackets or shaped as an entry.** A paragraph of a .docx in a heading
+  style ends its reference list (`audit.bibliography_spans`), and one that is an entry
+  goes on with it where it opens with the number after the entry above it, both in
+  brackets, "[2]" after "[1]", or has an entry's shape as an entry above it has
+  (`looks_like_reference`). Any other ends it, and the entries after it are read as text:
+  one numbered "3." or "3)" with no entry's shape, since a numbered section's title is
+  written so ("5. Discussion"); one that gives its author and year with no shape the audit
+  reads. In Markdown, as `init --from` writes a Word paper's entry in a heading style,
+  `# \[2\] ...` ends the list too, in the audit and in `check`'s reading of it
+  (`text.reference_lists`), which ends a list at any heading.
+  Pinned by `tests/test_audit_sections.py::test_an_entry_styled_as_a_heading_with_no_shape_told_ends_a_word_list`
+  and `tests/test_audit_sections.py::test_an_entry_typed_as_a_markdown_heading_ends_the_list`.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a

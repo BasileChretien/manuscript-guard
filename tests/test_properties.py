@@ -13552,6 +13552,89 @@ def test_a_word_list_ends_at_the_next_typed_title_its_sections_are_read_from(
             assert _listed([path]) == sorted(planted), (kind, paragraphs)
 
 
+from generated import entries_styled_as_headings  # noqa: E402
+
+#: A .docx's style for its headings, as `docx_with_headings` writes one.
+_HEADING_STYLE = ('<w:style w:type="paragraph" w:styleId="Heading1">'
+                  '<w:name w:val="heading 1"/></w:style>')  # fmt: skip
+
+
+def docx_with_headings(path: Path, paragraphs: list[tuple[str, bool]]) -> Path:
+    """A .docx of `paragraphs`, each in the style "heading 1" where it says so."""
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    styled = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+    body = "".join(f'<w:p>{styled if heading else ""}<w:r><w:t xml:space="preserve">'
+                   f"{escape(text)}</w:t></w:r></w:p>" for text, heading in paragraphs)  # fmt: skip
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document {_WORD_NAMESPACE}><w:body>{body}</w:body></w:document>")
+        archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>{_HEADING_STYLE}"
+                                            "</w:styles>")  # fmt: skip
+    return path
+
+
+@holds(60, entries_styled_as_headings())
+def test_a_word_list_goes_on_over_an_entry_styled_as_a_heading(
+    drawn: list[tuple[str, bool]],
+) -> None:
+    """An entry of a .docx's reference list in a heading style is an entry, and the list goes
+    on over it: one numbered in brackets after the entry above it, "[2]" after "[1]", which
+    no section's title is, and one with an entry's shape, as the entries above it have. The
+    list ended there, and the entries after it were read as text, their numbers as
+    citations of entries the list did not hold (window C of the real-paper corpus). A
+    section's title after the list ends it still, one numbered as the next entry would be,
+    "5. Discussion", among them (`audit.bibliography_spans`)."""
+    import tempfile
+
+    from manuscript_guard.text.docx import read_docx_text
+
+    expected, current = [], None
+    for text, _heading in drawn:
+        if text == "References":
+            current = [text]
+            expected.append(current)
+        elif current is not None and (text[:1] == "[" or ". J Ex. " in text):
+            current.append(text)
+        else:
+            current = None
+    with tempfile.TemporaryDirectory() as folder:
+        document = read_docx_text(docx_with_headings(Path(folder) / "paper.docx", drawn))
+    lines = document.body.split("\n")
+    read = [[line for line in lines[start:end] if line.strip()]
+            for start, end in audit_module.docx_bibliography_spans(document)]  # fmt: skip
+    assert read == expected, drawn
+
+
+def _an_entry_styled_as_a_heading_ends_the_list(patch: pytest.MonkeyPatch) -> None:
+    """As until window C of the real-paper corpus: every paragraph in a heading style ends a
+    .docx's list."""
+    patch.setattr(audit_module, "_entry_styled_as_a_heading", lambda lines, start, at: False)
+
+
+def _a_heading_numbered_next_is_an_entry(patch: pytest.MonkeyPatch) -> None:
+    """Any heading that opens with the number after the entry's above it, in brackets or
+    with a stop, read as an entry whatever its shape: "5. Discussion" after "4. ..." too."""
+    number = re.compile(r"\s*\[?(\d{1,4})[\].)]\s")
+    kept = audit_module._entry_styled_as_a_heading
+
+    def numbered_next(lines: list[str], start: int, at: int) -> bool:
+        here = number.match(lines[at])
+        above = next((found for found in map(number.match, reversed(lines[start + 1 : at]))
+                      if found), None)  # fmt: skip
+        return bool(here and above and int(above[1]) + 1 == int(here[1])) or kept(
+            lines, start, at)
+
+    patch.setattr(audit_module, "_entry_styled_as_a_heading", numbered_next)
+
+
+def _only_an_entry_numbered_in_brackets_goes_on(patch: pytest.MonkeyPatch) -> None:
+    """An entry in a heading style read by its number in brackets alone, and not by an
+    entry's shape."""
+    patch.setattr(audit_module, "_shaped_as_an_entry_above", lambda lines, start, at: False)
+
+
 def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
     """As at the base: a list ended at a heading style, a display or what ends one under no
     heading, and at no typed title."""
@@ -31713,6 +31796,18 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an entry styled as a heading ends a .docx's list": (
+        _an_entry_styled_as_a_heading_ends_the_list,
+        test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
+    ),
+    "a heading numbered as the next entry is one, whatever its shape": (
+        _a_heading_numbered_next_is_an_entry,
+        test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
+    ),
+    "only an entry numbered in brackets goes on under a heading style": (
+        _only_an_entry_numbered_in_brackets_goes_on,
+        test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
     ),
     "an assistant's opener is read at the start of every line": (
         _an_opener_is_read_at_every_line,

@@ -68,11 +68,6 @@ expected:
       the audit gives G14's findings, so the same: a long form that closes a bracket it does
       not open, and does not hold the part its short form opens with, defines nothing (the
       entry for `abbreviations`). The entry it replaces, for "Table stands alone", is spent
-  - reading: abbreviation edits
-    why: >-
-      the same: a short form whose long form closes a bracket it does not open is no
-      definition, so no edit writes "SCE1) and after 2 hours" out in place of SCE2 (the
-      entry for `abbreviations`)
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its

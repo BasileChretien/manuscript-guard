@@ -25115,9 +25115,107 @@ def _an_ordinal_counts_across_the_paper(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(keys, "assign", assign)
 
 
+from generated import measured_papers  # noqa: E402
+
+
+def _words_read_from(text: str, suffix: str) -> list:
+    """G6's and G14's findings as the audit gives them on `text`, staged as read from a file
+    of that suffix: the PDF's reading itself is `tests/test_audit_pdf.py`'s."""
+    from manuscript_guard.auditing import gates
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(gates, "_stage", lambda paper, tree=None: gates._Staged(
+            {"main.md": text}, {"main.md": paper}))  # fmt: skip
+        run = gates.run_gates(Path(f"paper{suffix}"))
+    assert not run.note
+    return [*run.writing, *run.language]
+
+
+@holds(15, measured_papers())
+def test_only_a_use_before_its_definition_is_lowered_from_a_pdf(text: str) -> None:
+    """On these papers G6 and G14 give the same findings from a PDF and from Markdown, and of
+    their severities only a use before the definition's differs: a note from a PDF, a warning
+    from Markdown. A name from the code and a bare placeholder, whose entries hold for any
+    format, are notes from both (Basile, 2026-11-23, "INFO on PDFs now"). The papers type no
+    word against a signed number, which G14's notation reads otherwise in a PDF's text
+    (`gates/notation.py`)."""
+    code = "abbreviation-used-before-defined"
+    typed = _words_read_from(text, ".md")
+    printed = _words_read_from(text, ".pdf")
+    assert sorted((f.code, str(f.subject)) for f in typed) == sorted(
+        (f.code, str(f.subject)) for f in printed), text
+    assert {"abbreviation-redefined", "abbreviation-unused", code} <= {f.code for f in typed}
+    assert [f.severity for f in typed if f.code == code] == ["warn"], text
+    assert [f.severity for f in printed if f.code == code] == ["info"], text
+    others = {(f.code, f.subject): f.severity for f in typed if f.code != code}
+    assert others == {(f.code, f.subject): f.severity for f in printed if f.code != code}, text
+    for found in (typed, printed):
+        assert [f.severity for f in found if f.code == "code-name-in-prose"] == ["info"], text
+        assert [f.severity for f in found if f.code == "model-artefact"
+                and str(f.subject).startswith("placeholder-word:")] == ["info"], text  # fmt: skip
+
+
+def _the_pdf_entry_holds_for_every_format(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import measured as table
+
+    code = "abbreviation-used-before-defined"
+    patch.setitem(table.MEASURED, code, dataclasses.replace(table.MEASURED[code], read_from=None))
+
+
+def _the_audit_does_not_say_what_it_read_from(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import measured as table
+
+    kept = table.measured
+    patch.setattr(table, "measured", lambda found, read_from=None: kept(found))
+
+
+def _every_short_form_finding_of_a_pdf_is_lowered(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import measured as table
+
+    kept = table.measured
+
+    def lowered(found: Any, read_from: str | None = None) -> Any:
+        if read_from == table.PDF and getattr(found, "code", "").startswith("abbreviation-"):
+            return dataclasses.replace(found, severity="info")
+        return kept(found, read_from=read_from)
+
+    patch.setattr(table, "measured", lowered)
+
+
+def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch) -> None:
+    """The guard on the format written `entry.read_from != read_from` (round 1 of #775)."""
+    from manuscript_guard.auditing import measured as table
+
+    kept = table.measured
+
+    def guarded(found: Any, read_from: str | None = None) -> Any:
+        entry = table.MEASURED.get(getattr(found, "code", ""))
+        if entry is not None and entry.read_from != read_from:
+            return found
+        return kept(found, read_from=read_from)
+
+    patch.setattr(table, "measured", guarded)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "the PDF entry holds for every format": (
+        _the_pdf_entry_holds_for_every_format,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
+    ),
+    "an entry for any format does not hold from a PDF": (
+        _an_entry_for_any_format_does_not_hold_from_a_pdf,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
+    ),
+    "the audit does not say what it read a finding from": (
+        _the_audit_does_not_say_what_it_read_from,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
+    ),
+    "every short form's finding of a PDF is lowered": (
+        _every_short_form_finding_of_a_pdf_is_lowered,
+        test_only_a_use_before_its_definition_is_lowered_from_a_pdf,
+    ),
     "a conditional inside a skipped block opens no fi of its own": (
         _nesting_is_not_counted,
         test_a_bounded_block_in_the_body_is_skipped_to_its_end_and_the_reading_goes_on,

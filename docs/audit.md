@@ -356,7 +356,11 @@ or fails them: the names from the code, and a bare placeholder ("xxxx", "[url]",
 On real papers each was right less than half the time; a journal template's instruction
 left in the text, "Click or tap here to enter text." among them, still fails
 ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
-right").
+right"). A short form used before its definition is a note too where the audit read the text
+from a PDF, a LaTeX or Word paper's own PDF among them: a PDF's paragraphs are gone, so a
+table's or a legend's words read as prose. Of the 81 such findings judged on real papers,
+from PDF papers and from LaTeX papers' own PDFs, 35 were right. From Word, LaTeX or Markdown
+it is still a warning.
 
 **The references.** The list cut from the text is counted: its entries, and the DOIs and
 PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed

@@ -14,7 +14,9 @@ a code's severity follows how often it was right"; the author's decisions of 202
   never a code that says what the project lacks rather than what the paper says.
 
 A code lowered goes back up once a fix measures 0.75 or more. Each entry gives its figures
-and the commit of main they were counted on. The table is applied where the two reports take
+and the commit of main they were counted on, and where they were counted on one format alone
+it says which, and holds for findings read from that format alone (the author's decision of
+2026-11-23 on a PDF's text). The table is applied where the two reports take
 their findings (`auditing.gates.run_gates` for G6 and G14, `auditing.report` for what it says
 of a reference list and of the Abstract's numbers, `comparing.differences` for a sentence
 whose claim changed); `check` never reads it, and gives each of these codes what it gave
@@ -35,7 +37,10 @@ class Measured:
     its findings, the false ones from `papers` papers. `rules`, for G6's `model-artefact`,
     names the rules of `data/ai_writing.yaml` whose findings it holds for; empty, it holds
     for every finding of the code. `gate` names the gate whose findings were judged, where
-    another gives a code of the same name; None, it holds for the code's findings of any."""
+    another gives a code of the same name; None, it holds for the code's findings of any.
+    `read_from` names the format of the text the figures were counted on (`PDF`), and the
+    entry holds for a finding read from that format alone; None, it holds whatever the
+    finding was read from."""
 
     severity: str
     true: int
@@ -43,6 +48,13 @@ class Measured:
     papers: int | None
     rules: frozenset[str] = frozenset()
     gate: str | None = None
+    read_from: str | None = None
+
+
+#: Text the audit read from a PDF (`auditing.gates._Staged.from_pdf`), its paragraphs gone, so
+#: that a table's or a legend's words read as prose. What decides is the file the finding was
+#: read from: a LaTeX or Word paper's own PDF, audited as a PDF, is one too.
+PDF = "PDF"
 
 
 #: G6's rules that find a bare placeholder, and whose findings were judged: a thing named in
@@ -77,6 +89,14 @@ MEASURED: dict[str, Measured] = {
     # the false ones from 4 papers, most of them a section rewritten rather than a claim
     # reversed. Not `reworded`'s, which reads one edit of a project's own text. At 0949b4b.
     "claim-negation": Measured(INFO, true=1, judged=17, papers=4, gate="compare"),
+    # G14's short form used before its definition, in text read from a PDF, whose paragraphs
+    # are gone: 35 true of the 81 reported, the false ones from 17 papers. These are all the
+    # reported findings read from a PDF: the `audit` of a PDF paper (25 of 65, from 12) and
+    # the `audit-pdf` of a LaTeX paper (10 of 16, from 5; the corpus holds no Word paper's
+    # own PDF). From Word, LaTeX or Markdown, where 111 of the 166 reported were true, it
+    # keeps its warning. At 77abd45db (Basile, 2026-11-23, "INFO on PDFs now").
+    "abbreviation-used-before-defined": Measured(INFO, true=35, judged=81, papers=17,
+                                                 gate="G14", read_from=PDF),
 }
 
 Found = TypeVar("Found")
@@ -97,14 +117,16 @@ def _rule(found: object) -> str | None:
     return None if words.strip().startswith(TO_DO) else rule
 
 
-def measured(found: Found) -> Found:
+def measured(found: Found, *, read_from: str | None = None) -> Found:
     """`found`, a finding or a report's item, at the severity this table gives its code; as
-    it is where the table says nothing of it, or of its gate."""
+    it is where the table says nothing of it, of its gate, or of the format it was read from
+    (`read_from`, `PDF` for text read from a PDF)."""
     entry = MEASURED.get(getattr(found, "code", ""))
     if entry is None or (entry.rules and _rule(found) not in entry.rules) or (
-            entry.gate is not None and getattr(found, "gate", None) != entry.gate):
+            entry.gate is not None and getattr(found, "gate", None) != entry.gate) or (
+            entry.read_from is not None and read_from != entry.read_from):
         return found
     return replace(found, severity=entry.severity)  # type: ignore[type-var]
 
 
-__all__ = ["BARE_PLACEHOLDERS", "MEASURED", "Measured", "measured"]
+__all__ = ["BARE_PLACEHOLDERS", "MEASURED", "PDF", "Measured", "measured"]

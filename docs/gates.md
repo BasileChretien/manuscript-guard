@@ -64,7 +64,8 @@ alone: its caption, legend and notes define for it, and cover its own uses where
 stand in it, a header over its note among them. A meaning there that the text gives says
 nothing; another is a question, not a warning, unless the same display gives the form
 another meaning already, which is a warning as in the text; two displays are never
-compared. A short form followed by a
+compared. In the text `audit` reads from a PDF no display is found, and all of it is the
+text's. A short form followed by a
 number with a decimal point, an equals sign and a number, or more than one word gives a
 statistic or a phrase and defines nothing: "(HR 1.32, 95% CI ...)", "OR = 1.52", "(MDD 40
 mg)". What these shapes miss is in DESIGN.md's Known gaps.

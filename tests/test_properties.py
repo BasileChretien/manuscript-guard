@@ -2791,9 +2791,24 @@ def _a_long_form_may_close_a_bracket_it_does_not_open(patch: pytest.MonkeyPatch)
 
 def _a_long_form_closes_no_bracket_its_short_form_opens_with(patch: pytest.MonkeyPatch) -> None:
     """Every bracket the long form closes and does not open refuses it, "warning score (WSE)
-    at 1 hour (WSE1)" among them."""
-    real = language_gate._unmatched
-    patch.setattr(language_gate, "_unmatched", lambda read, short: real(read, ""))
+    at 1 hour (WSE1)" among them, where no hyphen follows it."""
+    patch.setattr(language_gate, "_its_own",
+                  lambda read, at, short: read[at + 1 : at + 2] == "-" and read[:at] != short)
+
+
+def _a_bracket_before_a_hyphen_is_no_part_of_a_long_form(patch: pytest.MonkeyPatch) -> None:
+    """Only a bracket holding a part the short form opens with is the long form's own, so
+    "(TdT)-mediated dUTP nick-end labeling (TUNEL)" defines nothing."""
+    patch.setattr(language_gate, "_its_own",
+                  lambda read, at, short: at < len(short) and short.startswith(read[:at]))
+
+
+def _a_bracket_before_a_hyphen_may_hold_the_short_form(patch: pytest.MonkeyPatch) -> None:
+    """A bracket a hyphen follows is the long form's own whatever it holds, so "(KO,
+    S199AzF)-HIS tag (S199AzF)" defines S199AzF as "S199AzF)-HIS tag"."""
+    real = language_gate._its_own
+    patch.setattr(language_gate, "_its_own",
+                  lambda read, at, short: real(read, at, short) or read[at + 1 : at + 2] == "-")
 
 
 def _a_long_form_s_brackets_balance_to_its_last_character(patch: pytest.MonkeyPatch) -> None:
@@ -28299,6 +28314,14 @@ BROKEN = {
     ),
     "a long form closes no bracket its short form opens with": (
         _a_long_form_closes_no_bracket_its_short_form_opens_with,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket before a hyphen is no part of a long form": (
+        _a_bracket_before_a_hyphen_is_no_part_of_a_long_form,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket before a hyphen may hold the short form": (
+        _a_bracket_before_a_hyphen_may_hold_the_short_form,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a long form's brackets balance to its last character": (

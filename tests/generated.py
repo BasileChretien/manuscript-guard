@@ -573,7 +573,8 @@ def signs() -> st.SearchStrategy[str]:
 #: and long forms that run across a bracket without taking a letter from inside one, a score
 #: taken at 15 minutes whose bracket it closes holds the part its short form opens with, a
 #: risk adjusted for something said in brackets and a pressure whose end closes a bracket
-#: opened before it, and one that opens a bracket the short form's closes; a
+#: opened before it, one that opens a bracket the short form's closes, and two that close a
+#: bracket a hyphen follows; a
 #: short form after a colon whose letters are found before the bracket, one per word or not,
 #: in the last word or not, and words that hold the letters of a statistic's short form in
 #: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
@@ -593,6 +594,12 @@ DEFINING = (
     ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
     ("the second measure (mean arterial pressure) (MAP)", "(MAP", "MAP"),
     ("the visual analogue scale (in mm (VAS))", "(VAS", "VAS"),
+    # A bracket a hyphen follows, part of a word, that a long form closes (the real-paper
+    # corpus, round 1 of row 4 of window C).
+    ("the terminal deoxynucleotidyl transferase (TdT)-mediated dUTP nick-end labeling (TUNEL)",
+     "(TUNEL", "TUNEL"),
+    ("a coat of (3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH)", "(APDMES",
+     "APDMES"),
     # A short form after a colon, its letters one per word or not.
     ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
     ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
@@ -736,8 +743,9 @@ AT_THE_END = ("the Agri-Environment Scheme \N{EN DASH} AES", "\N{EN DASH} AES", 
 #: a statistic, its short form followed by an equals sign or a number, whatever the words
 #: before it are, their initials among them; a short form whose letters are found only
 #: by going into another bracket, "(12.5%)"; one whose long form holds a bracket it does not
-#: open, a sibling's or a list's (the real-paper corpus, row 4 of window C); and a short
-#: form after a dash that does not end its clause, a statistic's of each shape among them.
+#: open, a sibling's or a list's, or one a hyphen follows that holds the short form itself
+#: (the real-paper corpus, row 4 of window C); and a short form after a dash that does not
+#: end its clause, a statistic's of each shape among them.
 NOT_DEFINING = (
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
@@ -754,6 +762,9 @@ NOT_DEFINING = (
     ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
     ("doses rose from 20.6 mg (DM1) to 21.5 mg (DM2) of oil", "(DM2", "DM2"),
     ("a reading of the scores (SD; Range) by school (SRS)", "(SRS", "SRS"),
+    ("bound to the receptors (Fc gamma Rs), or a bivalent analyte model (FcRn)", "(FcRn",
+     "FcRn"),
+    ("a construct (KO, S199AzF)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
     # A short form closing a bracket whose letters are before the bracket and not before
     # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
     ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),

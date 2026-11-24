@@ -5333,7 +5333,10 @@ version) (HADS)" is the one of "Scale", and the `I` of "body mass index (in kg/m
 the one of "index". A long form may close a bracket that holds the part its short form opens
 with, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at one hour, and hold a
 whole one none of its letters is in, "adjusted (for age) relative risk (aRR)". Both rules
-come from manuscripts written in Word. A long form that closes any other bracket it does not
+come from manuscripts written in Word. So may one close a bracket a hyphen follows, which is
+part of a word, "terminal deoxynucleotidyl transferase (TdT)-mediated dUTP nick-end labeling
+(TUNEL)", read from the `T` of "TdT" on, unless the bracket holds the short form itself,
+"(KO, S199AzF)-HIS tag (S199AzF)". A long form that closes any other bracket it does not
 open is none: "20.6 mg (M1) to 21.5 mg (M2)" reads the letters of M2 back across the bracket
 of M1, to "M1) to 21.5 mg", and with two such pairs M2 was reported as given another meaning
 (the real-paper corpus, row 4 of window C: 20 false findings and no true one over every
@@ -25081,8 +25084,9 @@ Open, recorded as each change landed:
     bracket is passed over and the letter looked for before it. A definition whose letter
     is only in such a bracket is missed, as one whose long form is an aside would be. One
     that closes a bracket holding the part its short form opens with is read, "warning
-    score (WSE) at 1 hour (WSE1)"; one that closes any other bracket it does not open is
-    not, so the elliptical "at entry (WSE1) and after 2 hours (WSE2)" defines nothing, and a
+    score (WSE) at 1 hour (WSE1)", and so is one that closes a bracket a hyphen follows,
+    "(TdT)-mediated dUTP nick-end labeling (TUNEL)"; one that closes any other bracket it
+    does not open is not, so the elliptical "at entry (WSE1) and after 2 hours (WSE2)" defines nothing, and a
     WSE2 used with no other definition is reported as undefined.
     Pinned by `tests/test_language.py::test_the_limits_of_the_bracket_rules_are_as_design_md_says`,
     `tests/test_language.py::test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens`
@@ -30255,7 +30259,9 @@ Closed since, and why each mattered (an open gap goes above this line):
   corpus such long forms gave 20 false findings and no true one. A long form that closes a
   bracket it does not open is none, unless the bracket holds the part its short form opens
   with, "warning score (WSE) at 1 hour (WSE1)" (Basile, 2026-11-24, "Keep WSE1, drop
-  WSE2"). The elliptical "at entry (WSE1) and after 2 hours (WSE2)" is read the way M2 is,
+  WSE2"), or a hyphen follows it and it does not hold the short form itself, "(TdT)-mediated
+  dUTP nick-end labeling (TUNEL)": the corpus's first run without that second rule lost
+  three true findings of that shape. The elliptical "at entry (WSE1) and after 2 hours (WSE2)" is read the way M2 is,
   since nothing in its brackets tells the two apart, and so defines nothing now.
   Held by `tests/test_corruption.py::test_a_long_form_read_across_a_bracket_it_does_not_open_is_no_definition`
   and `tests/test_language.py::test_a_long_form_holding_an_unmatched_bracket_defines_nothing`.

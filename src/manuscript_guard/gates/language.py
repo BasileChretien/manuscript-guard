@@ -634,10 +634,12 @@ def _unmatched(read: str, short: str) -> bool:
     text before the short form, close a bracket it does not open?
 
     "20.6 mg (M1) to 21.5 mg (M2)" reads M2's letters back across the bracket of M1, to "M1)
-    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). One
-    bracket the long form closes is its own: one that holds a part the short form opens
-    with and nothing else, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at
-    one hour. Brackets are counted as `_passed_over` counts them, round and square alike.
+    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). Two
+    brackets the long form closes are its own (`_its_own`): one that holds a part the short
+    form opens with and nothing else, "warning score (WSE) at 1 hour (WSE1)", where WSE1 is
+    the WSE at one hour; and one a hyphen follows, which is part of a word, "(TdT)-mediated
+    dUTP nick-end labeling (TUNEL)". Brackets are counted as `_passed_over` counts them,
+    round and square alike.
     What clings to the end is no part of the long form, so a bracket closing there closes
     one opened before it, "(mean arterial pressure) (MAP)". A bracket the long form opens
     and does not close is left to the short form's to close, as nested brackets are: "visual
@@ -648,9 +650,22 @@ def _unmatched(read: str, short: str) -> bool:
             depth += 1
         elif char in _CLOSING and depth:
             depth -= 1
-        elif char in _CLOSING and not (at < len(short) and short.startswith(read[:at])):
+        elif char in _CLOSING and not _its_own(read, at, short):
             return True
     return False
+
+
+def _its_own(read: str, at: int, short: str) -> bool:
+    """Is the bracket that closes at `at` of `read`, and that the long form of `short` does not
+    open, the long form's own? It is where it holds a part the short form opens with and
+    nothing else, "WSE) at 1 hour" for WSE1; and where a hyphen follows it, the bracket part
+    of a word, "TdT)-mediated dUTP nick-end labeling" for TUNEL, "aminopropyl)-dimethyl-
+    ethoxysilane" for APDMES, unless what it holds is the short form itself, "S199AzF)-HIS"
+    (the real-paper corpus, row 4 of window C)."""
+    held = read[:at]
+    if at < len(short) and short.startswith(held):
+        return True
+    return read[at + 1 : at + 2] == "-" and held != short
 
 
 def _letters(short: str, before: str) -> list[int] | None:

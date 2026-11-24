@@ -1277,6 +1277,11 @@ def test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens(text: str) -
          "brief pain scale (Spanish version"),
         ("The second measure (mean arterial pressure) (MAP) was low.", "MAP",
          "mean arterial pressure"),
+        # A bracket a hyphen follows, part of a word (round 1 of row 4 of window C).
+        ("The terminal deoxynucleotidyl transferase (TdT)-mediated dUTP nick-end labeling "
+         "(TUNEL) was used.", "TUNEL", "TdT)-mediated dUTP nick-end labeling"),
+        ("Slides had a coat of (3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH).",
+         "APDMES", "aminopropyl)-dimethyl-ethoxysilane"),
         # A bracket it opens that the short form's bracket closes, as nested ones are.
         ("The visual analogue scale (in mm (VAS)) was used.", "VAS",
          "visual analogue scale (in mm"),

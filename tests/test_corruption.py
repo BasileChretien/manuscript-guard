@@ -37598,6 +37598,33 @@ def test_a_long_form_read_across_a_bracket_it_does_not_open_is_no_definition(
     assert language_findings(project) == [
         ("abbreviation-redefined", line_of(whole, "others) odds ratio (ROR) observed"))
     ]
+    # The other shapes of the corpus: a closing bracket before a comma, before a space after
+    # a list, and before a hyphen where it holds the short form itself, each given twice.
+    shapes = mended.replace(
+        "The reporting odds ratio observed here",
+        "It bound the receptors (Fc gamma Rs), or a bivalent analyte model (FcRn). It bound "
+        "the ligands (Fc gamma Ls), or a monovalent analyte model (FcRn). Scores (SD; Range) "
+        "by school (SRS) and (SD; Range) by region (SRS) were read. A construct (clone 4, "
+        "S199AzF)-tagged protein (S199AzF) and (clone 5, S199AzF)-tagged peptide (S199AzF) "
+        "were used. The "
+        "reporting odds ratio observed here",
+    )
+    main_md(project).write_text(shapes, encoding="utf-8")
+    # SRS is given no long form anywhere, so it is a form used and never defined; FcRn and
+    # S199AzF have no two capitals together, which an undefined form needs.
+    assert language_findings(project) == [("abbreviation-undefined", line_of(shapes, "(SRS)"))]
+    # A bracket a hyphen follows is part of a word, and the long form's: a definition
+    # across one given again is still caught (round 1 of row 4 of window C).
+    hyphened = mended.replace(
+        "The reporting odds ratio observed here",
+        "The terminal transferase (TdT)-mediated uridine nick-end labelling (TUNEL) was run, "
+        "and the TUNEL counted. Again, (TdT)-mediated uridine nick-end labelling (TUNEL) was "
+        "run. The reporting odds ratio observed here",
+    )
+    main_md(project).write_text(hyphened, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(hyphened, "Again, (TdT)"))
+    ]
 
 
 def test_a_statistic_after_a_dash_is_no_second_definition(project: Path) -> None:

@@ -231,7 +231,7 @@ the paper says.
 
 `english_variant` in `paper.yaml` says if the paper is in British (`en-GB`) or
 American (`en-US`) spelling, and G14 holds the manuscript to it; where it says neither, to
-the English most of its words are in (ask which; declare it). Write in it from the
+the English its spellings show (ask which; declare it). Write in it from the
 first draft: a pasted paragraph brings in the other.
 
 - `spelling-variant`: a word in the other spelling, reported once, at its first use, with

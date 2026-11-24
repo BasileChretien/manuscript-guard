@@ -5886,7 +5886,13 @@ absent. Each reader of it has a rule for a paper that has not said:
   whose words were American, "grey" ten times outvoted nine American words of eight kinds,
   and each of those was reported. Where the more are a single different word and the other
   English has three or more different words, the paper is in the other English, and the one
-  word is the `spelling-variant`, whose message gives both counts. A plain count of different
+  word is the `spelling-variant`, whose message gives both counts. In counting different
+  words (Basile, 2026-11-24), a word with -s, -es, -ed or -ing is that word, on both sides, so
+  "color, colors, colored" is one and "grey, greys" one repeated; and an `-ise` word is none
+  of the three, since `-ize` is correct British too. A form joins its word only where what
+  the other usage writes joins too, which over the whole list leaves six forms apart
+  ("esophaguses", "oesophaguses", "fogeys", "matts", "noseys", "storeys") and joins no two
+  words. A plain count of different
   words was measured and refused: it turned two other papers and lost 14 true findings. A
   declared English is not touched, and where the two are level there is no majority to
   overturn, so the first word still decides. `spelling_edits` respells nothing in such a
@@ -25381,13 +25387,23 @@ Open, recorded as each change landed:
     Where they are level the first word decides, which is an order, not a reason.
     Pinned by `tests/test_spelling.py::test_declaring_none_with_as_many_of_each_the_first_sets_the_english`.
   - One word repeated gives way only to three or more different words of the other English
-    (Basile, 2026-11-23). Two words repeated keep the count, as does one word against two,
-    so "grey" and "greys" together, two words of the list, still outvote three American
-    words.
-    Pinned by `tests/test_spelling.py::test_two_words_of_the_more_are_not_one_word`.
+    (Basile, 2026-11-23), its forms in -s, -es, -ed and -ing being that word. Two different
+    words repeated keep the count, as does one word against two, so "grey" and "colour"
+    together still outvote three American words, and "grey" alone outvotes two.
+    Pinned by `tests/test_spelling.py::test_two_words_of_the_more_are_not_one_word` and
+    `tests/test_spelling.py::test_one_word_against_two_different_ones_keeps_the_count`.
+  - An `-ise` word is none of the three (2026-11-24), so a paper with one American word
+    repeated and any number of `-ise` strays stays American, and two British words beside an
+    `-ise` word are not three.
+    Pinned by `tests/test_spelling.py::test_ise_words_do_not_count_toward_the_three` and
+    `tests/test_spelling.py::test_two_gb_words_and_an_ise_word_are_not_three`.
   - That rule needs a majority. One word used three times against three different words
-    once each is level, and the first word decides, which may be the repeated one.
-    Pinned by `tests/test_spelling.py::test_a_tie_has_no_majority_so_the_first_word_still_decides`.
+    once each is level, and the first word decides, which may be the repeated one. So one
+    use more or less can turn the paper's English and turn it back: "grey" four times
+    against three American words is American, three times British if it comes first, and
+    twice American.
+    Pinned by `tests/test_spelling.py::test_a_tie_has_no_majority_so_the_first_word_still_decides` and
+    `tests/test_spelling.py::test_one_use_more_or_less_can_turn_the_english_and_turn_it_back`.
   - The count is of the words on G14's list, and only those: a paper whose only spellings
     of either kind are in a name, a quotation or a section left unread has no English, and
     hears nothing.

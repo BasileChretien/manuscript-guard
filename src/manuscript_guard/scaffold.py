@@ -31,7 +31,7 @@ ENGLISHES: tuple[str, ...] = tuple(
 #: `en-GB` it wrote for everyone told seven of fourteen American papers they broke it).
 UNDECLARED = """\
 # The English the paper is in, en-GB or en-US, which G14 holds its spelling to. Left out,
-# the paper is held to the one most of its words are in.
+# the paper is held to the one its spellings show.
 # english_variant: en-GB"""
 
 PAPER = """\

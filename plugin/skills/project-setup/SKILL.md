@@ -66,7 +66,7 @@ Zotero, so import the file into Zotero first. A `.doc` is refused; save it as `.
 
 Ask the authors whether they write the manuscript in Markdown or in LaTeX, and in British
 (`en-GB`) or American (`en-US`) spelling, before running it. Without `--english`, `init`
-declares none, and G14 holds the paper to the English most of its words are in.
+declares none, and G14 holds the paper to the English its spellings show.
 With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads
 `mgvalues`, with `mgvalues.sty` beside it, in place of `main.md`. A project is one or the
 other: `init --latex` makes nothing where `manuscript/` holds Markdown, and `check` fails a
@@ -132,7 +132,7 @@ Then fill in, in this order:
    --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
    assume: G14 holds the manuscript's spelling to it. `init --english en-US` writes it at
-   the start. Left out, G14 holds the paper to the English most of its words are in, the
+   the start. Left out, G14 holds the paper to the English its spellings show, the
    document is built as English with no region, and where the journal's profile names an
    English G4 notes `english-variant-undeclared`: ask the author which English, and
    declare it), and the reporting

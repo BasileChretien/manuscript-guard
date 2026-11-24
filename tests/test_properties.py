@@ -13753,19 +13753,71 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
 
 #: The papers each example of the property below holds: mostly British, mostly American,
 #: as many of each, British by its -ise words alone, British with as many -ize words both
-#: Englishes write as it has British ones, which count for neither, and the four around
-#: one word repeated (Basile, 2026-11-23): against three different words of the other
-#: English, which are then the paper's; two words repeated against three, one against
-#: two, and one against three with as many uses of each, where the count stands.
-_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize",
-             "one word", "two words", "against two", "level, one word")  # fmt: skip
+#: Englishes write as it has British ones, which count for neither, and those around one
+#: word repeated (Basile, 2026-11-23): against three different words of the other English,
+#: which are then the paper's; two words repeated against three, one against two, and one
+#: against three with as many uses of each, where the count stands. Then what counts
+#: toward the three (2026-11-24): -ise strays do not, an -ise word may be the one repeated,
+#: and -ise beside three British words changes nothing; and the forms of one word, on the
+#: side of the more and on the side of the fewer.
+_ONE_WORD_LEANINGS = ("one word", "two words", "against two", "level, one word",
+                      "-ise strays", "one -ise word", "-ise beside three",
+                      "forms of the more", "forms of the fewer")  # fmt: skip
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize", *_ONE_WORD_LEANINGS)
+#: Words with their forms, for the leanings that hold them to be one word.
+_FORMS = {
+    "en-US": (("color", "colors", "colored"), ("center", "centers", "centered"),
+              ("tumor", "tumors"), ("fiber", "fibers")),
+    "en-GB": (("colour", "colours", "coloured"), ("centre", "centres", "centred"),
+              ("tumour", "tumours"), ("fibre", "fibres")),
+}  # fmt: skip
 #: The -ise spellings British usage writes, and the -ize ones both usages write.
 WITH_ISE = ("randomised", "organised", "summarised", "categorised")
 WITH_IZE = ("randomized", "organized", "summarized", "categorized")
 
 
+def _ise_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
+    """A paper around one repeated word whose British words are or hold -ise spellings."""
+    american = draw(st.permutations(AMERICAN))
+    ise = draw(st.permutations(WITH_ISE))
+    if leaning == "-ise strays":  # American, whatever the -ise words: they are not the three
+        strays = [("en-GB", word) for word in ise[: draw(st.integers(3, 4))]]
+        strays += [("en-GB", word) for word in BRITISH[: draw(st.integers(0, 2))]]
+        words = strays + [("en-US", american[0])] * (len(strays) + draw(st.integers(1, 3)))
+        return "en-US", list(draw(st.permutations(words)))
+    if leaning == "one -ise word":  # the one repeated may be an -ise word
+        words = [("en-US", word) for word in american[:3]]
+        words += [("en-GB", ise[0])] * draw(st.integers(4, 6))
+        return "en-US", list(draw(st.permutations(words)))
+    british = draw(st.permutations(BRITISH))[:3]  # three words, and an -ise word beside them
+    words = [("en-GB", word) for word in [*british, ise[0]]]
+    words += [("en-US", american[0])] * draw(st.integers(5, 7))
+    return "en-GB", list(draw(st.permutations(words)))
+
+
+def _forms_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
+    """A paper in which the forms of one word stand on one side: they are that one word."""
+    held = draw(st.sampled_from(("en-GB", "en-US")))
+    stray = "en-US" if held == "en-GB" else "en-GB"
+    ours, theirs = draw(st.permutations(_FORMS[held])), draw(st.permutations(_FORMS[stray]))
+    if leaning == "forms of the more":  # the more are one word: the three are the paper's
+        words = [(held, forms[0]) for forms in ours[:3]]
+        forms = theirs[0]
+        words += [(stray, form) for form in forms]
+        words += [(stray, forms[0])] * (4 - len(forms) + draw(st.integers(0, 2)))
+    else:  # the fewer are one word in three forms: the count stands
+        three = next(forms for forms in theirs if len(forms) == 3)
+        words = [(stray, form) for form in three]
+        words += [(held, ours[0][0])] * draw(st.integers(4, 6))
+    return held, list(draw(st.permutations(words)))
+
+
 def _one_word_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
     """The English a paper around one repeated word is held to, and its words in order."""
+    if leaning in ("-ise strays", "one -ise word", "-ise beside three"):
+        return _ise_leaning(draw, leaning)
+    if leaning.startswith("forms"):
+        return _forms_leaning(draw, leaning)
     pools = {"en-GB": BRITISH, "en-US": AMERICAN}
     held = draw(st.sampled_from(("en-GB", "en-US")))
     stray = "en-US" if held == "en-GB" else "en-GB"
@@ -13789,7 +13841,7 @@ def _one_word_leaning(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[st
 
 def _leaning_words(draw: st.DrawFn, leaning: str) -> tuple[str, list[tuple[str, str]]]:
     """The English a paper of this leaning is held to, and its words in order."""
-    if leaning in ("one word", "two words", "against two", "level, one word"):
+    if leaning in _ONE_WORD_LEANINGS:
         return _one_word_leaning(draw, leaning)
     pools = {
         "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
@@ -20071,6 +20123,57 @@ def _a_paper_against_its_count_is_respelt(patch: pytest.MonkeyPatch) -> None:
         if taken and taken[1] == spelling_gate._ONE_WORD:
             return taken[0], spelling_gate._MORE
         return taken
+
+    patch.setattr(spelling_gate, "_held_to", broken)
+
+
+def _ise_words_count_toward_the_three(patch: pytest.MonkeyPatch) -> None:
+    """Against "Don't count -ise" (Basile, 2026-11-24)."""
+    patch.setattr(spelling_gate, "_TOWARD_THE_THREE", spelling_gate._KINDS)
+
+
+def _a_word_s_forms_are_different_words(patch: pytest.MonkeyPatch) -> None:
+    """Against "One word" (Basile, 2026-11-24)."""
+    patch.setattr(spelling_gate, "_one_word", lambda key: (key, key))
+
+
+def _forms_are_folded_on_one_side_only(patch: pytest.MonkeyPatch, more: bool) -> None:
+    """The forms of one word are one word on one side, and on the other each its own."""
+
+    def apart(spelt: list, english: str) -> int:
+        return len({each[3] for each in spelt
+                    if each[4] in spelling_gate._TOWARD_THE_THREE[english]})  # fmt: skip
+
+    def folded(spelt: list, english: str) -> int:
+        return spelling_gate._different_words(spelt, spelling_gate._KINDS[english])
+
+    def broken(spelt: list, english: str) -> bool:
+        fewer = _the_other_english(english)
+        one = (apart if more else folded)(spelt, english)
+        three = (folded if more else apart)(spelt, fewer)
+        return one == 1 and three >= spelling_gate.AGAINST_ONE_WORD
+
+    patch.setattr(spelling_gate, "_one_word_outvotes", broken)
+
+
+def _forms_of_the_more_are_different_words(patch: pytest.MonkeyPatch) -> None:
+    _forms_are_folded_on_one_side_only(patch, True)
+
+
+def _forms_of_the_fewer_are_different_words(patch: pytest.MonkeyPatch) -> None:
+    _forms_are_folded_on_one_side_only(patch, False)
+
+
+def _every_one_word_majority_is_left_unrespelt(patch: pytest.MonkeyPatch) -> None:
+    """Against one or two words of the other English the count stands, and they are respelt."""
+    real = spelling_gate._held_to
+
+    def broken(spelt: list) -> tuple[str, str] | None:
+        taken = real(spelt)
+        if (taken and taken[1] == spelling_gate._MORE
+                and spelling_gate._different_words(spelt, spelling_gate._KINDS[taken[0]]) == 1):
+            return taken[0], spelling_gate._ONE_WORD
+        return taken  # fmt: skip
 
     patch.setattr(spelling_gate, "_held_to", broken)
 
@@ -31484,6 +31587,26 @@ BROKEN = {
     ),
     "a paper held against its count is respelt": (
         _a_paper_against_its_count_is_respelt,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "an -ise word counts toward the three": (
+        _ise_words_count_toward_the_three,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a word's forms are different words": (
+        _a_word_s_forms_are_different_words,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "the forms of the more are different words": (
+        _forms_of_the_more_are_different_words,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "the forms of the fewer are different words": (
+        _forms_of_the_fewer_are_different_words,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "a one-word majority against one or two words is not respelt": (
+        _every_one_word_majority_is_left_unrespelt,
         test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
     ),
     "an -ise spelling counts for neither English": (

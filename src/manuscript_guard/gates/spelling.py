@@ -1,13 +1,13 @@
 """G14, its third reading — one English.
 
 A paper is in British or in American spelling, and `paper.yaml` says which, or where it
-says none, most of the paper's words do. A manuscript written by several hands, or revised
+says none, the paper's spellings do. A manuscript written by several hands, or revised
 from a draft in the other spelling, ends up with "colour" on one page and "color" on the
 next, and a copy-editor finds each one by eye. This reading finds them by list: the words
 one usage writes and the other does not, from VarCon (Kevin Atkinson and Benjamin Titze),
 cut down to what a check needs by `tools/derive_spelling_variants.py`.
 
-**A paper that declares no English is held to the one most of its words are in** (Basile,
+**A paper that declares no English is held to the one its spellings show** (Basile,
 2026-10-23). Of fourteen American papers checked under the `en-GB` that `init` used to
 write for everyone, seven were told they broke it. The words each English writes and the
 other does not are counted, the paper takes the English of the more, and where they are
@@ -20,7 +20,9 @@ different word and the other English has three or more different words, the pape
 other English: "grey" ten times does not make British a paper with eight American words.
 Nothing broader: a count of different words would lose true findings. A declared English is
 not touched, and two Englishes level have no majority, so the first word still decides. The
-one word is reported, and not respelt, since the paper's count says otherwise.
+one word is reported, and not respelt, since the paper's count says otherwise. In counting
+different words (2026-11-24), a word with -s, -es, -ed or -ing is that word, on both sides,
+and an `-ise` word is none of the three, since `-ize` is correct British too.
 
 Three findings, all warnings:
 
@@ -50,7 +52,8 @@ funder's.
 
 **A word with one spelling in the paper's English is an edit, at every place**
 (`spelling_edits`), for the audit's copy in Track Changes: not where the list gives two, nor
-where the paper's English is in doubt, as it is where one repeated word has the count.
+where the paper's English is in doubt, as it is where one repeated word has the count
+against three or more different words of the other English.
 """
 
 from __future__ import annotations
@@ -82,6 +85,10 @@ LISTED = 12
 #: From this many different words of one English, a single word of the other does not make
 #: the paper's English, however often it is repeated (Basile, 2026-11-23).
 AGAINST_ONE_WORD = 3
+#: The kinds that count toward those different words: not `ise`, since a paper in `-ize` is
+#: as British as one in `-ise`, and a few `-ise` strays say nothing of its English
+#: (Basile, 2026-11-24).
+_TOWARD_THE_THREE = {BRITISH: ("gb",), AMERICAN: ("us",)}
 #: How many words the finding on the two endings quotes for each.
 EXAMPLES = 5
 
@@ -222,15 +229,40 @@ def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, boo
     return (BRITISH if first in _KINDS[BRITISH] else AMERICAN), True
 
 
+def _stem(word: str) -> str:
+    """`word` without -s, -es, -ed or -ing, and without the "e" those take the place of:
+    "colors", "colored" and "coloring" are "color", "analysed" and "analysing" "analys"."""
+    if word.endswith(("ings", "eds")):  # "colorings": a noun made of the -ing form
+        word = word[:-1]
+    if not word.endswith(("ss", "us", "is")):
+        for ending in ("ing", "es", "ed", "s"):
+            if word.endswith(ending) and len(word) - len(ending) >= 3:
+                word = word[: -len(ending)]
+                break
+    return word[:-1] if word.endswith("e") and not word.endswith("ae") else word
+
+
+def _one_word(key: str) -> tuple[str, str]:
+    """What makes two spellings on the list one word: their stems, and those of what the
+    other usage writes. Over the whole list this joins no two words, and leaves six forms
+    apart from their base, whose other spelling is irregular or another word: "matts" are
+    "mats" where "matt" is "matte" (`tests/test_spelling.py`)."""
+    return _stem(key), _stem(_variants()[0][key][1].split("/")[0])
+
+
+def _different_words(
+    spelt: list[tuple[int, Passage, int, str, str]], kinds: tuple[str, ...]
+) -> int:
+    """How many different words of these kinds the paper writes, a word's forms as one."""
+    return len({_one_word(key) for *_, key, kind in spelt if kind in kinds})
+
+
 def _one_word_outvotes(spelt: list[tuple[int, Passage, int, str, str]], more: str) -> bool:
     """Are the words of `more`, the English with the more uses, one word repeated, against
-    three or more different words of the other?"""
-    different = {
-        variant: {key for *_, key, kind in spelt if kind in _KINDS[variant]}
-        for variant in _NAMES
-    }
+    three or more different words of the other, its `-ise` spellings not counted?"""
     fewer = AMERICAN if more == BRITISH else BRITISH
-    return len(different[more]) == 1 and len(different[fewer]) >= AGAINST_ONE_WORD
+    return (_different_words(spelt, _KINDS[more]) == 1
+            and _different_words(spelt, _TOWARD_THE_THREE[fewer]) >= AGAINST_ONE_WORD)  # fmt: skip
 
 
 def _held_to(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, str] | None:
@@ -263,7 +295,7 @@ def spelling_edits(
     somebody else's or a title's. Nothing where the paper's English is in doubt: a
     paper mostly in the other English than it declares, whose declaration is likelier
     wrong, or one that declares none and has as many words in each, or whose more are one
-    word repeated."""
+    word repeated against three or more different words of the other."""
     declared = variant is not None
     if declared and (not isinstance(variant, str) or variant not in _NAMES):
         return []
@@ -341,8 +373,9 @@ def judge_spelling(
     """The findings of the spelling reading, for a paper in `variant`, or where that is
     None, a paper that declares no English: it is then held to the one most of its words
     are in (Basile, 2026-10-23), unless those are one word repeated against three or more
-    of the other's (2026-11-23). `accepted` are the spellings the project keeps whatever
-    the list says; `paper` is the file that names the variant, for the finding about it."""
+    different words of the other (2026-11-23). `accepted` are the spellings the project
+    keeps whatever the list says; `paper` is the file that names the variant, for the
+    finding about it."""
     nothing = Report((), {"spelling_own": 0, "spelling_other": 0})
     declared = variant is not None
     if declared and (not isinstance(variant, str) or variant not in _NAMES):
@@ -393,10 +426,11 @@ def judge_spelling(
             f"spelling as in {theirs}, {own} of each, the first in {ours}"
         )
     elif how == _ONE_WORD:
-        different = len({key for *_, key, kind in spelt if kind in _KINDS[variant]})
+        different = _different_words(spelt, _TOWARD_THE_THREE[variant])
+        apart = " apart from -ise" if any(kind == "ise" for *_, kind in spelt) and british else ""
         english = (
             f"paper.yaml declares no English, and the paper has {own} words in {ours} "
-            f"spelling, {different} different ones, to this one word in {theirs}"
+            f"spelling, {different} different ones{apart}, to this one word in {theirs}"
         )
     else:
         english = (

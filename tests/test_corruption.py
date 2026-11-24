@@ -39425,6 +39425,48 @@ def test_declaring_no_english_one_repeated_british_word_does_not_recast_an_ameri
     ]
 
 
+def test_declaring_no_english_three_ise_strays_do_not_recast_an_american_paper(
+    project: Path,
+) -> None:
+    """Basile, 2026-11-24: -ize is correct British too, so "organised" and two more in a paper
+    that writes "randomized" are strays, and "color" repeated is not."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    assert text.count("analysed") == 1, "the fixture's one British word moved"
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace("analysed", "analyzed").replace(
+        old,
+        old + " The color, the color and the color were noted. We organised, summarised and "
+        "categorised the data.",
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    said = spelling_findings(project)
+    assert [message.split("'")[1] for _code, _line, message in said] == [
+        "organised", "summarised", "categorised"]  # fmt: skip
+    assert {code for code, _line, _message in said} == {"spelling-variant"}
+
+
+def test_declaring_no_english_a_word_and_its_plural_do_not_recast_an_american_paper(
+    project: Path,
+) -> None:
+    """Basile, 2026-11-24: "grey" and "greys" are one word, so together they do not outvote
+    the American words of a paper that declared nothing."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    assert text.count("analysed") == 1, "the fixture's one British word moved"
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace("analysed", "analyzed").replace(
+        old,
+        old + " The grey cells, the grey bars, the greys and the grey lines differ in color, "
+        "and the tumor and the center were not coded.",
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    said = spelling_findings(project)
+    assert [message.split("'")[1] for _code, _line, message in said] == ["grey", "greys"]
+
+
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(
     project: Path,
 ) -> None:

@@ -240,7 +240,7 @@ WHY = {
     "choose-journal": "Rule choose-journal (tier 4): the journal's limits and statements are "
     "checked only once it is named and its profile written.",
     "choose-english": "Rule choose-english (tier 4): G14 holds the spelling to the English "
-    "declared, and to the one most words are in where none is.",
+    "declared, and to the one its spellings show where none is.",
     "choose-guideline": "Rule choose-guideline (tier 4): no checklist is asked for until the "
     "paper declares the guideline it follows.",
     "choose-study-type": "Rule choose-study-type (tier 4): the design decides which plan "

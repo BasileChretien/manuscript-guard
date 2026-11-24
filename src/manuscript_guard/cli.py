@@ -6995,7 +6995,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--english",
         choices=("american", "british"),
         help="the paper's English, which G14 holds its spelling to; without it, the English "
-        "most of its words are in",
+        "its spellings show",
     )
     audit.add_argument(
         "--known",
@@ -8429,7 +8429,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--english",
         help=f"the English paper.yaml declares, whose spelling G14 holds the manuscript to: "
         f"{' or '.join(ENGLISHES)}. Without it none is declared, and G14 holds the paper to "
-        "the one most of its words are in",
+        "the one its spellings show",
     )
     init.add_argument(
         "--from",

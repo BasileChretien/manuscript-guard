@@ -432,7 +432,7 @@ def test_a_paper_that_declares_no_english_is_told_the_journal_s(
 ) -> None:
     """Basile, 2026-10-23: a journal that names an English and a paper.yaml that declares
     none is a note of G4, never a failure. Nothing declared is nothing to compare, and G14
-    holds such a paper to the English most of its words are in, which may not be the
+    holds such a paper to the English its spellings show, which may not be the
     journal's."""
     assert _english_said(project, journal, None) == [
         (
@@ -440,7 +440,7 @@ def test_a_paper_that_declares_no_english_is_told_the_journal_s(
             "info",
             f"the journal asks for {english} ({journal}), and paper.yaml declares no English",
             f"declare english_variant: {journal} in paper.yaml to be held to it; until then "
-            "G14 holds the paper to the English most of its words are in",
+            "G14 holds the paper to the English its spellings show",
         )
     ]
 

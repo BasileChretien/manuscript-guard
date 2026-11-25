@@ -22810,20 +22810,32 @@ Open, recorded as each change landed:
   properties or by its character style, or a note's reference mark); a number of up to
   three digits in parentheses, or a list or a range of them, with "and" before the last or
   after "ref." or "refs" or not; digits right after a word's stop; a Markdown link whose
-  text is such a number, "[1](#B1)", read in the text as typed outside what the mask hides;
-  a citation field in a .docx; or an author cited with a year whose surname is a word of an
-  entry, in either's case (`auditing.references.cites_by_number`, `numbered_link`,
-  `cites_by_author`; Basile, 2026-11-25, "Strict rule", then "Drop run-on digits"; round 1
-  of #790). An author-and-year citation is read in its shape alone: a surname of two
-  letters or more, after particles such as "van der" or not, then "et al." or "and" or "&"
-  and another or not, then a comma or a space and a year of four digits, a letter after it
-  or not, that closes its part of a group in parentheses or square brackets ("(Smith et
-  al., 2019)", "[Smith, 2019; Lee, 2020]"); or such authors before a year in parentheses or
-  square brackets, in a sentence ("Smith (2019)").
+  text is such a number, "[1](#B1)", not an image, "![1](img1.png)", read in the text as
+  typed outside what the mask hides; a citation field in a .docx; or an author cited with a
+  year whose surname is a word of an entry, in either's case and whatever apostrophe each
+  is typed with (`auditing.references.cites_by_number`, `numbered_link`, `cites_by_author`;
+  Basile, 2026-11-25, "Strict rule", then "Drop run-on digits"; rounds 1 and 2 of #790).
+  An author-and-year citation is read in its shape alone: a surname of two letters or more,
+  after particles such as "van der" or not, a possessive "'s" left off it, then "et al.",
+  a comma before it or not, or "and" or "&" and another, then a comma or a space and a year
+  of four digits, a letter after it or not, that closes its part, a ")", "]", ";", ",", ":"
+  or "p."/"pp." after it; in a group in parentheses or square brackets on one line or over
+  two ("(Smith et al., 2019)", "[Smith, 2019; Lee, 2020]", "(Smith 2019: 45)"), as a
+  Markdown link's text ("[Smith et al., 2019](#B12)"), or before a year in parentheses or
+  square brackets, in a sentence ("Smith et al.'s (2019)"). A list is held to every file of
+  the audit: a citation in any of them, a paper's sections in one and its list in another,
+  or a Word paper beside its supplement, keeps every file's list unreported
+  (`held_across`).
   Pinned by `tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`.
   - Each shape reads widely and keeps the list unreported where it is no citation: a unit
     squared, "m²", an enumeration, "(1) the first", a stop before digits, "Fig.2".
     Pinned by `tests/test_corruption.py::test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported`.
+  - A link whose text is a number cannot be told from a citation by its target: one to a
+    figure or a section, "[2](#fig2)", "[3](#sec3)", keeps the list unreported.
+    Accepted.
+  - An author and a year with no parenthesis or bracket around the year, "as Smith et al.
+    2019 showed", is no citation's shape, and a list with no other citation is reported.
+    Pinned by `tests/test_corruption.py::test_an_author_and_year_with_no_bracket_is_no_citation`.
   - A title page's affiliation marks, "Smith J¹", "Smith J^1^", or a "1" Word raises after
     an author's name, keep the list unreported, and do in most real papers: by the rule's
     design, any number a citation may be is one.

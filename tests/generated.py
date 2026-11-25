@@ -11959,7 +11959,9 @@ UNCITED_KINDS = (
     "after a stop", "numbered link", "raised", "raised by style", "note", "field",
     "field by name",
     "author in parentheses", "author in brackets", "author in a sentence",
-    "author in capitals", "nothing in Markdown", "nothing in Word",
+    "author in capitals", "author with a page", "author, et al.", "author's",
+    "author wrapped", "author in a link", "author with an apostrophe",
+    "nothing in Markdown", "nothing in Word",
 )  # fmt: skip
 #: What of each kind a paper may hold, with what comes before it: a word it runs on from
 #: (""), or a space (" "). An author's `{}` is the name of one of the list's entries.
@@ -11992,6 +11994,30 @@ UNCITED_SHAPES["author in capitals"] = [
     *UNCITED_SHAPES["author in parentheses"], *UNCITED_SHAPES["author in brackets"],
     *UNCITED_SHAPES["author in a sentence"],
 ]
+#: And as review round 2 of #790 found them unread: a page after the year, a comma before
+#: "et al.", a possessive, a group Markdown wraps over two lines, and a link whose text is
+#: the citation, as a conversion from PMC writes one.
+UNCITED_SHAPES |= {
+    "author with a page": [(" ", f) for f in ("({} 2019: 45)", "({}, 2019 p. 4)",
+                                              "({} et al., 2020 pp. 4-5)")],
+    "author, et al.": [(" ", f) for f in ("({}, et al., 2019)", "[{}, et al. 2020]",
+                                          "that {}, et al. (2021) found")],
+    "author's": [(" ", f) for f in ("as {} et al.'s (2019) work", "as {}'s (2020) work",
+                                    "as {} et al.\N{RIGHT SINGLE QUOTATION MARK}s (2021) work")],
+    "author wrapped": [(" ", f) for f in ("({} et al.,\n2019)", "({},\n2020; Adams, 2018)",
+                                          "[{} and Adams\n2021]")],
+    "author in a link": [(" ", f) for f in ("([{} et al., 2019](#B12); [Adams, 2020](#B2))",
+                                            "[{}, 2019](#B3)", "([Adams and {} 2021](#B4))")],
+}
+#: An author the list names with an apostrophe, cited with another: the list's names, and
+#: what each is cited as (`UNCITED_SHAPES`, "author in parentheses").
+UNCITED_APOSTROPHES = {
+    "O\N{RIGHT SINGLE QUOTATION MARK}Brien": "O'Brien",
+    "O'Neill": "O\N{RIGHT SINGLE QUOTATION MARK}Neill",
+    "D\N{MODIFIER LETTER APOSTROPHE}Angelo": "D'Angelo",
+    "N\N{LEFT SINGLE QUOTATION MARK}Dour": "N\N{RIGHT SINGLE QUOTATION MARK}Dour",
+}
+UNCITED_SHAPES["author with an apostrophe"] = UNCITED_SHAPES["author in parentheses"]
 #: What a paper of nothing holds, one of each: digits run straight on into letters, digits
 #: after a hyphen, authors the list does not name, cited with a year in parentheses and in a
 #: sentence, whose year in parentheses is a number of four digits, and a word of the list,
@@ -12002,6 +12028,8 @@ UNCITED_NOTHING = (
     (" (Adams et al., 2019)", " (Clark, 2020; Dunn 2018)", " (WHO, 2021)"),
     (" that Baker (2020) found", " that Clark and Dunn (2019)"),
     (" (Study 2019 data)", " (Study = 2019)", " (A study 2019 was)"),
+    # An image whose text is a number, which is no citation (round 2 of #790).
+    (" ![1](fig1.png)", " ![2, 3](img/2.png)"),
 )
 #: The citation fields a Word paper may cite through, by their codes, by kind: those
 #: `citationfields.inserted` reads, Zotero's, EndNote's and Mendeley's, a content control's
@@ -12049,14 +12077,20 @@ def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
     or, for a paper of nothing, one of each of `UNCITED_NOTHING`, each in a paragraph drawn,
     and in Word a digit its run sets on the baseline in a superscript style. A paper holding
     a shape is in Markdown or in Word, drawn, as typed text holds it; one raised, a note's
-    mark or a field is in Word. A list cited by an author it gives in capitals gives every
-    author so."""
+    mark or a field is in Word, and a group wrapped over two lines in Markdown, where a line
+    break inside a paragraph is one. A list cited by an author it gives in capitals gives
+    every author so, and one cited by an author it names with an apostrophe names each with
+    one, cited with another (`UNCITED_APOSTROPHES`)."""
     papers = []
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     for kind in draw(st.permutations(UNCITED_KINDS)):
         count = draw(st.integers(2, 5))
         bracketed = draw(st.booleans())
-        names = [draw(word_names()) for _ in range(count)]
+        names = [draw(st.sampled_from(sorted(UNCITED_APOSTROPHES)))
+                 if kind == "author with an apostrophe" else draw(word_names())
+                 for _ in range(count)]  # fmt: skip
+        # The names its text cites the list's authors by.
+        cited = [UNCITED_APOSTROPHES.get(name, name) for name in names]
         entries = [f"{f'[{n}]' if bracketed else f'{n}.'} "
                    f"{name.upper() if kind == 'author in capitals' else name} A. A study. "
                    f"J Ex. 2019;{n}({n + 1}):1-2."
@@ -12081,9 +12115,10 @@ def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
             expected = [f"entry {n}" for n in range(1, count + 1)]
         else:
             form = ("docx" if kind in ("raised", "raised by style", "note", *UNCITED_FIELDS)
+                    else "md" if kind == "author wrapped"
                     else draw(st.sampled_from(("md", "docx"))))  # fmt: skip
             at = draw(st.integers(0, len(paragraphs) - 1))
-            paragraphs.insert(at, draw(_uncited_runs(kind, names)))
+            paragraphs.insert(at, draw(_uncited_runs(kind, cited)))
             expected = []
         papers.append(UncitedPaper(kind, form, paragraphs, listed, entries, expected))
     return papers

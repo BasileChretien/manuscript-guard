@@ -1700,6 +1700,10 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources = _read_sources(report, papers, found_tex or [])
+    from manuscript_guard.auditing.references import held_across
+
+    # A list whose own file cites nothing is held to every file read (round 2 of #790).
+    report.references = held_across(report.references)
     step("numbers")
     read = len(sources)
     for path in figures or []:

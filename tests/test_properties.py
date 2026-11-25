@@ -13991,7 +13991,7 @@ def _one_number_in_parentheses_only(patch: pytest.MonkeyPatch) -> None:
     """Only one number in parentheses is a citation's, "(3)", and no list or range of them."""
     from manuscript_guard.auditing import references
 
-    patch.setitem(references.CITED_BY_NUMBER, "parenthesised", re.compile(r"\(\d+\)"))
+    patch.setitem(references.CITED_BY_NUMBER, "parenthesised", re.compile(r"\(\d{1,3}\)"))
 
 
 def _no_run_raised_in_word(patch: pytest.MonkeyPatch) -> None:
@@ -14056,7 +14056,7 @@ def _forget_author_year(name: str) -> Callable[[pytest.MonkeyPatch], None]:
     def forget(patch: pytest.MonkeyPatch) -> None:
         from manuscript_guard.auditing import references
 
-        patch.setitem(references.AUTHOR_YEAR, name, lambda hidden: set())
+        patch.setitem(references.AUTHOR_YEAR, name, lambda hidden, typed: set())
 
     return forget
 
@@ -14088,12 +14088,69 @@ def _names_compared_in_their_case(patch: pytest.MonkeyPatch) -> None:
     """An author's name compared with the list's in its case: "SMITH J." names no Smith."""
     from manuscript_guard.auditing import references
 
-    def cases_kept(hidden: str, entries) -> bool:
-        named = {name for read in references.AUTHOR_YEAR.values() for name in read(hidden)}
-        return any(word in named for entry in entries
-                   for word in references._WORD.findall(entry.text))  # fmt: skip
+    patch.setattr(references, "_folded", lambda name: name.translate(references._FOLDED))
 
-    patch.setattr(references, "cites_by_author", cases_kept)
+
+def _apostrophes_compared_as_typed(patch: pytest.MonkeyPatch) -> None:
+    """An author's name compared with the list's with its apostrophes as typed: "O'Brien"
+    names no "O\N{RIGHT SINGLE QUOTATION MARK}Brien"."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_folded", lambda name: name.casefold())
+
+
+def _a_page_after_the_year_closes_nothing(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #790: a citation's year is closed by a ")", "]", ";" or ","
+    alone, and "(Smith 2019: 45)", "(Smith, 2019 p. 4)" are no citations."""
+    from manuscript_guard.auditing import references
+
+    closed = r"(?=\s*(?:[)\];,]|\Z))"
+    patch.setattr(references, "_IN_A_GROUP", re.compile(
+        rf"(?<![^\W\d_]){references._AUTHORS},?\s+{references._YEAR}{closed}"))
+    patch.setattr(references, "_NARRATIVE", re.compile(
+        rf"(?<![^\W\d_]){references._AUTHORS}(?:[{references._APOSTROPHES}]s)?\s*[(\[]\s*"
+        rf"{references._YEAR}{closed}"))
+
+
+def _no_comma_before_et_al(patch: pytest.MonkeyPatch) -> None:
+    """"et al." with no comma before it only: "(Smith, et al., 2019)" is no citation."""
+    from manuscript_guard.auditing import references
+
+    authors = references._AUTHORS.replace(r"(?:,?\s+et", r"(?:\s+et")
+    assert authors != references._AUTHORS
+    patch.setattr(references, "_IN_A_GROUP", re.compile(
+        rf"(?<![^\W\d_]){authors},?\s+{references._YEAR}{references._CLOSED}"))
+    patch.setattr(references, "_NARRATIVE", re.compile(
+        rf"(?<![^\W\d_]){authors}(?:[{references._APOSTROPHES}]s)?\s*[(\[]\s*"
+        rf"{references._YEAR}{references._CLOSED}"))
+
+
+def _no_possessive_in_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    """A narrative citation with no possessive: "Smith et al.'s (2019)" is none, and a
+    possessive is kept on the name, "Smith's"."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_NARRATIVE", re.compile(
+        rf"(?<![^\W\d_]){references._AUTHORS}\s*[(\[]\s*{references._YEAR}{references._CLOSED}"))
+    patch.setattr(references, "_surnames", lambda cited: {
+        said.split()[-1] for said in (cited.group("first"), cited.group("second"))
+        if said and said.split()[-1][0].isupper()})
+
+
+def _a_group_on_one_line_only(patch: pytest.MonkeyPatch) -> None:
+    """A group in parentheses on one line only, as before round 2 of #790: one Markdown
+    wraps, "(Smith et al.,\\n2019)", is none."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_GROUP", re.compile(r"[(\[]([^()\[\]\n]*)[)\]]"))
+
+
+def _an_image_is_a_numbered_link(patch: pytest.MonkeyPatch) -> None:
+    """An image whose text is a number, "![1](img1.png)", read as a link that cites."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_NUMBERED_LINK", re.compile(
+        rf"\[\s*{references._NUMBER}(?:\s*[,;]\s*{references._NUMBER})*\s*\]\("))
 
 
 def _no_group_in_square_brackets(patch: pytest.MonkeyPatch) -> None:
@@ -14108,7 +14165,7 @@ def _any_capitalised_word_before_a_year_names(patch: pytest.MonkeyPatch) -> None
     "(Study 2019 data)" among them."""
     from manuscript_guard.auditing import references
 
-    def named(hidden: str) -> set[str]:
+    def named(hidden: str, typed: str) -> set[str]:
         found = set()
         for group in references._GROUP.finditer(hidden):
             for part in group.group(1).split(";"):
@@ -14146,8 +14203,7 @@ def _any_author_cited_with_a_year_keeps_the_list(patch: pytest.MonkeyPatch) -> N
     too."""
     from manuscript_guard.auditing import references
 
-    patch.setattr(references, "cites_by_author", lambda hidden, entries: any(
-        read(hidden) for read in references.AUTHOR_YEAR.values()))
+    patch.setattr(references, "_listed", lambda named, entries: bool(named))
 
 
 def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
@@ -32595,7 +32651,7 @@ BROKEN = {
             _forget_author_year(name),
             test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
         )
-        for name in ("in a group", "in a sentence")
+        for name in ("in a group", "in a sentence", "in a link")
     },
     **{
         case: (break_it, test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number)
@@ -32610,6 +32666,13 @@ BROKEN = {
             ("a note's reference mark is not read", _no_note_s_mark_is_read),
             ("a superscript style overrides a run's own alignment",
              _a_superscript_style_overrides_a_run_s_alignment),
+            ("an author's apostrophes are compared as typed", _apostrophes_compared_as_typed),
+            ("a page after a citation's year closes nothing",
+             _a_page_after_the_year_closes_nothing),
+            ("no comma stands before et al.", _no_comma_before_et_al),
+            ("a narrative citation holds no possessive", _no_possessive_in_a_sentence),
+            ("a group in parentheses is on one line only", _a_group_on_one_line_only),
+            ("an image whose text is a number cites", _an_image_is_a_numbered_link),
         )
     },
     "any author cited with a year keeps the list, one it does not name too": (

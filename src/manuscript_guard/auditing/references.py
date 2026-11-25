@@ -93,28 +93,42 @@ CITED_BY_NUMBER = {
 }  # fmt: skip
 #: A Markdown link whose text is a citation's numbers, as typed: "[1](#B1)", "[2, 3](#B2)",
 #: "[1-3](https://...)", and each of "[[2](#B2), [3](#B3)]", as a conversion from PMC writes
-#: them. The mask blanks a link's target from its "]", so it is read in the text as typed
-#: (`numbered_link`).
-_NUMBERED_LINK = re.compile(rf"\[\s*{_NUMBER}(?:\s*[,;]\s*{_NUMBER})*\s*\]\(")
+#: them; not an image, "![1](img1.png)". The mask blanks a link's target from its "]", so it
+#: is read in the text as typed (`numbered_link`).
+_NUMBERED_LINK = re.compile(rf"(?<!!)\[\s*{_NUMBER}(?:\s*[,;]\s*{_NUMBER})*\s*\]\(")
+#: The apostrophes a name is typed with, each read as "'" when names are compared.
+_APOSTROPHES = "'\N{RIGHT SINGLE QUOTATION MARK}\N{LEFT SINGLE QUOTATION MARK}" \
+    "\N{MODIFIER LETTER APOSTROPHE}"
+_FOLDED = str.maketrans({mark: "'" for mark in _APOSTROPHES[1:]})
 #: A word of an entry, a name among them: letters, with an apostrophe or a hyphen inside.
-_WORD = re.compile(r"[^\W\d_][\w'’-]*")
+_WORD = re.compile(rf"[^\W\d_][\w{_APOSTROPHES}-]*")
 #: A surname as a citation gives it: two letters or more, an apostrophe or a hyphen inside,
 #: after particles in small letters, "van der Berg", "de la Cruz"; its last word is the name.
 _PARTICLES = r"(?:(?:van|von|der|den|de|del|della|di|da|du|la|le|dos|das|ter|ten|zu)\s+)*"
-_SURNAME = r"[^\W\d_](?:[^\W\d_]|['’-](?=[^\W\d_]))+"
-#: The authors a citation gives: a surname, then "et al." or "and" or "&" and another.
+_SURNAME = rf"[^\W\d_](?:[^\W\d_]|[{_APOSTROPHES}-](?=[^\W\d_]))+"
+#: The authors a citation gives: a surname, then "et al.", a comma before it or not, or
+#: "and" or "&" and another.
 _AUTHORS = (rf"(?P<first>{_PARTICLES}{_SURNAME})"
-            rf"(?:\s+et\s+al\.?|\s+(?:and|&)\s+(?P<second>{_PARTICLES}{_SURNAME}))?")
+            rf"(?:,?\s+et\s+al\.?|\s+(?:and|&)\s+(?P<second>{_PARTICLES}{_SURNAME}))?")
 #: A year as an author-and-year citation gives one: four digits, a letter after or not.
 _YEAR = r"\d{4}[a-z]?"
-#: An author-and-year citation in a group, its authors, a comma or a space, and its year,
-#: which closes its part of the group: a ")" or "]", a ";" or a "," (a page after it).
-_IN_A_GROUP = re.compile(rf"(?<![^\W\d_]){_AUTHORS},?\s+{_YEAR}(?=\s*(?:[;,]|\Z))")
-#: A group in parentheses or in square brackets, with none inside, on one line.
-_GROUP = re.compile(r"[(\[]([^()\[\]\n]*)[)\]]")
+#: What may follow a citation's year, which closes it: a ")" or "]" (a part's end), a ";"
+#: or a ",", or a page, after a ":" or "p." or "pp.".
+_CLOSED = r"(?=\s*(?:[)\];,:]|pp?\.|\Z))"
+#: An author-and-year citation in a group: its authors, a comma or a space, and its year.
+_IN_A_GROUP = re.compile(rf"(?<![^\W\d_]){_AUTHORS},?\s+{_YEAR}{_CLOSED}")
+#: A group in parentheses or in square brackets, with none inside, on one line or over two,
+#: as Markdown wraps a paragraph's lines.
+_GROUP = re.compile(r"[(\[]([^()\[\]\n]*(?:\n[^()\[\]\n]*)?)[)\]]")
 #: An author-and-year citation in a sentence, its year in parentheses or in square brackets
-#: and closing its part: "Smith (2019)", "Smith et al. (2019a)", "Smith and Lee (2019, p. 4)".
-_NARRATIVE = re.compile(rf"(?<![^\W\d_]){_AUTHORS}\s*[(\[]\s*{_YEAR}(?=\s*[)\];,])")
+#: and closing its part: "Smith (2019)", "Smith et al.'s (2019a)", "Smith and Lee (2019,
+#: p. 4)".
+_NARRATIVE = re.compile(
+    rf"(?<![^\W\d_]){_AUTHORS}(?:[{_APOSTROPHES}]s)?\s*[(\[]\s*{_YEAR}{_CLOSED}"
+)
+#: A Markdown link whose text is an author-and-year citation, as typed, as a conversion from
+#: PMC writes one: "([Smith et al., 2019](#B12); [Lee, 2020](#B2))".
+_AUTHOR_LINK = re.compile(rf"(?<!!)\[\s*{_AUTHORS},?\s+{_YEAR}\s*\]\(")
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
 #: A DOI, which ends at a space, a quote or a brace, and before `](`, where a Markdown link's
@@ -194,6 +208,14 @@ class Census:
     unsent: list[tuple[int, str]] = field(default_factory=list)
     #: In a PDF's list, why its entries are not told apart, where they are not (`UNTOLD`).
     untold: str = ""
+    #: Whether its text holds a bracketed citation or what a citation by number may be
+    #: (`cites_by_number`, `numbered_link`), and the names it cites with a year, folded
+    #: (`cited_names`): what the other files of an audit are held to (`held_across`).
+    cites: bool = False
+    named: frozenset[str] = frozenset()
+    #: Whether its entries are each reported as never cited because its text cites nothing
+    #: (`_held_to_numbers`).
+    uncited: bool = False
 
     @property
     def dois(self) -> int:
@@ -328,14 +350,18 @@ def census_of_text(
     where a link's target is read (`numbered_link`). Where no bracketed citation is read, the
     entries are
     reported as never cited only if the text cites nothing by number (`cites_by_number`,
-    `numbered_link`) and no author of the list with a year (`cites_by_author`)."""
+    `numbered_link`) and no author of the list with a year (`cites_by_author`), nor does any
+    other file of the audit (`held_across`)."""
+    markers = markers_in(hidden, intervals)
+    typed = hidden if typed is None else typed
+    said = {"markers": len(markers), "named": cited_names(hidden, typed),
+            "cites": bool(markers) or cites_by_number(hidden, spans, raised, fields)
+            or numbered_link(typed, hidden)}  # fmt: skip
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
-                      "counted")  # fmt: skip
+                      "counted", **said)  # fmt: skip
     entries = _entries_of(original.split("\n"), spans, paragraphs=docx)
-    census = Census(path, tuple(entries))
-    markers = markers_in(hidden, intervals)
-    census.markers = len(markers)
+    census = Census(path, tuple(entries), **said)
     if entries and all(entry.number is not None for entry in entries):
         census.style = NUMBERED
     elif docx and _numbered_by_word(entries, numbering or {}):
@@ -351,12 +377,9 @@ def census_of_text(
         census.entries = tuple(entries)
     else:
         return census
-    census.problems = _held_to_numbers(
-        path, entries, markers, _sentences(hidden, intervals),
-        uncited=not markers and not cites_by_number(hidden, spans, raised, fields)
-        and not numbered_link(hidden if typed is None else typed, hidden)
-        and not cites_by_author(hidden, entries),
-    )  # fmt: skip
+    census.uncited = not census.cites and not _listed(census.named, entries)
+    census.problems = _held_to_numbers(path, entries, markers, _sentences(hidden, intervals),
+                                       uncited=census.uncited)  # fmt: skip
     return census
 
 
@@ -394,44 +417,86 @@ def numbered_link(typed: str, hidden: str) -> bool:
     return any(hidden[link.start()] == "[" for link in _NUMBERED_LINK.finditer(typed))
 
 
-def cites_by_author(hidden: str, entries: Collection[Entry]) -> bool:
+def cites_by_author(hidden: str, entries: Collection[Entry], typed: str | None = None) -> bool:
     """Whether `hidden`, a text whose reference lists are blanked, cites with a year an
-    author whose name is a word of an entry, in either's case: an author-and-year paper
-    whose list is numbered cites its entries by name, and none is reported as never cited
-    (Basile, 2026-11-25). The names are the surnames a citation's shape gives
-    (`AUTHOR_YEAR`)."""
-    named = {name.casefold() for read in AUTHOR_YEAR.values() for name in read(hidden)}
-    return bool(named) and any(word.casefold() in named for entry in entries
+    author whose name is a word of an entry, in either's case and whatever apostrophes each
+    is typed with: an author-and-year paper whose list is numbered cites its entries by
+    name, and none is reported as never cited (Basile, 2026-11-25). The names are the
+    surnames a citation's shape gives (`AUTHOR_YEAR`); `typed` is the text as typed, where a
+    link is read (`hidden` where it is not given)."""
+    return _listed(cited_names(hidden, hidden if typed is None else typed), entries)
+
+
+def cited_names(hidden: str, typed: str) -> frozenset[str]:
+    """The surnames `hidden` cites with a year (`AUTHOR_YEAR`), folded (`_folded`)."""
+    return frozenset(_folded(name) for read in AUTHOR_YEAR.values()
+                     for name in read(hidden, typed))  # fmt: skip
+
+
+def _listed(named: Collection[str], entries: Collection[Entry]) -> bool:
+    """Whether a name of `named`, folded, is a word of an entry of `entries`, folded."""
+    return bool(named) and any(_folded(word) in named for entry in entries
                                for word in _WORD.findall(entry.text))  # fmt: skip
+
+
+def _folded(name: str) -> str:
+    """`name` as names are compared: its apostrophes read as "'", in no case."""
+    return name.translate(_FOLDED).casefold()
 
 
 def _surnames(cited: re.Match[str]) -> set[str]:
     """The surnames an author-and-year citation gives: the last word of each, capitalised,
-    after its particles."""
-    return {said.split()[-1] for said in (cited.group("first"), cited.group("second"))
+    after its particles, and without a possessive "'s"."""
+    return {re.sub(rf"[{_APOSTROPHES}]s\Z", "", said.split()[-1])
+            for said in (cited.group("first"), cited.group("second"))
             if said and said.split()[-1][0].isupper()}  # fmt: skip
 
 
-def _named_in_a_group(hidden: str) -> set[str]:
+def _named_in_a_group(hidden: str, _typed: str) -> set[str]:
     """The surnames an author-and-year citation in parentheses or in square brackets gives,
-    "(Smith et al., 2020)", "[Smith and Lee 2020; Brown, 2019a]", "(see Smith, 2019, p. 4)":
-    in each part of a group, between its semicolons, a citation's shape (`_IN_A_GROUP`). Not
-    a capitalised word before a year in any other shape, "(N = 1998)", "(The 2019 cohort)"."""
+    "(Smith et al., 2020)", "[Smith and Lee 2020; Brown, 2019a]", "(Smith, et al., 2019: 45)",
+    a group over two lines among them: in each part of a group, between its semicolons, a
+    citation's shape (`_IN_A_GROUP`). Not a capitalised word before a year in any other
+    shape, "(N = 1998)", "(The 2019 cohort)"."""
     return {name for group in _GROUP.finditer(hidden) for part in group.group(1).split(";")
             for cited in _IN_A_GROUP.finditer(part) for name in _surnames(cited)}  # fmt: skip
 
 
-def _named_in_a_sentence(hidden: str) -> set[str]:
+def _named_in_a_sentence(hidden: str, _typed: str) -> set[str]:
     """The surnames an author-and-year citation in a sentence gives, its year in parentheses
-    or in square brackets: "Smith (2019)", "Smith and Lee (2020)", "Smith et al. [2019a]"."""
+    or in square brackets: "Smith (2019)", "Smith and Lee (2020)", "Smith et al.'s [2019a]"."""
     return {name for cited in _NARRATIVE.finditer(hidden) for name in _surnames(cited)}
 
 
+def _named_in_a_link(hidden: str, typed: str) -> set[str]:
+    """The surnames a Markdown link whose text is an author-and-year citation gives, read in
+    `typed`, the text as typed, where `hidden`, its mask at the same offsets, has not masked
+    its opening bracket (`_AUTHOR_LINK`): the mask blanks a link's target from its "]"."""
+    return {name for cited in _AUTHOR_LINK.finditer(typed) if hidden[cited.start()] == "["
+            for name in _surnames(cited)}  # fmt: skip
+
+
 #: How an author is cited with a year, each by the name a stand-in that forgets it is known
-#: by: in parentheses or in square brackets, and in a sentence.
-AUTHOR_YEAR: dict[str, Callable[[str], set[str]]] = {
+#: by: in parentheses or in square brackets, in a sentence, and as a link's text.
+AUTHOR_YEAR: dict[str, Callable[[str, str], set[str]]] = {
     "in a group": _named_in_a_group, "in a sentence": _named_in_a_sentence,
+    "in a link": _named_in_a_link,
 }  # fmt: skip
+
+
+def held_across(censuses: list[Census]) -> list[Census]:
+    """The censuses of the files one audit reads, each list whose entries were reported as
+    never cited because its own text cites nothing (`Census.uncited`) left unreported where
+    another file cites, by number (`Census.cites`) or by an author of any file's list with a
+    year: a paper given as several files, its sections in some and its list alone in
+    another, and a Word paper beside its supplement (round 2 of #790)."""
+    named = frozenset().union(*(census.named for census in censuses))
+    if not any(census.cites for census in censuses) and not any(
+            _listed(named, census.entries) for census in censuses):  # fmt: skip
+        return censuses
+    return [replace(census, uncited=False, problems=[
+        problem for problem in census.problems if problem.code != "entry-never-cited"])
+        if census.uncited else census for census in censuses]  # fmt: skip
 
 
 def _sentences(hidden: str, intervals: list[tuple[int, int]]) -> list[str]:
@@ -466,12 +531,14 @@ def census_of_printed(
     such (`Census.unsent`), rather than sent cut and reported unregistered. So is one cut
     before its suffix, "10.1016/" or "doi:" alone at a line's end, which is never read as
     one."""
+    said = {"cites": bool(markers_in(hidden, intervals)) or cites_by_number(hidden, spans),
+            "named": cited_names(hidden, hidden)}  # fmt: skip
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
-                      "counted")  # fmt: skip
+                      "counted", **said)  # fmt: skip
     lines = text.split("\n")
     found: list[tuple[int | None, list[tuple[int, str]]]] = []
-    census = Census(path)
+    census = Census(path, **said)
     for start, end in spans:
         expected: int | None = None
         form: tuple[bool, str] | None = None
@@ -720,8 +787,8 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
     if not entries:
         note = ("no thebibliography was found: a list BibTeX or biber makes from a .bib is "
                 "not read, so none was counted") if cited else "no reference list was found"
-        return Census(path, note=note)
-    census = Census(path, tuple(entries), style=KEYED, markers=len(cited))
+        return Census(path, note=note, cites=bool(cited))
+    census = Census(path, tuple(entries), style=KEYED, markers=len(cited), cites=bool(cited))
     keys = {entry.key for entry in entries}
     every = any(key == "*" for _where, _line, key, _sentence in cited)
     named = {key for _where, _line, key, _sentence in cited}

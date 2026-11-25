@@ -26752,6 +26752,16 @@ _TYPED_SHAPES = {
     "a link whose text is a number": " [1](#B1)",
     "links whose text is a number in brackets": " [[1](#B1)] and [[2](#B2), [3](#B3)]",
     "a link to an address whose text is a range": " [1-3](https://example.org/a)",
+    "a link to a figure whose text is a number": " [2](#fig2)",
+    "an author with a page after a colon": " (Smith 2019: 45)",
+    "an author with a page after the year": " (Smith, 2019 p. 4)",
+    "an author with pages after the year": " (Smith et al., 2019 pp. 4-5)",
+    "a comma before et al.": " (Smith, et al., 2019)",
+    "a possessive in a sentence": " as Smith et al.'s (2019) work",
+    "a possessive with a curly apostrophe":
+        " as Smith et al.\N{RIGHT SINGLE QUOTATION MARK}s (2019) work",
+    "an author's possessive": " as Jones's (2020) work",
+    "authors' links": " ([Smith et al., 2019](#B12); [Lee, 2020](#B2))",
 }
 #: Digits typed straight onto a word, which a citation may be, and names with digits.
 _RUN_ON = {"digits after a letter": "s12", "a name with a hyphen and digits": " during COVID-19",
@@ -26999,6 +27009,74 @@ def test_a_markdown_paper_citing_by_numbered_links_is_not_reported() -> None:
     census = census_of_markdown(Path("paper.md"),
                                 f"# Results\n\nThey were rare <!-- [1](#B1) -->.\n\n{listed}")
     assert [p.subject for p in census.problems] == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("form", ["md", "docx"])
+@pytest.mark.parametrize("image", [" ![1](img1.png)", " ![2, 3](fig/2.png)"])
+def test_an_image_whose_text_is_a_number_cites_nothing(
+    tmp_path: Path, form: str, image: str
+) -> None:
+    """Round 2 of #790: an image, "![1](img1.png)", is no link to an entry, and a list with
+    no other citation is reported."""
+    assert _never_cited(_typed_paper(tmp_path, form, image)) == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("cited", ["(Smith et al.,\n2019)", "[Jones and Lee\n2020]"])
+def test_an_author_year_group_markdown_wraps_over_two_lines_is_read(
+    tmp_path: Path, cited: str
+) -> None:
+    """Round 2 of #790: a group of authors and a year that Markdown wraps over two lines of a
+    paragraph is a citation, as on one line."""
+    assert _never_cited(_typed_paper(tmp_path, "md", " " + cited)) == []
+
+
+@pytest.mark.parametrize(("listed", "cited"), [
+    ("O\N{RIGHT SINGLE QUOTATION MARK}Brien", "O'Brien"),
+    ("O'Brien", "O\N{RIGHT SINGLE QUOTATION MARK}Brien"),
+    ("D\N{MODIFIER LETTER APOSTROPHE}Angelo", "D\N{LEFT SINGLE QUOTATION MARK}Angelo"),
+])  # fmt: skip
+def test_an_author_s_apostrophes_are_one_whatever_each_is_typed_with(
+    tmp_path: Path, listed: str, cited: str
+) -> None:
+    """Round 2 of #790: "(O'Brien, 2019)" names the list's O'Brien typed with a curly
+    apostrophe: the apostrophes are folded, on both sides, before the names are compared."""
+    paper = tmp_path / "paper.md"
+    entries = [entry.replace("Smith", listed) for entry in _UNCITED_ENTRIES]
+    paper.write_text(f"# Results\n\nThe trials were run ({cited}, 2019).\n\n# References\n\n"
+                     + "\n".join(entries) + "\n", encoding="utf-8")  # fmt: skip
+    assert _never_cited(paper) == []
+
+
+def test_an_author_and_year_with_no_bracket_is_no_citation(tmp_path: Path) -> None:
+    """An author and a year with no parenthesis or bracket around the year, "as Smith et al.
+    2019 showed", is not read as a citation, and a list with no other citation is reported
+    (DESIGN.md, "Known gaps")."""
+    assert _never_cited(_typed_paper(tmp_path, "md", " as Smith et al. 2019 showed")) == (
+        _EVERY_ENTRY)
+
+
+@pytest.mark.parametrize("form", ["md", "docx"])
+def test_a_list_in_a_file_of_its_own_is_held_to_every_file_audited(
+    tmp_path: Path, form: str
+) -> None:
+    """Round 2 of #790: a paper given as several files, its sections in one and its numbered
+    list alone in another, or a Word paper beside its supplement, had each file's census held
+    to its own text, so the list's file reported every entry while the citations stood in
+    the other. A citation in any file of the audit keeps every file's list unreported."""
+    from manuscript_guard.audit import audit
+
+    listed = "\n".join(_UNCITED_ENTRIES)
+    if form == "md":
+        intro, refs = tmp_path / "01-intro.md", tmp_path / "references.md"
+        intro.write_text("# Introduction\n\nThe trials were run [1].\n", encoding="utf-8")
+        refs.write_text(f"# References\n\n{listed}\n", encoding="utf-8")
+    else:
+        intro = _docx(tmp_path / "paper.docx", _p("The trials were run [1]."))
+        refs = _uncited_docx(tmp_path / "supplement.docx", _plain_runs("Table S1 shows them."))
+    alone = [p.code for census in audit([refs], None).references for p in census.problems]
+    assert alone == ["entry-never-cited"] * 3
+    both = [p.code for census in audit([intro, refs], None).references for p in census.problems]
+    assert "entry-never-cited" not in both
 
 
 def test_a_pdf_s_numbered_list_with_no_marker_is_never_reported(tmp_path: Path) -> None:

@@ -6,7 +6,8 @@ The list is the one `audit` cuts from the text (`audit.bibliography_spans`), or 
 typed in them. Where the entries carry their numbers, "1." or "[1]", a bracketed citation in
 the text, `[3]`, `[3, 5]`, `[3-5]`, is held to the list: a number the list does not hold is
 reported, and so is an entry no citation names; with no such citation, every entry is,
-only where the text cites nothing by number at all (`cites_by_number`). In Markdown a list
+only where the text cites nothing by number (`cites_by_number`) and no author of the list
+with a year (`cites_by_author`). In Markdown a list
 numbered "1." or "1)" is numbered as pandoc prints it, from its first number up, so a list
 typed "1." on every entry is 1, 2, 3; a number pandoc escaped, `1\\.`, is typed text and
 printed as typed. A .docx whose list Word numbers itself prints no number in its text, so
@@ -62,10 +63,11 @@ _MARKER = re.compile(
 )
 _PART = re.compile(r"(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3}))?")
 #: What in a text may be a citation by number written other than in brackets, each by its
-#: name: where a text holds none of these and no bracketed citation, it cites nothing by
-#: number, and a numbered list's entries are each reported as never cited (Basile,
-#: 2026-11-25, "Strict rule"). Any doubt keeps the list unreported, so each reads widely:
-#: "COVID-19", "CD4", a unit squared and "(1) the first" are among what they find.
+#: name: where a text holds none of these, no bracketed citation and no author of the list
+#: cited with a year (`cites_by_author`), a numbered list's entries are each reported as
+#: never cited (Basile, 2026-11-25, "Strict rule", then "Drop run-on digits"). Each reads
+#: widely, a unit squared and "(1) the first" among what they find; digits run straight on
+#: into letters, "VGG16", "COVID-19", "disease12", are none.
 #: A superscript digit, as Unicode writes one.
 _SUPERSCRIPT_DIGIT = re.compile("[\u00b9\u00b2\u00b3\u2070\u2074-\u2079]")
 #: A superscript holding a digit, as pandoc writes one, `^3^`, `^1,2^`.
@@ -73,21 +75,34 @@ _CARETS = re.compile(r"\^[^\s^]*\d[^\s^]*\^")
 #: HTML's superscript holding a digit, `<sup>3</sup>`.
 _SUP = re.compile(r"<sup\b[^>]*>[^<]*\d", re.IGNORECASE)
 #: A number in parentheses, or a list or a range of them, with a hyphen or a dash: "(3)",
-#: "(3, 5)", "(3-5)", "(2,4-6)".
+#: "(3, 5)", "(3-5)", "(2,4-6)"; of up to three digits, as a bracketed citation's are, so
+#: that a year, "Smith (2019)", is read as an author's (`cites_by_author`).
 _PARENTHESISED = re.compile(
-    r"\(\s*\d+(?:\s*[-\u2013\u2014]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-\u2013\u2014]\s*\d+)?)*\s*\)"
+    r"\(\s*\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?"
+    r"(?:\s*[,;]\s*\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?)*\s*\)"
 )
-#: Digits run on into a word, a letter right before them: "disease12", "CD4", "H1N1".
-_AFTER_A_LETTER = re.compile(r"[^\W\d_]\d")
-#: Digits run on into a word's closing stop, with no space: "disease.12", "trials,3-5",
-#: "COVID-19"; not a decimal, "2.5", whose stop follows a digit.
-_AFTER_A_STOP = re.compile(r"[^\W\d_][.,);:\-]\d")
+#: Digits right after a word's closing stop, with no space: "disease.12", "trials,3-5",
+#: "x);4"; not a decimal, "2.5", whose stop follows a digit, nor a hyphen, "COVID-19".
+_AFTER_A_STOP = re.compile(r"[^\W\d_][.,);:]+\d")
 #: Each, by the name a stand-in that forgets it is known by.
 CITED_BY_NUMBER = {
     "superscript digit": _SUPERSCRIPT_DIGIT, "carets": _CARETS, "sup": _SUP,
-    "parenthesised": _PARENTHESISED, "after a letter": _AFTER_A_LETTER,
-    "after a stop": _AFTER_A_STOP,
+    "parenthesised": _PARENTHESISED, "after a stop": _AFTER_A_STOP,
 }  # fmt: skip
+#: A year as an author-and-year citation gives one, "2019", "2019a".
+_YEAR = r"(?:1[89]|20)\d{2}[a-z]?"
+#: A word, a name among them: letters, with an apostrophe or a hyphen inside.
+_WORD = re.compile(r"[^\W\d_][\w'\u2019-]*")
+#: A group in parentheses, with no parenthesis inside, on one line.
+_GROUP = re.compile(r"\(([^()\n]*)\)")
+#: A year, as a part of a group in parentheses holds one.
+_A_YEAR = re.compile(rf"\b{_YEAR}\b")
+#: A citation of authors by name in a sentence, its year in parentheses: "Smith (2019)",
+#: "Smith et al. (2019a)", "Smith and Lee (2019, p. 4)".
+_NARRATIVE = re.compile(
+    rf"({_WORD.pattern}(?:\s+(?:and|&)\s+{_WORD.pattern})?)(?:\s+et\s+al\.?)?"
+    rf"\s*\(\s*{_YEAR}\b"
+)
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
 #: A DOI, which ends at a space, a quote or a brace, and before `](`, where a Markdown link's
@@ -297,7 +312,8 @@ def census_of_text(
     0-based lines of `hidden` where a .docx raises a digit as superscript
     (`text.docx.DocxText.raised`), and `fields`, whether it holds a citation field
     (`DocxText.cited_by_field`). Where no bracketed citation is read, the entries are
-    reported as never cited only if the text cites nothing by number (`cites_by_number`)."""
+    reported as never cited only if the text cites nothing by number (`cites_by_number`)
+    and no author of the list with a year (`cites_by_author`)."""
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
                       "counted")  # fmt: skip
@@ -322,7 +338,8 @@ def census_of_text(
         return census
     census.problems = _held_to_numbers(
         path, entries, markers, _sentences(hidden, intervals),
-        uncited=not markers and not cites_by_number(hidden, spans, raised, fields),
+        uncited=not markers and not cites_by_number(hidden, spans, raised, fields)
+        and not cites_by_author(hidden, entries),
     )  # fmt: skip
     return census
 
@@ -332,12 +349,14 @@ def cites_by_number(
 ) -> bool:
     """Whether a text whose reference lists are blanked, `hidden`, may cite by number other
     than in brackets: a digit raised as superscript, as typed text writes one or, in a .docx,
-    on a line of `raised` outside the lists' `spans`; a number in parentheses; digits run on
-    into a word; or a citation field (`fields`). Where none is there and no bracketed
-    citation either, the text cites nothing by number, and a numbered list's every entry is
-    never cited (Basile, 2026-11-25, "Strict rule"). A PDF's text is never asked: its
-    superscripts are set as plain digits, so any number after a word may be one
-    (`census_of_printed`)."""
+    on a line of `raised` outside the lists' `spans`; a number in parentheses; digits right
+    after a word's stop; or a citation field (`fields`). Where none is there and no
+    bracketed citation either, the text cites nothing by number, and a numbered list's every
+    entry is never cited, unless the text cites an author of the list with a year
+    (`cites_by_author`; Basile, 2026-11-25, "Strict rule", then "Drop run-on digits").
+    Digits typed straight onto a word, "disease12", are not read as a citation. A PDF's text
+    is never asked: its superscripts are set as plain digits, so any number after a word may
+    be one (`census_of_printed`)."""
     if fields or _raised_outside(raised, spans):
         return True
     return any(pattern.search(hidden) for pattern in CITED_BY_NUMBER.values())
@@ -347,6 +366,44 @@ def _raised_outside(raised: Collection[int], spans: list[tuple[int, int]]) -> bo
     """Whether a line of `raised` is outside the reference lists' `spans`, which are
     `[start, end)` 0-based lines, as `hidden` blanks them."""
     return any(not any(start <= line < end for start, end in spans) for line in raised)
+
+
+def cites_by_author(hidden: str, entries: Collection[Entry]) -> bool:
+    """Whether `hidden`, a text whose reference lists are blanked, cites with a year an
+    author whose name is a word of an entry: an author-and-year paper whose list is numbered
+    cites its entries by name, and none is reported as never cited (Basile, 2026-11-25). The
+    names are the capitalised words a citation gives before its year (`AUTHOR_YEAR`)."""
+    named = {name for read in AUTHOR_YEAR.values() for name in read(hidden)}
+    return bool(named) and any(word in named for entry in entries
+                               for word in _WORD.findall(entry.text))  # fmt: skip
+
+
+def _named_in_parentheses(hidden: str) -> set[str]:
+    """The names an author-and-year citation in parentheses gives, "(Smith et al., 2020)",
+    "(Smith and Lee 2020; Brown, 2019a)": in each part of a group, between its semicolons,
+    that holds a year, each capitalised word before the year."""
+    named = set()
+    for group in _GROUP.finditer(hidden):
+        for part in group.group(1).split(";"):
+            year = _A_YEAR.search(part)
+            if year is not None:
+                named.update(word for word in _WORD.findall(part[: year.start()])
+                             if word[0].isupper())  # fmt: skip
+    return named
+
+
+def _named_in_a_sentence(hidden: str) -> set[str]:
+    """The names an author-and-year citation in a sentence gives, its year in parentheses:
+    "Smith (2019)", "Smith and Lee (2020)", "Smith et al. (2019a)"."""
+    return {word for cited in _NARRATIVE.finditer(hidden)
+            for word in _WORD.findall(cited.group(1)) if word[0].isupper()}  # fmt: skip
+
+
+#: How an author is cited with a year, each by the name a stand-in that forgets it is known
+#: by: in parentheses, and in a sentence.
+AUTHOR_YEAR: dict[str, Callable[[str], set[str]]] = {
+    "in parentheses": _named_in_parentheses, "in a sentence": _named_in_a_sentence,
+}  # fmt: skip
 
 
 def _sentences(hidden: str, intervals: list[tuple[int, int]]) -> list[str]:
@@ -558,8 +615,9 @@ def _held_to_numbers(
     """What is wrong between a numbered list's `entries` and the text's bracketed citations,
     `markers`: each citation of a number the list does not hold, and, where there is a
     citation, each entry none names. With none, each entry is reported only where the text
-    cites nothing by number (`uncited`, `cites_by_number`), and the message says so: its key
-    is the one an entry no citation names has."""
+    cites nothing by number and no author of the list with a year (`uncited`,
+    `cites_by_number`, `cites_by_author`), and the message says so: its key is the one an
+    entry no citation names has."""
     numbers = {entry.number for entry in entries}
     highest = max((number for number in numbers if number is not None), default=0)
     problems = []
@@ -595,8 +653,9 @@ def _held_to_numbers(
                 problems.append(Problem(
                     "entry-never-cited", f"{entry.label} of the reference list is cited "
                     "nowhere in the text, which cites nothing by number: no number in "
-                    "brackets, raised as a superscript or in parentheses, none run on into "
-                    "a word, and no citation field", entry.line, path, entry.label,
+                    "brackets, raised as a superscript or in parentheses, none after a "
+                    "word's stop, no citation field, and no author of the list cited with a "
+                    "year", entry.line, path, entry.label,
                 ))  # fmt: skip
     return sorted(problems, key=lambda problem: problem.line or 0)
 

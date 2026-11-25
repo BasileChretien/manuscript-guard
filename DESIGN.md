@@ -22792,21 +22792,28 @@ Open, recorded as each change landed:
   `tests/test_audit_sections.py::test_an_entry_word_numbers_styled_as_a_heading_ends_the_list`
   and `tests/test_properties.py::test_a_word_list_goes_on_over_an_entry_styled_as_a_heading`.
 - **A numbered list whose text holds no citation in brackets is reported only where the text
-  cites nothing by number, and anything a number may be keeps it unreported.** Where G7
-  reads no bracketed citation, a numbered list's entries are each reported as never cited
-  only if the text, the list blanked, holds no digit raised as superscript, no number in
-  parentheses, no digits run on into a word or a word's stop, and in a .docx no citation
-  field (`auditing.references.cites_by_number`; Basile, 2026-11-25, "Strict rule").
+  cites nothing by number and no author of the list with a year.** Where G7 reads no
+  bracketed citation, a numbered list's entries are each reported as never cited only if
+  the text, the list blanked, holds no digit raised as superscript, no number of up to three
+  digits in parentheses, no digits right after a word's stop, no citation field in a .docx,
+  and no author cited with a year whose name is a word of an entry
+  (`auditing.references.cites_by_number`, `cites_by_author`; Basile, 2026-11-25, "Strict
+  rule", then "Drop run-on digits").
   Pinned by `tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`.
-  - Any doubt keeps the list unreported: a name with digits, "COVID-19", "CD4", "VGG16",
-    a unit, "m²", an enumeration, "(1) the first", and an e-mail address each do, in a
-    text that cites nothing. The paper of the real-paper corpus whose entry #782 stopped
-    reporting is one: it cites by author and year, and names models with digits.
+  - Each shape reads widely and keeps the list unreported where it is no citation: a unit
+    squared, "m²", an enumeration, "(1) the first", a stop before digits, "Fig.2".
     Pinned by `tests/test_corruption.py::test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported`.
-  - A citation by author and year is no citation by number: an author-year paper with a
-    numbered list has every entry reported as never cited, unless its text holds a number
-    one may be, a year in parentheses, "Smith (2019)", among them.
-    Pinned by `tests/test_corruption.py::test_an_author_year_text_s_numbered_list_is_held_by_its_numbers_alone`.
+  - Digits typed straight onto a word are read as no citation, so a Word or Markdown paper
+    whose citation numbers are typed onto its words without being raised, "disease12", has
+    every entry reported as never cited; so has one that cites nothing and names things with
+    digits, "VGG16", "COVID-19", "3x3", as the paper of the real-paper corpus whose entry
+    #782 stopped reporting does.
+    Pinned by `tests/test_corruption.py::test_digits_typed_onto_a_word_are_no_citation_and_the_list_is_reported`.
+  - An author cited with a year keeps the list unreported only where the name a citation
+    gives before its year, a capitalised word, is a word of an entry: an author cited by a
+    form the list spells otherwise, "WHO" for its full name, one the list does not hold,
+    and a year alone in parentheses, "(2019)", leave every entry reported.
+    Pinned by `tests/test_corruption.py::test_an_author_year_citation_of_no_author_of_the_list_keeps_nothing_unreported`.
   - A PDF's text sets a superscript as plain digits, so any number after a word may be a
     citation: a PDF's numbered list with no citation in brackets is never reported.
     Pinned by `tests/test_corruption.py::test_a_pdf_s_numbered_list_with_no_marker_is_never_reported`.

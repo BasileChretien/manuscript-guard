@@ -26734,12 +26734,17 @@ _TYPED_SHAPES = {
     "a range in parentheses": " (3-5)",
     "a range with a dash in parentheses": " (3\N{EN DASH}5)",
     "a list and a range in parentheses": " (2,4-6)",
-    "digits after a letter": "s12",
     "digits after a stop": ".12",
     "a range after a comma": ",3-5",
-    "a name with a hyphen and digits": " during COVID-19",
-    "a name with digits": " with CD4",
+    "digits after two stops": ");4",
+    "an author of the list cited in parentheses": " (Smith et al., 2019)",
+    "two authors of the list cited in parentheses": " (Smith and Lee 2019; Adams, 2020a)",
+    "an author of the list cited in a sentence": " that Jones (2020) ran",
+    "two authors of the list cited in a sentence": " that Lee and Brown (2021, p. 4) ran",
 }
+#: Digits typed straight onto a word, which a citation may be, and names with digits.
+_RUN_ON = {"digits after a letter": "s12", "a name with a hyphen and digits": " during COVID-19",
+           "a name with digits": " with VGG16", "a size": " with 3x3 filters"}  # fmt: skip
 
 
 def _uncited_docx(path: Path, runs: str, parts: dict[str, str] | None = None,
@@ -26786,8 +26791,9 @@ def test_a_numbered_list_in_a_text_that_cites_nothing_by_number_is_every_entry_u
     tmp_path: Path, form: str
 ) -> None:
     """A numbered list's entries are each cited nowhere where the text cites nothing by
-    number: no marker in brackets, no superscript, no "(n)", no digits run on into a word
-    and no citation field. G7 reported nothing, and after #782 one paper's entry never cited
+    number: no marker in brackets, no superscript, no "(n)", no digits after a word's stop,
+    no citation field, and no author of the list cited with a year. G7 reported nothing,
+    and after #782 one paper's entry never cited
     was lost: it had been reported only because the list's own entries, read as text past
     one styled as a heading, counted as citations (Basile, 2026-11-25, "Strict rule"). The
     list's own "(3)" and "m\N{SUPERSCRIPT TWO}" are not the text's."""
@@ -26822,22 +26828,38 @@ def test_a_digit_raised_in_the_list_is_the_list_s_and_cites_nothing(
     assert _never_cited(paper) == _EVERY_ENTRY
 
 
+def _typed_paper(folder: Path, form: str, said: str) -> Path:
+    """A paper in Markdown or in Word whose one paragraph of text is the sentence with `said`
+    in it, then its numbered list of `_UNCITED_ENTRIES`."""
+    sentence = _UNCITED_SENTENCE.format(said)
+    if form == "docx":
+        return _uncited_docx(folder / "paper.docx", _plain_runs(sentence))
+    paper = folder / "paper.md"
+    paper.write_text(f"# Results\n\n{sentence}\n\n# References\n\n"
+                     + "\n".join(_UNCITED_ENTRIES) + "\n", encoding="utf-8")  # fmt: skip
+    return paper
+
+
 @pytest.mark.parametrize("form", ["md", "docx"])
 @pytest.mark.parametrize("shape", sorted(_TYPED_SHAPES))
 def test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported(
     tmp_path: Path, form: str, shape: str
 ) -> None:
-    """Strict: where a text may cite by number other than in brackets, its list's entries
-    are not reported as never cited, a name with digits, "COVID-19", among what keeps them
-    so (Basile, 2026-11-25)."""
-    sentence = _UNCITED_SENTENCE.format(_TYPED_SHAPES[shape])
-    if form == "md":
-        paper = tmp_path / "paper.md"
-        paper.write_text(f"# Results\n\n{sentence}\n\n# References\n\n"
-                         + "\n".join(_UNCITED_ENTRIES) + "\n", encoding="utf-8")  # fmt: skip
-    else:
-        paper = _uncited_docx(tmp_path / "paper.docx", _plain_runs(sentence))
-    assert _never_cited(paper) == []
+    """Strict: where a text may cite by number other than in brackets, or cites an author of
+    the list with a year, its list's entries are not reported as never cited (Basile,
+    2026-11-25, "Strict rule", "Drop run-on digits")."""
+    assert _never_cited(_typed_paper(tmp_path, form, _TYPED_SHAPES[shape])) == []
+
+
+@pytest.mark.parametrize("form", ["md", "docx"])
+@pytest.mark.parametrize("shape", sorted(_RUN_ON))
+def test_digits_typed_onto_a_word_are_no_citation_and_the_list_is_reported(
+    tmp_path: Path, form: str, shape: str
+) -> None:
+    """Digits run straight on into letters are read as no citation, a name's as a superscript
+    typed flat, "disease12": with nothing else, every entry is reported (Basile, 2026-11-25,
+    "Drop run-on digits"; DESIGN.md, "Known gaps")."""
+    assert _never_cited(_typed_paper(tmp_path, form, _RUN_ON[shape])) == _EVERY_ENTRY
 
 
 _ZOTERO_CODE = ('ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"a","citationItems":[{"id":1,'
@@ -26920,19 +26942,17 @@ def test_a_digit_raised_as_superscript_keeps_a_word_list_unreported(
     assert _never_cited(paper) == []
 
 
-@pytest.mark.parametrize(("cited", "listed"), [("(Smith, 2019)", _EVERY_ENTRY),
-                                               ("Smith (2019)", [])])  # fmt: skip
-def test_an_author_year_text_s_numbered_list_is_held_by_its_numbers_alone(
-    tmp_path: Path, cited: str, listed: list[str]
+@pytest.mark.parametrize("form", ["md", "docx"])
+@pytest.mark.parametrize("cited", [" (Adams et al., 2019)", " that Adams (2019) ran",
+                                   " (WHO, 2019)", " (2019)"])  # fmt: skip
+def test_an_author_year_citation_of_no_author_of_the_list_keeps_nothing_unreported(
+    tmp_path: Path, form: str, cited: str
 ) -> None:
-    """A citation by author and year is no citation by number: an author-year paper with a
-    numbered list reports every entry as never cited, unless its text holds a number one may
-    be, a year in parentheses, "Smith (2019)", among them (DESIGN.md, "Known gaps")."""
-    paper = tmp_path / "paper.md"
-    paper.write_text(f"# Results\n\nThe trials were run in the clinic {cited}.\n\n"
-                     "# References\n\n" + "\n".join(_UNCITED_ENTRIES) + "\n",
-                     encoding="utf-8")  # fmt: skip
-    assert _never_cited(paper) == listed
+    """An author cited with a year keeps a numbered list unreported only where the name is a
+    word of an entry: one the list does not name, an author cited by a short form the list
+    spells out, "WHO", and a year alone in parentheses, a number of four digits, leave every
+    entry reported (DESIGN.md, "Known gaps")."""
+    assert _never_cited(_typed_paper(tmp_path, form, cited)) == _EVERY_ENTRY
 
 
 def test_a_pdf_s_numbered_list_with_no_marker_is_never_reported(tmp_path: Path) -> None:

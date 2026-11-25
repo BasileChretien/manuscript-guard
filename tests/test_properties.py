@@ -13943,10 +13943,13 @@ def test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number(
     """Where a text holds no citation in brackets, its numbered list's entries are each
     never cited only where it cites nothing by number: no digit raised as superscript,
     typed or, in Word, raised by a run's properties or its character style; no number in
-    parentheses; no digits run on into a word; and no citation field. G7 reported nothing
-    where it read no bracketed citation (Basile, 2026-11-25, "Strict rule"). What the list
-    holds is not the text's: a number in parentheses in every entry, and in Word a digit
-    raised in one."""
+    parentheses; no digits after a word's stop; no citation field; and no author of the
+    list cited with a year, in parentheses or in a sentence. G7 reported nothing where it
+    read no bracketed citation (Basile, 2026-11-25, "Strict rule", "Drop run-on digits").
+    What the list holds is not the text's: a number in parentheses in every entry, and in
+    Word a digit raised in one; and digits run straight on into letters, "VGG16", or after a
+    hyphen, "COVID-19", authors the list does not name, and a year alone in parentheses,
+    cite nothing."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as folder:
@@ -14019,6 +14022,39 @@ def _a_list_with_no_marker_is_never_reported(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import references
 
     patch.setattr(references, "cites_by_number", lambda *_given, **_named: True)
+
+
+def _a_run_on_shape_cites(pattern: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """A stand-in for the rule that reads one more shape as a citation by number: `pattern`,
+    as the rule before "Drop run-on digits" had it."""
+
+    def cites(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.auditing import references
+
+        patch.setitem(references.CITED_BY_NUMBER, "run on", re.compile(pattern))
+
+    return cites
+
+
+def _forget_author_year(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """A stand-in for the rule that reads no author cited with a year in one way
+    (`references.AUTHOR_YEAR`)."""
+
+    def forget(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.auditing import references
+
+        patch.setitem(references.AUTHOR_YEAR, name, lambda hidden: set())
+
+    return forget
+
+
+def _any_author_cited_with_a_year_keeps_the_list(patch: pytest.MonkeyPatch) -> None:
+    """Any author cited with a year keeps the list unreported, one the list does not name
+    too."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "cites_by_author", lambda hidden, entries: any(
+        read(hidden) for read in references.AUTHOR_YEAR.values()))
 
 
 def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
@@ -32400,9 +32436,31 @@ BROKEN = {
             _forget_shape(name),
             test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
         )
-        for name in ("superscript digit", "carets", "sup", "parenthesised", "after a letter",
-                     "after a stop")
+        for name in ("superscript digit", "carets", "sup", "parenthesised", "after a stop")
     },
+    "digits run straight on into letters cite": (
+        _a_run_on_shape_cites(r"[^\W\d_]\d"),
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "digits after a hyphen cite": (
+        _a_run_on_shape_cites(r"[^\W\d_]-\d"),
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a year in parentheses is a number that cites": (
+        _a_run_on_shape_cites(r"\(\s*\d{4}\s*\)"),
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    **{
+        f"an author cited with a year {name} is not read": (
+            _forget_author_year(name),
+            test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+        )
+        for name in ("in parentheses", "in a sentence")
+    },
+    "any author cited with a year keeps the list, one it does not name too": (
+        _any_author_cited_with_a_year_keeps_the_list,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
     "only one number in parentheses cites, no list or range": (
         _one_number_in_parentheses_only,
         test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,

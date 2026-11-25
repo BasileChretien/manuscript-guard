@@ -419,8 +419,13 @@ def artefacts_in(
 
 #: The end of a line of prose whose sentence runs on into the next line: a word or a number,
 #: a comma, a semicolon, a colon or a dash, and any closing marks after it ("reported",
-#: "Table 2,", "[@key]", "small –").
-_RUNS_ON = re.compile(r"(?:[\w,;:–—]|(?<!-)--)[)\]*_'\"’”]*[ \t\r]*$")
+#: "Table 2,", "[@key]", "small –"). And a word broken by a hyphen at the line's end, as a
+#: PDF's text keeps it, whose second half opens the next line: "expo-/sure" (window C of
+#: the real-paper corpus). The hyphen is the ASCII one, U+2010, U+2011 or the soft hyphen
+#: U+00AD, the class `assistant-voice` refuses as an opener's end (round 2 of #779).
+_RUNS_ON = re.compile(
+    r"(?:[\w,;:–—]|(?<!-)--|(?<=\w)[-\u2010\u2011\u00ad])[)\]*_'\"’”]*[ \t\r]*$"
+)
 #: A line that is no prose whatever it ends with: a heading, a LaTeX or an HTML comment.
 _NOT_PROSE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)|[ \t]*%|[ \t]*<!--")
 

@@ -1287,7 +1287,7 @@ def _pdf_findings(text: str) -> list[tuple[str, str]]:
     """G14's findings on `text` as a file the audit staged from a PDF."""
     from manuscript_guard.gates.language import _judge, _Known
 
-    file = replace(_file(0, Path("main.md"), text, [], False), from_pdf=True)
+    file = _file(0, Path("main.md"), text, [], False, from_pdf=True)
     report = _judge([file], _Known(frozenset(), frozenset()), Path("."))
     return [(f.code, f.message) for f in report.findings]
 

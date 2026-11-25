@@ -376,6 +376,22 @@ def test_counts_keeps_the_held_out_section_unless_it_is_counted_again(tmp_path: 
     assert yaml.safe_load(out.read_text("utf-8"))["heldout"] == section
 
 
+def test_a_verdict_left_out_is_counted_by_its_reason_and_never_by_its_words(
+        tmp_path: Path) -> None:  # fmt: skip
+    """A judge's own verdict word, or a verdict with no finding at its place, is left out as
+    the corpus tool leaves it out, counted under a fixed name and not refused."""
+    root, out = mini_corpus(tmp_path / "corpus"), tmp_path / "false-alarms.yaml"
+    path = root / "report" / "judged" / "psych.json"
+    odd = {"slug": "docx-psych-A1", "report": "audit", "gate": "G6", "code": "ai-phrasing"}
+    path.write_text(json.dumps([*json.loads(path.read_text("utf-8")),
+                                {**odd, "index": 0, "verdict": "moon cheese"},
+                                {**odd, "index": 99, "verdict": "true"}]), "utf-8")
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--out", str(out)]) == 0
+    left = yaml.safe_load(out.read_text("utf-8"))["tuning"]["verdicts"]["left_out"]
+    assert left == {"no finding in the packet at its index": 1, "verdict other": 1}
+    assert "cheese" not in out.read_text("utf-8")
+
+
 def test_counts_of_the_held_out_set_need_its_milestone(tmp_path: Path, capsys) -> None:
     root, out = mini_corpus(tmp_path / "corpus"), tmp_path / "false-alarms.yaml"
     assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--milestone", "1",

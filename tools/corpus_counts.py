@@ -114,10 +114,18 @@ def made(run) -> dict:
     return {"run": run.name, "commit": str(said["sha"]), "version": str(said["version"])}
 
 
+#: The reasons the corpus tool leaves a verdict out for, kept by name: any other verdict word
+#: is a judge's own, counted as "verdict other" so that its words go nowhere.
+REASONS = ("verdict miss", "verdict unclear", "paper removed after judging",
+           "no finding in the packet at its index")  # fmt: skip
+
+
 def verdicts(rows: list[dict], skipped: dict) -> dict:
     """How many verdicts were read, the first packets' and the batches', and those left out."""
+    left = collections.Counter({reason: n for reason, n in skipped.items() if reason in REASONS})
+    left["verdict other"] += sum(n for reason, n in skipped.items() if reason not in REASONS)
     return {"first": sum(not r["batch"] for r in rows), "batches": sum(bool(r["batch"])
-            for r in rows), "left_out": dict(sorted(skipped.items()))}  # fmt: skip
+            for r in rows), "left_out": dict(sorted((+left).items()))}  # fmt: skip
 
 
 def tuning(root: Path, run, result: dict) -> dict:

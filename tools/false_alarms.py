@@ -365,6 +365,8 @@ LEFT_OUT = {
     "verdict unclear": "warnings a judge could not settle from the text",
     "paper removed after judging": "verdicts on papers found after judging not to be "
                                    "manuscripts",
+    "no finding in the packet at its index": "verdicts that named no finding judged",
+    "verdict other": "verdicts in other words than true, false, unclear or miss",
 }  # fmt: skip
 MISS = "verdict miss"
 

@@ -429,7 +429,8 @@ def test_every_rule_of_model_artefact_is_lowered() -> None:
 ])  # fmt: skip
 def test_every_model_artefact_is_a_note(subject: str | None) -> None:
     """Where #710 lowered the bare placeholders alone, every finding of the code is now
-    lowered: 1 true of 43 judged on the corpus at 27b5cfb, the false ones from 11 papers."""
+    lowered: 1 true of 30 judged in an audit or compare on the corpus at 27b5cfb, the false
+    ones from 11 papers."""
     found = Finding("G6", "model-artefact", "said", FAIL, subject=subject)
     assert table.measured(found).severity == INFO
 

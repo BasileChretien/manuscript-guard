@@ -9849,7 +9849,7 @@ again at 27b5cfb:
 | Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|---|
 | `code-name-in-prose` (G14) | any format | 50 | 18 | 8 papers | INFO | warns, fails at submission |
-| `model-artefact` (G6), every rule | any format | 43 | 1 | 11 papers | INFO | fails from drafting |
+| `model-artefact` (G6), every rule | any format | 30 | 1 | 11 papers | INFO | fails from drafting |
 | `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
 | `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
 | `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
@@ -9884,10 +9884,11 @@ in audit"). At d056f71 the row held for the bare placeholders alone, `placeholde
 that tells the writer what to put, an instruction left for the writer, a journal template's
 instruction to its authors and a model's markup or voice kept failing in both reports, since
 such words were taken to have no innocent reading (Basile, 2026-10-21). On the corpus at
-27b5cfb they had one: of the code's 43 judged findings, 1 was true, and the two still loud
-were a template's "Sample table title" and a "todo", both false. A bare placeholder was right
-1 time in 25, one `check` holds back until drafting 0 in 12, a chat assistant's register 0 in
-4 and a template's instruction 0 in 2. So every finding of the code is a note in `audit` and
+27b5cfb they had one: of the code's 30 judged findings in the reports the table is applied
+to (an audit, of a paper or of its own PDF, and `compare`), 1 was true, and the two still loud
+were a template's "Sample table title" and a "todo", both false. Unfilled placeholder text was
+right 1 time in 24, a chat assistant's register 0 in 4 and a template's instruction 0 in 1;
+`check`'s own 13 judged were false too. So every finding of the code is a note in `audit` and
 `compare`, and `check` fails them from drafting as before, where a leftover is the author's
 own.
 `identifier-malformed` (13 true of 14) and `reference-field-missing` (41 of 41) were measured

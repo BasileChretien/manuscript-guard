@@ -59,15 +59,16 @@ MEASURED: dict[str, Measured] = {
     # G14's names from the code: 18 true of 50 judged, the false ones from 8 papers. A
     # project's names come from its own analysis, so `check` warns as before. At d056f71.
     "code-name-in-prose": Measured(INFO, true=18, judged=50, papers=8),
-    # G6's text a model or a template left behind, every rule of it: 1 true of 43 judged,
-    # the false ones from 11 papers. A bare placeholder, 1 of 25 ("xxxx", a "todo"); one
-    # `check` holds back until drafting, 0 of 12; a chat assistant's register, 0 of 4; a
-    # journal template's instruction, 0 of 2 ("Sample table title"). At d056f71 the bare
+    # G6's text a model or a template left behind, every rule of it: 1 true of 30 judged
+    # in the reports this table is applied to (an audit, of a paper or of its own PDF, and
+    # compare), the false ones from 11 papers. Unfilled placeholder text, 1 of 24 ("xxxx",
+    # a "todo"); a chat assistant's register, 0 of 4; a journal template's instruction, 0 of
+    # 1 ("Sample table title"). `check`'s own 13 judged were false too. At d056f71 the bare
     # placeholders alone were lowered (1 of 12), a template's instruction and one left for
     # the writer kept failing (Basile, 2026-10-21); every finding of the code is a note now,
     # and `check` fails them from drafting as before. At 27b5cfb (Basile, 2026-11-25, "INFO
     # in audit").
-    "model-artefact": Measured(INFO, true=1, judged=43, papers=11),
+    "model-artefact": Measured(INFO, true=1, judged=30, papers=11),
     # A PDF's reference list whose entries could not be told apart: 13 true of 13 judged.
     # At d056f71.
     "entries-not-told-apart": Measured(WARN, true=13, judged=13, papers=None),

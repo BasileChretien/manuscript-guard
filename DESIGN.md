@@ -22804,34 +22804,54 @@ Open, recorded as each change landed:
   and `tests/test_properties.py::test_a_word_list_goes_on_over_an_entry_styled_as_a_heading`.
 - **A numbered list whose text holds no citation in brackets is reported only where the text
   cites nothing by number and no author of the list with a year.** Where G7 reads no
-  bracketed citation, a numbered list's entries are each reported as never cited only if
-  the text, the list blanked, holds no digit raised as superscript, no number of up to three
-  digits in parentheses, no digits right after a word's stop, no citation field in a .docx,
-  and no author cited with a year whose name is a word of an entry
-  (`auditing.references.cites_by_number`, `cites_by_author`; Basile, 2026-11-25, "Strict
-  rule", then "Drop run-on digits").
+  bracketed citation in a Word or Markdown paper, a numbered list's entries are each
+  reported as never cited only if the text, the list blanked, holds none of these: a digit
+  raised as superscript (Unicode, `^3^`, `<sup>`, and in a .docx a run raised by its own
+  properties or by its character style, or a note's reference mark); a number of up to
+  three digits in parentheses, or a list or a range of them, with "and" before the last or
+  after "ref." or "refs" or not; digits right after a word's stop; a Markdown link whose
+  text is such a number, "[1](#B1)", read in the text as typed outside what the mask hides;
+  a citation field in a .docx; or an author cited with a year whose surname is a word of an
+  entry, in either's case (`auditing.references.cites_by_number`, `numbered_link`,
+  `cites_by_author`; Basile, 2026-11-25, "Strict rule", then "Drop run-on digits"; round 1
+  of #790). An author-and-year citation is read in its shape alone: a surname of two
+  letters or more, after particles such as "van der" or not, then "et al." or "and" or "&"
+  and another or not, then a comma or a space and a year of four digits, a letter after it
+  or not, that closes its part of a group in parentheses or square brackets ("(Smith et
+  al., 2019)", "[Smith, 2019; Lee, 2020]"); or such authors before a year in parentheses or
+  square brackets, in a sentence ("Smith (2019)").
   Pinned by `tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`.
   - Each shape reads widely and keeps the list unreported where it is no citation: a unit
     squared, "m²", an enumeration, "(1) the first", a stop before digits, "Fig.2".
     Pinned by `tests/test_corruption.py::test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported`.
+  - A title page's affiliation marks, "Smith J¹", "Smith J^1^", or a "1" Word raises after
+    an author's name, keep the list unreported, and do in most real papers: by the rule's
+    design, any number a citation may be is one.
+    Accepted.
   - Digits typed straight onto a word are read as no citation, so a Word or Markdown paper
     whose citation numbers are typed onto its words without being raised, "disease12", has
     every entry reported as never cited; so has one that cites nothing and names things with
     digits, "VGG16", "COVID-19", "3x3", as the paper of the real-paper corpus whose entry
     #782 stopped reporting does.
     Pinned by `tests/test_corruption.py::test_digits_typed_onto_a_word_are_no_citation_and_the_list_is_reported`.
-  - An author cited with a year keeps the list unreported only where the name a citation
-    gives before its year, a capitalised word, is a word of an entry: an author cited by a
-    form the list spells otherwise, "WHO" for its full name, one the list does not hold,
-    and a year alone in parentheses, "(2019)", leave every entry reported.
+  - So has a Word or Markdown paper whose text was copied from a PDF, its superscript
+    citations become plain digits after a space, "disease 12.": a number after a space is
+    no citation's shape.
+    Accepted.
+  - An author cited with a year keeps the list unreported only where the citation has that
+    shape and its surname is a word of an entry: an author cited by a form the list spells
+    otherwise, "WHO" for its full name, one the list does not hold, a year alone in
+    parentheses, "(2019)", and a capitalised word before a year in no citation's shape,
+    "(N = 1998)", "(The 2019 cohort)", leave every entry reported.
     Pinned by `tests/test_corruption.py::test_an_author_year_citation_of_no_author_of_the_list_keeps_nothing_unreported`.
   - A PDF's text sets a superscript as plain digits, so any number after a word may be a
-    citation: a PDF's numbered list with no citation in brackets is never reported.
+    citation: a PDF's numbered list with no citation in brackets is never reported, nor is
+    a LaTeX paper's, whose `thebibliography` is held by key.
     Pinned by `tests/test_corruption.py::test_a_pdf_s_numbered_list_with_no_marker_is_never_reported`.
-  - In a .docx, a run is read as raised where its own properties or its character style's
-    set it as superscript (`text.docx._raised_digit`); one raised by its position
-    (`w:position`), by its paragraph's style or by a character style it is based on is
-    read as text, and its digits after a space are a number alone.
+  - In a .docx, a run is read as raised where its own properties set it as superscript or,
+    where they set no alignment, its character style's do (`text.docx._raised_digit`); one
+    raised by its position (`w:position`), by its paragraph's style or by a character style
+    it is based on is read as text, and its digits after a space are a number alone.
     Pinned by `tests/test_corruption.py::test_a_digit_raised_by_its_position_is_read_as_text`.
   - A citation field is known by its code: those `citationfields.inserted` reads, Word's
     own `CITATION`, Citavi's and Papers' (`citationfields.is_citation_field`). Another

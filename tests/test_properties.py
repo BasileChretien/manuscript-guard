@@ -13877,15 +13877,25 @@ _UNCITED_STYLES = (f"<w:styles {_WORD_NAMESPACE}>{_HEADING_STYLE}"
                    "</w:styles>")  # fmt: skip
 
 
+#: The properties of each kind of run of `uncited_lists` set apart by them: raised as
+#: superscript by its own, or by its character style, and in that style on the baseline or
+#: in subscript by its own.
+_UNCITED_PROPERTIES = {
+    "raised": '<w:vertAlign w:val="superscript"/>', "raised by style": '<w:rStyle w:val="Raised"/>',
+    "on the baseline": '<w:rStyle w:val="Raised"/><w:vertAlign w:val="baseline"/>',
+    "subscript": '<w:rStyle w:val="Raised"/><w:vertAlign w:val="subscript"/>',
+}  # fmt: skip
+
+
 def _uncited_run(kind: str, text: str) -> str:
     """A run of `uncited_lists` as Word writes it (`generated.UncitedRun`)."""
     from xml.sax.saxutils import escape, quoteattr
 
     shown = f'<w:t xml:space="preserve">{escape(text)}</w:t>'
-    if kind in ("raised", "raised by style"):
-        raised = ('<w:vertAlign w:val="superscript"/>' if kind == "raised"
-                  else '<w:rStyle w:val="Raised"/>')  # fmt: skip
-        return f"<w:r><w:rPr>{raised}</w:rPr>{shown}</w:r>"
+    if kind in _UNCITED_PROPERTIES:
+        return f"<w:r><w:rPr>{_UNCITED_PROPERTIES[kind]}</w:rPr>{shown}</w:r>"
+    if kind in ("footnote", "endnote"):
+        return f"<w:r><w:{kind}Reference w:id='1'/></w:r>"
     if kind == "field":
         half = len(text) // 2
         return ("<w:r><w:fldChar w:fldCharType='begin'/></w:r>"
@@ -13942,14 +13952,17 @@ def test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number(
 ) -> None:
     """Where a text holds no citation in brackets, its numbered list's entries are each
     never cited only where it cites nothing by number: no digit raised as superscript,
-    typed or, in Word, raised by a run's properties or its character style; no number in
-    parentheses; no digits after a word's stop; no citation field; and no author of the
-    list cited with a year, in parentheses or in a sentence. G7 reported nothing where it
-    read no bracketed citation (Basile, 2026-11-25, "Strict rule", "Drop run-on digits").
-    What the list holds is not the text's: a number in parentheses in every entry, and in
-    Word a digit raised in one; and digits run straight on into letters, "VGG16", or after a
-    hyphen, "COVID-19", authors the list does not name, and a year alone in parentheses,
-    cite nothing."""
+    typed or, in Word, raised by a run's properties or its character style, and no note's
+    mark; no number in parentheses, with words or not; no digits after a word's stop; no
+    Markdown link whose text is a number; no citation field; and no author of the list
+    cited with a year, in parentheses, in square brackets or in a sentence, in whatever
+    case the list gives the name. G7 reported nothing where it read no bracketed citation
+    (Basile, 2026-11-25, "Strict rule", "Drop run-on digits"; round 1 of #790). What the
+    list holds is not the text's: a number in parentheses in every entry, and in Word a
+    digit raised in one; and digits run straight on into letters, "VGG16", or after a
+    hyphen, "COVID-19", authors the list does not name, a year alone in parentheses, a word
+    of the list before a year in no citation's shape, and in Word a digit in a superscript
+    style that its run sets on the baseline, cite nothing."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as folder:
@@ -14046,6 +14059,86 @@ def _forget_author_year(name: str) -> Callable[[pytest.MonkeyPatch], None]:
         patch.setitem(references.AUTHOR_YEAR, name, lambda hidden: set())
 
     return forget
+
+
+def _no_numbered_link_cites(patch: pytest.MonkeyPatch) -> None:
+    """A Markdown link whose text is a number cites nothing, as before round 1 of #790."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "numbered_link", lambda typed, hidden: False)
+
+
+def _a_numbered_link_read_in_the_mask(patch: pytest.MonkeyPatch) -> None:
+    """A numbered link read in the masked text, where its target is blanked from its "]"."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "numbered_link", lambda typed, hidden: bool(
+        references._NUMBERED_LINK.search(hidden)))
+
+
+def _numbers_alone_in_parentheses(patch: pytest.MonkeyPatch) -> None:
+    """Numbers alone in parentheses cite, and none with words, "(refs 1-3)", "(1 and 2)"."""
+    from manuscript_guard.auditing import references
+
+    patch.setitem(references.CITED_BY_NUMBER, "parenthesised", re.compile(
+        rf"\(\s*{references._NUMBER}(?:\s*[,;]\s*{references._NUMBER})*\s*\)"))
+
+
+def _names_compared_in_their_case(patch: pytest.MonkeyPatch) -> None:
+    """An author's name compared with the list's in its case: "SMITH J." names no Smith."""
+    from manuscript_guard.auditing import references
+
+    def cases_kept(hidden: str, entries) -> bool:
+        named = {name for read in references.AUTHOR_YEAR.values() for name in read(hidden)}
+        return any(word in named for entry in entries
+                   for word in references._WORD.findall(entry.text))  # fmt: skip
+
+    patch.setattr(references, "cites_by_author", cases_kept)
+
+
+def _no_group_in_square_brackets(patch: pytest.MonkeyPatch) -> None:
+    """An author-and-year citation is read in parentheses only, not in square brackets."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_GROUP", re.compile(r"\(([^()\n]*)\)"))
+
+
+def _any_capitalised_word_before_a_year_names(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #790: any capitalised word before a year in a group is a name,
+    "(Study 2019 data)" among them."""
+    from manuscript_guard.auditing import references
+
+    def named(hidden: str) -> set[str]:
+        found = set()
+        for group in references._GROUP.finditer(hidden):
+            for part in group.group(1).split(";"):
+                year = re.search(r"\b\d{4}[a-z]?\b", part)
+                if year is not None:
+                    found.update(word for word in references._WORD.findall(part[: year.start()])
+                                 if word[0].isupper())  # fmt: skip
+        return found
+
+    patch.setitem(references.AUTHOR_YEAR, "in a group", named)
+
+
+def _no_note_s_mark_is_read(patch: pytest.MonkeyPatch) -> None:
+    """A note's reference mark in the body is not read as a raised number."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "_NOTE_REFERENCES", frozenset())
+
+
+def _a_superscript_style_overrides_a_run_s_alignment(patch: pytest.MonkeyPatch) -> None:
+    """A run in a superscript style is raised whatever alignment it sets itself."""
+    from manuscript_guard.text import docx
+
+    def raised(node, parents, shown: str, styles) -> bool:
+        run = parents.get(node)
+        style = run.find(f"{docx.W}rPr/{docx.W}rStyle") if run is not None else None
+        return any(char.isdecimal() for char in shown) and (docx._raised(node, parents) or (
+            style is not None and style.get(docx.W + "val", "") in styles))
+
+    patch.setattr(docx, "_raised_digit", raised)
 
 
 def _any_author_cited_with_a_year_keeps_the_list(patch: pytest.MonkeyPatch) -> None:
@@ -32502,7 +32595,22 @@ BROKEN = {
             _forget_author_year(name),
             test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
         )
-        for name in ("in parentheses", "in a sentence")
+        for name in ("in a group", "in a sentence")
+    },
+    **{
+        case: (break_it, test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number)
+        for case, break_it in (
+            ("a Markdown link whose text is a number cites nothing", _no_numbered_link_cites),
+            ("a numbered link is read in the mask", _a_numbered_link_read_in_the_mask),
+            ("numbers in parentheses with words cite nothing", _numbers_alone_in_parentheses),
+            ("an author's name is compared in its case", _names_compared_in_their_case),
+            ("an author cited in square brackets is not read", _no_group_in_square_brackets),
+            ("any capitalised word before a year names an author",
+             _any_capitalised_word_before_a_year_names),
+            ("a note's reference mark is not read", _no_note_s_mark_is_read),
+            ("a superscript style overrides a run's own alignment",
+             _a_superscript_style_overrides_a_run_s_alignment),
+        )
     },
     "any author cited with a year keeps the list, one it does not name too": (
         _any_author_cited_with_a_year_keeps_the_list,

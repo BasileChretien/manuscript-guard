@@ -11942,17 +11942,22 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
 #: each holds a numbered reference list and no citation in brackets, and its text holds one
 #: thing that may cite, or nothing. A digit raised as superscript as typed text writes one,
 #: in Unicode, as pandoc does, `^3^`, and as HTML does; a number in parentheses, or a list or
-#: a range of them; digits right after a word's stop; in Word, a run raised as superscript by
-#: its own properties or by its character style, after a space, where its digits read as a
-#: number alone; a citation field; an author of the list cited with a year, in parentheses
-#: and in a sentence; and nothing, in Markdown and in Word, where every entry is never cited
+#: a range of them, and with words, "(refs 1-3)", "(1 and 2)"; digits right after a word's
+#: stop; a Markdown link whose text is a number; in Word, a run raised as superscript by its
+#: own properties or by its character style, after a space, where its digits read as a
+#: number alone, and a note's reference mark; a citation field; an author of the list cited
+#: with a year, in parentheses, in square brackets and in a sentence, and one the list
+#: gives in capitals; and nothing, in Markdown and in Word, where every entry is never cited
 #: although the list holds a number in parentheses and, in Word, a digit raised, and the
-#: text holds digits run straight on into letters and after a hyphen, and authors the list
-#: does not name cited with a year, in parentheses and in a sentence (`UNCITED_NOTHING`).
+#: text holds digits run straight on into letters and after a hyphen, authors the list does
+#: not name cited with a year, in parentheses and in a sentence, a word of the list before
+#: a year in no citation's shape, and in Word a digit in a superscript style its run sets on
+#: the baseline (`UNCITED_NOTHING`; round 1 of #790).
 UNCITED_KINDS = (
-    "superscript digit", "carets", "sup", "parenthesised", "after a stop", "raised",
-    "raised by style", "field", "author in parentheses", "author in a sentence",
-    "nothing in Markdown", "nothing in Word",
+    "superscript digit", "carets", "sup", "parenthesised", "parenthesised words",
+    "after a stop", "numbered link", "raised", "raised by style", "note", "field",
+    "author in parentheses", "author in brackets", "author in a sentence",
+    "author in capitals", "nothing in Markdown", "nothing in Word",
 )  # fmt: skip
 #: What of each kind a paper may hold, with what comes before it: a word it runs on from
 #: (""), or a space (" "). An author's `{}` is the name of one of the list's entries.
@@ -11972,15 +11977,29 @@ UNCITED_SHAPES = {
                                                  "(see {}, 2019, p. 4)")],
     "author in a sentence": [(" ", f) for f in ("that {} (2019) found", "that {} et al. (2020a)",
                                                 "that Adams and {} (2021, p. 4)")],
+    "parenthesised words": [(" ", f) for f in ("(ref. 3)", "(refs 1-3)", "(refs. 1, 2)",
+                                               "(1 and 2)", "(1, 2 and 5)", "(Ref. 4)")],
+    "numbered link": [(" ", f) for f in ("[1](#B1)", "[[1](#B1)]", "[[2](#B2), [3](#B3)]",
+                                         "[1-3](https://example.org/a)", "[4, 5](#B4)")],
+    "author in brackets": [(" ", f) for f in ("[{}, 2019]", "[{} et al., 2019a]",
+                                              "[Adams, 2020; {}, 2018]",
+                                              "[see {} and Adams 2021, p. 4]")],
 }  # fmt: skip
+#: An author the list gives in capitals is cited as any author is (`UNCITED_SHAPES`).
+UNCITED_SHAPES["author in capitals"] = [
+    *UNCITED_SHAPES["author in parentheses"], *UNCITED_SHAPES["author in brackets"],
+    *UNCITED_SHAPES["author in a sentence"],
+]
 #: What a paper of nothing holds, one of each: digits run straight on into letters, digits
-#: after a hyphen, and authors the list does not name, cited with a year in parentheses and
-#: in a sentence, whose year in parentheses is a number of four digits.
+#: after a hyphen, authors the list does not name, cited with a year in parentheses and in a
+#: sentence, whose year in parentheses is a number of four digits, and a word of the list,
+#: "Study", "A", before a year in no citation's shape (round 1 of #790).
 UNCITED_NOTHING = (
     ("s12", " with VGG16", " of CD4", " with 3x3"),
     (" of COVID-19", " of IL-6", " of type-2"),
     (" (Adams et al., 2019)", " (Clark, 2020; Dunn 2018)", " (WHO, 2021)"),
     (" that Baker (2020) found", " that Clark and Dunn (2019)"),
+    (" (Study 2019 data)", " (Study = 2019)", " (A study 2019 was)"),
 )
 #: The citation fields a Word paper may cite through, by their codes: Zotero's, EndNote's,
 #: Word's own, Citavi's and Papers', the last three known by their names alone
@@ -12019,17 +12038,20 @@ def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
     """A paper of each kind of `UNCITED_KINDS`, in an order drawn: a numbered reference list
     of two to five entries, typed "1." or "[1]", each holding a number in parentheses, and
     paragraphs of words with no number among them, one of which holds the kind's one shape
-    of `UNCITED_SHAPES`, or a field of `UNCITED_FIELDS`, after a word drawn; or, for a paper
-    of nothing, one of each of `UNCITED_NOTHING`, each in a paragraph drawn. A paper holding
-    a shape is in Markdown or in Word, drawn, as typed text holds it; one raised or a field
-    is in Word."""
+    of `UNCITED_SHAPES`, a note's mark or a field of `UNCITED_FIELDS`, after a word drawn;
+    or, for a paper of nothing, one of each of `UNCITED_NOTHING`, each in a paragraph drawn,
+    and in Word a digit its run sets on the baseline in a superscript style. A paper holding
+    a shape is in Markdown or in Word, drawn, as typed text holds it; one raised, a note's
+    mark or a field is in Word. A list cited by an author it gives in capitals gives every
+    author so."""
     papers = []
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     for kind in draw(st.permutations(UNCITED_KINDS)):
         count = draw(st.integers(2, 5))
         bracketed = draw(st.booleans())
         names = [draw(word_names()) for _ in range(count)]
-        entries = [f"{f'[{n}]' if bracketed else f'{n}.'} {name} A. A study. "
+        entries = [f"{f'[{n}]' if bracketed else f'{n}.'} "
+                   f"{name.upper() if kind == 'author in capitals' else name} A. A study. "
                    f"J Ex. 2019;{n}({n + 1}):1-2."
                    for n, name in enumerate(names, 1)]  # fmt: skip
         paragraphs: list[list[UncitedRun]] = [
@@ -12041,32 +12063,45 @@ def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
             form = "md" if kind == "nothing in Markdown" else "docx"
             if form == "docx":
                 listed = [("raised", draw(st.sampled_from(("2", "1,2"))))]
+                paragraphs.insert(draw(st.integers(0, len(paragraphs))), [
+                    ("text", draw(sentence).capitalize() + " "),
+                    (draw(st.sampled_from(("on the baseline", "subscript"))), "3"),
+                    ("text", ".")])  # fmt: skip
             for shapes in UNCITED_NOTHING:
                 at = draw(st.integers(0, len(paragraphs)))
                 shape = draw(st.sampled_from(shapes))
                 paragraphs.insert(at, [("text", f"{draw(sentence).capitalize()}{shape}.")])
             expected = [f"entry {n}" for n in range(1, count + 1)]
         else:
-            form = ("docx" if kind in ("raised", "raised by style", "field")
+            form = ("docx" if kind in ("raised", "raised by style", "field", "note")
                     else draw(st.sampled_from(("md", "docx"))))  # fmt: skip
             at = draw(st.integers(0, len(paragraphs) - 1))
-            words = draw(sentence).capitalize()
-            if kind == "field":
-                code = draw(st.sampled_from(UNCITED_FIELDS))
-                held = ("tag" if code.startswith("MENDELEY")
-                        else draw(st.sampled_from(("field", "simple field"))))  # fmt: skip
-                runs = [("text", words + " "), (held, code), ("text", ".")]
-            else:
-                before, shape = draw(st.sampled_from(UNCITED_SHAPES[kind]))
-                shape = shape.format(draw(st.sampled_from(names)))
-                if kind in ("raised", "raised by style"):
-                    runs = [("text", words + before), (kind, shape), ("text", ".")]
-                else:
-                    runs = [("text", f"{words}{before}{shape}.")]
-            paragraphs.insert(at, runs)
+            paragraphs.insert(at, draw(_uncited_runs(kind, names)))
             expected = []
         papers.append(UncitedPaper(kind, form, paragraphs, listed, entries, expected))
     return papers
+
+
+@st.composite
+def _uncited_runs(draw: st.DrawFn, kind: str, names: list[str]) -> list[UncitedRun]:
+    """The runs of a paragraph of `uncited_lists` that holds what a paper of `kind` may cite
+    by, after words drawn: a field, a note's mark, or a shape of `UNCITED_SHAPES`, an
+    author's a name of `names`."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join))
+    words = words.capitalize()
+    if kind == "field":
+        code = draw(st.sampled_from(UNCITED_FIELDS))
+        held = ("tag" if code.startswith("MENDELEY")
+                else draw(st.sampled_from(("field", "simple field"))))  # fmt: skip
+        return [("text", words + " "), (held, code), ("text", ".")]
+    if kind == "note":
+        return [("text", words), (draw(st.sampled_from(("footnote", "endnote"))), ""),
+                ("text", ".")]  # fmt: skip
+    before, shape = draw(st.sampled_from(UNCITED_SHAPES[kind]))
+    shape = shape.format(draw(st.sampled_from(names)))
+    if kind in ("raised", "raised by style"):
+        return [("text", words + before), (kind, shape), ("text", ".")]
+    return [("text", f"{words}{before}{shape}.")]
 
 
 #: The thematic breaks a Markdown reference list can end at, as typed: each of the three

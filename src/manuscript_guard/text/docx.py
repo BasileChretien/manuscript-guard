@@ -160,7 +160,8 @@ class DocxText:
     captions: frozenset[int] = frozenset()
     #: Each 0-based line of `body`, and of `notes` in `notes_raised`, holding a run raised as
     #: superscript, by its own properties or by its character style's, whose text holds a
-    #: digit, as a number set as a superscript citation does. Read as text, its digits run on
+    #: digit, as a number set as a superscript citation does, or a note's reference mark,
+    #: which Word raises as a number. Read as text, its digits run on
     #: into the word before it, "disease12", or stand alone after a space; G7 reads no
     #: numbered list's entry as never cited in a paper that holds one (`auditing.references`).
     raised: frozenset[int] = frozenset()
@@ -556,13 +557,17 @@ def _superscript_styles(archive: zipfile.ZipFile, names: set[str], what: str) ->
 
 def _raised_digit(node: ET.Element, parents: dict, shown: str, styles: frozenset[str]) -> bool:
     """Whether `shown`, a run's text, holds a digit and the run is raised as superscript, by
-    its own properties or by its character style's (`_superscript_styles`)."""
+    its own properties or, where they set no alignment, by its character style's
+    (`_superscript_styles`): a run's own baseline or subscript is what Word draws."""
     if not any(char.isdecimal() for char in shown):
         return False
-    if _raised(node, parents):
-        return True
     run = parents.get(node)
-    style = run.find(f"{W}rPr/{W}rStyle") if run is not None and run.tag == W + "r" else None
+    if run is None or run.tag != W + "r":
+        return False
+    align = run.find(f"{W}rPr/{W}vertAlign")
+    if align is not None:
+        return align.get(W + "val") == "superscript"
+    style = run.find(f"{W}rPr/{W}rStyle")
     return style is not None and style.get(W + "val", "") in styles
 
 
@@ -587,8 +592,9 @@ def _part_text(
     styles that are bold or not, each plain line of words is marked (`_TYPED_MARK`) unless
     it is in one of the caption styles `captions`, and each plain line every word of which
     is in bold (`_BOLD_MARK`). The text of a run raised as superscript that holds a digit is
-    followed by its mark (`_RAISED_DIGIT`), the run raised by its own properties or by one of
-    the character styles `superscripts`."""
+    followed by its mark (`_RAISED_DIGIT`), the run raised by its own properties or, where
+    they set no alignment, by one of the character styles `superscripts`; and so is a line of
+    words holding a note's reference mark."""
     headings = headings or {}
     fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -606,6 +612,8 @@ def _part_text(
     worded: dict[int, bool] = {}
     # By line outside a table and a text box, what pandoc reads it as (`pandoc_item`).
     listed: dict[int, tuple[str, int, str] | None] = {}
+    # The lines, by id, that hold a note's reference mark (`_RAISED_DIGIT`).
+    noted: set[int] = set()
 
     for node in root.iter():
         if node.tag in _BREAKS and not _seen(node, parents, hidden):
@@ -661,6 +669,8 @@ def _part_text(
                     _inside(owner, parents, W + "tc"):  # fmt: skip
                 lines[owner].append(_NOTE_REFERENCE)
             if seen and owner is not None and owner in lines:
+                # A note's mark Word raises as a superscript number: a line that may cite.
+                noted.add(id(lines[owner]))
                 # Nor a line with a note's mark: pandoc's title holds the note (round 1 of #598).
                 weights[id(lines[owner])] = False
                 worded[id(lines[owner])] = False
@@ -686,6 +696,11 @@ def _part_text(
         line[0] += ((_TYPED_MARK if typed else "")
                     + (_BOLD_MARK if weights.get(id(line)) else "")
                     + (_CAPTION_MARK if captioned else ""))  # fmt: skip
+    # A note's mark is read as a raised number on a line of words: marked once the lines'
+    # kinds are read, so that a line holding the mark alone stays an empty one.
+    for line in {id(line): line for line in lines.values() if id(line) in noted}.values():
+        if "".join(line[1:]).strip():
+            line.append(_RAISED_DIGIT)
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
 

@@ -26741,6 +26741,17 @@ _TYPED_SHAPES = {
     "two authors of the list cited in parentheses": " (Smith and Lee 2019; Adams, 2020a)",
     "an author of the list cited in a sentence": " that Jones (2020) ran",
     "two authors of the list cited in a sentence": " that Lee and Brown (2021, p. 4) ran",
+    "an author of the list cited in square brackets": " [Smith et al., 2019]",
+    "two authors cited in square brackets": " [Smith, 2019; Lee, 2020]",
+    "an author with particles": " (see van der Jones, 2019, p. 4)",
+    "a reference's number in parentheses": " (ref. 3)",
+    "references' numbers in parentheses": " (refs 1-3)",
+    "a list of references in parentheses": " (refs. 1, 2)",
+    "two numbers with and in parentheses": " (1 and 2)",
+    "a list with and in parentheses": " (1, 2 and 5)",
+    "a link whose text is a number": " [1](#B1)",
+    "links whose text is a number in brackets": " [[1](#B1)] and [[2](#B2), [3](#B3)]",
+    "a link to an address whose text is a range": " [1-3](https://example.org/a)",
 }
 #: Digits typed straight onto a word, which a citation may be, and names with digits.
 _RUN_ON = {"digits after a letter": "s12", "a name with a hyphen and digits": " during COVID-19",
@@ -26915,7 +26926,9 @@ def test_a_citation_field_held_otherwise_keeps_a_word_list_unreported(
         cite = ("<w:sdt><w:sdtPr><w:tag w:val='MENDELEY_CITATION_v3_eyJ9'/></w:sdtPr>"
                 "<w:sdtContent><w:r><w:t>Smith</w:t></w:r></w:sdtContent></w:sdt>")  # fmt: skip
     else:
-        cite = "<w:r><w:footnoteReference w:id='1'/></w:r>"
+        # The notes are read whole, so a field in one is read with no reference to it; a
+        # reference's mark keeps the list unreported itself.
+        cite = ""
         parts = {"word/footnotes.xml": f"<w:footnotes {W}><w:footnote w:id='1'><w:p>"
                  f"{_field_runs(_ZOTERO_CODE)}</w:p></w:footnote></w:footnotes>"}  # fmt: skip
     runs = _plain_runs(start + " ") + cite + _plain_runs(end)
@@ -26944,15 +26957,48 @@ def test_a_digit_raised_as_superscript_keeps_a_word_list_unreported(
 
 @pytest.mark.parametrize("form", ["md", "docx"])
 @pytest.mark.parametrize("cited", [" (Adams et al., 2019)", " that Adams (2019) ran",
-                                   " (WHO, 2019)", " (2019)"])  # fmt: skip
+                                   " (WHO, 2019)", " (2019)", " (N = 1998)",
+                                   " (The 2019 cohort)"])  # fmt: skip
 def test_an_author_year_citation_of_no_author_of_the_list_keeps_nothing_unreported(
     tmp_path: Path, form: str, cited: str
 ) -> None:
     """An author cited with a year keeps a numbered list unreported only where the name is a
-    word of an entry: one the list does not name, an author cited by a short form the list
-    spells out, "WHO", and a year alone in parentheses, a number of four digits, leave every
-    entry reported (DESIGN.md, "Known gaps")."""
+    word of an entry and the citation has a citation's shape: one the list does not name, an
+    author cited by a short form the list spells out, "WHO", a year alone in parentheses, a
+    number of four digits, and a capitalised word before a year in no citation's shape,
+    "(N = 1998)", "(The 2019 cohort)", leave every entry reported (round 1 of #790;
+    DESIGN.md, "Known gaps")."""
     assert _never_cited(_typed_paper(tmp_path, form, cited)) == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("cited", ["(Smith et al., 2019)", "[Smith, 2019; Lee, 2020]",
+                                   "that Smith (2019) found"])  # fmt: skip
+def test_an_author_is_known_whatever_the_case_the_list_gives_the_name_in(
+    tmp_path: Path, cited: str
+) -> None:
+    """Round 1 of #790: a list that gives its authors in capitals, "SMITH J.", names the
+    author "(Smith et al., 2019)" cites; the names are compared in either's case."""
+    paper = tmp_path / "paper.md"
+    entries = [entry.replace("Smith", "SMITH") for entry in _UNCITED_ENTRIES]
+    paper.write_text(f"# Results\n\nThe trials were run {cited}.\n\n# References\n\n"
+                     + "\n".join(entries) + "\n", encoding="utf-8")  # fmt: skip
+    assert _never_cited(paper) == []
+
+
+def test_a_markdown_paper_citing_by_numbered_links_is_not_reported() -> None:
+    """Round 1 of #790, a regression: a Markdown paper that cites by links whose text is a
+    number, as a conversion from PMC writes them, had every entry reported, since the mask
+    blanks a link's target from its "]" and no bracket of numbers is left to read. A link
+    in a comment cites nothing."""
+    from manuscript_guard.audit import census_of_markdown
+
+    listed = "# References\n\n" + "\n".join(_UNCITED_ENTRIES) + "\n"
+    for said in ("were rare [[1](#B1)] and [[2](#B2), [3](#B3)].", "were rare [1](#B1)."):
+        census = census_of_markdown(Path("paper.md"), f"# Results\n\nThey {said}\n\n{listed}")
+        assert (census.style, census.problems) == ("numbered", []), said
+    census = census_of_markdown(Path("paper.md"),
+                                f"# Results\n\nThey were rare <!-- [1](#B1) -->.\n\n{listed}")
+    assert [p.subject for p in census.problems] == _EVERY_ENTRY
 
 
 def test_a_pdf_s_numbered_list_with_no_marker_is_never_reported(tmp_path: Path) -> None:
@@ -26975,6 +27021,29 @@ def test_a_digit_raised_by_its_position_is_read_as_text(tmp_path: Path) -> None:
     runs = (_plain_runs(start + " ") + '<w:r><w:rPr><w:position w:val="6"/></w:rPr><w:t>3'
             "</w:t></w:r>" + _plain_runs(end))  # fmt: skip
     assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs)) == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("align", ["baseline", "subscript"])
+def test_a_run_s_own_alignment_overrides_its_superscript_style(
+    tmp_path: Path, align: str
+) -> None:
+    """Round 1 of #790: a run in a superscript character style that sets its own alignment
+    to the baseline or to subscript is drawn so, and is not raised: the list is reported."""
+    start, end = _UNCITED_SENTENCE.split("{}")
+    runs = (_plain_runs(start + " ") + f'<w:r><w:rPr><w:rStyle w:val="Raised"/><w:vertAlign '
+            f'w:val="{align}"/></w:rPr><w:t>3</w:t></w:r>' + _plain_runs(end))  # fmt: skip
+    assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs)) == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("note", ["footnoteReference", "endnoteReference"])
+def test_a_note_s_reference_mark_keeps_a_word_list_unreported(
+    tmp_path: Path, note: str
+) -> None:
+    """Round 1 of #790: a footnote's or an endnote's reference mark in the body, which Word
+    raises as a number, may be a citation, as a raised digit is: the list is not reported."""
+    start, end = _UNCITED_SENTENCE.split("{}")
+    runs = (_plain_runs(start) + f"<w:r><w:{note} w:id='1'/></w:r>" + _plain_runs(end))
+    assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs)) == []
 
 
 def test_audit_catches_a_sign_flipped_estimate(tmp_path: Path) -> None:

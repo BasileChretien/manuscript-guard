@@ -951,7 +951,8 @@ def census_of_markdown(path: Path, text: str):
     # Its markers counted on the paper's lines: no marker runs across a comment, whose
     # opening is masked, so they are those of the text a comment's breaks are hidden in.
     hidden = kept_breaks(blanked, _masked(blanked, printed_as_typed=False))
-    return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False)
+    return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False,
+                          typed=blanked)  # fmt: skip
 
 
 def cited_in_word(document) -> dict:
@@ -1058,7 +1059,8 @@ def _read_sources(
             report.unreadable += unread_shapes(path, text)
         report.references.append(
             census_of_text(path, original, spans, kept_breaks(text, hidden), _intervals(text),
-                           docx=docx, numbering=numbering, **cited_in_word(document))  # fmt: skip
+                           docx=docx, numbering=numbering, typed=text,
+                           **cited_in_word(document))  # fmt: skip
         )
     if entries or found_tex:
         latex = read_latex(entries, found_tex)

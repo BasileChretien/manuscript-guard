@@ -1364,6 +1364,28 @@ def _plan_declarations() -> Reading:
     return read
 
 
+@reading("plan sections asked")
+def _plan_sections_asked() -> Reading:
+    """What G12 says of a plan of the design its `paper.yaml` names (`check_design`), in a
+    project that holds those two files and nothing else, at the stage given: every finding
+    and count, each path from the project's folder, written `<project>`."""
+    from manuscript_guard.contracts.project import load_project
+    from manuscript_guard.gates.design import check_design
+
+    def sections(given: dict[str, str]) -> dict[str, Any]:
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            (folder / "design").mkdir()
+            (folder / PAPER).write_bytes(given["paper"].encode("utf-8"))
+            (folder / "design" / "plan.md").write_bytes(given["plan"].encode("utf-8"))
+            project, _read = load_project(folder)
+            return _from_root(_told(check_design(project, None, given["stage"])), folder)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return sections
+
+
 @reading("registration named")
 def _registration_named() -> Reading:
     from manuscript_guard.gates.registration import named_in
@@ -3461,17 +3483,25 @@ def _finding_keys() -> Reading:
 
 def _from_root(said: Any, root: Path, *, written: str = "<project>") -> Any:
     """`said` with the folder `root` written `<project>` in every text it holds, in each
-    way a path to it is spelt. Longest first: the resolved path can hold the other."""
-    if isinstance(said, dict):
-        return {key: _from_root(value, root, written=written) for key, value in said.items()}
-    if isinstance(said, list):
-        return [_from_root(value, root, written=written) for value in said]
-    if not isinstance(said, str):
-        return said
-    forms = {str(root), str(root.resolve()), root.as_posix(), root.resolve().as_posix()}
-    for form in sorted(forms, key=len, reverse=True):
-        said = said.replace(form, written)
-    return said
+    way a path to it is spelt. Longest first: the resolved path can hold the other. The
+    forms are worked out once: resolved again for every text, they were half of what the
+    reading "plan sections asked" took."""
+    resolved = root.resolve()
+    forms = sorted({str(root), str(resolved), root.as_posix(), resolved.as_posix()},
+                   key=len, reverse=True)  # fmt: skip
+
+    def rooted(part: Any) -> Any:
+        if isinstance(part, dict):
+            return {key: rooted(value) for key, value in part.items()}
+        if isinstance(part, list):
+            return [rooted(value) for value in part]
+        if not isinstance(part, str):
+            return part
+        for form in forms:
+            part = part.replace(form, written)
+        return part
+
+    return rooted(said)
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:

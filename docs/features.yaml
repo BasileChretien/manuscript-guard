@@ -154,6 +154,7 @@ features:
       - tests/test_corruption.py::test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning
       - tests/test_corruption.py::test_the_kept_plan_is_never_written_again
       - tests/test_study_types.py
+      - tests/test_differential.py::test_every_plan_sections_asked_input_holds_each_kind_of_section
     docs: docs/stages.md
 
   - id: data-sources

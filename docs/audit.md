@@ -352,9 +352,9 @@ not read at all, in the audit or in `check`, which still gives one warning for e
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
 Two of their findings are notes in an audit, and in `compare`, where `check` warns on them
-or fails them: the names from the code, and a bare placeholder ("xxxx", "[url]", "TBD").
-On real papers each was right less than half the time; a journal template's instruction
-left in the text, "Click or tap here to enter text." among them, still fails
+or fails them: the names from the code, and text a model or a template left behind ("xxxx",
+"[url]", "TBD", "TODO", a journal template's "Click or tap here to enter text."). On real
+papers each was right less than half the time, the second 1 time in 43
 ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
 right"). A short form used before its definition is a note too where the audit read the text
 from a PDF, a LaTeX or Word paper's own PDF among them: a PDF's paragraphs are gone, so a

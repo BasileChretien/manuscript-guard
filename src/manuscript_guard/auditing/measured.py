@@ -34,10 +34,9 @@ from manuscript_guard.findings import INFO, WARN
 @dataclass(frozen=True)
 class Measured:
     """What an audit gives a code, and the figures that decided it: `true` of `judged` of
-    its findings, the false ones from `papers` papers. `rules`, for G6's `model-artefact`,
-    names the rules of `data/ai_writing.yaml` whose findings it holds for; empty, it holds
-    for every finding of the code. `gate` names the gate whose findings were judged, where
-    another gives a code of the same name; None, it holds for the code's findings of any.
+    its findings, the false ones from `papers` papers. `gate` names the gate whose findings
+    were judged, where another gives a code of the same name; None, it holds for the code's
+    findings of any.
     `read_from` names the format of the text the figures were counted on (`PDF`), and the
     entry holds for a finding read from that format alone; None, it holds whatever the
     finding was read from."""
@@ -46,7 +45,6 @@ class Measured:
     true: int
     judged: int
     papers: int | None
-    rules: frozenset[str] = frozenset()
     gate: str | None = None
     read_from: str | None = None
 
@@ -57,25 +55,19 @@ class Measured:
 PDF = "PDF"
 
 
-#: G6's rules that find a bare placeholder, and whose findings were judged: a thing named in
-#: brackets, "[url]", "[citation needed]" (`placeholder-slot`), and a word that marks a gap,
-#: "xxxx", "XXX", "TBD" (`placeholder-word`). Not the rules of a slot that tells the writer
-#: what to put, "[insert the date]", "[describe the cohort]", "[your name]", "[TO BE
-#: COMPLETED]", none of whose findings was judged loud; the first of them also finds an
-#: instruction in brackets before `placeholder-filler` can, "[fill in later]". Nor
-#: `placeholder-filler`, an instruction left for the writer, nor `placeholder-template`, a
-#: journal template's instruction to its authors, which has no innocent reading and fails
-#: wherever it is read (Basile, 2026-10-21); nor a model's markup or its voice.
-BARE_PLACEHOLDERS = frozenset({"placeholder-slot", "placeholder-word"})
-
 MEASURED: dict[str, Measured] = {
     # G14's names from the code: 18 true of 50 judged, the false ones from 8 papers. A
     # project's names come from its own analysis, so `check` warns as before. At d056f71.
     "code-name-in-prose": Measured(INFO, true=18, judged=50, papers=8),
-    # G6's bare placeholders: 1 true of 12 judged, the false ones from 4 papers (of the
-    # code's 13, the thirteenth a template's instruction). `check` fails them from drafting.
-    # At d056f71.
-    "model-artefact": Measured(INFO, true=1, judged=12, papers=4, rules=BARE_PLACEHOLDERS),
+    # G6's text a model or a template left behind, every rule of it: 1 true of 43 judged,
+    # the false ones from 11 papers. A bare placeholder, 1 of 25 ("xxxx", a "todo"); one
+    # `check` holds back until drafting, 0 of 12; a chat assistant's register, 0 of 4; a
+    # journal template's instruction, 0 of 2 ("Sample table title"). At d056f71 the bare
+    # placeholders alone were lowered (1 of 12), a template's instruction and one left for
+    # the writer kept failing (Basile, 2026-10-21); every finding of the code is a note now,
+    # and `check` fails them from drafting as before. At 27b5cfb (Basile, 2026-11-25, "INFO
+    # in audit").
+    "model-artefact": Measured(INFO, true=1, judged=43, papers=11),
     # A PDF's reference list whose entries could not be told apart: 13 true of 13 judged.
     # At d056f71.
     "entries-not-told-apart": Measured(WARN, true=13, judged=13, papers=None),
@@ -102,31 +94,16 @@ MEASURED: dict[str, Measured] = {
 Found = TypeVar("Found")
 
 
-#: The words `placeholder-word` finds that tell the writer what to do rather than mark a gap,
-#: "TODO", "FIXME", "INSERT_SOURCE_URL", "PASTE_TABLE_2": they fail, as an instruction does.
-TO_DO = ("todo", "fixme", "insert_", "paste_")
-
-
-def _rule(found: object) -> str | None:
-    """The G6 rule a finding is of, which its subject opens with (`gates.writing._keyed`):
-    "placeholder-word: xxxx"; none where its words tell the writer what to do (`TO_DO`)."""
-    subject = getattr(found, "subject", None)
-    if not subject:
-        return None
-    rule, _, words = subject.partition(":")
-    return None if words.strip().startswith(TO_DO) else rule
-
-
 def measured(found: Found, *, read_from: str | None = None) -> Found:
     """`found`, a finding or a report's item, at the severity this table gives its code; as
     it is where the table says nothing of it, of its gate, or of the format it was read from
     (`read_from`, `PDF` for text read from a PDF)."""
     entry = MEASURED.get(getattr(found, "code", ""))
-    if entry is None or (entry.rules and _rule(found) not in entry.rules) or (
+    if entry is None or (
             entry.gate is not None and getattr(found, "gate", None) != entry.gate) or (
             entry.read_from is not None and read_from != entry.read_from):
         return found
     return replace(found, severity=entry.severity)  # type: ignore[type-var]
 
 
-__all__ = ["BARE_PLACEHOLDERS", "MEASURED", "PDF", "Measured", "measured"]
+__all__ = ["MEASURED", "PDF", "Measured", "measured"]

@@ -61,12 +61,13 @@ every other finding a comment. The corrections are worked out only where the box
 leave as it is; the copy's comments are worded for the page, as the commented copy's are,
 and "Download your paper with its corrections as tracked changes" saves it.
 
-"For a referee or an editor" holds the rest of what a referee gives the command line
+"For a referee or an editor" holds five of the options a referee gives the command line
 ([refereeing.md](refereeing.md)): "The study's design" is `--design`; "Rows of means of whole
 numbers", "Rows of numbers each 0 or 1" and "Rows that cannot be negative" are
 `--whole-numbers`, `--binary` and `--non-negative`, a label a line, a line that starts with
 "-" left out as a word to leave alone is; and "The data custodian's smallest count" is
-`--minimum-cell-count`, a whole number from 1.
+`--minimum-cell-count`, a whole number from 1. The others, `--journal`, `--authors`,
+`--cited`, `--package` and `--report-draft`, are the command line's only.
 
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line

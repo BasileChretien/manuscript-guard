@@ -109,6 +109,14 @@ label.tick > span { display: grid; gap: .2rem; }
 details.options { border: 1px solid var(--line); border-radius: 12px; padding: .6rem .9rem; }
 details.options summary { font-weight: 600; }
 .optionlist { display: grid; gap: 1rem; margin-top: .9rem; }
+.optionlist[hidden] { display: none; }
+/* The journal's form: its limits side by side, its statements a column of ticks, and a row
+   of boxes for each author. */
+.limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .8rem; }
+fieldset.statements { border: 0; padding: 0; margin: 0; display: grid; gap: .45rem; }
+fieldset.statements legend { padding: 0; margin-bottom: .2rem; }
+.authorrows { display: grid; gap: .6rem; }
+.author { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; }
 summary { cursor: pointer; }
 input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible,
 label.drop:focus-within { outline: 3px solid color-mix(in srgb, var(--teal) 55%, transparent);

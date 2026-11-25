@@ -140,6 +140,9 @@ const booted = ask("boot").then((boot) => {
     "example"]) {
     $(id).disabled = false;
   }
+  for (const box of $("journalbox").querySelectorAll("input, select, textarea, button")) {
+    box.disabled = false;
+  }
   window.mgReady = true;
 }).catch((error) => {
   loaded();
@@ -424,6 +427,66 @@ function clearReport() {
   $("done").textContent = "";
 }
 
+// The journal's form, as `web.journal_files` takes it: null where nothing in it is set. The
+// date its instructions were read on is today's, in this computer's own time.
+const lines = (id) => $(id).value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+const LIMIT_BOXES = { abstract_words: "jabstract", main_text_words: "jmain", figures: "jfigures",
+  tables: "jtables", references: "jreferences", keywords: "jkeywords" };
+function journalForm() {
+  const today = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  const form = {
+    name: $("jname").value.trim(),
+    url: $("jurl").value.trim(),
+    date: `${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`,
+    limits: Object.fromEntries(Object.entries(LIMIT_BOXES).map(([key, id]) => [key, $(id).value.trim()])),
+    sections: lines("jsections"),
+    abstract_headings: lines("jheadings"),
+    statements: [...document.querySelectorAll('input[name="jstatement"]:checked')].map((box) => box.value),
+    blinding: $("jblinding").value,
+  };
+  const set = form.name || form.url || Object.values(form.limits).some(Boolean) || form.sections.length
+    || form.abstract_headings.length || form.statements.length || form.blinding;
+  return set ? form : null;
+}
+// The authors the blind review's boxes name, as `web.journal_files` takes them: null where
+// the boxes are not shown or nothing in them is set.
+function authorsForm() {
+  if ($("blindbox").hidden) return null;
+  const authors = [...$("authorrows").children].map((row) => Object.fromEntries(
+    ["given", "family", "orcid", "email"].map((key) => [key, row.querySelector(`[id$="-${key}"]`).value.trim()])));
+  const affiliations = lines("affiliations");
+  const set = authors.some((one) => Object.values(one).some(Boolean)) || affiliations.length;
+  return set ? { authors, affiliations } : null;
+}
+async function journalChosen() {
+  const journalFile = $("jfile").files[0] ? await read($("jfile").files[0]) : null;
+  const authorsFile = !$("blindbox").hidden && $("authorsfile").files[0]
+    ? await read($("authorsfile").files[0]) : null;
+  return { journal: journalFile ? null : journalForm(), journalFile,
+    authors: authorsFile ? null : authorsForm(), authorsFile };
+}
+// The authors' boxes, for a blind review or a profile of the reader's own, whose review the
+// page cannot see.
+const blindShown = () => {
+  $("blindbox").hidden = !(["double", "triple"].includes($("jblinding").value) || $("jfile").files.length);
+};
+$("jblinding").addEventListener("change", blindShown);
+$("jfile").addEventListener("change", blindShown);
+// A row of boxes for one more author.
+$("addauthor").addEventListener("click", () => {
+  const number = $("authorrows").children.length + 1;
+  const row = $("authorrows").firstElementChild.cloneNode(true);
+  for (const box of row.querySelectorAll("input")) {
+    const key = box.id.split("-").pop();
+    box.id = `author-${number}-${key}`;
+    box.value = "";
+    box.setAttribute("aria-label", box.getAttribute("aria-label").replace(/^Author \d+/, `Author ${number}`));
+  }
+  $("authorrows").append(row);
+  row.querySelector("input").focus();
+});
+
 async function check(paper) {
   $("run").disabled = true;
   $("example").disabled = true;
@@ -433,8 +496,6 @@ async function check(paper) {
   // Asked for a .docx only, where its box is shown.
   const wantsTracked = docx && $("tracked").checked;
   runStarted(paper.name, { lookup, docx, tracked: wantsTracked });
-  // A referee's rows, one label a line.
-  const rows = (id) => $(id).value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   try {
     const result = await ask("run", {
       paper: await read(paper),
@@ -453,10 +514,13 @@ async function check(paper) {
       // A referee's or an editor's (`--design`, `--whole-numbers`, `--binary`,
       // `--non-negative`, `--minimum-cell-count`).
       design: $("design").value,
-      wholeNumbers: rows("wholenumbers"),
-      binary: rows("binary"),
-      nonNegative: rows("nonnegative"),
+      wholeNumbers: lines("wholenumbers"),
+      binary: lines("binary"),
+      nonNegative: lines("nonnegative"),
       minimumCellCount: $("mincount").value.trim(),
+      // A journal's rules (`--journal`) and, for a blind review, the authors to look for
+      // (`--authors`): the form's, or a file of the reader's.
+      ...(await journalChosen()),
     });
     showReport(result, paper.name);
     $("netlog").textContent += "\n\n" + listRequests(

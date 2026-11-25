@@ -594,10 +594,10 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
      not_a_count) = json.loads(done.stdout)
     assert kept == {"args": ["audit", "Mon article (v3).docx", "--against", "résultats 結果.json"],
                     "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"],
-                    "corrected": False}
+                    "corrected": False, "made": {}}
     assert dashed == {"args": ["audit", "./-paper.docx", "--against", "./-results.json"],
                       "written": ["/work/-paper.docx", "/work/-results.json"],
-                      "corrected": False}
+                      "corrected": False, "made": {}}
     assert apart["written"] == ["/work/paper.docx", "/work/résultats.json", "/work/rèsultats.json"]
     assert "two of the files chosen are named results.json" in twice["error"]
     assert 'cannot use a file named "a/b.json"' in slash["error"]
@@ -621,8 +621,77 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
     # A design `audit` does not take, a count of 0, and a tracked copy of a paper that is no
     # .docx are not passed on; nor is anything but a whole number as the minimum.
     assert not_docx == {"args": ["audit", "paper.md"], "written": ["/work/paper.md"],
-                        "corrected": False}
+                        "corrected": False, "made": {}}
     assert not_a_count["args"] == ["audit", "paper.docx"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_worker_holds_the_paper_to_the_journal_the_form_or_a_file_describes() -> None:
+    """The journal's form made into the files `--journal` and `--authors` read
+    (`web.journal_files`), under the names the page gives them; a profile or an authors file
+    of the reader's, under its own name and in place of the form; a file chosen under the
+    name the form's would have, or a form that cannot make one, refused before anything is
+    written."""
+    form = {"name": "Journal of Tests", "date": "2026-11-25"}
+    cases = [
+        {"paper": "paper.docx", "against": [], "journal": form,
+         "authors": {"authors": [{"given": "Ada", "family": "Example"}]}},
+        {"paper": "paper.docx", "against": [], "journal": form, "journalFile": "-mine.yaml",
+         "authors": {"authors": []}, "authorsFile": "people.yaml"},
+        {"paper": "paper.docx", "against": ["journal.yaml"], "journal": form},
+        {"paper": "paper.docx", "against": ["journal.yaml"], "authors": {"authors": []}},
+        {"paper": "paper.docx", "against": [], "journal": {"name": "refused"}},
+        {"paper": "paper.docx", "against": [], "journalFile": "results.json",
+         "authorsFile": "results.json"},
+    ]
+    done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    made, own, clash, beside, refused, twice = json.loads(done.stdout)
+    assert made["args"] == ["audit", "paper.docx", "--journal", "journal.yaml", "--authors",
+                            "authors.yaml"]
+    assert made["written"] == ["/work/paper.docx", "/work/journal.yaml", "/work/authors.yaml"]
+    assert made["made"] == {"journal.yaml": "profile\n", "authors.yaml": "authors\n"}
+    assert own["args"] == ["audit", "paper.docx", "--journal", "./-mine.yaml", "--authors",
+                           "people.yaml"]
+    assert own["written"] == ["/work/paper.docx", "/work/-mine.yaml", "/work/people.yaml"]
+    assert own["made"] == {}
+    assert "a file chosen is named journal.yaml" in clash["error"]
+    assert "journal's profile it makes" in clash["error"]
+    # An output named journal.yaml is no clash where the form makes no profile.
+    assert beside["args"] == ["audit", "paper.docx", "--against", "journal.yaml", "--authors",
+                              "authors.yaml"]
+    assert refused["error"] == "the journal's form: a test"
+    assert "two of the files chosen are named results.json" in twice["error"]
+    assert clash["written"] == refused["written"] == twice["written"] == []
+
+
+def test_each_statement_the_form_offers_is_a_box_on_the_page() -> None:
+    """The page's ticks for the statements a journal requires are the ones `journal_form`
+    makes a pattern for, no more and no fewer."""
+    from manuscript_guard.journal_form import STATEMENTS
+
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    ticked = re.findall(r'name="jstatement" value="([^"]+)" id="jst-\1"', page)
+    assert ticked == list(STATEMENTS)
+    shown = re.findall(r'name="jstatement" value="[^"]+" id="[^"]+" disabled><span>([^<]+)<', page)
+    assert shown == [statement.shown for statement in STATEMENTS.values()]
+
+
+def test_the_page_makes_the_journal_files_or_says_why_not() -> None:
+    """`web.journal_files`, which the worker calls: the text of each file asked for, as
+    `journal_form` writes it, or why the form cannot make one."""
+    from manuscript_guard import journal_form
+
+    form = {"date": "2026-11-25", "statements": ["funding"]}
+    people = {"authors": [{"given": "Ada", "family": "Example"}]}
+    said = web.journal_files(form, people)
+    assert said == {"profile": journal_form.as_text(journal_form.profile_of(form)),
+                    "authors": journal_form.as_text(journal_form.authors_of(people))}
+    assert web.journal_files(None, None) == {}
+    assert web.journal_files({"date": "soon"}, None) == {
+        "error": "the date the instructions were read on is no date: 'soon'"}
 
 
 # --------------------------------------------------------------------- a command, printed

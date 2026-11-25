@@ -109,6 +109,11 @@ _ANCHORS = r"(?:\[\]\{[^}\n]*\}[ \t]*)*"
 _MARK = r"(?:\*\*\*|\*\*|__|\*|_)"
 #: A heading's number, as `section_names` reads one: "2", "2.1.", "II.", "A)", "(2)".
 _NUMBER = r"(?:(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[ivxlc]+[.)]|[a-z][.)])[ \t]+)?"
+#: What may end a heading after its title, in any order: white space, the marks that close
+#: emphasis, a colon or a stop, a closing sequence of hashes, a Word bookmark, attributes.
+#: Each piece starts with a character no other does, so a line that does not end so is
+#: refused at once, however many spaces it holds.
+_HEADING_END = r"(?:[ \t:.*_#]|\[\]\{[^}\n]*\}|\{[^}\n]*\})*$"
 
 
 def headings_of(typed: str) -> list[str]:
@@ -133,9 +138,8 @@ def pattern(headings: list[str]) -> str:
     case, and past a Word bookmark."""
     title = "(?:" + "|".join(_spelled(one) for one in headings) + ")"
     return ("(?im)^(?:"
-            rf"#{{1,6}}[ \t]+{_ANCHORS}{_NUMBER}{_MARK}?{_ANCHORS}{title}"
-            rf"[ \t]*[:.]?[ \t]*{_MARK}?[ \t]*(?:\{{[^}}\n]*\}}[ \t]*)?$"
-            rf"|[ \t]*{_ANCHORS}{_MARK}{_ANCHORS}{title}[ \t]*[:.]?[ \t]*{_MARK}"
+            rf"#{{1,6}}[ \t]+{_ANCHORS}{_NUMBER}{_MARK}?{_ANCHORS}{title}{_HEADING_END}"
+            rf"|[ \t]*{_ANCHORS}{_MARK}{_ANCHORS}{title}[ \t:.]*{_MARK}"
             rf"|[ \t]*{_ANCHORS}{title}[ \t]*:"
             ")")  # fmt: skip
 

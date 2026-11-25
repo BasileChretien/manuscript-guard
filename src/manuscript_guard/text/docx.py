@@ -80,8 +80,14 @@ _TYPED_MARK = "\x16"
 # After the bold mark, on the line of a body paragraph outside a table and a text box, in no
 # heading style and not numbered by Word, that is in a caption style (`_caption_styles`).
 _CAPTION_MARK = "\x15"
+# After the text of a run raised as superscript, directly or by its character style, that
+# holds a digit, wherever it is: what says a line holds a number set as a superscript
+# citation is, though its digits run on into the word before it once the marks are gone
+# (`DocxText.raised`).
+_RAISED_DIGIT = "\x14"
 _MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
-          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK, _CAPTION_MARK)  # fmt: skip
+          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK, _CAPTION_MARK,
+          _RAISED_DIGIT)  # fmt: skip
 #: The names of the paragraph styles pandoc reads as a caption, in small letters: Word's own,
 #: named "caption" in every language as "heading 1" is the heading's, and the two pandoc
 #: writes (3.9.0.2: a paragraph in one beside a table is the table's caption to it, and one
@@ -152,6 +158,16 @@ class DocxText:
     #: heading style, not numbered by Word, and in a style pandoc reads as a caption
     #: (`_caption_styles`): what ends a reference list, as a table does (`audit`).
     captions: frozenset[int] = frozenset()
+    #: Each 0-based line of `body`, and of `notes` in `notes_raised`, holding a run raised as
+    #: superscript, by its own properties or by its character style's, whose text holds a
+    #: digit, as a number set as a superscript citation does. Read as text, its digits run on
+    #: into the word before it, "disease12", or stand alone after a space; G7 reads no
+    #: numbered list's entry as never cited in a paper that holds one (`auditing.references`).
+    raised: frozenset[int] = frozenset()
+    notes_raised: frozenset[int] = frozenset()
+    #: Whether the document holds a citation field of Word's or of a reference manager's, in
+    #: its body or its notes, a deleted one too (`citationfields.is_citation_field`).
+    cited_by_field: bool = False
 
     @property
     def text(self) -> str:
@@ -519,6 +535,37 @@ def _span(cell: ET.Element) -> int:
     return min(int(value), _MOST_COLUMNS)
 
 
+def _superscript_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
+    """The ids of the character styles that raise their runs as superscript themselves, as
+    Word's "Endnote Reference" does: by their own properties, not a style's they are based
+    on."""
+    if "word/styles.xml" not in names:
+        return frozenset()
+    try:
+        styles = read_part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
+    except UnsafeDocument:
+        return frozenset()
+    found = set()
+    for style in styles.iter(W + "style"):
+        align = style.find(f"{W}rPr/{W}vertAlign")
+        if style.get(W + "type") == "character" and align is not None and \
+                align.get(W + "val") == "superscript":  # fmt: skip
+            found.add(style.get(W + "styleId", ""))
+    return frozenset(found)
+
+
+def _raised_digit(node: ET.Element, parents: dict, shown: str, styles: frozenset[str]) -> bool:
+    """Whether `shown`, a run's text, holds a digit and the run is raised as superscript, by
+    its own properties or by its character style's (`_superscript_styles`)."""
+    if not any(char.isdecimal() for char in shown):
+        return False
+    if _raised(node, parents):
+        return True
+    run = parents.get(node)
+    style = run.find(f"{W}rPr/{W}rStyle") if run is not None and run.tag == W + "r" else None
+    return style is not None and style.get(W + "val", "") in styles
+
+
 def _raised(node: ET.Element, parents: dict) -> bool:
     """Whether a run's text is raised as superscript, as a footnote marker typed is."""
     run = parents.get(node)
@@ -532,14 +579,16 @@ def _part_text(
     root: ET.Element, headings: dict[str, int] | None = None, fonts: Fonts | None = None,
     numbering: Numbering | None = None, counts: list | None = None,
     levels: list | None = None, bold: dict[str, bool] | None = None,
-    captions: frozenset[str] = frozenset(),
+    captions: frozenset[str] = frozenset(), superscripts: frozenset[str] = frozenset(),
 ) -> str:  # fmt: skip
     """The part's text, a line to a paragraph, with the marks of what its lines are; with
     `numbering`, each line Word numbers outside a table is marked and its count put in
     `counts`, in order, and each heading's level in `levels`; with `bold`, the character
     styles that are bold or not, each plain line of words is marked (`_TYPED_MARK`) unless
     it is in one of the caption styles `captions`, and each plain line every word of which
-    is in bold (`_BOLD_MARK`)."""
+    is in bold (`_BOLD_MARK`). The text of a run raised as superscript that holds a digit is
+    followed by its mark (`_RAISED_DIGIT`), the run raised by its own properties or by one of
+    the character styles `superscripts`."""
     headings = headings or {}
     fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -596,6 +645,8 @@ def _part_text(
                 if shown and owner is not None and _raised(node, parents) and \
                         _inside(owner, parents, W + "tc"):  # fmt: skip
                     shown = _RAISED + shown + _RAISED
+                if owner is not None and _raised_digit(node, parents, shown, superscripts):
+                    shown += _RAISED_DIGIT
                 (lines[owner] if owner is not None else pieces).append(shown)
                 if bold is not None and owner is not None and shown.strip():
                     # A link's words are no title's, as pandoc reads a link in one.
@@ -722,8 +773,10 @@ def read_docx_text(path: Path) -> DocxText:
         except UnsafeDocument as exc:
             raise NotADocx(str(exc)) from exc
 
+    superscripts = _superscript_styles(archive, names, path.name)
+
     def text_of(part: str) -> str:
-        return _part_text(root_of(part), None, fonts)
+        return _part_text(root_of(part), None, fonts, superscripts=superscripts)
 
     counts: list = []
     heads: list[int] = []
@@ -731,7 +784,7 @@ def read_docx_text(path: Path) -> DocxText:
     raw = _part_text(body_root, _heading_styles(archive, names, path.name),
                      fonts, Numbering.of(archive, names, path.name), counts, heads,
                      _bold_styles(archive, names, path.name),
-                     _caption_styles(archive, names, path.name))  # fmt: skip
+                     _caption_styles(archive, names, path.name), superscripts)  # fmt: skip
     raw, counts = _numbered_lines(raw, counts)
     marked = _tidy(raw)
     lines = marked.split("\n")
@@ -763,15 +816,57 @@ def read_docx_text(path: Path) -> DocxText:
                           or line.startswith(_NUMBERED_MARK) and _CAPTION_MARK in line[1:3])
     # The notes keep what they always had, the cell mark of a table in a note among it; the
     # marks the tables are read by go from both.
-    notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
-                      _MARKS[2:])  # fmt: skip
+    noted = _tidy("\n".join(text_of(part) for part in NOTES if part in names))
+    notes = _unmarked(noted, _MARKS[2:])
     body = _unmarked(marked, _MARKS)
+    raised = frozenset(i for i, line in enumerate(lines) if _RAISED_DIGIT in line)
+    notes_raised = frozenset(i for i, line in enumerate(noted.split("\n"))
+                             if _RAISED_DIGIT in line)  # fmt: skip
+    cited = any(_cites_by_field(root) for root in
+                [body_root, *(root_of(part) for part in NOTES if part in names)])
     return _stray_styles_set_aside(DocxText(
         body=body, notes=notes, headings=headings, cells=cells, tables=_tables(lines),
         numbering=tuple((line, *count[:3]) for line, count in numbering),
         heading_levels=heading_levels,
         levels=tuple((line, count[3]) for line, count in numbering if count[3] is not None),
-        boxed=_boxes(body_root, fonts), bold=bold, typed=typed, captions=captioned))
+        boxed=_boxes(body_root, fonts), bold=bold, typed=typed, captions=captioned,
+        raised=raised, notes_raised=notes_raised, cited_by_field=cited))
+
+
+def _cites_by_field(root: ET.Element) -> bool:
+    """Whether `root`, a part of the document, holds a citation field: a field's code, read
+    whole from its `instrText` runs up to its result, a field nested in another's code read
+    apart; a simple field's; or a content control's tag, which Mendeley writes a citation as
+    (`citationfields.is_citation_field`). What Word does not show is read too: a citation
+    field deleted as a change is still one a reference manager wrote."""
+    from manuscript_guard.citationfields import is_citation_field
+
+    # The code of each field open, None once its result has begun.
+    codes: list[list[str] | None] = []
+    for node in root.iter():
+        if node.tag == W + "fldChar":
+            kind = node.get(W + "fldCharType", "")
+            if kind == "begin":
+                codes.append([])
+            elif kind in ("separate", "end") and codes:
+                code = codes[-1]
+                if code is not None and is_citation_field("".join(code)):
+                    return True
+                if kind == "end":
+                    codes.pop()
+                else:
+                    codes[-1] = None
+        elif node.tag in (W + "instrText", W + "delInstrText") and codes and \
+                codes[-1] is not None:  # fmt: skip
+            codes[-1].append(node.text or "")
+        elif node.tag in _CODED and is_citation_field(node.get(_CODED[node.tag], "")):
+            return True
+    return any(code is not None and is_citation_field("".join(code)) for code in codes)
+
+
+#: What holds a field's code in an attribute, and which: a simple field, and a content
+#: control's tag.
+_CODED = {W + "fldSimple": W + "instr", W + "tag": W + "val"}
 
 
 def names_no_section(styled: Sequence[str]) -> bool:
@@ -994,7 +1089,7 @@ def _tables(lines: list[str]) -> tuple[Table, ...]:
 
 def _cell_text(texts: list[str]) -> str:
     """A cell's lines as one, a raised run written `^a^` and a note's reference `^*^`."""
-    joined = " ".join(texts).replace(_RAISED * 2, "")
+    joined = " ".join(texts).replace(_RAISED_DIGIT, "").replace(_RAISED * 2, "")
     joined = _RAISED_TEXT.sub(
         lambda raised: f"^{raised.group(1).strip()}^" if raised.group(1).strip() else " ",
         joined,

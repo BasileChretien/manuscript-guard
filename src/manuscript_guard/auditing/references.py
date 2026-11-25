@@ -5,16 +5,17 @@ The list is the one `audit` cuts from the text (`audit.bibliography_spans`), or 
 `thebibliography` the reader finds. What is counted: its entries, and the DOIs and PMIDs
 typed in them. Where the entries carry their numbers, "1." or "[1]", a bracketed citation in
 the text, `[3]`, `[3, 5]`, `[3-5]`, is held to the list: a number the list does not hold is
-reported, and so is an entry no citation names. In Markdown a list numbered "1." or "1)"
-is numbered as pandoc prints it, from its first number up, so a list typed "1." on every
-entry is 1, 2, 3; a number pandoc escaped, `1\\.`, is typed text and printed as typed. A
-.docx whose list Word numbers itself prints no number in its text, so there an entry's
-number is its place in Word's count: only where every entry is numbered by one Word numbering
-that counts in Arabic numerals from 1, a count no paragraph with words above the list is in
-(`text.word_numbering`). A
-bracket after a value that encloses it, `64 [55-72]`, is an interval and no citation
-(`audit._intervals`). In LaTeX each `\\cite` key is held to the `\\bibitem` keys, and a
-`\\nocite{*}` cites them all; an entry is reported in the file that holds it.
+reported, and so is an entry no citation names; with no such citation, every entry is,
+only where the text cites nothing by number at all (`cites_by_number`). In Markdown a list
+numbered "1." or "1)" is numbered as pandoc prints it, from its first number up, so a list
+typed "1." on every entry is 1, 2, 3; a number pandoc escaped, `1\\.`, is typed text and
+printed as typed. A .docx whose list Word numbers itself prints no number in its text, so
+there an entry's number is its place in Word's count: only where every entry is numbered by
+one Word numbering that counts in Arabic numerals from 1, a count no paragraph with words
+above the list is in (`text.word_numbering`). A bracket after a value that encloses it,
+`64 [55-72]`, is an interval and no citation (`audit._intervals`). In LaTeX each `\\cite`
+key is held to the `\\bibitem` keys, and a `\\nocite{*}` cites them all; an entry is
+reported in the file that holds it.
 
 Looking up sends each DOI to Crossref and OpenAlex, and to DataCite where Crossref does not
 know it and then to doi.org where DataCite does not either, and each PMID to PubMed, through
@@ -31,7 +32,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
@@ -60,6 +61,33 @@ _MARKER = re.compile(
     r"(?:\s*[,;]\s*\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?)*)\s*\\?\](?!\()"
 )
 _PART = re.compile(r"(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3}))?")
+#: What in a text may be a citation by number written other than in brackets, each by its
+#: name: where a text holds none of these and no bracketed citation, it cites nothing by
+#: number, and a numbered list's entries are each reported as never cited (Basile,
+#: 2026-11-25, "Strict rule"). Any doubt keeps the list unreported, so each reads widely:
+#: "COVID-19", "CD4", a unit squared and "(1) the first" are among what they find.
+#: A superscript digit, as Unicode writes one.
+_SUPERSCRIPT_DIGIT = re.compile("[\u00b9\u00b2\u00b3\u2070\u2074-\u2079]")
+#: A superscript holding a digit, as pandoc writes one, `^3^`, `^1,2^`.
+_CARETS = re.compile(r"\^[^\s^]*\d[^\s^]*\^")
+#: HTML's superscript holding a digit, `<sup>3</sup>`.
+_SUP = re.compile(r"<sup\b[^>]*>[^<]*\d", re.IGNORECASE)
+#: A number in parentheses, or a list or a range of them, with a hyphen or a dash: "(3)",
+#: "(3, 5)", "(3-5)", "(2,4-6)".
+_PARENTHESISED = re.compile(
+    r"\(\s*\d+(?:\s*[-\u2013\u2014]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-\u2013\u2014]\s*\d+)?)*\s*\)"
+)
+#: Digits run on into a word, a letter right before them: "disease12", "CD4", "H1N1".
+_AFTER_A_LETTER = re.compile(r"[^\W\d_]\d")
+#: Digits run on into a word's closing stop, with no space: "disease.12", "trials,3-5",
+#: "COVID-19"; not a decimal, "2.5", whose stop follows a digit.
+_AFTER_A_STOP = re.compile(r"[^\W\d_][.,);:\-]\d")
+#: Each, by the name a stand-in that forgets it is known by.
+CITED_BY_NUMBER = {
+    "superscript digit": _SUPERSCRIPT_DIGIT, "carets": _CARETS, "sup": _SUP,
+    "parenthesised": _PARENTHESISED, "after a letter": _AFTER_A_LETTER,
+    "after a stop": _AFTER_A_STOP,
+}  # fmt: skip
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
 #: A DOI, which ends at a space, a quote or a brace, and before `](`, where a Markdown link's
@@ -260,10 +288,16 @@ def census_of_text(
     *,
     docx: bool,
     numbering: Mapping[int, tuple[str, bool, int]] | None = None,
+    raised: Collection[int] = (),
+    fields: bool = False,
 ) -> Census:
     """A Markdown, text or .docx paper's census: its lists are `spans` of `original`, its
     citations are read in `hidden`, where the lists are blanked. `numbering` is a .docx's
-    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`)."""
+    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`); `raised`, the
+    0-based lines of `hidden` where a .docx raises a digit as superscript
+    (`text.docx.DocxText.raised`), and `fields`, whether it holds a citation field
+    (`DocxText.cited_by_field`). Where no bracketed citation is read, the entries are
+    reported as never cited only if the text cites nothing by number (`cites_by_number`)."""
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
                       "counted")  # fmt: skip
@@ -286,8 +320,33 @@ def census_of_text(
         census.entries = tuple(entries)
     else:
         return census
-    census.problems = _held_to_numbers(path, entries, markers, _sentences(hidden, intervals))
+    census.problems = _held_to_numbers(
+        path, entries, markers, _sentences(hidden, intervals),
+        uncited=not markers and not cites_by_number(hidden, spans, raised, fields),
+    )  # fmt: skip
     return census
+
+
+def cites_by_number(
+    hidden: str, spans: list[tuple[int, int]], raised: Collection[int] = (), fields: bool = False
+) -> bool:
+    """Whether a text whose reference lists are blanked, `hidden`, may cite by number other
+    than in brackets: a digit raised as superscript, as typed text writes one or, in a .docx,
+    on a line of `raised` outside the lists' `spans`; a number in parentheses; digits run on
+    into a word; or a citation field (`fields`). Where none is there and no bracketed
+    citation either, the text cites nothing by number, and a numbered list's every entry is
+    never cited (Basile, 2026-11-25, "Strict rule"). A PDF's text is never asked: its
+    superscripts are set as plain digits, so any number after a word may be one
+    (`census_of_printed`)."""
+    if fields or _raised_outside(raised, spans):
+        return True
+    return any(pattern.search(hidden) for pattern in CITED_BY_NUMBER.values())
+
+
+def _raised_outside(raised: Collection[int], spans: list[tuple[int, int]]) -> bool:
+    """Whether a line of `raised` is outside the reference lists' `spans`, which are
+    `[start, end)` 0-based lines, as `hidden` blanks them."""
+    return any(not any(start <= line < end for start, end in spans) for line in raised)
 
 
 def _sentences(hidden: str, intervals: list[tuple[int, int]]) -> list[str]:
@@ -494,8 +553,13 @@ def _numbered_by_word(
 
 def _held_to_numbers(
     path: Path, entries: list[Entry], markers: list[tuple[int, str, list[int]]],
-    sentences: list[str] | tuple = (),
+    sentences: list[str] | tuple = (), *, uncited: bool = False,
 ) -> list[Problem]:
+    """What is wrong between a numbered list's `entries` and the text's bracketed citations,
+    `markers`: each citation of a number the list does not hold, and, where there is a
+    citation, each entry none names. With none, each entry is reported only where the text
+    cites nothing by number (`uncited`, `cites_by_number`), and the message says so: its key
+    is the one an entry no citation names has."""
     numbers = {entry.number for entry in entries}
     highest = max((number for number in numbers if number is not None), default=0)
     problems = []
@@ -522,6 +586,17 @@ def _held_to_numbers(
                 problems.append(Problem(
                     "entry-never-cited", f"{entry.label} of the reference list is cited "
                     "nowhere in the text", entry.line, path, entry.label,
+                ))  # fmt: skip
+    elif uncited:
+        seen = set()
+        for entry in entries:
+            if entry.number not in seen:
+                seen.add(entry.number)
+                problems.append(Problem(
+                    "entry-never-cited", f"{entry.label} of the reference list is cited "
+                    "nowhere in the text, which cites nothing by number: no number in "
+                    "brackets, raised as a superscript or in parentheses, none run on into "
+                    "a word, and no citation field", entry.line, path, entry.label,
                 ))  # fmt: skip
     return sorted(problems, key=lambda problem: problem.line or 0)
 

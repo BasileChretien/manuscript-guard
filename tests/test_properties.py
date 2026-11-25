@@ -13867,6 +13867,160 @@ def _any_heading_shaped_as_an_entry_goes_on(patch: pytest.MonkeyPatch) -> None:
                   lambda lines, start, at: audit_module.looks_like_reference(lines[at]))
 
 
+from generated import UncitedPaper, uncited_lists  # noqa: E402
+
+#: The paragraph and character styles `uncited_docx` writes: a heading, and a character
+#: style that raises its runs as superscript.
+_UNCITED_STYLES = (f"<w:styles {_WORD_NAMESPACE}>{_HEADING_STYLE}"
+                   '<w:style w:type="character" w:styleId="Raised"><w:name w:val="Endnote '
+                   'Reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>'
+                   "</w:styles>")  # fmt: skip
+
+
+def _uncited_run(kind: str, text: str) -> str:
+    """A run of `uncited_lists` as Word writes it (`generated.UncitedRun`)."""
+    from xml.sax.saxutils import escape, quoteattr
+
+    shown = f'<w:t xml:space="preserve">{escape(text)}</w:t>'
+    if kind in ("raised", "raised by style"):
+        raised = ('<w:vertAlign w:val="superscript"/>' if kind == "raised"
+                  else '<w:rStyle w:val="Raised"/>')  # fmt: skip
+        return f"<w:r><w:rPr>{raised}</w:rPr>{shown}</w:r>"
+    if kind == "field":
+        half = len(text) // 2
+        return ("<w:r><w:fldChar w:fldCharType='begin'/></w:r>"
+                f"<w:r><w:instrText xml:space='preserve'>{escape(text[:half])}</w:instrText>"
+                f"</w:r><w:r><w:instrText xml:space='preserve'>{escape(text[half:])}"
+                "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r>"
+                "<w:r><w:t>Smith</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r>")
+    if kind == "simple field":
+        return (f"<w:fldSimple w:instr={quoteattr(text)}><w:r><w:t>Smith</w:t></w:r>"
+                "</w:fldSimple>")  # fmt: skip
+    if kind == "tag":
+        return (f"<w:sdt><w:sdtPr><w:tag w:val={quoteattr(text)}/></w:sdtPr><w:sdtContent>"
+                "<w:r><w:t>Smith</w:t></w:r></w:sdtContent></w:sdt>")  # fmt: skip
+    return f"<w:r>{shown}</w:r>"
+
+
+def uncited_docx(path: Path, paper: UncitedPaper) -> Path:
+    """A .docx of a paper of `uncited_lists`: its paragraphs, a heading "References" and its
+    entries, the first ending with the runs its list holds."""
+    import zipfile
+
+    body = "".join(f"<w:p>{''.join(_uncited_run(*run) for run in runs)}</w:p>"
+                   for runs in paper.paragraphs)  # fmt: skip
+    body += '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>References</w:t></w:r></w:p>'
+    for at, entry in enumerate(paper.entries):
+        listed = "" if at else "".join(_uncited_run(*run) for run in paper.listed)
+        body += f"<w:p>{_uncited_run('text', entry)}{listed}</w:p>"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document {_WORD_NAMESPACE}><w:body>{body}</w:body></w:document>")
+        archive.writestr("word/styles.xml", _UNCITED_STYLES)
+    return path
+
+
+def _never_cited_in(paper: UncitedPaper, folder: Path) -> list[str | None]:
+    """What G7's census in `audit` reports of a paper of `uncited_lists` as never cited, the
+    entries' labels; it reports nothing else of one."""
+    if paper.form == "md":
+        text = "\n\n".join("".join(text for _kind, text in runs) for runs in paper.paragraphs)
+        census = audit_module.census_of_markdown(
+            Path("paper.md"), f"# Results\n\n{text}\n\n# References\n\n"
+            + "\n".join(paper.entries) + "\n")  # fmt: skip
+    else:
+        [census] = audit_module.audit([uncited_docx(folder / f"{paper.kind}.docx", paper)],
+                                      None).references  # fmt: skip
+    assert census.style == "numbered", (census.style, paper)
+    assert {p.code for p in census.problems} <= {"entry-never-cited"}, paper
+    return [p.subject for p in census.problems]
+
+
+@holds(30, uncited_lists())
+def test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number(
+    papers: list[UncitedPaper],
+) -> None:
+    """Where a text holds no citation in brackets, its numbered list's entries are each
+    never cited only where it cites nothing by number: no digit raised as superscript,
+    typed or, in Word, raised by a run's properties or its character style; no number in
+    parentheses; no digits run on into a word; and no citation field. G7 reported nothing
+    where it read no bracketed citation (Basile, 2026-11-25, "Strict rule"). What the list
+    holds is not the text's: a number in parentheses in every entry, and in Word a digit
+    raised in one."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        for paper in papers:
+            assert _never_cited_in(paper, Path(folder)) == paper.expected, paper
+
+
+#: A pattern that finds nothing.
+_NOTHING = re.compile(r"(?!)")
+
+
+def _forget_shape(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """A stand-in for the rule that forgets one shape a citation by number may take
+    (`references.CITED_BY_NUMBER`)."""
+
+    def forget(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.auditing import references
+
+        patch.setitem(references.CITED_BY_NUMBER, name, _NOTHING)
+
+    forget.__doc__ = f"The text's {name} is no citation by number."
+    return forget
+
+
+def _one_number_in_parentheses_only(patch: pytest.MonkeyPatch) -> None:
+    """Only one number in parentheses is a citation's, "(3)", and no list or range of them."""
+    from manuscript_guard.auditing import references
+
+    patch.setitem(references.CITED_BY_NUMBER, "parenthesised", re.compile(r"\(\d+\)"))
+
+
+def _no_run_raised_in_word(patch: pytest.MonkeyPatch) -> None:
+    """A .docx's run raised as superscript is not read, by its properties or its style."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "_raised_digit", lambda *_given: False)
+
+
+def _no_character_style_raises(patch: pytest.MonkeyPatch) -> None:
+    """A run is raised only by its own properties, not by its character style's."""
+    from manuscript_guard.text import docx
+
+    patch.setattr(docx, "_superscript_styles", lambda *_given: frozenset())
+
+
+def _no_citation_field(patch: pytest.MonkeyPatch) -> None:
+    """A citation field is no citation."""
+    from manuscript_guard import citationfields
+
+    patch.setattr(citationfields, "is_citation_field", lambda code: False)
+
+
+def _only_a_field_whose_code_is_read(patch: pytest.MonkeyPatch) -> None:
+    """A citation field is one only where `inserted` reads its code: Word's own, Citavi's
+    and Papers' are none."""
+    from manuscript_guard import citationfields
+
+    patch.setattr(citationfields, "_CITATION_NAMED", _NOTHING)
+
+
+def _a_raised_digit_in_the_list_cites(patch: pytest.MonkeyPatch) -> None:
+    """A digit raised in the list is the text's too."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_raised_outside", lambda raised, spans: bool(raised))
+
+
+def _a_list_with_no_marker_is_never_reported(patch: pytest.MonkeyPatch) -> None:
+    """As on main before the strict rule: with no citation in brackets, nothing is reported."""
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "cites_by_number", lambda *_given, **_named: True)
+
+
 def _a_word_list_ends_at_no_typed_title(patch: pytest.MonkeyPatch) -> None:
     """As at the base: a list ended at a heading style, a display or what ends one under no
     heading, and at no typed title."""
@@ -32240,6 +32394,42 @@ BROKEN = {
     "any heading shaped as an entry goes on, with no entry above": (
         _any_heading_shaped_as_an_entry_goes_on,
         test_a_word_list_goes_on_over_an_entry_styled_as_a_heading,
+    ),
+    **{
+        f"the text's {name} cites nothing by number": (
+            _forget_shape(name),
+            test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+        )
+        for name in ("superscript digit", "carets", "sup", "parenthesised", "after a letter",
+                     "after a stop")
+    },
+    "only one number in parentheses cites, no list or range": (
+        _one_number_in_parentheses_only,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a run Word raises as superscript is not read": (
+        _no_run_raised_in_word,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a character style raises no run": (
+        _no_character_style_raises,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a citation field cites nothing": (
+        _no_citation_field,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a citation field known by its name alone cites nothing": (
+        _only_a_field_whose_code_is_read,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a digit raised in the list cites": (
+        _a_raised_digit_in_the_list_cites,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
+    ),
+    "a list with no citation in brackets is never reported": (
+        _a_list_with_no_marker_is_never_reported,
+        test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number,
     ),
     "an opener's word end binds only its last words": (
         _an_opener_s_word_end_binds_its_last_words_alone,

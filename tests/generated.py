@@ -11938,6 +11938,113 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
     return "\n".join(lines) + "\n", expected
 
 
+#: The kinds of paper each draw of `uncited_lists` holds, one of each in an order drawn:
+#: each holds a numbered reference list and no citation in brackets, and its text holds one
+#: thing that may cite by number, or nothing. A digit raised as superscript as typed text
+#: writes one, in Unicode, as pandoc does, `^3^`, and as HTML does; a number in parentheses,
+#: or a list or a range of them; digits run on into a word, after a letter or after a word's
+#: stop; in Word, a run raised as superscript by its own properties or by its character
+#: style, after a space, where its digits read as a number alone; a citation field; and
+#: nothing, in Markdown and in Word, where every entry is never cited although the list holds
+#: a number in parentheses and, in Word, a digit raised.
+UNCITED_KINDS = (
+    "superscript digit", "carets", "sup", "parenthesised", "after a letter", "after a stop",
+    "raised", "raised by style", "field", "nothing in Markdown", "nothing in Word",
+)  # fmt: skip
+#: What of each kind a paper may hold, with what comes before it: a word it runs on from
+#: (""), or a space (" ").
+UNCITED_SHAPES = {
+    "superscript digit": [("", f) for f in ("\N{SUPERSCRIPT ONE}", "\N{SUPERSCRIPT TWO}",
+                                            "\N{SUPERSCRIPT THREE}", "\N{SUPERSCRIPT FOUR}",
+                                            "\N{SUPERSCRIPT NINE}\N{SUPERSCRIPT ZERO}")],
+    "carets": [("", f) for f in ("^3^", "^1,2^", "^4-6^")],
+    "sup": [("", f) for f in ("<sup>3</sup>", "<sup>1,2</sup>", '<SUP class="c">4-6</SUP>')],
+    "parenthesised": [(" ", f) for f in ("(3)", "(3, 5)", "(3-5)", "(3\N{EN DASH}5)",
+                                         "(2,4-6)", "( 7 )")],
+    "after a letter": [("", f) for f in ("12", "4", "1N1")],
+    "after a stop": [("", f) for f in (".12", ",3-5", ";4", ":2", ")5", "-19")],
+    "raised": [(" ", f) for f in ("3", "1,2", "4-6")],
+    "raised by style": [(" ", f) for f in ("3", "1,2", "4-6")],
+}  # fmt: skip
+#: The citation fields a Word paper may cite through, by their codes: Zotero's, EndNote's,
+#: Word's own, Citavi's and Papers', the last three known by their names alone
+#: (`citationfields.is_citation_field`), and Mendeley's, a content control's tag.
+UNCITED_FIELDS = (
+    'ADDIN ZOTERO_ITEM CSL_CITATION {"citationItems":[{"uris":["http://zotero.org/users/1/'
+    'items/ABCD1234"]}]}',
+    "ADDIN EN.CITE <EndNote><Cite><Author>Smith</Author></Cite></EndNote>",
+    "CITATION Smi19 \\l 1033",
+    "ADDIN CITAVI.PLACEHOLDER 0a1b2c",
+    "ADDIN PAPERS2_CITATIONS <citation><uuid>A1</uuid></citation>",
+    "MENDELEY_CITATION_v3_eyJ9",
+)
+#: A run of a paper's paragraph: plain text, a run raised as superscript by its own
+#: properties ("raised") or by a character style's ("raised by style"), or a citation, by
+#: its code: a field whose code is split over two runs ("field"), a simple field ("simple
+#: field") or a content control's tag ("tag").
+UncitedRun = tuple[str, str]
+
+
+class UncitedPaper(NamedTuple):
+    """One paper of `uncited_lists`: its kind, "md" or "docx", its paragraphs of text, each
+    its runs, the runs its list's first entry ends with, its entries as typed, and what G7
+    reports: every entry's label, never cited, or nothing."""
+
+    kind: str
+    form: str
+    paragraphs: list[list[UncitedRun]]
+    listed: list[UncitedRun]
+    entries: list[str]
+    expected: list[str]
+
+
+@st.composite
+def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
+    """A paper of each kind of `UNCITED_KINDS`, in an order drawn: a numbered reference list
+    of two to five entries, typed "1." or "[1]", each holding a number in parentheses, and
+    paragraphs of words with no number among them, one of which holds the kind's one shape
+    of `UNCITED_SHAPES`, or a field of `UNCITED_FIELDS`, after a word drawn. A paper holding
+    a shape is in Markdown or in Word, drawn, as typed text holds it; one raised or a field
+    is in Word."""
+    papers = []
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    for kind in draw(st.permutations(UNCITED_KINDS)):
+        count = draw(st.integers(2, 5))
+        bracketed = draw(st.booleans())
+        entries = [f"{f'[{n}]' if bracketed else f'{n}.'} {draw(word_names())} A. A study. "
+                   f"J Ex. 2019;{n}({n + 1}):1-2." for n in range(1, count + 1)]  # fmt: skip
+        paragraphs: list[list[UncitedRun]] = [
+            [("text", draw(sentence).capitalize() + ".")]
+            for _ in range(draw(st.integers(1, 3)))
+        ]
+        listed: list[UncitedRun] = []
+        if kind.startswith("nothing"):
+            form = "md" if kind == "nothing in Markdown" else "docx"
+            if form == "docx":
+                listed = [("raised", draw(st.sampled_from(("2", "1,2"))))]
+            expected = [f"entry {n}" for n in range(1, count + 1)]
+        else:
+            form = ("docx" if kind in ("raised", "raised by style", "field")
+                    else draw(st.sampled_from(("md", "docx"))))  # fmt: skip
+            at = draw(st.integers(0, len(paragraphs) - 1))
+            words = draw(sentence).capitalize()
+            if kind == "field":
+                code = draw(st.sampled_from(UNCITED_FIELDS))
+                held = ("tag" if code.startswith("MENDELEY")
+                        else draw(st.sampled_from(("field", "simple field"))))  # fmt: skip
+                runs = [("text", words + " "), (held, code), ("text", ".")]
+            else:
+                before, shape = draw(st.sampled_from(UNCITED_SHAPES[kind]))
+                if kind in ("raised", "raised by style"):
+                    runs = [("text", words + before), (kind, shape), ("text", ".")]
+                else:
+                    runs = [("text", f"{words}{before}{shape}.")]
+            paragraphs.insert(at, runs)
+            expected = []
+        papers.append(UncitedPaper(kind, form, paragraphs, listed, entries, expected))
+    return papers
+
+
 #: The thematic breaks a Markdown reference list can end at, as typed: each of the three
 #: characters, spaced, indented and long.
 REFERENCE_BREAKS = ("---", "***", "___", "- - -", "   * * *", "-----", "_ _ _ _")

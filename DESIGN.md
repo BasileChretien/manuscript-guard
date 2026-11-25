@@ -22791,6 +22791,35 @@ Open, recorded as each change landed:
   `tests/test_audit_sections.py::test_an_entry_typed_as_a_markdown_heading_ends_the_list`,
   `tests/test_audit_sections.py::test_an_entry_word_numbers_styled_as_a_heading_ends_the_list`
   and `tests/test_properties.py::test_a_word_list_goes_on_over_an_entry_styled_as_a_heading`.
+- **A numbered list whose text holds no citation in brackets is reported only where the text
+  cites nothing by number, and anything a number may be keeps it unreported.** Where G7
+  reads no bracketed citation, a numbered list's entries are each reported as never cited
+  only if the text, the list blanked, holds no digit raised as superscript, no number in
+  parentheses, no digits run on into a word or a word's stop, and in a .docx no citation
+  field (`auditing.references.cites_by_number`; Basile, 2026-11-25, "Strict rule").
+  Pinned by `tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`.
+  - Any doubt keeps the list unreported: a name with digits, "COVID-19", "CD4", "VGG16",
+    a unit, "m²", an enumeration, "(1) the first", and an e-mail address each do, in a
+    text that cites nothing. The paper of the real-paper corpus whose entry #782 stopped
+    reporting is one: it cites by author and year, and names models with digits.
+    Pinned by `tests/test_corruption.py::test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported`.
+  - A citation by author and year is no citation by number: an author-year paper with a
+    numbered list has every entry reported as never cited, unless its text holds a number
+    one may be, a year in parentheses, "Smith (2019)", among them.
+    Pinned by `tests/test_corruption.py::test_an_author_year_text_s_numbered_list_is_held_by_its_numbers_alone`.
+  - A PDF's text sets a superscript as plain digits, so any number after a word may be a
+    citation: a PDF's numbered list with no citation in brackets is never reported.
+    Pinned by `tests/test_corruption.py::test_a_pdf_s_numbered_list_with_no_marker_is_never_reported`.
+  - In a .docx, a run is read as raised where its own properties or its character style's
+    set it as superscript (`text.docx._raised_digit`); one raised by its position
+    (`w:position`), by its paragraph's style or by a character style it is based on is
+    read as text, and its digits after a space are a number alone.
+    Pinned by `tests/test_corruption.py::test_a_digit_raised_by_its_position_is_read_as_text`.
+  - A citation field is known by its code: those `citationfields.inserted` reads, Word's
+    own `CITATION`, Citavi's and Papers' (`citationfields.is_citation_field`). Another
+    reference manager's field, or a citation typed as plain text in a field of another
+    kind, is not one, and a list with no other citation is reported.
+    Accepted.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a

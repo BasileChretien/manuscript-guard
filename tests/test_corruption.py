@@ -26715,6 +26715,248 @@ def test_an_audited_docx_list_is_numbered_by_place_only_where_word_numbers_it(
     assert [p.code for p in census.problems] == listed
 
 
+#: A numbered list of three entries, as typed: the second holds a number in parentheses and
+#: the third a superscript, which, being the list's, cite nothing.
+_UNCITED_ENTRIES = (
+    "1. Smith J. A trial of care. J Ex. 2019;12(3):1-2.",
+    "2. Jones K. A cohort of women. J Ex. 2020;2(4):3-4.",
+    "3. Brown L. Rates per m\N{SUPERSCRIPT TWO} of land. J Ex. 2021;3:5-6.",
+)
+#: The sentence a shape is put into, at its `{}`, which holds no number at all.
+_UNCITED_SENTENCE = "The trials were run in the clinic{} and the results were clear."
+#: Each shape a citation by number can take outside brackets, as typed text holds it.
+_TYPED_SHAPES = {
+    "a Unicode superscript": "\N{SUPERSCRIPT THREE}",
+    "a pandoc superscript": "^3^",
+    "an HTML superscript": "<sup>3</sup>",
+    "one number in parentheses": " (3)",
+    "a list in parentheses": " (3, 5)",
+    "a range in parentheses": " (3-5)",
+    "a range with a dash in parentheses": " (3\N{EN DASH}5)",
+    "a list and a range in parentheses": " (2,4-6)",
+    "digits after a letter": "s12",
+    "digits after a stop": ".12",
+    "a range after a comma": ",3-5",
+    "a name with a hyphen and digits": " during COVID-19",
+    "a name with digits": " with CD4",
+}
+
+
+def _uncited_docx(path: Path, runs: str, parts: dict[str, str] | None = None,
+                  numbered: bool = False, listed: str = "") -> Path:  # fmt: skip
+    """A .docx whose one paragraph of text is `runs`, then a heading and the three
+    entries, typed, or numbered by Word, with the runs `listed` at the end of the first."""
+    from xml.sax.saxutils import escape
+
+    number = "<w:pPr><w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr></w:pPr>"
+    entries = "".join(
+        f"<w:p>{number if numbered else ''}<w:r><w:t>"
+        f"{escape(entry.split(' ', 1)[1] if numbered else entry)}</w:t></w:r>"
+        f"{'' if at else listed}</w:p>"
+        for at, entry in enumerate(_UNCITED_ENTRIES)
+    )
+    styles = (f'<w:styles {W}><w:style w:type="paragraph" w:styleId="Heading1"><w:name '
+              'w:val="heading 1"/></w:style><w:style w:type="character" w:styleId="Raised">'
+              '<w:name w:val="Endnote Reference"/><w:rPr><w:vertAlign w:val="superscript"/>'
+              "</w:rPr></w:style></w:styles>")  # fmt: skip
+    extra = {"word/numbering.xml": _COUNTED} if numbered else {}
+    return _docx(path, f"<w:p>{runs}</w:p>" + _p("References", "Heading1") + entries,
+                 {"word/styles.xml": styles, **extra, **(parts or {})})
+
+
+def _plain_runs(text: str) -> str:
+    from xml.sax.saxutils import escape
+
+    return f'<w:r><w:t xml:space="preserve">{escape(text)}</w:t></w:r>'
+
+
+def _never_cited(paper: Path) -> list[str]:
+    from manuscript_guard.audit import audit
+
+    [census] = audit([paper], None).references
+    assert all(p.code == "entry-never-cited" for p in census.problems), census.problems
+    return [p.subject for p in census.problems]
+
+
+_EVERY_ENTRY = ["entry 1", "entry 2", "entry 3"]
+
+
+@pytest.mark.parametrize("form", ["md", "docx"])
+def test_a_numbered_list_in_a_text_that_cites_nothing_by_number_is_every_entry_uncited(
+    tmp_path: Path, form: str
+) -> None:
+    """A numbered list's entries are each cited nowhere where the text cites nothing by
+    number: no marker in brackets, no superscript, no "(n)", no digits run on into a word
+    and no citation field. G7 reported nothing, and after #782 one paper's entry never cited
+    was lost: it had been reported only because the list's own entries, read as text past
+    one styled as a heading, counted as citations (Basile, 2026-11-25, "Strict rule"). The
+    list's own "(3)" and "m\N{SUPERSCRIPT TWO}" are not the text's."""
+    sentence = _UNCITED_SENTENCE.format("")
+    if form == "md":
+        paper = tmp_path / "paper.md"
+        paper.write_text(f"# Results\n\n{sentence}\n\n# References\n\n"
+                         + "\n".join(_UNCITED_ENTRIES) + "\n", encoding="utf-8")  # fmt: skip
+    else:
+        paper = _uncited_docx(tmp_path / "paper.docx", _plain_runs(sentence))
+    assert _never_cited(paper) == _EVERY_ENTRY
+    from manuscript_guard.audit import audit
+
+    [census] = audit([paper], None).references
+    assert "cites nothing by number" in census.problems[0].message
+
+
+@pytest.mark.parametrize("numbered", [False, True], ids=["typed", "numbered by Word"])
+def test_a_digit_raised_in_the_list_is_the_list_s_and_cites_nothing(
+    tmp_path: Path, numbered: bool
+) -> None:
+    """A digit raised as superscript in the list is the list's, as its text is, and the
+    entries are each never cited, in a list typed and in one Word numbers 1, 2, 3 itself."""
+    raised = '<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>2</w:t></w:r>'
+    from manuscript_guard.text.docx import read_docx_text
+
+    paper = _uncited_docx(tmp_path / "paper.docx", _plain_runs(_UNCITED_SENTENCE.format("")),
+                          numbered=numbered, listed=raised)  # fmt: skip
+    document = read_docx_text(paper)
+    first = _UNCITED_ENTRIES[0].split(" ", 1)[1] if numbered else _UNCITED_ENTRIES[0]
+    assert [document.body.split("\n")[line] for line in document.raised] == [first + "2"]
+    assert _never_cited(paper) == _EVERY_ENTRY
+
+
+@pytest.mark.parametrize("form", ["md", "docx"])
+@pytest.mark.parametrize("shape", sorted(_TYPED_SHAPES))
+def test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported(
+    tmp_path: Path, form: str, shape: str
+) -> None:
+    """Strict: where a text may cite by number other than in brackets, its list's entries
+    are not reported as never cited, a name with digits, "COVID-19", among what keeps them
+    so (Basile, 2026-11-25)."""
+    sentence = _UNCITED_SENTENCE.format(_TYPED_SHAPES[shape])
+    if form == "md":
+        paper = tmp_path / "paper.md"
+        paper.write_text(f"# Results\n\n{sentence}\n\n# References\n\n"
+                         + "\n".join(_UNCITED_ENTRIES) + "\n", encoding="utf-8")  # fmt: skip
+    else:
+        paper = _uncited_docx(tmp_path / "paper.docx", _plain_runs(sentence))
+    assert _never_cited(paper) == []
+
+
+_ZOTERO_CODE = ('ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"a","citationItems":[{"id":1,'
+                '"uris":["http://zotero.org/users/1/items/ABCD1234"],"itemData":{"id":1,'
+                '"type":"article-journal","title":"A trial"}}],"schema":"x"}')
+#: Each kind of a citation field, by the runs that hold it, its shown text "Smith".
+_FIELDS = {
+    "Zotero": _ZOTERO_CODE,
+    "EndNote": "ADDIN EN.CITE <EndNote><Cite><Author>Smith</Author></Cite></EndNote>",
+    "Word": "CITATION Smi19 \\l 1033",
+    "Citavi": "ADDIN CITAVI.PLACEHOLDER 0a1b2c",
+}
+
+
+def _field_runs(code: str, split: bool = True) -> str:
+    """A complex field whose code is `code`, split over two `instrText` runs, showing
+    "Smith"."""
+    from xml.sax.saxutils import escape
+
+    half = len(code) // 2 if split else len(code)
+    return ("<w:r><w:fldChar w:fldCharType='begin'/></w:r>"
+            f"<w:r><w:instrText xml:space='preserve'>{escape(code[:half])}</w:instrText></w:r>"
+            f"<w:r><w:instrText xml:space='preserve'>{escape(code[half:])}</w:instrText></w:r>"
+            "<w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>Smith</w:t></w:r>"
+            "<w:r><w:fldChar w:fldCharType='end'/></w:r>")  # fmt: skip
+
+
+@pytest.mark.parametrize("kind", sorted(_FIELDS))
+def test_a_citation_field_keeps_a_word_list_with_no_marker_unreported(
+    tmp_path: Path, kind: str
+) -> None:
+    """A Word paper that cites through a citation field, whatever its words, may cite every
+    entry: its list is not reported (Basile, 2026-11-25), read from the field's code."""
+    start, end = _UNCITED_SENTENCE.split("{}")
+    runs = _plain_runs(start + " ") + _field_runs(_FIELDS[kind]) + _plain_runs(end)
+    assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs)) == []
+
+
+@pytest.mark.parametrize("held", ["a simple field", "a content control's tag", "a note"])
+def test_a_citation_field_held_otherwise_keeps_a_word_list_unreported(
+    tmp_path: Path, held: str
+) -> None:
+    """A citation field as a simple field, a citation Mendeley writes as a content control,
+    and one in a footnote, each keep the list unreported too."""
+    from xml.sax.saxutils import escape
+
+    start, end = _UNCITED_SENTENCE.split("{}")
+    parts = None
+    if held == "a simple field":
+        cite = (f"<w:fldSimple w:instr='{escape(_FIELDS['Word'])}'><w:r><w:t>Smith</w:t>"
+                "</w:r></w:fldSimple>")  # fmt: skip
+    elif held == "a content control's tag":
+        cite = ("<w:sdt><w:sdtPr><w:tag w:val='MENDELEY_CITATION_v3_eyJ9'/></w:sdtPr>"
+                "<w:sdtContent><w:r><w:t>Smith</w:t></w:r></w:sdtContent></w:sdt>")  # fmt: skip
+    else:
+        cite = "<w:r><w:footnoteReference w:id='1'/></w:r>"
+        parts = {"word/footnotes.xml": f"<w:footnotes {W}><w:footnote w:id='1'><w:p>"
+                 f"{_field_runs(_ZOTERO_CODE)}</w:p></w:footnote></w:footnotes>"}  # fmt: skip
+    runs = _plain_runs(start + " ") + cite + _plain_runs(end)
+    assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs, parts)) == []
+
+
+@pytest.mark.parametrize("raised", ["by its own properties", "by its character style"])
+def test_a_digit_raised_as_superscript_keeps_a_word_list_unreported(
+    tmp_path: Path, raised: str
+) -> None:
+    """A digit Word raises as superscript after a space, which read as text is a number
+    alone, "clinic 3", is known from the run (`text.docx.DocxText.raised`)."""
+    properties = ('<w:vertAlign w:val="superscript"/>' if raised == "by its own properties"
+                  else '<w:rStyle w:val="Raised"/>')  # fmt: skip
+    start, end = _UNCITED_SENTENCE.split("{}")
+    runs = (_plain_runs(start + " ") + f"<w:r><w:rPr>{properties}</w:rPr><w:t>3</w:t></w:r>"
+            + _plain_runs(end))  # fmt: skip
+    from manuscript_guard.text.docx import read_docx_text
+
+    paper = _uncited_docx(tmp_path / "paper.docx", runs)
+    document = read_docx_text(paper)
+    assert [document.body.split("\n")[line] for line in document.raised] == [
+        _UNCITED_SENTENCE.format(" 3")]
+    assert _never_cited(paper) == []
+
+
+@pytest.mark.parametrize(("cited", "listed"), [("(Smith, 2019)", _EVERY_ENTRY),
+                                               ("Smith (2019)", [])])  # fmt: skip
+def test_an_author_year_text_s_numbered_list_is_held_by_its_numbers_alone(
+    tmp_path: Path, cited: str, listed: list[str]
+) -> None:
+    """A citation by author and year is no citation by number: an author-year paper with a
+    numbered list reports every entry as never cited, unless its text holds a number one may
+    be, a year in parentheses, "Smith (2019)", among them (DESIGN.md, "Known gaps")."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nThe trials were run in the clinic {cited}.\n\n"
+                     "# References\n\n" + "\n".join(_UNCITED_ENTRIES) + "\n",
+                     encoding="utf-8")  # fmt: skip
+    assert _never_cited(paper) == listed
+
+
+def test_a_pdf_s_numbered_list_with_no_marker_is_never_reported(tmp_path: Path) -> None:
+    """A PDF's text sets a superscript as plain digits, so any number after a word may be a
+    citation: its numbered list is held to bracketed citations alone, and with none, no
+    entry is reported, though the text holds no number at all (DESIGN.md, "Known gaps")."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+
+    text = "References\n" + "\n".join(_UNCITED_ENTRIES) + "\n"
+    census = census_of_printed(tmp_path / "paper.pdf", text, [(0, 4)],
+                               _UNCITED_SENTENCE.format("") + "\n", [])  # fmt: skip
+    assert (census.style, len(census.entries), census.problems) == (NUMBERED, 3, [])
+
+
+def test_a_digit_raised_by_its_position_is_read_as_text(tmp_path: Path) -> None:
+    """A run raised by its position rather than as superscript is not read as raised: its
+    digits after a space are a number alone, and the list is reported (DESIGN.md, "Known
+    gaps")."""
+    start, end = _UNCITED_SENTENCE.split("{}")
+    runs = (_plain_runs(start + " ") + '<w:r><w:rPr><w:position w:val="6"/></w:rPr><w:t>3'
+            "</w:t></w:r>" + _plain_runs(end))  # fmt: skip
+    assert _never_cited(_uncited_docx(tmp_path / "paper.docx", runs)) == _EVERY_ENTRY
+
+
 def test_audit_catches_a_sign_flipped_estimate(tmp_path: Path) -> None:
     """The outputs' minus was dropped when they were read, so a paper printing 0.51 for an
     estimate of -0.51 matched, and was reported as found in the outputs."""

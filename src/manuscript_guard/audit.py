@@ -954,6 +954,18 @@ def census_of_markdown(path: Path, text: str):
     return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False)
 
 
+def cited_in_word(document) -> dict:
+    """What a .docx's reader knows of its citations beside its text, for G7's census: the
+    0-based lines of the text `read_paper` gives, its body then its notes, where a digit is
+    raised as superscript, and whether it holds a citation field (`text.docx.DocxText`).
+    Nothing for a paper that is no .docx."""
+    if document is None:
+        return {}
+    after = document.body.count("\n") + 1
+    return {"raised": document.raised | {after + line for line in document.notes_raised},
+            "fields": document.cited_by_field}  # fmt: skip
+
+
 @dataclass(frozen=True)
 class _Source:
     """One text the audit reads numbers in. `text` is what an atom is reported from;
@@ -1046,7 +1058,7 @@ def _read_sources(
             report.unreadable += unread_shapes(path, text)
         report.references.append(
             census_of_text(path, original, spans, kept_breaks(text, hidden), _intervals(text),
-                           docx=docx, numbering=numbering)  # fmt: skip
+                           docx=docx, numbering=numbering, **cited_in_word(document))  # fmt: skip
         )
     if entries or found_tex:
         latex = read_latex(entries, found_tex)

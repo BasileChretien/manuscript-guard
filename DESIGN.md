@@ -17265,7 +17265,17 @@ of the program its numbers came from: SPSS, jamovi, Stata, GraphPad, a spreadshe
 how that could work when every such file has its own columns, named by whoever made it. This
 section is the answer. It and the next were read once by an Opus agent against main at
 8f4629a2f before Basile answered their questions: seven findings, three of them blocking, all
-taken in. Nothing here is built before Basile answers its questions.
+taken in. Nothing here is built before Basile says to start.
+
+**Basile's answers** (question boxes, 2026-11-25; each the recommendation):
+
+| Question | Answer |
+|---|---|
+| 1. Which groups are matched | those the audit reads today, and also a count with its share and a mean with its SD written in prose, each by a reader of its own, in a later pull request |
+| 2. When a group is "one number off" | for groups of three or more numbers only |
+| 3. What `--strict` counts | neither "apart" nor "one number off", until both are measured on real papers |
+| 4. Transforms | two, each named on the match: a per cent against a proportion times 100, and an estimate with its interval against their logarithms |
+| 5. A text file's lines | each line of a .txt or .log is a row, and the report says so |
 
 ### Why `--against` cannot just read more formats
 
@@ -17293,7 +17303,7 @@ has to say what its columns are called for the two to be compared.
    where both counts are written ("12 of 40 (30%)", `stats/shares.py`); and a mean with its SD
    only in the table rows the auditor names (`stats/granularity.py`). A count with its share
    written alone in prose ("52 (31.7%)") and a mean with its SD in prose have no reader yet
-   (question 1). A group is matched where each of its numbers is a cell of its own on the same
+   (answer 1). A group is matched where each of its numbers is a cell of its own on the same
    row of the same table, in any columns.
 2. **No column's meaning is read.** Headers are anyone's, so the rule never asks what a column
    is called or which one holds the lower bound. The words of the row (its label, its table's
@@ -17324,7 +17334,9 @@ has to say what its columns are called for the two to be compared.
   row"). Not said of a pair, where one number matching by chance is common.
 - Not in the outputs: as today.
 
-Whether "apart" and "one number off" count for `--strict` is question 3.
+Neither "apart" nor "one number off" counts for `--strict` until both are measured on
+real papers (answer 3), as #710 sets a code's severity in the audit by its precision on
+real papers.
 
 ### Readers
 
@@ -17339,7 +17351,8 @@ nothing else. No reader decides what a cell means.
 - .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
   read. A cell's stored value is read, not its displayed one, and rule 3 rounds it.
 - HTML: each table, titled by its caption or by the heading before it.
-- Text (.txt, .log): question 5.
+- Text (.txt, .log): each line is a row, and the report says that its rows are lines
+  (answer 5).
 - Not read: SPSS's .spv, jamovi's .omv, Stata's .smcl and GraphPad's .pzfx, until each
   format is read from its publisher's documentation. Each is named as not read, with the export
   that is.
@@ -17371,31 +17384,11 @@ nothing else. No reader decides what a cell means.
    reports changes but the files it can read. The page takes the same files.
 2. Groups. The matching, "apart" and "one number off", the measure by shape, and their
    section first among the comparisons.
-3. Readers for a count with its share and a mean with its SD written in prose, if question 1
-   keeps them: each reads text, with its own generated inputs and its own run of the corpus
-   gate.
-4. Transforms, if question 4 keeps them.
-5. A text file's lines as rows, if question 5 keeps it.
-
-### Questions for Basile
-
-1. **Which groups.** (a) The groups the audit reads today: an estimate with its interval and
-   P, a statistic with its degrees of freedom and P, and a table's count with its share.
-   (b) Also a count with its share and a mean with its SD written in prose, each with a new
-   reader. Recommended: (b), its readers in a pull request of their own after the groups of
-   (a), since a count with its share written alone, as in "52 (31.7%)", is not read today.
-2. **"One number off".** (a) For groups of three or more numbers. (b) For pairs too. (c) Not at
-   all: a group is matched or it is not. Recommended: (a).
-3. **What `--strict` counts.** (a) "Apart" and "one number off". (b) "One number off" alone.
-   (c) Neither, until they are measured on real papers, as #710 sets a code's severity in the
-   audit by its precision on real papers. Recommended: (c).
-4. **Transforms.** (a) None. (b) Two, each named on the match: a per cent matches a proportion
-   times 100, and an estimate with its interval matches a row of their logarithms (an odds
-   ratio and the B it is the exponential of). (c) More, such as an inverse, for a reference
-   group the paper takes the other way round. Recommended: (b).
-5. **A text file's lines.** (a) Not rows: a .txt or a .log fills the set only. (b) Each line is
-   a row, and the report says so. Recommended: (b), since a printed table of coefficients puts
-   a term's numbers on one line.
+3. Readers for a count with its share and a mean with its SD written in prose (answer 1),
+   each reading text, with its own generated inputs and its own run of the corpus gate.
+4. Transforms: a per cent against a proportion times 100, and an estimate with its interval
+   against their logarithms, each named on the match (answer 4).
+5. A text file's lines as rows (answer 5).
 
 ### Not verified
 
@@ -17409,8 +17402,18 @@ Designed 2026-11-25, not built. In the same conversation as the section above, t
 answer was a plan builder: the analysis plan asked of an author who has never written one, in
 words they understand, with neither a terminal nor an agent. Basile agreed, warned that it is
 hard to make well, and added that it "could also be used as a checker for those who already
-have a v1 paper". This section is that design. Nothing here is built before Basile answers its
-questions.
+have a v1 paper". This section is that design. Nothing here is built before Basile says to
+start.
+
+**Basile's answers** (question boxes, 2026-11-25; each the recommendation):
+
+| Question | Answer |
+|---|---|
+| 1. An open item ("not decided yet") | a warning at every stage, as `plan-section-empty` is |
+| 2. Usual answers shown | where a section's source lists them, as that source's list, cited |
+| 3. A written paper's plan questions | asked whenever `audit --design` names a design |
+| 4. A plan from a written paper | also written by `plan write --after-results` into a project brought in from Word, headed as written after the results |
+| 5. Helping an author name the design | a sentence beside each option now; a series of questions only if authors watched using the page still choose the wrong design |
 
 ### What exists
 
@@ -17448,10 +17451,11 @@ already written.
    quote is.
 3. **The tool asks and records; it chooses nothing.** It proposes no test, no model, no
    adjustment set and no way of handling missing data. Where a section's own source lists the
-   usual answers, they may be shown as that source's list, cited (question 2); otherwise the
+   usual answers, they may be shown as that source's list, cited (answer 2); otherwise the
    answer is the author's text.
 4. **"Not decided yet" is an answer.** It names who is to decide, a role or a person the author
-   names, and is kept as an open item rather than left as an empty heading (question 1).
+   names, and is kept as an open item rather than left as an empty heading: a warning at every stage, as
+   `plan-section-empty` is (answer 1).
 5. **A plan made from a written paper says when it was made.** Its answers are quotes, it is
    headed as written after the results, and nothing in it reads as a preregistration.
 
@@ -17460,7 +17464,8 @@ already written.
 - `audit --design` takes each design of `study_types.yaml` as well as `observational` and
   `trial`; each design says in the file which of the two it implies for the checks that read
   them (a cohort study is observational).
-- A section "Questions of the plan" asks the design's questions of the Methods. Each section of
+- Whenever `--design` names a design (answer 3), a section "Questions of the plan" asks the
+  design's questions of the Methods. Each section of
   the file gains a third field, `finds`: what a sentence answering it is matched by, apart from
   `heading`, since a sentence is not a heading. Where sentences match, the first three are
   offered as candidates with their places; where none does, the question is said to be
@@ -17481,7 +17486,9 @@ already written.
   script can run them: `manuscript-guard plan questions [--design T] [--json]` prints the
   questions, and `manuscript-guard plan write ANSWERS` writes `design/plan.md` from an answers
   file. `plan write` refuses where `design/plan.md` has text under any heading, rather than
-  merge into an author's plan.
+  merge into an author's plan. `plan write --after-results` takes an answers file of quotes
+  and writes its plan headed as written after the results, for a project brought in from
+  Word (answer 4).
 - The answers file (`manuscript-guard/plan-answers/1`) names the design and, for each
   section's id, one of: `text`; `quote`, with its place in the paper; or `open`, with `who` and
   a note.
@@ -17516,7 +17523,7 @@ may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
 design, in the project's words, so that an author who does not know the name can recognise
-the study (question 5).
+the study (answer 5).
 
 ### How we will know it works
 
@@ -17546,33 +17553,12 @@ the study (question 5).
    reading the command.
 5. The page's form and its PDF.
 
-### Questions for Basile
-
-1. **An open item ("not decided yet").** (a) A warning at every stage, as `plan-section-empty`
-   is. (b) A warning until `analysis`, then a failure unless the person it names has signed it,
-   which `sign` would then have to accept: today it takes the findings only a named person may
-   close, and an open item is none of them. Recommended: (a). G12's findings on the plan's
-   sections warn at every stage, though its registration findings and
-   `plan-declarations-unreadable` fail later on; an open item that names who decides keeps most
-   of its value as a warning.
-2. **Usual answers shown.** (a) Never: every answer is the author's text. (b) Where a section's
-   source lists them, as that source's list, cited. Recommended: (b).
-3. **A written paper's plan questions.** (a) Asked whenever `audit --design` names a design.
-   (b) Only behind a flag of their own. Recommended: (a), since the page asks the design anyway.
-4. **A plan from a written paper.** (a) Kept in the report and the answers file only. (b) Also
-   written by `plan write --after-results` into a project brought in from Word, headed as
-   written after the results. Recommended: (b).
-5. **Helping an author name the design.** (a) A sentence beside each option. (b) Also a short
-   series of questions (did the investigators assign the exposure? were people followed over
-   time?) taken from a published classification of study designs. Recommended: (a) now, and
-   (b) only if authors watched using the page still choose the wrong design.
-
 ### Not verified
 
 - The pages, items and licences of STROBE's checklist for cross-sectional studies, CARE, SRQR
   and COREQ, and which guideline a case series answers to.
-- A published classification of study designs that (b) of question 5 could take its questions
-  from.
+- A published classification of study designs to take a series of questions from, should the
+  sentences beside the options not be enough (answer 5).
 - How an OSF registration is made from a plan file, and whether the page can link to it with
   the plan attached.
 - How the corpus's ledger holds a verdict on a candidate, which is not a finding.

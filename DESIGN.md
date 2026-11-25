@@ -30354,6 +30354,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
   moves none. Pinned by
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
+- **The editor's report parts each finding by its code.** `audit --editor` puts a finding in
+  one of its four parts by the table in `auditing/editor.py` (the author's, 2026-11-25), and
+  by what the finding holds for three codes alone: `over-header-n` by its severity, G6's
+  `model-artefact` by its rule, and `document-holds` by what the Word file holds. Nothing
+  else a finding says moves it, so a DOI no registry knows is asked of the authors whether
+  it is a typo or an invented reference, and only the count in its part shows several.
+  Pinned by `tests/test_audit_editor.py::test_three_codes_are_parted_by_what_the_finding_holds`.
+  - The record a kind shows, how often its findings were right on published papers, is of
+    one corpus run, `main-cc1af1f14`, written into the table by hand: a fix that moves a
+    kind's precision on the corpus leaves the old figures shown until a pull request counts
+    them again. Accepted.
+  - A finding of the first two parts is said in its own message, except a number of the
+    Abstract not found, said as the number and the words around it, and a question, said as
+    a referee's draft says it; a message that names an option or a gate shows it there.
+    Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

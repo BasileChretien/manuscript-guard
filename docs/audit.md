@@ -121,8 +121,8 @@ section in full and every finding with its place, its context and its hint, as o
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
-`--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
-paper someone else wrote: [For editors and reviewers](refereeing.md).
+`--journal`, `--authors`, `--design`, `--cited` and `--editor` are for an editor or a
+referee, reading a paper someone else wrote: [For editors and reviewers](refereeing.md).
 
 **Questions for the author.** Where no exact rule can decide, the audit asks. A question
 says what the audit saw, asks one question and names the answer that ends it. It is a

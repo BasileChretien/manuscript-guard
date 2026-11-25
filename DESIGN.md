@@ -17263,7 +17263,9 @@ that authors want to use when their only experience of AI is ChatGPT, their stat
 limited and research is not yet their trade. One answer was to compare a paper with the output
 of the program its numbers came from: SPSS, jamovi, Stata, GraphPad, a spreadsheet. He asked
 how that could work when every such file has its own columns, named by whoever made it. This
-section is the answer. Nothing here is built before Basile answers its questions.
+section is the answer. It and the next were read once by an Opus agent against main at
+8f4629a2f before Basile answered their questions: seven findings, three of them blocking, all
+taken in. Nothing here is built before Basile answers its questions.
 
 ### Why `--against` cannot just read more formats
 
@@ -17284,18 +17286,25 @@ has to say what its columns are called for the two to be compared.
 ### The rules
 
 1. **A group is matched with one row, or it is not matched.** A group is a set of numbers the
-   audit already reads as belonging together in the paper: an estimate with its interval and
-   the P that follows it ("OR 1.8, 95% CI 1.2 to 2.7, P = 0.004"); a count with its share
-   ("52 (31.7%)"); a mean with its SD; a test statistic with its degrees of freedom and its P.
-   It is matched where each of its numbers is a cell of its own on the same row of the same
-   table, in any columns.
+   paper prints together. The audit reads two kinds of group in prose today: an estimate with
+   its interval and the P that follows it ("OR 1.8, 95% CI 1.2 to 2.7, P = 0.004",
+   `stats/intervals.py`), and a test statistic with its degrees of freedom and its P
+   (`stats/reported.py`). It reads a count with its share in a table's cells, and in prose only
+   where both counts are written ("12 of 40 (30%)", `stats/shares.py`); and a mean with its SD
+   only in the table rows the auditor names (`stats/granularity.py`). A count with its share
+   written alone in prose ("52 (31.7%)") and a mean with its SD in prose have no reader yet
+   (question 1). A group is matched where each of its numbers is a cell of its own on the same
+   row of the same table, in any columns.
 2. **No column's meaning is read.** Headers are anyone's, so the rule never asks what a column
    is called or which one holds the lower bound. The words of the row (its label, its table's
    title or its sheet) are shown beside the match, so that a reader sees at a glance that the
    odds ratio for the sessions came from the row for age.
 3. **A printed number matches the cells that round to it** at its own number of places: 1.8
    matches any cell from 1.75 to 1.85, both ends included, since programs round a half either
-   way.
+   way. A P printed with a sign, as the audit already keeps it (`stats/reported.py`), matches
+   the cells on that side of its bound: "P < 0.001" matches R's 2e-16 and SPSS's .000, which
+   SPSS prints for a P under 0.0005, and a group whose P is printed so is matched on its correct
+   row rather than reported with one number off.
 4. **What a match is worth is measured for groups as it is for numbers.** For each shape of
    group the paper holds (three numbers at one decimal place and one at three, say), the share
    of a fixed grid of such groups that some row of the given outputs would match. The grid is
@@ -17323,9 +17332,10 @@ A reader turns an output file into tables of cells, each a value with its place,
 nothing else. No reader decides what a cell means.
 
 - CSV and TSV: one table, kept as rows rather than joined.
-- JSON: a list of objects is a table, one row for each object. In a results fragment, the
-  values whose keys differ only in their last part (`ror.point`, `ror.ci_low`, `ror.ci_high`,
-  as `em.interval` writes them) are one row.
+- JSON: a list of objects is a table, one row for each object. In a results fragment, each
+  bound `em.interval` writes names its estimate (`bounds`, `bound`), and the estimate and its
+  two bounds are one row; every other value is a row of its own. Keys are not grouped by their
+  prefix, which would put `ror.p`, a second interval and sibling counts on the same row.
 - .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
   read. A cell's stored value is read, not its displayed one, and rule 3 rounds it.
 - HTML: each table, titled by its caption or by the heading before it.
@@ -17342,9 +17352,12 @@ nothing else. No reader decides what a cell means.
   catch, and how many the set does. Recorded in this section, and each way of corrupting held
   in `tests/test_corruption.py`.
 - Generated inputs. `tests/generated.py` draws outputs whose columns are shuffled, renamed
-  and padded with rows and columns of other numbers; a property holds that a group is matched
-  wherever its row is, and a broken matcher (one that ignores rows) fails it under a dozen
-  seeds.
+  and padded with rows and columns of other numbers, and papers whose P values are printed with
+  a sign; `tests/readings.py` gains a reading of what the audit matches, so that the
+  old-against-new job compares it; a property holds that a group is matched wherever its row
+  is; and a broken matcher (one that ignores rows) is added to `BROKEN` in
+  `tests/test_properties.py` and to `CHANGED` in `tests/test_differential.py`, and fails under
+  a dozen seeds.
 - Real papers with their outputs. The corpus holds papers, not their outputs. A set of
   published papers whose program output is deposited beside them (at OSF, or in a journal's
   supplement) is still to be found; until it is, false alarms are measured on the example and
@@ -17358,14 +17371,19 @@ nothing else. No reader decides what a cell means.
    reports changes but the files it can read. The page takes the same files.
 2. Groups. The matching, "apart" and "one number off", the measure by shape, and their
    section first among the comparisons.
-3. Transforms, if question 4 keeps them.
-4. A text file's lines as rows, if question 5 keeps it.
+3. Readers for a count with its share and a mean with its SD written in prose, if question 1
+   keeps them: each reads text, with its own generated inputs and its own run of the corpus
+   gate.
+4. Transforms, if question 4 keeps them.
+5. A text file's lines as rows, if question 5 keeps it.
 
 ### Questions for Basile
 
-1. **Which groups.** (a) An estimate with its interval and P only. (b) Also a count with its
-   share, a mean with its SD, and a statistic with its degrees of freedom and P. Recommended:
-   (b); the audit already reads each of them in a paper.
+1. **Which groups.** (a) The groups the audit reads today: an estimate with its interval and
+   P, a statistic with its degrees of freedom and P, and a table's count with its share.
+   (b) Also a count with its share and a mean with its SD written in prose, each with a new
+   reader. Recommended: (b), its readers in a pull request of their own after the groups of
+   (a), since a count with its share written alone, as in "52 (31.7%)", is not read today.
 2. **"One number off".** (a) For groups of three or more numbers. (b) For pairs too. (c) Not at
    all: a group is matched or it is not. Recommended: (a).
 3. **What `--strict` counts.** (a) "Apart" and "one number off". (b) "One number off" alone.
@@ -17450,8 +17468,9 @@ already written.
   ask." It is a question for the author, and `--strict` does not count it.
 - A section's `finds` is measured on the corpus before it offers candidates. A pattern as broad
   as "analysis" can match many sentences of a Methods section; a section whose first candidate
-  is the answer in fewer than half of the corpus's papers, by the corpus's verdicts, offers
-  none, and its question stands alone.
+  is the answer in fewer than half of the corpus's papers offers none, and its question stands
+  alone. A candidate is judged as the corpus's findings are, by two judges, which is a verdict
+  of a new kind for the corpus's ledger: the candidate is the answer, or it is not.
 - The page shows the same section, with each candidate as a choice and a box for another
   sentence. The quotes chosen are saved as an answers file (below), which `audit` reads back
   with `--plan-answers FILE` and holds to the paper.
@@ -17467,8 +17486,9 @@ already written.
   section's id, one of: `text`; `quote`, with its place in the paper; or `open`, with `who` and
   a note.
 - The skill asks from the command. The analysis-plan skill reads `plan questions --json`
-  rather than its own copy of the sections, so that the skill, the page and the command ask the
-  same questions in the same words.
+  rather than its own copy of the sections, the list in its `SKILL.md` and
+  `references/study-designs.md`, so that the skill, the page and the command ask the same
+  questions in the same words.
 - The page. A form, one question at a time, run in the browser as the audit page is, with
   nothing uploaded. It saves `plan.md`, the answers file and a PDF of the plan, made by the
   writer that makes the audit's PDF, with the SHA-256 of `plan.md` printed on it.
@@ -17484,8 +17504,15 @@ Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic a
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE and STARD 2015 have recipes already; CARE, SRQR
-and COREQ need one each, with their licences read. Which guideline a case series answers to is
-read before its entry is written.
+and COREQ need one each, with their licences read. A case series here is a descriptive series
+of patients, not the self-controlled case series, which `self-controlled` already covers
+(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
+which guideline it answers to is read before its entry is written.
+
+`gates/design.py` names cross-sectional surveys, case series and reports, and qualitative
+studies among the studies `other` covers today. `other` stays, for a narrative review and the
+rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
 design, in the project's words, so that an author who does not know the name can recognise
@@ -17496,17 +17523,22 @@ the study (question 5).
 - `finds` reads text: its pull request runs the corpus gate, and each section's candidates are
   judged for the threshold above.
 - `tests/generated.py` draws Methods with each section's answer present, reworded, moved and
-  removed; a property holds that a question is said to be unanswered exactly where its answer
-  is gone, and a broken `finds` fails it under a dozen seeds.
+  removed; `tests/readings.py` gains the audit's plan questions as a reading; a property holds
+  that a question is said to be unanswered exactly where its answer is gone; and a broken
+  `finds` is added to `BROKEN` and `CHANGED` and fails under a dozen seeds.
 - `tests/test_corruption.py` holds a paper whose sentence on missing data is cut, which the
   audit must say is unanswered.
-- Moving `REQUIRED` into the file changes nothing G12 reports, which the differential reading of
-  `check` holds.
+- Moving `REQUIRED` into the file must change nothing G12 reports. The `check` reading of
+  `tests/readings.py` draws no plan today: the plan it checks is the one `init` writes. So the
+  first pull request adds drawn plans to that reading's inputs (each design's headings present,
+  reworded, missing and empty) before it moves anything, and the old-against-new job then
+  compares G12's findings on them.
 
 ### Pull requests, in order
 
-1. The list. `REQUIRED` moved into `study_types.yaml`, `ask` and `explain` for every
-   section, and a sentence for each design in `choose-study-type`.
+1. The list. Drawn plans in the `check` reading first; then `REQUIRED` moved into
+   `study_types.yaml`, `ask` and `explain` for every section, and a sentence for each design in
+   `choose-study-type`.
 2. The new designs, one pull request each, with a recipe where one is lacking.
 3. A paper's plan questions in `audit`: `--design` takes the designs, `finds` is measured on
    the corpus, and the page shows the section.
@@ -17516,10 +17548,13 @@ the study (question 5).
 
 ### Questions for Basile
 
-1. **An open item ("not decided yet").** (a) A warning at every stage, as the design gate's
-   other findings are. (b) A warning until `analysis`, then a failure unless the person it
-   names has signed it (`sign`). Recommended: (a), which keeps the design gate's rule of never
-   blocking; that the open item names who decides is most of its value.
+1. **An open item ("not decided yet").** (a) A warning at every stage, as `plan-section-empty`
+   is. (b) A warning until `analysis`, then a failure unless the person it names has signed it,
+   which `sign` would then have to accept: today it takes the findings only a named person may
+   close, and an open item is none of them. Recommended: (a). G12's findings on the plan's
+   sections warn at every stage, though its registration findings and
+   `plan-declarations-unreadable` fail later on; an open item that names who decides keeps most
+   of its value as a warning.
 2. **Usual answers shown.** (a) Never: every answer is the author's text. (b) Where a section's
    source lists them, as that source's list, cited. Recommended: (b).
 3. **A written paper's plan questions.** (a) Asked whenever `audit --design` names a design.
@@ -17540,6 +17575,7 @@ the study (question 5).
   from.
 - How an OSF registration is made from a plan file, and whether the page can link to it with
   the plan attached.
+- How the corpus's ledger holds a verdict on a candidate, which is not a finding.
 
 ## Known gaps
 

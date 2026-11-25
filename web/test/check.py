@@ -96,8 +96,11 @@ def native(folder: Path, arguments: list[str]) -> dict:
     return {"code": done.returncode, "out": done.stdout, "err": done.stderr}
 
 
-def in_node(site: Path, folder: Path, arguments: list[str]) -> dict:
-    done = subprocess.run([NODE, str(TEST / "parity.mjs"), str(site), str(folder), "--",
+def in_node(site: Path, folder: Path, arguments: list[str], unpack: str | None = None) -> dict:
+    """The command as the page runs it, in Node; `unpack`, an archive the page is given,
+    unpacked there first as the page unpacks one (`parity.mjs --unpack`)."""
+    done = subprocess.run([NODE, str(TEST / "parity.mjs"), str(site), str(folder),
+                           *(["--unpack", unpack] if unpack else []), "--",
                            *arguments], capture_output=True, text=True, encoding="utf-8",
                           timeout=900, check=False)  # fmt: skip
     if done.returncode != 0:
@@ -173,10 +176,11 @@ def main(argv: list[str] | None = None) -> int:
                          *(["--against", *map(argument, against)] if against else []), *options]
             said = native(folder, arguments)
             page = args.site / AUDIT
-            wrong = [*differences(said, in_node(page, folder, arguments), False),
+            unpack = paper if paper in ARCHIVED else None
+            wrong = [*differences(said, in_node(page, folder, arguments, unpack), False),
                      *(f"--json {part}" for part in differences(
                          native(folder, [*arguments, "--json"]),
-                         in_node(page, folder, [*arguments, "--json"]), True))]  # fmt: skip
+                         in_node(page, folder, [*arguments, "--json"], unpack), True))]  # fmt: skip
             print(f"node, {name}: {'same' if not wrong else 'DIFFERENT: ' + ', '.join(wrong)}",
                   flush=True)  # fmt: skip
             failed += bool(wrong)

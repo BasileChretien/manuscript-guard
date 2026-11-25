@@ -197,8 +197,9 @@ against its results, the `.docx` alone, `main.md` alone, with a referee's option
 American English with the copy with tracked changes asked for, held to a journal's rules
 from its form with a double-blind review, and the LaTeX project of `tests/data/latex` as a
 `.zip` and as a `.tar.gz`, which the command line is given as the folder they hold), then the
-same command as the page runs it in Node,
-and requires the same report and the same `--json`; in each browser, the page's copy with
+same command as the page runs it in Node, each archive unpacked there first by
+`web.unpack_paper` as the page unpacks it (`parity.mjs --unpack`), and requires the same
+report and the same `--json`; in each browser, the page's copy with
 tracked changes must track as many corrections as `--tracked` does, and the files the page
 makes of the journal's form must be the ones the command line was given. Then it opens the site in
 Chrome and in Firefox, served with no policy header as GitHub Pages serves it. The landing

@@ -54,6 +54,12 @@ def found(heading: str, text: str) -> bool:
      "# Ethics  approval and consent to participate"),
     ("Authors' contributions", "# Authors\u2019 contributions"),
     ("Author\u2019s contributions", "# Author's contributions"),
+    # The end of a heading in any order (the redesign's review): a colon after the marks, a
+    # closing sequence of hashes, a Word bookmark after the title.
+    ("Funding", "# **Funding**:"),
+    ("Funding", "# *Funding*."),
+    ("Funding", "## Funding ##"),
+    ("Funding", "# Funding[]{#_GoBack .anchor}"),
 ])  # fmt: skip
 def test_a_statement_is_found_under_the_heading_the_journal_asks_for(
     heading: str, text: str
@@ -80,6 +86,17 @@ def test_a_statement_is_found_under_the_heading_the_journal_asks_for(
 ])  # fmt: skip
 def test_another_heading_a_sentence_or_a_title_is_no_statement(heading: str, text: str) -> None:
     assert not found(heading, text)
+
+
+@pytest.mark.parametrize("opening", ["# Funding", "**Funding"])
+def test_a_line_of_spaces_after_a_title_is_read_in_linear_time(assert_linear, opening) -> None:
+    """A line that does not end where its title does is refused in time that grows with the
+    spaces after the title as they grow (the redesign's review: three runs of spaces back to
+    back took cubic time, and 3000 of them stalled the search)."""
+    assert not found("Funding", opening + " " * 3000 + "x")
+    searched = re.compile(journal_form.pattern(["Funding"]), re.IGNORECASE | re.MULTILINE)
+    assert_linear(lambda n: opening + " " * n + "x", searched.search, 200,
+                  "a statement's pattern, by the spaces after its title")  # fmt: skip
 
 
 def test_a_statement_ticked_takes_its_usual_heading_or_the_journal_s(tmp_path: Path) -> None:

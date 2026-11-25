@@ -2501,14 +2501,16 @@ _MOST_BREAKS = 4
 
 def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
     """`long` with each word a PDF broke at a line's end joined, in every way of joining
-    them; none where it holds no such break.
+    the first `_MOST_BREAKS` of them; none where it holds no such break.
 
     pdftotext prints a word broken at a line's end as its first part, a hyphen, the line's
     end and the rest, "Chlamydia trachoma-\\ntis", and a compound broken at its own hyphen
     the same way, "self-\\nreported" (the real-paper corpus, row 7 of window C). The long
     form G14 reads joins its words with a space, "trachoma- tis"; it is found again in
-    `prose` near the short form at `offset`, its words as they stand with what stands
-    between them, and a break is where a word ends on a hyphen and a line's end follows it.
+    `prose` beside the short form at `offset`, the occurrence that ends nearest before it,
+    or where none ends before it the one that starts nearest after it, "ROR (reporting odds
+    ratio)", its words as they stand with what stands between them. A break is where a word
+    ends on a hyphen and a line's end follows it.
     The long form as read keeps each break as a hyphen, which `_same_meaning` reads as a
     space, so each reading here joins some: two long forms are the same where any readings
     of them are. A hyphen and a space typed in a line is no break."""
@@ -2520,7 +2522,8 @@ def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
     found = list(re.finditer(r"\s+".join(map(re.escape, words)), prose[low:high]))
     if not found:
         return ()
-    nearest = min(found, key=lambda match: abs(low + match.start() - offset))
+    nearest = min(found, key=lambda match: _distance(low + match.start(), low + match.end(),
+                                                     offset))
     between = re.findall(r"\s+", nearest.group(0))
     breaks = [at for at, gap in enumerate(between)
               if words[at][-1] in _BREAKING and "\n" in gap][:_MOST_BREAKS]  # fmt: skip
@@ -2534,6 +2537,14 @@ def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
     return tuple(readings)
 
 
+def _distance(start: int, end: int, offset: int) -> tuple[int, int]:
+    """How far the text from `start` to `end` stands from the short form at `offset`: text
+    that ends before it comes first, by how far, then text that starts after it."""
+    if end <= offset:
+        return (0, offset - end)
+    return (1, max(0, start - offset))
+
+
 def _alike(one: _Definition, other: _Definition) -> bool:
     """Do two definitions give the same meaning: their long forms, or a reading of one with
     a word a PDF broke at a line's end joined (`_rejoined`)."""
@@ -2541,9 +2552,17 @@ def _alike(one: _Definition, other: _Definition) -> bool:
                for second in (other.long, *other.rejoined))  # fmt: skip
 
 
+#: What `_same_meaning` reads as a hyphen, and so as a space: a hyphen-minus, a hyphen
+#: proper and a non-breaking hyphen, wherever they stand, in text from any format.
+_READ_AS_HYPHENS = "-\N{HYPHEN}\N{NON-BREAKING HYPHEN}"
+
+
 def _same_meaning(one: str, other: str) -> bool:
+    """Do two long forms give the same meaning: the same words in any case, each hyphen
+    read as a space (`_READ_AS_HYPHENS`), less an article before them and an `s` after."""
+
     def plain(long: str) -> str:
-        words = re.sub(r"[-\s]+", " ", long.lower()).strip()
+        words = re.sub(f"[{_READ_AS_HYPHENS}\\s]+", " ", long.lower()).strip()
         for article in _ARTICLES:
             if words.startswith(article):
                 words = words[len(article) :]

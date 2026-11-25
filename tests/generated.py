@@ -1105,6 +1105,11 @@ BROKEN_COMPOUND = (("self-reported fatigue scale", "SFS"), ("cross-sectional hea
 BROKEN_OTHER = (("brisk walking test", "BWT", "brisk walking time"),
                 ("quiet play scale", "QPS", "quiet playing score"))  # fmt: skip
 BROKEN_TYPED = (("hospital anxiety scale", "HAS"), ("lean muscle volume", "LMV"))
+#: A compound typed with a hyphen proper or a non-breaking hyphen, `{}` where it stands,
+#: given again with a hyphen of either kind there and a line's end after it (round 1 of
+#: #784): the same meaning in text from any format.
+BROKEN_PROPER = (("self{}rated sleep scale", "SRS"), ("long{}stay care unit", "LCU"))
+PROPER_HYPHENS = ("\N{HYPHEN}", "\N{NON-BREAKING HYPHEN}")
 
 
 def _break_a_word(draw: st.DrawFn, long: str, at_hyphen: bool, joint: str) -> str:
@@ -1130,7 +1135,8 @@ def line_broken(
     draw: st.DrawFn,
 ) -> tuple[str, list[tuple[str, str]], list[tuple[str, str]]]:
     """A Methods section with one piece of each kind `BROKEN_SOFT`, `BROKEN_COMPOUND`,
-    `BROKEN_OTHER` and `BROKEN_TYPED` describe, in an order drawn, among words; and what G14
+    `BROKEN_OTHER`, `BROKEN_TYPED` and `BROKEN_PROPER` describe, in an order drawn, among
+    words; and what G14
     says of each short form's second definition, where the text was read from a PDF and
     where it was not, in order of the alphabet: `again` where it gives the first's meaning
     again, `another` where it gives another."""
@@ -1138,6 +1144,9 @@ def line_broken(
     compound_long, compound = draw(st.sampled_from(BROKEN_COMPOUND))
     other_long, other, meaning = draw(st.sampled_from(BROKEN_OTHER))
     typed_long, typed = draw(st.sampled_from(BROKEN_TYPED))
+    proper_long, proper = draw(st.sampled_from(BROKEN_PROPER))
+    proper_typed = proper_long.format(draw(st.sampled_from(PROPER_HYPHENS)))
+    proper_again = proper_long.format(draw(st.sampled_from(("-", *PROPER_HYPHENS))) + "\n")
 
     def piece(long: str, short: str, again: str) -> str:
         return f"The {long} ({short}) was read. The {again} ({short}) was read again."
@@ -1147,9 +1156,10 @@ def line_broken(
         piece(compound_long, compound, _break_a_word(draw, compound_long, True, "\n")),
         piece(other_long, other, _break_a_word(draw, meaning, False, "\n")),
         piece(typed_long, typed, _break_a_word(draw, typed_long, False, " ")),
+        piece(proper_typed, proper, proper_again),
     ]
     text, _starts = _paragraphs(draw, draw(st.permutations(pieces)))
-    said = {compound: "again", other: "another", typed: "another"}
+    said = {compound: "again", other: "another", typed: "another", proper: "again"}
     return ("# Methods\n\n" + text, sorted({**said, soft: "again"}.items()),
             sorted({**said, soft: "another"}.items()))  # fmt: skip
 

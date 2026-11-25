@@ -1304,6 +1304,45 @@ def test_the_limits_of_a_line_s_end_in_a_pdf_are_as_design_md_says() -> None:
     found = _pdf_findings("# Methods\n\nThe Reach Effectiveness Adoption Implementation "
                           "Maintenance (RE-AIM) frame was used. The RE-\nAIM frame held.\n")
     assert [code for code, _message in found] == ["abbreviation-unused", "abbreviation-undefined"]
+    # An en dash at a line's end is no break: "Kaplan\N{EN DASH}\nMeier" gives another
+    # meaning than "Kaplan\N{EN DASH}Meier", as before (round 1 of #784).
+    found = _pdf_findings("# Methods\n\nThe Kaplan\N{EN DASH}Meier estimator (KME) was "
+                          "read. The Kaplan\N{EN DASH}\nMeier estimator (KME) was read again.\n")
+    assert _meanings(found) == ["KME is defined as 'Kaplan\N{EN DASH} Meier estimator'"]
+
+
+def _meanings(found: list[tuple[str, str]]) -> list[str]:
+    """What each `abbreviation-redefined` says, up to the place it names."""
+    return [message.split(";")[0].split(" here")[0] for code, message in found
+            if code == "abbreviation-redefined"]  # fmt: skip
+
+
+def test_a_hyphen_proper_is_a_hyphen_in_every_format() -> None:
+    """Round 1 of #784: a hyphen proper and a non-breaking hyphen are read as a hyphen-minus
+    is, wherever they stand: "self\N{HYPHEN}reported" and "self-reported" give one meaning
+    in text from any format, and in a PDF's text a break at a hyphen proper is a break."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    typed = ("# Methods\n\nThe self\N{HYPHEN}reported fatigue scale (SFS) was read. The "
+             "self-reported fatigue scale (SFS) was read again. The "
+             "long\N{NON-BREAKING HYPHEN}term care unit (LCU) was read. The long-term care "
+             "unit (LCU) was read again.\n")
+    report = _judge([_file(0, Path("main.md"), typed, [], False)],
+                    _Known(frozenset(), frozenset()), Path("."))  # fmt: skip
+    found = [(f.code, f.message) for f in report.findings]
+    assert _meanings(found) == ["SFS is defined again", "LCU is defined again"]
+    broken = ("# Methods\n\nThe self\N{HYPHEN}reported fatigue scale (SFS) was read. The "
+              "self\N{HYPHEN}\nreported fatigue scale (SFS) was read again.\n")
+    assert _meanings(_pdf_findings(broken)) == ["SFS is defined again"]
+
+
+def test_a_long_form_s_breaks_are_read_where_it_stands_before_its_short_form() -> None:
+    """Round 1 of #784: the long form is found again where it ends before its short form's
+    bracket, not where another occurrence starts nearer it: the typed "ra- tio" before
+    "(ROR)" is no line's end, though the same words broken at a line's end follow."""
+    found = _pdf_findings("# Methods\n\nThe reporting odds ratio (ROR) was read. The "
+                          "reporting odds ra- tio (ROR) reporting odds ra-\ntio was typed.\n")
+    assert _meanings(found) == ["ROR is defined as 'reporting odds ra- tio'"]
 
 
 def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_only_there() -> None:

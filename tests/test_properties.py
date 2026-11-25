@@ -2298,7 +2298,9 @@ def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_comp
     compound's own hyphen, "self-\\nreported", which pdftotext prints the same way; one
     with another meaning, broken there too, still gives another, and so does a hyphen and a
     space typed inside a word, "inter- quartile", which is no line's end. Text read from
-    Markdown is compared as it was: the break is a hyphen, and the word stays two."""
+    Markdown is compared as it was: the break is a hyphen, and the word stays two. And in
+    text from any format, a hyphen proper or a non-breaking hyphen is read as a hyphen: a
+    compound typed with one gives the same meaning as with a hyphen-minus (round 1 of #784)."""
     text, from_pdf, from_markdown = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
 
@@ -2312,6 +2314,12 @@ def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_comp
     read = _file(0, Path("main.md"), text, [], False)
     assert said(dataclasses.replace(read, from_pdf=True)) == from_pdf, text
     assert said(read) == from_markdown, text
+
+
+def _only_a_hyphen_minus_is_read_as_a_hyphen(patch: pytest.MonkeyPatch) -> None:
+    """A hyphen proper or a non-breaking hyphen in a long form is a letter of its word, so
+    a compound typed with one gives another meaning than with a hyphen-minus."""
+    patch.setattr(language_gate, "_READ_AS_HYPHENS", "-")
 
 
 def _a_word_broken_at_a_line_s_end_is_never_joined(patch: pytest.MonkeyPatch) -> None:
@@ -28537,6 +28545,10 @@ BROKEN = {
     "a no-break space before a dash is no space": (
         _a_no_break_space_is_no_space_before_a_dash,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "only a hyphen-minus is read as a hyphen": (
+        _only_a_hyphen_minus_is_read_as_a_hyphen,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
     ),
     "a word broken at a line's end is never joined": (
         _a_word_broken_at_a_line_s_end_is_never_joined,

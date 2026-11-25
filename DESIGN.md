@@ -22750,15 +22750,18 @@ Open, recorded as each change landed:
   (`audit.bibliography_spans`), and one that is an entry goes on with it where it opens
   with the number after the entry above it, both in brackets, "[2]" after "[1]", or has an
   entry's shape as an entry above it has (`looks_like_reference`). Any other ends it, and
-  the entries after it are read as text:
-  one numbered "3." or "3)" with no entry's shape, since a numbered section's title is
-  written so ("5. Discussion"); one that gives its author and year with no shape the audit
-  reads; the list's first entry, with no entry above it to be read beside; and one in
-  brackets out of sequence, "[9]" after "[2]" (round 1 of #782). In Markdown, as `init --from` writes a Word paper's entry in a heading style,
-  `# \[2\] ...` ends the list too, in the audit and in `check`'s reading of it
+  the entries after it are read as text: one numbered "3." or "3)" with no entry's shape,
+  since a numbered section's title is written so ("5. Discussion"); one that gives its
+  author and year with no shape the audit reads; the list's first entry, with no entry
+  above it to be read beside; one in brackets out of sequence, "[9]" after "[2]" (round 1
+  of #782); and one with no entry's shape in a list Word numbers itself, "[%1]", whose
+  numbers stay out of the text, which gives each entry a mark only (`text.docx._line_start`;
+  round 2 of #782). In Markdown, as `init --from` writes a Word paper's entry in a heading
+  style, `# \[2\] ...` ends the list too, in the audit and in `check`'s reading of it
   (`text.reference_lists`), which ends a list at any heading.
   Pinned by `tests/test_audit_sections.py::test_an_entry_styled_as_a_heading_with_no_shape_told_ends_a_word_list`,
-  `tests/test_audit_sections.py::test_an_entry_typed_as_a_markdown_heading_ends_the_list`
+  `tests/test_audit_sections.py::test_an_entry_typed_as_a_markdown_heading_ends_the_list`,
+  `tests/test_audit_sections.py::test_an_entry_word_numbers_styled_as_a_heading_ends_the_list`
   and `tests/test_properties.py::test_a_word_list_goes_on_over_an_entry_styled_as_a_heading`.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that

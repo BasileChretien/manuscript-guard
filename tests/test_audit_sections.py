@@ -1776,3 +1776,26 @@ def test_an_entry_typed_as_a_markdown_heading_ends_the_list(tmp_path: Path) -> N
     assert len(census.entries) == 1, [e.label for e in census.entries]
     [(start, end)] = reference_lists(text)
     assert text[start:end].count("Dataset") == 1 and "A review" not in text[start:end]
+
+
+def test_an_entry_word_numbers_styled_as_a_heading_ends_the_list(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, as above): an entry Word numbers itself, "[%1]",
+    keeps its number out of the text, which gives it a mark only (`text.docx._line_start`),
+    so one in a heading style with no entry's shape ends the list, as before (round 2 of
+    #782)."""
+    numberings = (
+        f"<w:numbering {NS}>"
+        "<w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'><w:start w:val='1'/>"
+        "<w:numFmt w:val='decimal'/><w:lvlText w:val='[%1]'/></w:lvl></w:abstractNum>"
+        "<w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num>"
+        "</w:numbering>"
+    )
+    entries = ["Dataset - https://example.org/data",
+               "Face detection: a review - https://example.org/review",
+               "A note - https://example.org/note"]  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", ["Results", "The rate rose.", "REFERENCES",
+                                                *entries],
+                      heading=entries[1], numbered=dict.fromkeys(entries, "1"),
+                      numberings=numberings)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert len(census.entries) == 1, [e.label for e in census.entries]

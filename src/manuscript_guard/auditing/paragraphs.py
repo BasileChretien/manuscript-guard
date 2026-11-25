@@ -180,12 +180,17 @@ def of_docx(document, text: str, lists: Sequence[tuple[int, int]] = ()) -> Parag
 
     `lists` are the reference lists, as 0-based lines `[start, end)` of the body from each
     one's heading (`audit.docx_bibliography_spans`). An entry in a heading style inside one
-    goes on the list (#782), and is a paragraph under the list's heading, not a heading."""
+    goes on the list (`audit._entry_styled_as_a_heading`, #782), and is a paragraph under
+    the list's heading, not a heading. Another heading a list runs on over, a second
+    bibliography heading ("References", then "Bibliography"), is a heading still."""
+    from manuscript_guard.audit import _entry_styled_as_a_heading
     from manuscript_guard.text.docx_abstract import placed_headings
 
     body = document.body.split("\n")
     placed = [one for one in placed_headings(document) if one.line < len(body)
-              and not any(start < one.line < end for start, end in lists)]  # fmt: skip
+              and not any(start < one.line < end
+                          and _entry_styled_as_a_heading(body, start, one.line)
+                          for start, end in lists)]  # fmt: skip
     headings = {one.line + 1: one.title for one in placed}
     run_in = frozenset(one.line + 1 for one in placed if one.run_in)
     notes = len(body) + 1 if document.notes else None

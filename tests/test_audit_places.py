@@ -165,6 +165,37 @@ def test_an_entry_styled_as_a_heading_is_placed_in_its_list(tmp_path: Path, caps
     assert places.said(lines.index("A note after the list.") + 1) == "Appendix, paragraph 1"
 
 
+def test_a_second_bibliography_heading_inside_a_list_is_a_heading_still(
+    tmp_path: Path, capsys
+) -> None:
+    """A list runs on over a second bibliography heading, "Bibliography" after "References",
+    which is no entry: it stays a heading of the places, and the entry under it is placed
+    under it, as Word shows it (review of #792, where every heading inside a list was
+    dropped and it was counted as a paragraph of "References")."""
+    paper = word_document(tmp_path / "paper.docx", [
+        ("Methods", True),
+        ("The score was read as before [1].", False),
+        ("References", True),
+        ("[1] Smith A. A first study of the score. J Test. 2019;1:1-9.", False),
+        ("Bibliography", True),
+        ("[2] Lee B. A second study of the score. J Test. 2020;2:1-9.", False),
+        ("Appendix", True),
+        ("A note.", False),
+    ])  # fmt: skip
+    from manuscript_guard.audit import docx_bibliography_spans
+    from manuscript_guard.auditing.paragraphs import of_docx
+    from manuscript_guard.text.docx import read_docx_text
+
+    document = read_docx_text(paper)
+    spans = docx_bibliography_spans(document)
+    lines = document.body.split("\n")
+    assert len(spans) == 1 and spans[0][0] < lines.index("Bibliography") < spans[0][1]
+    places = of_docx(document, document.body, spans)
+    entry = lines.index("[2] Lee B. A second study of the score. J Test. 2020;2:1-9.") + 1
+    assert places.said(entry) == "Bibliography, paragraph 1"
+    assert places.said(lines.index("Bibliography") + 1) == "the heading Bibliography"
+
+
 def test_a_heading_with_no_words_is_no_heading() -> None:
     """An empty paragraph in a heading style is marked a heading by the document's reader:
     the paragraphs after it were "before the first heading" (review of #616)."""

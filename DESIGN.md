@@ -29227,11 +29227,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
     projects, figures, packages, `--cited` and `--report-draft` are the command line's.
     Accepted.
-  - *The journal form's statements* are found by their label in a heading, in the marked
-    words a paragraph opens with, or in plain type before a colon among its first words
-    (`journal_form.pattern`), as the disclosures gate reads a label. A sentence that opens
-    with a few words, the label and a colon ("We obtained consent from each patient: ...")
-    is read as the statement. Pinned by
+  - *The journal form's statements* are found by their label at the start of a heading, of
+    the marked words a paragraph opens with, or of a paragraph in plain type before a colon,
+    at most two words after it (`journal_form.pattern`), the label ending there. A sentence
+    that opens with two words, the label and a colon ("Patients gave consent: ...") is read
+    as the statement. Pinned by
     `tests/test_journal_form.py::test_a_sentence_with_a_colon_after_a_few_words_is_read_as_a_label`.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
     results, `main.md`, the `.docx` and results under names outside ASCII and under names

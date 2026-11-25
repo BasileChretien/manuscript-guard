@@ -46,6 +46,25 @@ def found(statement: str, text: str) -> bool:
     ("use-of-ai", "# Declaration of generative AI in the writing process"),
     ("use-of-ai", "AI disclosure: none was used."),
     ("use-of-ai", "## Statement on the use of AI"),
+    # Journals' own headings (round 1 of #787).
+    ("author-contributions", "# CRediT authorship contribution statement"),
+    ("data-availability", "**Data and materials availability:** in the supplement."),
+    ("data-availability", "# Data, Materials, and Software Availability"),
+    ("data-availability", "# Data and code availability"),
+    ("data-availability", "# Data accessibility"),
+    ("competing-interests", "# Declaration of conflicting interests"),
+    ("competing-interests", "Disclosure statement: none."),
+    ("competing-interests", "Disclosures: None."),
+    ("competing-interests", "# Duality of interest"),
+    ("funding", "# Role of the funding source"),
+    ("use-of-ai", "# Declaration of generative AI and AI-assisted technologies in the writing "
+                  "process"),
+    # A paragraph that opens with a Word bookmark, as pandoc writes one, and a label both
+    # bold and italic.
+    ("funding", "[]{#_Hlk1 .anchor}**Funding:** none."),
+    ("funding", "[]{#_Hlk1 .anchor}Funding: none."),
+    ("funding", "***Funding:*** none."),
+    ("funding", "# **Funding**"),
 ])  # fmt: skip
 def test_a_statement_is_found_in_a_heading_or_the_label_its_paragraph_opens_with(
     statement: str, text: str
@@ -65,16 +84,24 @@ def test_a_statement_is_found_in_a_heading_or_the_label_its_paragraph_opens_with
     ("use-of-ai", "# AI-based models"),
     ("use-of-ai", "## Training the AI"),
     ("data-availability", "# Data collection"),
+    # A bullet, a bold title and a heading on the subject (round 1 of #787).
+    ("consent", "* Patients who withdrew consent were excluded."),
+    ("funding", "**Table 2. Sources of funding of the included trials**"),
+    ("use-of-ai", "## The use of AI in radiology"),
+    ("funding", "## Funding of mental health services"),
+    ("competing-interests", "# AI disclosure"),
+    ("competing-interests", "12. Lo B, Field MJ. Conflict of interest in medical research: a"),
 ])  # fmt: skip
 def test_a_sentence_or_another_heading_is_no_statement(statement: str, text: str) -> None:
     assert not found(statement, text)
 
 
 def test_a_sentence_with_a_colon_after_a_few_words_is_read_as_a_label() -> None:
-    """A label in plain type is read by its colon among the paragraph's first words, as the
-    disclosures gate reads one: a sentence that opens that way is read as a statement too
-    (DESIGN.md, Known gaps)."""
-    assert found("consent", "We obtained consent from each patient: written, in their language.")
+    """A label in plain type is read by the colon that ends it, at most two words after the
+    paragraph's start, as "Statement of competing interests:" is: a sentence that opens with
+    two words, the label and a colon is read as a statement too (DESIGN.md, Known gaps)."""
+    assert found("consent", "Patients gave consent: written, in their language.")
+    assert not found("consent", "We obtained consent from each patient: written.")
 
 
 def test_the_form_makes_a_profile_the_command_line_reads(tmp_path: Path) -> None:

@@ -6,9 +6,10 @@ sections and the headings of a structured abstract it asks for, the statements i
 and how its peer review is blinded. Nothing is guessed: a limit left empty is not in the
 profile, and is not checked. Each statement ticked is found as G4 finds any profile's, by a
 pattern on the text as Markdown writes it (a .docx and a LaTeX paper are read that way too):
-its label in a heading, in the marked words a paragraph opens with ("**Funding:**",
-"*Ethics approval.*"), or in plain type ending in a colon within the first few words
-("Funding: none"). A sentence that mentions funding is no statement of it.
+a heading that opens with its label, the marked words a paragraph opens with
+("**Funding:**", "*Ethics approval.*"), or the label in plain type a paragraph opens with,
+before a colon ("Funding: none"). The label must end there: a sentence that mentions
+funding, and a heading on the subject ("Funding of mental health services"), state nothing.
 
 The profile is the one the command line reads, validated against its schema, so that the page
 and `audit --journal` given the same file say the same; web/test/check.py builds the command
@@ -58,67 +59,96 @@ class Statement:
     why: str
 
 
-#: The statements the page offers, by their id in the profile.
+#: The statements the page offers, by their id in the profile. Each label is matched whole,
+#: and must end where the label does (`_END`): "Funding" in "Funding: none" and in a heading
+#: "Funding", not in "Funding of mental health services".
 STATEMENTS: dict[str, Statement] = {
     "funding": Statement(
         "Funding",
-        r"funding|financial support|sources? of funding",
+        r"funding|financial support|grant support|sources? of funding|role of the funding "
+        r"sources?|statement of funding",
         "Funding sources, or a statement that the work received none.",
     ),
     "competing-interests": Statement(
         "Competing interests",
-        r"competing interests?|conflicts? of interests?|declarations? of (?:competing )?"
-        r"interests?|financial disclosures?",
+        r"competing interests?|conflicts? of interests?|conflicting interests?|declarations? of "
+        r"(?:competing |conflicting )?interests?|statement of (?:competing|conflicting) "
+        r"interests?|financial disclosures?|(?<!ai )(?<!ai-)disclosures?|duality of interests?",
         "Competing interests for every author, or a statement that there are none.",
     ),
     "ethics": Statement(
         "Ethics approval",
-        r"ethics|ethical|institutional review board",
+        r"ethic(?:s|al) approval and consent(?: to participate)?|ethics|ethical (?:approval|"
+        r"statement|considerations?|review|declarations?)|ethics (?:approval|statement|"
+        r"committee|declarations?|review)|statement of ethics|institutional review board",
         "The committee that approved the study and its reference, or why no approval was "
         "needed.",
     ),
     "consent": Statement(
         "Consent",
-        r"consent",
+        r"ethic(?:s|al) approval and consent(?: to participate)?|(?:informed |patient |written )?"
+        r"consent(?: (?:for publication|to participate|to publish))?",
         "How consent to take part, and to publish, was obtained, or why it was not needed.",
     ),
     "data-availability": Statement(
         "Data availability",
-        r"data availability|data sharing|data access|availability of (?:the )?(?:supporting )?"
-        r"data",
+        r"data(?:,? (?:and )?(?:materials?|code|software))*,? (?:availability|accessibility)|"
+        r"availability of (?:the )?(?:supporting )?data(?: and materials?)?|data sharing|"
+        r"data access",
         "Where the data are, and on what terms.",
     ),
     "author-contributions": Statement(
         "Author contributions",
-        r"authors?(?:['\u2019]s?)? contributions?|contributorship|contributors|credit (?:author )?"
-        r"statement",
+        r"authors?(?:['\N{RIGHT SINGLE QUOTATION MARK}]s?)? contributions?|authorship "
+        r"contributions?|contributorship|contributors|credit (?:authorship contribution |author )?"
+        r"statement|author roles",
         "What each author did.",
     ),
     "trial-registration": Statement(
         "Trial registration",
-        r"(?:clinical )?trial registration|registration (?:number|details)|trial (?:number|"
-        r"identifier)",
+        r"(?:clinical )?trial registration|registration (?:number|details|information)|trial "
+        r"(?:number|identifier|registry)|clinical trial number|study registration",
         "The registry and the trial's number in it.",
     ),
     "use-of-ai": Statement(
         "Use of AI",
-        r"(?:use|declaration|disclosure|statement) (?:of|on) (?:the use of )?(?:generative )?"
-        r"(?:ai|artificial intelligence)|(?:generative )?(?:ai|artificial intelligence)[- ]"
-        r"(?:use|disclosure|statement|declaration)",
+        r"(?:declaration|disclosure|statement) (?:of|on|regarding) (?:the )?(?:use of )?"
+        r"(?:generative )?(?:ai|artificial intelligence)(?: and ai[- ]assisted technologies)?"
+        r"(?: in (?:the )?(?:scientific )?writing(?: process)?)?|(?:generative )?(?:ai|"
+        r"artificial intelligence)(?: use)? (?:disclosure|statement|declaration)|use of "
+        r"(?:generative )?(?:ai|artificial intelligence)(?: tools)?(?: (?:in|for|during) "
+        r"(?:the )?(?:writing|preparation)(?: of (?:the|this) (?:manuscript|paper|article))?"
+        r"(?: process)?)?",
         "Whether and how AI tools were used in the work or the writing.",
     ),
 }
 
+#: A Word bookmark at a paragraph's start, as pandoc writes one: `[]{#_Hlk1 .anchor}`.
+_ANCHORS = r"(?:\[\]\{[^}\n]*\}[ \t]*)*"
+#: The marks that open or close emphasis: bold and italic, bold, or italic.
+_MARK = r"(?:\*\*\*|\*\*|__|\*|_)"
+#: A heading's number: "5.", "5", "2.1", "IV.", "A)".
+_NUMBER = r"(?:(?:\d+(?:\.\d+)*|[ivxlc]+|[a-z])[.)][ \t]+|\d+(?:\.\d+)*[ \t]+)?"
+#: A word before the label, at most two of them: "Statement of", "Human".
+_LEAD = r"(?:[^\s*_:.]+[ \t]+){0,2}"
+#: A word a label may end in: "Data availability statement", "Ethics declarations".
+_TAIL = r"(?:[ \t]+(?:statements?|declarations?|disclosures?|information|details|section))?"
+#: Where a label in a heading or in marked words ends: at the marks that close it, a colon,
+#: a stop, a heading's attributes or the end of the line.
+_END = r"(?=[ \t]*(?:\*\*\*|\*\*|__|\*|_|[:.]|\{|$))"
+
 
 def pattern(labels: str) -> str:
     """What finds a statement whose label is one of `labels`, in the text as Markdown writes
-    it: in a heading's line; in the marked words a paragraph opens with; or in plain type
-    among its first six words, before a colon."""
-    word = rf"\b(?:{labels})\b"
+    it: a heading that opens with it, after its number; the marked words a paragraph opens
+    with ("**Funding:**", "*Ethics approval.*"); or a paragraph that opens with it in plain
+    type, followed by a colon ("Funding: none"). The label ends where it does, and at most
+    two words stand before it."""
+    label = rf"{_LEAD}\b(?:{labels}){_TAIL}"
     return ("(?im)^(?:"
-            rf"#{{1,6}}[ \t][^\n]*?{word}"
-            rf"|[ \t]*(?:\*\*|__|\*|_)[^\n*_]{{0,80}}?{word}"
-            rf"|[ \t]*(?:[^\s:#>|*_][^\s:]*[ \t]+){{0,5}}{word}[^\n:.]{{0,40}}:"
+            rf"#{{1,6}}[ \t]+{_ANCHORS}{_NUMBER}{_MARK}?[ \t]*{label}{_END}"
+            rf"|[ \t]*{_ANCHORS}{_MARK}(?=[^\s*_]){label}{_END}"
+            rf"|[ \t]*{_ANCHORS}{label}[ \t]*:"
             ")")  # fmt: skip
 
 

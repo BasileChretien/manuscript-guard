@@ -17256,6 +17256,291 @@ whole of `check --json`, so a pull request that moves a key says so in
 a moved line keep every key, another subject moves it, and the ordinal counts in its
 sentence only, each beside a broken rule in `BROKEN`.
 
+## A paper's numbers are matched to an output's rows, a group at a time
+
+Designed 2026-11-25, not built. Basile asked on 2026-11-25 what would make the toolkit one
+that authors want to use when their only experience of AI is ChatGPT, their statistics are
+limited and research is not yet their trade. One answer was to compare a paper with the output
+of the program its numbers came from: SPSS, jamovi, Stata, GraphPad, a spreadsheet. He asked
+how that could work when every such file has its own columns, named by whoever made it. This
+section is the answer. Nothing here is built before Basile answers its questions.
+
+### Why `--against` cannot just read more formats
+
+`load_backing` in `audit.py` reads every number of every output into one set of texts: a CSV's
+rows are joined into one line, a JSON document's keys and values listed. A number of the paper
+is backed where each of its parts (`parts_of`), normalised, is in that set. Nothing is rounded,
+so an output that prints 1.8213 does not back a paper's 1.82, and a spreadsheet is named among
+the files not read. "Auditing existing papers, and saying what the audit is worth" (above)
+records what such a set was measured to be worth in this project's predecessor: with the
+analysis outputs as the backing set, 100% of integers up to 100 and 97% up to 1000 already
+matched, and of fifteen deliberately corrupted headline numbers it caught none.
+
+Reading .xlsx or an SPSS export into the same set would add files to a test that is weak by
+construction. What the set throws away is which numbers stand together. A program prints an
+estimate, its interval and its P on one row, and a paper prints them in one phrase; neither
+has to say what its columns are called for the two to be compared.
+
+### The rules
+
+1. **A group is matched with one row, or it is not matched.** A group is a set of numbers the
+   audit already reads as belonging together in the paper: an estimate with its interval and
+   the P that follows it ("OR 1.8, 95% CI 1.2 to 2.7, P = 0.004"); a count with its share
+   ("52 (31.7%)"); a mean with its SD; a test statistic with its degrees of freedom and its P.
+   It is matched where each of its numbers is a cell of its own on the same row of the same
+   table, in any columns.
+2. **No column's meaning is read.** Headers are anyone's, so the rule never asks what a column
+   is called or which one holds the lower bound. The words of the row (its label, its table's
+   title or its sheet) are shown beside the match, so that a reader sees at a glance that the
+   odds ratio for the sessions came from the row for age.
+3. **A printed number matches the cells that round to it** at its own number of places: 1.8
+   matches any cell from 1.75 to 1.85, both ends included, since programs round a half either
+   way.
+4. **What a match is worth is measured for groups as it is for numbers.** For each shape of
+   group the paper holds (three numbers at one decimal place and one at three, say), the share
+   of a fixed grid of such groups that some row of the given outputs would match. The grid is
+   fixed, as `measure_discrimination`'s is, so the figure is the same on every run. It falls
+   where rows are long, as a row of raw data is.
+5. **The set stays for a number no group holds.** A count on its own ("164 took part") is
+   compared as today, with today's measure beside it. The groups come first in the report.
+
+### What it reports
+
+- Matched: the group and its row: the file, the sheet or table, the row's number and its
+  words. Listed in `--details` and on the page; not a finding.
+- Apart: each number of a group is somewhere in the outputs, and no row holds them all. The
+  set would have passed it.
+- One number off: a group of three or more numbers all but one of which stand on one row,
+  with no row holding them all: the row, and the number that differs ("2.7 here; 2.37 on that
+  row"). Not said of a pair, where one number matching by chance is common.
+- Not in the outputs: as today.
+
+Whether "apart" and "one number off" count for `--strict` is question 3.
+
+### Readers
+
+A reader turns an output file into tables of cells, each a value with its place, and does
+nothing else. No reader decides what a cell means.
+
+- CSV and TSV: one table, kept as rows rather than joined.
+- JSON: a list of objects is a table, one row for each object. In a results fragment, the
+  values whose keys differ only in their last part (`ror.point`, `ror.ci_low`, `ror.ci_high`,
+  as `em.interval` writes them) are one row.
+- .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
+  read. A cell's stored value is read, not its displayed one, and rule 3 rounds it.
+- HTML: each table, titled by its caption or by the heading before it.
+- Text (.txt, .log): question 5.
+- Not read: SPSS's .spv, jamovi's .omv, Stata's .smcl and GraphPad's .pzfx, until each
+  format is read from its publisher's documentation. Each is named as not read, with the export
+  that is.
+
+### How we will know it works
+
+- The measurement that sank the set, repeated. A fixture paper and its outputs, each
+  headline number corrupted in turn, in three ways: a digit changed, the group taken from the
+  next row, one bound of an interval taken from another row. Counted: how many the groups
+  catch, and how many the set does. Recorded in this section, and each way of corrupting held
+  in `tests/test_corruption.py`.
+- Generated inputs. `tests/generated.py` draws outputs whose columns are shuffled, renamed
+  and padded with rows and columns of other numbers; a property holds that a group is matched
+  wherever its row is, and a broken matcher (one that ignores rows) fails it under a dozen
+  seeds.
+- Real papers with their outputs. The corpus holds papers, not their outputs. A set of
+  published papers whose program output is deposited beside them (at OSF, or in a journal's
+  supplement) is still to be found; until it is, false alarms are measured on the example and
+  the fixtures only, and this section says so.
+- The matching reads text, so its pull request runs the corpus gate.
+
+### Pull requests, in order
+
+1. Readers. Output files become tables of cells (CSV and TSV kept as rows, JSON lists of
+   objects, .xlsx, HTML); the set is filled from the cells as it is today, so nothing an audit
+   reports changes but the files it can read. The page takes the same files.
+2. Groups. The matching, "apart" and "one number off", the measure by shape, and their
+   section first among the comparisons.
+3. Transforms, if question 4 keeps them.
+4. A text file's lines as rows, if question 5 keeps it.
+
+### Questions for Basile
+
+1. **Which groups.** (a) An estimate with its interval and P only. (b) Also a count with its
+   share, a mean with its SD, and a statistic with its degrees of freedom and P. Recommended:
+   (b); the audit already reads each of them in a paper.
+2. **"One number off".** (a) For groups of three or more numbers. (b) For pairs too. (c) Not at
+   all: a group is matched or it is not. Recommended: (a).
+3. **What `--strict` counts.** (a) "Apart" and "one number off". (b) "One number off" alone.
+   (c) Neither, until they are measured on real papers, as #710 sets a code's severity in the
+   audit by its precision on real papers. Recommended: (c).
+4. **Transforms.** (a) None. (b) Two, each named on the match: a per cent matches a proportion
+   times 100, and an estimate with its interval matches a row of their logarithms (an odds
+   ratio and the B it is the exponential of). (c) More, such as an inverse, for a reference
+   group the paper takes the other way round. Recommended: (b).
+5. **A text file's lines.** (a) Not rows: a .txt or a .log fills the set only. (b) Each line is
+   a row, and the report says so. Recommended: (b), since a printed table of coefficients puts
+   a term's numbers on one line.
+
+### Not verified
+
+- What SPSS's and jamovi's exports to HTML and .xlsx hold, and whether they keep a table's
+  title; that Stata's printed tables put a term's estimate, interval and P on one line.
+- That enough published papers deposit their program output for a measure of false alarms.
+
+## One set of plan questions, answered before the data or quoted from a draft
+
+Designed 2026-11-25, not built. In the same conversation as the section above, the other
+answer was a plan builder: the analysis plan asked of an author who has never written one, in
+words they understand, with neither a terminal nor an agent. Basile agreed, warned that it is
+hard to make well, and added that it "could also be used as a checker for those who already
+have a v1 paper". This section is that design. Nothing here is built before Basile answers its
+questions.
+
+### What exists
+
+- `REQUIRED` in `gates/design.py` names the seven sections every plan has (question, design,
+  population, exposure, outcome, analysis, deviations), each by the pattern its heading is
+  matched by. `data/study_types.yaml` adds, for each of seven designs, the sections a plan of
+  that design states (a cohort study's time zero and follow-up, confounding, missing data and
+  sensitivity analyses; a trial's estimand, sample size, randomisation, missing data,
+  sensitivity and interim analyses), each with what it has to say and the guideline item it
+  comes from, read on a stated date.
+- G12 holds `design/plan.md` to those sections (`plan-section-missing`, `plan-section-empty`),
+  and warns without blocking ("The design gate warns and never blocks", above). The plan is
+  held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
+  the registration's outcomes (`registration-…`).
+- `next` asks for the design first (`choose-study-type`), and the analysis-plan skill puts the
+  sections to the author through an agent.
+- `audit` asks no question of a plan. Its `--design` takes `observational` or `trial`, for the
+  causal words and the baseline tables.
+
+What is missing: questions a newcomer can answer, the designs newcomers write most, a way to
+answer with neither a terminal nor an agent, and a way to put the same questions to a paper
+already written.
+
+### The rules
+
+1. **One list of questions.** The seven sections of `REQUIRED` move into the file beside the
+   designs' own, so that `check`, `audit`, a new `plan` command, the page and the skill all
+   read one list. Each section gains two fields: `ask`, the question in plain words ("How will
+   you handle people with missing values?"), and `explain`, a sentence or two on why a reader
+   needs the answer. Both are the project's words, citing the section's item, and quote no
+   guideline whose page gives no licence, as the file already requires.
+2. **Two ways to answer.** Before the data, an answer is text, written under the section's
+   heading in `design/plan.md`. For a paper already written, an answer is a quote: the sentence
+   of the paper that answers the question, held to be in the paper as a reporting checklist's
+   quote is.
+3. **The tool asks and records; it chooses nothing.** It proposes no test, no model, no
+   adjustment set and no way of handling missing data. Where a section's own source lists the
+   usual answers, they may be shown as that source's list, cited (question 2); otherwise the
+   answer is the author's text.
+4. **"Not decided yet" is an answer.** It names who is to decide, a role or a person the author
+   names, and is kept as an open item rather than left as an empty heading (question 1).
+5. **A plan made from a written paper says when it was made.** Its answers are quotes, it is
+   headed as written after the results, and nothing in it reads as a preregistration.
+
+### Asking a paper already written
+
+- `audit --design` takes each design of `study_types.yaml` as well as `observational` and
+  `trial`; each design says in the file which of the two it implies for the checks that read
+  them (a cohort study is observational).
+- A section "Questions of the plan" asks the design's questions of the Methods. Each section of
+  the file gains a third field, `finds`: what a sentence answering it is matched by, apart from
+  `heading`, since a sentence is not a heading. Where sentences match, the first three are
+  offered as candidates with their places; where none does, the question is said to be
+  unanswered: "No sentence of the Methods says how missing values were handled. A reviewer will
+  ask." It is a question for the author, and `--strict` does not count it.
+- A section's `finds` is measured on the corpus before it offers candidates. A pattern as broad
+  as "analysis" can match many sentences of a Methods section; a section whose first candidate
+  is the answer in fewer than half of the corpus's papers, by the corpus's verdicts, offers
+  none, and its question stands alone.
+- The page shows the same section, with each candidate as a choice and a box for another
+  sentence. The quotes chosen are saved as an answers file (below), which `audit` reads back
+  with `--plan-answers FILE` and holds to the paper.
+
+### Answering before the data
+
+- Two commands, neither of which waits for a person, so that an agent can drive them and a
+  script can run them: `manuscript-guard plan questions [--design T] [--json]` prints the
+  questions, and `manuscript-guard plan write ANSWERS` writes `design/plan.md` from an answers
+  file. `plan write` refuses where `design/plan.md` has text under any heading, rather than
+  merge into an author's plan.
+- The answers file (`manuscript-guard/plan-answers/1`) names the design and, for each
+  section's id, one of: `text`; `quote`, with its place in the paper; or `open`, with `who` and
+  a note.
+- The skill asks from the command. The analysis-plan skill reads `plan questions --json`
+  rather than its own copy of the sections, so that the skill, the page and the command ask the
+  same questions in the same words.
+- The page. A form, one question at a time, run in the browser as the audit page is, with
+  nothing uploaded. It saves `plan.md`, the answers file and a PDF of the plan, made by the
+  writer that makes the audit's PDF, with the SHA-256 of `plan.md` printed on it.
+- The date. A plan is worth as much as the proof that it came before the results, and a file
+  made in a browser proves nothing about when. The PDF says so, and the page and `plan write`
+  say what does: a registration at OSF, which is free, public and dated, and which G12 already
+  looks up; or a commit pushed before the analysis is run. A project's own rule, the plan frozen
+  when the first results are written, is unchanged.
+
+### New designs
+
+Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
+(STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
+guideline's own page on the day of its pull request, as the file requires, and
+`choose-study-type` offers the design. STROBE and STARD 2015 have recipes already; CARE, SRQR
+and COREQ need one each, with their licences read. Which guideline a case series answers to is
+read before its entry is written.
+
+`choose-study-type` also gains a sentence beside each option saying what makes a study that
+design, in the project's words, so that an author who does not know the name can recognise
+the study (question 5).
+
+### How we will know it works
+
+- `finds` reads text: its pull request runs the corpus gate, and each section's candidates are
+  judged for the threshold above.
+- `tests/generated.py` draws Methods with each section's answer present, reworded, moved and
+  removed; a property holds that a question is said to be unanswered exactly where its answer
+  is gone, and a broken `finds` fails it under a dozen seeds.
+- `tests/test_corruption.py` holds a paper whose sentence on missing data is cut, which the
+  audit must say is unanswered.
+- Moving `REQUIRED` into the file changes nothing G12 reports, which the differential reading of
+  `check` holds.
+
+### Pull requests, in order
+
+1. The list. `REQUIRED` moved into `study_types.yaml`, `ask` and `explain` for every
+   section, and a sentence for each design in `choose-study-type`.
+2. The new designs, one pull request each, with a recipe where one is lacking.
+3. A paper's plan questions in `audit`: `--design` takes the designs, `finds` is measured on
+   the corpus, and the page shows the section.
+4. `plan questions` and `plan write`, the answers file, open items in G12, and the skill
+   reading the command.
+5. The page's form and its PDF.
+
+### Questions for Basile
+
+1. **An open item ("not decided yet").** (a) A warning at every stage, as the design gate's
+   other findings are. (b) A warning until `analysis`, then a failure unless the person it
+   names has signed it (`sign`). Recommended: (a), which keeps the design gate's rule of never
+   blocking; that the open item names who decides is most of its value.
+2. **Usual answers shown.** (a) Never: every answer is the author's text. (b) Where a section's
+   source lists them, as that source's list, cited. Recommended: (b).
+3. **A written paper's plan questions.** (a) Asked whenever `audit --design` names a design.
+   (b) Only behind a flag of their own. Recommended: (a), since the page asks the design anyway.
+4. **A plan from a written paper.** (a) Kept in the report and the answers file only. (b) Also
+   written by `plan write --after-results` into a project brought in from Word, headed as
+   written after the results. Recommended: (b).
+5. **Helping an author name the design.** (a) A sentence beside each option. (b) Also a short
+   series of questions (did the investigators assign the exposure? were people followed over
+   time?) taken from a published classification of study designs. Recommended: (a) now, and
+   (b) only if authors watched using the page still choose the wrong design.
+
+### Not verified
+
+- The pages, items and licences of STROBE's checklist for cross-sectional studies, CARE, SRQR
+  and COREQ, and which guideline a case series answers to.
+- A published classification of study designs that (b) of question 5 could take its questions
+  from.
+- How an OSF registration is made from a plan file, and whether the page can link to it with
+  the plan attached.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.

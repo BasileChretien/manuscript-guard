@@ -609,8 +609,11 @@ text's, a "Results" among them the paper's own and not the Abstract's part, and 
 stand after it before the next heading it is read as a heading "Keywords" at the
 Abstract's level, under which nothing is searched, an Introduction with no heading of its
 own. One between the Abstract's title and its first part titled on a line of its own ends
-nothing, and nor does one after the parts, nor "Keywords" in a sentence; a PDF's keywords
-end nothing yet. A heading over the Abstract or the Introduction, the
+nothing, and nor does one after the parts, nor "Keywords" in a sentence. A PDF's run-in
+"Keywords:" ends its Abstract by the same rule: only the label followed by a colon and words
+on its line. "Keywords" alone on its line, "Keywords:" with nothing after it, a letter-spaced
+"K E Y W O R D S", Springer's "Keywords Pharmacovigilance · Disproportionality"
+with no colon and IEEE's "Index Terms—falls, records" end nothing. A heading over the Abstract or the Introduction, the
 paper's title, names no section; one over a Methods subsection does, and the words under
 it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An

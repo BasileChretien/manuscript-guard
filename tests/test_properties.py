@@ -24167,6 +24167,45 @@ def test_init_from_ends_the_abstract_at_its_run_in_keywords_as_the_audit_does(
                                  if title.casefold().startswith("key")), None)  # fmt: skip
 
 
+from generated import pdf_keywords_papers  # noqa: E402
+
+
+@holds(30, pdf_keywords_papers())
+def test_a_run_in_keywords_ends_a_pdf_s_abstract_as_a_word_paper_s(
+    drawn: list[tuple[list[str], list[tuple[int, str]]]],
+) -> None:
+    """The same papers as a PDF's lines are placed by the same headings as the Word papers
+    (window C of the real-paper corpus, row 8): a run-in "Keywords:" after the Abstract's
+    words ends the Abstract, and is a heading "Keywords" at its level where words stand after
+    it, so the Results, Discussion and Conclusion after it are the paper's; with no words
+    after it, it ends the Abstract and is no heading; one between the Abstract's title and its
+    titled parts ends nothing, nor does "Keywords" in a sentence, a label with nothing after
+    it, or one run on into the words (`auditing.pdf.headings_of`, `PdfText.placed`)."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.pdf import _text_of
+
+    for printed, headings in drawn:
+        kept = SimpleNamespace(lines=[SimpleNamespace(page=1, text=text, number=None)
+                                      for text in printed],
+                               numbered=False, furniture=(), reader="test", pages=1)  # fmt: skip
+        placed = _text_of(Path("paper.pdf"), kept, "\n".join(printed)).placed
+        assert placed is not None, printed
+        assert [(level, title) for _line, title, level in placed] == headings, printed
+
+
+def _a_pdf_s_keywords_make_no_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_keywords", lambda texts, named, run_in: None)
+
+
+def _a_pdf_s_keywords_end_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf
+
+    patch.setattr(pdf, "_ended", lambda lines, headings, run_in: [False] * len(headings))
+
+
 from generated import keywords_sections  # noqa: E402
 
 
@@ -25800,6 +25839,14 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a run-in Keywords: in a PDF's Abstract is no heading": (
+        _a_pdf_s_keywords_make_no_heading,
+        test_a_run_in_keywords_ends_a_pdf_s_abstract_as_a_word_paper_s,
+    ),
+    "a run-in Keywords: ends no PDF's Abstract": (
+        _a_pdf_s_keywords_end_nothing,
+        test_a_run_in_keywords_ends_a_pdf_s_abstract_as_a_word_paper_s,
+    ),
     "the PDF entry holds for every format": (
         _the_pdf_entry_holds_for_every_format,
         test_only_a_use_before_its_definition_is_lowered_from_a_pdf,

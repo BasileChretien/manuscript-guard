@@ -60,7 +60,11 @@ and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). 
   Where no line names the Abstract, a line before the first heading that opens on
   "Abstract:" and goes on with a word, a capital first, is the Abstract's heading, and its
   words the Abstract's; one that goes on with a number, a title page's count of words, is
-  not. Where the names repeat, a line after the Abstract that opens on
+  not. A line under the Abstract's heading, after its words, that opens on "Keywords:" and
+  goes on ends the Abstract, as a Word paper's does: the headings after it are the main
+  text's, and where words stand after it before the next heading it is a heading
+  "Keywords", the rest of its line the keywords. Where the names repeat, a line after the
+  Abstract that opens on
   "Experiment 1:" or "Study 1:", with a section's name after it, is a heading over the names
   after it, so a multi-study paper's repeated Method and Results are each read under their
   own study; "Experiment 1 (n = 99)" and "Experiment 1." are not.

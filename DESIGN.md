@@ -11733,7 +11733,18 @@ Introduction: rounds 2 and 3 of #686) that opens on "Experiment" or "Study", a
 number or a Roman numeral and a colon (`study_title`), with a name after it before the next
 such line that is no back matter's, is a multi-study paper's heading over the names after it, a level above them, to
 the next such line or the end, so that each study's own "Method" and "Results" are placed
-and a name stands twice only where it does under one study. Where there
+and a name stands twice only where it does under one study. A run-in "Keywords:" under
+the Abstract's own heading, after its words and before the next heading, ends the Abstract by
+a Word paper's rule (`section_names.keywords_end`, decision 24; window C of the real-paper
+corpus, row 8): the line that opens on the label and goes on (`run_in_keywords`) is a heading
+of its label, "Keywords", a run-in one like the Abstract's, where words stand after it before
+the next heading, and the headings after it are the main text's either way
+(`auditing.pdf.keywords_line`). A body whose numbered titles name no section, "1.1 Study
+population", ran on as the Abstract to the next name. Where it is a heading, the rest of the
+label's line is the list of keywords, a paragraph of its own where G4, G6 and G14 read the
+PDF; with no words after it before the next heading, "Keywords: QXR; falls" over "1.
+Introduction", it is no heading, and its line is staged as the next line of the Abstract's
+paragraph, which G14 reads as the Abstract's prose, as on main. Where there
 is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
@@ -27360,10 +27371,9 @@ Open, recorded as each change landed:
     title, and ends nothing, so the Abstract runs on to where its parts end; one whose
     next heading in a heading style is deeper than the Abstract's ends nothing, the
     Abstract's part by its style; one with no words after it before the next title ends
-    the Abstract's titles but is no heading, so its own line stays the Abstract's; the
-    keywords of a PDF end nothing, since `auditing/pdf.py` gives `section_levels` no
-    keywords and is left to a follow-up, nor do a "Keywords:" paragraph of a Markdown or a
-    LaTeX paper's Abstract; and `init --from` leaves the label on its paragraph, no
+    the Abstract's titles but is no heading, so its own line stays the Abstract's; a
+    "Keywords:" paragraph of a Markdown or a LaTeX paper's Abstract ends nothing; and
+    `init --from` leaves the label on its paragraph, no
     heading, where it does not end where a word does, which the audit still reads as one.
     Accepted.
   - G14 reads the first paragraph under a heading whose whole title is "Keywords" or "Key
@@ -28734,9 +28744,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_audit_pdf.py::test_headings_that_cannot_be_placed_place_nothing`,
     `tests/test_audit_pdf.py::test_a_structured_abstract_ends_where_the_main_text_names_a_part_again`
     and `tests/test_audit_pdf.py::test_an_abstract_of_words_then_background_methods_and_results_is_placed`.
-  - An Abstract titled by a run-in "Abstract:" runs to the next heading, so a "Keywords:"
-    line, an author's address or a title page's other lines typed before it are the
-    Abstract's, their numbers among its own; and where the Introduction has no heading, the
+  - An Abstract titled by a run-in "Abstract:" runs to the next heading or to a run-in
+    "Keywords:" after its words (next point), so an author's address or a title page's other
+    lines typed before it are the Abstract's, their numbers among its own; and where the
+    Introduction has no heading and no keywords end the Abstract before it, the
     Abstract runs on through it to the next ("Methods"), and the Introduction's numbers are
     the Abstract's, those the Results do not report said not found. Only the first such line
     before the first heading that goes on with a word, a capital first, is read, and none
@@ -28744,6 +28755,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "Abstract: 412 patients were followed", or on a bracket, is not read as a run-in label's,
     as on main: Basile chose this exact rule (2026-11-15) after a rule that told a title
     page's counts of words apart failed twice in review. Accepted.
+  - A PDF's Abstract ends at a run-in "Keywords:" by a Word paper's rule, and at nothing
+    else a Word paper's rule does not read (window C of the real-paper corpus, row 8): only
+    the label followed by a colon and words on its line, "Keywords: falls; older adults",
+    ends it. "Keywords" alone on its line over a line of keywords ends nothing, nor does
+    "Keywords:" with nothing after it, as a Word paper's ends nothing; nor a letter-spaced
+    "K E Y W O R D S", Springer's label with no colon, "Keywords Pharmacovigilance ·
+    Disproportionality", IEEE's "Index Terms—falls, records", or a label that stands
+    after a structured abstract's last part. A PDF has no table's cell, so a label on a line
+    of a table's text ends the Abstract where a Word paper's in a cell does not. The list of
+    keywords is the rest of the label's line alone: a PDF's text marks no paragraph, so a
+    list carried onto a second line is read there as the main text's. Accepted. Pinned by
+    `tests/test_audit_pdf.py::test_no_other_keywords_line_ends_a_pdf_s_abstract` and
+    `tests/test_audit_pdf.py::test_a_pdf_s_keywords_are_a_paragraph_under_their_heading_and_the_body_the_main_text`.
+  - In a two-column PDF read in drawing order, a run-in "Keywords:" drawn between two halves
+    of the Abstract ends it there: the Abstract's later lines are the Keywords section's,
+    and are never compared with the Results, where before the rule they were the Abstract's.
+    Accepted. Pinned by
+    `tests/test_audit_pdf.py::test_a_run_in_keywords_drawn_between_two_halves_of_the_abstract_ends_it_there`.
+  - In a PDF read in drawing order whose structured abstract is titled on lines of its own,
+    one line of words under "Abstract" before a "Keywords:" line, a sidebar's "Received 3
+    May 2021; accepted 9 June 2021", is the Abstract's words before its keywords: they end
+    the Abstract, its parts are the main text's, and with the main text's own names after
+    them the paper is unplaced where main placed it, as a Word paper with that paragraph
+    would be. Accepted. Pinned by
+    `tests/test_audit_pdf.py::test_a_line_of_words_before_the_keywords_of_a_structured_abstract_ends_it`.
   - Where the names cannot be placed alone, a line after the Abstract that opens on
     "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
     no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a

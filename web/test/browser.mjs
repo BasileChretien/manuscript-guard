@@ -202,10 +202,16 @@ try {
     // The copy with tracked changes the reader asked for: as many corrections tracked as the
     // command line's `--tracked` tracks, and its button shown; none where it was not asked.
     if (one.tracked !== undefined) {
-      const button = await page.evaluate(() => !document.getElementById("savetracked").hidden);
-      if (!result.tracked || !result.tracked.data || result.tracked.tracked !== one.tracked || !button) {
+      // The copy's bytes are counted in the page: a Uint8Array does not come back out of it
+      // whole in Firefox, whose protocol gives it as no data (CI's web job, #786).
+      const { button, bytes } = await page.evaluate(() => ({
+        button: !document.getElementById("savetracked").hidden,
+        bytes: window.mgLast?.tracked?.data?.byteLength ?? 0,
+      }));
+      if (!result.tracked || !bytes || result.tracked.tracked !== one.tracked || !button) {
         fail(`${one.name}: the copy tracks ${result.tracked ? result.tracked.tracked ?? result.tracked.error : "nothing"} `
-          + `of the command line's ${one.tracked} corrections${button ? "" : ", and no button is shown"}`);
+          + `of the command line's ${one.tracked} corrections in ${bytes} bytes`
+          + `${button ? "" : ", and no button is shown"}`);
       }
     } else if (result.tracked) {
       fail(`${one.name}: a copy with tracked changes was made though none was asked for`);

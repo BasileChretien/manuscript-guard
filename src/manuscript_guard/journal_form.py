@@ -111,9 +111,10 @@ _MARK = r"(?:\*\*\*|\*\*|__|\*|_)"
 _NUMBER = r"(?:(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[ivxlc]+[.)]|[a-z][.)])[ \t]+)?"
 #: What may end a heading after its title, in any order: white space, the marks that close
 #: emphasis, a colon or a stop, a closing sequence of hashes, a Word bookmark, attributes.
-#: Each piece starts with a character no other does, so a line that does not end so is
-#: refused at once, however many spaces it holds.
-_HEADING_END = r"(?:[ \t:.*_#]|\[\]\{[^}\n]*\}|\{[^}\n]*\})*$"
+#: Runs of the characters between the braced pieces, which start with a character no run
+#: holds, so that a line that does not end so is refused in time linear in its length: a
+#: run of one class is read without the backtracking a repeated group of alternatives costs.
+_HEADING_END = r"(?:[ \t:.*_#]*(?:\[\]\{[^}\n]*\}|\{[^}\n]*\}))*[ \t:.*_#]*$"
 
 
 def headings_of(typed: str) -> list[str]:

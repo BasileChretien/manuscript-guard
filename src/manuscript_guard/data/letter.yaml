@@ -1,0 +1,108 @@
+# What the letter returning a paper to its authors asks of each kind of finding (`audit
+# --letter FILE.md`; Basile, 2026-11-25). Read by `manuscript_guard.auditing.letter`.
+#
+# The kinds are those of the editor's report (`auditing.editor.KINDS`): the letter asks the
+# kinds of "Ask the authors" under "Please correct or answer before review", and those of
+# "Look at before you decide" under "Please check", each kind once, in the sentence below,
+# with each place it was found. A kind's sentence here speaks to the authors, as the editor's
+# report's does not: no finding is put as a fault of theirs, since one to check may be right
+# as it stands. Each kind of those two parts has a sentence, and each name below is a kind of
+# them (tests/test_audit_letter.py). `further` is the sentence of a finding whose code no kind
+# names, which the editor's report puts to the authors.
+
+further: Please look at this point.
+
+kinds:
+  # ------------------------------------------------------------ look at before you decide
+  numbers-disagree: >-
+    Some numbers do not agree with the numbers beside them, such as a P value with its test
+    statistic, or an estimate with its confidence interval. Please check them.
+  total-off: A total is not the sum of the counts it totals. Please check the table.
+  over-n: >-
+    A count is larger than the number its column's header gives. Please check the table.
+  flow-broken: >-
+    The numbers in a flow of participants do not add up from one stage to the next. Please
+    check them.
+  impossible-spread: >-
+    A standard deviation, or a mean and standard deviation, cannot come from data of the kind
+    and number given. Please check them.
+  abstract-conflict: >-
+    A result in the Abstract differs from the same result in the Results. Please check which
+    is right.
+  not-in-outputs: >-
+    A number in the manuscript is not among the analysis results sent with it. Please check
+    it.
+  retracted: >-
+    A cited work has been retracted or withdrawn, or carries an expression of concern. Please
+    check whether it should still be cited, and where it should, say so in the text.
+  hidden-text: >-
+    The file holds text a reader cannot see. Please send a copy without it, or tell us what
+    it is for.
+  package-differs: >-
+    The reproducibility package and its manifest do not agree. Please check the package.
+  # ------------------------------------------------------------ ask the authors
+  skewed: >-
+    A mean is less than twice its standard deviation for a measure that cannot be negative,
+    which suggests skewed data. Please consider giving the median and interquartile range.
+  p-adjusted: >-
+    A P value looks adjusted for multiple comparisons, and the manuscript names no
+    adjustment. Please say how the P values were adjusted, or check the value.
+  share-weighted: >-
+    A percentage fits its counts only if it was weighted, and the manuscript names no
+    weighting. Please say how it was weighted, or check the value.
+  abstract-not-found: >-
+    A number in the Abstract was not found in the Results or the tables. Please check that
+    the Results report it.
+  abstract-elsewhere: >-
+    A number in the Abstract appears only in the Introduction or the Discussion. Please check
+    that the Results report it.
+  abstract-unsourced: >-
+    A number in the background of the Abstract has no source. Please cite one in the main
+    text.
+  small-count: >-
+    A count held back to protect the people counted (such as "<5") can be worked out from the
+    numbers beside it. Please hold back enough of them that it cannot be recovered.
+  identifier-unknown: >-
+    A DOI or PMID given in the reference list is not known to its registry, or a reference was
+    not found as it is printed. Please check it.
+  not-found-by-title: >-
+    A reference with no DOI was not found by its title and first author. Please check its
+    details, and give its DOI if it has one.
+  preprint-published: >-
+    A cited preprint has since been published. Please check whether to cite the published
+    version.
+  never-cited: >-
+    An entry of the reference list is not cited in the text. Please cite it where it belongs,
+    or remove it.
+  beyond-list: >-
+    A citation names no entry of the reference list. Please check the citation and the list.
+  left-in: >-
+    The text holds what looks like a placeholder, a template's instructions or text from a
+    writing tool. Please remove or complete it, and say in the manuscript how any AI tool was
+    used.
+  over-limit: The manuscript is over one of the journal's limits. Please shorten it.
+  required-missing: >-
+    The journal requires a section or a statement that was not found. Please add it.
+  abstract-form: >-
+    The Abstract was not found under its heading, or lacks a heading the journal requires.
+    Please put it right.
+  data-statement: >-
+    The data availability statement does not yet meet the journal's policy. Please say where
+    the data can be found, with a persistent identifier, and cite any dataset it names.
+  boxes: >-
+    A box the journal prints beside the abstract, or a graphical abstract, is missing or does
+    not meet the journal's rules. Please put it right.
+  tracked: >-
+    The file holds tracked changes or comments. Please send a clean copy.
+  blind-named: >-
+    A file the reviewers will read names an author, and this journal's review is blind. Please
+    take the names out of that file.
+  causal: >-
+    A sentence claims a cause, and an observational study shows an association. Please
+    reword it, or say why a causal reading holds.
+  baseline-p: >-
+    A table of baseline characteristics gives P values, which CONSORT advises against in a
+    randomised trial. Please consider taking them out.
+  package-incomplete: >-
+    The reproducibility package lists less than it holds, or cannot tie a result to its
+    record. Please complete the package.

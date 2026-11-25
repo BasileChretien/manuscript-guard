@@ -38,6 +38,8 @@ _EXTRA = (
     ("\N{LATIN SMALL LETTER O WITH DIAERESIS}", "odieresis"),
     ("\N{GREEK SMALL LETTER MU}", "uni03BC"),
     ("\N{DEGREE SIGN}", "degree"),
+    # A format character a typesetter leaves after a heading's number (pdf-multi-C4).
+    ("\N{ZERO WIDTH NON-JOINER}", "uni200C"),
 )
 _CODES = {char: 128 + index for index, (char, _name) in enumerate(_EXTRA)}
 
@@ -52,7 +54,7 @@ _ASCII_WIDTHS = (
 )  # fmt: skip
 #: The widths of the glyphs from 128, in the order of `_EXTRA`.
 _EXTRA_WIDTHS = (584, 500, 500, 167, 333, 556, 1000, 222, 222, 333, 333, 584, 549, 549, 584,
-                 278, 278, 333, 556, 556, 556, 556, 400)  # fmt: skip
+                 278, 278, 333, 556, 556, 556, 556, 400, 0)  # fmt: skip
 
 
 def width(text: str, size: float) -> float:
@@ -213,3 +215,145 @@ def _furniture(index: int, head: str | None, foot: str | None, first: int | None
         said = " ".join(p for p in (foot, None if first is None else str(first + index)) if p)
         pieces.append(Piece(LEFT, 40.0, said, size=7.0))
     return pieces
+
+
+# ------------------------------------------------------------------ a laid-out page
+
+#: The layout `laid_out` sets: a column's width, the body's size and its leading, and the
+#: gap around a display.
+COLUMN, BODY, BODY_LEADING, AROUND = 230.0, 9.0, 11.0, 14.0
+#: A display set across both columns is this wide.
+ACROSS = RIGHT - LEFT + COLUMN
+
+
+@dataclass(frozen=True)
+class Set:
+    """A line `laid_out` sets: its words, at `size`, justified to `width` where `justified`
+    (a paragraph's last line is not), each superscript `(after, text)` set raised after the
+    word at index `after`; a table's row of cells, set a gap apart, where `cells`; drawn
+    twice over itself where `twice`; `gap` points above it, a display's own space."""
+
+    words: tuple[str, ...]
+    size: float = BODY
+    justified: bool = False
+    width: float = COLUMN
+    raised: tuple[tuple[int, str], ...] = ()
+    cells: bool = False
+    twice: bool = False
+    gap: float = 0.0
+
+    @property
+    def text(self) -> str:
+        """The line as pdftotext reads its words, a superscript a word after its own."""
+        out = []
+        for at, word in enumerate(self.words):
+            out.append(word)
+            out += [text for after, text in self.raised if after == at]
+        return " ".join(out)
+
+
+def _set(line: Set, x: float, y: float) -> list[Piece]:
+    """The pieces of `line` set from (x, y): word by word, spread to its width where it is
+    justified, a table's cells 12 points apart."""
+    widths = [width(word, line.size) for word in line.words]
+    space = width(" ", line.size)
+    if line.cells:
+        space = 12.0
+    elif line.justified and len(line.words) > 1:
+        space = (line.width - sum(widths)) / (len(line.words) - 1)
+    pieces, at = [], x
+    for index, (word, wide) in enumerate(zip(line.words, widths, strict=True)):
+        pieces.append(Piece(at, y, word, size=line.size))
+        if line.twice:
+            pieces.append(Piece(at, y, word, size=line.size))
+        at += wide
+        for after, text in line.raised:
+            if after == index:
+                pieces.append(Piece(at + 0.5, y, text, size=6.0, rise=3.0))
+                at += width(text, 6.0) + 0.5
+        at += space
+    return pieces
+
+
+def laid_out(
+    pages: list[tuple[list, list, list]],
+    *,
+    head: str | None = None,
+    foot: str | None = None,
+    line_numbers: bool = False,
+) -> tuple[bytes, list[tuple[int, int, str, int | None]]]:
+    """A PDF of `pages`, each the lines set across both columns at its top, then its left
+    column's and its right column's, each column from below what is set across, each line a
+    `Set` or a dict of its fields; with a running head, a foot with the page's number, and
+    the line numbers a proof prints beside each body line in the outer margin, counted on
+    over the paper. A display, its lines set smaller than the body's, stands `AROUND` points
+    from the text. Gives the PDF and each line set, `(page, line, text, number)`: its line
+    counted down its page in reading order, what is set across first, then the left column
+    and the right, and the number printed beside it, where one is."""
+    out: list[list[Piece]] = []
+    places: list[tuple[int, int, str, int | None]] = []
+    number = 0
+    for index, (across, left, right) in enumerate(pages):
+        page = _furniture(index, head, foot, 1)
+        counted = 0
+        y = TOP
+        for line in map(_as_set, across):
+            y -= line.gap
+            page += _set(line, LEFT, y)
+            counted += 1
+            places.append((index + 1, counted, line.text, None))
+            y -= line.size * 1.22
+        below = y - (AROUND if across else 0)
+        for x, column in ((LEFT, left), (RIGHT, right)):
+            y, body = below, None
+            for line in map(_as_set, column):
+                if body is not None and body != (line.size == BODY):
+                    y -= AROUND
+                body = line.size == BODY
+                y -= line.gap
+                page += _set(line, x, y)
+                printed = None
+                if line_numbers and body:
+                    number += 1
+                    printed = number
+                    # In the outer margin: before the left column, after the right.
+                    at = x - 16 if x == LEFT else x + COLUMN + 12
+                    page.append(Piece(at, y, str(number), size=6.0))
+                counted += 1
+                places.append((index + 1, counted, line.text, printed))
+                y -= BODY_LEADING if body else line.size * 1.22
+        out.append(page)
+    return pdf(out), places
+
+
+def _as_set(line) -> Set:
+    if isinstance(line, Set):
+        return line
+    return Set(**{**line, "words": tuple(line["words"]),
+                  "raised": tuple(tuple(one) for one in line.get("raised", ()))})
+
+
+_PLACES: dict[str, bool] = {}
+
+
+def knows_word_places() -> bool:
+    """Whether the pdftotext the audit rebuilds a PDF's paragraphs with gives each word's
+    place (`auditing.pdf_layout.program`): poppler's does, Xpdf's does not. Asked once for
+    each program."""
+    import tempfile
+    from pathlib import Path
+
+    from manuscript_guard.auditing import pdf_layout
+
+    program = pdf_layout.program() or ""
+    if program not in _PLACES:
+        with tempfile.TemporaryDirectory(prefix="mg-places-") as folder:
+            paper = Path(folder) / "paper.pdf"
+            paper.write_bytes(typeset(["Methods", "The cohort was kept."], columns=1))
+            try:
+                pdf_layout.markup(paper)
+            except pdf_layout.NotRebuilt:
+                _PLACES[program] = False
+            else:
+                _PLACES[program] = True
+    return _PLACES[program]

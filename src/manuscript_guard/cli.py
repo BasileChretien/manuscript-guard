@@ -2910,12 +2910,15 @@ def _audit(args: argparse.Namespace, package) -> int:
         # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
         *(run_gates(path, english=english, residue=args.submission_residue, known=known,
                     corrected=args.tracked is not None
-                    and Path(path).resolve() == args.paper[0].resolve())
+                    and Path(path).resolve() == args.paper[0].resolve(), paragraphs=True)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
                     known=known)
           for tree in report.trees),
     ]  # fmt: skip
+    # What G6 and G14 read of a PDF, its lines rebuilt into paragraphs or not and why.
+    report.not_audited += [Notice(run.read, f"{Path(run.paper).name} paragraphs")
+                           for run in report.gates if run.read]  # fmt: skip
     if args.lookup:
         report.lookups, report.titles = look_up_all(report.references, dry_run=args.dry_run,
                                                     cache=args.lookup_cache)  # fmt: skip

@@ -149,6 +149,15 @@ class PdfText:
     #: The lines, from 1, of the headings that are a run-in label, the Abstract's or the
     #: keywords', the rest of the line its first text (`headings_of`).
     run_in: frozenset[int] = frozenset()
+    #: For lines rebuilt into paragraphs (`auditing.pdf_layout`, `read_paragraphs`), each in
+    #: the order G6 and G14 read them: the paragraph each line is of; the display it is of, an
+    #: index into `displays`, or None in the text; each display's kind, "figure" or "table";
+    #: and each line with its superscript citations bracketed, "shown[2-4]", which G6 reads.
+    #: Empty for the lines as `pdftotext` reads them (`read_pdf`).
+    paragraphs: tuple[int, ...] = ()
+    of_display: tuple[int | None, ...] = ()
+    displays: tuple[str, ...] = ()
+    cited: tuple[str, ...] = ()
 
     def place(self, line: int | None) -> Place | None:
         """Where line `line` of the text stands, None for no line or one not in it."""
@@ -233,8 +242,10 @@ class PdfText:
         pages = f"{self.pages} page{'s' if self.pages != 1 else ''}"
         numbers = (" and, where the PDF prints a line's number, that number" if self.numbered
                    else "")  # fmt: skip
+        order = (" in reading order, left column first" if self.paragraphs
+                 else " as read")  # fmt: skip
         return (f"{self.path.name}: read by {self.reader}, {pages}; each place is a page and a "
-                "line counted down that page's text as read, its running head and page number "
+                f"line counted down that page's text{order}, its running head and page number "
                 f"left out{numbers}")
 
 
@@ -615,6 +626,51 @@ def _text_of(path: Path, kept, raw: str) -> PdfText:
                    kept.furniture, kept.numbered, running, run_in)  # fmt: skip
 
 
+_REBUILT: dict[tuple[str, str, str], PdfText | Exception] = {}
+
+
+def read_paragraphs(path: Path) -> PdfText:
+    """`path`'s lines rebuilt into paragraphs from where poppler sets each word
+    (`auditing.pdf_layout`), in the order G6 and G14 read them, each placed by its page and
+    its line counted down the page in reading order, left column first. Raises
+    `pdf_layout.NotRebuilt` where they are not, Xpdf's pdftotext being the one found among
+    the reasons, and `UnreadablePdf` where the file cannot be read. Read once while the
+    file and the program are unchanged, as `read_pdf` reads."""
+    from manuscript_guard.auditing import pdf_layout
+
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise UnreadablePdf(f"{path.name} cannot be read: {exc.strerror or exc}") from None
+    key = (str(path.resolve()), digest, pdf_layout.program() or "")
+    if key not in _REBUILT:
+        while len(_REBUILT) >= _KEPT:
+            del _REBUILT[next(iter(_REBUILT))]
+        try:
+            _REBUILT[key] = _of_layout(path, *pdf_layout.read_layout(path))
+        except pdf_layout.NotRebuilt as exc:
+            _REBUILT[key] = exc
+    found = _REBUILT[key]
+    if isinstance(found, Exception):
+        raise found
+    return found
+
+
+def _of_layout(path: Path, layout, name: str) -> PdfText:
+    """The `PdfText` of lines rebuilt (`pdf_layout.Layout`), its headings read on them as on
+    the lines `pdftotext` reads (`headings_of`)."""
+    rows = layout.rows
+    texts = [row.text for row in rows]
+    headings, run_in = headings_of(texts)
+    places = tuple(Place(row.page, row.line, row.printed) for row in rows)
+    return PdfText(path, f"{name}, each word where it is set (-bbox-layout), the lines "
+                   "rebuilt into paragraphs", layout.pages, "\n".join(texts), places, headings,
+                   layout.furniture, any(row.printed is not None for row in rows),
+                   layout.running, run_in, paragraphs=tuple(row.paragraph for row in rows),
+                   of_display=tuple(row.display for row in rows), displays=layout.displays,
+                   cited=tuple(row.cited for row in rows))  # fmt: skip
+
+
 #: Where the name `author` gives was read.
 AUTHOR_FIELD = "the PDF's author (the Author of its Info dictionary, read by pdfinfo)"
 
@@ -659,6 +715,7 @@ __all__ = [
     "heading_title",
     "headings_of",
     "is_pdf",
+    "read_paragraphs",
     "read_pdf",
     "study_title",
 ]

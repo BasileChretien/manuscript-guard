@@ -3472,6 +3472,143 @@ def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_colum
     assert [c.text for c, *_rest in read.only_in] == ["1,284"]
 
 
+def _rebuilt_run(tmp_path: Path, pages: list, head: str | None = None):
+    """G6 and G14 on a PDF laid out (`proof_pdf.laid_out`), its lines rebuilt into
+    paragraphs from where each word is set, as `audit` reads one; skipped where the
+    pdftotext found gives no word's place."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import knows_word_places, laid_out
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    data, _places = laid_out(pages, head=head)
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(data)
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    return run
+
+
+def _rebuilt_said(run, form: str) -> list[tuple[str, bool]]:
+    """Each finding of G6 and G14 whose message names `form` among its first words,
+    `(code, asked)`."""
+    return sorted((f.code, bool(f.question)) for f in [*run.writing, *run.language]
+                  if form in f.message.replace("'", " ").split()[:6])  # fmt: skip
+
+
+def _set_words(text: str) -> tuple[str, ...]:
+    return tuple(text.split())
+
+
+def _set_lines(*texts: str, size: float = 9.0) -> list[dict]:
+    """Lines set as they are given, each short of a column."""
+    return [{"words": _set_words(text), "size": size} for text in texts]
+
+
+#: Lines of words that say nothing, to fill a column.
+_UNSAID = ("and the records were kept.", "and the cohort was read.", "and the sites were seen.")
+
+
+def test_a_definition_a_pdf_s_column_and_a_legend_break_is_one(tmp_path: Path) -> None:
+    """The design of 2026-11-26, S4 and S1: a PDF's text read a line to a line set a
+    column's last line, "Then the trial stage", and the next column's first, "(TS) was
+    read", with a table's legend between, apart, and G14 found the form used before any
+    definition. Rebuilt, the paragraph goes on across the column and the legend, which is
+    read after it, and the form is defined; a form used before its definition is still
+    said."""
+    left = [*_set_lines("Methods", *_UNSAID, "The KQ rose in each site.", "Then the trial stage"),
+            {"words": ("Table", "1.", "Counts", "by", "site."), "size": 7.5},
+            {"words": ("KQ", "12", "14"), "size": 7.5, "cells": True}]
+    right = _set_lines("(TS) was read in each site.", "The knee quotient (KQ) held.",
+                   "The TS rose.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "TS") == [], run.language
+    assert ("abbreviation-used-before-defined", False) in _rebuilt_said(run, "KQ"), run.language
+
+
+def test_a_pdf_s_legend_restating_the_text_says_nothing_and_another_meaning_is_asked(
+    tmp_path: Path,
+) -> None:
+    """The author's answer 2 of 2026-11-26: a PDF's legends and tables are read as displays,
+    as a Word paper's are. A legend that restates the text's definition says nothing; one
+    that gives the form another meaning is asked about, never warned of as the text's
+    redefinition, as a legend read as prose was (S1 of the design: 18 false
+    redefinitions)."""
+    left = [*_set_lines("Methods", *_UNSAID, "The low dose (LD) was read.",
+                    "The quality score (QS) was read."),
+            {"words": _set_words("Table 1. Counts by low dose (LD)."), "size": 7.5},
+            {"words": _set_words("Figure 2. Counts by quiet score (QS)."), "size": 7.5}]
+    right = _set_lines("Results", *_UNSAID, "The LD and the QS held.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "LD") == [], run.language
+    assert _rebuilt_said(run, "QS") == [("abbreviation-redefined", True)], run.language
+
+
+def test_a_short_form_in_a_pdf_s_running_head_is_owed_no_definition(tmp_path: Path) -> None:
+    """S2 of the design: a running head holding a short form, "JFSR Reports 2026", stood
+    among each page's lines and was asked defined. Rebuilt, what the pages repeat at their
+    top is taken out; a form the text uses and never defines is still asked."""
+    pages = [([], _set_lines("Methods", *_UNSAID, "The QX held."), _set_lines(*_UNSAID)),
+             ([], _set_lines(*_UNSAID), _set_lines(*_UNSAID))]
+    run = _rebuilt_run(tmp_path, pages, head="JFSR Reports 2026")
+    assert "JFSR" not in " ".join(f.message for f in run.language), run.language
+    assert any("QX" in f.message for f in run.language), run.language
+
+
+def test_a_line_a_pdf_draws_twice_is_read_once(tmp_path: Path) -> None:
+    """The design of 2026-11-26, S1: a PDF that draws two overlaid copies of its text on a
+    page was read twice, and each definition there a redefinition ("SPM is defined again"
+    seven times). A line drawn again over itself is read once."""
+    twice = {"words": _set_words("The serum peak marker (SPM) was read."), "twice": True}
+    left = [*_set_lines("Methods", *_UNSAID), twice, *_set_lines(*_UNSAID)]
+    right = _set_lines("Results", *_UNSAID, "The SPM held.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "SPM") == [], run.language
+
+
+def test_a_superscript_citation_in_a_pdf_is_a_citation(tmp_path: Path) -> None:
+    """The author's answer 6 of 2026-11-26, S5 of the design: "Studies have shown" with its
+    citations set as a superscript, "rose 2-4", had a bare number on its line and no
+    citation nearby. A raised small number after a word is a citation for G6; the same
+    appeal with none is still said."""
+    cited = {"words": _set_words("Studies have shown falls rose"), "raised": ((4, "2-4"),)}
+    # More than G6's window of words between the two appeals.
+    left = [*_set_lines("Introduction"), cited, *_set_lines("among older women.", *_UNSAID * 5)]
+    right = _set_lines("Discussion", *_UNSAID, "Studies have shown falls rose", "among older men.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    vague = [f for f in run.writing if f.code == "vague-attribution"]
+    assert len(vague) == 1 and vague[0].line is not None, run.writing
+    assert run.places.place(vague[0].line).line > 3, run.places.place(vague[0].line)
+
+
+def test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one(tmp_path: Path) -> None:
+    """S4 of the design: a short form broken at a line's end, "(RE-" then "AIM)", was two
+    words, neither of them the form the text uses after it. Rebuilt, both parts capitals,
+    it is joined on the first line, and its definition and its use are one form's."""
+    left = _set_lines("Methods", *_UNSAID, "The reach effectiveness adoption",
+                  "implementation maintenance (RE-", "AIM) frame was read.", "The RE-AIM held.")
+    run = _rebuilt_run(tmp_path, [([], left, _set_lines(*_UNSAID))])
+    assert not [f for f in run.language if "AIM" in f.message], run.language
+
+
+def test_a_pdf_s_heading_with_a_format_character_ends_its_abstract(tmp_path: Path) -> None:
+    """pdf-multi-C4 of the real-paper corpus: a zero-width non-joiner after "1." hid its
+    heading "1. Introduction", so the Abstract ran on, and a form defined there and again in
+    the Introduction was redefined in it. Rebuilt, a word's format characters are dropped,
+    the heading ends the Abstract, and each defines the form for itself."""
+    left = _set_lines("Abstract", "The bone mineral density (BMD) fell.", "The BMD held.",
+                  "1.\N{ZERO WIDTH NON-JOINER} Introduction",
+                  "The bone mineral density (BMD) fell.", "The BMD held.", *_UNSAID)
+    run = _rebuilt_run(tmp_path, [([], left, _set_lines(*_UNSAID))])
+    assert _rebuilt_said(run, "BMD") == [], run.language
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

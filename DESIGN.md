@@ -17321,11 +17321,14 @@ to fix is pinned until the fix lands, and the fix changes its test.
     between, or across one paragraph where it holds its number alone, APA's title. A legend
     with any other paragraph between it and its table is a display of its own, and the
     table another. Accepted.
-  - A PDF's text holds no table that G14 can find, so a PDF's tables, captions and notes
-    are read as the text's, as before. Its lines come with no blank line but around a
-    heading, so a legend's line found by its shape made the whole section under the heading
-    a display (window C of the real-paper corpus, row 6): a file `audit` staged from a PDF
-    is read with no display. Accepted. Pinned by
+  - A PDF's lines as `pdftotext` reads them hold no table that G14 can find, so where they
+    are not rebuilt into paragraphs (Xpdf's `pdftotext`, "A PDF's paragraphs are rebuilt
+    from where each word is set", below) a PDF's tables, captions and notes are read as the
+    text's, as before. Those lines come with no blank line but around a heading, so a
+    legend's line found by its shape made the whole section under the heading a display
+    (window C of the real-paper corpus, row 6): a file `audit` staged from them is read with
+    no display. Where the lines are rebuilt, the displays are found by where their words
+    are set and handed to G14, never by their shape in the text. Accepted. Pinned by
     `tests/test_tables_stand_alone.py::test_a_pdf_s_text_holds_no_display_and_all_of_it_is_the_text_s`.
   - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
   - Where the text defines a form nowhere, a display's definition counts for a use outside
@@ -28773,6 +28776,50 @@ What papers converted from Word showed (see "What papers converted from Word sho
     counts, a changed surname does not, nor does an author a registry lists in another script
     or with no given name. The journal's titles match by folded name only (the profile holds
     no ISSN), so an abbreviated container or a renamed journal does not count. Accepted.
+- **A PDF's paragraphs are rebuilt from where each word is set, for G6 and G14 alone**
+  (`auditing/pdf_layout.py`; the design of 2026-11-26 and the author's answers to it). Each
+  step is a rule of position with its constant named, and where a page is laid out otherwise
+  than the rules expect, its lines are read in another order or another paragraph. Accepted.
+  - Only poppler's `pdftotext` gives each word's place. With Xpdf's, the one Git for Windows
+    puts on `PATH`, and no other named by `MANUSCRIPT_GUARD_POPPLER`, G6 and G14 read the
+    PDF's lines as before, and the report says so and why.
+    Pinned by `tests/test_audit_pdf.py::test_a_pdf_whose_lines_cannot_be_rebuilt_is_read_by_g6_and_g14_as_before`
+    and `tests/test_audit_pdf.py::test_xpdf_s_pdftotext_found_leaves_a_pdf_s_lines_as_they_were`.
+  - Every other reader of a PDF's text keeps the lines `pdftotext` reads: its numbers, the
+    Abstract against the Results, the reference list, the cited sentences, the causal words,
+    G4 with a journal's profile, and `compare`, G6 and G14 in it included (answer 4).
+    Pinned by `tests/test_audit_pdf.py::test_only_g6_and_g14_of_an_audit_read_a_pdf_s_rebuilt_lines`.
+  - Poppler's own grouping of words into lines and blocks is the rebuild's first step, and it
+    may differ between poppler's releases: the suite is held to 24.04.0
+    (`MANUSCRIPT_GUARD_REQUIRE_POPPLER` in CI), and the corpus was measured with it.
+    Accepted.
+  - A display is found only by the label its legend opens on, "Figure 2.", "Fig. 2",
+    "Table 1:", at the start of its block. A legend without one, a table without a legend,
+    and a figure's words with no legend under them are read as the text's. Accepted.
+  - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
+    reference list are read as prose, as before (answer 9). Accepted.
+  - Inside a band of a page, two columns are read left then right, each block by its centre:
+    a page of three columns, or a block set across one column and part of the next, is read
+    in that order. Accepted.
+  - A margin's numbers are taken out, and given to the line on their baseline as its printed
+    number, where they stand outside the text's left or right edge, or just before a column's
+    line, in the gutter, where three stand so on the page. A number in the gutter on a page
+    with fewer is read as the text's. Accepted.
+  - A line drawn twice is read once only where it repeats word for word, at the same place.
+    Pinned by `tests/test_corruption.py::test_a_line_a_pdf_draws_twice_is_read_once`.
+  - A short form broken at a line's end is joined only where its two parts hold two capitals
+    or more, "RE-" then "AIM"; a long form broken so keeps G14's way of being compared
+    (#784).
+    Pinned by `tests/test_corruption.py::test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one`.
+  - A superscript is a citation for G6 only where it holds numbers, commas and dashes and
+    follows a word of three letters or more or a stop: a footnote's letter is not one, nor a
+    raised number after a unit, "m 2". G14 reads the number as it is set.
+    Pinned by `tests/test_corruption.py::test_a_superscript_citation_in_a_pdf_is_a_citation`.
+  - A display met while a paragraph goes on across a break is read after the paragraph, so a
+    G14 finding's "first defined at" may name a later line than one above it on the page.
+    Places stay a page and a line counted down the page in reading order, left column first.
+    Pinned by `tests/test_audit_pdf.py::test_g6_and_g14_s_findings_on_a_rebuilt_pdf_are_placed_by_its_rebuilt_lines`.
+
 - **A PDF manuscript (`audit paper.pdf`, `compare`) is read as `pdftotext` sets out its text.**
   Accepted.
   - Layout order, hyphenation and running heads can misplace or split a number: a number

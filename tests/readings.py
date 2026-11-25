@@ -2147,6 +2147,41 @@ def _pdf_headings() -> Reading:
     return read
 
 
+@reading("pdf paragraphs")
+def _pdf_paragraphs() -> Reading:
+    """A PDF laid out (`proof_pdf.laid_out`) read for G6 and G14 (`auditing.pdf_layout`,
+    `auditing.gates._staged_pdf`): its lines rebuilt into paragraphs from where each word is
+    set, each line's place `(page, line, printed)`, its paragraph and the display it is of,
+    and the Markdown G14 and G6 read, with each display's lines. Needs poppler's
+    pdftotext."""
+    import tempfile
+
+    from proof_pdf import knows_word_places, laid_out
+
+    from manuscript_guard.auditing import gates
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    if not knows_word_places():
+        raise Unavailable("the pdftotext found gives no word's place (poppler's does)")
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        data, _places = laid_out(given["pages"], head=given["head"], line_numbers=True)
+        pdf_module._REBUILT.clear()
+        with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
+            paper = Path(folder) / "paper.pdf"
+            paper.write_bytes(data)
+            staged = gates._staged_pdf(paper, True)
+        text = staged.placer
+        return {"lines": [[place.page, place.line, place.printed, line, paragraph, display]
+                          for place, line, paragraph, display in zip(
+                              text.places, text.text.split("\n"), text.paragraphs,
+                              text.of_display, strict=True)],
+                "g14": staged.files["main.md"], "g6": staged.cited["main.md"],
+                "displays": [list(span) for span in staged.displays["main.md"]]}  # fmt: skip
+
+    return read
+
+
 @reading("word paragraphs")
 def _word_paragraphs() -> Reading:
     """Where each line of the Markdown a .docx converts to stands, as the audit names a

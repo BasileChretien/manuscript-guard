@@ -42,6 +42,8 @@ jobs:
     name: test (ubuntu-latest, 3.13)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    env:
+      MANUSCRIPT_GUARD_REQUIRE_POPPLER: "24.04.0"
     # The same limit as the matrix's Ubuntu jobs. From 21 to 22 November 2026 this job's
     # healthy runs on main took 33 to 54 minutes. At the 60 it had before, #767's run was
     # stopped a second after its last test passed, and main's run for 0.2.500 was stopped
@@ -60,6 +62,40 @@ jobs:
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pandoc --version
+      # Poppler's pdftotext, which gives each word's place on its page: `audit` rebuilds a
+      # PDF's lines into paragraphs from it for G6 and G14 (auditing/pdf_layout.py), and the
+      # tests of that skip without it. From conda-forge, which builds the same poppler for
+      # the three systems, at the version MANUSCRIPT_GUARD_REQUIRE_POPPLER names: with it
+      # set, tests/conftest.py refuses to start unless the rebuild's pdftotext is that one.
+      # Ubuntu and macOS have no pdftotext of their own, and poppler's goes on PATH, as an
+      # author's install puts it, so every test that needs a pdftotext runs there too.
+      # Windows has Git's, Xpdf 4.00, which gives no word's place: it stays on PATH, where
+      # every other reader of a PDF uses it and the tests of the Xpdf fallback run, and
+      # poppler's is named by MANUSCRIPT_GUARD_POPPLER (docs/install.md).
+      - uses: mamba-org/setup-micromamba@v2
+        timeout-minutes: 8
+        with:
+          environment-name: poppler
+          create-args: poppler=${{ env.MANUSCRIPT_GUARD_REQUIRE_POPPLER }}
+          condarc: |
+            channels:
+              - conda-forge
+            channel_priority: strict
+          cache-environment: true
+          cache-downloads: true
+          post-cleanup: none
+      - name: Poppler's pdftotext, on PATH or named
+        shell: bash -el {0}
+        run: |
+          prefix="${CONDA_PREFIX:-$MAMBA_ROOT_PREFIX/envs/poppler}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            found="$prefix/Library/bin/pdftotext.exe"
+            echo "MANUSCRIPT_GUARD_POPPLER=$(cygpath -w "$found")" >> "$GITHUB_ENV"
+          else
+            found="$prefix/bin/pdftotext"
+            echo "$prefix/bin" >> "$GITHUB_PATH"
+          fi
+          "$found" -v
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
@@ -169,6 +205,8 @@ jobs:
           - os: ubuntu-latest
             python: "3.14"
     runs-on: ${{ matrix.os }}
+    env:
+      MANUSCRIPT_GUARD_REQUIRE_POPPLER: "24.04.0"
     # A suite that stalls would hold its runner for GitHub's own six hours, so a job is
     # stopped at about twice its slowest healthy run. In the healthy runs of 15 and 16
     # October 2026, a Windows job took 59 to 81 minutes, a macOS job up to 45 and an Ubuntu
@@ -187,6 +225,40 @@ jobs:
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pandoc --version
+      # Poppler's pdftotext, which gives each word's place on its page: `audit` rebuilds a
+      # PDF's lines into paragraphs from it for G6 and G14 (auditing/pdf_layout.py), and the
+      # tests of that skip without it. From conda-forge, which builds the same poppler for
+      # the three systems, at the version MANUSCRIPT_GUARD_REQUIRE_POPPLER names: with it
+      # set, tests/conftest.py refuses to start unless the rebuild's pdftotext is that one.
+      # Ubuntu and macOS have no pdftotext of their own, and poppler's goes on PATH, as an
+      # author's install puts it, so every test that needs a pdftotext runs there too.
+      # Windows has Git's, Xpdf 4.00, which gives no word's place: it stays on PATH, where
+      # every other reader of a PDF uses it and the tests of the Xpdf fallback run, and
+      # poppler's is named by MANUSCRIPT_GUARD_POPPLER (docs/install.md).
+      - uses: mamba-org/setup-micromamba@v2
+        timeout-minutes: 8
+        with:
+          environment-name: poppler
+          create-args: poppler=${{ env.MANUSCRIPT_GUARD_REQUIRE_POPPLER }}
+          condarc: |
+            channels:
+              - conda-forge
+            channel_priority: strict
+          cache-environment: true
+          cache-downloads: true
+          post-cleanup: none
+      - name: Poppler's pdftotext, on PATH or named
+        shell: bash -el {0}
+        run: |
+          prefix="${CONDA_PREFIX:-$MAMBA_ROOT_PREFIX/envs/poppler}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            found="$prefix/Library/bin/pdftotext.exe"
+            echo "MANUSCRIPT_GUARD_POPPLER=$(cygpath -w "$found")" >> "$GITHUB_ENV"
+          else
+            found="$prefix/bin/pdftotext"
+            echo "$prefix/bin" >> "$GITHUB_PATH"
+          fi
+          "$found" -v
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: ruff check src tests

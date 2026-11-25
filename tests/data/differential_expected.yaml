@@ -65,6 +65,11 @@ expected:
       those pieces, a list's bracket closed inside a long form, and the bracket shapes kept
       (tests/generated.py, `DEFINING` and `NOT_DEFINING`). The entry it replaces, for "Table
       stands alone", is spent
+  - reading: abbreviations of a PDF's text
+    why: >-
+      the same in a file the audit staged from a PDF: a long form that closes a bracket it
+      does not open, and is not the long form's own, defines nothing, so the elliptical
+      SCE2 is no definition (the entry for `abbreviations`)
   - reading: abbreviation edits
     why: >-
       the same: a short form whose long form closes a bracket it does not open, and is not

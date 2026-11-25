@@ -17263,9 +17263,10 @@ that authors want to use when their only experience of AI is ChatGPT, their stat
 limited and research is not yet their trade. One answer was to compare a paper with the output
 of the program its numbers came from: SPSS, jamovi, Stata, GraphPad, a spreadsheet. He asked
 how that could work when every such file has its own columns, named by whoever made it. This
-section is the answer. It and the next were read once by an Opus agent against main at
-8f4629a2f before Basile answered their questions: seven findings, three of them blocking, all
-taken in. Nothing here is built before Basile says to start.
+section is the answer. It and the next were read twice by an Opus agent: against main at
+8f4629a2f before Basile answered their questions (seven findings, three of them blocking), and
+over the fixes and his answers (seven, one blocking). All were taken in. Nothing here is built
+before Basile says to start.
 
 **Basile's answers** (question boxes, 2026-11-25; each the recommendation):
 
@@ -17301,10 +17302,10 @@ has to say what its columns are called for the two to be compared.
    `stats/intervals.py`), and a test statistic with its degrees of freedom and its P
    (`stats/reported.py`). It reads a count with its share in a table's cells, and in prose only
    where both counts are written ("12 of 40 (30%)", `stats/shares.py`); and a mean with its SD
-   only in the table rows the auditor names (`stats/granularity.py`). A count with its share
-   written alone in prose ("52 (31.7%)") and a mean with its SD in prose have no reader yet
-   (answer 1). A group is matched where each of its numbers is a cell of its own on the same
-   row of the same table, in any columns.
+   only in the table rows the auditor names (`stats/granularity.py`, `auditing/skew.py`). A
+   count with its share written alone in prose ("52 (31.7%)") and a mean with its SD in prose
+   have no reader yet (answer 1). A group is matched where each of its numbers is a cell of its
+   own on the same row of the same table, in any columns.
 2. **No column's meaning is read.** Headers are anyone's, so the rule never asks what a column
    is called or which one holds the lower bound. The words of the row (its label, its table's
    title or its sheet) are shown beside the match, so that a reader sees at a glance that the
@@ -17314,7 +17315,9 @@ has to say what its columns are called for the two to be compared.
    way. A P printed with a sign, as the audit already keeps it (`stats/reported.py`), matches
    the cells on that side of its bound: "P < 0.001" matches R's 2e-16 and SPSS's .000, which
    SPSS prints for a P under 0.0005, and a group whose P is printed so is matched on its correct
-   row rather than reported with one number off.
+   row rather than reported with one number off. A cell that carries a sign itself, as jamovi
+   prints "< .001", is a bound: it matches a P printed with the same sign and a bound no smaller
+   than the cell's, and a P printed exactly that falls on the cell's side.
 4. **What a match is worth is measured for groups as it is for numbers.** For each shape of
    group the paper holds (three numbers at one decimal place and one at three, say), the share
    of a fixed grid of such groups that some row of the given outputs would match. The grid is
@@ -17345,9 +17348,12 @@ nothing else. No reader decides what a cell means.
 
 - CSV and TSV: one table, kept as rows rather than joined.
 - JSON: a list of objects is a table, one row for each object. In a results fragment, each
-  bound `em.interval` writes names its estimate (`bounds`, `bound`), and the estimate and its
-  two bounds are one row; every other value is a row of its own. Keys are not grouped by their
-  prefix, which would put `ror.p`, a second interval and sibling counts on the same row.
+  bound `em.interval` writes names its estimate (`bounds`, `bound`) and its `level`, and every
+  level of an estimate's intervals names the same estimate (the example writes a 95% and a 90%
+  interval on `ror.point`). So a fragment's rows are grouped by `bounds` and `level`: one row
+  for each level, with the estimate on each. Every other value is a row of its own. A fragment
+  links no P to its estimate, so against a fragment a group's P is looked for among its values,
+  as a number no group holds is, and does not count towards "one number off".
 - .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
   read. A cell's stored value is read, not its displayed one, and rule 3 rounds it.
 - HTML: each table, titled by its caption or by the heading before it.
@@ -17393,7 +17399,8 @@ nothing else. No reader decides what a cell means.
 ### Not verified
 
 - What SPSS's and jamovi's exports to HTML and .xlsx hold, and whether they keep a table's
-  title; that Stata's printed tables put a term's estimate, interval and P on one line.
+  title; that jamovi prints a P under 0.001 as "< .001"; that Stata's printed tables put a
+  term's estimate, interval and P on one line.
 - That enough published papers deposit their program output for a measure of false alarms.
 
 ## One set of plan questions, answered before the data or quoted from a draft
@@ -17425,7 +17432,8 @@ start.
   sensitivity and interim analyses), each with what it has to say and the guideline item it
   comes from, read on a stated date.
 - G12 holds `design/plan.md` to those sections (`plan-section-missing`, `plan-section-empty`),
-  and warns without blocking ("The design gate warns and never blocks", above). The plan is
+  which warn at every stage ("The design gate warns and never blocks", above); its findings on
+  the registration fail later on. The plan is
   held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
   the registration's outcomes (`registration-…`).
 - `next` asks for the design first (`choose-study-type`), and the analysis-plan skill puts the
@@ -17454,8 +17462,8 @@ already written.
    usual answers, they may be shown as that source's list, cited (answer 2); otherwise the
    answer is the author's text.
 4. **"Not decided yet" is an answer.** It names who is to decide, a role or a person the author
-   names, and is kept as an open item rather than left as an empty heading: a warning at every stage, as
-   `plan-section-empty` is (answer 1).
+   names, and is kept as an open item rather than left as an empty heading: a warning at every
+   stage, as `plan-section-empty` is (answer 1).
 5. **A plan made from a written paper says when it was made.** Its answers are quotes, it is
    headed as written after the results, and nothing in it reads as a preregistration.
 
@@ -17464,8 +17472,9 @@ already written.
 - `audit --design` takes each design of `study_types.yaml` as well as `observational` and
   `trial`; each design says in the file which of the two it implies for the checks that read
   them (a cohort study is observational).
-- Whenever `--design` names a design (answer 3), a section "Questions of the plan" asks the
-  design's questions of the Methods. Each section of
+- Whenever `--design` names a design of the file (answer 3), a section "Questions of the plan"
+  asks the design's questions of the Methods. `observational` names none and asks nothing;
+  `trial` is one, so an audit run with `--design trial` today gains the section. Each section of
   the file gains a third field, `finds`: what a sentence answering it is matched by, apart from
   `heading`, since a sentence is not a heading. Where sentences match, the first three are
   offered as candidates with their places; where none does, the question is said to be

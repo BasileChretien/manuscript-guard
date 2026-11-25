@@ -540,6 +540,7 @@ everywhere.
 | [For editors and reviewers](docs/refereeing.md) | a manuscript sent in confidence, a PDF among them, read on your own computer with nothing sent: a referee's audit, its causal words and its cited sentences, and an editor's against the journal's profile, its tracked changes and the names Word keeps, the authors named where the review is blind, and the self-citations counted; a revision set beside the version before it, with the response letter; the authors' package held to its own manifest; and a draft of your report with the findings and their places |
 | [Data held apart from the agent](docs/vault.md) | the vault: the data in a folder the operating system keeps from the agent, the four setups that do that, most separating first, three traps, what the hooks refuse and what the agent tool's own rules cover; the analysis run on the data in a copy inside the vault, and what it wrote released on a person's word; the profile of each file and the synthetic copy drawn from it |
 | [When manuscript-guard itself fails](docs/failures.md) | the one sentence a fault of the tool's own ends in, the record kept on your machine, and the variables that turn it off |
+| [How often a warning is wrong](docs/false-alarms.md) | for editors and publishers: the share of each kind of warning judged false on real papers, the papers and the version it was measured on, and what it does not measure |
 | [Measuring the gates on real papers](docs/corpus.md) | for people working on manuscript-guard: a corpus of real papers kept outside the repository, its findings judged, each build measured against the verdicts, and the gate a pull request runs |
 | [Supporting the project](docs/funding.md) | grants, collaborations and GitHub Sponsors, and the contributions that cost no money |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
@@ -562,6 +563,7 @@ What has run on real papers:
   for a review panel.
 - **`audit`**, which reads a paper written some other way, has been pointed at one submitted
   paper, and what it found is recorded in DESIGN.md.
+- **False alarms** were measured on 98 real papers with 0.2.503: of the warnings `audit` gives about a paper, 18% were judged false (95% interval 14% to 23%), and 46% (37% to 54%) on 48 papers held out from the tuning, with 0.2.502 (commit `77abd45db`). Of those `check` gives, most of them `G7/reference-uncited`, 2.7% were (1.2% to 9.5%). [How often a warning is wrong](docs/false-alarms.md) gives the share for each code, and what it does not measure.
 - **G7's reference checks** were measured on 2026-10-21 against the 740 references of 16
   published open-access pharmacology and epidemiology papers: as published, 1.49 false
   alarms per 100 references in all, of which 0.68 from the search by title and the

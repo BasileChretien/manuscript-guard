@@ -5,7 +5,7 @@
 
 Everything manuscript-guard is meant to do, by the stage of a paper it belongs to:
 one entry for each thing it promises, what does it, and the tests that prove it.
-Of the 72 entries, 69 work, 1 works in part, and 2 are planned.
+Of the 73 entries, 70 work, 1 works in part, and 2 are planned.
 
 The source is [features.yaml](features.yaml), which an agent tool reads before it
 changes a feature. `python tools/feature_map.py` draws this page and its picture from
@@ -15,7 +15,7 @@ skill and hook is in an entry, and every test an entry names is there.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/features-dark.svg">
   <img src="img/features-light.svg" width="880"
-       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 69 work, 1 works in part and 2 are planned.">
+       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 70 work, 1 works in part and 2 are planned.">
 </picture>
 
 ## Start
@@ -150,5 +150,6 @@ Read a paper written some other way, as its author, an editor or a referee.
 |---|---|---|---|---|
 | **[Audit a paper](audit.md)** | Checks a paper in Word, Markdown, LaTeX or PDF: its numbers against each other and the outputs given, its Abstract against its Results, its words and its references. | works | [`audit`](commands.md#checking--audit), skill [`paper-audit`](agent-tools.md) | [`test_audit.py`](../tests/test_audit.py)<br>[`test_audit_sections.py`](../tests/test_audit_sections.py)<br>[`test_audit_pdf.py`](../tests/test_audit_pdf.py) |
 | **[Audit in a web browser](audit-page.md)** | Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not uploaded anywhere. | works | &mdash; | [`test_web.py`](../tests/test_web.py) |
+| **[How often a warning is wrong](false-alarms.md)** | Publishes, for each kind of warning, the share judged false on real papers, with the papers and the version it was measured on and what that share does not measure. | works | &mdash; | [`test_false_alarms.py`](../tests/test_false_alarms.py) |
 | **[Compare two versions](refereeing.md)** | Sets a revised manuscript beside the version before it: the sections, tables, numbers, citations and claims that changed. | works | [`compare`](commands.md#checking--audit) | [`test_compare.py`](../tests/test_compare.py) |
 | **[Start a referee's report](refereeing.md)** | Writes what the audit found, with each place, as the start of a report, as Word comments, as tracked changes or as a PDF. | works | [`audit`](commands.md#checking--audit) | [`test_audit_commented.py`](../tests/test_audit_commented.py)<br>[`test_audit_tracked.py`](../tests/test_audit_tracked.py)<br>[`test_report_pdf.py`](../tests/test_report_pdf.py) |

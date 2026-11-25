@@ -2287,6 +2287,76 @@ def test_what_reads_as_no_short_form_is_none_and_each_meaning_is_said_once(
     assert found == expected, (found, text)
 
 
+from generated import line_broken  # noqa: E402
+
+
+@holds(60, line_broken())
+def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared(
+    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str]]],
+) -> None:
+    """The real-paper corpus (row 7 of window C): in text read from a PDF, a definition given
+    again with a word of its long form broken at a line's end, as pdftotext prints one,
+    "inter-\\nquartile range", gives the same meaning, and so does one broken at a
+    compound's own hyphen, "self-\\nreported", which pdftotext prints the same way; one
+    with another meaning, broken there too, still gives another, and so does a hyphen and a
+    space typed inside a word, "inter- quartile", which is no line's end. Text read from
+    Markdown is compared as it was: the break is a hyphen, and the word stays two. And in
+    text from any format, a hyphen proper or a non-breaking hyphen is read as a hyphen: a
+    compound typed with one gives the same meaning as with a hyphen-minus (round 1 of #784)."""
+    text, from_pdf, from_markdown = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def said(file: Any) -> list[tuple[str, str]]:
+        report = _g14_warned([file], nothing, Path("."))
+        return sorted((f.message.split()[0],
+                       "again" if f.message.split()[1:4] == ["is", "defined", "again;"]
+                       else "another")
+                      for f in report.findings if f.code == "abbreviation-redefined")  # fmt: skip
+
+    assert said(_file(0, Path("main.md"), text, [], False, from_pdf=True)) == from_pdf, text
+    assert said(_file(0, Path("main.md"), text, [], False)) == from_markdown, text
+
+
+def _a_pdf_breaks_a_word_only_at_a_hyphen_minus(patch: pytest.MonkeyPatch) -> None:
+    """A word a PDF breaks at a line's end at a hyphen proper or a soft hyphen is not joined,
+    so "inter" and the soft hyphen, then "quartile range" on the next line, give another
+    meaning than "interquartile range"."""
+    patch.setattr(language_gate, "_BREAKING", "-")
+
+
+def _only_a_hyphen_minus_is_read_as_a_hyphen(patch: pytest.MonkeyPatch) -> None:
+    """A hyphen proper or a non-breaking hyphen in a long form is a letter of its word, so
+    a compound typed with one gives another meaning than with a hyphen-minus."""
+    patch.setattr(language_gate, "_READ_AS_HYPHENS", "-")
+
+
+def _a_word_broken_at_a_line_s_end_is_never_joined(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_rejoined", lambda prose, offset, long: ())
+
+
+def _a_hyphen_and_a_space_in_a_line_is_a_break(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._rejoined
+    patch.setattr(language_gate, "_rejoined",
+                  lambda prose, offset, long: real(prose.replace("- ", "-\n"), offset, long))
+
+
+def _a_broken_long_form_is_compared_only_joined(patch: pytest.MonkeyPatch) -> None:
+    same = language_gate._same_meaning
+    patch.setattr(language_gate, "_alike", lambda one, other: any(
+        same(first, second) for first in (one.rejoined or (one.long,))
+        for second in (other.rejoined or (other.long,))))
+
+
+def _text_from_any_file_is_joined_at_a_line_s_end(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._File.__post_init__
+
+    def everywhere(self: Any) -> None:
+        real(self)
+        self.from_pdf = True
+
+    patch.setattr(language_gate._File, "__post_init__", everywhere)
+
+
 def _a_meaning_reported_is_reported_again(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_told_before", lambda long, told: False)
 
@@ -28798,6 +28868,30 @@ BROKEN = {
     "a no-break space before a dash is no space": (
         _a_no_break_space_is_no_space_before_a_dash,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a PDF breaks a word only at a hyphen-minus": (
+        _a_pdf_breaks_a_word_only_at_a_hyphen_minus,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
+    ),
+    "only a hyphen-minus is read as a hyphen": (
+        _only_a_hyphen_minus_is_read_as_a_hyphen,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
+    ),
+    "a word broken at a line's end is never joined": (
+        _a_word_broken_at_a_line_s_end_is_never_joined,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
+    ),
+    "a hyphen and a space in a line is a break": (
+        _a_hyphen_and_a_space_in_a_line_is_a_break,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
+    ),
+    "a broken long form is compared only joined": (
+        _a_broken_long_form_is_compared_only_joined,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
+    ),
+    "text from any file is joined at a line's end": (
+        _text_from_any_file_is_joined_at_a_line_s_end,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
     ),
     "another meaning already reported is reported again": (
         _a_meaning_reported_is_reported_again,

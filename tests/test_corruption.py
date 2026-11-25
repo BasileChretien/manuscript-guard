@@ -37608,6 +37608,39 @@ def test_a_definition_given_again_with_its_estimate_is_caught(project: Path) -> 
     ]
 
 
+def test_a_word_a_pdf_breaks_at_a_line_s_end_gives_no_other_meaning(project: Path) -> None:
+    """The real-paper corpus (row 7 of window C): pdftotext prints a word broken at a line's
+    end with its hyphen and the line's end, "trachoma-\\ntis", so a definition given again
+    with its long form broken there read as another meaning, "Chlamydia trachoma- tis". In
+    text read from a PDF the long forms are compared with the break joined, and kept too,
+    since pdftotext prints a compound broken at its own hyphen the same way: the second
+    definition is a definition given again. A hyphen and a space typed in a line, and the
+    same text read from Markdown, still give another meaning."""
+    from manuscript_guard.gates import check_language
+
+    def redefined(pdf: frozenset[str]) -> list[str]:
+        report = check_language(load_project(project)[0], pdf=pdf)
+        return [f.message.split(" here")[0] for f in report.findings
+                if f.code == "abbreviation-redefined"]  # fmt: skip
+
+    mended = with_ror_defined(project)
+    broken = mended.replace(
+        "The reporting odds ratio observed here",
+        "The reporting odds ra-\ntio (ROR) observed here",
+    )
+    assert broken != mended
+    main_md(project).write_text(broken, encoding="utf-8")
+    assert [said.split(";")[0] for said in redefined(frozenset({"main.md"}))] == [
+        "ROR is defined again"
+    ]
+    assert redefined(frozenset()) == ["ROR is defined as 'reporting odds ra- tio'"]
+    typed = mended.replace(
+        "The reporting odds ratio observed here", "The reporting odds ra- tio (ROR) observed here"
+    )
+    main_md(project).write_text(typed, encoding="utf-8")
+    assert redefined(frozenset({"main.md"})) == ["ROR is defined as 'reporting odds ra- tio'"]
+
+
 def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None:
     """The definition says what the ratio compares in brackets before its short form, and
     is pasted again further on. The R of ROR nearest the bracket is in the aside; the one of

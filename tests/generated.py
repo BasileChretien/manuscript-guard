@@ -1129,6 +1129,91 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
                                     ("abbreviation-undefined", wins, "")]  # fmt: skip
 
 
+# ------------------------------------------- G14: a word broken at a line's end in a PDF
+
+#: What `line_broken` plants, each kind with its own short form and long form (the real-paper
+#: corpus, row 7 of window C): a definition given again with a word of its long form broken
+#: at a line's end, as pdftotext prints a page's text, "inter-\nquartile range"; with a
+#: compound broken at its own hyphen, which pdftotext prints the same way, "self-\nreported";
+#: a definition with another meaning, broken at a line's end too; and the same meaning
+#: given again with a hyphen and a space typed inside a word, "inter- quartile", which is no
+#: line's end.
+BROKEN_SOFT = (("interquartile range", "IQR"), ("standardised mortality ratio", "SMR"),
+               ("generalised estimating equations", "GEE"))  # fmt: skip
+#: The hyphens a PDF breaks a word at a line's end with, each of which every example of
+#: `line_broken` breaks one of `BROKEN_SOFT` at (round 2 of #784).
+SOFT_HYPHENS = ("-", "\N{HYPHEN}", "\N{SOFT HYPHEN}")
+BROKEN_COMPOUND = (("self-reported fatigue scale", "SFS"), ("cross-sectional health survey",
+                   "CHS"), ("long-term care facility", "LCF"))  # fmt: skip
+#: A long form and another meaning of its short form, which differ by more than a break.
+BROKEN_OTHER = (("brisk walking test", "BWT", "brisk walking time"),
+                ("quiet play scale", "QPS", "quiet playing score"))  # fmt: skip
+BROKEN_TYPED = (("hospital anxiety scale", "HAS"), ("lean muscle volume", "LMV"))
+#: A compound typed with a hyphen proper or a non-breaking hyphen, `{}` where it stands,
+#: given again with a hyphen of either kind there and a line's end after it (round 1 of
+#: #784): the same meaning in text from any format.
+BROKEN_PROPER = (("self{}rated sleep scale", "SRS"), ("long{}stay care unit", "LCU"))
+PROPER_HYPHENS = ("\N{HYPHEN}", "\N{NON-BREAKING HYPHEN}")
+
+
+def _break_a_word(
+    draw: st.DrawFn, long: str, at_hyphen: bool, joint: str, hyphen: str = "-"
+) -> str:
+    """`long` with one of its words broken by a hyphen and `joint`: inside a word of five
+    letters or more, at a place drawn, by `hyphen`, or where `at_hyphen`, at a compound's
+    own hyphen."""
+    words = long.split()
+    if at_hyphen:
+        which = draw(st.sampled_from([at for at, word in enumerate(words) if "-" in word]))
+        head, tail = words[which].split("-", 1)
+        words[which] = f"{head}-{joint}{tail}"
+        return " ".join(words)
+    # Not the first word: a half after the break that opened on the short form's first
+    # letter would start the long form there (a Known gap).
+    which = draw(st.sampled_from([at for at, word in enumerate(words) if at and len(word) >= 5]))
+    word = words[which]
+    cut = draw(st.integers(2, len(word) - 2))
+    words[which] = f"{word[:cut]}{hyphen}{joint}{word[cut:]}"
+    return " ".join(words)
+
+
+@st.composite
+def line_broken(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, str]], list[tuple[str, str]]]:
+    """A Methods section with one piece of each kind `BROKEN_COMPOUND`, `BROKEN_OTHER`,
+    `BROKEN_TYPED` and `BROKEN_PROPER` describe, and one of `BROKEN_SOFT` for each of
+    `SOFT_HYPHENS`, in an order drawn, among words; and what G14 says of each short form's
+    second definition, where the text was read from a PDF and where it was not, in order of
+    the alphabet: `again` where it gives the first's meaning again, `another` where it gives
+    another."""
+    softs = list(zip(draw(st.permutations(BROKEN_SOFT)), SOFT_HYPHENS, strict=True))
+    compound_long, compound = draw(st.sampled_from(BROKEN_COMPOUND))
+    other_long, other, meaning = draw(st.sampled_from(BROKEN_OTHER))
+    typed_long, typed = draw(st.sampled_from(BROKEN_TYPED))
+    proper_long, proper = draw(st.sampled_from(BROKEN_PROPER))
+    proper_typed = proper_long.format(draw(st.sampled_from(PROPER_HYPHENS)))
+    proper_again = proper_long.format(draw(st.sampled_from(("-", *PROPER_HYPHENS))) + "\n")
+
+    def piece(long: str, short: str, again: str) -> str:
+        return f"The {long} ({short}) was read. The {again} ({short}) was read again."
+
+    pieces = [
+        *(piece(soft_long, soft, _break_a_word(draw, soft_long, False, "\n", hyphen))
+          for (soft_long, soft), hyphen in softs),
+        piece(compound_long, compound, _break_a_word(draw, compound_long, True, "\n")),
+        piece(other_long, other, _break_a_word(draw, meaning, False, "\n")),
+        piece(typed_long, typed, _break_a_word(draw, typed_long, False, " ")),
+        piece(proper_typed, proper, proper_again),
+    ]
+    text, _starts = _paragraphs(draw, draw(st.permutations(pieces)))
+    said = {compound: "again", other: "another", typed: "another", proper: "again"}
+    shorts = [soft for (_long, soft), _hyphen in softs]
+    return ("# Methods\n\n" + text,
+            sorted({**said, **dict.fromkeys(shorts, "again")}.items()),
+            sorted({**said, **dict.fromkeys(shorts, "another")}.items()))  # fmt: skip
+
+
 @st.composite
 def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
@@ -19575,6 +19660,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations of a PDF's text": st.one_of(
         pdf_displays().map(lambda drawn: drawn["text"]),
+        line_broken().map(lambda drawn: drawn[0]),
         texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
     ),
     "tex outside maths": lines(),

@@ -250,9 +250,11 @@ try {
     fail("no case has an output: the refused run was not tried");
   }
 
+  // These two call the page's own functions, which the site's run holds; on a hosted page a
+  // real run's PDF is still on screen, where the site's refused run has cleared it.
   // A run whose PDF could not be made shows the report as the command line prints it, the
   // only report there then is, and says so (round 1 of #644).
-  if (status.startsWith("Ready")) {
+  if (status.startsWith("Ready") && !hosted) {
     const fallback = await page.evaluate(() => {
       window.mgShowReport({ out: "The report as text.\n", err: "", ms: 1000, view: null,
         pdf: { error: "it could not be written" }, commented: null }, "paper.md");
@@ -270,7 +272,7 @@ try {
 
   // A check that fails after a step has started leaves no step shown as under way, and its
   // message shown (round 2 of #644).
-  if (status.startsWith("Ready")) {
+  if (status.startsWith("Ready") && !hosted) {
     const failed = await page.evaluate(() => {
       window.mgRun.runStarted("paper.md", { lookup: false, docx: false });
       window.mgRun.stepped({ key: "read", done: 0, total: 0 });
@@ -308,8 +310,10 @@ process.exit(failures.length ? 1 : 0);
 // never written to.
 async function hostHeld(page, manifest) {
   const { host } = manifest;
-  const accents = [...readFileSync(join(site, host.style), "utf-8").matchAll(/--teal: (#[0-9a-f]{6})/g)]
-    .map((match) => match[1]);
+  // The host's accent, light and dark; where it gives none, the page's own teal (round 1 of
+  // #791: a host with no accent stopped the check).
+  const accents = [...readFileSync(join(site, host.style || "style.css"), "utf-8")
+    .matchAll(/--teal: (#[0-9a-f]{6})/g)].map((match) => match[1]).slice(0, 2);
   const shown = await page.evaluate(() => {
     const visible = (element) => Boolean(element) && element.getClientRects().length > 0;
     const logo = document.getElementById("hostlogo");
@@ -344,9 +348,11 @@ async function hostHeld(page, manifest) {
   if (host.contact && (!shown.contact.includes(host.contact.text) || shown.link !== host.contact.link)) {
     fail(`the hosted page's contact line is "${shown.contact}" to ${shown.link}`);
   }
+  // The list of the journals offered, and none where the host offers none.
   const offered = host.journals.map((journal) => journal.slug);
-  if (!shown.picker || JSON.stringify(shown.options) !== JSON.stringify(["", ...offered, "other"])) {
-    fail(`the hosted page offers ${shown.picker ? shown.options.join(", ") : "no list"}, not ${offered.join(", ")}`);
+  if (shown.picker !== Boolean(offered.length)
+      || JSON.stringify(shown.options) !== JSON.stringify(["", ...offered, "other"])) {
+    fail(`the hosted page offers ${shown.picker ? shown.options.join(", ") : "no list"}, not ${offered.join(", ") || "none"}`);
   }
   if (!shown.private || !shown.probe || !shown.sums || !shown.gpl || shown.pandoc !== manifest.sources.pandoc) {
     fail(`the hosted page lost what it must keep: ${JSON.stringify(shown)}`);
@@ -372,7 +378,8 @@ async function hostHeld(page, manifest) {
 
   // A link names a journal: it is chosen, and the address is not written to; one the page
   // does not offer is said, and none is chosen.
-  for (const [slug, chosen] of [[offered[0], offered[0]], ["no-such-journal", ""]]) {
+  const links = [...(offered.length ? [[offered[0], offered[0]]] : []), ["no-such-journal", ""]];
+  for (const [slug, chosen] of links) {
     const address = `${origin}${PAGE_AT}?journal=${slug}`;
     await page.goto(address);
     await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");

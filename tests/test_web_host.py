@@ -148,6 +148,10 @@ PROFILE = ("schema: manuscript-guard/journal/1\nname: {name}\n"
      "journals/j.yaml is not a journal profile"),
     (HEAD, {"a.yaml": PROFILE.format(name="Same"), "b.yaml": PROFILE.format(name="same")}, None,
      "two profiles are named"),
+    # The value of the list's "Another journal", which would choose this profile in its place
+    # (round 1 of #791).
+    (HEAD, {"other.yaml": PROFILE.format(name="Other Letters")}, None,
+     "journals/other.yaml: other is what the page's list calls another journal"),
 ])
 def test_a_host_folder_with_anything_wrong_is_refused_and_says_what(
         tmp_path: Path, host: str, journals: dict | None, files: dict | None, said: str) -> None:
@@ -158,6 +162,34 @@ def test_a_host_folder_with_anything_wrong_is_refused_and_says_what(
     folder = _host(tmp_path, host, journals, files)
     with pytest.raises(build.HostError, match=re.escape(said)):
         build.read_host(folder)
+
+
+def test_the_files_a_computer_leaves_in_journals_and_its_folders_are_passed_over(
+        tmp_path: Path) -> None:
+    """What Finder, Explorer or an editor leaves beside the profiles, a hidden file, Thumbs.db
+    or desktop.ini, and a folder such as the stored instructions pages the journal-profile
+    skill keeps in sources/, are not journals, and do not stop the build (round 1 of #791)."""
+    folder = _host(tmp_path, HEAD, {"j.yaml": PROFILE.format(name="J"), ".DS_Store": "",
+                                    "Thumbs.db": "", "desktop.ini": "", ".j.yaml.swp": ""})
+    (folder / "journals" / "sources").mkdir()
+    (folder / "journals" / "sources" / "j.txt").write_text("the page", encoding="utf-8")
+    assert [journal["slug"] for journal in build.read_host(folder)["journals"]] == ["j"]
+
+
+@pytest.mark.parametrize("where", ["the host folder", "a folder that holds it", "one in it"])
+def test_the_page_is_never_built_over_the_host_folder(tmp_path: Path, where: str) -> None:
+    """`--out` is emptied first: one that is the host folder, holds it, or is in it would delete
+    the host's profiles, so it is refused before anything is touched (round 1 of #791)."""
+    host = tmp_path / "site" / "ours"
+    shutil.copytree(HOST, host)
+    out = {"the host folder": host, "a folder that holds it": tmp_path / "site",
+           "one in it": host / "journals"}[where]
+    wheel = tmp_path / f"manuscript_guard-{manuscript_guard.__version__}-py3-none-any.whl"
+    wheel.write_bytes(b"")
+    with pytest.raises(SystemExit) as stopped:
+        build.main(["--wheel", str(wheel), "--host", str(host), "--out", str(out)])
+    assert stopped.value.code != 0
+    assert (host / "host.yaml").is_file() and (host / "journals" / "examples.yaml").is_file()
 
 
 def test_a_host_folder_without_host_yaml_is_refused(tmp_path: Path) -> None:
@@ -231,3 +263,6 @@ def test_each_box_the_host_s_page_fills_is_on_the_page() -> None:
         assert re.search(rf'id="{name}"[^>]*\bhidden\b', page), name
     for name in ("kicker", "journal", "journaltext"):
         assert f'id="{name}"' in page, name
+    # "Another journal" is the value no slug may be (`build.ANOTHER`).
+    assert f'<option value="{build.ANOTHER}">' in page
+    assert f'$("journal").value === "{build.ANOTHER}"' in (WEB / "app.js").read_text("utf-8")

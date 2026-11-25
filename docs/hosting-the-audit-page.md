@@ -34,7 +34,9 @@ our-journals/
 ```
 
 Each journal is a file `journals/<slug>.yaml`, the slug in lower-case letters, digits and
-hyphens: it is what a link names the journal by. `host.yaml` says who you are:
+hyphens, and not `other`, which the page's list keeps for "Another journal": it is what a
+link names the journal by. A hidden file, `Thumbs.db`, `desktop.ini` and a folder in
+`journals/` are passed over; any other file there stops the build. `host.yaml` says who you are:
 
 ```yaml
 schema: manuscript-guard/host/1
@@ -55,7 +57,7 @@ contact:
 | `accent` | Your colour for links, buttons and ticks, `#rrggbb`, one for a light screen and one for a dark one. Each must have a contrast of 4.5:1 or more with the page's paper, its cards and a button's text, or nothing is built. Optional: without it the page keeps its own teal. |
 | `contact` | One line at the page's foot, your name, the `text` and one `link`, `mailto:` or `https://`. Optional. |
 
-Only `name` is required, and no other key is taken. The page shows each as text, never as
+Only `schema` and `name` are required, and no key but these is taken. The page shows each as text, never as
 markup.
 
 ## Building it
@@ -73,12 +75,16 @@ wrong: a profile the journal schema does not take, two journals of the same name
 `host.yaml` does not have, a logo that is not the picture its extension says, an accent your
 text would not be read against, a link that is neither an e-mail address nor `https://`. It
 also refuses to build with another release of manuscript-guard installed than the wheel's,
-whose schema the page would hold the profiles to. `--out` is emptied first.
+whose schema the page would hold the profiles to. `--out` is emptied first, so it may not
+be the host folder, hold it, or be in it.
 
-To check your build as CI checks the project's, run `web/test/check.py` with `--hosted check`
-([how the page is built and checked](audit-page.md#how-it-is-built-and-checked)): each of
-your journals is then held, in Node, Chrome and Firefox, to what `manuscript-guard audit
-paper.docx --journal journals/<slug>.yaml` says of the worked example.
+To check your build as CI checks the project's, build the same wheel's page without
+`--host` as well, and the worked example, then run `web/test/check.py` with `--hosted check`
+beside the options it always takes
+([how the page is built and checked](audit-page.md#how-it-is-built-and-checked)). Your
+page's code is then held to that page's, and each of your journals, in Node, Chrome and
+Firefox, to what `manuscript-guard audit paper.docx --journal journals/<slug>.yaml` says of
+the worked example.
 
 ## Serving it
 

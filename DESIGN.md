@@ -29292,6 +29292,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     carried would run on the host's site, as any file of the host's would. Accepted.
   - *The word-for-word check is on invented journals* (`web/test/host`). A host's own
     profiles are held to the command line where the host runs check.py on its build. Accepted.
+  - *The code is compared as `files.sha256` lists it.* check.py reads the digests each build
+    wrote, not the files on disk, and passes any file under `host/`, the accent's style sheet
+    among them, which the build writes from colours it checked (round 1 of #791). Accepted.
+  - *"None" in the list is none of the journals offered*, so the form for another journal, or
+    a profile of the reader's chosen before, still holds the paper where it is filled, as on
+    the project's page (round 1 of #791). Accepted.
+  - *A profile saved with a byte-order mark* is shown without it, as a browser decodes text,
+    and browser.mjs, which reads the file with it, would report its rules as differing; the
+    audit is given the profile's bytes as they are (round 1 of #791). Accepted.
 
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's

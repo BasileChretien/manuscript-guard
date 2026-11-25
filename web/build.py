@@ -129,6 +129,11 @@ HOST_SCHEMA = "manuscript-guard/host/1"
 HOST_KEYS = ("schema", "name", "logo", "accent", "contact")
 #: A journal's slug, its profile's file name and what `?journal=` names it by.
 SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
+#: The value of "Another journal" in the page's list (index.html), which no slug may be.
+ANOTHER = "other"
+#: What a computer leaves beside the profiles, passed over as hidden files and folders are:
+#: Windows' pictures' cache and a folder's settings (macOS's .DS_Store is a hidden file).
+LEFT_BESIDE = ("thumbs.db", "desktop.ini")
 #: A logo the page shows beside the host's name, by its extension, with how its file starts.
 LOGOS = {".svg": None, ".png": (b"\x89PNG\r\n\x1a\n",), ".webp": (b"RIFF",)}
 LOGO_MAX_BYTES = 512 * 1024
@@ -252,9 +257,14 @@ def _journals(folder: Path) -> list[dict]:
         return []
     journals = []
     for path in sorted(where.iterdir()):
+        if path.is_dir() or path.name.startswith(".") or path.name.lower() in LEFT_BESIDE:
+            continue
         if not path.is_file() or path.suffix != ".yaml" or not SLUG.fullmatch(path.stem):
             raise HostError(f"journals/{path.name}: each journal is a file journals/<slug>.yaml, "
                             "the slug in lower-case letters, digits and hyphens")  # fmt: skip
+        if path.stem == ANOTHER:
+            raise HostError(f"journals/{path.name}: {ANOTHER} is what the page's list calls "
+                            "another journal, whose rules the reader types: name it otherwise")
         profile, errors = read_profile(path)
         if errors:
             raise HostError(f"journals/{path.name} is not a journal profile: "
@@ -439,6 +449,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--wheel {args.wheel}: not a manuscript-guard wheel")
     host = None
     if args.host:
+        # `--out` is emptied first: never the host folder, one that holds it, or one in it.
+        out, given = args.out.resolve(), args.host.resolve()
+        if out == given or out.is_relative_to(given) or given.is_relative_to(out):
+            parser.error(f"--out {args.out} is the host folder, holds it or is in it, and is "
+                         "emptied first: build the page outside the host folder")
         host = host_for(args.host, args.wheel.name.split("-")[1])
         if isinstance(host, str):
             print(host, file=sys.stderr)

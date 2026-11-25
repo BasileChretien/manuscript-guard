@@ -183,13 +183,15 @@ function formFiles(journal, authors, chosen) {
       + `${clash[0] === "profile" ? "journal's profile" : "authors' names"} it makes: rename it`);
   }
   if (!journal && !authors) return {};
-  py.globals.set("JOURNAL", journal ? py.toPy(journal) : null);
-  py.globals.set("AUTHORS", authors ? py.toPy(authors) : null);
+  // Only what the form gives is set, and what it does not is None in the call itself: a
+  // JavaScript null reaches Python as JsNull, which is not None, and a profile was then made
+  // of nothing (round 1 of #791, the authors' boxes beside a profile not the form's).
+  const given = Object.entries({ JOURNAL: journal, AUTHORS: authors }).filter(([, value]) => value);
+  for (const [name, value] of given) py.globals.set(name, py.toPy(value));
   const said = JSON.parse(py.runPython(`import json
 from manuscript_guard import web
-json.dumps(web.journal_files(JOURNAL, AUTHORS))`));
-  py.globals.delete("JOURNAL");
-  py.globals.delete("AUTHORS");
+json.dumps(web.journal_files(${journal ? "JOURNAL" : "None"}, ${authors ? "AUTHORS" : "None"}))`));
+  for (const [name] of given) py.globals.delete(name);
   if (said.error) throw new Error(`the journal's form: ${said.error}`);
   return Object.fromEntries(Object.keys(FORM_FILES).filter((kind) => said[kind] !== undefined)
     .map((kind) => [FORM_FILES[kind], said[kind]]));

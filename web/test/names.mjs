@@ -22,10 +22,19 @@ import { createContext, runInContext } from "node:vm";
 const source = readFileSync(new URL("../worker.js", import.meta.url), "utf-8");
 const written = [];
 const set = {};
-function journalFiles() {
-  if (set.JOURNAL && set.JOURNAL.name === "refused") return JSON.stringify({ error: "a test" });
-  return JSON.stringify({ ...(set.JOURNAL ? { profile: "profile\n" } : {}),
-    ...(set.AUTHORS ? { authors: "authors\n" } : {}) });
+// The call as Python reads it: each of JOURNAL and AUTHORS it names must have been set to
+// something, since a JavaScript null reaches Python as JsNull, which `journal_files` takes
+// for a form and fails on (round 1 of #791); "None" in the call is none.
+function journalFiles(code) {
+  const [journal, authors] = code.match(/journal_files\((\w+), (\w+)\)/).slice(1)
+    .map((name) => {
+      if (name === "None") return null;
+      if (!set[name]) throw new Error(`${name} reached Python as JsNull`);
+      return set[name];
+    });
+  if (journal && journal.name === "refused") return JSON.stringify({ error: "a test" });
+  return JSON.stringify({ ...(journal ? { profile: "profile\n" } : {}),
+    ...(authors ? { authors: "authors\n" } : {}) });
 }
 function unpacked() {
   const name = set.ARCHIVE.slice("/upload/".length);
@@ -40,7 +49,7 @@ const context = createContext({
   stub: {
     runPython: (code) => (code.includes("web.view")
       ? '{"code": 0, "out": "", "err": "", "view": null}'
-      : code.includes("web.journal_files") ? journalFiles()
+      : code.includes("web.journal_files") ? journalFiles(code)
         : code.includes("web.unpack_paper") ? unpacked() : undefined),
     FS: { writeFile: (path) => written.push(path) },
     globals: { set: (name, value) => { set[name] = value; }, delete() {} },

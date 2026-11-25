@@ -206,6 +206,21 @@ def test_three_codes_are_parted_by_what_the_finding_holds() -> None:
         assert editor.kind_of(found, report).part == part, held
 
 
+def test_the_codes_round_1_found_outside_the_table_stand_in_their_parts() -> None:
+    """Made through a constructor or a callable the walk did not read (round 1): each in a
+    part of its own, none left to `FURTHER`."""
+    nothing = SimpleNamespace(documents=[])
+    for gate, code, part in (("G14", "abbreviations-passed-over", editor.READ),
+                             ("audit", "non-negative-unread", editor.READ),
+                             ("audit", "non-negative-unfound", editor.READ),
+                             ("G4", "box-items", editor.ASK),
+                             ("G4", "box-item-long", editor.ASK),
+                             ("G4", "box-over-limit", editor.ASK),
+                             ("G4", "box-headings-missing", editor.ASK)):
+        kind = editor.kind_of(_item(code, INFO, gate), nothing)
+        assert kind is not editor.FURTHER and kind.part == part, code
+
+
 def test_a_code_with_no_kind_is_put_to_the_authors_not_lost() -> None:
     kind = editor.kind_of(_item("a-code-made-tomorrow"), SimpleNamespace(documents=[]))
     assert kind is editor.FURTHER and kind.part == editor.ASK
@@ -246,23 +261,52 @@ UNREAD = {
 }
 
 
-def _literal_calls(path: Path, callee: str, function: str | None = None) -> set[str]:
-    """The first argument of each call to `callee`, a name or a method, where it is a string,
-    in `function` of `path` or anywhere in it."""
+#: Codes the walk reads that an audit never gives, each with why.
+NEVER = {
+    ("G7", "reference-retracted-cited"): "auditing/references.py hands `_standing` no excuse",
+}
+
+#: The code-shaped strings of the audit's own modules that are no finding's code, each with
+#: what it is (`test_every_code_shaped_string_of_the_audit_is_a_code_with_a_kind`).
+NOT_CODES = {
+    "author-year": "a citation style (auditing/cited.py, auditing/sentences.py)",
+    "package-receipt": "a prefix the draft groups the package's codes by (auditing/draft.py)",
+    "package-result": "a prefix the draft groups the package's codes by (auditing/draft.py)",
+    "package-verification": "a prefix the draft groups the package's codes by",
+    "claim-negation": "compare's code, which measured.py sets the severity of",
+    "placeholder-slot": "a rule of G6's model-artefact (auditing/measured.py)",
+    "placeholder-word": "a rule of G6's model-artefact (auditing/measured.py)",
+    "placeholder-template": "a rule of G6's model-artefact (auditing/summary.py)",
+    "manuscript-guard": "the tool's name",
+}
+
+
+def _literal_calls(path: Path, callee: str, function: str | None = None,
+                   at: int = 0) -> set[str]:  # fmt: skip
+    """The argument at `at`, or the `code` keyword, of each call to `callee`, a name or a
+    method, where it is a string or a module constant naming one, in `function` of `path`
+    or anywhere in it."""
+    from test_finding_keys_source import _constants
+
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = _constants(path)
     scopes = [node for node in ast.walk(tree)
               if isinstance(node, ast.FunctionDef) and node.name == function] if function \
         else [tree]  # fmt: skip
     found = set()
     for scope in scopes:
         for node in ast.walk(scope):
-            if not isinstance(node, ast.Call) or not node.args:
+            if not isinstance(node, ast.Call):
                 continue
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-            first = node.args[0]
-            if name == callee and isinstance(first, ast.Constant) and isinstance(first.value,
-                                                                                    str):
-                found.add(first.value)
+            if name != callee:
+                continue
+            given = {one.arg: one.value for one in node.keywords}
+            arg = given.get("code", node.args[at] if len(node.args) > at else None)
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                found.add(arg.value)
+            elif isinstance(arg, ast.Name) and arg.id in names:
+                found.add(names[arg.id])
     return found
 
 
@@ -285,7 +329,14 @@ def made_by_the_audit() -> set[tuple[str, str]]:
     found |= {("G7", code) for code in by_title.CODES.values()}
     found |= {("audit", code) for code in _literal_calls(SRC / "auditing" / "package.py",
                                                           "say")}  # fmt: skip
-    return found | set(UNREAD)
+    # Made through a callable handed in, or a constructor `made` does not read (round 1).
+    found |= {("audit", code) for code in _literal_calls(SRC / "auditing" / "skew.py", "item",
+                                                          "items", at=2)}  # fmt: skip
+    found |= {("G14", code) for name in ("Undefined", "Listed")
+              for path in sorted(SRC.rglob("*.py")) for code in _literal_calls(path, name)}
+    found |= {("G4", code) for code in _literal_calls(SRC / "gates" / "journal_boxes.py",
+                                                       "_at")}  # fmt: skip
+    return (found | set(UNREAD)) - set(NEVER)
 
 
 def test_every_code_the_audit_makes_has_a_kind() -> None:
@@ -298,6 +349,24 @@ def test_every_kind_names_only_codes_the_audit_makes() -> None:
     parted = {code for kind in editor.KINDS for code in kind.codes}
     stale = sorted(parted - made_by_the_audit())
     assert not stale, f"a kind in auditing/editor.py names codes the audit never makes: {stale}"
+
+
+def test_every_code_shaped_string_of_the_audit_is_a_code_with_a_kind() -> None:
+    """A net under the walk: a code made in the audit's own modules by a way no reading above
+    knows still stands in them as a string, and is caught here (round 1: three codes made
+    through a callable handed in and a constructor the walk did not read)."""
+    shape = re.compile(r"^[a-z]+(?:-[a-z]+)+$")
+    parted = {code for kind in editor.KINDS for _gate, code in kind.codes}
+    loose = {}
+    for path in [SRC / "audit.py", *sorted((SRC / "auditing").glob("*.py"))]:
+        if path.name == "editor.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and shape.match(
+                    node.value) and node.value not in parted | set(NOT_CODES):
+                loose.setdefault(node.value, path.name)
+    assert not loose, f"code-shaped strings with no kind and not in NOT_CODES: {loose}"
 
 
 def test_each_code_the_walk_cannot_read_is_named_in_its_file() -> None:

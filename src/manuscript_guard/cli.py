@@ -7195,8 +7195,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="give the report as an editor reads it, each finding in one of four parts: what "
         "to look at before you decide, what to ask the authors, what is for copyediting and "
-        "what the check read, with how often each kind was right on published papers; with "
-        "--json, each finding gains its part (docs/refereeing.md)",
+        "what the check read, with how often each kind was right on published papers where "
+        "that was measured; with --json, each finding gains its part (docs/refereeing.md)",
     )
     audit.add_argument(
         "--strict",

@@ -893,8 +893,8 @@ features:
     title: An editor's report
     says: >-
       Puts what the audit found in four parts, what to look at before deciding, what to ask
-      the authors, what is for copyediting and what was read, each kind with how often it
-      was right on published papers.
+      the authors, what is for copyediting and what was read, with how often each kind was
+      right on published papers where that was measured.
     status: partial
     commands: [audit]
     tests: [tests/test_audit_editor.py]

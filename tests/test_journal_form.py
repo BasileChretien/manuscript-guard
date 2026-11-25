@@ -92,10 +92,12 @@ def test_another_heading_a_sentence_or_a_title_is_no_statement(heading: str, tex
 def test_a_line_of_spaces_after_a_title_is_read_in_linear_time(assert_linear, opening) -> None:
     """A line that does not end where its title does is refused in time that grows with the
     spaces after the title as they grow (the redesign's review: three runs of spaces back to
-    back took cubic time, and 3000 of them stalled the search)."""
+    back took cubic time, and 3000 of them stalled the search). The line is timed 64 times
+    over, each a line of its own the search starts on: once, a linear search of 819,200
+    spaces took under the 20 ms `assert_linear` needs to time it on CI's runner."""
     assert not found("Funding", opening + " " * 3000 + "x")
     searched = re.compile(journal_form.pattern(["Funding"]), re.IGNORECASE | re.MULTILINE)
-    assert_linear(lambda n: opening + " " * n + "x", searched.search, 200,
+    assert_linear(lambda n: (opening + " " * n + "x\n") * 64, searched.search, 200,
                   "a statement's pattern, by the spaces after its title")  # fmt: skip
 
 

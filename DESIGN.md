@@ -17316,8 +17316,9 @@ has to say what its columns are called for the two to be compared.
    the cells on that side of its bound: "P < 0.001" matches R's 2e-16 and SPSS's .000, which
    SPSS prints for a P under 0.0005, and a group whose P is printed so is matched on its correct
    row rather than reported with one number off. A cell that carries a sign itself, as jamovi
-   prints "< .001", is a bound: it matches a P printed with the same sign and a bound no smaller
-   than the cell's, and a P printed exactly that falls on the cell's side.
+   prints "< .001", is a bound: it matches a P printed with the same sign that follows from it
+   (under "<", a bound no smaller than the cell's; under ">", one no larger), and a P printed
+   exactly that falls on the cell's side.
 4. **What a match is worth is measured for groups as it is for numbers.** For each shape of
    group the paper holds (three numbers at one decimal place and one at three, say), the share
    of a fixed grid of such groups that some row of the given outputs would match. The grid is
@@ -17348,10 +17349,11 @@ nothing else. No reader decides what a cell means.
 
 - CSV and TSV: one table, kept as rows rather than joined.
 - JSON: a list of objects is a table, one row for each object. In a results fragment, each
-  bound `em.interval` writes names its estimate (`bounds`, `bound`) and its `level`, and every
-  level of an estimate's intervals names the same estimate (the example writes a 95% and a 90%
-  interval on `ror.point`). So a fragment's rows are grouped by `bounds` and `level`: one row
-  for each level, with the estimate on each. Every other value is a row of its own. A fragment
+  bound `em.interval` writes names its estimate (`bounds`, `bound`), and its `level` where one is
+  given or set as the emitter's `ci_level`; every level of an estimate's intervals names the
+  same estimate (the example writes a 95% and a 90% interval on `ror.point`). So a fragment's
+  rows are grouped by `bounds` and `level`: one row for each level, bounds with no level making
+  one, with the estimate on each. Every other value is a row of its own. A fragment
   links no P to its estimate, so against a fragment a group's P is looked for among its values,
   as a number no group holds is, and does not count towards "one number off".
 - .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
@@ -17432,9 +17434,11 @@ start.
   sensitivity and interim analyses), each with what it has to say and the guideline item it
   comes from, read on a stated date.
 - G12 holds `design/plan.md` to those sections (`plan-section-missing`, `plan-section-empty`),
-  which warn at every stage ("The design gate warns and never blocks", above); its findings on
-  the registration fail later on. The plan is
-  held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
+  which warn at every stage, as "The design gate warns and never blocks" (above) decided. Other
+  findings of G12 fail from a stage (`policy.py`): `registration-record-edited` from drafting,
+  the other registration findings from internal review or submission, and
+  `plan-declarations-unreadable` and the controls' findings at submission. The plan is held to
+  what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
   the registration's outcomes (`registration-…`).
 - `next` asks for the design first (`choose-study-type`), and the analysis-plan skill puts the
   sections to the author through an agent.

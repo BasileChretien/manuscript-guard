@@ -31,7 +31,7 @@ A code's share is given where 10 or more of its warnings were judged, from 3 pap
 | `G3/figure-colours-confused` | check | 88 | 88 | 15 | 17% | 3.8% to 43% | 7 (LaTeX 7) |
 | `G6/ai-cadence` | audit, check | 57 | 28 | 3 | 11% | 0% to 27% | 19 (Word 16, LaTeX 3) |
 | `G6/ai-phrasing` | audit, check, compare | 130 | 130 | 26 | 20% | 8.8% to 34% | 41 (Word 17, PDF 16, LaTeX 8) |
-| `G6/vague-attribution` | audit | 21 | 14 | 9 | 64% | 27% to 94% | 9 (Word 3, PDF 3, LaTeX 3) |
+| `G6/vague-attribution` | audit, check | 21 | 14 | 9 | 64% | 27% to 94% | 9 (Word 3, PDF 3, LaTeX 3) |
 | `G7/entries-not-told-apart` | audit | 18 | 18 | 1 | 5.6% | 0% to 26% | 18 (PDF 13, LaTeX 5) |
 | `G7/novelty-unsearched` | check | 32 | 31 | 5 | 16% | 2.7% to 35% | 17 (Word 14, LaTeX 3) |
 | `G7/reference-uncited` | check | 3,216 | 112 | 13 | 0.6% | 0.1% to 4.4% | 19 (Word 7, LaTeX 12) |
@@ -41,8 +41,8 @@ A code's share is given where 10 or more of its warnings were judged, from 3 pap
 | `G14/code-name-in-prose` | check | 43 | 43 | 4 | 9.3% | 0% to 36% | 9 (Word 6, LaTeX 3) |
 | `G14/notation-p-symbol` | audit, check | 20 | 20 | 2 | 10% | 0% to 30% | 10 (Word 10) |
 | `G14/notation-sign-spacing` | audit, check | 43 | 37 | 2 | 5.3% | 0% to 18% | 19 (Word 14, PDF 4, LaTeX 1) |
-| `G14/notation-unit` | audit, compare | 25 | 18 | 6 | 33% | 12% to 58% | 17 (Word 5, PDF 9, LaTeX 3) |
-| `G14/spelling-mixed` | audit | 17 | 10 | 1 | 10% | 0% to 40% | 10 (Word 7, PDF 3) |
+| `G14/notation-unit` | audit, check, compare | 25 | 18 | 6 | 33% | 12% to 58% | 17 (Word 5, PDF 9, LaTeX 3) |
+| `G14/spelling-mixed` | audit, check | 17 | 10 | 1 | 10% | 0% to 40% | 10 (Word 7, PDF 3) |
 | `G14/spelling-variant` | audit, check, compare | 154 | 147 | 14 | 9.2% | 3.9% to 15% | 40 (Word 20, PDF 12, LaTeX 8) |
 | `audit/does-not-fit` | audit | 13 | 13 | 0 | 0% | 0% to 23% | 7 (Word 4, PDF 3) |
 
@@ -55,13 +55,13 @@ Fewer than 10 judged, or from fewer than 3 papers: too few to say what share is 
 | `G2/code-block-unread` | check | 1 | 1 | 1 | 0 | 1 |
 | `G5/guideline-claimed-not-declared` | check | 5 | 5 | 4 | 1 | 5 |
 | `G6/model-artefact` | audit | 2 | 2 | 0 | 2 | 2 |
-| `G6/revision-residue` | audit | 5 | 3 | 1 | 2 | 2 |
+| `G6/revision-residue` | audit, check | 5 | 3 | 1 | 2 | 2 |
 | `G7/citation-beyond-list` | audit | 1 | 1 | 0 | 1 | 1 |
 | `G7/entry-never-cited` | audit | 8 | 8 | 6 | 2 | 3 |
 | `G8/p-decision-error` | check | 1 | 1 | 1 | 0 | 1 |
 | `G8/p-inconsistent` | check | 5 | 5 | 5 | 0 | 4 |
 | `G12/registration-undeclared` | check | 1 | 1 | 1 | 0 | 1 |
-| `G14/notation-percent` | audit | 15 | 8 | 8 | 0 | 8 |
+| `G14/notation-percent` | audit, check | 15 | 8 | 8 | 0 | 8 |
 | `G14/notation-space-missing` | audit | 2 | 2 | 1 | 1 | 2 |
 | `BUILD/tex-not-input` | check | 7 | 7 | 5 | 2 | 2 |
 | `audit/sum-off` | audit | 1 | 1 | 1 | 0 | 1 |
@@ -126,7 +126,7 @@ The tuning papers are openly licensed preprints and articles, most of them in En
 ## What these shares do not measure
 
 - **Warnings never given.** Only what the tool said was judged. A problem in a paper that no rule flagged is counted nowhere, so this page says nothing of how much the tool misses. The judges noted 12 such problems in passing, but they were not asked to look for them, and that number is no measure of what is missed.
-- **Papers unlike these.** The papers above are mostly preprints, from the fields listed, and most are in English. A journal's typeset PDF, a field with notation of its own or another language may fare worse. The held-out PDFs are articles as journals typeset them: compare their share with the tuning PDFs'.
+- **Papers unlike these.** The papers above come from the fields and the sources listed, and most are in English. A field with notation of its own, another language or another kind of file may fare worse. `audit`'s share false on the held-out PDFs was 61%, against 31% on the tuning PDFs.
 - **The same papers tuned on.** A share above is of the papers the rules were corrected against, and flatters them; the held-out shares show by how much.
 - **Who judged.** Model judges, each given the paper's text and one written brief of what each code claims: in the first judging one judge for each field, and in the later batches two judges blind to each other, the findings they split on decided by the toolkit's author, who also read 20 of their agreements once. No editor judged them.
 - **True but minor.** A warning judged true is one whose statement about the text holds. It may still not be worth an author's time.

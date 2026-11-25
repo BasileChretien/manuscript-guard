@@ -118,6 +118,19 @@ def _corrupt(document: dict, how: str) -> dict:
         changed["heldout"]["papers"]["h01"] = ["docx", "psych"]
     elif how == "a held-out paper by its slug":
         changed["heldout"]["papers"]["docx-psych-C3"] = "docx"
+    elif how == "a reason in words":
+        tuning["verdicts"]["left_out"] = {"studies show the moon is cheese": 1}
+    elif how == "a field as a phrase":
+        tuning["papers"][paper] = ["docx", "psychology-of-the-moon-trial", "zenodo"]
+    elif how == "a source as a phrase":
+        tuning["papers"][paper] = ["docx", "psych", "the-moon-is-cheese"]
+    elif how == "a slug as a phrase":
+        said = tuning["papers"].pop(paper)
+        tuning["papers"]["studies-show-the-moon-is-cheese"] = said
+        tuning["strata"] = [["studies-show-the-moon-is-cheese", *row[1:]] if row[0] == paper
+                            else row for row in tuning["strata"]]
+    elif how == "a run named in words":
+        tuning["run"] = "the-moon-is-cheese"
     return changed
 
 
@@ -125,7 +138,9 @@ def _corrupt(document: dict, how: str) -> dict:
                                  "a field in words", "a key of its own",
                                  "more judged than given", "a code of the held-out set",
                                  "a field of a held-out paper",
-                                 "a held-out paper by its slug"])  # fmt: skip
+                                 "a held-out paper by its slug", "a reason in words",
+                                 "a field as a phrase", "a source as a phrase",
+                                 "a slug as a phrase", "a run named in words"])  # fmt: skip
 def test_counts_that_hold_more_than_counts_are_refused(how: str) -> None:
     with pytest.raises(page.CountsError):
         page.check(_corrupt(MINI, how))
@@ -186,7 +201,7 @@ def test_a_code_under_the_bar_gets_its_counts_and_no_share() -> None:
     few = few.split("\n## ", 1)[0]
     assert "`G14/abbreviation-unused`" in shares
     assert "`G6/ai-phrasing`" in few and "`G6/ai-phrasing`" not in shares
-    assert "| `G6/ai-phrasing` | audit | 4 | 2 | 1 | 1 | 1 |" in few
+    assert "| `G6/ai-phrasing` | audit, check | 6 | 2 | 1 | 1 | 1 |" in few
 
 
 def test_audit_leads_and_check_s_main_code_is_named() -> None:
@@ -201,6 +216,36 @@ def test_audit_leads_and_check_s_main_code_is_named() -> None:
     assert "most of them `G7/reference-uncited`" in line and "held out" in line
 
 
+def test_given_by_names_every_command_that_gave_the_code(counts: dict) -> None:
+    """A code's warnings add up every command that gave it, whether or not that command's
+    warnings were judged, so "given by" names every one of them."""
+    measured = page.Counts(counts)
+    drawn = page.page(measured)
+    for code in measured.codes():
+        gave = {page.COMMANDS[report] for report, codes in counts["tuning"]["given"].items()
+                if code in codes}  # fmt: skip
+        cell = ", ".join(c for c in page.ORDER if c in gave)
+        assert f"| `{code}` | {cell} | {page.number(measured.warnings(code=code))} |" in drawn
+
+
+def test_the_pdfs_are_compared_by_the_shares_the_counts_give() -> None:
+    """The tuning papers hold journals' PDFs as the held-out ones do, so the page says no
+    more of them than the two shares."""
+    measured = page.Counts(MINI)
+    drawn = page.page(measured)
+    tuning, held = measured.overall("audit", "pdf"), measured.held("audit", "pdf")
+    assert (f"`audit`'s share false on the held-out PDFs was {page.percent(held.share)}, "
+            f"against {page.percent(tuning.share)} on the tuning PDFs") in drawn
+    assert "typeset them" not in drawn
+
+
+def test_every_code_in_the_counts_is_one_the_package_writes(counts: dict) -> None:
+    source = "\n".join(p.read_text("utf-8") for p in (REPO / "src").rglob("*.py"))
+    codes = {code for codes in counts["tuning"]["given"].values() for code in codes}
+    unwritten = sorted(c for c in codes if f'"{c.split("/", 1)[1]}"' not in source)
+    assert not unwritten, f"no code of the package writes {unwritten}"
+
+
 def test_the_readme_line_is_put_in_place_of_the_one_there() -> None:
     readme = "# R\n\n## Status\n\n- **False alarms** old\n- other\n"
     assert page.with_line(readme, "- **False alarms** new") == (
@@ -213,23 +258,25 @@ def test_the_readme_line_is_put_in_place_of_the_one_there() -> None:
 #: under, a code that makes most of `check`'s warnings, and a held-out set.
 MINI = {
     "tuning": {
-        "run": "main-0123456789", "commit": "0123456789abcdef0123456789abcdef01234567",
+        "run": "main-012345678", "commit": "0123456789abcdef0123456789abcdef01234567",
         "version": "0.2.503", "date": "2026-11-25",
         "verdicts": {"first": 20, "batches": 6, "left_out": {"verdict unclear": 1}},
-        "papers": {"docx-a": ["docx", "psych", "osf:psyarxiv"],
-                   "docx-b": ["docx", "med", "zenodo"],
-                   "pdf-c": ["pdf", "med", "pmc"], "tex-d": ["latex", "stat-ap", "arxiv"]},
+        "papers": {"docx-psych-A1": ["docx", "psych", "osf:psyarxiv"],
+                   "docx-med-A2": ["docx", "med", "zenodo"],
+                   "pdf-med-B1": ["pdf", "med", "pmc"],
+                   "tex-stat-ap-C1": ["latex", "stat-ap", "arxiv"]},
         "given": {"audit": {"G6/ai-phrasing": 4, "G14/abbreviation-unused": 30},
-                  "check": {"G7/reference-uncited": 300, "G14/abbreviation-unused": 4},
+                  "check": {"G7/reference-uncited": 300, "G14/abbreviation-unused": 4,
+                            "G6/ai-phrasing": 2},
                   "compare": {"G14/abbreviation-unused": 1}},
         "strata": [
-            ["docx-a", "audit", "G6/ai-phrasing", 4, 1, 1],
-            ["docx-a", "audit", "G14/abbreviation-unused", 10, 4, 1],
-            ["docx-b", "audit", "G14/abbreviation-unused", 10, 5, 0],
-            ["pdf-c", "audit", "G14/abbreviation-unused", 10, 3, 2],
-            ["tex-d", "check", "G7/reference-uncited", 300, 10, 0],
-            ["tex-d", "check", "G14/abbreviation-unused", 4, 3, 1],
-            ["tex-d", "compare", "G14/abbreviation-unused", 1, 1, 0],
+            ["docx-psych-A1", "audit", "G6/ai-phrasing", 4, 1, 1],
+            ["docx-psych-A1", "audit", "G14/abbreviation-unused", 10, 4, 1],
+            ["docx-med-A2", "audit", "G14/abbreviation-unused", 10, 5, 0],
+            ["pdf-med-B1", "audit", "G14/abbreviation-unused", 10, 3, 2],
+            ["tex-stat-ap-C1", "check", "G7/reference-uncited", 300, 10, 0],
+            ["tex-stat-ap-C1", "check", "G14/abbreviation-unused", 4, 3, 1],
+            ["tex-stat-ap-C1", "compare", "G14/abbreviation-unused", 1, 1, 0],
         ],
     },
     "heldout": {
@@ -249,6 +296,8 @@ def test_the_made_up_counts_are_counts() -> None:
 # ------------------------------------------------------- counting a made-up mini corpus
 
 SECRET = "Studies show the moon is cheese"
+#: A main run's name, its commit's first nine characters after `main-`.
+RUN_NAME = "main-012345678"
 
 
 def warn(code: str, message: str, line: int, **extra) -> dict:
@@ -289,7 +338,7 @@ def mini_corpus(root: Path, slug: str = "docx-psych-A1") -> Path:
     (root / "corpus" / slug / "meta.json").write_text(json.dumps({
         "slug": slug, "format": "docx", "field": "psych", "source": "osf:psyarxiv",
         "main": "paper.docx", "title": SECRET}), "utf-8")
-    run = root / "runs" / "new"
+    run = root / "runs" / RUN_NAME
     (run / slug).mkdir(parents=True)
     (run / "run.json").write_text(json.dumps({"commit": "0123456789", "version": "0.2.503",
                                               "sha": "0123456789" * 4}), "utf-8")
@@ -299,7 +348,7 @@ def mini_corpus(root: Path, slug: str = "docx-psych-A1") -> Path:
 
 def test_counts_holds_the_judged_warnings_reported_under_their_code(tmp_path: Path) -> None:
     root, out = mini_corpus(tmp_path / "corpus"), tmp_path / "false-alarms.yaml"
-    assert tool.main(["--corpus", str(root), "counts", "new", "--out", str(out)]) == 0
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--out", str(out)]) == 0
     written = yaml.safe_load(out.read_text("utf-8"))
     tuning = written["tuning"]
     assert tuning["papers"] == {"docx-psych-A1": ["docx", "psych", "osf:psyarxiv"]}
@@ -307,7 +356,7 @@ def test_counts_holds_the_judged_warnings_reported_under_their_code(tmp_path: Pa
     assert tuning["given"] == {"audit": {"G14/abbreviation-unused": 3}}
     assert tuning["strata"] == [["docx-psych-A1", "audit", "G14/abbreviation-unused", 3, 1, 1]]
     assert tuning["verdicts"] == {"first": 3, "batches": 0, "left_out": {}}
-    assert (tuning["run"], tuning["version"]) == ("new", "0.2.503")
+    assert (tuning["run"], tuning["version"]) == (RUN_NAME, "0.2.503")
     assert "heldout" not in written
     # Nothing of the paper's text, title, findings or verdicts' reasons is written.
     assert "moon" not in out.read_text("utf-8") and "never used" not in out.read_text("utf-8")
@@ -316,20 +365,20 @@ def test_counts_holds_the_judged_warnings_reported_under_their_code(tmp_path: Pa
 def test_counts_keeps_the_held_out_section_unless_it_is_counted_again(tmp_path: Path) -> None:
     root, out = mini_corpus(tmp_path / "corpus"), tmp_path / "false-alarms.yaml"
     held = mini_corpus(tmp_path / "held", "pdf-med-X9")
-    assert tool.main(["--corpus", str(root), "counts", "new", "--heldout", str(held), "new",
-                      "--milestone", "2", "--out", str(out)]) == 0  # fmt: skip
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--heldout", str(held),
+                      RUN_NAME, "--milestone", "2", "--out", str(out)]) == 0  # fmt: skip
     section = yaml.safe_load(out.read_text("utf-8"))["heldout"]
     # Numbered, by format alone (this one's meta says docx), its row naming no code.
     assert section["papers"] == {"h01": "docx"} and section["milestone"] == 2
     assert section["strata"] == [["h01", "audit", 3, 1, 1]]
     assert "pdf-med-X9" not in out.read_text("utf-8")
-    assert tool.main(["--corpus", str(root), "counts", "new", "--out", str(out)]) == 0
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--out", str(out)]) == 0
     assert yaml.safe_load(out.read_text("utf-8"))["heldout"] == section
 
 
 def test_counts_of_the_held_out_set_need_its_milestone(tmp_path: Path, capsys) -> None:
     root, out = mini_corpus(tmp_path / "corpus"), tmp_path / "false-alarms.yaml"
-    assert tool.main(["--corpus", str(root), "counts", "new", "--milestone", "1",
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--milestone", "1",
                       "--out", str(out)]) == 2  # fmt: skip
     assert "--heldout and --milestone" in capsys.readouterr().err
     assert not out.exists()
@@ -341,5 +390,5 @@ def test_counts_that_would_hold_more_than_counts_are_not_written(tmp_path: Path,
     meta = root / "corpus" / "docx-psych-A1" / "meta.json"
     meta.write_text(json.dumps({**json.loads(meta.read_text("utf-8")),
                                 "field": "Psychology of the moon"}), "utf-8")  # fmt: skip
-    assert tool.main(["--corpus", str(root), "counts", "new", "--out", str(out)]) == 2
+    assert tool.main(["--corpus", str(root), "counts", RUN_NAME, "--out", str(out)]) == 2
     assert "field" in capsys.readouterr().err and not out.exists()

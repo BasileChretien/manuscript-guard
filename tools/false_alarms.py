@@ -62,12 +62,8 @@ SOURCES = {
     "osf:socarxiv": "SocArXiv", "osf:sportrxiv": "SportRxiv",
 }  # fmt: skip
 
-SLUG = re.compile(r"[A-Za-z0-9._-]+")
 CODE = re.compile(r"[A-Za-z0-9]+/[a-z0-9][a-z0-9-]*")
-WORD = re.compile(r"[a-z0-9][a-z0-9-]*")
-LABEL = re.compile(r"[a-z0-9][a-z0-9-]*(:[a-z0-9][a-z0-9-]*)?")
 HELD = re.compile(r"h\d{2,}")
-REASON = re.compile(r"[a-z][a-z ]*")
 
 
 # --- the counts, held to counts only ----------------------------------------------------
@@ -102,22 +98,31 @@ def _word(value: object, pattern: re.Pattern, where: str) -> str:
 
 
 def _made(said: dict, where: str) -> None:
-    _word(said["run"], SLUG, f"{where} run")
-    _word(said["commit"], re.compile(r"[0-9a-f]{40}"), f"{where} commit")
+    commit = _word(said["commit"], re.compile(r"[0-9a-f]{40}"), f"{where} commit")
+    _word(said["run"], re.compile(rf"(main-)?{commit[:9]}"), f"{where} run, a main run of "
+          "its commit,")  # fmt: skip
     _word(said["version"], re.compile(r"\d+\.\d+\.\d+"), f"{where} version")
 
 
-def _papers(said: object, names: re.Pattern, where: str) -> dict:
+#: A slug as the corpus names a paper: its format, its field, and a letter and a number.
+PREFIX = {"docx": "docx", "pdf": "pdf", "latex": "tex", "markdown": "md"}
+
+
+def _papers(said: object) -> dict:
+    """The tuning papers, each named by its format, its field and a tag, with a format, a
+    field and a source the page has a name for: a name of a paper's own, or a phrase in the
+    place of one, is refused, since it would be published as it stands."""
     if not isinstance(said, dict) or not said:
-        raise CountsError(f"{where} papers: a mapping of each paper to its format, field and "
+        raise CountsError("tuning papers: a mapping of each paper to its format, field and "
                           "source")  # fmt: skip
     for name, value in said.items():
-        _word(name, names, f"{where} papers")
-        if not isinstance(value, list) or len(value) != 3 or value[0] not in FORMATS or not all(
-                isinstance(v, str) for v in value) or not WORD.fullmatch(value[1]) or not (
-                LABEL.fullmatch(value[2])):  # fmt: skip
-            raise CountsError(f"{where} papers {name}: a format of {sorted(FORMATS)}, a field "
-                              "and a source")  # fmt: skip
+        if not isinstance(value, list) or len(value) != 3 or value[0] not in FORMATS or (
+                value[1] not in FIELDS or value[2] not in SOURCES):  # fmt: skip
+            raise CountsError(f"tuning papers {name!r}: a format of {sorted(FORMATS)}, a field "
+                              "of FIELDS and a source of SOURCES in tools/false_alarms.py; a "
+                              "new one is named there first")  # fmt: skip
+        slug = rf"{PREFIX[value[0]]}-{re.escape(value[1])}-[A-Z]\d+"
+        _word(name, re.compile(slug), "tuning papers, a slug of format, field and tag,")
     return said
 
 
@@ -143,8 +148,11 @@ def check(document: object) -> None:
     said = _keys(tuning["verdicts"], {"first", "batches", "left_out"}, "tuning verdicts")
     _whole(said["first"], "verdicts first"), _whole(said["batches"], "verdicts batches")
     for reason, n in (said["left_out"] or {}).items():
-        _word(reason, REASON, "verdicts left out"), _whole(n, f"verdicts left out {reason}")
-    papers = _papers(tuning["papers"], SLUG, "tuning")
+        if reason not in LEFT_OUT:
+            raise CountsError(f"verdicts left out: {reason!r} is no reason of LEFT_OUT in "
+                              "tools/false_alarms.py")  # fmt: skip
+        _whole(n, f"verdicts left out {reason}")
+    papers = _papers(tuning["papers"])
     given = tuning["given"]
     if not isinstance(given, dict) or not set(given) <= set(COMMANDS):
         raise CountsError(f"tuning given: warnings by report, of {sorted(COMMANDS)}, and code")
@@ -327,7 +335,8 @@ class Counts:
         return share(self.held_rows(command, fmt))
 
     def commands(self, code: str) -> str:
-        said = {COMMANDS[r[1]] for r in self.strata if r[2] == code}
+        """Every command that gave the code, judged or not, as its warnings add them up."""
+        said = {c for (c, k), n in self.given.items() if k == code and n}
         return ", ".join(c for c in ORDER if c in said)
 
     def slugs(self, code: str) -> set[str]:
@@ -514,6 +523,16 @@ def _the_papers(counts: Counts) -> list[str]:
     return lines
 
 
+def _pdfs(counts: Counts) -> str:
+    """How `audit` fared on the PDFs of each set, where both have judged ones."""
+    tuning = counts.rows(lambda r: COMMANDS[r[1]] == "audit" and counts.papers[r[0]][0] == "pdf")
+    if not tuning or not counts.held_rows("audit", "pdf"):
+        return ""
+    held, ours = counts.held("audit", "pdf"), counts.overall("audit", "pdf")
+    return (f" `audit`'s share false on the held-out PDFs was {percent(held.share)}, against "
+            f"{percent(ours.share)} on the tuning PDFs.")
+
+
 def _limits(counts: Counts) -> list[str]:
     missed = counts.tuning["verdicts"]["left_out"].get(MISS, 0)
     noticed = (f" The judges noted {number(missed)} such problems in passing, but they were not "
@@ -523,10 +542,9 @@ def _limits(counts: Counts) -> list[str]:
             "- **Warnings never given.** Only what the tool said was judged. A problem in a "
             "paper that no rule flagged is counted nowhere, so this page says nothing of how "
             f"much the tool misses.{noticed}",
-            "- **Papers unlike these.** The papers above are mostly preprints, from the fields "
-            "listed, and most are in English. A journal's typeset PDF, a field with notation of "
-            "its own or another language may fare worse. The held-out PDFs are articles as "
-            "journals typeset them: compare their share with the tuning PDFs'.",
+            "- **Papers unlike these.** The papers above come from the fields and the sources "
+            "listed, and most are in English. A field with notation of its own, another "
+            "language or another kind of file may fare worse." + _pdfs(counts),
             "- **The same papers tuned on.** A share above is of the papers the rules were "
             "corrected against, and flatters them; the held-out shares show by how much.",
             "- **Who judged.** Model judges, each given the paper's text and one written brief "

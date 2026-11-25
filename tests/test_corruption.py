@@ -37625,6 +37625,65 @@ def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None
     ]
 
 
+def test_a_long_form_read_across_a_bracket_it_does_not_open_is_no_definition(
+    project: Path,
+) -> None:
+    """The real-paper corpus (row 4 of window C): two doses, each given as a pair, "20.6 mg
+    (M1) to 21.5 mg (M2)". The letters of M2 were read back across the bracket of M1, so M2
+    was defined as "M1) to 21.5 mg" and then as "M1) to 9.2 mg", and reported as given
+    another meaning. A long form that closes a bracket it does not open is no long form,
+    unless the bracket opens on a part the short form opens with or a hyphen follows it; one
+    that holds a whole bracket still is, and so is one that opens a bracket the short form's
+    bracket closes, "visual analogue scale (in mm (VAS))", as nested brackets are written."""
+    mended = with_ror_defined(project)
+    paired = mended.replace(
+        "The reporting odds ratio observed here",
+        "Doses rose from 20.6 mg (M1) to 21.5 mg (M2) in one arm and from 8.8 mg (M1) to "
+        "9.2 mg (M2) in the other. The reporting odds ratio observed here",
+    )
+    assert paired != mended
+    main_md(project).write_text(paired, encoding="utf-8")
+    assert language_findings(project) == []
+    # A long form holding a whole bracket is read, so its second definition is still caught.
+    whole = mended.replace(
+        "a reporting odds ratio (ROR) of", "a reporting (cases versus others) odds ratio (ROR) of"
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The reporting (cases versus others) odds ratio (ROR) observed here",
+    )
+    main_md(project).write_text(whole, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(whole, "others) odds ratio (ROR) observed"))
+    ]
+    # The other shapes of the corpus: a closing bracket before a comma, before a space after
+    # a list, and before a hyphen where it holds the short form itself, each given twice.
+    shapes = mended.replace(
+        "The reporting odds ratio observed here",
+        "It bound the receptors (Fc gamma Rs), or a bivalent analyte model (FcRn). It bound "
+        "the ligands (Fc gamma Ls), or a monovalent analyte model (FcRn). Scores (SD; Range) "
+        "by school (SRS) and (SD; Range) by region (SRS) were read. A construct (clone 4, "
+        "S199AzF)-tagged protein (S199AzF) and (clone 5, S199AzF)-tagged peptide (S199AzF) "
+        "were used. The "
+        "reporting odds ratio observed here",
+    )
+    main_md(project).write_text(shapes, encoding="utf-8")
+    # SRS is given no long form anywhere, so it is a form used and never defined; FcRn and
+    # S199AzF have no two capitals together, which an undefined form needs.
+    assert language_findings(project) == [("abbreviation-undefined", line_of(shapes, "(SRS)"))]
+    # A bracket a hyphen follows is part of a word, and the long form's: a definition
+    # across one given again is still caught (round 1 of row 4 of window C).
+    hyphened = mended.replace(
+        "The reporting odds ratio observed here",
+        "The terminal transferase (TdT)-mediated uridine nick-end labelling (TUNEL) was run, "
+        "and the TUNEL counted. Again, (TdT)-mediated uridine nick-end labelling (TUNEL) was "
+        "run. The reporting odds ratio observed here",
+    )
+    main_md(project).write_text(hyphened, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(hyphened, "Again, (TdT)"))
+    ]
+
+
 def test_a_statistic_after_a_dash_is_no_second_definition(project: Path) -> None:
     """The final check of #623 (from an agricultural-policy preprint of the real-paper
     corpus): a value given after a dash with its interval in square brackets first, "older

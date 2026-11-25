@@ -2787,6 +2787,128 @@ def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
 
 
+def _a_long_form_may_close_a_bracket_it_does_not_open(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_unmatched", lambda before, start, short: False)
+
+
+def _items(before: str, start: int, close: int) -> list[str]:
+    """What the bracket closing at `close` holds, item by item, as `_its_own` reads it."""
+    opened = language_gate._opened(before, start)
+    return [item.strip() for item in re.split(r"[;,]", before[opened:close])]
+
+
+def _follows_a_hyphen(before: str, close: int) -> bool:
+    after = before[close + 1 : close + 2]
+    return bool(after) and after in language_gate._WORD_HYPHENS
+
+
+def _a_long_form_closes_no_bracket_its_short_form_opens_with(patch: pytest.MonkeyPatch) -> None:
+    """Every bracket the long form closes and does not open refuses it, "warning score (WSE)
+    at 1 hour (WSE1)" among them, where no hyphen follows it."""
+    patch.setattr(language_gate, "_its_own", lambda before, start, close, short: (
+        _follows_a_hyphen(before, close) and short not in _items(before, start, close)))
+
+
+def _a_bracket_before_a_hyphen_is_no_part_of_a_long_form(patch: pytest.MonkeyPatch) -> None:
+    """Only a bracket holding a part the short form opens with is the long form's own, so
+    "(TdT)-mediated dUTP nick-end labeling (TUNEL)" defines nothing."""
+
+    def prefix(before: str, start: int, close: int, short: str) -> bool:
+        first = _items(before, start, close)[0]
+        return bool(first) and len(first) < len(short) and short.startswith(first)
+
+    patch.setattr(language_gate, "_its_own", prefix)
+
+
+def _a_bracket_before_a_hyphen_may_hold_the_short_form(patch: pytest.MonkeyPatch) -> None:
+    """A bracket a hyphen follows is the long form's own whatever it holds, so "(KO,
+    S199AzF)-HIS tag (S199AzF)" defines S199AzF as "S199AzF)-HIS tag"."""
+    real = language_gate._its_own
+    patch.setattr(language_gate, "_its_own", lambda before, start, close, short: (
+        real(before, start, close, short) or _follows_a_hyphen(before, close)))
+
+
+def _only_a_hyphen_minus_puts_a_bracket_in_a_word(patch: pytest.MonkeyPatch) -> None:
+    """A hyphen proper or a non-breaking hyphen after a bracket leaves it out of the word,
+    so "(TdT)\N{NON-BREAKING HYPHEN}mediated ... (TUNEL)" defines nothing."""
+    patch.setattr(language_gate, "_WORD_HYPHENS", "-")
+
+
+def _a_bracket_s_whole_text_is_its_first_item(patch: pytest.MonkeyPatch) -> None:
+    """The part the short form opens with must be all the bracket holds, so "(HADS; Zigmond
+    and Snaith, 1983) Anxiety subscale (HADS-A)" defines nothing."""
+
+    def whole(before: str, start: int, close: int, short: str) -> bool:
+        held = before[language_gate._opened(before, start) : close].strip()
+        if held and len(held) < len(short) and short.startswith(held):
+            return True
+        return _follows_a_hyphen(before, close) and short not in _items(before, start, close)
+
+    patch.setattr(language_gate, "_its_own", whole)
+
+
+def _a_bracket_is_read_from_the_long_form_s_start(patch: pytest.MonkeyPatch) -> None:
+    """What the bracket holds read from the long form's first letter, not from where the
+    bracket opens, so "(the QWS) at 15 minutes (QWS1)" defines QWS1."""
+    patch.setattr(language_gate, "_opened", lambda before, start: start)
+
+
+def _a_bracket_holds_the_short_form_only_as_all_it_holds(patch: pytest.MonkeyPatch) -> None:
+    """A bracket a hyphen follows is the long form's own unless the short form is all it
+    holds from the long form's first letter, so "(KO,S199AzF;v2)-HIS tag (S199AzF)" defines
+    S199AzF."""
+    real = language_gate._its_own
+    patch.setattr(language_gate, "_its_own", lambda before, start, close, short: (
+        real(before, start, close, short)
+        or (_follows_a_hyphen(before, close) and before[start:close] != short)))
+
+
+def _a_bracket_is_read_in_the_words_a_long_form_is_looked_for_in(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """The bracket a long form closes read from where it opens within Schwartz and Hearst's
+    bound only, so "a score (the QXS) at 1 hour of the second day (QXS1)", whose "(the" is
+    before the bound, defines QXS1."""
+    real = language_gate._long_form
+    patch.setattr(language_gate, "_long_form",
+                  lambda short, before, wider="": real(short, before))
+
+
+def _a_long_form_may_close_two_brackets_it_does_not_open(patch: pytest.MonkeyPatch) -> None:
+    """Each bracket the long form closes and does not open judged on its own, so "((QWZ)
+    x)-based score at 1 hour (QWZ1)" defines QWZ1, its second bracket before a hyphen."""
+
+    def each(before: str, start: int, short: str) -> bool:
+        read, depth = before[start:], 0
+        for at, char in enumerate(read[: len(read.rstrip(language_gate._EDGES + " \t\r\n"))]):
+            if char in language_gate._OPENING:
+                depth += 1
+            elif char in language_gate._CLOSING and depth:
+                depth -= 1
+            elif char in language_gate._CLOSING and not language_gate._its_own(
+                    before, start, start + at, short):  # fmt: skip
+                return True
+        return False
+
+    patch.setattr(language_gate, "_unmatched", each)
+
+
+def _a_long_form_s_brackets_balance_to_its_last_character(patch: pytest.MonkeyPatch) -> None:
+    """The brackets counted over the whole of what is read, its end too: one closing there
+    that the long form did not open, "(mean arterial pressure) (MAP)", refuses it, and so
+    does one it opens that the short form's closes, "(in mm (VAS))"."""
+
+    def whole(before: str, start: int, short: str) -> bool:
+        depth = 0
+        for char in before[start:]:
+            depth += (char in language_gate._OPENING) - (char in language_gate._CLOSING)
+            if depth < 0:
+                return True
+        return depth != 0
+
+    patch.setattr(language_gate, "_unmatched", whole)
+
+
 def _a_bracket_s_last_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_short_closing", lambda bracket: None)
 
@@ -28415,6 +28537,50 @@ BROKEN = {
     ),
     "a long form crosses no bracket": (
         _a_long_form_crosses_no_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form may close a bracket it does not open": (
+        _a_long_form_may_close_a_bracket_it_does_not_open,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form closes no bracket its short form opens with": (
+        _a_long_form_closes_no_bracket_its_short_form_opens_with,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket before a hyphen is no part of a long form": (
+        _a_bracket_before_a_hyphen_is_no_part_of_a_long_form,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket before a hyphen may hold the short form": (
+        _a_bracket_before_a_hyphen_may_hold_the_short_form,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "only a hyphen-minus puts a bracket in a word": (
+        _only_a_hyphen_minus_puts_a_bracket_in_a_word,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket's whole text is its first item": (
+        _a_bracket_s_whole_text_is_its_first_item,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket is read from the long form's start": (
+        _a_bracket_is_read_from_the_long_form_s_start,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket holds the short form only as all it holds": (
+        _a_bracket_holds_the_short_form_only_as_all_it_holds,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bracket is read in the words a long form is looked for in": (
+        _a_bracket_is_read_in_the_words_a_long_form_is_looked_for_in,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form may close two brackets it does not open": (
+        _a_long_form_may_close_two_brackets_it_does_not_open,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form's brackets balance to its last character": (
+        _a_long_form_s_brackets_balance_to_its_last_character,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a short form closing a bracket after a separator defines nothing": (

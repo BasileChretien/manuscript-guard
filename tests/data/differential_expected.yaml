@@ -55,27 +55,31 @@ expected:
       in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
-      a table or a figure stands alone (Basile, 2026-11-21, "Table stands alone";
-      2026-11-22, "Ask, don't drop"): a definition in a table's caption, a legend or a note
-      under a table that gives the text's meaning says nothing against the text, and one
-      that gives another meaning than the text's is a question at INFO, once for each such
-      meaning, where it was a warning; within one display, as in the text, another meaning
-      than the display's first is a warning, and the same meaning given again is one only
-      where neither definition is a caption, a legend or a note's pair (two definitions in
-      brackets, say); two displays are not compared; a
-      use in a display that defines the form is no use before the definition, wherever it
-      stands in it; and a use in the text is held to the text's definitions where the text
-      gives one, so one between a legend's definition and the text's later one is used
-      before it is defined. The inputs now hold
-      `DISPLAY_PIECES`, `DISPLAYS_TEXT` and `DISPLAYS_AFTER` (tests/generated.py). The entry
-      it replaces, for the corpus round of 2026-11-21 (#717), is spent
+      a long form that closes a bracket it does not open defines nothing, unless the
+      bracket's first item is a part its short form opens with, "warning score (WSE) at 1
+      hour (WSE1)" (the real-paper corpus, row 4 of window C; Basile, 2026-11-24, "Keep
+      WSE1, drop WSE2"), or a hyphen follows the bracket and none of its items is the short
+      form, "(TdT)-mediated ... (TUNEL)": "20.6 mg (DM1) to 21.5 mg (DM2)" and the
+      elliptical "at entry (SCE1) and after 2 hours (SCE2)" define nothing, so the base's
+      unused definition of SCE2 is now a use of a form never defined. The inputs now hold
+      those pieces, a list's bracket closed inside a long form, and the bracket shapes kept
+      (tests/generated.py, `DEFINING` and `NOT_DEFINING`). The entry it replaces, for "Table
+      stands alone", is spent
+  - reading: abbreviations of a PDF's text
+    why: >-
+      the same in a file the audit staged from a PDF: a long form that closes a bracket it
+      does not open, and is not the long form's own, defines nothing, so the elliptical
+      SCE2 is no definition (the entry for `abbreviations`)
+  - reading: abbreviation edits
+    why: >-
+      the same: a short form whose long form closes a bracket it does not open, and is not
+      the long form's own, is no definition, so no edit writes "SCE1) and after 2 hours"
+      out in place of SCE2 (the entry for `abbreviations`)
   - reading: audit abbreviations
     why: >-
-      the audit gives G14's findings, so a table or a figure stands alone there too (Basile,
-      2026-11-21, "Table stands alone", the entry for `abbreviations`): a header or a cell
-      that its own table's note defines, below it, is no use before the definition, and a
-      note's other meaning than the text's is a question at INFO, not a warning. The entry it replaces,
-      decision 30's, is spent
+      the audit gives G14's findings, so the same: a long form that closes a bracket it does
+      not open, and does not hold the part its short form opens with, defines nothing (the
+      entry for `abbreviations`). The entry it replaces, for "Table stands alone", is spent
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its

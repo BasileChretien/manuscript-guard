@@ -597,15 +597,17 @@ def _defined_as(form: str, defined: set[str]) -> str | None:
     return None
 
 
-def _long_form(short: str, before: str) -> str | None:
+def _long_form(short: str, before: str, wider: str = "") -> str | None:
     """The long form `short` abbreviates, read from the end of `before`; None when its
-    letters are not there in order.
+    letters are not there in order. `wider`, where it is given, is the text `before` ends,
+    in which a bracket the long form closes is read from where it opens (`_unmatched`).
 
     Schwartz and Hearst's rule (Pac Symp Biocomput 2003;8:451-62): going backwards, each
     letter or digit of the short form is found in turn, and the first must begin a word.
     A letter is not taken from inside a bracket the long form would open: where the nearest
     is, the bracket is passed over and its letters looked for before it, so the `S` of
-    "Depression Scale (French version) (HADS)" is the one of "Scale".
+    "Depression Scale (French version) (HADS)" is the one of "Scale". A long form that
+    closes a bracket it does not open is none (`_unmatched`).
     """
     searched = before
     while True:
@@ -616,8 +618,10 @@ def _long_form(short: str, before: str) -> str | None:
         if opened is None:
             break
         searched = _passed_over(searched, opened)
-    found = before[matched[-1] :].strip().strip(_EDGES).strip()
-    if len(found) <= len(short):
+    read = before[matched[-1] :].strip()
+    found = read.strip(_EDGES).strip()
+    text = wider if wider.endswith(before) else before
+    if len(found) <= len(short) or _unmatched(text, len(text) - len(before) + matched[-1], short):
         return None
     # A short form does not define itself, nor through its plural: in "expressed as ORs
     # (OR, 95% CI)" the letters of OR are all in "ORs".
@@ -625,6 +629,72 @@ def _long_form(short: str, before: str) -> str | None:
     if _singular(short).lower() in words:
         return None
     return found
+
+
+#: What may follow a closing bracket inside a word: a hyphen, a hyphen proper and a
+#: non-breaking hyphen.
+_WORD_HYPHENS = "-\N{HYPHEN}\N{NON-BREAKING HYPHEN}"
+
+
+def _unmatched(before: str, start: int, short: str) -> bool:
+    """Does the long form of `short` that starts at `start` of `before`, the text before the
+    short form, close a bracket it does not open?
+
+    "20.6 mg (M1) to 21.5 mg (M2)" reads M2's letters back across the bracket of M1, to "M1)
+    to 21.5 mg", which is no long form (the real-paper corpus, row 4 of window C). The first
+    bracket the long form closes and does not open may be its own (`_its_own`); one after it
+    is not. Brackets are counted as `_passed_over` counts them, round and square alike. What
+    clings to the end is no part of the long form, so a bracket closing there closes one
+    opened before it, "(mean arterial pressure) (MAP)". A bracket the long form opens and
+    does not close is left to the short form's to close, as nested brackets are: "visual
+    analogue scale (in mm (VAS))"."""
+    read = before[start:]
+    depth, closed = 0, False
+    for at, char in enumerate(read[: len(read.rstrip(_EDGES + " \t\r\n"))]):
+        if char in _OPENING:
+            depth += 1
+        elif char in _CLOSING and depth:
+            depth -= 1
+        elif char in _CLOSING:
+            if closed or not _its_own(before, start, start + at, short):
+                return True
+            closed = True
+    return False
+
+
+def _its_own(before: str, start: int, close: int, short: str) -> bool:
+    """Is the bracket that closes at `close` of `before`, opened before the long form of
+    `short` that starts at `start`, the long form's own? What it holds is read from where it
+    opens in the text before the short form, the words before Schwartz and Hearst's bound
+    among it (`_read_back`), or from the start of `before` where it opens before that, in
+    items a semicolon or a comma ends.
+
+    It is where its first item is a part the short form opens with, "warning score (WSE) at
+    1 hour (WSE1)", where WSE1 is the WSE at one hour, and "(HADS; Zigmond and Snaith, 1983)
+    Anxiety subscale (HADS-A)"; not "(the WSE) at 1 hour (WSE1)". And it is where a hyphen
+    follows it, the bracket part of a word, "(TdT)-mediated dUTP nick-end labeling (TUNEL)"
+    and "(3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH)", unless an item of it is
+    the short form itself, "(KO, S199AzF)-HIS tag (S199AzF)" (the real-paper corpus, row 4 of
+    window C)."""
+    items = [item.strip() for item in re.split(r"[;,]", before[_opened(before, start) : close])]
+    if items[0] and len(items[0]) < len(short) and short.startswith(items[0]):
+        return True
+    after = before[close + 1 : close + 2]
+    return bool(after) and after in _WORD_HYPHENS and short not in items
+
+
+def _opened(before: str, start: int) -> int:
+    """Where the text of the bracket open at `start` of `before` begins, just after its
+    opening; 0 where it opens before `before` does."""
+    depth = 0
+    for at in range(start - 1, -1, -1):
+        if before[at] in _CLOSING:
+            depth += 1
+        elif before[at] in _OPENING:
+            if not depth:
+                return at + 1
+            depth -= 1
+    return 0
 
 
 def _letters(short: str, before: str) -> list[int] | None:
@@ -1389,11 +1459,14 @@ def _paragraph_before(prose: str, end: int) -> str:
 
 def _read_back(short: str, before: str) -> str | None:
     """The long form `short` abbreviates at the end of `before`, within Schwartz and
-    Hearst's bound, of its singular where the plural's letters are not there."""
+    Hearst's bound, of its singular where the plural's letters are not there. The whole of
+    `before` is given too, so that a bracket the long form closes is read from where it
+    opens, before the bound or not (`_its_own`)."""
+    whole = " ".join(before.split())
     words = " ".join(before.split()[-_window(short) :])
-    long = _long_form(short, words)
+    long = _long_form(short, words, whole)
     if long is None and short != _singular(short):
-        long = _long_form(_singular(short), words)
+        long = _long_form(_singular(short), words, whole)
     return long
 
 

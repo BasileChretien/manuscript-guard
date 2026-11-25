@@ -570,8 +570,11 @@ def signs() -> st.SearchStrategy[str]:
 #: Brackets G14 reads as a definition, each with what finds its short form in it and the
 #: short form: both orders, square brackets, a separator after the short form, a definition
 #: nested in a bracket that gives a statistic, a citation before the short form's bracket,
-#: and two long forms that run across a bracket without taking a letter from inside one,
-#: the WSE taken after two hours and a risk adjusted for something said in brackets; a
+#: and long forms that run across a bracket without taking a letter from inside one, a score
+#: taken at 15 minutes whose bracket it closes holds the part its short form opens with, a
+#: risk adjusted for something said in brackets and a pressure whose end closes a bracket
+#: opened before it, one that opens a bracket the short form's closes, and two that close a
+#: bracket a hyphen follows; a
 #: short form after a colon whose letters are found before the bracket, one per word or not,
 #: in the last word or not, and words that hold the letters of a statistic's short form in
 #: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
@@ -587,8 +590,23 @@ DEFINING = (
     ("the signal detection ratio (SDR, 2.4)", "(SDR", "SDR"),
     ("high (adjusted odds ratio (AOR): 0.41, 95% CI 0.22 to 0.77)", "(AOR", "AOR"),
     ("the empirical Bayes geometric mean [@smith2020] (EBGM)", "(EBGM", "EBGM"),
-    ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
+    ("a score (SCE) at 15 minutes (SCE1)", "(SCE1", "SCE1"),
     ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
+    ("the second measure (mean arterial pressure) (MAP)", "(MAP", "MAP"),
+    ("the visual analogue scale (in mm (VAS))", "(VAS", "VAS"),
+    # A bracket a hyphen follows, part of a word, that a long form closes (the real-paper
+    # corpus, round 1 of row 4 of window C).
+    ("the terminal deoxynucleotidyl transferase (TdT)-mediated dUTP nick-end labeling (TUNEL)",
+     "(TUNEL", "TUNEL"),
+    ("a coat of (3-aminopropyl)-dimethyl-ethoxysilane (APDMES, ABCR GmbH)", "(APDMES",
+     "APDMES"),
+    # Round 2 of the same: a non-breaking hyphen after the bracket, and a bracket whose
+    # first item, up to a semicolon or a comma, is the part the short form opens with.
+    ("the terminal transferase (TdT)\N{NON-BREAKING HYPHEN}mediated uridine nick-end "
+     "labelling (TUNL)", "(TUNL", "TUNL"),
+    ("the scale (HADS; Zigmond and Snaith, 1983) Anxiety subscale (HADS-A)", "(HADS-A",
+     "HADS-A"),
+    ("the scale (HQS, 0-21) Anxiety subscale (HQS-A)", "(HQS-A", "HQS-A"),
     # A short form after a colon, its letters one per word or not.
     ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
     ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
@@ -731,8 +749,10 @@ AT_THE_END = ("the Agri-Environment Scheme \N{EN DASH} AES", "\N{EN DASH} AES", 
 #: Brackets that are no definition, though the words before each hold its letters in order:
 #: a statistic, its short form followed by an equals sign or a number, whatever the words
 #: before it are, their initials among them; a short form whose letters are found only
-#: by going into another bracket, "(12.5%)"; and a short form after a dash that does not end
-#: its clause, a statistic's of each shape among them.
+#: by going into another bracket, "(12.5%)"; one whose long form holds a bracket it does not
+#: open, a sibling's or a list's, or one a hyphen follows that holds the short form itself
+#: (the real-paper corpus, row 4 of window C); and a short form after a dash that does not
+#: end its clause, a statistic's of each shape among them.
 NOT_DEFINING = (
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
@@ -746,6 +766,27 @@ NOT_DEFINING = (
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
+    # A letter found only inside a bracket the long form opens, with no bracket before the
+    # long form, which a long form closing one it does not open would refuse on its own.
+    ("the warning score (12.5%) rose (WS2)", "(WS2", "WS2"),
+    ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
+    ("doses rose from 20.6 mg (DM1) to 21.5 mg (DM2) of oil", "(DM2", "DM2"),
+    ("a reading of the scores (SD; Range) by school (SRS)", "(SRS", "SRS"),
+    ("bound to the receptors (Fc gamma Rs), or a bivalent analyte model (FcRn)", "(FcRn",
+     "FcRn"),
+    ("a construct (KO, S199AzF)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
+    # Round 2: a bracket read from where it opens, so its first item is not the part the
+    # short form opens with, and an item of it a hyphen follows is the short form itself.
+    ("a scale (the QWS) at 15 minutes (QWS1)", "(QWS1", "QWS1"),
+    ("a construct (S199AzF, clone 4)-tagged protein (S199AzF)", "(S199AzF", "S199AzF"),
+    # Its items typed with no space, so that no word of the long form is the short form
+    # and only the bracket's items tell it holds the short form.
+    ("a construct (KO,S199AzF;v2)-HIS tag (S199AzF)", "(S199AzF", "S199AzF"),
+    # Round 2: a bracket read from where it opens before Schwartz and Hearst's bound, and a
+    # second bracket the long form closes, a hyphen after it, which the first's being its
+    # own does not make its own.
+    ("a score (the QXS) at 1 hour of the second day (QXS1)", "(QXS1", "QXS1"),
+    ("the scale ((QWZ) x)-based score at 1 hour (QWZ1)", "(QWZ1", "QWZ1"),
     # A short form closing a bracket whose letters are before the bracket and not before
     # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
     ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),

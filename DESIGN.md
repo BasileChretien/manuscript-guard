@@ -29227,12 +29227,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
     projects, figures, packages, `--cited` and `--report-draft` are the command line's.
     Accepted.
-  - *The journal form's statements* are found by their label at the start of a heading, of
-    the marked words a paragraph opens with, or of a paragraph in plain type before a colon,
-    at most two words after it (`journal_form.pattern`), the label ending there. A sentence
-    that opens with two words, the label and a colon ("Patients gave consent: ...") is read
-    as the statement. Pinned by
-    `tests/test_journal_form.py::test_a_sentence_with_a_colon_after_a_few_words_is_read_as_a_label`.
+  - *The journal form's statements* are found under a heading, or in the label a paragraph
+    opens with, whose whole title is names of statements: those G7 and G8 read
+    (`section_names.STATEMENT_NAMES`) and the form's own (`journal_form.EXTRA_NAMES`), one of
+    them the statement ticked. A journal's name for a statement neither list holds is not
+    read, and a paper that states it so is told the statement is missing; "Research funding"
+    and "Public funding" are such titles, read as the paper's own matter. Pinned by
+    `tests/test_journal_form.py::test_a_sentence_or_another_heading_is_no_statement`.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made

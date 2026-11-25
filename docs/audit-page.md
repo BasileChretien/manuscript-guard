@@ -80,12 +80,13 @@ approval, consent, data availability, author contributions, trial registration, 
 AI) and how its review is blinded. The page writes them as the profile the command line
 reads (`manuscript_guard.journal_form`), dated the day it is filled, and passes it as
 `journal.yaml`; a limit left empty is not in it, and is not checked. A statement ticked is
-found under a heading that opens with its label, in the marked words a paragraph opens with
-("**Funding:**", "*Ethics approval.*") or in plain type a paragraph opens with, before a
-colon ("Funding: none"), the label ending there. A sentence that mentions it in passing, or
-a heading on the subject ("Funding of mental health services"), is no statement; a sentence
-that opens with two words, the label and a colon ("Patients gave consent: ...") is read as
-one (DESIGN.md, Known gaps). "Or a journal profile
+found under a heading whose whole title names statements, one of them this one ("Funding",
+"Funding/Support", "Acknowledgements and funding"), as G7 and G8 read a statement's
+heading; in the marked words a paragraph opens with, all of them such names
+("**Funding:**", "*Ethics approval.*"); or in such names in plain type a paragraph opens
+with, before a colon ("Funding: none"). A sentence that mentions it, or a heading on the
+subject ("Funding of mental health services"), is no statement, and a journal's name for a
+statement the list does not hold is not read (DESIGN.md, Known gaps). "Or a journal profile
 you keep" passes the reader's own profile in place of the form. For a double- or triple-blind
 review, or a profile of the reader's own, the authors' boxes are shown: each author's given
 and family names, ORCID iD and e-mail address, and the affiliations one a line, written as

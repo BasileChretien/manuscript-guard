@@ -19,7 +19,7 @@ DATE = "2026-11-25"
 
 def found(statement: str, text: str) -> bool:
     """Whether G4 finds `statement` in `text`, as it searches a profile's pattern."""
-    return bool(re.search(journal_form.pattern(STATEMENTS[statement].labels), text,
+    return bool(re.search(journal_form.pattern(STATEMENTS[statement].words), text,
                           re.IGNORECASE | re.MULTILINE))  # fmt: skip
 
 
@@ -65,6 +65,33 @@ def found(statement: str, text: str) -> bool:
     ("funding", "[]{#_Hlk1 .anchor}Funding: none."),
     ("funding", "***Funding:*** none."),
     ("funding", "# **Funding**"),
+    # Round 2 of #787: forms journals print, and headings that name several statements.
+    ("funding", "**Funding/Support:** the trust."),
+    ("funding", "# Funding sources"),
+    ("funding", "**Funding sources:** NIH"),
+    ("funding", "Funding sources: NIH"),
+    ("funding", "# Funding and conflicts of interest"),
+    ("competing-interests", "# Funding and conflicts of interest"),
+    ("funding", "# Conflict of interest and funding"),
+    ("competing-interests", "# Conflict of interest and funding"),
+    ("funding", "# Financial support and sponsorship"),
+    ("funding", "# Acknowledgements and funding"),
+    ("ethics", "# Compliance with ethical standards"),
+    ("ethics", "# Ethical standards"),
+    ("ethics", "# Ethics and dissemination"),
+    ("ethics", "# Ethics committee approval"),
+    ("ethics", "# Ethics and consent"),
+    ("consent", "# Ethics and consent"),
+    ("ethics", "Institutional review board approval: IRB-12."),
+    ("consent", "# Consent for publication"),
+    ("competing-interests", "# Disclosure of potential conflicts of interest"),
+    ("competing-interests", "**Statement of competing interests:** none."),
+    ("use-of-ai", "# Declaration of AI use"),
+    ("use-of-ai", "# Disclosure of generative AI use"),
+    ("use-of-ai", "# Statement on the use of generative AI tools"),
+    ("use-of-ai", "# Use of AI"),
+    ("funding", "**[]{#_Hlk1 .anchor}Funding:** none."),
+    ("trial-registration", "# Registration"),
 ])  # fmt: skip
 def test_a_statement_is_found_in_a_heading_or_the_label_its_paragraph_opens_with(
     statement: str, text: str
@@ -91,17 +118,19 @@ def test_a_statement_is_found_in_a_heading_or_the_label_its_paragraph_opens_with
     ("funding", "## Funding of mental health services"),
     ("competing-interests", "# AI disclosure"),
     ("competing-interests", "12. Lo B, Field MJ. Conflict of interest in medical research: a"),
+    # A heading that only opens with a statement's name is the paper's own matter, and a
+    # label that names another statement is not this one.
+    ("funding", "## Research funding"),
+    ("funding", "## Public funding"),
+    ("consent", "Patients gave consent: written, in their language."),
+    ("ethics", "**Funding:** none, and the ethics committee waived consent."),
+    ("competing-interests", "# Declarations"),
+    ("funding", "# Acknowledgements"),
+    ("data-availability", "# Code availability"),
+    ("trial-registration", "# Image registration"),
 ])  # fmt: skip
 def test_a_sentence_or_another_heading_is_no_statement(statement: str, text: str) -> None:
     assert not found(statement, text)
-
-
-def test_a_sentence_with_a_colon_after_a_few_words_is_read_as_a_label() -> None:
-    """A label in plain type is read by the colon that ends it, at most two words after the
-    paragraph's start, as "Statement of competing interests:" is: a sentence that opens with
-    two words, the label and a colon is read as a statement too (DESIGN.md, Known gaps)."""
-    assert found("consent", "Patients gave consent: written, in their language.")
-    assert not found("consent", "We obtained consent from each patient: written.")
 
 
 def test_the_form_makes_a_profile_the_command_line_reads(tmp_path: Path) -> None:

@@ -69,6 +69,14 @@ expected:
       before it is defined. The inputs now hold
       `DISPLAY_PIECES`, `DISPLAYS_TEXT` and `DISPLAYS_AFTER` (tests/generated.py). The entry
       it replaces, for the corpus round of 2026-11-21 (#717), is spent
+  - reading: abbreviations of a PDF's text
+    why: >-
+      in a file the audit staged from a PDF, a long form holding a word broken at a line's
+      end, "inter-\nquartile range", is compared with each way of joining its first four
+      breaks as well as read (the real-paper corpus, row 7 of window C), so a definition
+      given again across such a break gives the same meaning, "defined again", where the
+      base said another; and a hyphen proper and a non-breaking hyphen are read as a hyphen
+      (round 1 of #784). The inputs now hold `line_broken()` (tests/generated.py)
   - reading: audit abbreviations
     why: >-
       the audit gives G14's findings, so a table or a figure stands alone there too (Basile,

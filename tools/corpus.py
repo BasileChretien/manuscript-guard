@@ -284,24 +284,36 @@ def _moves(decisions: list[Decision], run: Run) -> dict[tuple, tuple[str, str]]:
             if scheme == run.scheme}  # fmt: skip
 
 
-def _moved_to(item: Judged, to: str, new: list[dict], claimed: set[int],
+def _moved_to(item: Judged, to: str, new: list[dict], claimed: set[int], whole: set[int],
               taken_keys: set[str]) -> tuple | None:  # fmt: skip
     """The state a judged finding gone from a report takes from the finding that carries it
     now under the key `to`: reported where that finding is loud and of its gate and code,
     elsewhere where loud and of another, asked where it is a note or a question or a form a
     question lists. None where no finding of the report has that key, or where another judged
-    finding took it: a finding with no forms by its index (`claimed`), and a list of forms by
-    the key of the form (`taken_keys`), its other forms open."""
+    finding took it. A finding taken at all (`claimed`) carries no move by its own key, a list
+    of forms either; a list taken whole (`whole`: by its own key, by the matcher, a successor
+    or as elsewhere) carries none by a form; and a list taken form by form carries none by a
+    form another took (`taken_keys`), its other forms open."""
     if to in taken_keys:
         return None
     keys = corpus_keys.Keys(new)
-    at = [i for i in keys.at.get(to, []) if i not in claimed or new[i].get("forms")]
+    at = [i for i in keys.at.get(to, []) if i not in claimed]
     if at:
         quiet = all(new[i].get("question") or not loud(new[i]) for i in at)
         same = "/".join(corpus_keys.parts(to)[:2]) == item.code
         return ("asked" if quiet else "reported" if same else "elsewhere"), at
-    forms = keys.forms.get(to, [])
-    return ("asked", list(forms)) if forms else None
+    forms = [i for i in keys.forms.get(to, []) if i not in whole]
+    return ("asked", forms) if forms else None
+
+
+def _by_form(tie: corpus_keys.Tie, state: str, found: dict) -> bool:
+    """Whether a judged finding paired by its key took a list of forms by one of its forms,
+    and not as a whole: by its own key, or as elsewhere."""
+    if state == "elsewhere" or not found.get("forms") or tie.key is None:
+        return False
+    own = found.get("key")
+    return not isinstance(own, str) or (corpus_keys.family_of(own) if tie.family
+                                         else own) != tie.key  # fmt: skip
 
 
 def _keys_taken(tie: corpus_keys.Tie, state: str, keys: corpus_keys.Keys) -> set[str]:
@@ -446,10 +458,14 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
     claimed: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
     # And the keys they took, by which a form of a list is claimed (`_moved_to`).
     taken_keys: dict[tuple[str, str], set[str]] = collections.defaultdict(set)
+    # And those taken whole, which a move by a form passes over too.
+    whole: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
 
-    def claim(where: tuple[str, str], used) -> None:
+    def claim(where: tuple[str, str], used, by_form: bool = False) -> None:
         claimed[where].update(used)
         run.used[where].update(used)
+        if not by_form:
+            whole[where].update(used)
 
     def tie_of(item: Judged) -> tuple[corpus_keys.Tie | None, Run]:
         if not item.batch or (scheme != item.scheme and item.key in ties):
@@ -479,7 +495,8 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
                     # A finding that lists forms stays for the matcher: its other forms are
                     # other judged findings'.
                     taken.update(i for i in used if not new[i].get("forms"))
-                    claim((slug, report), used)
+                    for i in used:
+                        claim((slug, report), [i], _by_form(tie, by_key[n].state, new[i]))
                     taken_keys[(slug, report)].update(
                         _keys_taken(tie, by_key[n].state, run.keys(slug, report)))
             rest = [n for n in part if n not in by_key]
@@ -514,11 +531,12 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
         if fate.state != "gone" or fate.item.key not in moves:
             continue
         by, to = moves[fate.item.key]
-        said = _moved_to(fate.item, to, run.findings(*where) or [], claimed[where],
-                         taken_keys[where])  # fmt: skip
+        new = run.findings(*where) or []
+        said = _moved_to(fate.item, to, new, claimed[where], whole[where], taken_keys[where])
         if said is not None:
             fate.state, fate.moved_by = said[0], by
-            claim(where, said[1])
+            # By the list's own key a move takes it whole, by a form only that form.
+            claim(where, said[1], by_form=all(new[i].get("key") != to for i in said[1]))
             taken_keys[where].add(to)
     return out
 
@@ -785,6 +803,7 @@ def _how(row: dict, key: str) -> str:
         base, new = row["base_moved_by"], row["moved_by"]
         said = (f"; moved in {row['moved_in']} by {base or new}" if row["moved_in"] != "both"
                 or base == new else f"; moved in base by {base}, in new by {new}")  # fmt: skip
+        row = {**row, "moved_by": ""}  # named once, here
     return _line(row) + f" ({row['base']} -> {row['state']}{said})"
 
 

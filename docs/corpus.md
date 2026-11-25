@@ -467,13 +467,18 @@ Each decision has an `id`, a `date`, who made it (`by`), one line on `what` it d
   accounted for by the judged one: it is counted neither among the warnings no judged
   finding accounts for nor among the gate's findings with no verdict. In a run of another
   scheme, or where no finding of the report has the key, or where another judged finding
-  took it, it moves nothing. A finding with no forms is taken whole; a list of forms is
-  taken form by form, by the key of each: a form another judged finding was paired with by
-  its key, or an earlier move took, carries no move, and the list's other forms stay open.
+  took it, it moves nothing. A finding with no forms is taken whole. A list of forms is
+  taken whole where a judged finding was paired with it by its own key, by the matcher, by
+  a successor or as elsewhere, or a move named its own key: then no move goes to it, by its
+  own key or by a form. Otherwise it is taken form by form, by the key of each: a form
+  another judged finding was paired with by its key, or an earlier move took, carries no
+  move, nor does the list's own key once any of its forms is taken, and its other forms stay
+  open.
 
 A decision names one kind and no other key; a finding named twice in one decision, an
-index that is no whole number (`2.5` and `true` are not), a `to` that is no key with all
-four parts, or a scheme that is no whole number from 1 is refused. A place mistyped
+index that is not an integer as YAML writes one (`2.0`, `"7"`, `2.5` and `true` are not), a
+`to` that is no key with all four parts, or a scheme that is no whole number from 1 is
+refused. A place mistyped
 names no judged finding, so it accepts or moves nothing, and `measure` says so: its list of
 decisions gives each one's `kind`, the judged findings it `matched` (those it re-judges,
 accepts or moves, wherever they stand), those whose verdict it `changed`, those its

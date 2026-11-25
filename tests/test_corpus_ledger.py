@@ -313,6 +313,55 @@ def test_a_form_one_move_took_carries_no_second(listed: Path) -> None:
     assert [rows[i]["moved_by"] != "" for i in (0, 1)] == [True, False]
 
 
+K_LIST = "G14|abbreviation-unused|-|-"
+
+
+def check_list_key_after_a_form(root: Path) -> None:
+    # A took the list's MESO form: the list's own key carries no move of B.
+    result = tool.gate(with_ledger(root, move_b(K_LIST)), "tied", "new")
+    assert not result["ok"] and lost(result) == [("G14/abbreviation-unused", 1)]
+    assert result["moved"] == []
+
+
+def test_a_list_one_of_whose_forms_was_taken_carries_no_move_by_its_own_key(
+        listed: Path) -> None:  # fmt: skip
+    check_list_key_after_a_form(listed)
+
+
+@pytest.fixture
+def matched(tmp_path: Path) -> Path:
+    """A, paired by the matcher with the whole question (no ties are read); B, of another
+    code, gone from the new run."""
+    a = finding("G14", "abbreviation-unused", "MESO is defined and not used again in the main "
+                "text", line=36)  # fmt: skip
+    b = finding("G14", "abbreviation-redefined", "XYZ is defined again; it was defined at "
+                "page 2, line 4", line=90)  # fmt: skip
+    question = finding("G14", "abbreviation-unused", "2 short forms are defined and not used "
+                       "again: MESO, then UKELD", "info", line=36, key=K_LIST, question=True,
+                       forms=[{"form": "MESO", "key": K_MAIN, "line": 36,
+                               "path": "paper.pdf", "message": a["message"]},
+                              {"form": "UKELD", "key": K_UKELD, "line": 37,
+                               "path": "paper.pdf", "message": "UKELD is defined and not "
+                               "used again in the main text"}])  # fmt: skip
+    root = make_corpus(tmp_path / "corpus-root", [(a, "true"), (b, "true")],
+                       [{**a, "key": K_MAIN}, {**b, "key": "G14|abbreviation-redefined|XYZ@main|"
+                                               "0a0a0a0a0a0a"}], [question])  # fmt: skip
+    (root / "report" / "ties.yaml").unlink()
+    return root
+
+
+def check_list_taken_whole(root: Path) -> None:
+    for to in (K_LIST, K_MAIN, K_UKELD):
+        rows = {r["index"]: r for r in tool.measure(with_ledger(root, move_b(to)),
+                                                    "new")["findings"]}  # fmt: skip
+        assert (rows[0]["state"], rows[0]["by_key"]) == ("asked", False)
+        assert (rows[1]["state"], rows[1]["moved_by"]) == ("gone", ""), to
+
+
+def test_a_list_the_matcher_took_whole_carries_no_move(matched: Path) -> None:
+    check_list_taken_whole(matched)
+
+
 def test_the_moved_list_says_in_which_run_a_move_placed_a_finding(corpus: Path) -> None:
     # The finding is under the main text's key in the base too, and gone in the new run: the
     # move made its base state, and the list says so beside the loss.
@@ -326,7 +375,13 @@ def test_the_moved_list_says_in_which_run_a_move_placed_a_finding(corpus: Path) 
     both = tool.gate(corpus, "base", "new")
     assert [(r["moved_in"], r["moved_by"]) for r in both["moved"]] == [
         ("both", "abstract-ends-at-keywords")]
-    assert [r["moved_in"] for r in tool.gate(corpus, "tied", "new")["moved"]] == ["new"]
+    new = tool.gate(corpus, "tied", "new")
+    assert [r["moved_in"] for r in new["moved"]] == ["new"]
+    # Each line names its decision once, wherever the move was.
+    for said in (result, both, new):
+        moved = tool.render_gate(said).split("Judged findings the ledger moves")[1]
+        line = next(x for x in moved.splitlines() if x.startswith("- "))
+        assert line.count("abstract-ends-at-keywords") == 1, line
 
 
 def test_a_failing_gate_says_how_many_losses_the_ledger_accepts(corpus: Path) -> None:
@@ -350,7 +405,7 @@ def _moves_across_schemes(decisions, run):
     return {place: (d.id, to) for d in decisions for place, (to, _scheme) in d.moves.items()}
 
 
-def _claimed_by_finding(item, to, new, claimed, taken_keys):
+def _claimed_by_finding(item, to, new, claimed, whole, taken_keys):
     """A list of forms shared whatever form of it another judged finding took."""
     keys = tool.corpus_keys.Keys(new)
     at = [i for i in keys.at.get(to, []) if i not in claimed or new[i].get("forms")]
@@ -358,6 +413,19 @@ def _claimed_by_finding(item, to, new, claimed, taken_keys):
         return "reported", at
     forms = keys.forms.get(to, [])
     return ("asked", forms) if forms else None
+
+
+def _list_shared(item, to, new, claimed, whole, taken_keys):
+    """Round 1's rule: a form claimed by its key, but a list taken whole, or its own key after
+    a form was taken, still open."""
+    if to in taken_keys:
+        return None
+    keys = tool.corpus_keys.Keys(new)
+    at = [i for i in keys.at.get(to, []) if i not in claimed or new[i].get("forms")]
+    if at:
+        return "asked", at
+    forms = keys.forms.get(to, [])
+    return ("asked", list(forms)) if forms else None
 
 
 @pytest.mark.parametrize(("name", "broken", "check"), [
@@ -376,6 +444,15 @@ def test_a_form_claimed_by_its_finding_fails_its_check(listed: Path, monkeypatch
     monkeypatch.setattr(tool, "_moved_to", _claimed_by_finding)
     with pytest.raises(AssertionError):
         check_form_claimed_by_key(listed)
+
+
+@pytest.mark.parametrize("fixture", ["listed", "matched"])
+def test_a_list_left_open_after_it_was_taken_fails_its_check(request, monkeypatch,
+                                                             fixture: str) -> None:  # fmt: skip
+    root = request.getfixturevalue(fixture)
+    monkeypatch.setattr(tool, "_moved_to", _list_shared)
+    with pytest.raises(AssertionError):
+        (check_list_key_after_a_form if fixture == "listed" else check_list_taken_whole)(root)
 
 
 # --- the ledger as written --------------------------------------------------------------
@@ -397,6 +474,8 @@ ONE = {**PLACE, "index": 0}
     ({"accepted": {"findings": [{**ONE, "index": "two"}]}}, "index is a number"),
     ({"accepted": {"findings": [{**ONE, "index": 2.9}]}}, "index is a number"),
     ({"accepted": {"findings": [{**ONE, "index": 2.5}]}}, "index is a number"),
+    ({"accepted": {"findings": [{**ONE, "index": 2.0}]}}, "index is a number"),
+    ({"accepted": {"findings": [{**ONE, "index": "7"}]}}, "index is a number"),
     ({"accepted": {"findings": [{**ONE, "index": True}]}}, "index is a number"),
     ({"rejudge": {"verdict": "false", "findings": [{**ONE, "index": 2.9}]}},
      "index is a number"),

@@ -11945,8 +11945,9 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
 #: a range of them, and with words, "(refs 1-3)", "(1 and 2)"; digits right after a word's
 #: stop; a Markdown link whose text is a number; in Word, a run raised as superscript by its
 #: own properties or by its character style, after a space, where its digits read as a
-#: number alone, and a note's reference mark; a citation field; an author of the list cited
-#: with a year, in parentheses, in square brackets and in a sentence, and one the list
+#: number alone, and a note's reference mark; a citation field read by its code, and one
+#: known by its name (`UNCITED_FIELDS`); an author of the list cited with a year, in
+#: parentheses, in square brackets and in a sentence, and one the list
 #: gives in capitals; and nothing, in Markdown and in Word, where every entry is never cited
 #: although the list holds a number in parentheses and, in Word, a digit raised, and the
 #: text holds digits run straight on into letters and after a hyphen, authors the list does
@@ -11956,6 +11957,7 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
 UNCITED_KINDS = (
     "superscript digit", "carets", "sup", "parenthesised", "parenthesised words",
     "after a stop", "numbered link", "raised", "raised by style", "note", "field",
+    "field by name",
     "author in parentheses", "author in brackets", "author in a sentence",
     "author in capitals", "nothing in Markdown", "nothing in Word",
 )  # fmt: skip
@@ -12001,18 +12003,23 @@ UNCITED_NOTHING = (
     (" that Baker (2020) found", " that Clark and Dunn (2019)"),
     (" (Study 2019 data)", " (Study = 2019)", " (A study 2019 was)"),
 )
-#: The citation fields a Word paper may cite through, by their codes: Zotero's, EndNote's,
-#: Word's own, Citavi's and Papers', the last three known by their names alone
-#: (`citationfields.is_citation_field`), and Mendeley's, a content control's tag.
-UNCITED_FIELDS = (
-    'ADDIN ZOTERO_ITEM CSL_CITATION {"citationItems":[{"uris":["http://zotero.org/users/1/'
-    'items/ABCD1234"]}]}',
-    "ADDIN EN.CITE <EndNote><Cite><Author>Smith</Author></Cite></EndNote>",
-    "CITATION Smi19 \\l 1033",
-    "ADDIN CITAVI.PLACEHOLDER 0a1b2c",
-    "ADDIN PAPERS2_CITATIONS <citation><uuid>A1</uuid></citation>",
-    "MENDELEY_CITATION_v3_eyJ9",
-)
+#: The citation fields a Word paper may cite through, by their codes, by kind: those
+#: `citationfields.inserted` reads, Zotero's, EndNote's and Mendeley's, a content control's
+#: tag; and those known by their names alone, Word's own, Citavi's and Papers'
+#: (`citationfields.is_citation_field`). Apart, so that each kind is in every draw.
+UNCITED_FIELDS = {
+    "field": (
+        'ADDIN ZOTERO_ITEM CSL_CITATION {"citationItems":[{"uris":["http://zotero.org/users/'
+        '1/items/ABCD1234"]}]}',
+        "ADDIN EN.CITE <EndNote><Cite><Author>Smith</Author></Cite></EndNote>",
+        "MENDELEY_CITATION_v3_eyJ9",
+    ),
+    "field by name": (
+        "CITATION Smi19 \\l 1033",
+        "ADDIN CITAVI.PLACEHOLDER 0a1b2c",
+        "ADDIN PAPERS2_CITATIONS <citation><uuid>A1</uuid></citation>",
+    ),
+}
 #: A run of a paper's paragraph: plain text, a run raised as superscript by its own
 #: properties ("raised") or by a character style's ("raised by style"), or a citation, by
 #: its code: a field whose code is split over two runs ("field"), a simple field ("simple
@@ -12073,7 +12080,7 @@ def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
                 paragraphs.insert(at, [("text", f"{draw(sentence).capitalize()}{shape}.")])
             expected = [f"entry {n}" for n in range(1, count + 1)]
         else:
-            form = ("docx" if kind in ("raised", "raised by style", "field", "note")
+            form = ("docx" if kind in ("raised", "raised by style", "note", *UNCITED_FIELDS)
                     else draw(st.sampled_from(("md", "docx"))))  # fmt: skip
             at = draw(st.integers(0, len(paragraphs) - 1))
             paragraphs.insert(at, draw(_uncited_runs(kind, names)))
@@ -12089,8 +12096,8 @@ def _uncited_runs(draw: st.DrawFn, kind: str, names: list[str]) -> list[UncitedR
     author's a name of `names`."""
     words = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join))
     words = words.capitalize()
-    if kind == "field":
-        code = draw(st.sampled_from(UNCITED_FIELDS))
+    if kind in UNCITED_FIELDS:
+        code = draw(st.sampled_from(UNCITED_FIELDS[kind]))
         held = ("tag" if code.startswith("MENDELEY")
                 else draw(st.sampled_from(("field", "simple field"))))  # fmt: skip
         return [("text", words + " "), (held, code), ("text", ".")]

@@ -136,6 +136,35 @@ def test_an_empty_cell_keeps_its_table_one_paragraph(
     assert places.said(lines.index("After it.") + 1) == after
 
 
+def test_an_entry_styled_as_a_heading_is_placed_in_its_list(tmp_path: Path, capsys) -> None:
+    """An entry of the reference list in a heading style goes on the list (#782), and is no
+    heading of a place either: the entries after it, and an entry never cited, were placed
+    under the entry ("[2] Lee B..., paragraph 1"), not under the list's heading."""
+    paper = word_document(tmp_path / "paper.docx", [
+        ("Methods", True),
+        ("The score was read as before [1], and again in the second cohort [3].", False),
+        ("References", True),
+        ("[1] Smith A. A first study of the score. J Test. 2019;1:1-9.", False),
+        ("[2] Lee B. A second study of the score. J Test. 2020;2:1-9.", True),
+        ("[3] Kim C. A third study of the score. J Test. 2021;3:1-9.", False),
+        ("Appendix", True),
+        ("A note after the list.", False),
+    ])  # fmt: skip
+    report, text = _audited(capsys, str(paper))
+    (uncited,) = [f for f in report["findings"] if f["code"] == "entry-never-cited"]
+    assert (uncited["heading"], uncited["paragraph"]) == ("References", 2)
+    assert "paper.docx: References, paragraphs 1-3, read as the reference list" in text, text
+    # A section's heading after the list ends it, and is a heading still.
+    from manuscript_guard.audit import docx_bibliography_spans
+    from manuscript_guard.auditing.paragraphs import of_docx
+    from manuscript_guard.text.docx import read_docx_text
+
+    document = read_docx_text(paper)
+    places = of_docx(document, document.body, docx_bibliography_spans(document))
+    lines = document.body.split("\n")
+    assert places.said(lines.index("A note after the list.") + 1) == "Appendix, paragraph 1"
+
+
 def test_a_heading_with_no_words_is_no_heading() -> None:
     """An empty paragraph in a heading style is marked a heading by the document's reader:
     the paragraphs after it were "before the first heading" (review of #616)."""

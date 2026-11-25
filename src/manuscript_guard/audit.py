@@ -1034,7 +1034,7 @@ def _read_sources(
 
             # Its own text, not the one blanked: the reference list's lines are placed too.
             notes = f"\n{document.notes}" if document.notes else ""
-            report.places[path] = of_docx(document, f"{document.body}{notes}")
+            report.places[path] = of_docx(document, f"{document.body}{notes}", spans)
         place = report.places.get(path)
         report.not_audited += [
             Notice(f"{path.name}: "

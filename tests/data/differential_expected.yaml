@@ -24,6 +24,16 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: pdf headings
+    why: >-
+      a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
+      as it ends a Word paper's (`section_names.keywords_end`; Basile, 2026-11-15): where
+      words stand after it before the next heading it is a heading of its own, "Keywords", a
+      run-in label like the Abstract's, and in either case the headings after it are the
+      main text's, not the Abstract's parts (window C of the real-paper corpus, row 8). The
+      inputs now hold the Word papers' kinds as a PDF's lines, all but a label in a table's
+      cell, which a PDF does not have; the entry it replaces, for a run-in "Abstract:" and
+      a study's heading (decisions 22 and 23), is spent
   - reading: latex documents
     why: >-
       a heading defined as the CVPR and ICCV author kit defines it, `\@ifstar` between two
@@ -93,17 +103,6 @@ expected:
       `question-background-unsourced` (Basile, 2026-11-16, decision 27, part B: docx-med-B1,
       pdf-med-A1, docx-socio-A1 and docx-pharm-epi-B2 of the real-paper corpus); the entry
       it replaces, for powers read whole (#696), is spent
-  - reading: pdf headings
-    why: >-
-      where no line names the Abstract alone, a line before a PDF's first heading that opens
-      on a run-in "Abstract:" (or "Abstract.") and goes on, not on a count of words, is the
-      Abstract's heading, the rest of the line its text; and where the names alone cannot be
-      placed, a line after the Abstract that opens on "Experiment N:" or "Study N:", N a
-      number or a Roman numeral, with a name after it before the next, is a heading a level
-      above the names after it, so a multi-study paper's repeated Method and Results are
-      placed where the base placed nothing; a paper the base placed is placed as it was
-      (Basile, 2026-11-15, decisions 22 and 23, after pdf-socio-B1 and pdf-psych-A2 of the
-      real-paper corpus; round 1 of #686)
   - reading: word abstract
     why: >-
       a Word paper with no heading style, read by its typed titles, has each reference list

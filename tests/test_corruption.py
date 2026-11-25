@@ -37602,6 +37602,46 @@ def test_a_slip_beside_a_legend_in_a_pdf_is_the_text_s(tmp_path: Path, capsys) -
                               ("abbreviation-used-before-defined", False)]
 
 
+def test_a_pdf_s_abstract_ends_at_its_run_in_keywords_and_a_slip_after_is_the_main_text_s(
+    tmp_path: Path, capsys
+) -> None:
+    """A run-in "Keywords:" ends a PDF's Abstract, as it ends a Word paper's (window C of the
+    real-paper corpus, row 8). A body whose numbered titles are no section's name ran on as
+    the Abstract, so its own definition of the Abstract's short form was a second one. The
+    clean paper reports nothing; a slip in the body, the form given another meaning there, is
+    the main text's and reported in it."""
+    import shutil
+    import sys
+
+    from manuscript_guard.cli import main
+
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext is not installed")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    clean = ["Exams in two waves", "Abstract",
+             "We followed the quarterly exam ratio (QXR) of 212 pupils over two waves.",
+             "The QXR rose in both waves of the study.", "Keywords: exams; pupils; ratios",
+             "1.1 Pupils and schools",
+             "The quarterly exam ratio (QXR) is a measure of the progress of pupils.",
+             "The QXR was summed for each pupil in each wave.", "References",
+             "1. Smith A. A paper. J Things. 2019;12:345-56."]  # fmt: skip
+    slipped = [*clean[:8], "The quarterly exit ratio (QXR) was read again.", *clean[8:]]
+
+    def found(lines: list[str]) -> list[tuple[str, str]]:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(typeset(lines, columns=1, per_column=40))
+        main(["audit", str(pdf), "--json"])
+        return [(one["code"], one["key"].split("|")[2])
+                for one in json.loads(capsys.readouterr().out)["findings"]
+                if one["code"].startswith("abbreviation-")]  # fmt: skip
+
+    assert found(clean) == []
+    [(code, where)] = found(slipped)
+    assert code == "abbreviation-redefined" and where.endswith("@main"), where
+
+
 def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:
     """The Methods define a short form with a stop in it and use it, as a French paper
     names the "Licence avec Accès Santé (L.AS)": read whole, it is defined and used, where

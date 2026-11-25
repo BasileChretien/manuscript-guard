@@ -12,7 +12,9 @@
 // "written", "corrected", "made"}, "corrected" whether the audit was asked to work out G14's
 // corrections and "made" the files the journal's form made, by name; or {"error", "written"}
 // where the worker refuses the names or the form. The stand-in for `web.journal_files` makes
-// "profile" and "authors" of what it is given, and refuses a journal named "refused".
+// "profile" and "authors" of what it is given, and refuses a journal named "refused"; the
+// stand-in for `web.unpack_paper` unpacks an archive into the folder named after it, and
+// refuses one whose name holds "bad".
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 
@@ -24,6 +26,11 @@ function journalFiles() {
   return JSON.stringify({ ...(set.JOURNAL ? { profile: "profile\n" } : {}),
     ...(set.AUTHORS ? { authors: "authors\n" } : {}) });
 }
+function unpacked() {
+  const name = set.ARCHIVE.slice("/upload/".length);
+  if (name.includes("bad")) return JSON.stringify({ error: `${name}: a test` });
+  return JSON.stringify({ folder: name.replace(/\.(zip|tar\.gz|tgz)$/i, "") });
+}
 const context = createContext({
   BASE: "/",
   self: { addEventListener() {}, postMessage() {} },
@@ -32,7 +39,8 @@ const context = createContext({
   stub: {
     runPython: (code) => (code.includes("web.view")
       ? '{"code": 0, "out": "", "err": "", "view": null}'
-      : code.includes("web.journal_files") ? journalFiles() : undefined),
+      : code.includes("web.journal_files") ? journalFiles()
+        : code.includes("web.unpack_paper") ? unpacked() : undefined),
     FS: { writeFile: (path) => written.push(path) },
     globals: { set: (name, value) => { set[name] = value; }, delete() {} },
     toPy: (value) => value,
@@ -45,7 +53,7 @@ const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
 const answers = cases.map(({ paper, against, journalFile, authorsFile, ...chosen }) => {
   written.length = 0;
-  for (const name of ["CORRECTED", "JOURNAL", "AUTHORS"]) delete set[name];
+  for (const name of ["CORRECTED", "JOURNAL", "AUTHORS", "ARCHIVE"]) delete set[name];
   context.payload = { paper: file(paper), against: against.map(file), lookup: false,
     journalFile: journalFile ? file(journalFile) : null,
     authorsFile: authorsFile ? file(authorsFile) : null, ...chosen };

@@ -29223,10 +29223,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper and outputs beside it, and a journal's
-    profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
-    projects, figures, packages, `--cited` and `--report-draft` are the command line's.
-    Accepted.
+  - *What it reads.* A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a
+    `.tar.gz`, outputs beside it, and a journal's profile and the authors' names, from its
+    form or from a file. PDFs (`pdftotext`), figures, packages, `--cited` and `--report-draft`
+    are the command line's. Accepted.
+  - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
+    unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a
+    browser may run out of memory below that, and then says so as its own error. Pinned by
+    `tests/test_paper_archive.py::test_an_archive_past_the_limits_is_refused`.
   - *The journal form's statements* are found under a heading, or in the label a paragraph
     opens with, whose whole title is names of statements: those G7 and G8 read
     (`section_names.STATEMENT_NAMES`) and the form's own (`journal_form.EXTRA_NAMES`), one of
@@ -29238,8 +29242,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made
     one, with a referee's options, in American English with the copy with tracked changes,
-    and held to a journal's rules from the form with a double-blind review), in Node and in
-    two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    held to a journal's rules from the form with a double-blind review, and a LaTeX project
+    as a `.zip` and as a `.tar.gz` held to the folder they hold), in Node and in two
+    browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the five registries answer a page (CORS) was tested by hand

@@ -4,7 +4,7 @@
 //
 //   node web/test/parity.mjs <site> <folder> -- audit paper.docx --against results.json --json
 //
-// Every file directly in <folder> is copied into the working folder first.
+// Every file and folder in <folder> is copied into the working folder first.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,11 +26,16 @@ const pandoc = await createPandoc(readFileSync(join(root, "pandoc", "pandoc.wasm
 py.globals.set("PANDOC_JS", pandoc);
 py.runPython("from manuscript_guard import web; web.install(PANDOC_JS)");
 
-py.FS.mkdirTree("/work");
-for (const name of readdirSync(folder)) {
-  const path = join(folder, name);
-  if (statSync(path).isFile()) py.FS.writeFile("/work/" + name, readFileSync(path));
+// Every file and folder in <folder>, a LaTeX project's folder among them, copied as it is.
+function copied(from, to) {
+  py.FS.mkdirTree(to);
+  for (const name of readdirSync(from)) {
+    const path = join(from, name);
+    if (statSync(path).isDirectory()) copied(path, `${to}/${name}`);
+    else if (statSync(path).isFile()) py.FS.writeFile(`${to}/${name}`, readFileSync(path));
+  }
 }
+copied(folder, "/work");
 py.globals.set("ARGS", py.toPy(args));
 const result = py.runPython(`
 import json, os

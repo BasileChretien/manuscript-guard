@@ -11982,6 +11982,66 @@ def broken_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]
     return "\n".join(lines), spans
 
 
+#: The reference lists of a .docx each draw of `entries_styled_as_headings` holds, one of
+#: each in an order drawn: numbered in brackets, "[2]", with a stop, "2.", and not at all,
+#: each going on over its entries in a heading style; numbered in brackets with an entry in
+#: a heading style out of sequence, "[9]" after "[2]"; and one whose first entry, with an
+#: entry's shape, is in a heading style (round 1 of #782). The last two end there.
+STYLED_LISTS = ("bracketed", "stopped", "unnumbered", "out of sequence", "first styled")
+#: The titles of sections after a reference list.
+_AFTER_A_LIST = ("Appendix", "Supplementary material", "Discussion", "Figure legends")
+
+
+def _styled_entry(kind: str, number: int, name: str) -> str:
+    """An entry of a list of `STYLED_LISTS`: in brackets with a title and an address, as
+    Word papers type them (window C of the real-paper corpus), or with an entry's shape."""
+    if kind in ("bracketed", "out of sequence"):
+        return f"[{number}] A study of {name} - https://example.org/{number}"
+    if kind in ("stopped", "first styled"):
+        return f"{number}. {name} A. A study. J Ex. 2019;{number}:1-2."
+    return f"{name} A. A study. J Ex. 20{10 + number};{number}:1-2."
+
+
+@st.composite
+def entries_styled_as_headings(
+    draw: st.DrawFn,
+) -> tuple[list[tuple[str, bool]], list[list[str]]]:
+    """A .docx's paragraphs, each with whether it is in a heading style, and each reference
+    list's paragraphs as `audit.docx_bibliography_spans` is to read them. A list of each kind
+    of `STYLED_LISTS`, each under a "References" in a heading style or not, and ended by a
+    section's title in a heading style with a sentence under it. In the first three, one to
+    three entries after the first are in a heading style, as Word papers style them by
+    mistake, and the list goes on over them; the title after the stopped list is numbered as
+    its next entry would be, "5. Discussion", as a numbered section's title is, and ends it.
+    The list out of sequence goes on over those too, and ends at an entry in a heading style
+    numbered two to six past the entry above it, the entries after it being text; the list
+    whose first entry is in a heading style ends there, holding nothing. Every kind in every
+    example."""
+    paragraphs: list[tuple[str, bool]] = []
+    expected: list[list[str]] = []
+    for kind in draw(st.permutations(STYLED_LISTS)):
+        count = draw(st.integers(3, 7))
+        styled = {1} if kind == "first styled" else draw(
+            st.sets(st.integers(2, count), min_size=1, max_size=3))
+        paragraphs.append(("References", draw(st.booleans())))
+        held = ["References"]
+        expected.append(held)
+        for number in range(1, count + 1):
+            entry = _styled_entry(kind, number, draw(word_names()))
+            paragraphs.append((entry, number in styled))
+            if kind != "first styled":
+                held.append(entry)
+        if kind == "out of sequence":
+            stray = count + draw(st.integers(2, 6))
+            paragraphs.append((_styled_entry(kind, stray, draw(word_names())), True))
+            paragraphs.append((_styled_entry(kind, stray + 1, draw(word_names())), False))
+        title = draw(st.sampled_from(_AFTER_A_LIST))
+        paragraphs.append((f"{count + 1}. {title}" if kind == "stopped" else title, True))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6))
+        paragraphs.append((" ".join(words).capitalize() + ".", False))
+    return paragraphs, expected
+
+
 def word_names() -> st.SearchStrategy[str]:
     """A family name for a reference entry."""
     return st.sampled_from(("Smith", "Jones", "Brown", "Green", "Sato", "Okafor"))
@@ -19613,6 +19673,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": commented_numbered_citations().map(lambda drawn: drawn[0]),
+    "word reference lists": entries_styled_as_headings().map(lambda drawn: drawn[0]),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

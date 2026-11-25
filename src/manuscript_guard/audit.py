@@ -695,6 +695,12 @@ def bibliography_spans(
     (`docx_displays`); given, a list ends there and at a caption typed. A PDF gives none,
     and its list ends at its headings alone.
 
+    A .docx's paragraph in a heading style, or a PDF's line read as a heading, that is an
+    entry of the list, numbered in brackets after the entry above it or shaped as one, ends
+    nothing (`_entry_styled_as_a_heading`): a Word paper styled two of its entries as
+    headings (window C of the real-paper corpus). A Markdown heading ends the list whatever
+    it says.
+
     `titles` are the lines a .docx whose sections are not read from its heading styles has
     them read from, the typed titles `text.docx.typed_heading_levels` places
     (`docx_bibliography_spans`): one with no heading style, one whose only paragraphs in a
@@ -737,6 +743,7 @@ def bibliography_spans(
             for i in sorted(ends)
             if i > start
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
+            and (markdown or not _entry_styled_as_a_heading(lines, start, i))
         )
         end = next(after, last)
         end = next((i for i in sorted(titles) if start < i < end and not is_bibliography_heading(
@@ -747,6 +754,44 @@ def bibliography_spans(
             end = _end_under_no_heading(lines, start, end)
         spans.append((start, end))
     return spans
+
+
+#: An entry's number in brackets, as a .docx's list types it: "[12]".
+_BRACKETED_ENTRY = re.compile(r"\s*\[(\d{1,4})\]\s")
+
+
+def _entry_styled_as_a_heading(lines: list[str], start: int, at: int) -> bool:
+    """Whether the paragraph at `at`, in a heading style, is an entry of the reference list
+    from `start` and not the title of the section after it. Word papers style an entry as
+    a heading by mistake, and the list ended there: every entry after it was read as text,
+    its number a citation of an entry the list did not hold (window C of the real-paper
+    corpus, eight false findings in one paper). It is one where it is numbered in brackets
+    after the entry above it (`_bracketed_after_the_entry_above`), or has an entry's shape
+    as an entry above it has (`_shaped_as_an_entry_above`). Any other heading ends the
+    list, one numbered "5." among them, as a numbered section's title is written (DESIGN.md,
+    Known gaps)."""
+    return _bracketed_after_the_entry_above(lines, start, at) or _shaped_as_an_entry_above(
+        lines, start, at
+    )
+
+
+def _bracketed_after_the_entry_above(lines: list[str], start: int, at: int) -> bool:
+    """Whether the line at `at` opens with the number after the last entry's above it in the
+    list from `start`, both in brackets: "[2]" after "[1]". No section's title is numbered
+    so."""
+    here = _BRACKETED_ENTRY.match(lines[at])
+    above = next((found for found in map(_BRACKETED_ENTRY.match, reversed(lines[start + 1 : at]))
+                  if found), None)  # fmt: skip
+    return here is not None and above is not None and int(above[1]) + 1 == int(here[1])
+
+
+def _shaped_as_an_entry_above(lines: list[str], start: int, at: int) -> bool:
+    """Whether the line at `at` has a reference entry's shape (`looks_like_reference`), as a
+    line above it in the list from `start` has: its authors, its year, its journal and
+    pages, which no section's title has."""
+    return looks_like_reference(lines[at]) and any(
+        looks_like_reference(line) for line in lines[start + 1 : at]
+    )
 
 
 def _end_at_a_display(

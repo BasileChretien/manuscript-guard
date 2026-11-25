@@ -669,7 +669,8 @@ def test_the_worker_holds_the_paper_to_the_journal_the_form_or_a_file_describes(
 
 def test_each_statement_the_form_offers_is_a_box_on_the_page() -> None:
     """The page's ticks for the statements a journal requires are the ones `journal_form`
-    makes a pattern for, no more and no fewer."""
+    makes a pattern for, no more and no fewer, each with its box for the heading the journal
+    asks for, which offers the usual one (Basile, 2026-11-25)."""
     from manuscript_guard.journal_form import STATEMENTS
 
     page = (WEB / "index.html").read_text(encoding="utf-8")
@@ -677,6 +678,8 @@ def test_each_statement_the_form_offers_is_a_box_on_the_page() -> None:
     assert ticked == list(STATEMENTS)
     shown = re.findall(r'name="jstatement" value="[^"]+" id="[^"]+" disabled><span>([^<]+)<', page)
     assert shown == [statement.shown for statement in STATEMENTS.values()]
+    offered = dict(re.findall(r'<input id="jsh-([^"]+)" type="text" value="([^"]+)"', page))
+    assert offered == {key: one.heading for key, one in STATEMENTS.items()}
 
 
 def test_the_page_makes_the_journal_files_or_says_why_not() -> None:

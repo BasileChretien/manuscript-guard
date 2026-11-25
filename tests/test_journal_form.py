@@ -12,125 +12,91 @@ import pytest
 from manuscript_guard import journal_form
 from manuscript_guard.auditing.journal import read_authors, read_profile
 from manuscript_guard.cli import main
-from manuscript_guard.journal_form import STATEMENTS, FormError, as_text, authors_of, profile_of
+from manuscript_guard.journal_form import (
+    STATEMENTS,
+    FormError,
+    as_text,
+    authors_of,
+    headings_of,
+    profile_of,
+)
 
 DATE = "2026-11-25"
 
 
-def found(statement: str, text: str) -> bool:
-    """Whether G4 finds `statement` in `text`, as it searches a profile's pattern."""
-    return bool(re.search(journal_form.pattern(STATEMENTS[statement].words), text,
+def found(heading: str, text: str) -> bool:
+    """Whether G4 finds a statement the journal asks for under `heading`, as typed in the
+    form, in `text`, as it searches a profile's pattern."""
+    return bool(re.search(journal_form.pattern(headings_of(heading)), text,
                           re.IGNORECASE | re.MULTILINE))  # fmt: skip
 
 
-@pytest.mark.parametrize(("statement", "text"), [
-    ("funding", "# Funding\n\nNone."),
-    ("funding", "## 5. Funding\n\nNone."),
-    ("funding", "Intro.\n\n**Funding:** none."),
-    ("funding", "**Funding**: none."),
-    ("funding", "*Funding.* None."),
-    ("funding", "Funding: none."),
-    ("funding", "Sources of funding: the trust."),
-    ("competing-interests", "**Conflict of interest statement:** none."),
-    ("competing-interests", "Declaration of competing interest: none."),
-    ("competing-interests", "# Conflicts of Interest"),
-    ("ethics", "# Ethics approval and consent to participate"),
-    ("consent", "# Ethics approval and consent to participate"),
-    ("ethics", "**Ethical approval.** The committee approved it."),
-    ("data-availability", "Data availability statement: on request."),
-    ("data-availability", "# Availability of data and materials"),
-    ("author-contributions", "# Authors' contributions"),
-    ("author-contributions", "# Author’s contributions"),
-    ("author-contributions", "**Contributors:** AE wrote it."),
-    ("trial-registration", "**Trial registration:** NCT01234567."),
-    ("use-of-ai", "# Declaration of generative AI in the writing process"),
-    ("use-of-ai", "AI disclosure: none was used."),
-    ("use-of-ai", "## Statement on the use of AI"),
-    # Journals' own headings (round 1 of #787).
-    ("author-contributions", "# CRediT authorship contribution statement"),
-    ("data-availability", "**Data and materials availability:** in the supplement."),
-    ("data-availability", "# Data, Materials, and Software Availability"),
-    ("data-availability", "# Data and code availability"),
-    ("data-availability", "# Data accessibility"),
-    ("competing-interests", "# Declaration of conflicting interests"),
-    ("competing-interests", "Disclosure statement: none."),
-    ("competing-interests", "Disclosures: None."),
-    ("competing-interests", "# Duality of interest"),
-    ("funding", "# Role of the funding source"),
-    ("use-of-ai", "# Declaration of generative AI and AI-assisted technologies in the writing "
-                  "process"),
-    # A paragraph that opens with a Word bookmark, as pandoc writes one, and a label both
-    # bold and italic.
-    ("funding", "[]{#_Hlk1 .anchor}**Funding:** none."),
-    ("funding", "[]{#_Hlk1 .anchor}Funding: none."),
-    ("funding", "***Funding:*** none."),
-    ("funding", "# **Funding**"),
-    # Round 2 of #787: forms journals print, and headings that name several statements.
-    ("funding", "**Funding/Support:** the trust."),
-    ("funding", "# Funding sources"),
-    ("funding", "**Funding sources:** NIH"),
-    ("funding", "Funding sources: NIH"),
-    ("funding", "# Funding and conflicts of interest"),
-    ("competing-interests", "# Funding and conflicts of interest"),
-    ("funding", "# Conflict of interest and funding"),
-    ("competing-interests", "# Conflict of interest and funding"),
-    ("funding", "# Financial support and sponsorship"),
-    ("funding", "# Acknowledgements and funding"),
-    ("ethics", "# Compliance with ethical standards"),
-    ("ethics", "# Ethical standards"),
-    ("ethics", "# Ethics and dissemination"),
-    ("ethics", "# Ethics committee approval"),
-    ("ethics", "# Ethics and consent"),
-    ("consent", "# Ethics and consent"),
-    ("ethics", "Institutional review board approval: IRB-12."),
-    ("consent", "# Consent for publication"),
-    ("competing-interests", "# Disclosure of potential conflicts of interest"),
-    ("competing-interests", "**Statement of competing interests:** none."),
-    ("use-of-ai", "# Declaration of AI use"),
-    ("use-of-ai", "# Disclosure of generative AI use"),
-    ("use-of-ai", "# Statement on the use of generative AI tools"),
-    ("use-of-ai", "# Use of AI"),
-    ("funding", "**[]{#_Hlk1 .anchor}Funding:** none."),
-    ("trial-registration", "# Registration"),
+@pytest.mark.parametrize(("heading", "text"), [
+    ("Funding", "# Funding\n\nNone."),
+    ("Funding", "## 5. Funding\n\nNone."),
+    ("Funding", "## IV. Funding"),
+    ("Funding", "# **Funding**"),
+    ("Funding", "# FUNDING {#sec-funding}"),
+    ("Funding", "Intro.\n\n**Funding:** none."),
+    ("Funding", "**Funding**: none."),
+    ("Funding", "**Funding** This work was supported by the trust."),
+    ("Funding", "*Funding.* None."),
+    ("Funding", "***Funding:*** none."),
+    ("Funding", "Funding: none."),
+    ("Funding", "[]{#_Hlk1 .anchor}**Funding:** none."),
+    ("Funding", "**[]{#_Hlk1 .anchor}Funding:** none."),
+    ("Funding", "[]{#_Hlk1 .anchor}Funding: none."),
+    ("Funding/Support", "**Funding/Support:** the trust."),
+    ("Funding (if any)", "# Funding (if any)"),
+    ("Competing interests or Conflicts of interest", "Conflicts of interest: none."),
+    ("Competing interests or Conflicts of interest", "# Competing interests"),
+    ("Ethics approval and consent to participate",
+     "# Ethics  approval and consent to participate"),
+    ("Authors' contributions", "# Authors\u2019 contributions"),
+    ("Author\u2019s contributions", "# Author's contributions"),
 ])  # fmt: skip
-def test_a_statement_is_found_in_a_heading_or_the_label_its_paragraph_opens_with(
-    statement: str, text: str
+def test_a_statement_is_found_under_the_heading_the_journal_asks_for(
+    heading: str, text: str
 ) -> None:
-    assert found(statement, text)
+    assert found(heading, text)
 
 
-@pytest.mark.parametrize(("statement", "text"), [
-    # A sentence that mentions the subject is no statement of it.
-    ("funding", "The funding of the study was public, and it ended in 2020."),
-    ("funding", "We thank the **funding** agency."),
-    ("consent", "Written consent was obtained from every patient."),
-    ("ethics", "The ethics of the trial are discussed below."),
-    # A heading that names another thing.
-    ("trial-registration", "# Image registration"),
-    ("author-contributions", "# Our contributions"),
-    ("use-of-ai", "# AI-based models"),
-    ("use-of-ai", "## Training the AI"),
-    ("data-availability", "# Data collection"),
-    # A bullet, a bold title and a heading on the subject (round 1 of #787).
-    ("consent", "* Patients who withdrew consent were excluded."),
-    ("funding", "**Table 2. Sources of funding of the included trials**"),
-    ("use-of-ai", "## The use of AI in radiology"),
-    ("funding", "## Funding of mental health services"),
-    ("competing-interests", "# AI disclosure"),
-    ("competing-interests", "12. Lo B, Field MJ. Conflict of interest in medical research: a"),
-    # A heading that only opens with a statement's name is the paper's own matter, and a
-    # label that names another statement is not this one.
-    ("funding", "## Research funding"),
-    ("funding", "## Public funding"),
-    ("consent", "Patients gave consent: written, in their language."),
-    ("ethics", "**Funding:** none, and the ethics committee waived consent."),
-    ("competing-interests", "# Declarations"),
-    ("funding", "# Acknowledgements"),
-    ("data-availability", "# Code availability"),
-    ("trial-registration", "# Image registration"),
+@pytest.mark.parametrize(("heading", "text"), [
+    # Another heading, or one that only opens with the journal's: the journal's own check
+    # asks for its heading (Basile, 2026-11-25).
+    ("Funding", "# Financial support"),
+    ("Funding", "# Funding sources"),
+    ("Funding", "## Funding of mental health services"),
+    ("Funding", "# Acknowledgements and funding"),
+    ("Funding", "**Funding sources:** NIH."),
+    # A sentence, a bullet or a bold title that holds the word.
+    ("Funding", "The funding of the study was public."),
+    ("Funding", "Funding was provided by the trust."),
+    ("Funding", "We thank the **funding** agency."),
+    ("Informed consent", "* Patients who withdrew informed consent were excluded."),
+    ("Funding", "**Table 2. Funding of the included trials**"),
+    ("Funding", "| Funding: | the trust |"),
+    ("Declaration of generative AI", "## The use of AI in radiology"),
 ])  # fmt: skip
-def test_a_sentence_or_another_heading_is_no_statement(statement: str, text: str) -> None:
-    assert not found(statement, text)
+def test_another_heading_a_sentence_or_a_title_is_no_statement(heading: str, text: str) -> None:
+    assert not found(heading, text)
+
+
+def test_a_statement_ticked_takes_its_usual_heading_or_the_journal_s(tmp_path: Path) -> None:
+    """Each statement ticked is held to the heading the reader typed, alternatives joined by
+    " or ", or to its usual one where nothing is typed, and the report's hint names them."""
+    profile = profile_of({"date": DATE, "statements": ["competing-interests", "funding"],
+                          "headings": {"funding": "  Funding   or Financial support ",
+                                       "competing-interests": " "}})  # fmt: skip
+    funding, interests = profile["required_statements"]
+    assert funding["id"] == "funding" and interests["id"] == "competing-interests"
+    assert funding["why"].endswith('under the heading "Funding" or "Financial support".')
+    assert interests["why"].endswith('under the heading "Competing interests".')
+    for text in ("# Funding", "# Financial support"):
+        assert re.search(funding["pattern"], text, re.IGNORECASE | re.MULTILINE)
+    assert headings_of("A or b OR c") == ["A", "b", "c"]
+    assert headings_of("  ") == []
+    assert all(statement.heading for statement in STATEMENTS.values())
 
 
 def test_the_form_makes_a_profile_the_command_line_reads(tmp_path: Path) -> None:
@@ -192,13 +158,17 @@ def test_the_form_makes_the_authors_file_the_command_line_reads(tmp_path: Path) 
 def test_the_audit_holds_a_paper_to_the_profile_the_form_made(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    """What the page's form asks is what the audit checks: the statements stated in a
-    heading, a bold label and a plain one are found, the one missing is reported, and in a
-    double-blind review an author named in the text is found."""
+    """What the page's form asks is what the audit checks: the statements stated under the
+    headings the journal asks for, in a heading, a bold label and a plain one, are found, the
+    one missing is reported, and in a double-blind review an author named in the text is
+    found."""
     monkeypatch.chdir(tmp_path)
+    both = "Ethics approval and consent to participate"
     (tmp_path / "journal.yaml").write_text(as_text(profile_of({
         "date": DATE, "statements": ["funding", "competing-interests", "ethics", "consent",
-                                     "use-of-ai"], "blinding": "double"})), encoding="utf-8")
+                                     "use-of-ai"], "blinding": "double",
+        "headings": {"competing-interests": "Competing interests or Conflicts of interest",
+                     "ethics": both, "consent": both}})), encoding="utf-8")
     (tmp_path / "authors.yaml").write_text(as_text(authors_of({
         "authors": [{"given": "Ada", "family": "Lovelace"}]})), encoding="utf-8")
     (tmp_path / "paper.md").write_text(

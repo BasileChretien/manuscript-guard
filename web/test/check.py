@@ -58,13 +58,17 @@ TRACKED = (["--english", "american"], {"english": "american", "tracked": True})
 JOURNAL_BOXES = {"jname": "Journal of Examples", "jabstract": "200", "jtables": "1",
                  "jsections": "Introduction\nMethods\nResults\nDiscussion",
                  "jst-funding": True, "jst-data-availability": True, "jst-use-of-ai": True,
+                 "jsh-funding": "Financial support or Funding",
                  "jblinding": "double", "author-1-given": "Ada", "author-1-family": "Example",
                  "affiliations": "Department of Examples"}
 JOURNAL_FORM = {"name": "Journal of Examples", "url": "", "date": "",
                 "limits": {"abstract_words": "200", "tables": "1"},
                 "sections": ["Introduction", "Methods", "Results", "Discussion"],
                 "abstract_headings": [], "statements": ["funding", "data-availability",
-                                                        "use-of-ai"], "blinding": "double"}
+                                                        "use-of-ai"], "blinding": "double",
+                # The heading a box was given, and those left empty, as the page sends them.
+                "headings": {"funding": "Financial support or Funding", "data-availability": "",
+                             "use-of-ai": ""}}
 AUTHORS_FORM = {"authors": [{"given": "Ada", "family": "Example", "orcid": "", "email": ""}],
                 "affiliations": ["Department of Examples"]}
 JOURNAL = (["--journal", "journal.yaml", "--authors", "authors.yaml"], JOURNAL_BOXES)

@@ -211,17 +211,26 @@
               placeholder="Background&#10;Methods&#10;Results&#10;Conclusions" disabled></textarea></label>
           <fieldset class="statements">
             <legend class="field">The statements it requires</legend>
-            <span class="help">Each is found under a heading that names it ("Funding",
-              "Funding/Support"), or as the label a paragraph opens with ("Funding:
-              none").</span>
-            <label class="tick"><input type="checkbox" name="jstatement" value="funding" id="jst-funding" disabled><span>Funding</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="competing-interests" id="jst-competing-interests" disabled><span>Competing interests</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="ethics" id="jst-ethics" disabled><span>Ethics approval</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="consent" id="jst-consent" disabled><span>Consent</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="data-availability" id="jst-data-availability" disabled><span>Data availability</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="author-contributions" id="jst-author-contributions" disabled><span>Author contributions</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="trial-registration" id="jst-trial-registration" disabled><span>Trial registration</span></label>
-            <label class="tick"><input type="checkbox" name="jstatement" value="use-of-ai" id="jst-use-of-ai" disabled><span>Use of AI</span></label>
+            <span class="help">Tick each, and give the heading the journal asks for it under,
+              as its instructions write it, with "or" between two it takes. The paper is held
+              to that heading, as a heading or as the label a paragraph opens with
+              ("Funding: none").</span>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="funding" id="jst-funding" disabled><span>Funding</span></label>
+              <input id="jsh-funding" type="text" value="Funding" autocomplete="off" aria-label="The heading the journal asks for, for Funding" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="competing-interests" id="jst-competing-interests" disabled><span>Competing interests</span></label>
+              <input id="jsh-competing-interests" type="text" value="Competing interests" autocomplete="off" aria-label="The heading the journal asks for, for Competing interests" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="ethics" id="jst-ethics" disabled><span>Ethics approval</span></label>
+              <input id="jsh-ethics" type="text" value="Ethics approval" autocomplete="off" aria-label="The heading the journal asks for, for Ethics approval" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="consent" id="jst-consent" disabled><span>Consent</span></label>
+              <input id="jsh-consent" type="text" value="Informed consent" autocomplete="off" aria-label="The heading the journal asks for, for Consent" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="data-availability" id="jst-data-availability" disabled><span>Data availability</span></label>
+              <input id="jsh-data-availability" type="text" value="Data availability" autocomplete="off" aria-label="The heading the journal asks for, for Data availability" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="author-contributions" id="jst-author-contributions" disabled><span>Author contributions</span></label>
+              <input id="jsh-author-contributions" type="text" value="Author contributions" autocomplete="off" aria-label="The heading the journal asks for, for Author contributions" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="trial-registration" id="jst-trial-registration" disabled><span>Trial registration</span></label>
+              <input id="jsh-trial-registration" type="text" value="Trial registration" autocomplete="off" aria-label="The heading the journal asks for, for Trial registration" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="use-of-ai" id="jst-use-of-ai" disabled><span>Use of AI</span></label>
+              <input id="jsh-use-of-ai" type="text" value="Declaration of generative AI" autocomplete="off" aria-label="The heading the journal asks for, for Use of AI" disabled></div>
           </fieldset>
           <label><span class="field">Its peer review</span>
             <select id="jblinding" disabled>

@@ -446,6 +446,9 @@ function journalForm() {
     statements: [...document.querySelectorAll('input[name="jstatement"]:checked')].map((box) => box.value),
     blinding: $("jblinding").value,
   };
+  // The heading the journal asks for each statement ticked under, as typed; left empty, the
+  // usual one (`journal_form.STATEMENTS`).
+  form.headings = Object.fromEntries(form.statements.map((id) => [id, $(`jsh-${id}`).value.trim()]));
   const set = form.name || form.url || Object.values(form.limits).some(Boolean) || form.sections.length
     || form.abstract_headings.length || form.statements.length || form.blinding;
   return set ? form : null;

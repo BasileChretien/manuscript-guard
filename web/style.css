@@ -115,6 +115,7 @@ details.options summary { font-weight: 600; }
 .limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .8rem; }
 fieldset.statements { border: 0; padding: 0; margin: 0; display: grid; gap: .45rem; }
 fieldset.statements legend { padding: 0; margin-bottom: .2rem; }
+.statement { display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: .3rem .8rem; align-items: center; }
 .authorrows { display: grid; gap: .6rem; }
 .author { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; }
 summary { cursor: pointer; }

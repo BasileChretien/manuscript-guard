@@ -4,14 +4,16 @@
 A reader of the page types what the journal's instructions for authors say: its limits, the
 sections and the headings of a structured abstract it asks for, the statements it requires,
 and how its peer review is blinded. Nothing is guessed: a limit left empty is not in the
-profile, and is not checked. Each statement ticked is found as G4 finds any profile's, by a
+profile, and is not checked. Each statement ticked comes with the heading the journal asks
+for it under, the usual one unless the reader types the journal's ("Funding", "Competing
+interests"), alternatives joined by " or ". It is found as G4 finds any profile's, by a
 pattern on the text as Markdown writes it (a .docx and a LaTeX paper are read that way too):
-a heading whose whole title names statements, as G7 and G8 read a statement's heading
-(`section_names.STATEMENT_TITLE`), one of them this one ("Funding", "Funding/Support",
-"Acknowledgements and funding"); the marked words a paragraph opens with, all of them such
-names ("**Funding:**"); or such names in plain type a paragraph opens with, before a colon
-("Funding: none"). A sentence that mentions funding, and a heading on the subject ("Funding of
-mental health services"), state nothing.
+a heading, the marked words a paragraph opens with ("**Funding:**"), or the words a
+paragraph opens with in plain type before a colon ("Funding: none"), whose whole title is
+that heading, whatever its case, its number or its marks. Nothing else is read as one: a
+paper that states its funding under "Financial support" is told the journal asks for
+"Funding" (Basile, 2026-11-25: the journal's own heading, after three rounds of review found
+a vocabulary of statement names took too much or too little).
 
 The profile is the one the command line reads, validated against its schema, so that the page
 and `audit --journal` given the same file say the same; web/test/check.py builds the command
@@ -52,97 +54,55 @@ class FormError(ValueError):
 
 @dataclass(frozen=True)
 class Statement:
-    """A statement a journal may require: its name on the page, the words that say a
-    statement's title is this one (a regular expression's alternatives, matched as words, in
-    any case), and what the report says it should hold."""
+    """A statement a journal may require: its name on the page, the heading it usually
+    stands under, which the page offers until the reader types the journal's, and what the
+    report says it should hold."""
 
     shown: str
-    words: str
+    heading: str
     why: str
 
 
-#: The statements the page offers, by their id in the profile: each with the words that
-#: say it is this one among the names of a statement's title (`pattern`).
+#: The statements the page offers, by their id in the profile.
 STATEMENTS: dict[str, Statement] = {
     "funding": Statement(
-        "Funding",
-        r"fund(?:ing|ers?)|support|sponsor(?:s|ship)?|grants?",
+        "Funding", "Funding",
         "Funding sources, or a statement that the work received none.",
     ),
     "competing-interests": Statement(
-        "Competing interests",
-        r"interests?|(?<!ai )(?<!ai-)disclosures?",
+        "Competing interests", "Competing interests",
         "Competing interests for every author, or a statement that there are none.",
     ),
     "ethics": Statement(
-        "Ethics approval",
-        r"ethic(?:s|al)|institutional review board",
+        "Ethics approval", "Ethics approval",
         "The committee that approved the study and its reference, or why no approval was "
         "needed.",
     ),
     "consent": Statement(
-        "Consent",
-        r"consent",
+        "Consent", "Informed consent",
         "How consent to take part, and to publish, was obtained, or why it was not needed.",
     ),
     "data-availability": Statement(
-        "Data availability",
-        r"data",
+        "Data availability", "Data availability",
         "Where the data are, and on what terms.",
     ),
     "author-contributions": Statement(
-        "Author contributions",
-        r"contribut\w*|credit|author roles",
+        "Author contributions", "Author contributions",
         "What each author did.",
     ),
     "trial-registration": Statement(
-        "Trial registration",
-        r"registration|registry|trial (?:number|identifier)",
+        "Trial registration", "Trial registration",
         "The registry and the trial's number in it.",
     ),
     "use-of-ai": Statement(
-        "Use of AI",
-        r"ai|artificial intelligence",
+        "Use of AI", "Declaration of generative AI",
         "Whether and how AI tools were used in the work or the writing.",
     ),
 }
 
-#: Names of a statement journals print that `section_names.STATEMENT_NAMES`, which G7 and G8
-#: read, does not hold; the form's patterns read both.
-EXTRA_NAMES = (
-    r"(?:"
-    r"disclosures?\s+of\s+(?:potential\s+)?conflicts?\s+of\s+interests?"
-    r"|statements?\s+of\s+(?:(?:competing|conflicting)\s+interests?|ethics|funding)"
-    r"|duality\s+of\s+interests?|grant\s+support"
-    r"|compliance\s+with\s+ethical\s+standards|ethics\s+and\s+dissemination"
-    r"|institutional\s+review\s+board(?:\s+approval)?"
-    r"|data(?:,?\s+(?:and\s+)?(?:materials?|code|software))+,?\s+availability"
-    r"|data\s+accessibility"
-    r"|(?:(?:clinical\s+)?trial\s+|study\s+)?registration(?:\s+(?:number|details|information))?"
-    r"|clinical\s+trial\s+(?:number|identifier|registry)"
-    r"|credit\s+authorship\s+contribution"
-    r"|authors?['\N{RIGHT SINGLE QUOTATION MARK}]s\s+contributions?"
-    r"|(?:declarations?|disclosures?|statements?)\s+(?:of|on|regarding)\s+(?:the\s+)?"
-    r"(?:use\s+of\s+)?(?:generative\s+)?(?:ai|artificial\s+intelligence)\b[\w\s-]*"
-    r"|(?:generative\s+)?(?:ai|artificial\s+intelligence)(?:\s+use)?\s+(?:disclosure|"
-    r"statement|declaration)"
-    r"|use\s+of\s+(?:generative\s+)?(?:ai|artificial\s+intelligence)(?:\s+tools?)?(?:\s+"
-    r"(?:in|for|during)\s+(?:the\s+)?(?:writing|preparation)\b[\w\s-]*)?"
-    r")(?:\s+(?:statements?|declarations?|disclosures?|section))?"
-)
-
-
-def _on_a_line(names: str) -> str:
-    """`names` read within a line: a space or a tab where they take any white space."""
-    return names.replace(r"[\w\s-]*", r"[\w \t-]*").replace(r"\s", r"[ \t]")
-
-
-def _names() -> str:
-    from manuscript_guard.text.section_names import STATEMENT_NAMES
-
-    return rf"(?:{_on_a_line(STATEMENT_NAMES)}|{_on_a_line(EXTRA_NAMES)})"
-
-
+#: What joins two headings the journal takes for one statement: "Competing interests or
+#: Conflicts of interest".
+_OR = re.compile(r"[ \t]+or[ \t]+", re.IGNORECASE)
 #: A Word bookmark, as pandoc writes one: `[]{#_Hlk1 .anchor}`.
 _ANCHORS = r"(?:\[\]\{[^}\n]*\}[ \t]*)*"
 #: The marks that open or close emphasis: bold and italic, bold, or italic.
@@ -151,24 +111,55 @@ _MARK = r"(?:\*\*\*|\*\*|__|\*|_)"
 _NUMBER = r"(?:(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[ivxlc]+[.)]|[a-z][.)])[ \t]+)?"
 
 
-def pattern(words: str) -> str:
-    """What finds a statement whose words are `words`, in the text as Markdown writes it: a
-    heading whose whole title names statements (`section_names.STATEMENT_TITLE`'s names, and
-    `EXTRA_NAMES`), "Funding", "Funding/Support", "Ethics approval and consent to
-    participate", one of them this one; the marked words a paragraph opens with, all of them
-    such names ("**Funding:**", "*Ethics approval.*"); or a paragraph that opens with such
-    names in plain type, before a colon ("Funding: none"). A heading that only opens with
-    one, "Funding of mental health services", names the paper's own matter."""
-    names = _names()
-    title = rf"(?:the[ \t]+)?{names}(?:[ \t]*(?:,[ \t]*(?:and\b)?|;|&|/|\band\b)[ \t]*{names})*"
-    word = rf"\b(?:{words})\b"
+def headings_of(typed: str) -> list[str]:
+    """The headings a journal takes for a statement, as typed: each alternative of `typed`,
+    joined by " or ", with its white space made one space; none where nothing is typed."""
+    return [" ".join(one.split()) for one in _OR.split(typed) if one.strip()]
+
+
+def _spelled(heading: str) -> str:
+    """`heading` as a pattern: its words as typed, any white space between them, and an
+    apostrophe either straight or curly."""
+    apostrophe = "['\N{RIGHT SINGLE QUOTATION MARK}]"
+    return r"[ \t]+".join(re.sub(apostrophe, apostrophe, re.escape(word))
+                          for word in heading.split())  # fmt: skip
+
+
+def pattern(headings: list[str]) -> str:
+    """What finds a statement under one of `headings`, in the text as Markdown writes it: a
+    heading whose whole title is one of them, numbered, marked or not; the marked words a
+    paragraph opens with, all of them one of them ("**Funding:**", "*Funding.*"); or one of
+    them in plain type a paragraph opens with, before a colon ("Funding: none"). In any
+    case, and past a Word bookmark."""
+    title = "(?:" + "|".join(_spelled(one) for one in headings) + ")"
     return ("(?im)^(?:"
-            rf"#{{1,6}}[ \t]+{_ANCHORS}{_NUMBER}{_MARK}?[ \t]*"
-            rf"(?={title}[^\w\n]*(?:\{{[^}}\n]*\}}[ \t]*)?$)[^\n]*?{word}"
-            rf"|[ \t]*{_ANCHORS}{_MARK}(?=[^\s*_]){_ANCHORS}"
-            rf"(?={title}[ \t]*[:.]?[ \t]*{_MARK})[^\n:*_]*?{word}"
-            rf"|[ \t]*{_ANCHORS}(?={title}[ \t]*:)[^\n:]*?{word}"
+            rf"#{{1,6}}[ \t]+{_ANCHORS}{_NUMBER}{_MARK}?{_ANCHORS}{title}"
+            rf"[ \t]*[:.]?[ \t]*{_MARK}?[ \t]*(?:\{{[^}}\n]*\}}[ \t]*)?$"
+            rf"|[ \t]*{_ANCHORS}{_MARK}{_ANCHORS}{title}[ \t]*[:.]?[ \t]*{_MARK}"
+            rf"|[ \t]*{_ANCHORS}{title}[ \t]*:"
             ")")  # fmt: skip
+
+
+def _statements(form: Mapping) -> list[dict]:
+    """The statements the form ticks, in the order the page lists them, each with the
+    pattern of the headings the reader gave it, or of its usual one, and a `why` that names
+    them. `FormError` for a statement the page does not offer."""
+    wanted = _lines(form, "statements")
+    unknown = [one for one in wanted if one not in STATEMENTS]
+    if unknown:
+        raise FormError(f"the page offers no statement {unknown[0]!r}")
+    typed = form.get("headings") or {}
+    if not isinstance(typed, Mapping):
+        raise FormError("headings is a mapping of a statement to its heading")
+    made = []
+    for one in (one for one in STATEMENTS if one in wanted):
+        given = typed.get(one)
+        headings = headings_of(given if isinstance(given, str) else "") or [STATEMENTS[one].heading]
+        said = " or ".join(f'"{heading}"' for heading in headings)
+        made.append({"id": one, "pattern": pattern(headings),
+                     "why": f"{STATEMENTS[one].why} The journal asks for it under the heading "
+                            f"{said}."})  # fmt: skip
+    return made
 
 
 def _text(form: Mapping, key: str) -> str:
@@ -221,15 +212,9 @@ def profile_of(form: Mapping) -> dict:
         structure["abstract_headings"] = headings
     if structure:
         profile["structure"] = structure
-    wanted = _lines(form, "statements")
-    unknown = [one for one in wanted if one not in STATEMENTS]
-    if unknown:
-        raise FormError(f"the page offers no statement {unknown[0]!r}")
-    if wanted:
-        profile["required_statements"] = [
-            {"id": one, "pattern": pattern(STATEMENTS[one].words), "why": STATEMENTS[one].why}
-            for one in STATEMENTS if one in wanted
-        ]
+    statements = _statements(form)
+    if statements:
+        profile["required_statements"] = statements
     blinding = _text(form, "blinding")
     if blinding:
         if blinding not in BLINDINGS:
@@ -287,4 +272,4 @@ def _valid(profile: dict, schema: str) -> None:
 
 
 __all__ = ["BLINDINGS", "LIMITS", "STATEMENTS", "FormError", "Statement", "as_text",
-           "authors_of", "pattern", "profile_of"]  # fmt: skip
+           "authors_of", "headings_of", "pattern", "profile_of"]  # fmt: skip

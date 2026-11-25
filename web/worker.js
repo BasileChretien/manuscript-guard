@@ -195,20 +195,35 @@ json.dumps(web.journal_files(JOURNAL, AUTHORS))`));
     .map((kind) => [FORM_FILES[kind], said[kind]]));
 }
 
+// A journal the page's host offers (web/build.py --host): its profile, as the host gave it,
+// written under journals/ as the host's own folder holds it, where the command line is given
+// it as `--journal journals/<slug>.yaml`.
+const OFFERED = /^journals\/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.yaml$/;
+const OFFERED_FOLDER = "journals";
+
 function run({ paper, against, lookup, details, english = "", known = [], noAbstract = false,
   noResults = false, results = "", tracked = false, design = "", wholeNumbers = [],
   binary = [], nonNegative = [], minimumCellCount = "", journal = null, journalFile = null,
-  authors = null, authorsFile = null }) {
+  offered = null, authors = null, authorsFile = null }) {
+  if (offered && !OFFERED.test(offered.file)) {
+    throw new Error(`the page offers no journal's profile named ${offered.file}`);
+  }
   const own = [journalFile, authorsFile].filter(Boolean);
   const chosen = names([paper, ...against, ...own]);
   const [paperName, ...outputNames] = chosen.slice(0, 1 + against.length);
-  const made = formFiles(journalFile ? null : journal, authorsFile ? null : authors, chosen);
+  const made = formFiles(journalFile || offered ? null : journal, authorsFile ? null : authors,
+    chosen);
   // A LaTeX project as a .zip or a .tar.gz is unpacked into a folder named after it, and the
   // audit is given the folder, as the command line is given the one the reader unpacks.
   const archived = ARCHIVE.test(paperName);
   if (archived && chosen.includes(paperName.replace(ARCHIVE, ""))) {
     throw new Error(`a file chosen is named ${paperName.replace(ARCHIVE, "")}, the name of the `
       + `folder ${paperName} is unpacked into: rename it`);
+  }
+  if (offered && (chosen.includes(OFFERED_FOLDER)
+      || (archived && paperName.replace(ARCHIVE, "") === OFFERED_FOLDER))) {
+    throw new Error(`a file chosen is named ${OFFERED_FOLDER}, the folder the page puts the `
+      + "journal's profile in: rename it");
   }
   py.runPython(`import os, shutil
 os.chdir("/")
@@ -228,8 +243,15 @@ os.chdir("/work")`);
   }
   for (const file of own) py.FS.writeFile("/work/" + file.name, new Uint8Array(file.data));
   for (const [name, text] of Object.entries(made)) py.FS.writeFile("/work/" + name, text);
-  // The journal's rules and the authors' names, a file of the reader's or the form's.
-  const profileName = journalFile ? journalFile.name : made[FORM_FILES.profile] && FORM_FILES.profile;
+  if (offered) {
+    py.runPython(`import os
+os.makedirs("/work/${OFFERED_FOLDER}", exist_ok=True)`);
+    py.FS.writeFile("/work/" + offered.file, new Uint8Array(offered.data));
+  }
+  // The journal's rules and the authors' names: the journal the page offers that was chosen
+  // (app.js then sends no profile of the reader's), a file of the reader's, or the form's.
+  const profileName = offered ? offered.file : journalFile ? journalFile.name
+    : made[FORM_FILES.profile] && FORM_FILES.profile;
   const authorsName = authorsFile ? authorsFile.name : made[FORM_FILES.authors] && FORM_FILES.authors;
   if (profileName) args.push("--journal", argument(profileName));
   if (authorsName) args.push("--authors", argument(authorsName));

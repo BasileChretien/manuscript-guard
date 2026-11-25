@@ -29267,6 +29267,32 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names`).
     Pinned by `tests/test_web.py::test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names`.
 
+- **The audit page a journal's host builds (`web/build.py --host`,
+  docs/hosting-the-audit-page.md): what it does not hold.** The host's name, logo, accent,
+  contact line and journals go in as data, and every code file is byte for byte the page's
+  built from the same wheel without a host, which CI holds (`web/test/check.py --hosted`).
+  Accepted.
+  - *The host keeps the code as built.* Nothing stops a host from changing a file after the
+    build. A reader can compare its `files.sha256` with that of the same release's page,
+    and turning off the network still shows that the paper is not sent. Accepted.
+  - *The page's own host is the host's server*, which `connect-src 'self'` lets the page send
+    to. It sends nothing once loaded, and the network test covers it, as on GitHub Pages.
+    Accepted.
+  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. The page
+    reads nothing else of its address and writes nothing to it. Pinned by
+    `tests/test_web_host.py::test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it`.
+  - *Every journal's profile is fetched before the page says Ready*, so that the page works
+    with the network off; a host with hundreds of journals makes the start that many requests
+    longer. Accepted.
+  - *An accent is held at 4.5:1 to the page's paper, its cards and a button's text*, light and
+    dark. The soft tint made from it, and the logo, are not read for contrast. Pinned by
+    `tests/test_web_host.py::test_an_accent_is_read_against_the_page_s_own_colours_which_pass_it`.
+  - *A logo is known by its first bytes*, an SVG by `<svg` in its first 4 KB. The page shows
+    it as a picture, which runs no script; opened alone at its address, a script an SVG
+    carried would run on the host's site, as any file of the host's would. Accepted.
+  - *The word-for-word check is on invented journals* (`web/test/host`). A host's own
+    profiles are held to the command line where the host runs check.py on its build. Accepted.
+
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
   one field does. Accepted.

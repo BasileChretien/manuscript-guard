@@ -5,9 +5,14 @@
 // audit sends a request anywhere, a run it refuses leaves no report on screen, and "Test the
 // rules" finds every forbidden request refused, a frame from elsewhere among them.
 //
-//   node web/test/browser.mjs <site> <cases> chrome|firefox [executable]
+//   node web/test/browser.mjs <site> <cases> chrome|firefox [executable] [--hosted]
 //
-// <site> is what web/build.py writes: the landing page, and the audit page in audit/.
+// <site> is what web/build.py writes: the landing page, and the audit page in audit/. With
+// `--hosted`, it is a page web/build.py --host built for a journal's host, served at /check/,
+// another address than the site's, with no landing page; its cases are hosted-cases.json, and
+// it must also show the host's name, logo, accent and contact line, keep the release it runs,
+// its licences and the proof that nothing is uploaded, show each journal's rules as it serves
+// them, preselect the journal ?journal=<slug> names, and say so where it offers none.
 // <cases> holds cases.json, [{"name", "paper", "against": [...], "expect", "form"}], and the
 // files it names; "expect" names a file holding what the command line printed, "form" the
 // page's boxes to set, by id, for the options the command line was given, "tracked", where
@@ -18,7 +23,8 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import puppeteer from "puppeteer-core";
 
-const [site, casesDir, browserName, given] = process.argv.slice(2);
+const hosted = process.argv.includes("--hosted");
+const [site, casesDir, browserName, given] = process.argv.slice(2).filter((arg) => arg !== "--hosted");
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm",
   // The landing page's: a picture sent under another type is not drawn.
@@ -39,10 +45,18 @@ if (!executable) {
 // The site at /, and the test cases at /__cases__/, which no built site has. A folder's
 // address is its index.html, as on GitHub Pages.
 const AUDIT = "/audit/";
+// A hosted page is the audit page alone, served where its host puts it, at another address.
+const HOSTED_AT = "/check/";
+const PAGE_AT = hosted ? HOSTED_AT : AUDIT;
 function serve(request, response) {
   const path = decodeURIComponent(new URL(request.url, "http://x").pathname);
+  if (hosted && !path.startsWith("/__cases__/") && !path.startsWith(PAGE_AT)) {
+    response.writeHead(404).end();
+    return;
+  }
   const [folder, named] = path.startsWith("/__cases__/")
-    ? [resolve(casesDir), path.slice("/__cases__/".length)] : [resolve(site), path.slice(1)];
+    ? [resolve(casesDir), path.slice("/__cases__/".length)]
+    : hosted ? [resolve(site), path.slice(PAGE_AT.length)] : [resolve(site), path.slice(1)];
   const rest = !named || named.endsWith("/") ? named + "index.html" : named;
   const file = normalize(join(folder, rest));
   if (!file.startsWith(folder + sep) || !existsSync(file) || !statSync(file).isFile()) {
@@ -63,32 +77,14 @@ const fail = (what) => { failures.push(what); console.error(`FAIL ${browserName}
 const args = browserName === "chrome" && process.env.CI ? ["--no-sandbox"] : [];
 const browser = await puppeteer.launch({ browser: browserName, executablePath: executable, headless: true, args });
 try {
-  const front = await browser.newPage();
-  const asked = [];
-  front.on("request", (request) => asked.push(request.url()));
-  await front.goto(origin + "/", { waitUntil: "load" });
-  const shown = await front.evaluate(() => ({
-    // style.css defines --ink; a style the policy refused leaves it undefined.
-    styled: getComputedStyle(document.body).getPropertyValue("--ink").trim() !== "",
-    pictures: document.images.length,
-    broken: [...document.images].filter((image) => !image.complete || !image.naturalWidth)
-      .map((image) => image.currentSrc || image.src),
-  }));
-  if (!shown.styled) fail("the landing page loaded without its style");
-  if (!shown.pictures) fail("the landing page shows no picture");
-  if (shown.broken.length) fail(`the landing page did not load ${shown.broken.join(", ")}`);
-  // Over the network only: Firefox loads a font of its own from a data: address.
-  const away = asked.filter((url) => /^(https?|wss?):/.test(url) && !url.startsWith(origin));
-  if (away.length) fail(`the landing page asked ${away.join(", ")}`);
-  console.log(`landing page: ${shown.pictures} pictures, ${shown.broken.length} not loaded, ` +
-    `${asked.length} requests, ${away.length} to another host`);
-  await front.close();
+  // A hosted page has no landing page: its host's site is around it.
+  if (!hosted) await landingHeld();
 
   const page = await browser.newPage();
   page.setDefaultTimeout(600000);
   page.setDefaultNavigationTimeout(300000);
   const started = Date.now();
-  await page.goto(origin + AUDIT);
+  await page.goto(origin + PAGE_AT);
   await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");
   const status = await page.$eval("#status", (element) => element.textContent);
   console.log(`${await browser.version()}: ${status} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
@@ -96,10 +92,13 @@ try {
 
   // At the top, the release the page was built from, which manifest.json names; the loading
   // bar gone once the page is ready; and the browser's own controls following a dark setting.
-  const { manuscript_guard: version } = JSON.parse(readFileSync(join(site, "audit", "manifest.json"), "utf-8"));
+  const manifest = JSON.parse(readFileSync(join(site, ...(hosted ? [] : ["audit"]), "manifest.json"), "utf-8"));
+  const { manuscript_guard: version } = manifest;
+  // A hosted page is built when its host builds it, and says which release runs it.
+  const release = hosted ? `Run by manuscript-guard ${version} (` : `manuscript-guard ${version},`;
   const named = await page.waitForFunction(
-    (version) => document.getElementById("version").textContent.includes(`manuscript-guard ${version},`),
-    { timeout: 10000 }, version).then(() => true, () => false);
+    (release) => document.getElementById("version").textContent.includes(release),
+    { timeout: 10000 }, release).then(() => true, () => false);
   const top = await page.evaluate(() => ({
     version: document.getElementById("version").textContent,
     link: document.querySelector("#version a")?.href,
@@ -151,7 +150,7 @@ try {
     return window.mgLast;
   }, paper, against, form);
 
-  const cases = JSON.parse(readFileSync(join(casesDir, "cases.json"), "utf-8"));
+  const cases = JSON.parse(readFileSync(join(casesDir, hosted ? "hosted-cases.json" : "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
     const result = await choose(one.paper, one.against || [], one.form || {});
     if (result.error) {
@@ -229,8 +228,11 @@ try {
   // A run the page refuses, two outputs of one name, after a report is on screen: it leaves
   // no report or PDF on screen as this one's (round 2 of #527), and no step shown as under way
   // (round 1 of #644).
+  // A hosted page runs the same code, which the site's run holds: its cases have no output.
   const one = cases.find((each) => (each.against || []).length);
-  if (status.startsWith("Ready") && one) {
+  if (hosted) {
+    // Nothing to try here.
+  } else if (status.startsWith("Ready") && one) {
     const twice = [one.against[0], one.against[0]];
     const refused = await choose(one.paper, twice);
     const left = await page.evaluate(() => ({
@@ -292,9 +294,120 @@ try {
     if (how !== "refused by the rules") fail(`the rules let through: ${what}`);
   }
   if (Object.keys(probe.tried).length < 8) fail("Test the rules tried fewer than eight requests");
+
+  if (hosted && status.startsWith("Ready")) await hostHeld(page, manifest);
 } finally {
   await browser.close();
   server.close();
 }
 console.log(failures.length ? `${failures.length} failure(s) in ${browserName}` : `${browserName}: all held`);
 process.exit(failures.length ? 1 : 0);
+
+// What a hosted page must show of its host, and keep of the page; each journal's rules shown
+// as it serves them; and the journal a link names chosen, or said not offered, the address
+// never written to.
+async function hostHeld(page, manifest) {
+  const { host } = manifest;
+  const accents = [...readFileSync(join(site, host.style), "utf-8").matchAll(/--teal: (#[0-9a-f]{6})/g)]
+    .map((match) => match[1]);
+  const shown = await page.evaluate(() => {
+    const visible = (element) => Boolean(element) && element.getClientRects().length > 0;
+    const logo = document.getElementById("hostlogo");
+    const contact = document.getElementById("contact");
+    return {
+      title: document.title,
+      kicker: document.getElementById("kicker").textContent,
+      logo: visible(logo) && logo.complete && logo.naturalWidth > 0,
+      teal: getComputedStyle(document.documentElement).getPropertyValue("--teal").trim(),
+      dark: matchMedia("(prefers-color-scheme: dark)").matches,
+      contact: visible(contact) ? contact.textContent : "",
+      link: contact.querySelector("a")?.getAttribute("href"),
+      options: [...document.getElementById("journal").options].map((option) => option.value),
+      picker: visible(document.getElementById("journalpick")),
+      // What the page keeps on a host's site: that nothing is uploaded and how to see it,
+      // the release, and the licences with pandoc's source.
+      private: visible(document.querySelector(".private"))
+        && /never uploaded/.test(document.querySelector(".private").textContent),
+      probe: Boolean(document.getElementById("probe")),
+      sums: Boolean(document.querySelector('a[href="files.sha256"]')),
+      gpl: visible(document.querySelector('footer a[href="licences/pandoc-GPL-2.0.txt"]')),
+      pandoc: document.getElementById("src-pandoc").getAttribute("href"),
+    };
+  });
+  if (!shown.title.includes(host.name) || !shown.kicker.startsWith(host.name)) {
+    fail(`the hosted page does not name its host: "${shown.title}", "${shown.kicker}"`);
+  }
+  if (host.logo && !shown.logo) fail(`the hosted page shows no logo from ${host.logo}`);
+  if (shown.teal !== accents[shown.dark ? 1 : 0]) {
+    fail(`the hosted page's accent is ${shown.teal}, not the host's ${accents.join(" or ")}`);
+  }
+  if (host.contact && (!shown.contact.includes(host.contact.text) || shown.link !== host.contact.link)) {
+    fail(`the hosted page's contact line is "${shown.contact}" to ${shown.link}`);
+  }
+  const offered = host.journals.map((journal) => journal.slug);
+  if (!shown.picker || JSON.stringify(shown.options) !== JSON.stringify(["", ...offered, "other"])) {
+    fail(`the hosted page offers ${shown.picker ? shown.options.join(", ") : "no list"}, not ${offered.join(", ")}`);
+  }
+  if (!shown.private || !shown.probe || !shown.sums || !shown.gpl || shown.pandoc !== manifest.sources.pandoc) {
+    fail(`the hosted page lost what it must keep: ${JSON.stringify(shown)}`);
+  }
+  console.log(`host: "${shown.kicker}", accent ${shown.teal}, contact "${shown.contact}", ` +
+    `${offered.length} journals offered`);
+
+  // Each journal's rules as the page serves them, and the form for another journal put away.
+  for (const journal of host.journals) {
+    const rules = await page.evaluate((slug) => {
+      const list = document.getElementById("journal");
+      list.value = slug;
+      list.dispatchEvent(new Event("change", { bubbles: true }));
+      return { text: document.getElementById("journaltext").textContent,
+        shown: !document.getElementById("journalrules").hidden,
+        form: !document.getElementById("journalbox").hidden };
+    }, journal.slug);
+    if (!rules.shown || rules.text !== readFileSync(join(site, journal.file), "utf-8") || rules.form) {
+      fail(`${journal.name}: its rules ${rules.shown ? "differ from" : "are not shown as"} ${journal.file}` +
+        `${rules.form ? ", and the form for another journal is still shown" : ""}`);
+    }
+  }
+
+  // A link names a journal: it is chosen, and the address is not written to; one the page
+  // does not offer is said, and none is chosen.
+  for (const [slug, chosen] of [[offered[0], offered[0]], ["no-such-journal", ""]]) {
+    const address = `${origin}${PAGE_AT}?journal=${slug}`;
+    await page.goto(address);
+    await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");
+    const after = await page.evaluate(() => ({
+      value: document.getElementById("journal").value,
+      note: document.getElementById("journalnote").hidden ? "" : document.getElementById("journalnote").textContent,
+      address: location.href,
+    }));
+    if (after.value !== chosen || after.address !== address || (!chosen && !after.note.includes(slug))) {
+      fail(`?journal=${slug}: ${JSON.stringify(after)}`);
+    }
+    console.log(`?journal=${slug}: ${after.value ? `${after.value} chosen` : `none chosen, "${after.note}"`}`);
+  }
+}
+
+// The landing page at /: its style and every picture it names loaded, and no other host asked.
+async function landingHeld() {
+  const front = await browser.newPage();
+  const asked = [];
+  front.on("request", (request) => asked.push(request.url()));
+  await front.goto(origin + "/", { waitUntil: "load" });
+  const shown = await front.evaluate(() => ({
+    // style.css defines --ink; a style the policy refused leaves it undefined.
+    styled: getComputedStyle(document.body).getPropertyValue("--ink").trim() !== "",
+    pictures: document.images.length,
+    broken: [...document.images].filter((image) => !image.complete || !image.naturalWidth)
+      .map((image) => image.currentSrc || image.src),
+  }));
+  if (!shown.styled) fail("the landing page loaded without its style");
+  if (!shown.pictures) fail("the landing page shows no picture");
+  if (shown.broken.length) fail(`the landing page did not load ${shown.broken.join(", ")}`);
+  // Over the network only: Firefox loads a font of its own from a data: address.
+  const away = asked.filter((url) => /^(https?|wss?):/.test(url) && !url.startsWith(origin));
+  if (away.length) fail(`the landing page asked ${away.join(", ")}`);
+  console.log(`landing page: ${shown.pictures} pictures, ${shown.broken.length} not loaded, ` +
+    `${asked.length} requests, ${away.length} to another host`);
+  await front.close();
+}

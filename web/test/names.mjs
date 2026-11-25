@@ -7,8 +7,9 @@
 //
 // Each case is {"paper": name, "against": [names]}, with "english", "known", "noAbstract",
 // "noResults", "results", "tracked", "design", "wholeNumbers", "binary", "nonNegative",
-// "minimumCellCount", "journal" and "authors" where the reader set them, and "journalFile"
-// and "authorsFile" by their names where the reader chose one; each answer {"args",
+// "minimumCellCount", "journal" and "authors" where the reader set them, "journalFile"
+// and "authorsFile" by their names where the reader chose one, and "offered", the file of
+// the journal the page offers that was chosen (web/build.py --host); each answer {"args",
 // "written", "corrected", "made"}, "corrected" whether the audit was asked to work out G14's
 // corrections and "made" the files the journal's form made, by name; or {"error", "written"}
 // where the worker refuses the names or the form. The stand-in for `web.journal_files` makes
@@ -51,12 +52,13 @@ runInContext("py = stub;", context);
 
 const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
-const answers = cases.map(({ paper, against, journalFile, authorsFile, ...chosen }) => {
+const answers = cases.map(({ paper, against, journalFile, authorsFile, offered, ...chosen }) => {
   written.length = 0;
   for (const name of ["CORRECTED", "JOURNAL", "AUTHORS", "ARCHIVE"]) delete set[name];
   context.payload = { paper: file(paper), against: against.map(file), lookup: false,
     journalFile: journalFile ? file(journalFile) : null,
-    authorsFile: authorsFile ? file(authorsFile) : null, ...chosen };
+    authorsFile: authorsFile ? file(authorsFile) : null,
+    offered: offered ? { file: offered, data: new ArrayBuffer(0) } : null, ...chosen };
   try {
     const { args, made } = runInContext("run(payload)", context);
     return { args: [...args], written: [...written], corrected: set.CORRECTED,

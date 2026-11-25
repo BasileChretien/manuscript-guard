@@ -1099,6 +1099,9 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
 #: line's end.
 BROKEN_SOFT = (("interquartile range", "IQR"), ("standardised mortality ratio", "SMR"),
                ("generalised estimating equations", "GEE"))  # fmt: skip
+#: The hyphens a PDF breaks a word at a line's end with, each of which every example of
+#: `line_broken` breaks one of `BROKEN_SOFT` at (round 2 of #784).
+SOFT_HYPHENS = ("-", "\N{HYPHEN}", "\N{SOFT HYPHEN}")
 BROKEN_COMPOUND = (("self-reported fatigue scale", "SFS"), ("cross-sectional health survey",
                    "CHS"), ("long-term care facility", "LCF"))  # fmt: skip
 #: A long form and another meaning of its short form, which differ by more than a break.
@@ -1112,9 +1115,12 @@ BROKEN_PROPER = (("self{}rated sleep scale", "SRS"), ("long{}stay care unit", "L
 PROPER_HYPHENS = ("\N{HYPHEN}", "\N{NON-BREAKING HYPHEN}")
 
 
-def _break_a_word(draw: st.DrawFn, long: str, at_hyphen: bool, joint: str) -> str:
+def _break_a_word(
+    draw: st.DrawFn, long: str, at_hyphen: bool, joint: str, hyphen: str = "-"
+) -> str:
     """`long` with one of its words broken by a hyphen and `joint`: inside a word of five
-    letters or more, at a place drawn, or where `at_hyphen`, at a compound's own hyphen."""
+    letters or more, at a place drawn, by `hyphen`, or where `at_hyphen`, at a compound's
+    own hyphen."""
     words = long.split()
     if at_hyphen:
         which = draw(st.sampled_from([at for at, word in enumerate(words) if "-" in word]))
@@ -1126,7 +1132,7 @@ def _break_a_word(draw: st.DrawFn, long: str, at_hyphen: bool, joint: str) -> st
     which = draw(st.sampled_from([at for at, word in enumerate(words) if at and len(word) >= 5]))
     word = words[which]
     cut = draw(st.integers(2, len(word) - 2))
-    words[which] = f"{word[:cut]}-{joint}{word[cut:]}"
+    words[which] = f"{word[:cut]}{hyphen}{joint}{word[cut:]}"
     return " ".join(words)
 
 
@@ -1134,13 +1140,13 @@ def _break_a_word(draw: st.DrawFn, long: str, at_hyphen: bool, joint: str) -> st
 def line_broken(
     draw: st.DrawFn,
 ) -> tuple[str, list[tuple[str, str]], list[tuple[str, str]]]:
-    """A Methods section with one piece of each kind `BROKEN_SOFT`, `BROKEN_COMPOUND`,
-    `BROKEN_OTHER`, `BROKEN_TYPED` and `BROKEN_PROPER` describe, in an order drawn, among
-    words; and what G14
-    says of each short form's second definition, where the text was read from a PDF and
-    where it was not, in order of the alphabet: `again` where it gives the first's meaning
-    again, `another` where it gives another."""
-    soft_long, soft = draw(st.sampled_from(BROKEN_SOFT))
+    """A Methods section with one piece of each kind `BROKEN_COMPOUND`, `BROKEN_OTHER`,
+    `BROKEN_TYPED` and `BROKEN_PROPER` describe, and one of `BROKEN_SOFT` for each of
+    `SOFT_HYPHENS`, in an order drawn, among words; and what G14 says of each short form's
+    second definition, where the text was read from a PDF and where it was not, in order of
+    the alphabet: `again` where it gives the first's meaning again, `another` where it gives
+    another."""
+    softs = list(zip(draw(st.permutations(BROKEN_SOFT)), SOFT_HYPHENS, strict=True))
     compound_long, compound = draw(st.sampled_from(BROKEN_COMPOUND))
     other_long, other, meaning = draw(st.sampled_from(BROKEN_OTHER))
     typed_long, typed = draw(st.sampled_from(BROKEN_TYPED))
@@ -1152,7 +1158,8 @@ def line_broken(
         return f"The {long} ({short}) was read. The {again} ({short}) was read again."
 
     pieces = [
-        piece(soft_long, soft, _break_a_word(draw, soft_long, False, "\n")),
+        *(piece(soft_long, soft, _break_a_word(draw, soft_long, False, "\n", hyphen))
+          for (soft_long, soft), hyphen in softs),
         piece(compound_long, compound, _break_a_word(draw, compound_long, True, "\n")),
         piece(other_long, other, _break_a_word(draw, meaning, False, "\n")),
         piece(typed_long, typed, _break_a_word(draw, typed_long, False, " ")),
@@ -1160,8 +1167,10 @@ def line_broken(
     ]
     text, _starts = _paragraphs(draw, draw(st.permutations(pieces)))
     said = {compound: "again", other: "another", typed: "another", proper: "again"}
-    return ("# Methods\n\n" + text, sorted({**said, soft: "again"}.items()),
-            sorted({**said, soft: "another"}.items()))  # fmt: skip
+    shorts = [soft for (_long, soft), _hyphen in softs]
+    return ("# Methods\n\n" + text,
+            sorted({**said, **dict.fromkeys(shorts, "again")}.items()),
+            sorted({**said, **dict.fromkeys(shorts, "another")}.items()))  # fmt: skip
 
 
 @st.composite

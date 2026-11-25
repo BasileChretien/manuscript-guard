@@ -2519,10 +2519,12 @@ def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
     end and the rest, "Chlamydia trachoma-\\ntis", and a compound broken at its own hyphen
     the same way, "self-\\nreported" (the real-paper corpus, row 7 of window C). The long
     form G14 reads joins its words with a space, "trachoma- tis"; it is found again in
-    `prose` beside the short form at `offset`, the occurrence that ends nearest before it,
-    or where none ends before it the one that starts nearest after it, "ROR (reporting odds
-    ratio)", its words as they stand with what stands between them. A break is where a word
-    ends on a hyphen and a line's end follows it.
+    `prose` beside the short form at `offset`: in the bracket that opens after it where one
+    does and the long form is there, "ROR (reporting odds ratio)", the first occurrence
+    there (`_bracket_after`); otherwise the occurrence that ends nearest before it, or where
+    none ends before it the one that starts nearest after it. Its words are read as they
+    stand with what stands between them. A break is where a word ends on a hyphen and a
+    line's end follows it.
     The long form as read keeps each break as a hyphen, which `_same_meaning` reads as a
     space, so each reading here joins some: two long forms are the same where any readings
     of them are. A hyphen and a space typed in a line is no break."""
@@ -2534,8 +2536,11 @@ def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
     found = list(re.finditer(r"\s+".join(map(re.escape, words)), prose[low:high]))
     if not found:
         return ()
-    nearest = min(found, key=lambda match: _distance(low + match.start(), low + match.end(),
-                                                     offset))
+    inside = _bracket_after(prose, offset)
+    within = [match for match in found
+              if inside is not None and inside[0] <= low + match.start() < inside[1]]  # fmt: skip
+    nearest = within[0] if within else min(
+        found, key=lambda match: _distance(low + match.start(), low + match.end(), offset))
     between = re.findall(r"\s+", nearest.group(0))
     breaks = [at for at, gap in enumerate(between)
               if words[at][-1] in _BREAKING and "\n" in gap][:_MOST_BREAKS]  # fmt: skip
@@ -2547,6 +2552,24 @@ def _rejoined(prose: str, offset: int, long: str) -> tuple[str, ...]:
             reading = reading[:-1] + word if at in joined else f"{reading} {word}"
         readings.append(reading)
     return tuple(readings)
+
+
+#: The short form at a definition's place and a bracket opening after it, as "ROR
+#: (reporting odds ratio)" stands: the long form is in that bracket.
+_SHORT_THEN_BRACKET = re.compile(r"[^\s()\[\]]+[ \t]*[(\[]")
+
+
+def _bracket_after(prose: str, offset: int) -> tuple[int, int] | None:
+    """Where the text of the bracket that opens just after the short form at `offset` runs,
+    from after its opening to its close or the text's end; None where none opens there."""
+    opening = _SHORT_THEN_BRACKET.match(prose, offset)
+    if opening is None:
+        return None
+    depth, at = 1, opening.end()
+    while at < len(prose) and depth:
+        depth += (prose[at] in _OPENING) - (prose[at] in _CLOSING)
+        at += 1
+    return opening.end(), at
 
 
 def _distance(start: int, end: int, offset: int) -> tuple[int, int]:

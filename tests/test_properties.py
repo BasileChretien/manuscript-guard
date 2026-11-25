@@ -2317,6 +2317,13 @@ def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_comp
     assert said(_file(0, Path("main.md"), text, [], False)) == from_markdown, text
 
 
+def _a_pdf_breaks_a_word_only_at_a_hyphen_minus(patch: pytest.MonkeyPatch) -> None:
+    """A word a PDF breaks at a line's end at a hyphen proper or a soft hyphen is not joined,
+    so "inter" and the soft hyphen, then "quartile range" on the next line, give another
+    meaning than "interquartile range"."""
+    patch.setattr(language_gate, "_BREAKING", "-")
+
+
 def _only_a_hyphen_minus_is_read_as_a_hyphen(patch: pytest.MonkeyPatch) -> None:
     """A hyphen proper or a non-breaking hyphen in a long form is a letter of its word, so
     a compound typed with one gives another meaning than with a hyphen-minus."""
@@ -28695,6 +28702,10 @@ BROKEN = {
     "a no-break space before a dash is no space": (
         _a_no_break_space_is_no_space_before_a_dash,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a PDF breaks a word only at a hyphen-minus": (
+        _a_pdf_breaks_a_word_only_at_a_hyphen_minus,
+        test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_where_long_forms_are_compared,
     ),
     "only a hyphen-minus is read as a hyphen": (
         _only_a_hyphen_minus_is_read_as_a_hyphen,

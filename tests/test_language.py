@@ -1343,6 +1343,21 @@ def test_a_long_form_s_breaks_are_read_where_it_stands_before_its_short_form() -
     found = _pdf_findings("# Methods\n\nThe reporting odds ratio (ROR) was read. The "
                           "reporting odds ra- tio (ROR) reporting odds ra-\ntio was typed.\n")
     assert _meanings(found) == ["ROR is defined as 'reporting odds ra- tio'"]
+    # A long form after its short form is read in the short form's bracket, though the same
+    # words, typed with no line's end, end nearer before it (round 2 of #784).
+    found = _pdf_findings("# Methods\n\nThe reporting odds ra- tio was high. ROR (reporting "
+                          "odds ra-\ntio) was read. The reporting odds ratio (ROR) was read "
+                          "again.\n")
+    assert _meanings(found) == ["ROR is defined again"]
+
+
+@pytest.mark.parametrize("hyphen", ["-", "\N{HYPHEN}", "\N{SOFT HYPHEN}"])
+def test_a_pdf_s_break_at_each_kind_of_hyphen_is_joined(hyphen: str) -> None:
+    """Round 2 of #784: a break at a hyphen proper or a soft hyphen is joined as one at a
+    hyphen-minus is, where the halves as read give another meaning."""
+    found = _pdf_findings(f"# Methods\n\nThe interquartile range (IQR) was read. The inter"
+                          f"{hyphen}\nquartile range (IQR) was read again.\n")
+    assert _meanings(found) == ["IQR is defined again"]
 
 
 def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_only_there() -> None:

@@ -951,7 +951,20 @@ def census_of_markdown(path: Path, text: str):
     # Its markers counted on the paper's lines: no marker runs across a comment, whose
     # opening is masked, so they are those of the text a comment's breaks are hidden in.
     hidden = kept_breaks(blanked, _masked(blanked, printed_as_typed=False))
-    return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False)
+    return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False,
+                          typed=blanked)  # fmt: skip
+
+
+def cited_in_word(document) -> dict:
+    """What a .docx's reader knows of its citations beside its text, for G7's census: the
+    0-based lines of the text `read_paper` gives, its body then its notes, where a digit is
+    raised as superscript, and whether it holds a citation field (`text.docx.DocxText`).
+    Nothing for a paper that is no .docx."""
+    if document is None:
+        return {}
+    after = document.body.count("\n") + 1
+    return {"raised": document.raised | {after + line for line in document.notes_raised},
+            "fields": document.cited_by_field}  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -1046,7 +1059,8 @@ def _read_sources(
             report.unreadable += unread_shapes(path, text)
         report.references.append(
             census_of_text(path, original, spans, kept_breaks(text, hidden), _intervals(text),
-                           docx=docx, numbering=numbering)  # fmt: skip
+                           docx=docx, numbering=numbering, typed=text,
+                           **cited_in_word(document))  # fmt: skip
         )
     if entries or found_tex:
         latex = read_latex(entries, found_tex)
@@ -1686,6 +1700,10 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources = _read_sources(report, papers, found_tex or [])
+    from manuscript_guard.auditing.references import held_across
+
+    # A list whose own file cites nothing is held to every file read (round 2 of #790).
+    report.references = held_across(report.references)
     step("numbers")
     read = len(sources)
     for path in figures or []:

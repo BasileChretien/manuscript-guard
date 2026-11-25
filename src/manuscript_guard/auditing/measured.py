@@ -61,7 +61,7 @@ MEASURED: dict[str, Measured] = {
     "code-name-in-prose": Measured(INFO, true=18, judged=50, papers=8),
     # G6's text a model or a template left behind, every rule of it: 1 true of 30 judged
     # in the reports this table is applied to (an audit, of a paper or of its own PDF, and
-    # compare), the false ones from 11 papers. Unfilled placeholder text, 1 of 24 ("xxxx",
+    # compare), the false ones from 11 papers. Unfilled placeholder text, 1 of 25 ("xxxx",
     # a "todo"); a chat assistant's register, 0 of 4; a journal template's instruction, 0 of
     # 1 ("Sample table title"). `check`'s own 13 judged were false too. At d056f71 the bare
     # placeholders alone were lowered (1 of 12), a template's instruction and one left for

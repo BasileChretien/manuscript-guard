@@ -96,7 +96,8 @@ def test_a_bare_placeholder_is_a_note_in_an_audit(tmp_path: Path, capsys) -> Non
 
 
 def test_a_template_s_instruction_is_a_note_in_an_audit(tmp_path: Path, capsys) -> None:
-    """Both of a template's instructions the corpus judged were false (Basile, 2026-11-25)."""
+    """A template's instruction the corpus judged in an audit was false, as was the one in
+    `check` (Basile, 2026-11-25)."""
     template = [f for f in _of(audited(_paper(tmp_path), capsys), "model-artefact")
                 if _rule(f) == TEMPLATE]  # fmt: skip
     assert len(template) == 2 and {f["severity"] for f in template} == {"info"}
@@ -411,8 +412,8 @@ def _artefact_rules() -> list[dict]:
 
 
 def test_every_rule_of_model_artefact_is_lowered() -> None:
-    """Each rule of `model-artefact` in `data/ai_writing.yaml`, a template's and a model's
-    markup among them, gives a note in an audit (Basile, 2026-11-25)."""
+    """Each rule of the `artefacts` section of `data/ai_writing.yaml`, a template's and a
+    model's markup among them, gives a note in an audit (Basile, 2026-11-25)."""
     rules = [rule["id"] for rule in _artefact_rules()]
     assert TEMPLATE in rules and "placeholder-filler" in rules and len(rules) > 10
     for rule in rules:

@@ -9878,17 +9878,18 @@ now say the opposite was false mostly where a section was rewritten, its new neg
 of new sentences rather than a claim reversed; `reworded`, which reads one edit of a
 project's own text, keeps the warning.
 
-`model-artefact` holds for every rule of `data/ai_writing.yaml` (Basile, 2026-11-25, "INFO
-in audit"). At d056f71 the row held for the bare placeholders alone, `placeholder-slot`
+`model-artefact` holds for every finding of the code, each rule of the `artefacts` section
+of `data/ai_writing.yaml` (Basile, 2026-11-25, "INFO in audit"). At d056f71 the row held for the bare placeholders alone, `placeholder-slot`
 ("[url]", "[citation needed]") and `placeholder-word` ("xxxx", "TBD"), 1 true of 12; a slot
 that tells the writer what to put, an instruction left for the writer, a journal template's
 instruction to its authors and a model's markup or voice kept failing in both reports, since
 such words were taken to have no innocent reading (Basile, 2026-10-21). On the corpus at
 27b5cfb they had one: of the code's 30 judged findings in the reports the table is applied
 to (an audit, of a paper or of its own PDF, and `compare`), 1 was true, and the two still loud
-were a template's "Sample table title" and a "todo", both false. Unfilled placeholder text was
-right 1 time in 24, a chat assistant's register 0 in 4 and a template's instruction 0 in 1;
-`check`'s own 13 judged were false too. So every finding of the code is a note in `audit` and
+were a template's "Sample table title" and a "todo", both false (a chat assistant's register,
+the other kind that failed, had gone with #779). Unfilled placeholder text was right 1 time
+in 25, a chat assistant's register 0 in 4 and a template's instruction 0 in 1; `check`'s own
+13 judged were false too. So every finding of the code is a note in `audit` and
 `compare`, and `check` fails them from drafting as before, where a leftover is the author's
 own.
 `identifier-malformed` (13 true of 14) and `reference-field-missing` (41 of 41) were measured

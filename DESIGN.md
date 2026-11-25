@@ -9843,12 +9843,13 @@ findings (`auditing.gates.run_gates`, which both run), where the audit says what
 a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
 and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
 at d056f71, the next two rows at 0949b4b, once the two judges had read the findings no
-verdict covered (`docs/corpus.md`, "Judging"), and the last at 77abd45db:
+verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db, and `model-artefact`'s
+again at 27b5cfb:
 
 | Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|---|
 | `code-name-in-prose` (G14) | any format | 50 | 18 | 8 papers | INFO | warns, fails at submission |
-| `model-artefact` (G6), a bare placeholder | any format | 12 | 1 | 4 papers | INFO | fails from drafting |
+| `model-artefact` (G6), every rule | any format | 30 | 1 | 11 papers | INFO | fails from drafting |
 | `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
 | `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
 | `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
@@ -9877,15 +9878,20 @@ now say the opposite was false mostly where a section was rewritten, its new neg
 of new sentences rather than a claim reversed; `reworded`, which reads one edit of a
 project's own text, keeps the warning.
 
-A bare placeholder is a finding of the two rules of `data/ai_writing.yaml` of the kind whose
-findings were judged: `placeholder-slot`, a thing named in brackets ("[url]", "[citation
-needed]"), and `placeholder-word`, a word that marks a gap ("xxxx", "XXX", "TBD"). A slot
-that tells the writer what to put ("[insert the date]", "[your name]", "[TO BE COMPLETED]")
-was never judged loud, and the bracket's rule also finds an instruction in brackets, "[fill
-in later]", so those still fail. So do a journal template's instruction to its authors
-(`placeholder-template`, Word's "Click or tap here to enter text." among them), an
-instruction left for the writer (`placeholder-filler`) and a model's markup or voice, in
-both reports, since such words have no innocent reading (Basile, 2026-10-21).
+`model-artefact` holds for every finding of the code, each rule of the `artefacts` section
+of `data/ai_writing.yaml` (Basile, 2026-11-25, "INFO in audit"). At d056f71 the row held for the bare placeholders alone, `placeholder-slot`
+("[url]", "[citation needed]") and `placeholder-word` ("xxxx", "TBD"), 1 true of 12; a slot
+that tells the writer what to put, an instruction left for the writer, a journal template's
+instruction to its authors and a model's markup or voice kept failing in both reports, since
+such words were taken to have no innocent reading (Basile, 2026-10-21). On the corpus at
+27b5cfb they had one: of the code's 30 judged findings in the reports the table is applied
+to (an audit, of a paper or of its own PDF, and `compare`), 1 was true, and the two still loud
+were a template's "Sample table title" and a "todo", both false (a chat assistant's register,
+the other kind that failed, had gone with #779). Unfilled placeholder text was right 1 time
+in 25, a chat assistant's register 0 in 4 and a template's instruction 0 in 1; `check`'s own
+13 judged were false too. So every finding of the code is a note in `audit` and
+`compare`, and `check` fails them from drafting as before, where a leftover is the author's
+own.
 `identifier-malformed` (13 true of 14) and `reference-field-missing` (41 of 41) were measured
 in `check`, where they wait for internal review; the audit gives neither, so neither is in
 the table. `check` keeps them waiting: they are right, but a reference list is still changing

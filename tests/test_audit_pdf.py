@@ -1808,3 +1808,18 @@ def test_a_run_in_keywords_ends_the_abstract_where_studies_are_placed_too() -> N
         ("Abstract", 1), ("Background", 1), ("Study 1: A first look", 1), ("Method", 2),
         ("Results", 2), ("Study 2: Again", 1), ("Method", 2), ("Results", 2),
         ("References", 2)]
+
+
+def test_a_line_of_words_before_the_keywords_of_a_structured_abstract_ends_it() -> None:
+    """A known gap (DESIGN.md, Known gaps): a sidebar's line drawn under "Abstract" before a
+    "Keywords:" line is words before the keywords, so the keywords end the Abstract, its
+    titled parts are the main text's, and with the main text's own names after them the
+    paper is unplaced, where main placed the parts under the Abstract (round 2 of #783)."""
+    lines = ["Abstract", "Received 3 May 2021; accepted 9 June 2021",
+             "Keywords: falls; older adults", "Background", "Falls harm.", "Methods",
+             "We read 412.", "Results", "Of 412, 77 fell.", "Conclusions", "They matter.",
+             "1. Introduction", "Falls.", "2. Methods", "We read.", "3. Results",
+             "Of 412, 77 fell."]  # fmt: skip
+    pdf = _pdf_of(lines)
+    assert [title for _line, title in pdf.headings][:2] == ["Abstract", "Background"]
+    assert pdf.placed is None

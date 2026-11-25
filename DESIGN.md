@@ -11712,8 +11712,11 @@ corpus, row 8): the line that opens on the label and goes on (`run_in_keywords`)
 of its label, "Keywords", a run-in one like the Abstract's, where words stand after it before
 the next heading, and the headings after it are the main text's either way
 (`auditing.pdf.keywords_line`). A body whose numbered titles name no section, "1.1 Study
-population", ran on as the Abstract to the next name. The rest of the label's line is the list
-of keywords, a paragraph of its own where G4, G6 and G14 read the PDF. Where there
+population", ran on as the Abstract to the next name. Where it is a heading, the rest of the
+label's line is the list of keywords, a paragraph of its own where G4, G6 and G14 read the
+PDF; with no words after it before the next heading, "Keywords: QXR; falls" over "1.
+Introduction", it is no heading, and its line is staged as the next line of the Abstract's
+paragraph, which G14 reads as the Abstract's prose, as on main. Where there
 is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
@@ -28708,6 +28711,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     and are never compared with the Results, where before the rule they were the Abstract's.
     Accepted. Pinned by
     `tests/test_audit_pdf.py::test_a_run_in_keywords_drawn_between_two_halves_of_the_abstract_ends_it_there`.
+  - In a PDF read in drawing order whose structured abstract is titled on lines of its own,
+    one line of words under "Abstract" before a "Keywords:" line, a sidebar's "Received 3
+    May 2021; accepted 9 June 2021", is the Abstract's words before its keywords: they end
+    the Abstract, its parts are the main text's, and with the main text's own names after
+    them the paper is unplaced where main placed it, as a Word paper with that paragraph
+    would be. Accepted. Pinned by
+    `tests/test_audit_pdf.py::test_a_line_of_words_before_the_keywords_of_a_structured_abstract_ends_it`.
   - Where the names cannot be placed alone, a line after the Abstract that opens on
     "Experiment N:" or "Study N:" with a name after it before the next such line, one that is
     no back matter's, is a study's heading: a table's row or a wrapped line of prose or of a

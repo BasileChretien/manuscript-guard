@@ -17434,12 +17434,10 @@ start.
   sensitivity and interim analyses), each with what it has to say and the guideline item it
   comes from, read on a stated date.
 - G12 holds `design/plan.md` to those sections (`plan-section-missing`, `plan-section-empty`),
-  which warn at every stage, as "The design gate warns and never blocks" (above) decided. Some
-  other findings of G12 fail from a stage, those `policy.py` lists: `registration-record-edited`
-  from drafting, `held-out-read-before-model` from analysis, twenty registration findings from
-  internal review or submission, and `plan-declarations-unreadable`, the controls' findings and
-  the other held-out findings at submission. The rest warn or note at every stage. The plan is
-  held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
+  which warn at every stage, as "The design gate warns and never blocks" (above) decided.
+  Several of G12's other checks (among them the registration, the controls, the held-out data,
+  the data sources and the reviews of the design) have findings that fail from one stage or
+  another, as `policy.py` and those checks set them. The plan is held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
   the registration's outcomes (`registration-…`).
 - `next` asks for the design first (`choose-study-type`), and the analysis-plan skill puts the
   sections to the author through an agent.

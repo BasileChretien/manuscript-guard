@@ -56,6 +56,22 @@ def _asked(section: dict) -> None:
     assert explain.endswith(".") and explain[:1].isupper(), (section["id"], explain)
 
 
+def test_starting_the_command_line_reads_no_table() -> None:
+    """Round 1 of the first plan pull request: `REQUIRED` came from the table, and a module the
+    command line imports at its start took the Deviations pattern from it there, so every
+    command and every hook parsed `study_types.yaml`, about 120 ms without libyaml, where it
+    had read nothing. The table is read when a gate first asks for it."""
+    import subprocess
+    import sys
+
+    found = subprocess.run(
+        [sys.executable, "-c", "import manuscript_guard.cli; from manuscript_guard.gates import "
+         "design; print(design._table.cache_info().currsize)"],
+        capture_output=True, text=True, timeout=120, check=True,
+    )  # fmt: skip
+    assert found.stdout.strip() == "0", found.stdout + found.stderr
+
+
 def test_every_plan_s_seven_sections_are_read_from_the_table() -> None:
     """The seven sections every plan has are the table's `every_plan`, in their order, each
     asked and explained as a design's own are (DESIGN.md, "One set of plan questions"). A

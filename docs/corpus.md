@@ -425,17 +425,59 @@ decisions:
       from: audit/abstract-not-compared
       to: [audit/question-no-abstract, audit/question-no-results]
       scope: paper
+  - id: entry-cited-by-nothing
+    date: 2026-11-25
+    by: the author
+    what: the text cites nothing by number, so no entry of its list is cited
+    source: "#782"
+    accepted:
+      findings:
+        - {slug: docx-example-1, report: audit, index: 14}
+  - id: abstract-ends-at-keywords
+    date: 2026-11-25
+    by: the author
+    what: a PDF's Abstract ends at its Keywords line, so its short forms are the main text's
+    source: "#783"
+    moved:
+      findings:
+        - {slug: pdf-example-2, report: audit-pdf, index: 6,
+           to: "G14|abbreviation-unused|ABC@main|-", scheme: 2}
 ```
 
 Each decision has an `id`, a `date`, who made it (`by`), one line on `what` it decides, its
-`source` (a pull request or a section of DESIGN.md), and one of two kinds. A `rejudge` gives
-the findings it names a new verdict, by key or by a matcher of `gate`, `code`, `slug`,
-`report` and a regular expression on the `message`; the verdict file is left as it was. A
-`successor` says that a finding about the whole paper was replaced: where the finding is gone
-and the same paper's same report has one of the codes in `to`, it counts as asked by the
-matcher, and as elsewhere by key. A
-decision is the author's, with its source; the ledger is never written to say that a finding
-the tool stopped giving was wrong because the tool stopped giving it.
+`source` (a pull request or a section of DESIGN.md), and one of four kinds:
+
+- A `rejudge` gives the findings it names a new verdict, by key or by a matcher of `gate`,
+  `code`, `slug`, `report` and a regular expression on the `message`; the verdict file is
+  left as it was.
+- A `successor` says that a finding about the whole paper was replaced: where the finding is
+  gone and the same paper's same report has one of the codes in `to`, it counts as asked by
+  the matcher, and as elsewhere by key.
+- An `accepted` decision names judged findings whose loss the author accepts, under
+  `findings` as a `rejudge` names them: `slug`, `report`, `index`, and `batch` for a batch's
+  verdict. The verdict stays as it is, and `measure` counts the finding in its state as
+  before, gone where it is gone. The gate does not fail on such a loss and lists it apart.
+- A `moved` decision names, for each judged finding, the key of the finding that carries it
+  now (`to`, `gate|code|subject|digest`) and that key's scheme (`scheme`, as `keys.py`'s
+  `SCHEME` and the run's `run.json` give it). In a run that keys by that scheme, where the
+  judged finding is otherwise gone and the same paper's same report holds a finding with
+  that key, the judged finding takes that finding's state: reported where it is a warning or
+  a failure of the judged finding's gate and code, elsewhere where it is one of another code,
+  asked where it is a note, a question, or a form a question lists. That finding is then
+  accounted for by the judged one: it is counted neither among the warnings no judged
+  finding accounts for nor among the gate's findings with no verdict. In a run of another
+  scheme, or where no finding of the report has the key, or only one another judged finding
+  took, it moves nothing.
+
+A decision names one kind and no other key; a finding named twice in one decision, a `to`
+that is no key, or a scheme that is no whole number from 1 is refused. A place mistyped
+names no judged finding, so it accepts or moves nothing, and `measure` says so: its list of
+decisions gives each one's `kind`, the judged findings it `matched` (those it re-judges,
+accepts or moves, wherever they stand), those whose verdict it `changed`, those its
+`successor` kept, and those it `moved` in the run. A decision is the author's, with its source; the ledger is never written
+to say that a finding the tool stopped giving was wrong because the tool stopped giving it.
+An `accepted` decision says the loss is right for that paper, and a `moved` one that the
+finding is still given, under another key.
 
 ## The gate
 
@@ -447,7 +489,10 @@ python tools/corpus.py gate main-7bda66a5e 1a2b3c4d5 --out "$MANUSCRIPT_GUARD_CO
 applied, and exits with 1 when a finding judged true, about the paper, is kept at the base
 (reported, asked or elsewhere) and gone in the new run. A finding the ledger re-judges false
 is not true any more, and one a successor covers is kept (asked by the matcher, elsewhere by
-key), so neither blocks. It lists
+key), so neither blocks; one a `moved` decision moves has the state of the finding that
+carries it. A loss an `accepted` decision names blocks nothing either: it is listed apart,
+"lost, accepted by" the decision's id, and the verdict says how many the ledger accepts.
+It lists the judged findings the ledger moved, and
 without failing the true findings that came back, those reported before and asked now, the
 reading notices that changed, the false findings that became loud, and, by code, the
 warnings and failures that no judged finding accounts for at either run. Below them it

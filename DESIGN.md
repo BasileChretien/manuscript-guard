@@ -29301,6 +29301,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *A profile saved with a byte-order mark* is shown without it, as a browser decodes text,
     and browser.mjs, which reads the file with it, would report its rules as differing; the
     audit is given the profile's bytes as they are (round 1 of #791). Accepted.
+  - *`--out` is told from the host folder by its resolved path, case and all.* On a disk that
+    ignores case, as macOS's usually does, an `--out` typed in another case than the host
+    folder is not seen to be it, and is emptied (fix round of #791). Accepted.
+  - *A folder in `journals/` is passed over*, so that a profile's stored pages in `sources/`
+    stop nothing; profiles put in a folder of their own there are not offered, and the build
+    says only how many journals it offers (fix round of #791). Accepted.
 
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's

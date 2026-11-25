@@ -77,21 +77,26 @@ def write_run(root: Path, name: str, found: list[dict]) -> None:
     (folder / "audit-pdf.json").write_text(json.dumps({"findings": found}), "utf-8")
 
 
-@pytest.fixture
-def corpus(tmp_path: Path) -> Path:
-    root = tmp_path / "corpus-root"
+def make_corpus(root: Path, judged: list, tied: list[dict], new: list[dict]) -> Path:
+    """A corpus of one paper: its judged findings, the keyed run they are tied to, and a new
+    run."""
     (root / "report" / "packets").mkdir(parents=True)
     (root / "report" / "judged").mkdir()
     packet = [{"slug": "paper-a", "text": "made up",
-               "reports": {"audit-pdf": {"findings": [f for f, _ in JUDGED]}}}]
-    verdicts = [{**PLACE, "index": i, "verdict": v} for i, (_, v) in enumerate(JUDGED)]
+               "reports": {"audit-pdf": {"findings": [f for f, _ in judged]}}}]
+    verdicts = [{**PLACE, "index": i, "verdict": v} for i, (_, v) in enumerate(judged)]
     (root / "report" / "packets" / "f.json").write_text(json.dumps(packet))
     (root / "report" / "judged" / "f.json").write_text(json.dumps(verdicts))
-    write_run(root, "judged", [f for f, _ in JUDGED])
-    write_run(root, "tied", TIED)
-    write_run(root, "new", NEW)
-    assert tool.tie(root, "judged", "tied")["tied"] == 4
+    write_run(root, "judged", [f for f, _ in judged])
+    write_run(root, "tied", tied)
+    write_run(root, "new", new)
+    assert tool.tie(root, "judged", "tied")["tied"] == len(judged)
     return root
+
+
+@pytest.fixture
+def corpus(tmp_path: Path) -> Path:
+    return make_corpus(tmp_path / "corpus-root", JUDGED, TIED, NEW)
 
 
 def with_ledger(root: Path, *decisions: dict) -> Path:
@@ -253,6 +258,83 @@ def test_a_finding_another_judged_one_took_carries_no_move(corpus: Path) -> None
     assert next(r["state"] for r in rows if r["index"] == 0) == "gone"
 
 
+K_UKELD_ABSTRACT = "G14|abbreviation-unused|UKELD@abstract|-"
+K_UKELD = "G14|abbreviation-unused|UKELD@main|-"
+
+
+@pytest.fixture
+def listed(tmp_path: Path) -> Path:
+    """A: MESO in the main text, which the new run asks about as a form of one question; B:
+    UKELD in the Abstract, gone from the new run, whose question lists UKELD in the main text
+    as its other form."""
+    a = finding("G14", "abbreviation-unused", "MESO is defined and not used again in the main "
+                "text", line=36)  # fmt: skip
+    b = finding("G14", "abbreviation-unused", "UKELD is defined and not used again in the "
+                "Abstract", line=37)  # fmt: skip
+    question = finding("G14", "abbreviation-unused", "2 short forms are defined and not used "
+                       "again: MESO, then UKELD", "info", line=36,
+                       key="G14|abbreviation-unused|-|-", question=True,
+                       forms=[{"form": "MESO", "key": K_MAIN},
+                              {"form": "UKELD", "key": K_UKELD}])  # fmt: skip
+    return make_corpus(tmp_path / "corpus-root", [(a, "true"), (b, "true")],
+                       [{**a, "key": K_MAIN}, {**b, "key": K_UKELD_ABSTRACT}], [question])
+
+
+def move_b(to: str) -> dict:
+    return {**MOVE, "moved": {"findings": [{**PLACE, "index": 1, "to": to, "scheme": 1}]}}
+
+
+def check_form_claimed_by_key(root: Path) -> None:
+    result = tool.gate(with_ledger(root, move_b(K_MAIN)), "tied", "new")
+    assert not result["ok"] and lost(result) == [("G14/abbreviation-unused", 1)]
+    assert result["moved"] == []
+    rows = {r["index"]: r for r in tool.measure(root, "new")["findings"]}
+    assert (rows[0]["state"], rows[1]["state"], rows[1]["moved_by"]) == ("asked", "gone", "")
+
+
+def test_a_form_another_judged_finding_took_carries_no_move(listed: Path) -> None:
+    check_form_claimed_by_key(listed)
+
+
+def test_another_form_of_the_same_list_stays_open(listed: Path) -> None:
+    result = tool.gate(with_ledger(listed, move_b(K_UKELD)), "tied", "new")
+    assert result["ok"] and lost(result) == []
+    assert [(r["index"], r["state"], r["moved_by"]) for r in result["moved"]] == [
+        (1, "asked", "abstract-ends-at-keywords")]
+
+
+def test_a_form_one_move_took_carries_no_second(listed: Path) -> None:
+    question = json.loads((listed / "runs" / "new" / "paper-a" / "audit-pdf.json")
+                          .read_text("utf-8"))["findings"][0]  # fmt: skip
+    write_run(listed, "new", [{**question, "forms": question["forms"][1:]}])
+    both = {**MOVE, "moved": {"findings": [{**PLACE, "index": i, "to": K_UKELD, "scheme": 1}
+                                           for i in (0, 1)]}}  # fmt: skip
+    rows = {r["index"]: r for r in tool.measure(with_ledger(listed, both), "new")["findings"]}
+    assert [rows[i]["moved_by"] != "" for i in (0, 1)] == [True, False]
+
+
+def test_the_moved_list_says_in_which_run_a_move_placed_a_finding(corpus: Path) -> None:
+    # The finding is under the main text's key in the base too, and gone in the new run: the
+    # move made its base state, and the list says so beside the loss.
+    write_run(corpus, "base", NEW)
+    write_run(corpus, "gone", NEW[1:])
+    result = tool.gate(with_ledger(corpus, MOVE), "base", "gone")
+    assert lost(result) == [("G14/abbreviation-unused", 0)]
+    assert [(r["index"], r["moved_in"], r["base_moved_by"], r["moved_by"])
+            for r in result["moved"]] == [(0, "base", "abstract-ends-at-keywords", "")]
+    assert "moved in base by abstract-ends-at-keywords" in tool.render_gate(result)
+    both = tool.gate(corpus, "base", "new")
+    assert [(r["moved_in"], r["moved_by"]) for r in both["moved"]] == [
+        ("both", "abstract-ends-at-keywords")]
+    assert [r["moved_in"] for r in tool.gate(corpus, "tied", "new")["moved"]] == ["new"]
+
+
+def test_a_failing_gate_says_how_many_losses_the_ledger_accepts(corpus: Path) -> None:
+    result = tool.gate(with_ledger(corpus, ACCEPT), "tied", "new")
+    assert not result["ok"]
+    assert "the ledger accepts 1 loss more" in tool.render_gate(result)
+
+
 # --- the rules broken -------------------------------------------------------------------
 
 
@@ -268,6 +350,16 @@ def _moves_across_schemes(decisions, run):
     return {place: (d.id, to) for d in decisions for place, (to, _scheme) in d.moves.items()}
 
 
+def _claimed_by_finding(item, to, new, claimed, taken_keys):
+    """A list of forms shared whatever form of it another judged finding took."""
+    keys = tool.corpus_keys.Keys(new)
+    at = [i for i in keys.at.get(to, []) if i not in claimed or new[i].get("forms")]
+    if at:
+        return "reported", at
+    forms = keys.forms.get(to, [])
+    return ("asked", forms) if forms else None
+
+
 @pytest.mark.parametrize(("name", "broken", "check"), [
     ("_accepted_by", _accepted_ignored, check_accepted),
     ("_moves", _moves_ignored, check_moved),
@@ -278,6 +370,12 @@ def test_each_rule_broken_fails_its_check(corpus: Path, monkeypatch, name: str, 
     monkeypatch.setattr(tool, name, broken)
     with pytest.raises(AssertionError):
         check(corpus)
+
+
+def test_a_form_claimed_by_its_finding_fails_its_check(listed: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tool, "_moved_to", _claimed_by_finding)
+    with pytest.raises(AssertionError):
+        check_form_claimed_by_key(listed)
 
 
 # --- the ledger as written --------------------------------------------------------------
@@ -297,6 +395,15 @@ ONE = {**PLACE, "index": 0}
     ({"accepted": {"findings": [{**ONE, "verdict": "true"}]}}, "named by slug, report and index"),
     ({"accepted": {"findings": [ONE, ONE]}}, "names paper-a audit-pdf 0 twice"),
     ({"accepted": {"findings": [{**ONE, "index": "two"}]}}, "index is a number"),
+    ({"accepted": {"findings": [{**ONE, "index": 2.9}]}}, "index is a number"),
+    ({"accepted": {"findings": [{**ONE, "index": 2.5}]}}, "index is a number"),
+    ({"accepted": {"findings": [{**ONE, "index": True}]}}, "index is a number"),
+    ({"rejudge": {"verdict": "false", "findings": [{**ONE, "index": 2.9}]}},
+     "index is a number"),
+    ({"rejudge": {"verdict": "false", "findings": [{**ONE, "index": True}]}},
+     "index is a number"),
+    ({"moved": {"findings": [{**ONE, "to": "G14|abbreviation-unused|MESO@main|",
+                              "scheme": 1}]}}, "`to` is a finding's key"),
     ({"moved": {"findings": [ONE]}}, "with the key that carries it now (`to`)"),
     ({"moved": {"findings": [{**ONE, "to": K_MAIN}]}}, "and that key's scheme (`scheme`)"),
     ({"moved": {"findings": [{**ONE, "to": K_MAIN, "scheme": 1, "why": "w"}]}}, "(`to`)"),

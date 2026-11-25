@@ -466,16 +466,20 @@ Each decision has an `id`, a `date`, who made it (`by`), one line on `what` it d
   asked where it is a note, a question, or a form a question lists. That finding is then
   accounted for by the judged one: it is counted neither among the warnings no judged
   finding accounts for nor among the gate's findings with no verdict. In a run of another
-  scheme, or where no finding of the report has the key, or only one another judged finding
-  took, it moves nothing.
+  scheme, or where no finding of the report has the key, or where another judged finding
+  took it, it moves nothing. A finding with no forms is taken whole; a list of forms is
+  taken form by form, by the key of each: a form another judged finding was paired with by
+  its key, or an earlier move took, carries no move, and the list's other forms stay open.
 
-A decision names one kind and no other key; a finding named twice in one decision, a `to`
-that is no key, or a scheme that is no whole number from 1 is refused. A place mistyped
+A decision names one kind and no other key; a finding named twice in one decision, an
+index that is no whole number (`2.5` and `true` are not), a `to` that is no key with all
+four parts, or a scheme that is no whole number from 1 is refused. A place mistyped
 names no judged finding, so it accepts or moves nothing, and `measure` says so: its list of
 decisions gives each one's `kind`, the judged findings it `matched` (those it re-judges,
 accepts or moves, wherever they stand), those whose verdict it `changed`, those its
-`successor` kept, and those it `moved` in the run. A decision is the author's, with its source; the ledger is never written
-to say that a finding the tool stopped giving was wrong because the tool stopped giving it.
+`successor` kept, and those it `moved` in the run. A decision is the author's, with its
+source; the ledger is never written to say that a finding the tool stopped giving was wrong
+because the tool stopped giving it.
 An `accepted` decision says the loss is right for that paper, and a `moved` one that the
 finding is still given, under another key.
 
@@ -491,8 +495,9 @@ applied, and exits with 1 when a finding judged true, about the paper, is kept a
 is not true any more, and one a successor covers is kept (asked by the matcher, elsewhere by
 key), so neither blocks; one a `moved` decision moves has the state of the finding that
 carries it. A loss an `accepted` decision names blocks nothing either: it is listed apart,
-"lost, accepted by" the decision's id, and the verdict says how many the ledger accepts.
-It lists the judged findings the ledger moved, and
+"lost, accepted by" the decision's id, and the verdict, passing or failing, says how many
+the ledger accepts. It lists the judged findings a move placed in either run, saying in
+which (base, new or both), so that a base state a move made shows beside a loss; and
 without failing the true findings that came back, those reported before and asked now, the
 reading notices that changed, the false findings that became loud, and, by code, the
 warnings and failures that no judged finding accounts for at either run. Below them it

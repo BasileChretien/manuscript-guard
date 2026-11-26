@@ -2893,7 +2893,7 @@ def test_r_tells_an_infinity_with_no_display_to_say_what_is_printed(tmp_path: Pa
     assert "or.ci_high: the value is infinite" in out.stderr and ">100" in out.stderr, out.stderr
 
 
-@pytest.mark.parametrize("display", ["NA", "NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None"])
+@pytest.mark.parametrize("display", ["NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None", "NONE"])
 @pytest.mark.parametrize("missing", ["NA", "NA_character_"])
 def test_r_refuses_a_display_that_spells_a_missing_value_naming_the_key(
     tmp_path: Path, missing: str, display: str
@@ -2924,3 +2924,75 @@ def test_r_leaves_no_key_behind_a_refused_interval_or_control(tmp_path: Path, ca
     assert out.returncode == 0, out.stderr
     values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
     assert set(values) == {"ror.point", "ror.ci_low", "ror.ci_high"}
+
+
+# Round 2 of #812, as in tests/test_emit.py.
+
+
+@pytest.mark.parametrize("display", ["NA", "na", "not applicable", "nan\\u00a0", " None"])
+def test_r_takes_a_display_that_is_not_exactly_a_spelling_as_the_author_s(
+    tmp_path: Path, display: str
+) -> None:
+    out, root = _r_with(
+        tmp_path, f'em$value("ror.adjusted", NA, display = "{display}")\nem$write()'
+    )
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert values["ror.adjusted"]["display"] == display.replace("\\u00a0", "\u00a0")
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "taken"),
+    [
+        ("Inf", ">100", True), ("Inf", "\\u2265100", True), ("Inf", ">=100", True),
+        ("Inf", "7.02", False), ("Inf", "<100", False), ("Inf", "\\u2264100", False),
+        ("-Inf", "<-100", True), ("-Inf", "\\u2264-100", True), ("-Inf", "<=-100", True),
+        ("-Inf", "100", False), ("-Inf", "-100", False), ("-Inf", ">-100", False),
+    ],
+)  # fmt: skip
+def test_r_takes_only_a_comparator_on_an_infinity_s_own_side(
+    tmp_path: Path, value: str, display: str, taken: bool
+) -> None:
+    out, _root = _r_with(tmp_path, f'em$value("or.ci_high", {value}, display = "{display}")')
+    if taken:
+        assert out.returncode == 0, out.stderr
+    else:
+        assert out.returncode != 0 and "or.ci_high: " in out.stderr, out.stderr
+
+
+def test_r_tells_an_infinite_bound_of_an_interval_to_go_through_value(tmp_path: Path) -> None:
+    out, _root = _r_with(tmp_path, 'em$interval("ror", 1.5, 1, Inf, digits = 2)')
+    assert out.returncode != 0
+    assert "ror.ci_high: the value is infinite" in out.stderr
+    assert 'em$value("ror.ci_high", ..., display = ">100"' in out.stderr, out.stderr
+
+
+def test_r_writes_an_infinity_as_python_writes_it(tmp_path: Path) -> None:
+    """jsonlite wrote the string "Inf", and Python writes Infinity, which json reads back as
+    the number (round 2 of #812)."""
+    out, root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, display = ">100")\n'
+                                  'em$value("or.ci_low", -Inf, display = "<-100")\nem$write()')
+    assert out.returncode == 0, out.stderr
+    text = (root / "results" / "round.json").read_text(encoding="utf-8")
+    assert '"value": Infinity' in text and '"value": -Infinity' in text
+    values = json.loads(text)["values"]
+    assert values["or.ci_high"]["value"] == float("inf")
+    assert values["or.ci_low"]["value"] == float("-inf")
+    fragment = root / "results" / "round.json"
+    assert read_digest(fragment) == sha256_of(fragment)
+
+
+def test_r_refuses_an_interval_whose_key_is_already_emitted_before_writing_any(
+    tmp_path: Path,
+) -> None:
+    out, root = _r_with(
+        tmp_path,
+        'em$value("ror.ci_low", 1, digits = 2)\n'
+        'refused <- tryCatch({em$interval("ror", 1.5, 1, 2, digits = 2); FALSE}, '
+        "error = function(e) {message(conditionMessage(e)); TRUE})\n"
+        'if (!refused) stop("not refused")\nem$write()',
+    )
+    assert out.returncode == 0, out.stderr
+    assert "ror.ci_low emitted twice" in out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert set(values) == {"ror.ci_low"}

@@ -84,6 +84,15 @@ mg_check_display <- function(key, value, display) {
 
   shown <- as.numeric(text)
 
+  if (!nzchar(parts[2]) && is.infinite(value)) {
+    # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
+    # unbounded limit (round 2 of #812). A comparator on its side is what it prints.
+    stop(
+      key, ": display '", display, "' is a number, and the value is infinite: an unbounded ",
+      "limit is printed as a comparator on its side, \">100\" above or \"<-100\" below",
+      call. = FALSE
+    )
+  }
   if (nzchar(parts[2])) {
     # "<0.001" is true of any value below 0.001 and false of 0.4. Checking the direction
     # rather than the distance is the whole content of a comparator display.
@@ -119,9 +128,10 @@ mg_check_display <- function(key, value, display) {
 }
 
 #' Displays that spell a missing value rather than say what the paper prints in its place,
-#' compared without case and the white space around them; Python's are the same.
+#' compared without case and untrimmed, as Python compares them. Not "NA": not applicable
+#' is something papers print (round 2 of #812).
 #' @noRd
-mg_missing_spellings <- c("na", "nan", "inf", "-inf", "null", "none")
+mg_missing_spellings <- c("nan", "inf", "-inf", "null", "none")
 
 #' What makes a value no number to print, as a refusal says it
 #'
@@ -154,7 +164,7 @@ mg_missing_problem <- function(value, display = NULL) {
   if (is.null(display)) {
     return("is NA")
   }
-  if (tolower(trimws(as.character(display))) %in% mg_missing_spellings) {
+  if (tolower(as.character(display)) %in% mg_missing_spellings) {
     return(paste0("is NA, and its display '", display, "' spells a missing value"))
   }
   NULL
@@ -163,8 +173,13 @@ mg_missing_problem <- function(value, display = NULL) {
 #' Refuse a value that is no number to print, naming its key, in Python's words, ending in
 #' what to do for that problem
 #' @noRd
-mg_missing_refusal <- function(key, problem) {
-  then <- if (identical(problem, "is infinite")) {
+mg_missing_refusal <- function(key, problem, bound = FALSE) {
+  then <- if (identical(problem, "is infinite") && bound) {
+    # interval() and control() take no display.
+    paste0("so there is no number to print. Emit this end on its own with em$value(\"", key,
+           "\", ..., display = \">100\"), a comparator on its side, or emit the key only ",
+           "where there is a value")
+  } else if (identical(problem, "is infinite")) {
     paste0("so there is no number to print. Say with `display` what the paper prints in its ",
            "place, a comparator such as \">100\" for an unbounded limit, or emit the key ",
            "only where there is a value")
@@ -1800,7 +1815,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       # Before the bracket: a NaN brackets nothing, and the comparison stopped R in its own
       # words, naming no key.
       problem <- mg_missing_problem(part[[2]])
-      if (!is.null(problem)) mg_missing_refusal(part[[1]], problem)
+      if (!is.null(problem)) {
+        mg_missing_refusal(part[[1]], problem, bound = !identical(part[[1]], point_key))
+      }
       if (!is.null(state$values[[part[[1]]]])) {
         stop(part[[1]], " emitted twice by ", script_path, call. = FALSE)
       }
@@ -2383,8 +2400,22 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (length(state$corrections) > 0) document$corrections <- state$corrections
     if (length(state$datasets) > 0) document$datasets <- state$datasets
     if (length(state$controls) > 0) document$controls <- state$controls
+    # jsonlite writes an infinite number as the string "Inf", and Python writes Infinity,
+    # which json reads back as the number: each is marked, then written as Python writes it,
+    # so that one call writes one fragment in either language (round 2 of #812).
+    marks <- c(Infinity = "mg-infinity-5f3c2a9e", `-Infinity` = "mg-minus-infinity-5f3c2a9e")
+    for (key in names(document$values)) {
+      shown <- document$values[[key]]$value
+      if (is.numeric(shown) && length(shown) == 1 && is.infinite(shown)) {
+        document$values[[key]]$value <- marks[[if (shown > 0) "Infinity" else "-Infinity"]]
+      }
+    }
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
-    mg_write_lf(as.character(json), path)
+    json <- as.character(json)
+    for (written in names(marks)) {
+      json <- gsub(paste0("\"", marks[[written]], "\""), written, json, fixed = TRUE)
+    }
+    mg_write_lf(json, path)
 
     # The sidecar digest, byte-identical in intent to the Python emitter's: hash the file
     # you just wrote, so a later hand-edit cannot pass unnoticed.

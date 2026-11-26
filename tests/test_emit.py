@@ -1727,7 +1727,7 @@ def test_a_missing_value_of_pandas_or_numpy_is_refused_whatever_its_display(
         emitter(scratch).value("cohort.n", value, display="not available")
 
 
-@pytest.mark.parametrize("display", ["NA", "NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None"])
+@pytest.mark.parametrize("display", ["NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None", "NONE"])
 def test_a_display_that_spells_a_missing_value_is_refused_naming_the_key(
     scratch: Path, display: str
 ) -> None:
@@ -1738,9 +1738,71 @@ def test_a_display_that_spells_a_missing_value_is_refused_naming_the_key(
     message = str(refused.value)
     assert message.startswith(f"ror.adjusted: the value is None, and its display {display!r} "
                               "spells a missing value"), message  # fmt: skip
-    # And as `check` reads a fragment an emitter wrote before.
-    with pytest.raises(DisplayError, match="spells a missing value"):
-        derive_display("ror.adjusted", None, display, None)
+    # Not as `check` reads a fragment or the ledger written before: round 2 of #812 keeps the
+    # rule to the emitters.
+    assert derive_display("ror.adjusted", None, display, None) == display
+
+
+@pytest.mark.parametrize("display", ["NA", "na", "not applicable", "nan\u00a0", " None"])
+def test_a_display_that_is_not_exactly_a_spelling_is_the_author_s(
+    scratch: Path, display: str
+) -> None:
+    """ "NA", not applicable, is something papers print (round 2 of #812); a spelling with
+    white space around it is not one, as R compares it, untrimmed."""
+    em = emitter(scratch)
+    em.value("ror.adjusted", None, display=display)
+    assert em.document()["values"]["ror.adjusted"]["display"] == display
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "taken"),
+    [
+        (INF, ">100", True), (INF, "\u2265100", True), (INF, ">=100", True),
+        (INF, "7.02", False), (INF, "<100", False), (INF, "\u2264100", False),
+        (-INF, "<-100", True), (-INF, "\u2264-100", True), (-INF, "<=-100", True),
+        (-INF, "100", False), (-INF, "-100", False), (-INF, ">-100", False),
+    ],
+)  # fmt: skip
+def test_an_infinity_takes_only_a_comparator_on_its_own_side(
+    scratch: Path, value: float, display: str, taken: bool
+) -> None:
+    """Round 2 of #812: a number's tolerance is infinite for an infinite value, so "7.02"
+    was taken for an unbounded limit, at emit time and as `check` reads a fragment."""
+    from manuscript_guard.contracts.values import derive_display
+
+    if taken:
+        emitter(scratch).value("or.ci_high", value, display=display)
+        assert derive_display("or.ci_high", value, display, None) == display
+        return
+    with pytest.raises(DisplayError, match="or.ci_high: "):
+        emitter(scratch).value("or.ci_high", value, display=display)
+    with pytest.raises(DisplayError, match="or.ci_high: "):
+        derive_display("or.ci_high", value, display, None)
+
+
+def test_an_infinite_bound_of_an_interval_is_told_to_go_through_value(scratch: Path) -> None:
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).interval("ror", 1.5, 1.0, INF, digits=2)
+    message = str(refused.value)
+    assert message.startswith("ror.ci_high: the value is infinite")
+    assert 'value("ror.ci_high", ..., display=">100"' in message, message
+
+
+def test_an_infinity_is_written_as_json_reads_it_back(scratch: Path) -> None:
+    """As the R emitter writes it (round 2 of #812): Infinity, read back as the number."""
+    em = emitter(scratch)
+    em.value("or.ci_high", INF, display=">100")
+    path = em.write()
+    assert '"value": Infinity' in path.read_text(encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8"))["values"]["or.ci_high"]["value"] == INF
+
+
+def test_an_interval_refuses_a_key_already_emitted_before_writing_any(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("ror.ci_low", 1.0, digits=2)
+    with pytest.raises(ValueError, match="'ror.ci_low' emitted twice"):
+        em.interval("ror", 1.5, 1.0, 2.0, digits=2)
+    assert set(em.document()["values"]) == {"ror.ci_low"}
 
 
 @pytest.mark.parametrize(

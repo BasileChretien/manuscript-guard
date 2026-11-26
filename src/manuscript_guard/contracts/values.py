@@ -30,8 +30,9 @@ class MissingValueError(DisplayError):
 
 
 #: Displays that spell a missing value rather than say what the paper prints in its place,
-#: compared without case and the white space around them; the R emitter's are the same.
-MISSING_SPELLINGS = frozenset({"na", "nan", "inf", "-inf", "null", "none"})
+#: compared without case and untrimmed, as the R emitter compares them. Not "NA": not
+#: applicable is something papers print (round 2 of #812).
+MISSING_SPELLINGS = frozenset({"nan", "inf", "-inf", "null", "none"})
 INFINITE = "is infinite"
 
 
@@ -58,9 +59,11 @@ def missing_problem(value: object, display: str | None = None) -> str | None:
       limit printed as a comparator (">100") was taken before, and is.
     - "is NA" for pandas' and NumPy's missing values, whatever the display: json cannot
       write them, as R refuses `NA_integer_` with one.
-    - None with a display that spells a missing value ("NA", "nan", "NULL"). With another,
-      it is the author saying what is printed where there is no number ("not estimable"),
-      taken before; with none, `derive_display` refuses it as a value of no type it formats.
+
+    None with a display is the author saying what is printed where there is no number ("not
+    estimable"), taken before; with none, `derive_display` refuses it as a value of no type
+    it formats. A display that spells a missing value is the emitters' to refuse
+    (`spelled_missing`), and not this, which `check` reads files written before through.
 
     Found writing a real paper (2026-11-26): R stopped on `NaN` with `digits` in its own
     words, "missing value where TRUE/FALSE needed", in the session's language and naming no
@@ -76,20 +79,29 @@ def missing_problem(value: object, display: str | None = None) -> str | None:
         if math.isinf(number) and display is None:
             return INFINITE
         return None
-    absent = _absent(value)
-    if absent is None or display is None and absent == "is None":
+    return "is NA" if _absent(value) == "is NA" else None
+
+
+def spelled_missing(value: object, display: str | None) -> str | None:
+    """Where a missing value's display spells a missing value ("nan", "NULL", "None"), what
+    the emitters' refusal says of it; None otherwise. At emit time only, never as `check`
+    reads a fragment or the ledger written before (round 2 of #812)."""
+    if display is None or _absent(value) != "is None":
         return None
-    if absent == "is NA":
-        return absent
-    if str(display).strip().lower() in MISSING_SPELLINGS:
-        return f"{absent}, and its display {display!r} spells a missing value"
+    if str(display).lower() in MISSING_SPELLINGS:
+        return f"is None, and its display {display!r} spells a missing value"
     return None
 
 
-def missing_refusal(key: str, problem: str) -> MissingValueError:
+def missing_refusal(key: str, problem: str, *, bound: bool = False) -> MissingValueError:
     """The refusal of a value that is no number to print, naming its key: the same words as
-    the R emitter's, ending in what to do for that problem."""
-    if problem == INFINITE:
+    the R emitter's, ending in what to do for that problem. A `bound` of an interval is
+    told to go through `value()`, since `interval()` and `control()` take no display."""
+    if problem == INFINITE and bound:
+        then = ("so there is no number to print. Emit this end on its own with "
+                f'value("{key}", ..., display=">100"), a comparator on its side, or emit the '
+                "key only where there is a value")  # fmt: skip
+    elif problem == INFINITE:
         then = ("so there is no number to print. Say with `display` what the paper prints in "
                 'its place, a comparator such as ">100" for an unbounded limit, or emit the '
                 "key only where there is a value")  # fmt: skip
@@ -408,6 +420,14 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
     text, exponent_text = _number_of(match)
     shown = float(text)
     compare = match.group("compare")
+    if not compare and math.isinf(float(value)):
+        # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
+        # unbounded limit (round 2 of #812). A comparator on its side is what it prints.
+        raise DisplayError(
+            f"{key}: display {display!r} is a number, and the value is infinite: an "
+            f'unbounded limit is printed as a comparator on its side, ">100" above or '
+            f'"<-100" below'
+        )
     if compare:
         # "<0.001" is true of any value below 0.001 and false of 0.4. Checking the direction
         # rather than the distance is the whole content of a comparator display.

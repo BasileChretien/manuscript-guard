@@ -42,6 +42,7 @@ from manuscript_guard.contracts.values import (
     derive_display,
     missing_problem,
     missing_refusal,
+    spelled_missing,
 )
 from manuscript_guard.datasets import NAME as DATASET_NAME
 from manuscript_guard.datasets import dataset_digest, declare, pin_of, slug
@@ -95,10 +96,18 @@ class Composed:
     parts: tuple[tuple[object, int | None, str | None], ...]
 
     def render(self, where: str) -> tuple[str, list[str]]:
-        shown = [
-            derive_display(where, value, display, digits) for value, digits, display in self.parts
-        ]
+        shown = [_emitted_display(where, value, display, digits)
+                 for value, digits, display in self.parts]  # fmt: skip
         return self.template.format(*shown), shown
+
+
+def _emitted_display(key: str, value: object, display: str | None, digits: int | None) -> str:
+    """`derive_display`, with the emitters' own refusal first: a missing value whose display
+    spells a missing value (`spelled_missing`), which files written before are not held to."""
+    problem = spelled_missing(value, display)
+    if problem is not None:
+        raise missing_refusal(key, problem)
+    return derive_display(key, value, display, digits)
 
 
 @dataclass(frozen=True)
@@ -1595,7 +1604,7 @@ class Emitter:
         # person who can fix it, while they are running the analysis.
         if isinstance(value, str):
             check_string_value(key, value, label=label)
-        spec: dict = {"value": value, "display": derive_display(key, value, display, digits)}
+        spec: dict = {"value": value, "display": _emitted_display(key, value, display, digits)}
         if label:
             spec["label"] = True
         if digits is not None:
@@ -2221,7 +2230,7 @@ class Emitter:
             # arguments were in the wrong order.
             problem = missing_problem(part)
             if problem is not None:
-                raise missing_refusal(part_key, problem)
+                raise missing_refusal(part_key, problem, bound=part_key != point_key)
             if part_key in self._values:
                 raise ValueError(f"{part_key!r} emitted twice by {self.script}")
         if not low <= point <= high:

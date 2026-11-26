@@ -20079,6 +20079,11 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   tell that run from an ordinary one; the flags are not seen. An R's version is what
   `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
   alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is

@@ -115,7 +115,8 @@ class Comparison:
     # The parameters the analysis declares whose names say they seed a random draw.
     seeds: tuple[str, ...] = ()
     # What ran the script: its language, its version (None where it did not say) and the
-    # program, as given or as PATH gave it. None where nothing ran it.
+    # program as its runner holds it: an R named by --rscript or the variable, made
+    # absolute; otherwise the name PATH finds, or this Python. None where nothing ran it.
     interpreter: tuple[str, str | None, str] | None = None
     # The language and version the fragment on disk was written with, and the re-run's,
     # where the two differ (`provenance.session`): the environment, as `environment` is.
@@ -263,7 +264,7 @@ def interpreter_of(runner: list[str], script: Path) -> tuple[str, str | None, st
             _VERSIONS[program] = found.group(0) if found else None
         except (OSError, subprocess.SubprocessError):
             _VERSIONS[program] = None
-    # As given, so that the path printed is the one the author named or PATH holds.
+    # As the runner holds it: the R named, made absolute, or "Rscript" as PATH finds it.
     return "R", _VERSIONS[program], runner[0]
 
 
@@ -461,6 +462,12 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
                 f"--only names no fragment: {', '.join(unknown)}. "
                 f"Available: {', '.join(sorted(f.stem for f in fragments))}"
             )
+    # A bad R is refused before any script runs, where an R script is among those to run:
+    # refused at the first, the scripts sorted before it ran in full (round 2 of #820).
+    for named in _scripts_to_run(fragments, only):
+        problem = named_r_problem(Path(named), rscript)
+        if problem is not None:
+            raise VerifyError(problem)
 
     # A neutral prefix. `manuscript-guard-verify-` put the literal string into the scratch
     # path, so an analysis needed no environment variable to know it was being verified —
@@ -518,9 +525,6 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
                     Comparison(fragment.name, ran=False, error=f"{named} does not exist")
                 )
                 continue
-            problem = named_r_problem(script, rscript)
-            if problem is not None:
-                raise VerifyError(problem)
             runner = runner_for(script, rscript)
             if runner is None:
                 report.skipped.append(
@@ -574,6 +578,26 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
             ran(compared)
 
     return report
+
+
+def _scripts_to_run(fragments: list[Path], only: list[str] | None) -> list[str]:
+    """The scripts `verify` runs for `fragments`, by their paths from the root, as its loop
+    passes them over: left out by `only`, naming none, or run at a site its receipt names."""
+    named = []
+    for fragment in fragments:
+        if only and fragment.stem not in only:
+            continue
+        try:
+            provenance = json.loads(fragment.read_text(encoding="utf-8")).get("provenance", {})
+        except (OSError, ValueError, AttributeError):
+            continue
+        harvested = provenance.get("harvested") if isinstance(provenance, dict) else None
+        if isinstance(harvested, dict) and isinstance(harvested.get("receipt"), dict):
+            continue
+        script = provenance.get("generated_by") if isinstance(provenance, dict) else None
+        if isinstance(script, str) and script:
+            named.append(script)
+    return named
 
 
 def _with_interpreter(report: VerifyReport, interpreter: tuple[str, str | None, str],

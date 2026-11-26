@@ -150,12 +150,15 @@ def _verified(project: Project) -> list[str]:
         said += f"; {len(left)} fragment{'s' if len(left) > 1 else ''} not re-run"
     if not record.get("ok"):
         said += "; it did not pass"
-    # A re-run with another R or Python than the results were written with is no
-    # reproduction of them as written (round 1 of #820).
-    other = [entry["message"] for entry in record.get("environment") or []
-             if isinstance(entry, dict) and isinstance(entry.get("message"), str)]  # fmt: skip
-    if other:
-        said += f"; not with the R or Python the results were written with ({'; '.join(other)})"
+    # A re-run with another R or Python than the results were written with, or another R
+    # than renv.lock pins, is no reproduction of them as written (rounds 1 and 2 of #820).
+    for code, clause in (("rerun-other-interpreter", "the R or Python the results were written "
+                          "with"), ("rerun-r-not-locked", "the R renv.lock pins")):  # fmt: skip
+        other = [entry["message"] for entry in record.get("environment") or []
+                 if isinstance(entry, dict) and entry.get("code") == code
+                 and isinstance(entry.get("message"), str)]  # fmt: skip
+        if other:
+            said += f"; not with {clause} ({'; '.join(other)})"
     if fragments_digest(project) != record.get("results_sha256"):
         said += "; the results have changed since"
     return [said]

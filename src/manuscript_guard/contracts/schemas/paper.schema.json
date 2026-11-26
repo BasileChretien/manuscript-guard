@@ -317,7 +317,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 604800,
-          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800; at most 604800, seven days. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
+          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800; at most 604800, seven days, well inside the 49 days Windows can wait for a program, past which a limit wrapped round to under a second. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
         }
       }
     },

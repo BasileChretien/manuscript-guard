@@ -151,7 +151,14 @@ def _contents(pdf: Pdf, view: dict, pages: dict[str, int]) -> None:
     """In this report: each part `_parts` gives (each note, each paper's words and each kind
     of finding under them, each other section), a line that links to it, with its count and
     its page; what a reader of a long report goes to first."""
-    parts = _parts(view)
+    _contents_of(pdf, _parts(view), pages)
+
+
+def _contents_of(pdf: Pdf, parts: list[tuple[str, str, int | None, int]],
+                 pages: dict[str, int]) -> None:  # fmt: skip
+    """In this report: each of `parts`, its title, its key, its count or None and how far it
+    is set in, a line that links to it, with its count and its page (`_contents`; the
+    editor's report, `editor_pdf`)."""
     if not parts:
         return
     _heading(pdf, "In this report", key="contents", level=2, back=False)
@@ -351,10 +358,11 @@ def _words_asked_go_to_the_questions(pdf: Pdf, view: dict) -> None:
 
 
 def _kind(pdf: Pdf, kind: dict, key: str | None = None) -> None:
-    """One kind of finding on the words: its title and count, its hint once where its places
-    share one, and each place, its message, its quote and its own hint; the place `key`, which
-    the contents link to, and a link back to them. The check's code (G14) is left to the
-    text: it names nothing a reader of the PDF can look up there."""
+    """One kind of finding on the words: its title and count, a line under it where it has a
+    `note` (the editor's report's record on published papers, `editor_pdf`), its hint once
+    where its places share one, and each place, its message, its quote and its own hint; the
+    place `key`, which the contents link to, and a link back to them. The check's code (G14)
+    is left to the text: it names nothing a reader of the PDF can look up there."""
     title = kind["title"]
     # Room at its right for its count and the link back, which stand on its first line.
     lines = pdf.wrap(title, "bold", 11.5, COLUMN - 115)
@@ -373,6 +381,8 @@ def _kind(pdf: Pdf, kind: dict, key: str | None = None) -> None:
     pdf.rect(MARGIN + wide + 8, last + 1, pill, 13, SOFT, 6.5)
     pdf.put(count, x=MARGIN + wide + 14, top=last - 2, kind="bold", size=8, color=DEEP)
     pdf.y = top - 14 * len(lines) - 6
+    if kind.get("note"):
+        _flow(pdf, kind["note"], size=8.6, color=MUTED)
     if kind.get("hint"):
         _boxed(pdf, kind["hint"], label="WHAT TO DO", color=INK, size=8.8)
     for place in kind["places"]:

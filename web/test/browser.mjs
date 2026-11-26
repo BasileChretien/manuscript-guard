@@ -10,8 +10,9 @@
 // <site> is what web/build.py writes: the landing page, and the audit page in audit/.
 // <cases> holds cases.json, [{"name", "paper", "against": [...], "expect", "form"}], and the
 // files it names; "expect" names a file holding what the command line printed, "form" the
-// page's boxes to set, by id, for the options the command line was given, and "tracked",
-// where the copy with tracked changes is asked for, how many corrections it must track.
+// page's boxes to set, by id, for the options the command line was given, "tracked", where
+// the copy with tracked changes is asked for, how many corrections it must track, and
+// "made", where the journal's form is filled, the files the page must make of it.
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -123,11 +124,10 @@ try {
   if (counted.shown < 97) fail(`the bar stopped at ${counted.shown}% before the page was ready`);
   console.log(`loading: ${counted.received} of ${counted.expected} bytes counted, bar at ${counted.shown}%`);
 
-  // The files of the cases folder named, chosen as a reader chooses them, the boxes of the
-  // case set and every other box as the page starts, and the audit run.
-  const BOXES = ["tracked", "english", "known", "noabstract", "noresults", "results", "lookup",
-    "design", "wholenumbers", "binary", "nonnegative", "mincount"];
-  const choose = (paper, against, form = {}) => page.evaluate(async (paper, against, form, boxes) => {
+  // The files of the cases folder named, chosen as a reader chooses them, every box of the
+  // form as the page starts and those of the case set, each said changed as a reader's
+  // typing says it, and the audit run.
+  const choose = (paper, against, form = {}) => page.evaluate(async (paper, against, form) => {
     const put = async (id, names) => {
       const files = new DataTransfer();
       for (const name of names) {
@@ -139,16 +139,17 @@ try {
     await put("paper", [paper]);
     document.getElementById("paper").dispatchEvent(new Event("change", { bubbles: true }));
     await put("against", against);
-    for (const id of boxes) {
-      const box = document.getElementById(id);
-      if (box.type === "checkbox") box.checked = Boolean(form[id]);
-      else box.value = form[id] ?? "";
+    for (const box of document.getElementById("form").querySelectorAll("input, select, textarea")) {
+      if (box.type === "file") continue;
+      if (box.type === "checkbox") box.checked = Boolean(form[box.id]);
+      else box.value = form[box.id] ?? "";
+      box.dispatchEvent(new Event("change", { bubbles: true }));
     }
     window.mgLast = null;
     document.getElementById("run").click();
     while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
     return window.mgLast;
-  }, paper, against, form, BOXES);
+  }, paper, against, form);
 
   const cases = JSON.parse(readFileSync(join(casesDir, "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
@@ -214,6 +215,12 @@ try {
       }
     } else if (result.tracked) {
       fail(`${one.name}: a copy with tracked changes was made though none was asked for`);
+    }
+    // The journal's profile and the authors' names the form made, as the command line was
+    // given them; none where the form is empty.
+    const made = JSON.stringify(result.made || {});
+    if (made !== JSON.stringify(one.made || {})) {
+      fail(`${one.name}: the page made ${made} of the journal's form, not ${JSON.stringify(one.made || {})}`);
     }
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);

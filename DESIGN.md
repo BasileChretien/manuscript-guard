@@ -29817,13 +29817,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),
-    LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
-    `--report-draft` are the command line's. Accepted.
+  - *What it reads.* A `.docx` or Markdown paper and outputs beside it, and a journal's
+    profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
+    projects, figures, packages, `--cited` and `--report-draft` are the command line's.
+    Accepted.
+  - *The journal form's statements* are found under the heading the reader gives for each,
+    or its usual one: a heading, or the label a paragraph opens with, whose whole title is
+    that heading, its case, number and marks aside (`journal_form.pattern`). A paper that
+    states its funding under another heading, "Financial support" or "Funding sources" where
+    the journal's is "Funding", is told the statement is missing, with the heading asked
+    for, as a journal's own check would tell it (Basile, 2026-11-25). Pinned by
+    `tests/test_journal_form.py::test_another_heading_a_sentence_or_a_title_is_no_statement`.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
-    that start with "-", and the `.docx` against two outputs whose names the page once made
-    one), in Node and in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    that start with "-", the `.docx` against two outputs whose names the page once made
+    one, with a referee's options, in American English with the copy with tracked changes,
+    and held to a journal's rules from the form with a double-blind review), in Node and in
+    two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the five registries answer a page (CORS) was tested by hand

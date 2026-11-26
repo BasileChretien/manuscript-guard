@@ -15,8 +15,9 @@ The layout of a corpus, and how its findings are judged, are in docs/corpus.md. 
 finding is in one of four states in a run: reported (its gate and code, as a warning or a
 failure), asked (its gate and code as a note, or a question at its place), elsewhere (another
 code's warning or failure at its place, or for G14 about the same short form), or gone. The
-ledger, `report/ledger.yaml`, holds the author's decisions that re-judge a finding or name the
-findings that took over from one; nothing here writes to it.
+ledger, `report/ledger.yaml`, holds the author's decisions that re-judge a finding, name the
+findings that took over from one, accept a finding's loss, or name the key that carries a
+finding now; nothing here writes to it.
 
 The corpus holds downloaded files. `run` is in `tools/corpus_run.py`: every command it runs
 has a time limit, none runs with its working folder inside `corpus/`, and the build reads the
@@ -96,6 +97,12 @@ class Decision:
     matchers: list = field(default_factory=list)
     successor_from: str = ""
     successor_to: tuple = ()
+    kind: str = ""
+    #: An `accepted` decision's judged findings, by `Judged.key`: losses the author accepts.
+    accepts: set = field(default_factory=set)
+    #: A `moved` decision's judged findings, by `Judged.key`, each to the key that carries
+    #: it now and that key's scheme.
+    moves: dict = field(default_factory=dict)
 
     def rejudges(self, item: Judged) -> bool:
         if item.key in self.keys:
@@ -131,27 +138,51 @@ def _verdict(value: object, where: str) -> str:
     return text
 
 
+PLACE = {"slug", "report", "index"}
+NAMED = "a finding is named by slug, report and index, and a batch's verdict by its batch too"
+
+
+def _place(key: object, where: str, says: str = NAMED, more: frozenset = frozenset()) -> tuple:
+    """A judged finding as `Judged.key` names it, from a decision's entry that holds its
+    place and the keys `more`, and no other."""
+    if not isinstance(key, dict) or set(key) - {"batch"} != PLACE | more:
+        raise CorpusError(f"{where}: {says}")
+    # Read as the ties' decided file reads it (`str`), so that a name YAML takes for a
+    # number or a date is the same name; it must be one `unjudged` could have given.
+    batch = "" if key.get("batch") in (None, "") else str(key["batch"])
+    if "batch" in key and not corpus_run.SLUG.fullmatch(batch):
+        raise CorpusError(f"{where}: a batch is named by its name, letters, digits, '.', "
+                          f"'_' and '-', not {key['batch']!r}")  # fmt: skip
+    # A whole number as YAML writes one: never a fraction cut short, nor `true` read as 1.
+    if isinstance(key["index"], bool) or not isinstance(key["index"], int):
+        raise CorpusError(f"{where}: a finding's index is a number, not {key['index']!r}")
+    place = (str(key["slug"]), str(key["report"]), key["index"])
+    # As `Judged.key`: a batch's verdict is told from the first verdict at its place.
+    return (*place, batch) if batch else place
+
+
+def _named_once(place: tuple, named: set | dict, where: str) -> tuple:
+    if place in named:
+        raise CorpusError(f"{where}: it names {' '.join(map(str, place))} twice")
+    return place
+
+
+def _findings(body: object, kind: str, where: str) -> list:
+    """The `findings` of an `accepted` or a `moved` decision, which hold nothing else."""
+    if not isinstance(body, dict) or set(body) != {"findings"} or not isinstance(
+            body["findings"], list):  # fmt: skip
+        raise CorpusError(f"{where}: {kind} holds findings only, a list")
+    if not body["findings"]:
+        raise CorpusError(f"{where}: {kind} names no finding")
+    return body["findings"]
+
+
 def _rejudge(decision: Decision, body: object, where: str) -> None:
     if not isinstance(body, dict) or set(body) - {"verdict", "findings", "match"}:
         raise CorpusError(f"{where}: rejudge holds verdict, findings and match only")
     decision.verdict = _verdict(body.get("verdict"), where)
     for key in body.get("findings") or []:
-        if not isinstance(key, dict) or set(key) - {"batch"} != {"slug", "report", "index"}:
-            raise CorpusError(f"{where}: a finding is named by slug, report and index, and a "
-                              "batch's verdict by its batch too")  # fmt: skip
-        # Read as the ties' decided file reads it (`str`), so that a name YAML takes for a
-        # number or a date is the same name; it must be one `unjudged` could have given.
-        batch = "" if key.get("batch") in (None, "") else str(key["batch"])
-        if "batch" in key and not corpus_run.SLUG.fullmatch(batch):
-            raise CorpusError(f"{where}: a batch is named by its name, letters, digits, '.', "
-                              f"'_' and '-', not {key['batch']!r}")  # fmt: skip
-        try:
-            place = (str(key["slug"]), str(key["report"]), int(key["index"]))
-        except (TypeError, ValueError):
-            raise CorpusError(f"{where}: a finding's index is a number, not {key['index']!r}"
-                              ) from None  # fmt: skip
-        # As `Judged.key`: a batch's verdict is told from the first verdict at its place.
-        decision.keys.add((*place, batch) if batch else place)
+        decision.keys.add(_place(key, where))
     for matcher in body.get("match") or []:
         if not isinstance(matcher, dict) or not matcher or set(matcher) - MATCHER_KEYS:
             raise CorpusError(f"{where}: a matcher holds {sorted(MATCHER_KEYS)} only")
@@ -176,6 +207,36 @@ def _successor(decision: Decision, body: object, where: str) -> None:
     decision.successor_from, decision.successor_to = codes[0], tuple(codes[1:])
 
 
+def _accepted(decision: Decision, body: object, where: str) -> None:
+    """Judged findings whose loss the author accepts: the gate lists it apart and does not
+    fail on it. Their verdicts and their states stay as they are."""
+    for key in _findings(body, "accepted", where):
+        decision.accepts.add(_named_once(_place(key, where), decision.accepts, where))
+
+
+MOVED = (NAMED + ", with the key that carries it now (`to`) and that key's scheme (`scheme`)")
+
+
+def _moved(decision: Decision, body: object, where: str) -> None:
+    """Judged findings carried now by a finding of another key, each with that key and its
+    scheme, as `keys.SCHEME` and the runs record it."""
+    for entry in _findings(body, "moved", where):
+        place = _named_once(_place(entry, where, MOVED, frozenset({"to", "scheme"})),
+                            decision.moves, where)  # fmt: skip
+        to, scheme = entry["to"], entry["scheme"]
+        if not isinstance(to, str) or to.count("|") != 3 or not all(corpus_keys.parts(to)):
+            raise CorpusError(f"{where}: `to` is a finding's key, gate|code|subject|digest, "
+                              f"not {to!r}")  # fmt: skip
+        if isinstance(scheme, bool) or not isinstance(scheme, int) or scheme < 1:
+            raise CorpusError(f"{where}: `scheme` is a whole number from 1, the scheme of the "
+                              f"key `to`, not {scheme!r}")  # fmt: skip
+        decision.moves[place] = (to, scheme)
+
+
+LEDGER_KINDS = {"rejudge": _rejudge, "successor": _successor, "accepted": _accepted,
+                "moved": _moved}  # fmt: skip
+
+
 def load_ledger(path: Path) -> list[Decision]:
     if not path.is_file():
         return []
@@ -191,18 +252,78 @@ def load_ledger(path: Path) -> list[Decision]:
         where = f"{path.name}, decision {number}"
         if not isinstance(entry, dict):
             raise CorpusError(f"{where} is not a mapping")
-        kinds = [k for k in ("rejudge", "successor") if k in entry]
-        extra = set(entry) - {"id", "date", "by", "what", "source", "rejudge", "successor"}
+        kinds = [k for k in LEDGER_KINDS if k in entry]
+        extra = set(entry) - {"id", "date", "by", "what", "source", *LEDGER_KINDS}
         if len(kinds) != 1 or extra:
-            raise CorpusError(f"{where}: one of rejudge or successor, and no other key")
+            raise CorpusError(f"{where}: one of rejudge, successor, accepted or moved, and no "
+                              "other key")  # fmt: skip
         decision = Decision(*(_required(entry, k, where) for k in ("id", "date", "by", "what",
                                                                      "source")))  # fmt: skip
         if decision.id in seen:
             raise CorpusError(f"{where}: the id {decision.id} is used twice")
         seen.add(decision.id)
-        (_rejudge if kinds[0] == "rejudge" else _successor)(decision, entry[kinds[0]], where)
+        decision.kind = kinds[0]
+        LEDGER_KINDS[kinds[0]](decision, entry[kinds[0]], where)
         decisions.append(decision)
     return decisions
+
+
+def _accepted_by(decisions: list[Decision]) -> dict[tuple, str]:
+    """The judged findings whose loss the ledger accepts, each with the decision; the last
+    decision wins."""
+    return {place: d.id for d in decisions for place in d.accepts}
+
+
+def _moves(decisions: list[Decision], run: Run) -> dict[tuple, tuple[str, str]]:
+    """The judged findings the ledger moves in `run`, each with the decision and the key:
+    only in a run that carries keys of the scheme the decision names. The last decision
+    wins."""
+    if not run.keyed:
+        return {}
+    return {place: (d.id, to) for d in decisions for place, (to, scheme) in d.moves.items()
+            if scheme == run.scheme}  # fmt: skip
+
+
+def _moved_to(item: Judged, to: str, new: list[dict], claimed: set[int], whole: set[int],
+              taken_keys: set[str]) -> tuple | None:  # fmt: skip
+    """The state a judged finding gone from a report takes from the finding that carries it
+    now under the key `to`: reported where that finding is loud and of its gate and code,
+    elsewhere where loud and of another, asked where it is a note or a question or a form a
+    question lists. None where no finding of the report has that key, or where another judged
+    finding took it. A finding taken at all (`claimed`) carries no move by its own key, a list
+    of forms either; a list taken whole (`whole`: by its own key, by the matcher, a successor
+    or as elsewhere) carries none by a form; and a list taken form by form carries none by a
+    form another took (`taken_keys`), its other forms open."""
+    if to in taken_keys:
+        return None
+    keys = corpus_keys.Keys(new)
+    at = [i for i in keys.at.get(to, []) if i not in claimed]
+    if at:
+        quiet = all(new[i].get("question") or not loud(new[i]) for i in at)
+        same = "/".join(corpus_keys.parts(to)[:2]) == item.code
+        return ("asked" if quiet else "reported" if same else "elsewhere"), at
+    forms = [i for i in keys.forms.get(to, []) if i not in whole]
+    return ("asked", forms) if forms else None
+
+
+def _by_form(tie: corpus_keys.Tie, state: str, found: dict) -> bool:
+    """Whether a judged finding paired by its key took a list of forms by one of its forms,
+    and not as a whole: by its own key, or as elsewhere."""
+    if state == "elsewhere" or not found.get("forms") or tie.key is None:
+        return False
+    own = found.get("key")
+    return not isinstance(own, str) or (corpus_keys.family_of(own) if tie.family
+                                         else own) != tie.key  # fmt: skip
+
+
+def _keys_taken(tie: corpus_keys.Tie, state: str, keys: corpus_keys.Keys) -> set[str]:
+    """The keys a judged finding paired by its key took in a report: its own where it stands
+    there, as a finding or as a form a list holds, or its family's."""
+    if tie.key is None or state not in ("reported", "asked"):
+        return set()
+    if not tie.family:
+        return {tie.key}
+    return {k for k in (*keys.at, *keys.forms) if corpus_keys.family_of(k) == tie.key}
 
 
 def rejudged(judged: list[Judged], decisions: list[Decision]) -> list[Judged]:
@@ -222,6 +343,8 @@ class Fate:
     item: Judged
     state: str
     successor_by: str = ""
+    #: The `moved` decision whose key's finding gave it its state.
+    moved_by: str = ""
     missing: bool = False
     #: Paired by its key (`tools/corpus_keys.py`), by one from its context, under a key
     #: repeated in either run, whose count fell.
@@ -322,12 +445,27 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
     is paired by its finding's key where `run` keys by its packet's scheme, its count held to
     `held` where that keys so too and to the batch's run otherwise; where not, by the key
     `tie` tied it to where the ties hold one, as a first verdict is, and by the matcher
-    otherwise. The first verdicts are paired first, so that no batch changes their fates."""
+    otherwise. The first verdicts are paired first, so that no batch changes their fates.
+    Last, a judged finding still gone that a `moved` decision of the run's scheme names takes
+    the state of the finding under the decision's key, and that finding is accounted for."""
     successors = [d for d in decisions if d.successor_from]
     ties, base = keyed if keyed is not None and run.keyed else ({}, run)
     scheme = run.scheme if run.keyed else None
     held_scheme = held.scheme if held is not None and held.keyed else None
     sources: dict[Path, Run] = {}
+    # The findings of the run this call's judged findings took, apart from `run.used`, which
+    # outlives the call.
+    claimed: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
+    # And the keys they took, by which a form of a list is claimed (`_moved_to`).
+    taken_keys: dict[tuple[str, str], set[str]] = collections.defaultdict(set)
+    # And those taken whole, which a move by a form passes over too.
+    whole: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
+
+    def claim(where: tuple[str, str], used, by_form: bool = False) -> None:
+        claimed[where].update(used)
+        run.used[where].update(used)
+        if not by_form:
+            whole[where].update(used)
 
     def tie_of(item: Judged) -> tuple[corpus_keys.Tie | None, Run]:
         if not item.batch or (scheme != item.scheme and item.key in ties):
@@ -357,7 +495,10 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
                     # A finding that lists forms stays for the matcher: its other forms are
                     # other judged findings'.
                     taken.update(i for i in used if not new[i].get("forms"))
-                    run.used[(slug, report)].update(used)
+                    for i in used:
+                        claim((slug, report), [i], _by_form(tie, by_key[n].state, new[i]))
+                    taken_keys[(slug, report)].update(
+                        _keys_taken(tie, by_key[n].state, run.keys(slug, report)))
             rest = [n for n in part if n not in by_key]
             left = [i for i in range(len(new)) if i not in taken]
             alone = frozenset(k for k, n in enumerate(rest) if judged[n].alone)
@@ -373,7 +514,7 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
         new = run.findings(item.slug, item.report)
         found, used = found_of[n]
         fate = Fate(item, found, missing=new is None)
-        run.used[(item.slug, item.report)].update(used)
+        claim((item.slug, item.report), used)
         if found == "gone" and new:
             for decision in successors:
                 if decision.successor_from == item.code:
@@ -381,9 +522,22 @@ def fates(judged: list[Judged], run: Run, decisions: list[Decision],
                            if f"{f.get('gate')}/{f.get('code')}" in decision.successor_to]
                     if hit:
                         fate.state, fate.successor_by = "asked", decision.id
-                        run.used[(item.slug, item.report)].update(hit)
+                        claim((item.slug, item.report), hit)
                         break
         out.append(fate)
+    moves = _moves(decisions, run)
+    for fate in out:
+        where = (fate.item.slug, fate.item.report)
+        if fate.state != "gone" or fate.item.key not in moves:
+            continue
+        by, to = moves[fate.item.key]
+        new = run.findings(*where) or []
+        said = _moved_to(fate.item, to, new, claimed[where], whole[where], taken_keys[where])
+        if said is not None:
+            fate.state, fate.moved_by = said[0], by
+            # By the list's own key a move takes it whole, by a form only that form.
+            claim(where, said[1], by_form=all(new[i].get("key") != to for i in said[1]))
+            taken_keys[where].add(to)
     return out
 
 
@@ -406,9 +560,27 @@ def _row(fate: Fate) -> dict:
     return {"slug": item.slug, "report": item.report, "index": item.index, "code": item.code,
             "verdict": item.verdict, "judged": item.judged, "rejudged_by": item.rejudged_by,
             "notice": item.notice, "state": fate.state, "successor_by": fate.successor_by,
-            "report_missing": fate.missing, "by_key": fate.by_key, "fallback": fate.fallback,
-            "repeated": fate.repeated, "fell": fate.fell, "batch": item.batch,
-            "message": norm(item.finding.get("message"))[:160]}  # fmt: skip
+            "moved_by": fate.moved_by, "report_missing": fate.missing, "by_key": fate.by_key,
+            "fallback": fate.fallback, "repeated": fate.repeated, "fell": fate.fell,
+            "batch": item.batch, "message": norm(item.finding.get("message"))[:160]}  # fmt: skip
+
+
+def _place_of(row: dict) -> tuple:
+    """A row's judged finding as `Judged.key` names it."""
+    return (row["slug"], row["report"], row["index"], *([row["batch"]] if row["batch"] else []))
+
+
+def _decision_counts(decision: Decision, rows: list[dict]) -> dict:
+    """What a decision matched among the rows: the findings it re-judges, accepts or moves
+    (the findings it names, wherever they stand), and those a successor or a move kept."""
+    named = decision.accepts | set(decision.moves)
+    return {"id": decision.id, "kind": decision.kind,
+            "matched": sum(r["rejudged_by"] == decision.id or _place_of(r) in named
+                           for r in rows),
+            "changed": sum(r["rejudged_by"] == decision.id and r["judged"] != r["verdict"]
+                           for r in rows),
+            "successor": sum(r["successor_by"] == decision.id for r in rows),
+            "moved": sum(r["moved_by"] == decision.id for r in rows)}  # fmt: skip
 
 
 def _key_counts(rows: list[dict]) -> dict:
@@ -482,11 +654,7 @@ def measure(root: Path, run_name: str, ledger: bool = True, run: Run | None = No
     papers, notices = [r for r in rows if not r["notice"]], [r for r in rows if r["notice"]]
     return {
         "run": run.name, "ledger": str(path) if decisions else None,
-        "decisions": [{"id": d.id, "matched": sum(r["rejudged_by"] == d.id for r in rows),
-                       "changed": sum(r["rejudged_by"] == d.id and r["judged"] != r["verdict"]
-                                      for r in rows),
-                       "successor": sum(r["successor_by"] == d.id for r in rows)}
-                      for d in decisions],
+        "decisions": [_decision_counts(d, rows) for d in decisions],
         "skipped": dict(skipped), **({"removed": removed} if removed else {}),
         "totals": _table(rows), "paper": _table(papers), "notices": _table(notices),
         "precision_loud": _precision(_table(papers), ("reported", "elsewhere")),
@@ -506,17 +674,20 @@ def _line(row: dict) -> str:
     extra = " (no report in this run)" if row["report_missing"] else ""
     by = f" [re-judged {row['judged']} -> {row['verdict']}: {row['rejudged_by']}]" \
         if row["rejudged_by"] else ""  # fmt: skip
-    return f"- {row['slug']} {row['report']} {row['code']}: {row['message']}{extra}{by}"
+    moved = f" [moved by {row['moved_by']}]" if row.get("moved_by") else ""
+    return f"- {row['slug']} {row['report']} {row['code']}: {row['message']}{extra}{by}{moved}"
 
 
 def render_measure(result: dict) -> str:
     rows = result["findings"]
     rejudged_n = sum(1 for r in rows if r["rejudged_by"])
     asked_n = sum(1 for r in rows if r["successor_by"])
+    moved_n = sum(1 for r in rows if r["moved_by"])
     lines = [f"# Judged findings in {result['run']}", "",
              f"{len(rows)} judged findings. Left out: {result['skipped'] or 'none'}. Ledger: "
              + (f"{len(result['decisions'])} decisions, {rejudged_n} findings re-judged, "
-                f"{asked_n} kept by a successor (asked by message, elsewhere by key)."
+                f"{asked_n} kept by a successor (asked by message, elsewhere by key), "
+                f"{moved_n} moved to the key that carries them now."
                 if result["ledger"] else "not applied."),
              *corpus_run.render_removed(result.get("removed", [])),
              "", *_counts("verdict", result["totals"]), "",
@@ -556,6 +727,12 @@ def render_measure(result: dict) -> str:
             lines += ["", f"### {title} ({len(part)})", ""]
             lines += [_line(r) + f" ({r['state']}{', its count fell' if r['fell'] else ''})"
                       for r in sorted(part, key=by_code)]  # fmt: skip
+    if result["ledger"]:
+        lines += ["", "## The ledger's decisions", "",
+                  "| decision | kind | matched | changed | successor | moved |",
+                  "| --- | --- |" + " ---: |" * 4]  # fmt: skip
+        lines += [f"| {d['id']} | {d['kind']} | {d['matched']} | {d['changed']} | "
+                  f"{d['successor']} | {d['moved']} |" for d in result["decisions"]]
     return "\n".join(lines) + "\n"
 
 
@@ -582,8 +759,11 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     def rows(test) -> list[dict]:
         return [{**_row(n), "base": b.state} for b, n in pairs if test(b, n)]
 
-    lost = rows(lambda b, n: n.item.verdict == "true" and not n.item.notice
-                and b.state in KEPT and n.state == "gone")
+    every_loss = rows(lambda b, n: n.item.verdict == "true" and not n.item.notice
+                      and b.state in KEPT and n.state == "gone")
+    # A loss the author accepts is listed apart and blocks nothing.
+    accepted = _accepted_by(decisions)
+    lost = [r for r in every_loss if _place_of(r) not in accepted]
     base_loud, new_loud = unjudged(base), unjudged(new)
     return {
         "base": base.name, "new": new.name, "ok": not lost, "skipped": dict(skipped),
@@ -591,6 +771,14 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
         "totals": {"base": _table([_row(b) for b, _ in pairs]),
                    "new": _table([_row(n) for _, n in pairs])},
         "lost": lost,
+        "accepted": [{**r, "accepted_by": accepted[_place_of(r)]} for r in every_loss
+                     if _place_of(r) in accepted],
+        # Where a move placed a finding, at the base, the new run or both: a base state a
+        # move made shows beside a loss.
+        "moved": [{**_row(n), "base": b.state, "base_moved_by": b.moved_by,
+                   "moved_in": ("both" if b.moved_by and n.moved_by
+                                else "base" if b.moved_by else "new")}
+                  for b, n in pairs if b.moved_by or n.moved_by],  # fmt: skip
         "recovered": rows(lambda b, n: n.item.verdict == "true" and not n.item.notice
                           and b.state == "gone" and n.state in KEPT),
         "quieter": rows(lambda b, n: n.item.verdict == "true" and b.state == "reported"
@@ -607,11 +795,27 @@ def gate(root: Path, base_name: str, new_name: str) -> dict:
     }  # fmt: skip
 
 
+def _how(row: dict, key: str) -> str:
+    """A gate row's line: its state at both runs, the decision that accepts its loss, and in
+    which run a move placed it."""
+    said = f"; lost, accepted by {row['accepted_by']}" if key == "accepted" else ""
+    if key == "moved":
+        base, new = row["base_moved_by"], row["moved_by"]
+        said = (f"; moved in {row['moved_in']} by {base or new}" if row["moved_in"] != "both"
+                or base == new else f"; moved in base by {base}, in new by {new}")  # fmt: skip
+        row = {**row, "moved_by": ""}  # named once, here
+    return _line(row) + f" ({row['base']} -> {row['state']}{said})"
+
+
 def render_gate(result: dict) -> str:
-    verdict = ("**Passes**: no true finding about the paper is lost." if result["ok"] else
-               f"**Fails**: {len(result['lost'])} true findings about the paper are kept in "
-               f"{result['base']} and gone in {result['new']}, and no decision of the ledger "
-               "covers them.")  # fmt: skip
+    accepted = len(result.get("accepted", []))
+    losses = f"{accepted} loss{'es' if accepted != 1 else ''}"
+    passing = f", but for {losses} the ledger accepts" if accepted else ""
+    failing = f"; the ledger accepts {losses} more" if accepted else ""
+    verdict = (f"**Passes**: no true finding about the paper is lost{passing}." if result["ok"]
+               else f"**Fails**: {len(result['lost'])} true findings about the paper are kept "
+               f"in {result['base']} and gone in {result['new']}, and no decision of the "
+               f"ledger covers them{failing}.")  # fmt: skip
     lines = [f"## Corpus gate: {result['base']} -> {result['new']}", "", verdict, "",
              f"Ledger applied: {result['decisions']} decisions. Judged findings left out: "
              f"{result['skipped'] or 'none'}.",
@@ -626,6 +830,8 @@ def render_gate(result: dict) -> str:
     if result.get("scheme_note"):
         lines += ["", f"**Note**: {result['scheme_note']}."]
     sections = (("True findings lost (these block)", "lost"),
+                ("True findings lost, accepted by the ledger", "accepted"),
+                ("Judged findings the ledger moves to the key that carries them", "moved"),
                 ("True findings about the paper back", "recovered"),
                 ("True findings reported before, asked now", "quieter"),
                 ("Reading notices that changed", "notices"),
@@ -633,10 +839,10 @@ def render_gate(result: dict) -> str:
                 ("Judged findings under a key repeated in either run", "repeated"),
                 ("Judged findings paired by a key from the context", "fallback"))  # fmt: skip
     for title, key in sections:
-        part = result[key]
+        part = result.get(key, [])
         lines += ["", f"### {title} ({len(part)})", ""]
-        listed = [_line(r) + f" ({r['base']} -> {r['state']})" for r in part] or ["None."]
-        if len(part) > FOLD and key != "lost":
+        listed = [_how(r, key) for r in part] or ["None."]
+        if len(part) > FOLD and key not in ("lost", "accepted"):
             listed = ["<details><summary>The list</summary>", "", *listed, "", "</details>"]
         lines += listed
     changed = {c: n for c, n in result["unjudged"].items() if n["base"] != n["new"]}

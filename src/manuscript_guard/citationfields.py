@@ -120,6 +120,25 @@ def inserted(code: str) -> tuple[Work, ...] | None:
     return None
 
 
+#: A citation field's code by its name alone, whatever follows it: Word's own `CITATION`
+#: field, which its References tab inserts, and the citations of Zotero, of Mendeley's
+#: plugin for Word, of EndNote, of Citavi and of Papers. Not a bibliography's field
+#: (`ZOTERO_BIBL`, `EN.REFLIST`, `CSL_BIBLIOGRAPHY`, `CITAVI.BIBLIOGRAPHY`, `BIBLIOGRAPHY`).
+_CITATION_NAMED = re.compile(
+    r"\A\s*(?:CITATION\b|ADDIN\s+(?:ZOTERO_ITEM|CSL_CITATION|EN\.CITE|CITAVI\.PLACEHOLDER"
+    r"|PAPERS2_CITATIONS)\b)",
+    re.IGNORECASE,
+)
+
+
+def is_citation_field(code: str) -> bool:
+    """Whether `code`, a field's code or a content control's tag (`fields_of`), is a
+    citation's: one `inserted` reads, or one named as a citation (`_CITATION_NAMED`), its
+    code read or not. What G7 reads a Word paper as citing by, where its text holds no
+    citation by number (`auditing.references`)."""
+    return inserted(code) is not None or _CITATION_NAMED.match(code) is not None
+
+
 def _csl_works(text: str) -> tuple[Work, ...]:
     try:
         data = json.loads(text)

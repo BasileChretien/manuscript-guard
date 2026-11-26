@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from manuscript_guard.keys import Keyed, keyed_json, paths_of
 from manuscript_guard.keys import key as key_of
@@ -176,34 +176,49 @@ class Report:
             ensure_ascii=True,
         )
 
-    def render(self, root: Path | None = None) -> str:
+    def render(self, root: Path | None = None, *, posix: bool = False) -> str:
         """The findings, failures first, a few lines each; then the questions to the author,
-        apart, under `QUESTIONS`; then the counts."""
+        apart, under `QUESTIONS`; then the counts. With `posix`, each file is named with
+        forward slashes on every system (`placed_at`)."""
         lines: list[str] = []
         found = self.sorted().findings
         for finding in found:
             if not finding.question:
-                lines += _rendered(finding, root)
+                lines += _rendered(finding, root, posix)
         asked = [finding for finding in found if finding.question]
         if asked:
             lines += ["", QUESTIONS] if lines else [QUESTIONS]
             for finding in asked:
-                lines += _rendered(finding, root)
+                lines += _rendered(finding, root, posix)
         if self.counts:
             lines.append("  " + "  ".join(f"{k}={v}" for k, v in sorted(self.counts.items())))
         return "\n".join(lines) if lines else "  (nothing to report)"
 
 
-def _rendered(finding: Finding, root: Path | None) -> list[str]:
+def posix_path(path: PurePath | str) -> str:
+    """`path` with forward slashes on every system, as `audit` names a file in its report
+    and its `--json` (`placed_at`)."""
+    return (path if isinstance(path, PurePath) else PurePath(path)).as_posix()
+
+
+def placed_at(finding: Finding, root: Path | None, *, posix: bool = False) -> str:
+    """Where a finding is, "path:line:col", its file from `root` where it is in it. With
+    `posix`, the file with forward slashes on every system, as `audit` names one (Basile,
+    2026-11-25): on Windows it said `journals\\examples.yaml` where Linux and the page say
+    `journals/examples.yaml`. `check` names it as the platform writes it."""
+    where = finding.located()
+    if finding.path is None:
+        return where
+    shown = finding.path
+    if root is not None and finding.path.is_relative_to(root):
+        shown = finding.path.relative_to(root)
+    return where.replace(str(finding.path), posix_path(shown) if posix else str(shown), 1)
+
+
+def _rendered(finding: Finding, root: Path | None, posix: bool = False) -> list[str]:
     """One finding as `Report.render` prints it: its severity, gate and place, its message,
     its context and its hint."""
-    where = finding.located()
-    if root is not None and finding.path is not None:
-        try:
-            rel = finding.path.relative_to(root)
-            where = where.replace(str(finding.path), str(rel), 1)
-        except ValueError:
-            pass
+    where = placed_at(finding, root, posix=posix)
     lines = [f"  [{finding.severity.upper():4}] {finding.gate} {where}",
              f"         {finding.message}"]  # fmt: skip
     if finding.context:

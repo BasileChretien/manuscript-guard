@@ -413,6 +413,31 @@ def test_nothing_in_the_title_page_closes_its_comment(tmp_path: Path, capsys) ->
     assert not [f for f in found if f.get("context") and "42" in f["context"]]
 
 
+@needs_pandoc
+def test_pandoc_s_windows_line_ends_are_read_as_line_feeds(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pandoc on Windows ends the lines of the Markdown it writes "\\r\\n", and `convert` kept
+    them: every reader of the text read a line with "\\r" at its end, and the audit's count of
+    a journal's tables read no table in it (2026-11-25). Here the pandoc on PATH writes them
+    so on any system, and the text and `main.md` are what they are with a line feed alone."""
+    paper = word(tmp_path / "word", PAPER)
+    unix = from_word.convert(paper).text.replace("\r\n", "\n")
+
+    def windows(arguments: list[str], given: str | None, path: Path) -> str:
+        done = subprocess.run(["pandoc", *arguments], capture_output=True, check=True,
+                              input=None if given is None else given.encode("utf-8"),
+                              timeout=120)  # fmt: skip
+        return done.stdout.decode("utf-8").replace("\r\n", "\n").replace("\n", "\r\n")
+
+    monkeypatch.setattr(from_word, "runner", windows)
+    assert from_word.convert(paper).text == unix
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    capsys.readouterr()
+    assert b"\r" not in (root / "manuscript" / "main.md").read_bytes()
+
+
 def test_a_word_97_document_is_refused_before_anything_is_made(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "paper.doc"
     paper.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(504))

@@ -33,6 +33,7 @@ BY_STUDY_TYPE = {
     "trial": "rct",
     "cohort": "observational",
     "case-control": "observational",
+    "cross-sectional": "observational",
     "self-controlled": "observational",
     "disproportionality": "observational",
     "systematic-review": "systematic-review",

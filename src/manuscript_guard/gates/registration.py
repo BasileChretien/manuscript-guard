@@ -72,7 +72,8 @@ RETROSPECTIVE = re.compile(
     r"|\bregist(?:ered|ration)\s+(?:was\s+)?retrospective(?:ly)?\b"
 )
 #: The designs a registry calls observational, and the one it calls interventional.
-OBSERVATIONAL = frozenset({"cohort", "case-control", "self-controlled", "disproportionality"})
+OBSERVATIONAL = frozenset({"cohort", "case-control", "cross-sectional", "self-controlled",
+                           "disproportionality"})
 #: What ISRCTN writes in the field for a trial that has none.
 _NONE_REGISTERED = re.compile(r"(?i)^\s*(?:there are\s+)?no secondary outcome measures?\W*$")
 _DASHES = dict.fromkeys(map(ord, "‐‑‒–—―−"), "-")
@@ -314,6 +315,14 @@ def _withdrawn(context: _Context, entry: Declared, record: dict, path: Path) -> 
     ),))  # fmt: skip
 
 
+def _label(kind: str) -> str:
+    """The design as the table names it, "a cross-sectional study" rather than "a
+    cross-sectional"; the key itself where the table has no label for it."""
+    from manuscript_guard.gates.design import study_types
+
+    return str(study_types().get(kind, {}).get("label") or kind)
+
+
 def _design(context: _Context, entry: Declared, record: dict, path: Path) -> Report:
     kind = context.project.study_type
     wanted = "interventional" if kind == "trial" else (
@@ -323,7 +332,8 @@ def _design(context: _Context, entry: Declared, record: dict, path: Path) -> Rep
         return Report()
     return Report((_finding(
         "registration-design-differs",
-        f"paper.yaml names the study a {kind}, and {entry.id} registers an {said} study",
+        f"paper.yaml names the study a {_label(kind)}, and {entry.id} registers an {said} "
+        "study",
         context.late, path, "check the identifier: it may be another study's; or correct "
         "`study_type`",
     ),))  # fmt: skip

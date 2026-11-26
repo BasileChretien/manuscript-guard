@@ -211,13 +211,15 @@ def run(arguments: list[str]) -> dict:
     return {"code": code, "out": out.getvalue(), "err": err.getvalue()}
 
 
-def view(arguments: list[str]) -> dict:
+def view(arguments: list[str], *, corrected: bool = False) -> dict:
     """`run`, and for an audit the report as the page draws it (`auditing.report.view`),
     taken from the very audit whose text `run` returns (`cli.AUDITED`), every section with
     `--details`: None for any other command, an audit that printed no report, or one asked
     for as JSON. A view that could not be drawn is None too, its failure recorded as a crash
     is, and the text is still returned: the page shows the text where it cannot draw. Under
-    MANUSCRIPT_GUARD_DEBUG the failure is raised, as `cli.main` raises it."""
+    MANUSCRIPT_GUARD_DEBUG the failure is raised, as `cli.main` raises it. `corrected`, the
+    audit works out G14's corrections of the .docx named first, for the copy `commented`
+    writes with them tracked (`cli.CORRECTED`), and says the same."""
     from manuscript_guard import cli
     from manuscript_guard.auditing.report import view as drawn
     from manuscript_guard.diagnostics import crashes
@@ -236,10 +238,13 @@ def view(arguments: list[str]) -> dict:
             crashes.record(exc, kind=crashes.GATE, name="the page's view of the report")
 
     cli.AUDITED = told
+    cli.CORRECTED = corrected
+    _CORRECTED[:] = [corrected]
     try:
         result = run(arguments)
     finally:
         cli.AUDITED = None
+        cli.CORRECTED = False
     shown = made[-1] if made and "--json" not in arguments else None
     return {**result, "view": shown}
 
@@ -247,13 +252,17 @@ def view(arguments: list[str]) -> dict:
 #: The report of the audit `view` ran last, and what a match is worth there, which
 #: `commented` and `report_pdf` write from.
 _AUDITED: list = []
+#: Whether that audit worked out G14's corrections (`view`'s `corrected`).
+_CORRECTED: list[bool] = [False]
 
 
-def commented(paper: str, target: str) -> dict:
+def commented(paper: str, target: str, *, tracked: bool = False) -> dict:
     """The copy of the .docx `paper` with the findings of the audit `view` ran last as Word
     comments at their places, written to `target` as `audit --commented` writes it
     (`auditing.commented`), from the same audit rather than a second one: how many comments
-    stand at their places and how many are listed, or why none was written."""
+    stand at their places and how many are listed, or why none was written. `tracked`, with
+    each correction G14 is sure of as a tracked change as well, as `audit --tracked` writes
+    it, from an audit `view` ran `corrected`: how many corrections are tracked too."""
     from datetime import datetime, timezone
 
     from manuscript_guard.auditing.commented import CommentedError, notes_of, write
@@ -264,13 +273,45 @@ def commented(paper: str, target: str) -> dict:
     path = Path(paper)
     if path.suffix.lower() != ".docx":
         return {"error": f"{path.name} is not a .docx"}
+    if tracked and not _CORRECTED[0]:
+        return {"error": "the audit worked out no corrections"}
+    report = _AUDITED[-1][0]
+    corrections = None
+    if tracked:
+        runs = [run for run in report.gates if Path(run.paper).resolve() == path.resolve()]
+        corrections = [one for run in runs for one in run.corrections]
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
-        written = write(path, Path(target), notes_of(_AUDITED[-1][0], path, page=True),
-                        date=date)
+        written = write(path, Path(target), notes_of(report, path, page=True), date=date,
+                        corrections=corrections)  # fmt: skip
     except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
         return {"error": str(exc)}
-    return {"placed": written.placed, "listed": len(written.listed)}
+    said = {"placed": written.placed, "listed": len(written.listed)}
+    if tracked:
+        from manuscript_guard.auditing.gates import NOTHING_PRINTED
+
+        # As `audit --tracked` counts them: not those that change nothing the document
+        # prints, which had nothing to place.
+        said["tracked"] = written.tracked
+        said["left"] = sum(why != NOTHING_PRINTED for _one, why in written.untracked)
+    return said
+
+
+def journal_files(journal: dict | None, authors: dict | None) -> dict:
+    """The journal's profile and the authors' names the page's form describes, as the text of
+    the files `audit --journal` and `--authors` read (`journal_form`): {"profile": text} and
+    {"authors": text} for each asked for, or {"error": why} where the form cannot make one."""
+    from manuscript_guard import journal_form
+
+    said: dict = {}
+    try:
+        if journal is not None:
+            said["profile"] = journal_form.as_text(journal_form.profile_of(journal))
+        if authors is not None:
+            said["authors"] = journal_form.as_text(journal_form.authors_of(authors))
+    except journal_form.FormError as exc:
+        return {"error": str(exc)}
+    return said
 
 
 def report_pdf(target: str) -> dict:
@@ -291,5 +332,5 @@ def report_pdf(target: str) -> dict:
     return {"bytes": len(data)}
 
 
-__all__ = ["PandocCall", "commented", "install", "pandoc_options", "report_pdf", "run",
-           "runner_for", "view", "xhr_transport"]  # fmt: skip
+__all__ = ["PandocCall", "commented", "install", "journal_files", "pandoc_options",
+           "report_pdf", "run", "runner_for", "view", "xhr_transport"]  # fmt: skip

@@ -24,9 +24,10 @@ attractive at all"), and what to know about it is under *Questions* at its foot.
 
 ## What it checks
 
-A `.docx` or Markdown paper, with the analysis outputs to compare its numbers with if the
-reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
-[`audit`](commands.md#checking--audit) reads in a paper of that kind:
+A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a `.tar.gz`, with the
+analysis outputs to compare its numbers with if the reader has them (`.json`, `.csv`, `.tsv`,
+`.txt`, `.yaml`). That is everything [`audit`](commands.md#checking--audit) reads in a paper
+of that kind:
 
 - the numbers against the outputs, and what a match is worth there;
 - the arithmetic, the Abstract against the Results, and the small cells a total gives away;
@@ -96,9 +97,26 @@ then has its Journal section, the Document section of what a .docx holds besides
 and, for a blind review, each place an author is named. Nothing of the form is kept between
 visits.
 
+A LaTeX project comes as the archive Overleaf downloads (`.zip`) or arXiv gives a paper's
+source in (`.tar.gz` or `.tgz`, and arXiv's one gzipped `.tex`). The page unpacks it in the
+browser into a folder named after it, "project" for `project.zip`, and gives the audit that
+folder, as the command line is given the folder a reader unpacks the archive into: `audit
+project`, each `.tex` that starts a document a paper. It is unpacked with the checks a
+package's `.zip` is held to (`--package`, [refereeing.md](refereeing.md)): nothing is written
+where one member could land outside the folder, two names are one in another case, a name
+is both a file and a folder, or the archive holds more than 50,000 members or 1 GiB unpacked;
+nor where a member of a tar is a link or neither a file nor a folder.
+
+A publisher or a society can serve the page on its own site with its journals built in
+([hosting the audit page](hosting-the-audit-page.md)). The page then asks first "Which journal
+are you submitting to?", and holds the paper to the profile of the one chosen as `audit
+--journal journals/<slug>.yaml` does, with the authors' boxes under the list where its review
+is blind; a link may choose one, `?journal=<slug>`. It wears the host's name, logo, colours
+and contact line, says "Run by manuscript-guard" and the release, and keeps the rest of this
+page as it is: its code is byte for byte this page's.
+
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
-read LaTeX projects of several files, figures, or reproducibility packages: the command line
-reads those.
+read figures or reproducibility packages: the command line reads those.
 
 ## How to see that nothing is uploaded
 
@@ -186,9 +204,12 @@ GPL-2.0-or-later, and the page links to its source at the version served.
 
 `web/test/check.py` runs the command line's `audit` on the worked example (the `.docx`
 against its results, the `.docx` alone, `main.md` alone, with a referee's options, in
-American English with the copy with tracked changes asked for, and held to a journal's rules
-from its form with a double-blind review), then the same command as the page runs it in Node,
-and requires the same report and the same `--json`; in each browser, the page's copy with
+American English with the copy with tracked changes asked for, held to a journal's rules
+from its form with a double-blind review, and the LaTeX project of `tests/data/latex` as a
+`.zip` and as a `.tar.gz`, which the command line is given as the folder they hold), then the
+same command as the page runs it in Node, each archive unpacked there first by
+`web.unpack_paper` as the page unpacks it (`parity.mjs --unpack`), and requires the same
+report and the same `--json`; in each browser, the page's copy with
 tracked changes must track as many corrections as `--tracked` does, and the files the page
 makes of the journal's form must be the ones the command line was given. Then it opens the site in
 Chrome and in Firefox, served with no policy header as GitHub Pages serves it. The landing
@@ -196,6 +217,18 @@ page must load its style and every picture it names and ask no other host. The a
 must start, print the same reports, send nothing, and refuse every request *Test the rules*
 tries. CI's `web` job runs all of this, and `tests/test_web.py` holds the page's pandoc
 to CI's and its policy to the hosts `--lookup` asks.
+
+`python web/build.py --wheel <the wheel> --host <folder> --out check` builds the page a
+journal's host serves, alone, with no landing page ([hosting the audit
+page](hosting-the-audit-page.md)), and `check.py --hosted check` holds it the same way: its
+code files must be byte for byte those of `_site/audit/`, the same wheel's page, and for
+each journal it offers the `.docx` held to it, chosen from the list, with the authors' boxes
+filled for a blind review, must give the report `audit --journal journals/<slug>.yaml` gives.
+In each browser it is served at another address than the site's, and must show the host's
+name, logo, accent and contact line, keep its release, licences and proof, show each
+journal's rules as it serves them, and choose the journal `?journal=<slug>` names, or say it
+offers none of that slug. CI builds it with the invented journals of `web/test/host`, outside
+the site, and deploys only the site.
 
 `.github/workflows/pages.yml` builds the page from each release, checks it the same way, and
 deploys it. It starts when a run of the release workflow finishes, and builds only where that

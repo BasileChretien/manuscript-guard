@@ -667,6 +667,34 @@ def test_the_worker_holds_the_paper_to_the_journal_the_form_or_a_file_describes(
     assert clash["written"] == refused["written"] == twice["written"] == []
 
 
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_worker_gives_the_audit_the_folder_an_archive_is_unpacked_into() -> None:
+    """A LaTeX project as a .zip or a .tar.gz, written outside the folder the audit reads and
+    unpacked into a folder of it named after the archive (`web.unpack_paper`): the audit is
+    given that folder, as the command line is given the one the reader unpacks, and no copy
+    of a .docx is asked for. An output named as that folder, or an archive refused, stops
+    the run with its reason."""
+    cases = [
+        {"paper": "project.zip", "against": ["results.json"], "tracked": True},
+        {"paper": "-paper.tar.gz", "against": []},
+        {"paper": "project.tgz", "against": ["project"]},
+        {"paper": "bad.zip", "against": []},
+    ]
+    done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    zipped, dashed, clash, refused = json.loads(done.stdout)
+    assert zipped["args"] == ["audit", "project", "--against", "results.json"]
+    assert zipped["written"] == ["/upload/project.zip", "/work/results.json"]
+    assert zipped["corrected"] is False
+    assert dashed["args"] == ["audit", "./-paper"]
+    assert "a file chosen is named project, the name of the folder project.tgz is unpacked" \
+        in clash["error"]
+    assert clash["written"] == []
+    assert refused["error"] == "bad.zip: a test"
+
+
 def test_each_statement_the_form_offers_is_a_box_on_the_page() -> None:
     """The page's ticks for the statements a journal requires are the ones `journal_form`
     makes a pattern for, no more and no fewer, each with its box for the heading the journal

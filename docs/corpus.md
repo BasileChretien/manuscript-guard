@@ -62,7 +62,9 @@ or inside the main working tree of the repository where the checkout is a git wo
 writes nothing there: `run` writes under the corpus's `runs/` and `builds/`, `unjudged` and
 `agree` under its `report/`, and
 `measure` and `gate` write to standard output or to the `--out` and `--json` paths given,
-which may not be inside the checkout either, since their lists quote the papers.
+which may not be inside the checkout either, since their lists quote the papers. The one
+file it writes inside the checkout is the false-alarm page's counts, which quote nothing
+(The false-alarm page, below).
 
 A packet is a list of papers, each with its `slug`, the `text` a judge reads, and `reports`:
 for each of `audit`, `audit-pdf`, `check` and `compare`, the `findings` as that report's
@@ -517,3 +519,46 @@ terminal gets it as text.
 A pull request that changes a rule reading text runs `run` on its commit and `gate` against
 main's run. A true finding lost blocks it, unless the author's decision in the ledger covers
 it.
+
+## The false-alarm page
+
+[How often a warning is wrong](false-alarms.md) gives, for each code, the share of its
+warnings judged false on the corpus, so that an editor or a publisher can see what a warning
+of each kind is worth. It is drawn in two steps, so that the repository holds counts and
+never the papers' text:
+
+```bash
+python tools/corpus.py counts main-8f4629a2f    # docs/false-alarms.yaml
+python tools/false_alarms.py                   # docs/false-alarms.md and the README's line
+```
+
+`counts <run>` measures the run as `measure` does, with the ledger and the ties, and writes
+`docs/false-alarms.yaml`, the one file the tool writes inside the checkout. It holds, for
+each paper of the run, its slug, format, field and source as its `meta.json` gives them; the
+warnings and failures about the paper the run gave, by report and code; and for each paper,
+report and code where a judged finding stands reported under its own code, the warnings of
+that code there and how many of the judged ones are true and false. A note, a question, a
+judged finding asked, elsewhere or gone, and a reading notice count in none of it. No
+finding's message, context or sentence is read into it, and the file is checked to hold
+nothing else before it is written (`false_alarms.check`), as `tests/test_false_alarms.py`
+checks the committed one.
+
+`tools/false_alarms.py` draws from the counts alone (Basile, 2026-11-25):
+
+- A code's share is weighted: each paper's judged warnings of a code stand for all its
+  warnings of that code in that report, since the first packets judged ten at most.
+- Its 95% interval is the wider of two: the papers resampled 2,000 times, seeded by their
+  counts, and Wilson's score interval at the share and the number judged.
+- A share is given from 10 judged warnings from 3 papers, the bar of the rule that lowers a
+  code's severity by its precision; a code under it gets its counts and no share.
+- `audit` comes first, then `check` and `compare`, and the README's Status quotes `audit`'s
+  share and `check`'s.
+
+`tests/test_false_alarms.py` fails while the page or the README's line differs from what the
+script draws. The counts, the page and the line are counted and drawn again, in a pull
+request of those three alone, whenever a new run of main becomes the gate's base.
+
+The held-out set is counted only at a milestone, with `--heldout <folder> <run> --milestone
+<n>`, and `counts` keeps its section as it stands otherwise. Its papers are numbered and given
+by format alone, since a field or a source beside it could name a paper, and its rows name
+their report and no code, which would show a builder where to look.

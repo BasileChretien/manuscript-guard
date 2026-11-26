@@ -155,6 +155,7 @@ features:
       - tests/test_corruption.py::test_the_kept_plan_is_never_written_again
       - tests/test_study_types.py
       - tests/test_differential.py::test_every_plan_sections_asked_input_holds_each_kind_of_section
+      - tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words
     docs: docs/stages.md
 
   - id: data-sources
@@ -868,6 +869,27 @@ features:
       - tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number
     docs: docs/audit.md
 
+  - id: audit-pdf-paragraphs
+    stage: others
+    title: A PDF's paragraphs
+    says: >-
+      Reads a PDF paper's words where each is set on its page, so that the writing and
+      language checks read its paragraphs across columns and pages, its tables and legends
+      as tables and legends, and not its running heads or line numbers.
+    status: partial
+    commands: [audit]
+    tests:
+      - tests/test_properties.py::test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset
+      - tests/test_corruption.py::test_a_definition_a_pdf_s_column_and_a_legend_break_is_one
+      - tests/test_audit_pdf.py::test_g6_and_g14_s_findings_on_a_rebuilt_pdf_are_placed_by_its_rebuilt_lines
+      - tests/test_audit_pdf.py::test_a_pdf_whose_lines_cannot_be_rebuilt_is_read_by_g6_and_g14_as_before
+    docs: docs/install.md
+    limits: >-
+      Needs poppler's pdftotext, Xpdf's giving no word's place; only the writing and
+      language checks read the paragraphs, the numbers, the Abstract, the references and
+      compare reading the PDF's lines as before; front matter and side boxes are read as
+      prose (DESIGN.md, Known gaps).
+
   - id: audit-page
     stage: others
     title: Audit in a web browser
@@ -877,6 +899,28 @@ features:
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
+
+  - id: audit-page-hosted
+    stage: others
+    title: Audit page on a journal's site
+    says: >-
+      Lets a publisher or a society serve the audit page on its own site, with its journals'
+      rules built in and its own name, logo and colours, linked from each journal's "Submit"
+      page, and the paper is still not uploaded.
+    status: works
+    tests: [tests/test_web_host.py]
+    docs: docs/hosting-the-audit-page.md
+    limits: Each journal a host offers is held to the command line in CI only on invented ones.
+
+  - id: false-alarm-rates
+    stage: others
+    title: How often a warning is wrong
+    says: >-
+      Publishes, for each kind of warning, the share judged false on real papers, with the
+      papers and the version it was measured on and what that share does not measure.
+    status: works
+    tests: [tests/test_false_alarms.py]
+    docs: docs/false-alarms.md
 
   - id: compare
     stage: others
@@ -909,10 +953,10 @@ features:
       right on published papers where that was measured.
     status: partial
     commands: [audit]
-    tests: [tests/test_audit_editor.py]
+    tests: [tests/test_audit_editor.py, tests/test_audit_editor_pdf.py]
     docs: docs/refereeing.md
     limits: >-
-      On the command line only: the audit page and the PDF report do not give it yet.
+      On the command line and in its PDF only: the audit page does not give it yet.
 
   - id: editor-letter
     stage: others

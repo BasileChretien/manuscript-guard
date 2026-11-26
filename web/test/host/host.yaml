@@ -1,0 +1,14 @@
+schema: manuscript-guard/host/1
+
+# INVENTED FOR web/test/check.py: CI builds the audit page with this folder
+# (web/build.py --host) and holds the page to the command line given its journals' profiles.
+# There is no such society. docs/hosting-the-audit-page.md says what each key does.
+
+name: "Society of Invented Examples"
+logo: logo.svg
+accent:
+  light: "#7a1f3d"
+  dark: "#e7a0b8"
+contact:
+  text: "Questions about our journals' requirements"
+  link: "mailto:editorial@example.invalid"

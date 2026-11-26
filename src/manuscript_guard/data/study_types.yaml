@@ -305,7 +305,7 @@ types:
     guidelines: [STROBE, RECORD]
     sections:
       - id: sampling
-        heading: '(?i)\bsampling|\brecruit|\bresponse rate|\bnon-?response|\bsurvey weights?\b'
+        heading: '(?i)\bsampl(?:e|ing)\b(?!\s+size)|\bselection of participants|\bparticipant selection|\brecruit|\bweighting|\bsurvey weights?\b'
         says: >-
           how participants are sampled and recruited, and how the analysis takes the sampling
           into account (weights, clusters, strata)
@@ -320,7 +320,7 @@ types:
         url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
         read_on: 2026-11-26
       - id: measurement
-        heading: '(?i)\bmeasurement|\binstruments?\b|\bquestionnaires?\b|\bdata collection'
+        heading: '(?i)\bmeasurements?\b|\bmeasures\b|\binstruments?\b|\bquestionnaires?\b|\bdata collection|\bassessment'
         says: >-
           how each variable is measured, with the instrument used, and whether it is measured
           the same way in every group
@@ -334,7 +334,7 @@ types:
         url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
         read_on: 2026-11-26
       - id: bias
-        heading: '(?i)\bbias'
+        heading: '(?i)\bbias|\bnon-?response'
         says: >-
           the sources of bias expected, such as who declines to take part, and how each is
           addressed

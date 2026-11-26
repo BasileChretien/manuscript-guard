@@ -17534,9 +17534,9 @@ of patients, not the self-controlled case series, which `self-controlled` alread
 (labelled "self-controlled design (case series or case-crossover)"); its label says so, and
 which guideline it answers to is read before its entry is written.
 
-`gates/design.py` names cross-sectional surveys, case series and reports, and qualitative
-studies among the studies `other` covers today. `other` stays, for a narrative review and the
-rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+`gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
+studies among the studies `other` covers; the first of them is a design of its own since
+#801. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17573,8 +17573,9 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of STROBE's checklist for cross-sectional studies, CARE, SRQR
-  and COREQ, and which guideline a case series answers to.
+- The pages, items and licences of CARE, SRQR and COREQ, and which guideline a case series
+  answers to. STROBE's checklist for cross-sectional studies was read on its own page on
+  2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
 - A published classification of study designs to take a series of questions from, should the
   sentences beside the options not be enough (answer 5).
 - How an OSF registration is made from a plan file, and whether the page can link to it with

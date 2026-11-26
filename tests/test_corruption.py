@@ -14547,6 +14547,17 @@ def test_a_registered_design_other_than_the_paper_s_warns_then_fails(project: Pa
     assert _registration(project, "submission") == {"registration-design-differs": "fail"}
 
 
+def test_a_cross_sectional_study_registered_as_interventional_differs(project: Path) -> None:
+    """Round 1 of #801: the designs a registry calls observational stopped at four, so a
+    cross-sectional study whose registration is an interventional study's was held to
+    nothing. Registered as observational, it agrees."""
+    _paper_field(project, "study_type", "cross-sectional")
+    _register(project)
+    assert _registration(project) == {}
+    _register(project, record=_ctgov_record(study_type="interventional"))
+    assert _registration(project) == {"registration-design-differs": "warn"}
+
+
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates))
@@ -39699,6 +39710,40 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
     assert hints["the plan says nothing about bias"].endswith("(STROBE, item 9 (cross-sectional))")
     # Its sample size is the example's own section, which every design that asks for one finds.
     assert "sample size" not in asked
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Study sample", "sampling", True),
+        ("## Selection of participants", "sampling", True),
+        ("## Participant selection", "sampling", True),
+        ("## Survey weighting", "sampling", True),
+        ("## Recruitment", "sampling", True),
+        ("## Sample size", "sampling", False),
+        ("## Body weight", "sampling", False),
+        ("## Non-response", "sampling", False),
+        ("## Measures", "measurement", True),
+        ("## Study measures", "measurement", True),
+        ("## Exposure assessment", "measurement", True),
+        ("## Questionnaire", "measurement", True),
+        ("## Non-response", "bias", True),
+        ("## Selection bias", "bias", True),
+    ],
+)  # fmt: skip
+def test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """Round 1 of #801: the sampling pattern missed "Study sample" and STROBE 6a's own
+    "Selection of participants", and the measurement pattern a survey's usual "Measures", so
+    such a plan was told it said nothing about them. "Sample size" is not sampling, nor is a
+    body weight, and non-response is a bias, not the way people were sampled."""
+    _paper_has(project, study_type="cross-sectional")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
 
 
 def test_a_design_none_of_the_table_s_is_still_asked_for_the_seven(project: Path) -> None:

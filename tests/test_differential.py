@@ -79,10 +79,12 @@ EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15, "finding k
                                             "abstract questions": 40,
                                             "word abstract": 40,
                                             "written shares": 40,
-                                            "plan sections asked": 100}
+                                            "plan sections asked": 100,
+                                            # A PDF typeset and read by pdftotext, twice.
+                                            "pdf paragraphs": 20}
 #: And how many when the two sides are this same source under two hash seeds.
 RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2, "finding keys": 3,
-                                          "plan sections asked": 20}
+                                          "plan sections asked": 20, "pdf paragraphs": 4}
 
 
 # ------------------------------------------------------------------------- the two sides

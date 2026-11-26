@@ -304,7 +304,8 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: the other readings many times over. `import` builds a document for each and takes three
 #: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
 #: here it is only asked twice for the same one.
-PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1, "finding keys": 6}
+PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1, "finding keys": 6,
+                                      "pdf paragraphs": 6}
 
 #: The quotation marks the LaTeX reader writes for ``` `` ``` and `''`.
 LEFT_QUOTE, RIGHT_QUOTE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"

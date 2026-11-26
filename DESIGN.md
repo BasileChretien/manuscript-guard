@@ -8582,7 +8582,8 @@ Not checked, and why:
   to its own uses (Basile, 2026-11-21, "Table stands alone"), and a use in a display that
   defines nothing to the text's definition (`language._loose`), so such a use is defined.
   Asking each display to define every form it uses would add a finding to a reading the
-  author settled then, so it is left to the displays reader until the author decides.
+  author settled then, so it is left to the displays reader (Basile, 2026-11-27, "Leave to
+  the reader").
 - A figure that draws a weaker comparison than the text headlines: only a reader who looks at
   the figure sees what it draws.
 

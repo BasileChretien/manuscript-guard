@@ -307,9 +307,9 @@ def _spellings(path: Path, suffixes: frozenset[str]) -> Iterator[str]:
     yield _sha256(as_lf.replace(b"\n", b"\r"))
 
 
-#: The digests one run has taken (`digests_once`), by file: the spellings taken so far, in
-#: `_spellings`' order, and whether they are all of them; None outside a run.
-_RUN_DIGESTS: contextvars.ContextVar[dict[tuple, tuple[tuple[str, ...], bool]] | None] = (
+#: The digests one run has taken (`digests_once`), by file: every spelling of each, in
+#: `_spellings`' order; None outside a run.
+_RUN_DIGESTS: contextvars.ContextVar[dict[tuple, tuple[str, ...]] | None] = (
     contextvars.ContextVar("manuscript_guard_run_digests", default=None))  # fmt: skip
 
 
@@ -320,8 +320,8 @@ def digests_once() -> Iterator[None]:
     `check` asked each declared input for its digest once for each fragment that declared
     it, and read a binary one twice each time, its bytes and then its digest: a study
     declaring seven gigabytes of a pharmacovigilance extract, several files in two
-    fragments, waited over two minutes. Inside the block a file is read once, for as many of
-    its spellings as the records compared with it need (`_taken`). What it learnt
+    fragments, waited over two minutes. Inside the block a file is read once, and every
+    spelling of its digest is taken from that reading (`_taken`). What it learnt
     ends with the block, so that the next run reads every file again: a file can be
     rewritten within one tick of the clock that stamps it, and a run must not answer from a
     run before it. A block inside another adds nothing to the outer one's.
@@ -339,34 +339,26 @@ def digests_once() -> Iterator[None]:
         _RUN_DIGESTS.reset(token)
 
 
-def _taken(path: Path, suffixes: frozenset[str], recorded: str | None) -> tuple[str, ...] | None:
-    """The spellings of this file's digest this run has taken, as far as the first one
-    (`recorded` None) or `recorded` itself, or all of them where it is none; None outside a
-    run. The file is read again only for a record that differs from every spelling taken so
-    far, and never once all of them are: a text input recorded as the emitter records it
-    matches its first spelling, and its other three are never hashed."""
+def _taken(path: Path, suffixes: frozenset[str]) -> tuple[str, ...] | None:
+    """Every spelling of this file's digest, from one reading of it in this run; None outside
+    a run. A file whose line endings are content has one, its bytes' own; a text file has its
+    four, all hashed from the bytes read once (`_spellings`). Taken whole, they answer every
+    record compared with the file later in the run, a stale one or one in another spelling,
+    without reading it again: the three a text file's first record does not need cost three
+    hashes of bytes already in memory, and no reading."""
     memo = _RUN_DIGESTS.get()
     if memo is None:
         return None
     stat = path.stat()
     key = (os.path.normcase(os.path.abspath(path)), path.suffix.lower() in suffixes,
            stat.st_size, stat.st_mtime_ns)  # fmt: skip
-    known, whole = memo.get(key, ((), False))
-    if whole or (known if recorded is None else recorded in known):
-        return known
-    found: list[str] = []
-    for digest in _spellings(path, suffixes):
-        found.append(digest)
-        if recorded is None or digest == recorded:
-            break
-    else:
-        whole = True
-    memo[key] = (tuple(found), whole)
-    return memo[key][0]
+    if key not in memo:
+        memo[key] = tuple(_spellings(path, suffixes))
+    return memo[key]
 
 
 def _digest_of(path: Path, suffixes: frozenset[str]) -> str:
-    taken = _taken(path, suffixes, None)
+    taken = _taken(path, suffixes)
     return taken[0] if taken is not None else next(_spellings(path, suffixes))
 
 
@@ -385,7 +377,7 @@ def _matches(path: Path, recorded: str, suffixes: frozenset[str]) -> bool:
     of writing one file rather than a second file. Inside `digests_once` the file is read
     once however many records are compared with it.
     """
-    taken = _taken(path, suffixes, recorded)
+    taken = _taken(path, suffixes)
     if taken is not None:
         return recorded in taken
     return any(recorded == digest for digest in _spellings(path, suffixes))

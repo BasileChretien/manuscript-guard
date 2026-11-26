@@ -421,6 +421,58 @@ def test_a_binary_input_is_streamed_never_read_whole(
     assert "input-changed" not in codes(report)
 
 
+def _recorded_as(project: Path, stem: str, name: str, digest: str) -> None:
+    """Fragment `stem` records `digest` for the input `name`, its own sidecar kept true: what
+    a fragment written before the input changed, or by an older emitter, records."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = project / "results" / f"{stem}.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for declared in document["provenance"]["inputs"]:
+        if declared["path"].endswith(name):
+            declared["sha256"] = digest
+    fragment.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    write_digest(fragment)
+
+
+def test_a_stale_record_of_a_binary_input_reads_it_no_more(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A binary input has one digest: once the run has it, a second fragment recording
+    another, written before the data were refreshed, is told from it without a read."""
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.parquet", 64 * 1024)
+    _recorded_as(project, "09_second", "shared.parquet", "0" * 64)
+    opened = _opened(monkeypatch, target)
+    report, *_ = _gate_run(project)
+    changed = [f for f in report.findings if f.code == "input-changed"]
+    assert [f.path.name for f in changed] == ["09_second.json"]
+    assert len(opened) == 1, f"opened {len(opened)} times in one check: {opened}"
+
+
+def test_a_text_input_recorded_in_two_spellings_is_read_once(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One fragment records a CSV's content with LF, as the emitter does, and another its
+    CRLF bytes, as an emitter before line endings were left out did: both match, from the
+    one reading of the file."""
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.csv", 64 * 1024)
+    target.write_bytes(b"id,value\r\n" + b"1,10\r\n" * 4096)
+    for stem in ("09_first", "09_second"):
+        _recorded_as(project, stem, "shared.csv", input_digest(target))
+    _recorded_as(project, "09_second", "shared.csv", sha256_of(target))
+    assert input_digest(target) != sha256_of(target)
+    opened = _opened(monkeypatch, target)
+    report, *_ = _gate_run(project)
+    assert "input-changed" not in codes(report)
+    assert len(opened) == 1, f"opened {len(opened)} times in one check: {opened}"
+
+
 def test_the_digests_a_run_takes_end_with_the_run(project: Path) -> None:
     """A file rewritten between two checks, to the same size and the same modification time,
     is read again by the second: nothing a run learnt is kept for the next one."""

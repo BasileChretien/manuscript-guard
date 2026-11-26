@@ -7208,6 +7208,116 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: How a section of a plan stands in a drawn plan: headed by its id as `study_types.yaml`
+#: names it (capitalised, which `tests/test_study_types.py` holds its pattern finds), headed
+#: another way, left out, or headed with nothing under it.
+PLAN_KINDS = ("as named", "reworded", "missing", "empty")
+#: Other headings for each section of every plan and of each design: the other words of its
+#: pattern, and a near miss or two, which name another section or none ("Standard deviation
+#: of the dose" is a statistic, "Case-control design" no case definition). A design added to
+#: the table adds its sections here (`tests/test_differential.py` holds that every one has
+#: some), or a pattern of it narrowed would be read the same on both sides.
+PLAN_HEADINGS = {
+    "question": ("Research question", "Objectives", "Aims"),
+    "design": ("Study design", "Questionnaire design"),
+    "population": ("Participants", "Population and data source", "Data sources"),
+    "exposure": ("Intervention", "Predictor", "Exposures"),
+    "outcome": ("Endpoint", "Primary outcomes", "Outcome measures"),
+    "analysis": ("Statistical methods", "Statistical analysis", "Analyses"),
+    "deviations": ("Deviations from the plan", "Changes to the plan", "Amendments",
+                   "Standard deviation of the dose"),
+    "estimand": ("Estimands", "The estimand"),
+    "sample size": ("Power", "Sample size calculation"),
+    "randomisation": ("Randomization", "Allocation concealment", "Blinding", "Masking"),
+    "missing data": ("Missing values", "Handling missingness"),
+    "sensitivity analyses": ("Subgroups", "Sensitivity analysis"),
+    "interim analyses": ("Stopping rules", "Data monitoring", "Monitoring"),
+    "time zero and follow-up": ("Index date", "Follow up", "At-risk window", "Censoring"),
+    "confounding": ("Confounders", "Adjustment set"),
+    "cases": ("Case ascertainment", "Case", "Case-control design"),
+    "controls": ("Control selection", "Controls", "Case-control design"),
+    "matching": ("Matched sets",),
+    "observation period": ("Observation window",),
+    "risk windows": ("Exposure windows", "Control periods", "Focal window"),
+    "washout": ("Wash-out", "Pre-exposure period", "Induction and lag"),
+    "time-varying adjustment": ("Age and season", "Calendar time", "Time-varying covariates"),
+    "assumptions": ("Event-dependent exposure", "Assumption checks"),
+    "deduplication": ("Duplicates", "Preprocessing", "Data cleaning"),
+    "case definition": ("Case selection", "Drugs and events", "Event selection"),
+    "comparator": ("Reference group", "Comparison group"),
+    "measure": ("Measures of disproportionality", "Signal threshold", "Measure of outcome"),
+    "eligibility": ("Inclusion criteria", "Exclusion"),
+    "search": ("Information sources", "Databases searched"),
+    "selection and extraction": ("Screening", "Data extraction"),
+    "risk of bias": ("Quality assessment", "Critical appraisal"),
+    "synthesis": ("Meta-analysis", "Data synthesis"),
+    "certainty": ("GRADE", "Publication bias", "Confidence in the evidence"),
+    "predictors": ("Candidate variables", "Features"),
+    "model development": ("Tuning", "Internal validation"),
+    "performance": ("Calibration", "Discrimination", "External validation"),
+    "fairness": ("Equity",),
+}  # fmt: skip
+#: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
+_SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
+#: Headings of no section, between the plan's own.
+_PLAN_OTHER = ("Background", "Timeline", "Ethics", "References")
+#: How a plan is laid out: its title, then the level of its sections' headings.
+_PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
+
+
+@st.composite
+def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """A plan and the `paper.yaml` naming its design, as the reading "plan sections asked" takes
+    them, and each section of the design with how it stands in the plan.
+
+    The design is drawn from the table, `other` or none. Every section of every plan and of
+    the design is given a kind of `PLAN_KINDS` by its place in a drawn order, so each kind
+    stands in every example; then the sections are written in another drawn order, with a
+    heading of no section among them. A section is said in a sentence, in a list, or under a
+    subsection; one with nothing to say holds one of `_SAYS_NOTHING`, or empty subsections."""
+    from manuscript_guard.gates.design import REQUIRED, study_types
+
+    design = draw(st.sampled_from((None, "other", *sorted(study_types()))))
+    ids = [name for name, _pattern, _says in REQUIRED] + [
+        section["id"] for section in study_types().get(design or "", {}).get("sections", ())]
+    title, level = draw(st.sampled_from(_PLAN_LAYOUTS))
+    mark, under = "#" * level, "#" * (level + 1)
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=8).map(
+        lambda words: " ".join(words).capitalize() + ".")
+    said = st.one_of(sentence, sentence.map(lambda s: f"- {s}"),
+                     sentence.map(lambda s: f"{under} Inclusion\n\n{s}"))  # fmt: skip
+    nothing = st.one_of(st.sampled_from(_SAYS_NOTHING),
+                        st.just(f"{under} Inclusion\n\n{under} Exclusion"))  # fmt: skip
+
+    def reworded(name: str) -> str:
+        named = name.capitalize()
+        return draw(st.sampled_from((*PLAN_HEADINGS[name], f"3. {named}", named.upper(),
+                                     f"{named}:")))  # fmt: skip
+
+    order = draw(st.permutations(range(len(ids))))
+    kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    parts = []
+    for name in ids:
+        kind = kinds[name]
+        if kind == "missing":
+            continue
+        if kind == "as named":
+            heading = name.capitalize()
+        elif kind == "reworded":
+            heading = reworded(name)
+        else:
+            heading = draw(st.sampled_from((name.capitalize(), reworded(name))))
+        parts.append(f"{mark} {heading}\n\n{draw(nothing if kind == 'empty' else said)}\n")
+    parts += [f"{mark} {other}\n\n{draw(sentence)}\n"
+              for other in draw(st.lists(st.sampled_from(_PLAN_OTHER), max_size=2, unique=True))]
+    written = draw(st.permutations(parts))
+    paper = 'schema: manuscript-guard/paper/1\ntitle: "A study"\n' + (
+        f"study_type: {design}\n" if design else "")
+    stage = draw(st.sampled_from(("design", "analysis", "drafting", "submission")))
+    given = {"paper": paper, "plan": title + "\n".join(written), "stage": stage}
+    return given, [(name, kinds[name]) for name in ids]
+
+
 #: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
 _YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
                 ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
@@ -19746,6 +19856,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "plan declarations": declared_plans().map(lambda drawn: drawn["plan"]),
+    "plan sections asked": sectioned_plans().map(lambda drawn: drawn[0]),
     "registration named": st.fixed_dictionaries(
         {
             "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),

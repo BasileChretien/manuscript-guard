@@ -69,6 +69,16 @@ def from_run(project, report, stage: str, deferred, namespace, *, cwd: Path):
     return read
 
 
+def described(label: str, describes: object) -> str:
+    """A design's label with what makes a study that design beside it, in brackets: "cohort
+    study (people are grouped by an exposure and ...)". A label that ends in brackets of its
+    own takes it inside them, after a semicolon, rather than a second pair."""
+    if not isinstance(describes, str) or not describes.strip():
+        return label
+    said = " ".join(describes.split())
+    return f"{label[:-1]}; {said})" if label.endswith(")") else f"{label} ({said})"
+
+
 def _kept(notes: list[str], what: str, work, default):
     """`work()`, or `default` with a note: a part of the state that cannot be read is left
     out and said, and `next` still decides on the rest."""
@@ -115,9 +125,12 @@ def _project_state(project, findings, chosen, deferred, namespace, here: Path, *
     paper = project.paper if isinstance(project.paper, dict) else {}
     journal = paper.get("target_journal") if isinstance(paper.get("target_journal"), str) else None
     declared = paper.get("stage") if paper.get("stage") in STAGES else DRAFTING
+    # Each design as `next` offers it, with what makes a study that design beside its name,
+    # for an author who does not know the name (`describes`).
     designs = _kept(notes, "the study designs", lambda: tuple(
-        (key, str(kind.get("label") or key), tuple(str(g) for g in kind.get("guidelines") or ()))
-        for key, kind in sorted(study_types().items())), ())
+        (key, described(str(kind.get("label") or key), kind.get("describes")),
+         tuple(str(g) for g in kind.get("guidelines") or ()))
+        for key, kind in sorted(study_types().items())), ())  # fmt: skip
     return State(
         kind=PROJECT, root=project.root, cwd=here, format=fmt, stage=chosen,
         declared_stage=declared, findings=tuple(findings), deferred=dict(deferred),

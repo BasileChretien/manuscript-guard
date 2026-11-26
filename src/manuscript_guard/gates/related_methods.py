@@ -26,14 +26,21 @@ from manuscript_guard.contracts.dictionary import (
 )
 from manuscript_guard.contracts.models import Model
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.gates.design import PLANNED, REQUIRED, _plan_sections, _read_plan
+from manuscript_guard.gates import design
+from manuscript_guard.gates.design import PLANNED, _plan_sections, _read_plan
 from manuscript_guard.gates.revision import as_quoted
 from manuscript_guard.text.sections import subsections
 
-#: The plan's sections that belong to one paper and are not its methods, with all they hold:
-#: what it changed from its own plan, and the results it promised.
-_OWN = tuple(re.compile(rule) for rule in (dict((n, r) for n, r, _p in REQUIRED)["deviations"],
-                                           PLANNED))  # fmt: skip
+
+def _own() -> tuple[re.Pattern[str], ...]:
+    """The plan's sections that belong to one paper and are not its methods, with all they
+    hold: what it changed from its own plan, and the results it promised. Read when they are
+    asked for: the command line imports this module at its start, and a constant here made
+    every command parse the table of designs that `REQUIRED` comes from."""
+    deviations = dict((n, r) for n, r, _p in design.REQUIRED)["deviations"]
+    return tuple(re.compile(rule) for rule in (deviations, PLANNED))
+
+
 #: A heading's number, "2.", "2.1" or "2", which names no section. A longer number with no
 #: point after it is a word of the heading: "2019 cohort" is not "2020 cohort" (rounds 1
 #: and 2 of #402).
@@ -180,13 +187,14 @@ def _by_title(text: str) -> _Read:
     a plan's sections; and the folded headings that stand more than once. The plan's own
     Deviations and Planned results are left out with everything under them."""
     read = _Read()
+    owns = _own()
     sections = _plan_sections(text)
     left_out: set[int] = set()
     for index, section in enumerate(sections):
         if index in left_out:
             continue
         title = as_quoted(section.title).strip()
-        if any(own.search(title) for own in _OWN):
+        if any(own.search(title) for own in owns):
             left_out.update(range(index, index + len(subsections(sections, index))))
             continue
         if not title:

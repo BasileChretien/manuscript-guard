@@ -78,9 +78,11 @@ EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15, "finding k
                                             "abstract against results": 40,
                                             "abstract questions": 40,
                                             "word abstract": 40,
-                                            "written shares": 40}
+                                            "written shares": 40,
+                                            "plan sections asked": 100}
 #: And how many when the two sides are this same source under two hash seeds.
-RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2, "finding keys": 3}
+RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2, "finding keys": 3,
+                                          "plan sections asked": 20}
 
 
 # ------------------------------------------------------------------------- the two sides
@@ -207,6 +209,15 @@ def test_under_another_hash_seed_a_reading_answers_the_same(
 #: is a mutant that the review of #181 found alive: the offset of a quotation's lines losing
 #: one character at each line break.
 CHANGED = {
+    # The seven sections every plan has are read from the table since the first plan pull
+    # request (DESIGN.md, "One set of plan questions"): its drawn plans are what hold that
+    # reading them there changed nothing.
+    "a plan's population heading read by its first word": (
+        "data/study_types.yaml",
+        "    heading: '(?i)\\bpopulation|participants|data source\\b'\n",
+        "    heading: '(?i)\\bpopulation'\n",
+        "plan sections asked",
+    ),
     "a glossary a sentence opens is not read": (
         "gates/glossary.py",
         '    r"[ \\t]*[*_]{0,3}(?:list[ \\t\\n]+of[ \\t\\n]+)?(?:abbreviations|acronyms|glossary)'
@@ -412,6 +423,30 @@ def test_every_abbreviations_input_holds_a_glossary_a_sentence_opens() -> None:
 
     held()
     assert asked and all(GLOSSARY_OPENED in text for text in asked)
+
+
+def test_every_plan_sections_asked_input_holds_each_kind_of_section() -> None:
+    """For the change "a plan's population heading read by its first word": every drawn plan
+    holds a section of each kind (as named, reworded, missing, empty), and every section of
+    every plan and of each design has other headings to be drawn under, so that a pattern
+    narrowed for any of them is read otherwise on the two sides. A design added to the
+    table fails here until its sections are given headings in `PLAN_HEADINGS`."""
+    from generated import PLAN_HEADINGS, PLAN_KINDS, sectioned_plans
+
+    from manuscript_guard.gates.design import REQUIRED, study_types
+
+    sections = {name for name, _pattern, _says in REQUIRED} | {
+        section["id"] for kind in study_types().values() for section in kind["sections"]}
+    assert sections <= set(PLAN_HEADINGS), sorted(sections - set(PLAN_HEADINGS))
+    held: list[set[str]] = []
+
+    @generated(30)
+    @given(sectioned_plans())
+    def drawn(plan: tuple[dict[str, str], list[tuple[str, str]]]) -> None:
+        held.append({kind for _name, kind in plan[1]})
+
+    drawn()
+    assert held and all(kinds == set(PLAN_KINDS) for kinds in held)
 
 
 def _changed_copy(case: str, folder: Path) -> Reader:

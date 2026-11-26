@@ -1308,6 +1308,97 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
     assert (short, long) in [(found, words) for _at, found, words in _definitions(text)]
 
 
+def _pdf_findings(text: str) -> list[tuple[str, str]]:
+    """G14's findings on `text` as a file the audit staged from a PDF."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    file = _file(0, Path("main.md"), text, [], False, from_pdf=True)
+    report = _judge([file], _Known(frozenset(), frozenset()), Path("."))
+    return [(f.code, f.message) for f in report.findings]
+
+
+def test_the_limits_of_a_line_s_end_in_a_pdf_are_as_design_md_says() -> None:
+    """Known gaps, held where they stand: a long form whose first word a PDF breaks at a
+    line's end is read from the word's second half, where it opens on the short form's first
+    letter, and gives another meaning; and a short form a PDF breaks at its own hyphen is no
+    use of it, its halves read as two forms never defined."""
+    found = _pdf_findings("# Methods\n\nThe standardised mortality ratio (SMR) was read. The "
+                          "standardi-\nsed mortality ratio (SMR) was read again.\n")
+    assert ("abbreviation-redefined", "SMR is defined as 'sed mortality ratio' here and as "
+            "'standardised mortality ratio' at main.md:3") in found
+    found = _pdf_findings("# Methods\n\nThe Reach Effectiveness Adoption Implementation "
+                          "Maintenance (RE-AIM) frame was used. The RE-\nAIM frame held.\n")
+    assert [code for code, _message in found] == ["abbreviation-unused", "abbreviation-undefined"]
+    # An en dash at a line's end is no break: "Kaplan\N{EN DASH}\nMeier" gives another
+    # meaning than "Kaplan\N{EN DASH}Meier", as before (round 1 of #784).
+    found = _pdf_findings("# Methods\n\nThe Kaplan\N{EN DASH}Meier estimator (KME) was "
+                          "read. The Kaplan\N{EN DASH}\nMeier estimator (KME) was read again.\n")
+    assert _meanings(found) == ["KME is defined as 'Kaplan\N{EN DASH} Meier estimator'"]
+
+
+def _meanings(found: list[tuple[str, str]]) -> list[str]:
+    """What each `abbreviation-redefined` says, up to the place it names."""
+    return [message.split(";")[0].split(" here")[0] for code, message in found
+            if code == "abbreviation-redefined"]  # fmt: skip
+
+
+def test_a_hyphen_proper_is_a_hyphen_in_every_format() -> None:
+    """Round 1 of #784: a hyphen proper and a non-breaking hyphen are read as a hyphen-minus
+    is, wherever they stand: "self\N{HYPHEN}reported" and "self-reported" give one meaning
+    in text from any format, and in a PDF's text a break at a hyphen proper is a break."""
+    from manuscript_guard.gates.language import _judge, _Known
+
+    typed = ("# Methods\n\nThe self\N{HYPHEN}reported fatigue scale (SFS) was read. The "
+             "self-reported fatigue scale (SFS) was read again. The "
+             "long\N{NON-BREAKING HYPHEN}term care unit (LCU) was read. The long-term care "
+             "unit (LCU) was read again.\n")
+    report = _judge([_file(0, Path("main.md"), typed, [], False)],
+                    _Known(frozenset(), frozenset()), Path("."))  # fmt: skip
+    found = [(f.code, f.message) for f in report.findings]
+    assert _meanings(found) == ["SFS is defined again", "LCU is defined again"]
+    broken = ("# Methods\n\nThe self\N{HYPHEN}reported fatigue scale (SFS) was read. The "
+              "self\N{HYPHEN}\nreported fatigue scale (SFS) was read again.\n")
+    assert _meanings(_pdf_findings(broken)) == ["SFS is defined again"]
+
+
+def test_a_long_form_s_breaks_are_read_where_it_stands_before_its_short_form() -> None:
+    """Round 1 of #784: the long form is found again where it ends before its short form's
+    bracket, not where another occurrence starts nearer it: the typed "ra- tio" before
+    "(ROR)" is no line's end, though the same words broken at a line's end follow."""
+    found = _pdf_findings("# Methods\n\nThe reporting odds ratio (ROR) was read. The "
+                          "reporting odds ra- tio (ROR) reporting odds ra-\ntio was typed.\n")
+    assert _meanings(found) == ["ROR is defined as 'reporting odds ra- tio'"]
+    # A long form after its short form is read in the short form's bracket, though the same
+    # words, typed with no line's end, end nearer before it (round 2 of #784).
+    found = _pdf_findings("# Methods\n\nThe reporting odds ra- tio was high. ROR (reporting "
+                          "odds ra-\ntio) was read. The reporting odds ratio (ROR) was read "
+                          "again.\n")
+    assert _meanings(found) == ["ROR is defined again"]
+
+
+@pytest.mark.parametrize("hyphen", ["-", "\N{HYPHEN}", "\N{SOFT HYPHEN}"])
+def test_a_pdf_s_break_at_each_kind_of_hyphen_is_joined(hyphen: str) -> None:
+    """Round 2 of #784: a break at a hyphen proper or a soft hyphen is joined as one at a
+    hyphen-minus is, where the halves as read give another meaning."""
+    found = _pdf_findings(f"# Methods\n\nThe interquartile range (IQR) was read. The inter"
+                          f"{hyphen}\nquartile range (IQR) was read again.\n")
+    assert _meanings(found) == ["IQR is defined again"]
+
+
+def test_a_word_a_pdf_breaks_at_a_line_s_end_is_joined_only_there() -> None:
+    """A long form broken inside a word at a line's end gives the same meaning in a PDF's
+    text, and another where the hyphen and a space are typed in a line."""
+    broken = ("# Methods\n\nThe interquartile range (IQR) was read. The inter-\nquartile range "
+              "(IQR) was read again.\n")
+    assert [m.split(";")[0] for code, m in _pdf_findings(broken)
+            if code == "abbreviation-redefined"] == ["IQR is defined again"]  # fmt: skip
+    typed = broken.replace("inter-\nquartile", "inter- quartile")
+    assert [m.split(" here")[0] for code, m in _pdf_findings(typed)
+            if code == "abbreviation-redefined"] == [  # fmt: skip
+        "IQR is defined as 'inter- quartile range'"
+    ]
+
+
 @pytest.mark.parametrize(
     ("text", "short"),
     [

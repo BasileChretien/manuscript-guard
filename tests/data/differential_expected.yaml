@@ -24,6 +24,23 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: plan sections asked
+    why: >-
+      a cross-sectional study is a design of `data/study_types.yaml`, the first one added by
+      DESIGN.md's "One set of plan questions": a plan whose paper.yaml names it is asked for
+      its sampling, measurement, bias, sample size, confounding, missing data and sensitivity
+      analyses, each from its STROBE item, where main read `study_type: cross-sectional` as no
+      design of its table and refused it
+  - reading: pdf headings
+    why: >-
+      a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
+      as it ends a Word paper's (`section_names.keywords_end`; Basile, 2026-11-15): where
+      words stand after it before the next heading it is a heading of its own, "Keywords", a
+      run-in label like the Abstract's, and in either case the headings after it are the
+      main text's, not the Abstract's parts (window C of the real-paper corpus, row 8). The
+      inputs now hold the Word papers' kinds as a PDF's lines, all but a label in a table's
+      cell, which a PDF does not have; the entry it replaces, for a run-in "Abstract:" and
+      a study's heading (decisions 22 and 23), is spent
   - reading: latex documents
     why: >-
       a heading defined as the CVPR and ICCV author kit defines it, `\@ifstar` between two
@@ -67,9 +84,12 @@ expected:
       stands alone", is spent
   - reading: abbreviations of a PDF's text
     why: >-
-      the same in a file the audit staged from a PDF: a long form that closes a bracket it
-      does not open, and is not the long form's own, defines nothing, so the elliptical
-      SCE2 is no definition (the entry for `abbreviations`)
+      in a file the audit staged from a PDF, a long form holding a word broken at a line's
+      end, "inter-\nquartile range", is compared with each way of joining its first four
+      breaks as well as read (the real-paper corpus, row 7 of window C), so a definition
+      given again across such a break gives the same meaning, "defined again", where the
+      base said another; and a hyphen proper and a non-breaking hyphen are read as a hyphen
+      (round 1 of #784). The inputs now hold `line_broken()` (tests/generated.py)
   - reading: abbreviation edits
     why: >-
       the same: a short form whose long form closes a bracket it does not open, and is not
@@ -90,17 +110,6 @@ expected:
       `question-background-unsourced` (Basile, 2026-11-16, decision 27, part B: docx-med-B1,
       pdf-med-A1, docx-socio-A1 and docx-pharm-epi-B2 of the real-paper corpus); the entry
       it replaces, for powers read whole (#696), is spent
-  - reading: pdf headings
-    why: >-
-      where no line names the Abstract alone, a line before a PDF's first heading that opens
-      on a run-in "Abstract:" (or "Abstract.") and goes on, not on a count of words, is the
-      Abstract's heading, the rest of the line its text; and where the names alone cannot be
-      placed, a line after the Abstract that opens on "Experiment N:" or "Study N:", N a
-      number or a Roman numeral, with a name after it before the next, is a heading a level
-      above the names after it, so a multi-study paper's repeated Method and Results are
-      placed where the base placed nothing; a paper the base placed is placed as it was
-      (Basile, 2026-11-15, decisions 22 and 23, after pdf-socio-B1 and pdf-psych-A2 of the
-      real-paper corpus; round 1 of #686)
   - reading: word abstract
     why: >-
       a Word paper with no heading style, read by its typed titles, has each reference list
@@ -407,3 +416,10 @@ expected:
     why: >-
       the same: no space is put after the hyphen in "UNEMP\_DURA\_6-12mth" nor in
       "DOSE\_6-5mg", where the base put one; the entry it replaces is spent
+  - reading: word reference lists
+    why: >-
+      a new reading: a .docx's entry in a heading style, numbered in brackets after the entry
+      above it, "[2]" after "[1]", or shaped as an entry above it is, goes on with the list,
+      where the base ends the list there and reads the entries after it as text (window C of
+      the real-paper corpus); a section's title after the list, "5. Discussion" after "4.",
+      ends it on both

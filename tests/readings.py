@@ -1364,6 +1364,28 @@ def _plan_declarations() -> Reading:
     return read
 
 
+@reading("plan sections asked")
+def _plan_sections_asked() -> Reading:
+    """What G12 says of a plan of the design its `paper.yaml` names (`check_design`), in a
+    project that holds those two files and nothing else, at the stage given: every finding
+    and count, each path from the project's folder, written `<project>`."""
+    from manuscript_guard.contracts.project import load_project
+    from manuscript_guard.gates.design import check_design
+
+    def sections(given: dict[str, str]) -> dict[str, Any]:
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            (folder / "design").mkdir()
+            (folder / PAPER).write_bytes(given["paper"].encode("utf-8"))
+            (folder / "design" / "plan.md").write_bytes(given["plan"].encode("utf-8"))
+            project, _read = load_project(folder)
+            return _from_root(_told(check_design(project, None, given["stage"])), folder)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return sections
+
+
 @reading("registration named")
 def _registration_named() -> Reading:
     from manuscript_guard.gates.registration import named_in
@@ -2081,6 +2103,44 @@ def _word_abstract() -> Reading:
             return {"compared": found.compared, "why not": found.why_not,
                     "numbers": found.numbers, "matched": found.matched,
                     "not found": [[c.line, c.text] for c in found.not_found]}  # fmt: skip
+
+    return read
+
+
+@reading("word reference lists")
+def _word_reference_lists() -> Reading:
+    """What `audit` reads as a Word paper's reference lists, its paragraphs given with
+    whether each is in the style "heading 1": each list's paragraphs, and G7's census of
+    them, each entry's label and number and each problem's code and subject
+    (`audit.docx_bibliography_spans`)."""
+    from xml.sax.saxutils import escape
+
+    from manuscript_guard.audit import audit, docx_bibliography_spans
+    from manuscript_guard.text.docx import read_docx_text
+
+    def read(given: list[tuple[str, bool]]) -> dict[str, Any]:
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        styled = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+        body = "".join(f'<w:p>{styled if heading else ""}<w:r><w:t xml:space="preserve">'
+                       f"{escape(text)}</w:t></w:r></w:p>" for text, heading in given)  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "paper.docx"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>"
+                                                      f"{body}</w:body></w:document>")  # fmt: skip
+                archive.writestr("word/styles.xml", f"<w:styles {namespace}><w:style "
+                                 'w:type="paragraph" w:styleId="Heading1"><w:name '
+                                 'w:val="heading 1"/></w:style></w:styles>')  # fmt: skip
+            document = read_docx_text(path)
+            lines = document.body.split("\n")
+            census = audit([path], None).references
+        return {
+            "lists": [[line for line in lines[start:end] if line.strip()]
+                      for start, end in docx_bibliography_spans(document)],
+            "census": [[[entry.label, entry.number] for entry in found.entries]
+                       + [[problem.code, problem.subject] for problem in found.problems]
+                       for found in census],
+        }  # fmt: skip
 
     return read
 
@@ -3423,17 +3483,25 @@ def _finding_keys() -> Reading:
 
 def _from_root(said: Any, root: Path, *, written: str = "<project>") -> Any:
     """`said` with the folder `root` written `<project>` in every text it holds, in each
-    way a path to it is spelt. Longest first: the resolved path can hold the other."""
-    if isinstance(said, dict):
-        return {key: _from_root(value, root, written=written) for key, value in said.items()}
-    if isinstance(said, list):
-        return [_from_root(value, root, written=written) for value in said]
-    if not isinstance(said, str):
-        return said
-    forms = {str(root), str(root.resolve()), root.as_posix(), root.resolve().as_posix()}
-    for form in sorted(forms, key=len, reverse=True):
-        said = said.replace(form, written)
-    return said
+    way a path to it is spelt. Longest first: the resolved path can hold the other. The
+    forms are worked out once: resolved again for every text, they were half of what the
+    reading "plan sections asked" took."""
+    resolved = root.resolve()
+    forms = sorted({str(root), str(resolved), root.as_posix(), resolved.as_posix()},
+                   key=len, reverse=True)  # fmt: skip
+
+    def rooted(part: Any) -> Any:
+        if isinstance(part, dict):
+            return {key: rooted(value) for key, value in part.items()}
+        if isinstance(part, list):
+            return [rooted(value) for value in part]
+        if not isinstance(part, str):
+            return part
+        for form in forms:
+            part = part.replace(form, written)
+        return part
+
+    return rooted(said)
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:

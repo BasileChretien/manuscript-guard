@@ -1,27 +1,95 @@
 schema: manuscript-guard/study-types/1
 
-# What an analysis plan for each study design states beyond the seven sections G12 asks of
-# every plan (question, design, population, exposure, outcome, analysis, deviations), and the
-# reporting guidelines the paper follows. A project names its design in paper.yaml
-# (`study_type`); a project that names none is asked for the seven only.
+# What an analysis plan states: the seven sections G12 asks of every plan (`every_plan`:
+# question, design, population, exposure, outcome, analysis, deviations), and for each study
+# design the sections it states beyond them and the reporting guidelines the paper follows. A
+# project names its design in paper.yaml (`study_type`); a project that names none is asked
+# for the seven only. `check`, `next` and every other reader take the sections from here
+# (DESIGN.md, "One set of plan questions, answered before the data or quoted from a draft").
 #
-# Each section is a heading the plan holds and something said under it, as the seven are:
+# Each section is a heading the plan holds and something said under it:
 #   id        what G12 calls it;
 #   heading   the words an author's heading is matched by, loosely, since headings are theirs;
 #   says      what it has to say, for the finding's hint;
+#   ask       the same as a question, in words an author new to plans can answer;
+#   explain   why a reader needs the answer, in a sentence or two;
 #   source    the guideline item it comes from, read on its own page on the date in read_on.
-# A guideline whose page says no licence is cited by its item, never quoted.
+# `ask` and `explain` are the project's own words: a guideline whose page says no licence is
+# cited by its item, never quoted. The seven have no source of their own.
 #
-# `guidelines` are the paper's: G5 says where paper.yaml declares none of them for the
-# design it names. The protocol's own guideline, where there is one, is under `protocol`.
+# Each design has its `label`, and `describes`: what makes a study that design, said beside
+# it where `next` asks which design the study is. `guidelines` are the paper's: G5 says where
+# paper.yaml declares none of them for the design it names. The protocol's own guideline,
+# where there is one, is under `protocol`.
 #
 # paper.yaml takes one more value, `other` (gates/design.py, OTHER), for a study none of
 # these is: its plan is asked for the seven sections and its paper for no guideline. A
 # design is added here only with sections that each cite their guideline item.
 
+every_plan:
+  - id: question
+    heading: '(?i)\b(research )?question|objective'
+    says: what is being asked
+    ask: >-
+      What question will the study answer?
+    explain: >-
+      Every other part of the plan follows from the question. Written down first, it keeps the
+      analysis from drifting towards whatever the data happen to show.
+  - id: design
+    heading: '(?i)\bdesign\b'
+    says: the study design and why it suits the question
+    ask: >-
+      What kind of study is it, and why does that kind suit the question?
+    explain: >-
+      The design decides what the study can conclude. Many designs can show that two things go
+      together; few can show that one causes the other.
+  - id: population
+    heading: '(?i)\bpopulation|participants|data source\b'
+    says: who or what is included
+    ask: >-
+      Who or what will be studied, and where will the data come from?
+    explain: >-
+      A reader needs to know whom the results apply to, and who was left out and why.
+  - id: exposure
+    heading: '(?i)\bexposure|intervention|predictor\b'
+    says: what is being compared
+    ask: >-
+      What is being compared: which treatment, exposure or predictor, and against what?
+    explain: >-
+      A comparison means something only when both of its sides are named: a treatment against
+      no treatment, or against another one.
+  - id: outcome
+    heading: '(?i)\boutcome|endpoint\b'
+    says: what is being measured
+    ask: >-
+      What will be measured to answer the question, and which outcome is the main one?
+    explain: >-
+      Naming one main outcome before the analysis stops the result that looks best from being
+      reported as though it had been the aim.
+  - id: analysis
+    heading: '(?i)\banalysis|statistical\b'
+    says: the estimator and the model
+    ask: >-
+      How will the data be analysed: which method, and which model?
+    explain: >-
+      Choosing the method before seeing the results is what lets a P value or an interval mean
+      what it says.
+  # Not "Standard deviation of the dose", which is a statistic, not a change to the plan.
+  - id: deviations
+    heading: '(?i)(?<!standard\s)\bdeviation|changes? (from|to) the plan|amendments?\b'
+    says: what changed after the plan was agreed, or that nothing did
+    ask: >-
+      What changed from the plan once the work began, and why?
+    explain: >-
+      Most studies depart from their plan somewhere. A change written down is a decision a
+      reader can judge; one left out cannot be told apart from trying several analyses and
+      keeping the best.
+
 types:
   trial:
     label: randomised trial
+    describes: >-
+      the investigators assign each participant to a group by chance
     guidelines: [CONSORT]
     protocol: [SPIRIT]
     sections:
@@ -30,12 +98,24 @@ types:
         says: >-
           the estimand: the treatment, the population, the variable, how each intercurrent
           event is handled, and the population-level summary
+        ask: >-
+          What exactly is the effect the trial will estimate: in whom, on what measure, and
+          what happens to people who stop or switch treatment?
+        explain: >-
+          Two analyses of the same trial can estimate different effects. Saying which one is
+          wanted, and how events such as stopping treatment count, settles it before the
+          results are known.
         source: ICH E9(R1), sections A.3.2 and A.3.3
         url: https://database.ich.org/sites/default/files/E9-R1_Step4_Guideline_2019_1203.pdf
         read_on: 2026-10-15
       - id: sample size
         heading: '(?i)\bsample size|\bpower\b'
         says: how the sample size was determined, with every assumption it rests on
+        ask: >-
+          How many participants are needed, and on what assumptions?
+        explain: >-
+          Too few participants can miss a real effect. The calculation and the numbers it
+          assumes let a reader judge whether the trial could have found what it looked for.
         source: SPIRIT 2025, item 19
         url: https://www.consort-spirit.org/
         read_on: 2026-10-15
@@ -44,30 +124,55 @@ types:
         says: >-
           how the sequence is generated and concealed, who is blinded, and when unblinding
           is allowed
+        ask: >-
+          How will participants be put into the groups, how will the next allocation be kept
+          hidden, and who will not know which group a participant is in?
+        explain: >-
+          An allocation nobody can foresee keeps the groups alike, and blinding where it is
+          possible keeps the measurements alike.
         source: SPIRIT 2025, items 21a to 24c
         url: https://www.consort-spirit.org/
         read_on: 2026-10-15
       - id: missing data
         heading: '(?i)\bmissing'
         says: how missing data will be handled in the analysis
+        ask: >-
+          What will you do about participants with missing values, or who leave the trial?
+        explain: >-
+          Leaving out everyone with a missing value can bias the result when those people
+          differ from the rest, so how they are handled is decided before the result is known.
         source: SPIRIT 2025, item 27c
         url: https://www.consort-spirit.org/
         read_on: 2026-10-15
       - id: sensitivity analyses
         heading: '(?i)\bsensitivity|\bsubgroup'
         says: the sensitivity and subgroup analyses, and which assumption each tests
+        ask: >-
+          Which other analyses will check that the result holds, and which subgroups will you
+          look at?
+        explain: >-
+          A result that holds under other reasonable assumptions is more credible. Subgroups
+          chosen in advance are fewer, and less likely to turn up a chance finding.
         source: SPIRIT 2025, item 27d; ICH E9(R1), section A.5.2.1
         url: https://www.consort-spirit.org/
         read_on: 2026-10-15
       - id: interim analyses
         heading: '(?i)\binterim|\bstopping|\bmonitoring\b|\bdata monitoring'
         says: any interim analysis and stopping rule, who sees the results and who decides
+        ask: >-
+          Will anyone look at the results before the trial ends, and what would make it stop
+          early?
+        explain: >-
+          Looking at the results early, without a rule written beforehand, can stop a trial at
+          a chance high or low.
         source: SPIRIT 2025, items 28a and 28b
         url: https://www.consort-spirit.org/
         read_on: 2026-10-15
 
   cohort:
     label: cohort study
+    describes: >-
+      people are grouped by an exposure and followed over time to see who has the outcome
     guidelines: [STROBE, RECORD, TARGET]
     sections:
       - id: time zero and follow-up
@@ -75,6 +180,12 @@ types:
         says: >-
           when follow-up starts (time zero, the date of assignment where a target trial is
           emulated), the at-risk window, and how loss to follow-up is handled
+        ask: >-
+          When does each person's follow-up start, how long does it last, and what happens to
+          people who are lost to follow-up?
+        explain: >-
+          Follow-up started at the wrong moment builds a bias into the comparison before any
+          analysis is run, such as time in which the exposed could not have had the outcome.
         source: STROBE, items 6a and 12d (cohort); TARGET, item 7d
         url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
         read_on: 2026-10-15
@@ -83,24 +194,44 @@ types:
         says: >-
           the confounders and effect modifiers, the adjustment set with the reason for each,
           and how confounding is controlled
+        ask: >-
+          Which other factors could explain a link between the exposure and the outcome, and
+          how will you take each into account?
+        explain: >-
+          Without random allocation the groups differ in more than the exposure. Which factors
+          are adjusted for, and why each, decides what the result can be taken to mean.
         source: STROBE, items 7 and 12a
         url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
         read_on: 2026-10-15
       - id: missing data
         heading: '(?i)\bmissing'
         says: how missing data will be handled
+        ask: >-
+          What will you do about people with missing values?
+        explain: >-
+          Leaving out everyone with a missing value can bias the result when those people
+          differ from the rest, so how they are handled is decided before the result is known.
         source: STROBE, item 12c
         url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
         read_on: 2026-10-15
       - id: sensitivity analyses
         heading: '(?i)\bsensitivity|\bsubgroup'
         says: the subgroup, interaction and sensitivity analyses
+        ask: >-
+          Which other analyses will check that the result holds, and which subgroups will you
+          compare?
+        explain: >-
+          Planned in advance, they show how much the result depends on the choices made; added
+          afterwards, they read as a search for a better result.
         source: STROBE, items 12b and 12e
         url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
         read_on: 2026-10-15
 
   case-control:
     label: case-control study
+    describes: >-
+      people with the outcome are compared with people without it, looking back at what each
+      was exposed to
     guidelines: [STROBE, RECORD]
     sections:
       - id: cases
@@ -108,12 +239,23 @@ types:
         # design: whatever joins the two words.
         heading: '(?i)\bcases?\b(?!\W{0,3}(?:controls?|crossover|cohort|series)\b)|\bascertain'
         says: the case definition, and the sources and methods of case ascertainment
+        ask: >-
+          Who counts as a case, and how will the cases be found?
+        explain: >-
+          A case definition applied the same way to everyone is what makes the cases
+          comparable with each other.
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
       - id: controls
         heading: '(?i)(?<!case\W)(?<!case\W\W)(?<!case\W\W\W)\bcontrols?\b'
         says: the sources and methods of control selection, and why these cases and controls
+        ask: >-
+          Who will the controls be, where will they come from, and why are they the right
+          comparison for these cases?
+        explain: >-
+          Controls should come from the population the cases came from. Controls chosen
+          otherwise can make a difference that the exposure did not cause.
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
@@ -122,29 +264,158 @@ types:
         says: >-
           the matching criteria and the number of controls per case, and how the analysis
           accounts for the matching, or that there is none
+        ask: >-
+          Will the controls be matched to the cases, on what, how many to each case, and how
+          will the analysis take the matching into account? Or is there no matching?
+        explain: >-
+          Matching changes how the data must be analysed, and ignoring it in the analysis can
+          bias the result.
         source: STROBE, items 6b and 12d (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
       - id: confounding
         heading: '(?i)\bconfound|\badjust'
         says: the confounders, the adjustment set with the reason for each
+        ask: >-
+          Which other factors could explain a link between the exposure and being a case, and
+          how will you take each into account?
+        explain: >-
+          Cases and controls differ in more than the exposure. Which factors are adjusted for,
+          and why each, decides what the result can be taken to mean.
         source: STROBE, items 7 and 12a
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
       - id: missing data
         heading: '(?i)\bmissing'
         says: how missing data will be handled
+        ask: >-
+          What will you do about people with missing values?
+        explain: >-
+          Leaving out everyone with a missing value can bias the result when those people
+          differ from the rest, so how they are handled is decided before the result is known.
         source: STROBE, item 12c
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
 
+  cross-sectional:
+    label: cross-sectional study
+    describes: >-
+      people are studied at one point in time, with the exposure and the outcome measured
+      together
+    guidelines: [STROBE, RECORD]
+    sections:
+      - id: sampling
+        heading: '(?i)\bsampling\b(?!\s+bias)|\brecruit|\bselection of participants|\bparticipant selection|\bsurvey weight'
+        says: >-
+          how participants are sampled and recruited, and how the analysis takes the sampling
+          into account (weights, clusters, strata)
+        ask: >-
+          How will participants be chosen and recruited, and will the analysis need to allow
+          for how they were sampled (weights, clusters or strata)?
+        explain: >-
+          A sample stands for its population only as far as the way it was drawn allows. A
+          survey that reached some groups more than others gives the wrong prevalence unless
+          the analysis weights for it.
+        source: STROBE, items 6a and 12d (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: measurement
+        heading: '(?i)\bmeasurements?\b(?!\s+bias)|\binstruments?\b|\bquestionnaires?\b|\bdata collection'
+        says: >-
+          how each variable is measured, with the instrument used, and whether it is measured
+          the same way in every group
+        ask: >-
+          How will each variable be measured, with which questionnaire or instrument, and is
+          it measured the same way in every group?
+        explain: >-
+          An instrument not shown to measure what it claims, or one used differently from
+          group to group, can make a difference where there is none.
+        source: STROBE, item 8 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: bias
+        heading: '(?i)\bbias|\bnon-?response'
+        says: >-
+          the sources of bias expected, such as who declines to take part, and how each is
+          addressed
+        ask: >-
+          Which sources of bias do you expect, such as people who decline to take part, and
+          what will you do about each?
+        explain: >-
+          Who agrees to take part, and how people recall what they were exposed to, can shift
+          the result. Naming each bias beforehand shows what was done about it.
+        source: STROBE, item 9 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: sample size
+        heading: '(?i)\bsample size|\bstudy size|\bpower\b'
+        says: >-
+          how the study size was arrived at, with every assumption it rests on
+        ask: >-
+          How many participants are needed, and how did you arrive at that number?
+        explain: >-
+          Too small a sample gives an estimate too imprecise to answer the question. The
+          calculation and its assumptions let a reader judge whether the study could answer
+          it.
+        source: STROBE, item 10 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: confounding
+        heading: '(?i)\bconfound|\badjust'
+        says: >-
+          the confounders and effect modifiers, the adjustment set with the reason for each,
+          and how confounding is controlled
+        ask: >-
+          Which other factors could explain a link between the exposure and the outcome, and
+          how will you take each into account?
+        explain: >-
+          People with and without the exposure differ in more than the exposure. Which factors
+          are adjusted for, and why each, decides what the result can be taken to mean;
+          measured at one time, the result cannot say which came first.
+        source: STROBE, items 7 and 12a (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: >-
+          how missing data will be handled
+        ask: >-
+          What will you do about people with missing values?
+        explain: >-
+          Leaving out everyone with a missing value can bias the result when those people
+          differ from the rest, so how they are handled is decided before the result is known.
+        source: STROBE, item 12c (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: sensitivity analyses
+        heading: '(?i)\bsensitivity|\bsubgroup'
+        says: >-
+          the subgroup, interaction and sensitivity analyses
+        ask: >-
+          Which other analyses will check that the result holds, and which subgroups will you
+          compare?
+        explain: >-
+          Planned in advance, they show how much the result depends on the choices made; added
+          afterwards, they read as a search for a better result.
+        source: STROBE, items 12b and 12e (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+
   self-controlled:
     label: self-controlled design (case series or case-crossover)
+    describes: >-
+      each person is their own comparison, at times of exposure and at other times
     guidelines: [STROBE, RECORD]
     sections:
       - id: observation period
         heading: '(?i)\bobservation'
         says: the period over which each case's events and exposures are known, and when it starts and ends
+        ask: >-
+          Over what period will each person's exposures and events be observed, and when does
+          that period start and end?
+        explain: >-
+          Each person is compared with themselves over time, so the period observed decides
+          which times can be compared.
         source: Petersen, Douglas and Whitaker, BMJ 2016;354:i4515, the set-up of a self-controlled case series
         url: https://doi.org/10.1136/bmj.i4515
         read_on: 2026-10-15
@@ -153,18 +424,35 @@ types:
         says: >-
           the risk windows and their lengths, and the control time; for a case-crossover,
           the focal and referent windows
+        ask: >-
+          Which periods after an exposure count as at risk, how long are they, and which
+          periods serve as the comparison?
+        explain: >-
+          The result depends on when the risk is thought to rise and fall. Choosing the
+          windows before looking at the events keeps them from being fitted to the data.
         source: Petersen et al. 2016; Cadarette et al., Pharmacoepidemiol Drug Saf 2021, Table 1
         url: https://doi.org/10.1002/pds.5227
         read_on: 2026-10-15
       - id: washout
         heading: '(?i)\bwash[- ]?out|\bpre-?exposure|\binduction|\blag\b'
         says: the induction, lag and washout windows, and any pre-exposure period
+        ask: >-
+          Are there periods just before or after an exposure that will be set aside or counted
+          apart, and how long are they?
+        explain: >-
+          An effect that starts late, or lingers after the exposure ends, falls in the wrong
+          window unless these periods are set out in advance.
         source: Cadarette et al. 2021, section 4 and Figure 1; Petersen et al. 2016, Table 1
         url: https://doi.org/10.1002/pds.5227
         read_on: 2026-10-15
       - id: time-varying adjustment
         heading: '(?i)\bage\b|\bseason|\bcalendar|\btime[- ]varying'
         says: how the observation period is cut by age, season or calendar time
+        ask: >-
+          How will you allow for what changes over time, such as age or the season?
+        explain: >-
+          The design removes the differences between people, not the changes within a person
+          over time; those have to be allowed for.
         source: Petersen et al. 2016, the set-up and the assumption of constant rates
         url: https://doi.org/10.1136/bmj.i4515
         read_on: 2026-10-15
@@ -173,17 +461,32 @@ types:
         says: >-
           how event-dependent exposure, an event that ends observation, and recurrent events
           are handled
+        ask: >-
+          What will you do when an event changes the chance of a later exposure, ends the
+          observation, or happens more than once?
+        explain: >-
+          The design rests on assumptions that each of these can break. Saying how each is
+          handled lets a reader judge whether the result holds.
         source: Petersen et al. 2016, the assumptions of the design and Table 1
         url: https://doi.org/10.1136/bmj.i4515
         read_on: 2026-10-15
 
   disproportionality:
     label: disproportionality analysis
+    describes: >-
+      the reports of suspected adverse reactions to a drug are compared with the reports for
+      other drugs
     guidelines: [READUS-PV]
     sections:
       - id: deduplication
         heading: '(?i)duplicat|\bpre-?processing|\bcleaning'
         says: how duplicate reports are found and removed, and every other choice made in preparing the data
+        ask: >-
+          How will you find and remove duplicate reports, and what other choices will you make
+          in preparing the data?
+        explain: >-
+          The same case is often reported more than once. Duplicates swell the counts and can
+          make a signal that is not there.
         source: READUS-PV, item 5b and its explanation
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
@@ -192,12 +495,23 @@ types:
         says: >-
           the events and the drugs as they are coded, how they are grouped, and which roles
           of a drug (suspect, concomitant) count
+        ask: >-
+          Which events and which drugs will you count, how are they coded and grouped, and
+          does a drug count when it was taken alongside the suspected one?
+        explain: >-
+          Which terms and which drugs count changes the number in every cell of the
+          comparison.
         source: READUS-PV, items 6a and 6c
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: comparator
         heading: '(?i)\bcomparator|\breference group|\bcomparison group'
         says: the reference group the reports are compared with, and why it is that one
+        ask: >-
+          Which reports will the drug's reports be compared with, and why those?
+        explain: >-
+          A measure of disproportionality is a comparison with a reference group, and another
+          reference can give another answer.
         source: READUS-PV, item 3, and its explanation of items 7a, 7b and 8b
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
@@ -206,77 +520,145 @@ types:
         # "Data quality measures" or "Disproportionality analysis" such a plan has.
         heading: '(?i)^[\W\d]*(?:(?:primary|main|choice of|the|disproportionality|statistical)\s+)*measures?\b(?!\s+of\s+(?:\w+\s+)?(?:outcomes?|exposures?)\b)|\bmeasures? of disproportionality|\bdisproportionality measures?\b|\bsignal (?:threshold|detection|criteri)'
         says: the measure of disproportionality and any threshold, with the reasons
+        ask: >-
+          Which measure of disproportionality will you use, and what threshold, if any, counts
+          as a signal?
+        explain: >-
+          Measures and thresholds differ in how readily they flag a drug. Chosen afterwards,
+          they could be chosen for the answer they give.
         source: READUS-PV, item 7b
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: sensitivity analyses
         heading: '(?i)\bsensitivity|\bconfound|\bstratif|\brestrict'
         says: the restrictions, subgroups, stratifications and adjustments, and any case-by-case review
+        ask: >-
+          Which restrictions, subgroups or adjustments will check the result, and will any
+          cases be reviewed one by one?
+        explain: >-
+          Spontaneous reports carry many known biases. Checks planned in advance show whether
+          a signal survives them.
         source: READUS-PV, items 7c and 7d
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
 
   systematic-review:
     label: systematic review
+    describes: >-
+      the studies of a question are searched for, appraised and summed up by a method stated
+      in advance
     guidelines: [PRISMA]
     protocol: [PRISMA-P]
     sections:
       - id: eligibility
         heading: '(?i)\beligib|\binclusion|\bexclusion'
         says: the eligibility criteria, as population, intervention, comparator, outcome, design, setting, time frame, language and publication status
+        ask: >-
+          Which studies will be included: which population, intervention, comparison,
+          outcomes, designs, settings, years and languages?
+        explain: >-
+          Criteria fixed in advance stop studies from being kept or dropped by what they
+          found.
         source: PRISMA-P 2015, item 8
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
       - id: search
         heading: '(?i)\bsearch|\binformation sources|\bdatabases'
         says: the databases, registers and other sources with their dates, and a draft search for one database
+        ask: >-
+          Where will you search (databases, registers, other sources), over which dates, and
+          with what search terms?
+        explain: >-
+          A reader needs to be able to run the search again and see what it could have missed.
         source: PRISMA-P 2015, items 9 and 10
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
       - id: selection and extraction
         heading: '(?i)\bselection|\bscreening|\bdata (collection|extraction)'
         says: how records are screened and selected, by how many reviewers, and what data are extracted
+        ask: >-
+          How will records be screened and chosen, by how many reviewers, and what will you
+          record from each study?
+        explain: >-
+          Two reviewers working apart catch the errors one makes, and data chosen in advance
+          are taken the same way from every study.
         source: PRISMA-P 2015, items 11a to 13
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
       - id: risk of bias
         heading: '(?i)\brisk of bias|\bquality assessment|\bappraisal'
         says: how the risk of bias of each study is assessed, and with which tool
+        ask: >-
+          How will you judge the risk of bias of each study included, and with which tool?
+        explain: >-
+          A review is as reliable as the studies in it. Judging each with a named tool shows
+          how far the combined result can be trusted.
         source: PRISMA-P 2015, item 14
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
       - id: synthesis
         heading: '(?i)\bsynthesis|\bmeta-?analys'
         says: when the results are combined and how, the heterogeneity, and the summary where they are not
+        ask: >-
+          When will you combine the results, how, and what will you do when the studies differ
+          too much to combine?
+        explain: >-
+          Whether to pool, and how, changes the answer. Decided before the results are seen,
+          the method cannot be picked for the answer it gives.
         source: PRISMA-P 2015, items 15a to 15d
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
       - id: certainty
         heading: '(?i)\bcertainty|\bconfidence in|\bgrade\b|\bmeta-?bias|\bpublication bias'
         says: how meta-bias is assessed, and the confidence in the body of evidence
+        ask: >-
+          How will you look for studies that are missing or reported in part, and how will you
+          rate your confidence in the evidence as a whole?
+        explain: >-
+          Studies that found nothing are published less often. Rating the certainty of the
+          evidence tells a reader how much weight the conclusion can bear.
         source: PRISMA-P 2015, items 16 and 17
         url: https://doi.org/10.1186/2046-4053-4-1
         read_on: 2026-10-15
 
   prediction-model:
     label: prediction model
+    describes: >-
+      a model is built or tested that predicts an outcome for each person
     guidelines: [TRIPOD]
     sections:
       - id: predictors
         heading: '(?i)\bpredictors?\b|\bcandidate variables|\bfeatures'
         says: how the predictors are chosen, defined and measured, and when
+        ask: >-
+          Which predictors will the model use, and how will they be chosen, defined and
+          measured, and when?
+        explain: >-
+          A predictor measured otherwise, or later, than it would be in practice gives a model
+          that works in the study and not in use.
         source: TRIPOD+AI, items 9a and 9b
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15
       - id: sample size
         heading: '(?i)\bsample size'
         says: how the size of each dataset was arrived at
+        ask: >-
+          How many people, and how many with the outcome, will the model be built and tested
+          on, and how was that number arrived at?
+        explain: >-
+          A model built on too few outcomes learns the noise of its data and predicts poorly
+          elsewhere.
         source: TRIPOD+AI, item 10
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15
       - id: missing data
         heading: '(?i)\bmissing'
         says: how missing data will be handled
+        ask: >-
+          What will you do about people with missing values?
+        explain: >-
+          How missing values are handled when the model is built should match how they can be
+          handled when it is used.
         source: TRIPOD+AI, item 11
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15
@@ -285,18 +667,37 @@ types:
         says: >-
           how the data are split, the predictors handled, the model chosen and tuned, and how
           it is validated internally
+        ask: >-
+          How will the data be split, the predictors handled, the model chosen and tuned, and
+          its performance checked within the data?
+        explain: >-
+          Each of these choices can make a model look better than it is. Fixed in advance, and
+          checked on data the model was not built on, they keep its measured performance true
+          to its real one.
         source: TRIPOD+AI, items 12a to 12d and 13
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15
       - id: performance
         heading: '(?i)\bperformance|\bdiscrimination|\bcalibration|\bexternal validation'
         says: the measures of discrimination, calibration and others, and how the model would be updated
+        ask: >-
+          How will you measure how well the model predicts (discrimination, calibration and
+          others), and how would it be updated?
+        explain: >-
+          A model can rank people well and still give them the wrong probabilities, so both
+          are measured before it is relied on.
         source: TRIPOD+AI, items 12e to 12g
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15
       - id: fairness
         heading: '(?i)\bfairness|\bequity'
         says: how the model's fairness across groups is assessed, and why that way
+        ask: >-
+          How will you check that the model works as well for each group of people, and why
+          that way?
+        explain: >-
+          A model that works on average can work poorly for some groups. Checked in advance,
+          it shows whether the model can be used for everyone it is meant for.
         source: TRIPOD+AI, item 14
         url: https://doi.org/10.1136/bmj-2023-078378
         read_on: 2026-10-15

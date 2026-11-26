@@ -18025,12 +18025,14 @@ to fix is pinned until the fix lands, and the fix changes its test.
   the literature are shown with the quotes and passages the author recorded, and never with the
   PDF or a page of it, so a co-author asked whether the work says what the sentence says reads
   only what the author copied out. Where the computer that builds the page holds no full copy of
-  a work under `literature/sources/` (none, its abstract alone, or one kept out of git), each item
-  citing it says so, and `checker build` lists those works by group and key; what is said is
-  outside the digest, so storing the copy later keeps the answers given. A copy stored is not
-  shown either. Whether the page is to carry the PDF, or the cited pages as images with the
-  passage marked, awaits the author's decision.
-  Pinned by `tests/test_checking.py::test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so`
+  a work (none, its abstract alone, or one kept out of git), each item citing it says so, and
+  `checker build` lists those works by group and key; a copy counts under the work's filed name
+  in `literature/sources/`, as a ledger entry's `source_file`, or as a file the record lists.
+  What is said is outside the digest, so storing the copy later keeps the answers given. A copy
+  stored is not shown either. Whether the page is to carry the PDF, or the cited pages as images
+  with the passage marked, awaits the author's decision.
+  Pinned by `tests/test_checking.py::test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so`,
+  `tests/test_checking.py::test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held`
   and `tests/test_checking.py::test_storing_a_copy_later_keeps_the_answers_given_without_it`.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not

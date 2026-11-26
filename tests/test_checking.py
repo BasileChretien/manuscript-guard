@@ -672,10 +672,83 @@ def test_build_lists_the_items_whose_work_has_no_copy_by_group_and_key(
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     said = capsys.readouterr().out
     assert "cite a work with no copy stored on this computer" in said, said
-    assert f"Cited statements: @{SIGNAL}, 2 items (nothing stored)" in said, said
-    assert f"Numbers from the literature: @{SIGNAL}, 1 item (nothing stored)" in said, said
+    pdf = f"save its PDF as literature/sources/{SIGNAL}.pdf"
+    assert f"Cited statements: @{SIGNAL}, 2 items (nothing stored; {pdf})" in said, said
+    assert f"Numbers from the literature: @{SIGNAL}, 1 item (nothing stored; {pdf})" in said, said
     assert COHORT not in said.split("cite a work with no copy stored")[1]
     assert "manuscript-guard sync-sources" in said
+
+
+def test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held(project: Path) -> None:
+    """Round 1 of #810: a copy counted only under the work's filed name, so a PDF saved by hand
+    as "sources/Smith 2020 NEJM.pdf", which the ledger names and G7 reads, was said on the
+    value and on every sentence citing the work to be no copy at all."""
+    sources, ledger = _sources(project), project / "literature" / "ledger.yaml"
+    (sources / f"{SIGNAL}.txt").rename(sources / "Signal 2019 saved by hand.txt")
+    text = ledger.read_text(encoding="utf-8")
+    assert text.count(f"sources/{SIGNAL}.txt") == 1
+    named = text.replace(f"sources/{SIGNAL}.txt", "sources/Signal 2019 saved by hand.txt")
+    ledger.write_text(named, encoding="utf-8")
+    document = produced(project)
+    assert not _unstored_of(only(document, "literature"), SIGNAL)
+    assert not _unstored_of(only(document, "claim"), SIGNAL)
+
+
+def test_a_copy_the_record_lists_for_the_work_is_held(project: Path) -> None:
+    from kept_away import record
+
+    # The record's names are of letters, digits, `_`, `.` and `-` (its schema).
+    sources = _sources(project)
+    (sources / f"{SIGNAL}.txt").rename(sources / "Signal_2019_saved_by_hand.txt")
+    record(project, "Signal_2019_saved_by_hand.txt", SIGNAL)
+    document = produced(project)
+    assert not _unstored_of(only(document, "claim"), SIGNAL)
+    assert not _unstored_of(only(document, "literature"), SIGNAL)
+
+
+def test_an_abstract_kept_out_of_git_is_only_the_abstract(project: Path) -> None:
+    """Round 1 of #810: an abstract was the only copy recorded away, and the page said a copy
+    of the work was recorded elsewhere."""
+    from kept_away import keep_away
+
+    sources = _sources(project)
+    (sources / f"{SIGNAL}.txt").rename(sources / f"{SIGNAL}.abstract.txt")
+    keep_away(project, f"{SIGNAL}.abstract.txt", SIGNAL)
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+    assert f"Only the abstract of @{SIGNAL}" in entries[0]["says"]
+    assert "not on the computer that built this page" in entries[0]["says"]
+
+
+def _items(*entries: list[dict]):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        groups=[{"id": "claim", "title": "Cited statements"}],
+        items=[{"id": f"c{n}", "group": "claim", "unstored": one} for n, one in enumerate(entries)],
+    )
+
+
+def test_build_counts_an_item_citing_two_missing_works_once() -> None:
+    """Round 1 of #810: the count was of the works said, not of the items."""
+    from manuscript_guard.checking.produce import NOTHING_STORED, unstored_lines
+
+    two = [{"key": "a2020", "state": NOTHING_STORED, "says": "."},
+           {"key": "b2021", "state": NOTHING_STORED, "says": "."}]  # fmt: skip
+    lines = unstored_lines(_items(two))
+    assert lines[0].startswith("1 item(s) on the page cite"), lines
+
+
+def test_a_key_a_file_name_cannot_hold_is_named_as_its_copy_is_filed() -> None:
+    """Round 1 of #810: the author was told to save `<key>.pdf`, and a copy is found only under
+    the key with each character outside [A-Za-z0-9_.-] written `_`."""
+    from manuscript_guard.checking.produce import NOTHING_STORED, _unstored, unstored_lines
+
+    (entry,) = _unstored(lambda key: (NOTHING_STORED, f"No copy of @{key}"), ["smith:2020"], set())
+    assert "literature/sources/smith_2020.pdf" in entry["says"]
+    assert "smith:2020.pdf" not in entry["says"]
+    listed = "\n".join(unstored_lines(_items([entry])))
+    assert "literature/sources/smith_2020.pdf" in listed and "<key>" not in listed
 
 
 def test_the_page_shows_what_it_says_of_a_missing_copy_escaped() -> None:

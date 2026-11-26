@@ -47,11 +47,11 @@ answers file and copy the answers, and the person sends that one file back howev
 send files.
 
 The page shows the quotes and passages the author recorded, never the stored copy of a cited
-work. Where this computer holds no full copy of a work under `literature/sources/`, each item
-citing it says so, and `build` lists those works by group and key. Read that list to the author
-before the pages are sent: storing a copy (`manuscript-guard sync-sources`, or the PDF saved as
-`literature/sources/<key>.pdf`) and building again is theirs to choose; a copy stored after a
-co-author answered asks nobody again.
+work. Where this computer holds no full copy of a work, each item citing it says so, and
+`build` lists those works by group and key, each with the name its PDF is to be saved under in
+`literature/sources/`. Read that list to the author before the pages are sent: storing a copy
+(`manuscript-guard sync-sources`, or the PDF saved under the name `build` gives) and building
+again is theirs to choose; a copy stored after a co-author answered asks nobody again.
 
 `--all` writes `checks/check-<name>.html` for every author (`-o` names another folder;
 `--except "<author>"` leaves one out). Each page says whom it was made for, carries their name

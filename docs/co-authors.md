@@ -99,14 +99,17 @@ the project knows which row it came from — so a project that traces its own nu
 `checks/items.json`.
 
 The page shows the quotes and passages the author recorded, never the stored copy of a cited
-work itself. Where the computer building the page holds no copy of a work under
-`literature/sources/` (nothing at all, only its abstract, or a copy kept out of git on another
-computer), each sentence citing it and each value quoted from it says so on its own item, and
-says whether any of the work's words are shown: a co-author shown none of them has to find the
-work to answer. `build` lists those works by group and citation key, with how many items cite
-each, so that the author can store them first (`manuscript-guard sync-sources`, or the PDF saved
-as `literature/sources/<key>.pdf`) and build again. What the page says of a missing copy is not
-in the item's digest, so storing the copy afterwards asks nobody again.
+work itself. Where the computer building the page holds no full copy of a work (nothing at all,
+only its abstract, or a copy kept out of git on another computer), each sentence citing it and
+each value quoted from it says so on its own item, and says whether any of the work's words are
+shown: a co-author shown none of them has to find the work to answer. A copy counts where it is
+under `literature/sources/` by the work's citation key, where a ledger entry citing the work
+names it as its `source_file`, or where `literature/sources.yaml` records it as the work's.
+`build` lists the works with none by group and citation key, with how many items cite each and
+the name to save its PDF under (the key, each character other than a letter, a digit, `_`, `.`
+or `-` written `_`, then `.pdf`), so that the author can store them first (`manuscript-guard
+sync-sources`, or the PDF saved under that name) and build again. What the page says of a
+missing copy is not in the item's digest, so storing the copy afterwards asks nobody again.
 
 A group the project fills, it fills alone: one contributed item in a group means none of the
 toolkit's are added to it, since the two are keyed differently and a co-author would otherwise
